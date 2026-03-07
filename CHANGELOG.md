@@ -123,57 +123,161 @@ Maxime then said: **"I want some kind of framework that I can include in my work
 
 ---
 
-## Current File Inventory
+## Iteration 3 — Research-Backed Architecture Expansion
+
+**Date:** 2026-03-07
+**Agent:** Cowork (Claude Opus 4.6)
+**Session type:** Continued from iteration 2 (same session)
+
+### Research Phase
+
+Deep web research across 12+ sources. Full synthesis in `research/iteration-3-research.md`. Key sources:
+
+- Anthropic — "Effective Harnesses for Long-Running Agents" (initializer + coding agent pattern, progress files)
+- Anthropic — "Effective Context Engineering for AI Agents" (Write/Select/Compress/Isolate operations)
+- OpenAI — "Harness Engineering" (AGENTS.md as table of contents, not encyclopedia; architectural guardrails)
+- pi.dev / Mario Zechner — minimal core + extensible everything (4 core tools, session trees, mid-session model switching)
+- everything-claude-code / affaan-m — instinct-based learning (auto-detect patterns, confidence scores)
+- agent-mux / buildoak — cross-engine subagent orchestration (one CLI, one JSON contract, any engine)
+- Continuous-Claude-v3 — ledger + handoff state management (YAML handoffs, pre-compaction hooks)
+- HumanLayer — CLAUDE.md best practices (~60 lines, @imports, every line must change behavior)
+- 2026 Agentic Coding Trends Report — multi-agent is table stakes (8 tools shipped parallel agents in Feb 2026)
+
+### What Changed (6 → 8 layers)
+
+**Layers 1-4: Refined**
+- Layer 1 (Identity): NEW `identity/core.md` — ~30 line minimal kernel. Agent-context.md rewritten as hub document (~50 lines) with @imports instead of 139-line monolith.
+- Layer 3 (Routing): Expanded from human decision table to orchestration protocol with model escalation (Haiku → Sonnet → Opus) and agent-mux-style dispatch.
+- Layer 4 (Discipline): Formalized as `methodology/session-discipline.md` with anti-pattern guards.
+
+**Layer 5: Expanded**
+- Ship pipeline now includes architectural guardrails (dependency direction, module boundaries, drift prevention) — inspired by OpenAI's Codex pattern (1M lines, 3 engineers).
+- Cross-agent review protocol formalized as standalone doc.
+
+**Layer 6: Expanded**
+- Vault protocol now includes mid-session retrieval triggers (search vault DURING work, not just at bookends).
+- Instinct protocol defined conceptually (auto-detect patterns) — implementation deferred to v0.4.
+
+**Layer 7: NEW — Context Engineering**
+- Anthropic's four operations: Write, Select, Compress, Isolate
+- The 60% rule: past 60% context utilization, performance degrades
+- Token budget discipline: CLAUDE.md under 200 lines, sub-agents return summaries
+- Cache optimization: front-load stable context, keep CLAUDE.md stable mid-session
+
+**Layer 8: NEW — State Protocol**
+- Progress file triplet: plan.md + progress.md + tasks.md
+- Handoff template (YAML) for session transitions
+- Pre-compaction checkpointing protocol
+- Session recovery protocol (read state files → continue)
+
+### Design Principles Added
+- **Minimal core, maximal extensibility** (from pi.dev)
+- **Context is finite** — every CLAUDE.md line competes with your task for attention
+- **Agents orchestrate, humans route** — evolve from decision table to dispatch protocol
+
+### Files Created in Iteration 3
+```
+identity/core.md                    ← NEW: ~30 line identity kernel
+identity/agent-context.md           ← REWRITTEN: hub document with @imports (~50 lines)
+methodology/routing.md              ← NEW: dispatch protocol + model escalation
+methodology/session-discipline.md   ← NEW: evening/weekend templates + anti-pattern guards
+methodology/ship-pipeline.md        ← NEW: security gates + architectural guardrails
+methodology/cross-agent-review.md   ← NEW: cross-agent review protocol
+knowledge/vault-protocol.md         ← NEW: /remember + /upvault + mid-session triggers
+context/context-engineering.md      ← NEW: Layer 7 — Write/Select/Compress/Isolate
+context/anti-rot.md                 ← NEW: Layer 7 — compaction survival strategies
+state/state-protocol.md             ← NEW: Layer 8 — progress files + handoffs
+state/templates/handoff.yaml        ← NEW: session transition template
+state/templates/progress.md         ← NEW: in-session state template
+state/templates/plan.md             ← NEW: current plan template
+state/templates/tasks.md            ← NEW: remaining tasks template
+research/iteration-3-research.md    ← NEW: full web research synthesis
+README.md                           ← REWRITTEN: 8-layer architecture, minimal
+```
+
+### Legacy Files to Clean Up
+Run this on the host machine (sandbox cannot delete):
+```bash
+cd superharness
+rm -rf skills/ hooks/ .claude-plugin/ install.sh
+rm context/agent-context.md context/developer-profile.md
+```
+These are iteration 1 remnants. Their content has been absorbed into the new methodology/ and identity/ directories.
+
+---
+
+## Current File Inventory (v0.3)
 
 ```
 superharness/
-├── README.md                              ← v2 manifesto (CURRENT)
+├── README.md                              ← v3 (8 layers, minimal)
 ├── CHANGELOG.md                           ← This file
-├── identity/
-│   ├── developer-profile.md               ← Copied from workspace
-│   └── agent-context.md                   ← Copied from workspace
-├── agents/
-│   ├── claude-code/                       ← EMPTY — needs global CLAUDE.md, commands
-│   └── codex-cli/                         ← EMPTY — needs global AGENTS.md, skills
-├── methodology/
-│   └── harness-thesis.md                  ← Written (78% vs 42%, compounding)
-├── templates/                             ← EMPTY — needs CLAUDE.md and AGENTS.md templates
-├── context/                               ← Legacy from between iterations (duplicates identity/)
-│   ├── developer-profile.md
-│   └── agent-context.md
-├── skills/                                ← FROM ITERATION 1 — valid content, wrong framing
-│   ├── session-routing/SKILL.md
-│   ├── cross-agent-review/SKILL.md
-│   ├── ship-pipeline/SKILL.md
-│   ├── vault-sync/SKILL.md
-│   ├── evening-session/SKILL.md
-│   ├── weekend-block/SKILL.md
-│   └── harness-engineering/SKILL.md
-├── hooks/
-│   └── session-start.sh                   ← FROM ITERATION 1 — needs update
-├── .claude-plugin/
-│   └── plugin.json                        ← FROM ITERATION 1 — needs update
-├── install.sh                             ← FROM ITERATION 1 — outdated
-└── knowledge/                             ← Created but EMPTY
+│
+├── identity/                              ← Layer 1: WHO
+│   ├── core.md                            ← ~30 lines — always loaded
+│   ├── developer-profile.md               ← Full profile (on demand)
+│   └── agent-context.md                   ← Hub document with @imports
+│
+├── agents/                                ← Layer 2: WHAT
+│   ├── claude-code/                       ← TO DO: global CLAUDE.md, commands
+│   └── codex-cli/                         ← TO DO: global AGENTS.md, skills
+│
+├── methodology/                           ← Layers 3-5: WHERE, WHEN, HOW GOOD
+│   ├── routing.md                         ← Dispatch protocol + model escalation
+│   ├── session-discipline.md              ← Evening/weekend templates + guards
+│   ├── ship-pipeline.md                   ← Security + architectural guardrails
+│   └── cross-agent-review.md              ← Review across agents
+│
+├── knowledge/                             ← Layer 6: COMPOUNDS
+│   ├── harness-thesis.md                  ← The 78% vs 42% thesis
+│   └── vault-protocol.md                  ← /remember, /upvault, mid-session triggers
+│
+├── context/                               ← Layer 7: HOW MUCH
+│   ├── context-engineering.md             ← Write/Select/Compress/Isolate
+│   └── anti-rot.md                        ← Compaction survival strategies
+│
+├── state/                                 ← Layer 8: SURVIVES
+│   ├── state-protocol.md                  ← Progress files + handoff format
+│   └── templates/
+│       ├── handoff.yaml                   ← Session transition template
+│       ├── progress.md                    ← In-session state
+│       ├── plan.md                        ← Current plan
+│       └── tasks.md                       ← Remaining tasks
+│
+├── templates/                             ← Bootstrap for new projects
+│   ├── CLAUDE.md.template                 ← TO DO: per-project CLAUDE.md generator
+│   └── AGENTS.md.template                 ← TO DO: per-project AGENTS.md generator
+│
+├── research/                              ← Research per iteration
+│   └── iteration-3-research.md            ← Web research synthesis
+│
+└── [LEGACY — to delete]
+    ├── skills/                            ← Iteration 1, absorbed into methodology/
+    ├── hooks/                             ← Iteration 1, outdated
+    ├── .claude-plugin/                    ← Iteration 1, outdated
+    ├── install.sh                         ← Iteration 1, outdated
+    └── context/{agent-context,dev-profile} ← Iteration 1 duplicates of identity/
 ```
 
 ---
 
 ## Open Questions for Next Iteration
 
-1. **Should skills/ stay as a subdirectory?** The skill files have valid content (routing table, ship pipeline, session templates). They could live under `methodology/` as plain markdown, or stay as Claude Code-compatible SKILL.md files. Trade-off: SKILL.md format is directly loadable by Claude Code. Plain markdown is more portable.
+1. **agents/ directory:** Should it contain copies of global CLAUDE.md/AGENTS.md (portable, versionable) or references/generators (single source of truth)?
 
-2. **What goes in agents/?** The global CLAUDE.md and AGENTS.md already exist on the user's machine in their respective config directories. Should superharness contain copies (portable, versionable) or references (single source of truth)?
+2. **templates/ directory:** When bootstrapping a new project, how much of CLAUDE.md is templated vs generated from the harness? Should templates include Layer 7 context budgets?
 
-3. **What goes in templates/?** When Maxime starts a new project, superharness should generate the right CLAUDE.md and AGENTS.md. How much is templated vs generated?
+3. **Instinct protocol implementation:** v0.3 defines the concept. v0.4 should implement at least the manual version (document patterns in per-project CLAUDE.md). Auto-detection is v0.5+.
 
-4. **How does superharness relate to DevOpsCelstn?** The user's `goclaude` alias points to the DevOpsCelstn directory. Is superharness a subdirectory inside DevOpsCelstn, or is DevOpsCelstn part of the harness?
+4. **agent-mux integration:** Should routing.md include actual JSON contracts for cross-engine dispatch, or stay conceptual until agent-mux is installed?
 
-5. **Cleanup:** The `context/` directory duplicates `identity/`. The old `install.sh` and `.claude-plugin/plugin.json` reference the iteration 1 structure. These need cleaning.
+5. **DevOpsCelstn relationship:** superharness lives at `DevOpsCelstn/harness/superharness`. Is this the right home? Should goclaude alias point to superharness?
 
-6. **Vault integration:** The vault protocol (how /remember and /upvault work) is described in the README but not formalized in its own document yet.
+6. **Hub document @imports:** Claude Code supports `@file` imports in CLAUDE.md. Should identity/agent-context.md literally use `@` syntax, or stay as prose references?
 
-7. **Is superharness a git repo?** If yes, it becomes versionable, cloneable, and the compounding thesis becomes literally true — every commit is a deposit. If no, it stays as a local directory structure.
+7. **Context budget enforcement:** Should there be a pre-commit hook or lint rule that checks CLAUDE.md line count? HumanLayer recommends <200 lines.
+
+8. **Obsidian vault structure alignment:** superharness defines vault location rules. Do these match the current vault structure, or does the vault need reorganizing?
 
 ---
 
@@ -205,15 +309,24 @@ These documents were created in the same session and contain context relevant to
 
 If you're an agent picking this up:
 
-1. **Read this file first** — you now have full context
-2. **Read the README.md** — the manifesto defines what superharness is
-3. **Read methodology/harness-thesis.md** — the philosophical core
-4. **Check the Open Questions** — pick one and propose a direction
-5. **Update this CHANGELOG** — add your iteration at the bottom
+1. **Read this file first** — you now have full context of all iterations
+2. **Read `identity/core.md`** — the minimal identity kernel (~30 lines)
+3. **Read `identity/agent-context.md`** — the hub document that points to all layers
+4. **Read `README.md`** — the 8-layer architecture overview
+5. **Check the Open Questions above** — pick one and propose a direction
+6. **Update this CHANGELOG** — add your iteration at the bottom
 
-The user (Maxime / Rocha) prefers:
+### Key files by purpose
+- **Understanding the philosophy:** `knowledge/harness-thesis.md`
+- **Understanding the research:** `research/iteration-3-research.md`
+- **Understanding the methodology:** `methodology/routing.md`, `methodology/session-discipline.md`
+- **Understanding context management:** `context/context-engineering.md`, `context/anti-rot.md`
+- **Understanding state management:** `state/state-protocol.md`
+
+### User preferences (Maxime / Rocha)
 - Honest assessment over hype
 - "Show before doing" — preview actions, wait for approval
 - One task at a time, no context-switching
 - Markdown by default unless code is needed
 - Vault search before starting any new task (use Obsidian MCP if available)
+- Minimal core, discoverable detail — don't load everything into context at once
