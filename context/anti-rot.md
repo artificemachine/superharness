@@ -6,5 +6,5 @@ The SessionStart hook in `adapters/claude-code/hooks/session-start.sh` re-inject
 
 For session continuity, see:
 - `state/state-protocol.md` — progress files and handoff format
-- `.superreins/ledger.md` — append-only activity log that survives compaction
+- `.superharness/ledger.md` — append-only activity log that survives compaction
 - `adapters/claude-code/hooks/session-start.sh` — re-injection mechanism

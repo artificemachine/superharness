@@ -106,9 +106,9 @@ For simpler setups, the reviewer reads the relevant lens checklists before revie
 
 ## Adding Custom Lenses
 
-Add project-specific lenses in `.superreins/review-lenses/`:
+Add project-specific lenses in `.superharness/review-lenses/`:
 ```yaml
-# .superreins/review-lenses/hipaa.yaml
+# .superharness/review-lenses/hipaa.yaml
 name: HIPAA Compliance
 focus: PHI handling, audit logs, encryption at rest, access controls
 checklist:
