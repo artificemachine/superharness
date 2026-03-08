@@ -18,9 +18,8 @@ def test_session_start_outputs_json_with_context(repo_root, tmp_path) -> None:
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
-    assert "additional_context" in payload
-    assert "hookSpecificOutput" in payload
-    context = payload["additional_context"]
+    assert "additionalContext" in payload
+    context = payload["additionalContext"]
     assert "<superreins>" in context
     assert "Active contract found" in context
     assert "Pending handoff for you" in context
