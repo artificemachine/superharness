@@ -178,6 +178,18 @@ This project uses superharness. Protocol files are in \`.superharness/\`.
 - \`continue contract\`: resume active contract and execute the full lifecycle automatically.
 - \`close task <task_id>\`: mark task status, append ledger, and write handoff before stopping.
 
+## Delegation Prompting Rule
+When the user asks to read the contract (or equivalent), do this:
+1. Read \`.superharness/contract.yaml\`.
+2. Summarize contract id, status, and tasks with owner/status.
+3. If any task is \`todo\` or \`in_progress\` and owner is \`codex-cli\`, ask:
+   "Do you want me to delegate \`<task_id>\` to codex-cli now?"
+4. If user says yes:
+   - set task status to \`in_progress\` (if needed),
+   - create/update \`.superharness/handoffs/<DATE>-<TASK_ID>.yaml\` addressed to \`codex-cli\`,
+   - append one line to \`.superharness/ledger.md\`,
+   - return the exact Codex kickoff prompt.
+
 ## Review Lenses
 When reviewing, check the \`review_lenses\` field on the task. Apply only the assigned lenses:
 - security: auth, secrets, injection, data exposure
@@ -245,6 +257,18 @@ Protocol files are in `.superharness/`.
 ## Operator Shortcuts
 - `continue contract`: resume active contract and execute the full lifecycle automatically.
 - `close task <task_id>`: mark task status, append ledger, and write handoff before stopping.
+
+## Delegation Prompting Rule
+When the user asks to read the contract (or equivalent), do this:
+1. Read `.superharness/contract.yaml`.
+2. Summarize contract id, status, and tasks with owner/status.
+3. If any task is `todo` or `in_progress` and owner is `claude-code`, ask:
+   "Do you want me to delegate `<task_id>` to claude-code now?"
+4. If user says yes:
+   - set task status to `in_progress` (if needed),
+   - create/update `.superharness/handoffs/<DATE>-<TASK_ID>.yaml` addressed to `claude-code`,
+   - append one line to `.superharness/ledger.md`,
+   - return the exact Claude kickoff prompt.
 
 ## Review Lenses
 When reviewing, check the `review_lenses` field on the task. Apply only the assigned lenses:
