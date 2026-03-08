@@ -1,72 +1,63 @@
-# Failure Memory — Layer 6
+# Failure Memory
 
 Every framework tracks what to do. None track what NOT to do. Knowing what failed and why is as valuable as knowing what works.
 
 ---
 
-## Why This Exists
+## Where Failures Live (3 tiers)
 
-Without failure memory, agents re-attempt approaches that already failed:
-- "Let me try passport.js for auth" — you tried it last month, too heavy
-- "Let me use SQLite for this" — you discovered it doesn't handle concurrent writes
-- "Let me refactor with inheritance" — you learned composition was better for this codebase
-
-Each re-attempt costs tokens, time, and momentum. Failure memory prevents the loop.
-
----
-
-## Where Failures Live
-
-### 1. In contracts (project-specific)
-The `failures:` section of `.superharness/contract.yaml` captures approach failures within a specific feature. These are short-lived — relevant during the feature, archived after.
-
-### 2. In the vault (permanent, cross-project)
-Failures that apply broadly get deposited via /upvault:
-```markdown
----
-date: 2026-03-08
-tags:
-  - failure-memory
-  - [technology]
-project: [project-name]
----
-
-# Failed: [approach name]
-
-## What was tried
-[1-2 sentences]
-
-## Why it failed
-[specific reason, not vague]
-
-## What worked instead
-[the actual solution, if found]
-
-## Applies to
-[when would someone hit this again?]
-```
-
-### 3. In CLAUDE.md / AGENTS.md (per-project guardrails)
-Persistent failures become rules:
-```markdown
-## Do Not
-- Do not use passport.js in this project (over-engineered, see vault note)
-- Do not use synchronous file reads in the API layer (blocks event loop)
-```
-
----
-
-## Failure Format
+### Tier 1: Contract (project-specific, short-lived)
+The `failures:` section of `.superharness/contract.yaml`. Captures what didn't work during a feature. Any agent can read it, any agent can write to it.
 
 ```yaml
-what: "Brief description of what was attempted"
-why_failed: "Specific, technical reason it didn't work"
-when: "2026-03-08"
-where: "project-name or general"
-who: "claude-code | codex-cli | human"
-alternative: "What worked instead (if known)"
-severity: "wasted 5 min | wasted 1 hr | caused a bug | broke prod"
+failures:
+  - what: "Tried passport.js for auth"
+    why_failed: "12 dependencies, 3 config files for a simple JWT check"
+    date: 2026-03-08
+    by: codex-cli
+    alternative: "Raw jsonwebtoken — 1 dependency, 20 lines"
 ```
+
+### Tier 2: Cross-agent store (project-level, persistent)
+File: `.superharness/failures.yaml` — survives across contracts. Both Claude Code and Codex CLI read this before starting work.
+
+```yaml
+# .superharness/failures.yaml
+- what: "SQLite for concurrent writes"
+  why_failed: "Write locks under load, 500ms+ latency with 5 concurrent users"
+  date: 2026-02-15
+  by: claude-code
+  alternative: "PostgreSQL with connection pooling"
+  applies_to: "any database choice in this project"
+
+- what: "Inheritance for middleware chain"
+  why_failed: "Deep hierarchy, hard to test individual middleware"
+  date: 2026-02-20
+  by: codex-cli
+  alternative: "Composition with pipe() pattern"
+  applies_to: "middleware architecture"
+```
+
+**Why this tier exists:** Claude Code's native Auto Memory and Session Memory only work for Claude Code. Codex CLI can't read them. `.superharness/failures.yaml` is a plain file both agents access.
+
+### Tier 3: Vault (global, permanent, cross-project)
+For failures that apply everywhere — deposited via /upvault with tag `failure-memory`. Claude Code can search these via Obsidian MCP. Codex gets them through AGENTS.md "Do Not" rules.
+
+### Promotion rules
+- Failure appears in 1 contract → stays in contract
+- Same failure in 2+ contracts → promote to `.superharness/failures.yaml`
+- Failure applies across projects → promote to vault + add to AGENTS.md "Do Not"
+
+---
+
+## Integration with Claude Code Native Memory
+
+Claude Code now has Auto Memory (automatic) and Session Memory (conversation summaries). These capture failures within Claude sessions automatically. superharness does NOT duplicate this.
+
+**What Claude Code handles:** failures within a single Claude Code session chain.
+**What superharness handles:** failures that need to cross to Codex CLI, Ollama, or future agents.
+
+Rule: if a failure only matters for Claude Code → let Auto Memory handle it. If it matters for ANY other agent → write it to `.superharness/failures.yaml`.
 
 ---
 
@@ -74,18 +65,33 @@ severity: "wasted 5 min | wasted 1 hr | caused a bug | broke prod"
 
 Before implementing any non-trivial approach:
 
-1. Search vault for `failure-memory` + `[technology/pattern name]`
-2. Check current project's `.superharness/contract.yaml` failures section
-3. Check CLAUDE.md / AGENTS.md "Do Not" sections
-4. If a previous failure matches → report it before proceeding
-   - "This approach was tried on [date] and failed because [reason]. Alternative was [X]. Continue anyway?"
+1. Read `.superharness/failures.yaml` (cross-agent store)
+2. Read current contract's `failures:` section
+3. Read CLAUDE.md / AGENTS.md "Do Not" sections
+4. (Claude Code only) Check vault for `failure-memory` + technology name
+5. If a match → report it before proceeding:
+   "This approach was tried on [date] and failed because [reason]. Alternative was [X]. Continue anyway?"
+
+---
+
+## Failure Format
+
+```yaml
+what: "Brief description of what was attempted"
+why_failed: "Specific, technical reason — not vague"
+date: "2026-03-08"
+by: "claude-code | codex-cli | ollama | human"
+alternative: "What worked instead (if known)"
+applies_to: "When would someone hit this again?"
+```
 
 ---
 
 ## Rules
 
-1. **Log failures immediately.** Not at session end. During the work, when the failure is fresh.
-2. **Be specific.** "Didn't work" is useless. "passport.js adds 12 dependencies and requires 3 config files for a simple JWT check" is useful.
-3. **Include the alternative.** A failure without an alternative just says "don't do this." An alternative says "do THIS instead."
-4. **Promote repeating failures.** If the same failure appears in 2+ contracts, it becomes a CLAUDE.md rule.
-5. **Search before implementing.** The 10 seconds of search saves the 30 minutes of re-discovering the failure.
+1. **Log failures immediately.** Not at session end. During the work.
+2. **Be specific.** "Didn't work" is useless. "passport.js adds 12 dependencies for a simple JWT check" is useful.
+3. **Include the alternative.** A failure without an alternative just says "don't." An alternative says "do THIS instead."
+4. **Promote repeating failures.** 2+ contracts → project store. Cross-project → vault.
+5. **Search before implementing.** 10 seconds of search saves 30 minutes of re-discovery.
+6. **Don't duplicate Claude Code's memory.** If it only matters for Claude → let Auto Memory handle it.
