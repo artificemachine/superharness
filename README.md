@@ -109,6 +109,7 @@ superharness/
 │
 │
 ├── research/                          ← Research notes per iteration
+├── init-project.sh                    ← Bootstrap .superharness/ in any project
 ├── ROADMAP.md                         ← Version targets + 1.0 definition
 ├── CHANGELOG.md                       ← Iteration log for cross-agent continuity
 └── README.md                          ← This file
@@ -160,11 +161,12 @@ cp adapters/codex-cli/AGENTS.md.template my-project/AGENTS.md
 # Edit the {{placeholders}} with your project details
 ```
 
-### Per-project protocol
+### Per-project protocol (one command)
 ```bash
-mkdir -p my-project/.superharness/{handoffs,contracts,review-lenses}
-touch my-project/.superharness/{contract.yaml,failures.yaml,decisions.yaml,ledger.md}
+cd my-project
+bash /path/to/superharness/init-project.sh "Project Name" "Tech/Stack" "active"
 ```
+Creates `.superharness/` with contract, failure store, decision store, ledger, plus generates `CLAUDE.md` and `AGENTS.md` from templates. Idempotent — won't overwrite existing files.
 
 ---
 
