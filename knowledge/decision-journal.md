@@ -1,59 +1,80 @@
-# Decision Journal — Layer 6
+# Decision Journal
 
 The code shows WHAT was built. The git log shows WHEN. Nothing shows WHY. The decision journal fills that gap.
 
 ---
 
-## Why This Exists
+## Where Decisions Live (3 tiers)
 
-Six months from now you'll look at code and ask "why did we choose X over Y?" The answer is in a conversation that no longer exists, in a session that was compacted, in your head where it's already faded.
+### Tier 1: Contract (feature-specific, short-lived)
+The `decisions:` section of `.superharness/contract.yaml`. Captured during the work by whichever agent makes the choice.
 
-The decision journal captures WHY during the work — not at the end when you've forgotten the reasoning, but in the moment when the trade-off is fresh.
+```yaml
+decisions:
+  - what: "JWT over session tokens"
+    why: "Stateless, works with microservices, Codex has strong JWT patterns"
+    rejected: "Session tokens — stateful, requires Redis for multi-server"
+    date: 2026-03-08
+    by: claude-code
+```
+
+### Tier 2: Cross-agent ADR store (project-level, persistent)
+File: `.superharness/decisions.yaml` — architectural decisions that outlive any single contract. Both Claude Code and Codex CLI read this.
+
+```yaml
+# .superharness/decisions.yaml
+- id: adr-001
+  title: "PostgreSQL over SQLite"
+  status: accepted  # accepted | superseded | deprecated
+  context: "Need concurrent write support for API layer"
+  decision: "PostgreSQL with connection pooling via pg-pool"
+  rejected: "SQLite (write locks under load), MongoDB (overkill for relational data)"
+  consequences: "Requires PostgreSQL in Docker for local dev"
+  date: 2026-02-15
+  by: claude-code
+
+- id: adr-002
+  title: "Composition over inheritance for middleware"
+  status: accepted
+  context: "Middleware chain was getting deep and hard to test"
+  decision: "pipe() pattern with pure functions"
+  rejected: "Class hierarchy (hard to test individual middleware, deep coupling)"
+  consequences: "Each middleware is independently testable but requires explicit wiring"
+  date: 2026-02-20
+  by: codex-cli
+```
+
+**Why this tier exists:** Claude Code's Auto Memory captures decisions automatically for Claude sessions. But Codex CLI can't read Claude's memory. `.superharness/decisions.yaml` is the shared store both agents access.
+
+### Tier 3: Vault (global, permanent, cross-project)
+Decisions that apply everywhere — deposited via /upvault with tag `decision`. Full ADR format in the Obsidian vault.
+
+### Promotion rules
+- Feature-specific decision → stays in contract
+- Affects project architecture → promote to `.superharness/decisions.yaml`
+- Applies across projects → promote to vault as full ADR
 
 ---
 
-## Where Decisions Live
+## Integration with Claude Code Native Memory
 
-### 1. In contracts (feature-specific)
-The `decisions:` section of `.superharness/contract.yaml` captures choices made during a feature. Stays with the contract.
+Claude Code's Auto Memory already captures decisions within Claude sessions. superharness does NOT duplicate this.
 
-### 2. In the ledger (chronological)
-Every decision gets a one-line entry in `.superharness/ledger.md`:
-```
-### 22:00 — claude-code — Planning
-- Decision: JWT over session tokens (stateless, microservices-ready)
-```
+**What Claude Code handles:** decisions within a single Claude session chain.
+**What superharness handles:** decisions that need to cross to Codex CLI, Ollama, or future agents.
 
-### 3. In the vault (permanent, cross-project)
-Significant architectural decisions get deposited via /upvault as ADRs (Architecture Decision Records):
-```markdown
----
-date: 2026-03-08
-tags:
-  - decision
-  - architecture
-  - [technology]
-project: [project-name]
+Rule: if a decision only matters for Claude Code → let Auto Memory handle it. If Codex or another agent needs to know → write it to `.superharness/decisions.yaml`.
+
 ---
 
-# ADR: [Decision Title]
+## Integration with Archgate (optional)
 
-## Status
-Accepted | Superseded by [link] | Deprecated
+Archgate CLI can enforce decisions as pre-commit rules and CI checks. If installed:
+- Decisions in `.superharness/decisions.yaml` can feed Archgate rules
+- Pre-commit hooks validate code against architectural decisions
+- CI pipeline checks for decision violations
 
-## Context
-[What situation required a decision?]
-
-## Options Considered
-1. [Option A] — [pro/con]
-2. [Option B] — [pro/con]
-
-## Decision
-[What was chosen and WHY]
-
-## Consequences
-[What this means going forward — trade-offs accepted]
-```
+This turns documentation into enforcement. Optional but recommended for critical projects.
 
 ---
 
@@ -61,22 +82,7 @@ Accepted | Superseded by [link] | Deprecated
 
 Every agent operating under superharness should auto-log decisions:
 
-> When you make a choice between alternatives (library A vs B, approach X vs Y, architecture pattern, tool selection), log it in the active contract's `decisions:` section AND append a one-liner to the ledger. Format: what was chosen, what was rejected, why. Do this DURING the work, not at session end.
-
-This instruction goes in CLAUDE.md and AGENTS.md for every project using superharness.
-
----
-
-## Decision Categories
-
-| Category | Example | Where to Log |
-|----------|---------|-------------|
-| **Library choice** | "chose jsonwebtoken over passport.js" | Contract + ledger |
-| **Architecture** | "chose microservices over monolith" | Contract + vault (ADR) |
-| **Pattern** | "chose composition over inheritance" | Contract + ledger |
-| **Tool** | "chose Codex for this task, not Claude" | Ledger only |
-| **Scope** | "deferred rate limiting to next sprint" | Contract (do_not section) |
-| **Recovery** | "reverted to approach A after B failed" | Contract (failures + decisions) |
+> When you make a choice between alternatives (library A vs B, approach X vs Y, architecture pattern, tool selection), log it in the active contract's `decisions:` section AND append a one-liner to the ledger. Include what was chosen, what was rejected, and why. Do this DURING the work, not at session end.
 
 ---
 
@@ -84,6 +90,7 @@ This instruction goes in CLAUDE.md and AGENTS.md for every project using superha
 
 1. **Log during the work, not after.** Post-session journaling misses half the decisions.
 2. **Include what was rejected.** "Chose A" is incomplete. "Chose A over B because [reason]" is useful.
-3. **Big decisions go to the vault.** If it affects architecture or would apply to other projects, /upvault as ADR.
-4. **Small decisions stay in the contract.** Library choices, pattern choices, scope decisions — contract-level.
-5. **Review decisions monthly.** During vault maintenance (weekend block): are past decisions still valid?
+3. **Big decisions go to the project store.** Architecture or pattern decisions → `.superharness/decisions.yaml`.
+4. **Small decisions stay in the contract.** Library choices, scope decisions — contract-level.
+5. **Don't duplicate Claude Code's memory.** If it only matters for Claude → let Auto Memory handle it.
+6. **Enforce what matters.** Use Archgate or pre-commit hooks for critical decisions. Documentation alone has no teeth.

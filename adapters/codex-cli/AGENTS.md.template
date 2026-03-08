@@ -22,9 +22,23 @@ When Claude reviews YOUR work: expect challenges on edge cases and architectural
 
 Protocol files are in `.superharness/`.
 - Read `contract.yaml` before starting any work. Find YOUR assigned tasks.
+- Read `failures.yaml` before implementing — search for past failures with this technology.
+- Read `decisions.yaml` for architectural context.
 - Read any handoffs in `handoffs/` addressed to `codex-cli`.
+- When you make a decision between alternatives: log it in the contract's decisions section.
+- When something fails: log it in the contract's failures section.
 - When you finish a task: update contract status, write a handoff YAML, append to `ledger.md`.
-- When reviewing: read the diff, challenge decisions, check edge cases, log findings. Never rubber-stamp.
+- When reviewing: use the review lenses assigned to the task in the contract. Never rubber-stamp.
+
+## Review Lenses
+When reviewing, check the `review_lenses` field on the task. Apply only the assigned lenses:
+- security: auth, secrets, injection, data exposure
+- architecture: patterns, coupling, dependency direction
+- performance: N+1 queries, memory, scaling
+- tests: coverage, edge cases, determinism
+- error-handling: failure modes, logging, graceful degradation
+- devops: config, CI/CD, observability
+- api-contract: backwards compatibility, versioning
 
 ## Handoff Format
 When you complete a task, create `.superharness/handoffs/{{DATE}}-{{TASK_ID}}.yaml`:
@@ -43,9 +57,14 @@ what_was_done: |
   Brief summary of what you implemented.
 what_to_check: |
   - Things the reviewer should look at
+review_findings: |
+  - Findings per review lens (if this was a review task)
 do_not:
   - Things that are out of scope
 ```
+
+## Do Not
+<!-- Add project-specific failures here, promoted from .superharness/failures.yaml -->
 
 ## Rules
 - Never edit .env, credentials, tokens
