@@ -8,7 +8,7 @@ Usage:
 
 Options:
   -p, --project DIR         Project directory containing .superharness/ (required)
-      --archive             Move dropped rows into .superharness/inbox.archive.yaml
+      --archive             Archive dropped rows into .superharness/inbox.archive.yaml
       --drop-status STATUS  Drop rows with this status (repeatable). Default: prepared
       --drop-id-prefix PFX  Drop rows whose id starts with prefix (repeatable)
   -h, --help                Show this help message and exit
@@ -70,17 +70,6 @@ if [ ${#DROP_STATUSES[@]} -eq 0 ]; then
   DROP_STATUSES=("prepared")
 fi
 
-if [ "$ARCHIVE" -eq 1 ]; then
-  if [ ! -f "$ARCHIVE_FILE" ]; then
-    printf '# Inbox archive\n' > "$ARCHIVE_FILE"
-  fi
-  {
-    echo ""
-    echo "# normalized_at: $(date -u +%FT%TZ)"
-    cat "$INBOX_FILE"
-  } >> "$ARCHIVE_FILE"
-fi
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INBOX_YAML="$SCRIPT_DIR/inbox-yaml.rb"
 [ -x "$INBOX_YAML" ] || { echo "Missing helper script: $INBOX_YAML" >&2; exit 1; }
@@ -92,5 +81,8 @@ done
 for p in "${DROP_PREFIXES[@]}"; do
   args+=(--drop-prefix "$p")
 done
+if [ "$ARCHIVE" -eq 1 ]; then
+  args+=(--archive-file "$ARCHIVE_FILE" --now "$(date -u +%FT%TZ)")
+fi
 ruby "$INBOX_YAML" "${args[@]}"
 echo "Normalized inbox: $INBOX_FILE"
