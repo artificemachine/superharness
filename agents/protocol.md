@@ -36,27 +36,34 @@ tasks:
   - id: auth-middleware
     description: "Create Express middleware for JWT validation"
     assigned_to: codex-cli    # claude-code | codex-cli | ollama | any
+    reviewer: claude-code     # who reviews this task (peer review pattern)
+    role: builder             # builder | reviewer | planner
     status: done
     branch: feat/auth-middleware
     output: "src/middleware/auth.ts created, 47 lines, tests passing"
 
   - id: auth-routes
     description: "Add login/logout/refresh endpoints"
-    assigned_to: codex-cli
+    assigned_to: claude-code
+    reviewer: codex-cli       # Codex reviews Claude's work
+    role: builder
     status: in_progress
     branch: feat/auth-routes
 
-  - id: auth-review
-    description: "Cross-agent review of auth implementation"
-    assigned_to: claude-code   # different agent reviews
+  - id: auth-integration
+    description: "Integration testing across auth components"
+    assigned_to: codex-cli
+    reviewer: claude-code
+    role: builder
     status: pending
     depends_on: [auth-middleware, auth-routes]
 
   - id: auth-docs
     description: "Update API documentation with auth endpoints"
     assigned_to: ollama        # simple task, local model is enough
+    role: builder
     status: pending
-    depends_on: [auth-review]
+    depends_on: [auth-integration]
 
 decisions:
   - what: "JWT over session tokens"
@@ -160,15 +167,123 @@ do_not:
 
 ---
 
+## Agent Strengths & Weaknesses
+
+Know what each agent is good at — and what to watch out for when reviewing its work.
+
+### Claude Code
+**Strengths:**
+- Multi-turn reasoning — can hold complex architecture in context
+- MCP tools — browser, Obsidian, Kubernetes, file system access
+- User interaction — can ask clarifying questions mid-task
+- Security review — good at spotting auth/access control issues
+- Planning & orchestration — breaks big features into coherent tasks
+
+**Weaknesses:**
+- Can over-engineer — watch for unnecessary abstractions
+- Verbose — may produce more code than needed
+- Context rot — degrades on very long sessions (past ~60% context window)
+- Can hallucinate APIs — verify imports and library calls exist
+
+**When reviewing Claude's work, check for:** over-abstraction, unnecessary layers, verbose code that could be simpler, hallucinated dependencies.
+
+### Codex CLI
+**Strengths:**
+- Fast sandboxed execution — isolated, no side effects on host
+- Test-driven — strong at writing and running tests inline
+- Focused — one task, one branch, no distractions
+- Headless — can run as `codex exec` inside other workflows
+
+**Weaknesses:**
+- Limited context — no MCP, no browser, no user interaction
+- Can miss big picture — optimizes locally, may not see architectural impact
+- No memory between runs — each invocation starts fresh
+- Simpler reasoning — may choose naive solutions for complex problems
+
+**When reviewing Codex's work, check for:** naive implementations that miss edge cases, solutions that work locally but break the architecture, missing error handling, security shortcuts.
+
+### Ollama (local models)
+**Strengths:**
+- Offline/private — no data leaves the machine
+- Fast for simple tasks — no API latency
+- Free — no token costs
+
+**Weaknesses:**
+- Smaller models — weaker reasoning, more mistakes
+- No tools — just text in, text out
+- Limited context window — can't hold large codebases
+
+**When reviewing Ollama's work, check for:** everything. Treat as junior dev output. Verify all facts, logic, and code.
+
+---
+
 ## How Each Agent Participates
 
-| Agent | Reads | Writes | Best For |
-|-------|-------|--------|----------|
-| **Claude Code** | contract, handoffs, ledger | contract (create/plan), handoffs (review results), ledger | Planning, architecture, review, orchestration |
-| **Codex CLI** | contract (its tasks), handoffs (from previous agent) | handoffs (when done), ledger (progress) | Implementation, batch work, isolated execution |
-| **Ollama** | contract (simple tasks), handoffs | handoffs (when done), ledger | Docs, formatting, simple generation, local-only work |
+| Agent | Reads | Writes | Strengths |
+|-------|-------|--------|-----------|
+| **Claude Code** | contract, handoffs, ledger | contract (create/plan), handoffs, ledger | Multi-turn reasoning, MCP tools, user interaction, architecture, security review |
+| **Codex CLI** | contract (its tasks), handoffs | handoffs (when done), ledger (progress) | Fast sandboxed execution, focused implementation, test-driven, headless batch work |
+| **Ollama** | contract (simple tasks), handoffs | handoffs (when done), ledger | Docs, formatting, simple generation, local-only/offline work |
 | **Cowork** | contract, ledger, vault | contract (knowledge tasks), ledger | Research, vault maintenance, documentation |
 | **Future agent** | contract, handoffs, ledger | Same pattern | Anything — protocol is agent-agnostic |
+
+## Workflow Patterns
+
+You (Maxime) are the tech lead. You choose which pattern to use per-task by setting `role` and `reviewer` fields in the contract.
+
+### Pattern A: Peer Review (two seniors)
+
+Both agents build AND review. Quality through mutual challenge.
+
+```
+You assign tasks in contract.yaml:
+  Task 1 → Claude builds, Codex reviews
+  Task 2 → Codex builds, Claude reviews
+
+Claude (builds task 1)
+    → writes handoff to Codex for review
+Codex (reviews task 1, builds task 2)
+    → writes review findings + handoff to Claude for review
+Claude (reviews task 2, addresses review feedback on task 1)
+    → writes updated handoff + review findings
+```
+
+**Use when:** you want quality, security review, catching blind spots. Both agents challenge each other's decisions. Neither rubber-stamps.
+
+**Review rules for agents:**
+- Read the diff, not just the summary
+- Check edge cases, error handling, security
+- Challenge architectural decisions — ask "why not X?"
+- Log findings in the handoff, not just "approved"
+- If you disagree with a decision, say so and explain why
+
+### Pattern B: Hierarchical (plan → implement → review)
+
+One agent plans and reviews, the other executes. Speed through specialization.
+
+```
+Claude Code (plans, creates contract, breaks into tasks)
+    → assigns implementation tasks to Codex
+Codex CLI (implements task by task)
+    → writes handoff after each task
+Claude Code (reviews each handoff, integrates)
+    → approves or requests changes
+```
+
+**Use when:** the architecture is clear and you need fast execution. Claude's strength is reasoning + planning, Codex's strength is focused sandboxed coding.
+
+### Pattern C: Subagent (Codex inside Claude Code)
+
+Claude runs Codex headless for focused subtasks.
+
+```
+Claude Code creates contract
+    → runs `codex exec` with task from contract
+    → Codex returns output
+    → Claude reviews inline, updates contract + ledger
+```
+
+**Use when:** task is small, isolated, and you don't want to context-switch between terminals.
 
 ---
 
@@ -189,47 +304,6 @@ project-root/
 ```
 
 **Note:** `.superharness/` is project-local. superharness itself (the repo) defines the PROTOCOL. Each project gets its own instance of the protocol files.
-
----
-
-## Workflow Examples
-
-### Example 1: Solo evening session (one agent)
-```
-1. Claude Code reads contract → picks next task
-2. Implements → updates ledger → updates contract status
-3. Writes handoff (even if tomorrow-you is the "next agent")
-4. /upvault
-```
-No multi-agent needed. The protocol still captures state for continuity.
-
-### Example 2: Claude plans, Codex implements
-```
-1. Claude Code creates contract → breaks feature into tasks
-2. Claude assigns implementation tasks to Codex
-3. Codex reads contract → implements task → writes handoff + ledger
-4. Claude reads handoff → reviews → writes ledger
-5. Repeat for next task
-```
-
-### Example 3: Codex as subagent inside Claude Code
-```
-1. Claude Code creates contract
-2. Claude runs `codex exec` with task description from contract
-3. Codex writes output → Claude captures it
-4. Claude updates contract + ledger
-5. Claude reviews output, assigns next task
-```
-
-### Example 4: Three agents, parallel work
-```
-1. Claude creates contract with 3 independent tasks
-2. Task A → Codex (branch: feat/task-a, worktree isolation)
-3. Task B → Codex (branch: feat/task-b, worktree isolation)
-4. Task C → Ollama (local, simple doc task)
-5. Each writes handoff when done
-6. Claude reads all handoffs → cross-reviews → merges
-```
 
 ---
 
