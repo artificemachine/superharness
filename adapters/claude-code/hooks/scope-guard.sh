@@ -8,7 +8,7 @@
 # Output: JSON with decision (allow/warn/block) and optional message
 
 PROJECT_DIR="$(pwd)"
-CONTRACT="$PROJECT_DIR/.superreins/contract.yaml"
+CONTRACT="$PROJECT_DIR/.superharness/contract.yaml"
 
 # Read tool input from stdin
 INPUT=$(cat)
@@ -20,7 +20,7 @@ case "$FILE_PATH" in
     cat <<EOF
 {
   "decision": "block",
-  "reason": "superreins: BLOCKED — writing to sensitive file ($FILE_PATH). Never edit credentials, tokens, or keys."
+  "reason": "superharness: BLOCKED — writing to sensitive file ($FILE_PATH). Never edit credentials, tokens, or keys."
 }
 EOF
     exit 0
@@ -33,14 +33,14 @@ case "$FILE_PATH" in
     cat <<EOF
 {
   "decision": "warn",
-  "reason": "superreins: WARNING — modifying system file ($FILE_PATH). Is this in the contract scope?"
+  "reason": "superharness: WARNING — modifying system file ($FILE_PATH). Is this in the contract scope?"
 }
 EOF
     exit 0
     ;;
 esac
 
-# If no contract exists, skip scope check (superreins not active for this project)
+# If no contract exists, skip scope check (superharness not active for this project)
 if [ ! -f "$CONTRACT" ]; then
   echo '{"decision": "allow"}'
   exit 0

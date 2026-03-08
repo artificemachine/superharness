@@ -32,7 +32,7 @@ def test_scope_guard_policies(repo_root, tmp_path, file_path: str, decision: str
 
 def test_scope_guard_allows_with_contract(repo_root, tmp_path) -> None:
     script = repo_root / "adapters/claude-code/hooks/scope-guard.sh"
-    contract = tmp_path / ".superreins/contract.yaml"
+    contract = tmp_path / ".superharness/contract.yaml"
     contract.parent.mkdir(parents=True)
     contract.write_text("id: demo\n")
 

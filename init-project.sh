@@ -1,10 +1,10 @@
 #!/bin/bash
-# Initialize a superreins instance in the current project.
+# Initialize a superharness instance in the current project.
 # Run this from the root of any project to set up cross-agent workflows.
 #
 # Usage:
 #   cd ~/my-project
-#   bash /path/to/superreins/init-project.sh "My Project" "Python/FastAPI" "greenfield"
+#   bash /path/to/superharness/init-project.sh "My Project" "Python/FastAPI" "greenfield"
 #
 # Arguments:
 #   $1 — Project name (e.g. "Cypher Farms Infra")
@@ -12,7 +12,7 @@
 #   $3 — Status (e.g. "greenfield", "active", "maintenance")
 #
 # Creates:
-#   .superreins/           — cross-agent protocol instance
+#   .superharness/           — cross-agent protocol instance
 #   CLAUDE.md                — Claude Code project config
 #   AGENTS.md                — Codex CLI project config
 
@@ -61,7 +61,7 @@ PROJECT_NAME="${1:-$(basename "$PROJECT_DIR")}"
 TECH_STACK="${2:-TBD}"
 STATUS="${3:-greenfield}"
 
-echo "superreins — init project"
+echo "superharness — init project"
 echo "==========================="
 echo "  Project:  $PROJECT_NAME"
 echo "  Stack:    $TECH_STACK"
@@ -70,26 +70,26 @@ echo "  Dir:      $PROJECT_DIR"
 echo ""
 
 if [ "$DRY_RUN" -eq 1 ]; then
-  echo "[dry-run] Would create: .superreins/{handoffs,contracts,review-lenses}"
-  echo "[dry-run] Would create: .superreins/{failures.yaml,decisions.yaml,ledger.md,contract.yaml}"
+  echo "[dry-run] Would create: .superharness/{handoffs,contracts,review-lenses}"
+  echo "[dry-run] Would create: .superharness/{failures.yaml,decisions.yaml,ledger.md,contract.yaml}"
   echo "[dry-run] Would create if missing: CLAUDE.md, AGENTS.md"
   exit 0
 fi
 
 # Abort if already initialized
-if [ -d "$PROJECT_DIR/.superreins" ]; then
-  echo ".superreins/ already exists. Aborting."
-  echo "To re-initialize, remove it first: rm -rf .superreins"
+if [ -d "$PROJECT_DIR/.superharness" ]; then
+  echo ".superharness/ already exists. Aborting."
+  echo "To re-initialize, remove it first: rm -rf .superharness"
   exit 1
 fi
 
 # Create directory structure
-mkdir -p "$PROJECT_DIR/.superreins/handoffs"
-mkdir -p "$PROJECT_DIR/.superreins/contracts"
-mkdir -p "$PROJECT_DIR/.superreins/review-lenses"
+mkdir -p "$PROJECT_DIR/.superharness/handoffs"
+mkdir -p "$PROJECT_DIR/.superharness/contracts"
+mkdir -p "$PROJECT_DIR/.superharness/review-lenses"
 
 # Create empty persistent stores
-cat > "$PROJECT_DIR/.superreins/failures.yaml" << 'YAML'
+cat > "$PROJECT_DIR/.superharness/failures.yaml" << 'YAML'
 # Cross-agent failure memory
 # Both Claude Code and Codex CLI read/write this file.
 # Format:
@@ -103,7 +103,7 @@ cat > "$PROJECT_DIR/.superreins/failures.yaml" << 'YAML'
 failures: []
 YAML
 
-cat > "$PROJECT_DIR/.superreins/decisions.yaml" << 'YAML'
+cat > "$PROJECT_DIR/.superharness/decisions.yaml" << 'YAML'
 # Cross-agent decision records (ADR-lite)
 # Both Claude Code and Codex CLI read/write this file.
 # Format:
@@ -118,7 +118,7 @@ decisions: []
 YAML
 
 # Create empty ledger
-cat > "$PROJECT_DIR/.superreins/ledger.md" << EOF
+cat > "$PROJECT_DIR/.superharness/ledger.md" << EOF
 # Ledger — $PROJECT_NAME
 
 Append-only activity log. Never edit previous entries.
@@ -126,7 +126,7 @@ EOF
 
 # Create starter contract
 DATE=$(date +%Y-%m-%d)
-cat > "$PROJECT_DIR/.superreins/contract.yaml" << EOF
+cat > "$PROJECT_DIR/.superharness/contract.yaml" << EOF
 # Active contract for $PROJECT_NAME
 id: initial-setup
 created: $(printf '%s' "$DATE")
@@ -158,7 +158,7 @@ $(printf '%s\n' "$IDENTITY_CONTENT")
 - Status: $(printf '%s' "$STATUS")
 
 ## Cross-Agent Protocol
-This project uses superreins. Protocol files are in \`.superreins/\`.
+This project uses superharness. Protocol files are in \`.superharness/\`.
 - Read \`contract.yaml\` before starting any work.
 - Read \`failures.yaml\` before implementing — search for past failures with this technology.
 - Read \`decisions.yaml\` for architectural context.
@@ -179,7 +179,7 @@ When reviewing, check the \`review_lenses\` field on the task. Apply only the as
 - api-contract: backwards compatibility, versioning
 
 ## Do Not
-<!-- Promoted failures go here — paste from .superreins/failures.yaml when severity=critical -->
+<!-- Promoted failures go here — paste from .superharness/failures.yaml when severity=critical -->
 
 ## Project Rules
 - Security: never commit secrets, never skip security scan
@@ -216,7 +216,7 @@ Your weaknesses: limited context (no MCP/browser), can miss big picture, no memo
 When reviewing Claude's work: check for over-abstraction, unnecessary layers, verbose code, hallucinated dependencies.
 When Claude reviews YOUR work: expect challenges on edge cases and architectural impact. Take them seriously.
 
-Protocol files are in `.superreins/`.
+Protocol files are in `.superharness/`.
 - Read `contract.yaml` before starting any work. Find YOUR assigned tasks.
 - Read `failures.yaml` before implementing — search for past failures with this technology.
 - Read `decisions.yaml` for architectural context.
@@ -237,7 +237,7 @@ When reviewing, check the `review_lenses` field on the task. Apply only the assi
 - api-contract: backwards compatibility, versioning
 
 ## Handoff Format
-When you complete a task, create `.superreins/handoffs/<DATE>-<TASK_ID>.yaml`:
+When you complete a task, create `.superharness/handoffs/<DATE>-<TASK_ID>.yaml`:
 ```yaml
 from: codex-cli
 to: claude-code
@@ -260,7 +260,7 @@ do_not:
 ```
 
 ## Do Not
-<!-- Promoted failures go here — paste from .superreins/failures.yaml when severity=critical -->
+<!-- Promoted failures go here — paste from .superharness/failures.yaml when severity=critical -->
 
 ## Rules
 - Never edit .env, credentials, tokens
@@ -288,10 +288,10 @@ else
 fi
 
 echo ""
-echo "Done. Project initialized with superreins."
+echo "Done. Project initialized with superharness."
 echo ""
 echo "Directory structure:"
-echo "  .superreins/"
+echo "  .superharness/"
 echo "  ├── contract.yaml       ← edit this with your first task"
 echo "  ├── contracts/           ← completed contracts archive"
 echo "  ├── handoffs/            ← agent handoff files"
@@ -301,7 +301,7 @@ echo "  ├── decisions.yaml       ← cross-agent decision records"
 echo "  └── ledger.md            ← append-only activity log"
 echo ""
 echo "Next steps:"
-echo "  1. Edit .superreins/contract.yaml with your first task"
+echo "  1. Edit .superharness/contract.yaml with your first task"
 echo "  2. Review CLAUDE.md and AGENTS.md — add project-specific context"
-echo "  3. Add .superreins/ to .gitignore OR commit it (your choice)"
+echo "  3. Add .superharness/ to .gitignore OR commit it (your choice)"
 echo "  4. Start a Claude Code or Codex session — the hooks will pick it up"

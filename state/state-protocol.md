@@ -8,7 +8,7 @@ How sessions survive across compaction, across agents, and across days.
 
 Claude Code's context window is ~200K tokens. When it fills, compaction summarizes older messages — lossy compression that drops nuance, reasoning, and the "why" behind decisions. Long sessions degrade. Agent handoffs lose context. Session boundaries break continuity.
 
-superreins Layer 6 (Knowledge) handles cross-session learning via the vault.
+superharness Layer 6 (Knowledge) handles cross-session learning via the vault.
 Layer 8 (State) handles **intra-session survival** — keeping the agent effective even when compaction hits.
 
 ---
