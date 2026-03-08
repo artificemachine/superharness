@@ -30,6 +30,18 @@ Protocol files are in `.superharness/`.
 - When you finish a task: update contract status, write a handoff YAML, append to `ledger.md`.
 - When reviewing: use the review lenses assigned to the task in the contract. Never rubber-stamp.
 
+## Delegation Prompting Rule
+When the user asks to read the contract (or equivalent), do this:
+1. Read `.superharness/contract.yaml`.
+2. Summarize contract id, status, and tasks with owner/status.
+3. If any task is `todo` or `in_progress` and owner is `claude-code`, ask:
+   "Do you want me to delegate `<task_id>` to claude-code now?"
+4. If user says yes:
+   - set task status to `in_progress` (if needed),
+   - create/update `.superharness/handoffs/<DATE>-<TASK_ID>.yaml` addressed to `claude-code`,
+   - append one line to `.superharness/ledger.md`,
+   - return the exact Claude kickoff prompt.
+
 ## Review Lenses
 When reviewing, check the `review_lenses` field on the task. Apply only the assigned lenses:
 - security: auth, secrets, injection, data exposure
