@@ -35,3 +35,11 @@ jobs:
           bash init-project.sh --dry-run "CI Smoke" "Bash" "active"
           bash adapters/claude-code/install.sh --help
           HOME="$(mktemp -d)" bash adapters/claude-code/install.sh --dry-run
+
+      - name: Install pytest
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install pytest
+
+      - name: Run pytest suite
+        run: PYTHONPATH=. python3 -m pytest tests -q
