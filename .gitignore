@@ -3,3 +3,5 @@
 .env
 .venv/
 shipguard.txt
+__pycache__/
+*.py[cod]
