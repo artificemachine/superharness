@@ -4,12 +4,55 @@
 # This way Claude Code discovers superreins as a plugin, and its hooks
 # automatically merge with other plugins (like superpowers). No conflicts.
 
+usage() {
+  cat << 'EOF'
+Usage:
+  install.sh [--dry-run]
+
+Options:
+  -h, --help      Show this help message and exit
+  -n, --dry-run   Print planned actions without changing ~/.claude/plugins
+EOF
+}
+
+DRY_RUN=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -n|--dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_TARGET="$HOME/.claude/plugins/superreins"
 
 echo "superreins — Claude Code plugin install"
 echo "==========================================="
 echo ""
+
+if [ "$DRY_RUN" -eq 1 ]; then
+  echo "[dry-run] Would ensure directory exists: $HOME/.claude/plugins"
+  echo "[dry-run] Would symlink: $PLUGIN_TARGET -> $SCRIPT_DIR"
+  exit 0
+fi
 
 # Check if already installed
 if [ -L "$PLUGIN_TARGET" ]; then
