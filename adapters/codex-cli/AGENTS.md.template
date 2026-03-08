@@ -42,6 +42,9 @@ When the user asks to read the contract (or equivalent), do this:
    - append one line to `.superharness/ledger.md`,
    - return the exact Claude kickoff prompt.
 
+## Trigger Phrase: contract today
+When the user says `contract today`, treat it as an explicit request to run the full Delegation Prompting Rule above.
+
 ## Review Lenses
 When reviewing, check the `review_lenses` field on the task. Apply only the assigned lenses:
 - security: auth, secrets, injection, data exposure
