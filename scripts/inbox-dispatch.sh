@@ -86,13 +86,21 @@ fi
 
 LOCK_FILE="${INBOX_FILE}.lock"
 LOCK_DIR="${LOCK_FILE}.d"
+LOCK_HELD=0
 
 acquire_lock() {
-  mkdir "$LOCK_DIR" 2>/dev/null
+  if mkdir "$LOCK_DIR" 2>/dev/null; then
+    LOCK_HELD=1
+    return 0
+  fi
+  return 1
 }
 
 release_lock() {
-  rmdir "$LOCK_DIR" 2>/dev/null || true
+  if [ "$LOCK_HELD" -eq 1 ]; then
+    rmdir "$LOCK_DIR" 2>/dev/null || true
+    LOCK_HELD=0
+  fi
 }
 
 if ! acquire_lock; then
@@ -105,7 +113,10 @@ READ_ARGS=(next_pending --file "$INBOX_FILE")
 if [ -n "$TARGET_FILTER" ]; then
   READ_ARGS+=(--to "$TARGET_FILTER")
 fi
-ITEM="$(ruby "$INBOX_YAML" "${READ_ARGS[@]}" || true)"
+if ! ITEM="$(ruby "$INBOX_YAML" "${READ_ARGS[@]}")"; then
+  echo "Failed to read pending inbox item from $INBOX_FILE" >&2
+  exit 1
+fi
 if [ -z "$ITEM" ]; then
   echo "No pending inbox items found in $INBOX_FILE"
   exit 0
@@ -132,14 +143,11 @@ if [ -z "$ITEM_PRIORITY" ]; then
   ITEM_PRIORITY=2
 fi
 
-STATUS_AFTER="launched"
 LAUNCH_ARGS=(--project "$ITEM_PROJECT" --task "$ITEM_TASK")
 if [ "$PRINT_ONLY" -eq 1 ]; then
-  STATUS_AFTER="launched"
   LAUNCH_ARGS+=(--print-only)
 fi
 if [ "$NON_INTERACTIVE" -eq 1 ]; then
-  STATUS_AFTER="launched"
   LAUNCH_ARGS+=(--non-interactive)
 fi
 
@@ -161,30 +169,32 @@ NEW_RETRY_COUNT="$(printf '%s\n' "$LAUNCH_RESULT" | sed -n 's/.*retry_count=\([0
 if [ -z "$NEW_RETRY_COUNT" ]; then
   NEW_RETRY_COUNT="$ITEM_RETRY_COUNT"
 fi
-echo "Inbox item updated: $ITEM_ID -> $STATUS_AFTER (priority=$ITEM_PRIORITY, retries=$NEW_RETRY_COUNT/$ITEM_MAX_RETRIES)"
+echo "Inbox item updated: $ITEM_ID -> launched (priority=$ITEM_PRIORITY, retries=$NEW_RETRY_COUNT/$ITEM_MAX_RETRIES)"
 
 case "$ITEM_TO" in
   claude-code)
     if ! bash "$LAUNCH_CLAUDE" "${LAUNCH_ARGS[@]}"; then
-      if [ "$STATUS_AFTER" = "launched" ]; then
-        FAIL_NOW="$(date -u +%FT%TZ)"
-        acquire_lock || true
-        ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to failed --now "$FAIL_NOW" --stamp-key failed_at >/dev/null
-        release_lock
-        echo "Inbox item updated: $ITEM_ID -> failed"
+      FAIL_NOW="$(date -u +%FT%TZ)"
+      if ! acquire_lock; then
+        echo "Failed to acquire inbox lock while marking failure for $ITEM_ID" >&2
+        exit 1
       fi
+      ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to failed --now "$FAIL_NOW" --stamp-key failed_at >/dev/null
+      release_lock
+      echo "Inbox item updated: $ITEM_ID -> failed"
       exit 1
     fi
     ;;
   codex-cli)
     if ! bash "$LAUNCH_CODEX" "${LAUNCH_ARGS[@]}"; then
-      if [ "$STATUS_AFTER" = "launched" ]; then
-        FAIL_NOW="$(date -u +%FT%TZ)"
-        acquire_lock || true
-        ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to failed --now "$FAIL_NOW" --stamp-key failed_at >/dev/null
-        release_lock
-        echo "Inbox item updated: $ITEM_ID -> failed"
+      FAIL_NOW="$(date -u +%FT%TZ)"
+      if ! acquire_lock; then
+        echo "Failed to acquire inbox lock while marking failure for $ITEM_ID" >&2
+        exit 1
       fi
+      ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to failed --now "$FAIL_NOW" --stamp-key failed_at >/dev/null
+      release_lock
+      echo "Inbox item updated: $ITEM_ID -> failed"
       exit 1
     fi
     ;;
