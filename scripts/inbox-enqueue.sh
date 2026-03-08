@@ -4,12 +4,13 @@ set -euo pipefail
 usage() {
   cat << 'USAGE'
 Usage:
-  inbox-enqueue.sh --project DIR --to claude-code|codex-cli --task TASK_ID [--id ID]
+  inbox-enqueue.sh --project DIR --to claude-code|codex-cli --task TASK_ID [--priority 1|2|3] [--id ID]
 
 Options:
   -p, --project DIR   Project directory containing .superharness/
       --to TARGET     Delegation target: claude-code or codex-cli
   -t, --task TASK_ID  Task id from contract/handoff
+      --priority N    Priority 1-3 (1 highest, default: 2)
       --id ID         Optional inbox item id (default: UTC timestamp + task)
   -h, --help          Show this help message and exit
 USAGE
@@ -19,6 +20,7 @@ PROJECT_DIR=""
 TARGET=""
 TASK_ID=""
 ITEM_ID=""
+PRIORITY=2
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -35,6 +37,11 @@ while [ $# -gt 0 ]; do
     -t|--task)
       [ $# -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
       TASK_ID="$2"
+      shift 2
+      ;;
+    --priority)
+      [ $# -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
+      PRIORITY="$2"
       shift 2
       ;;
     --id)
@@ -61,6 +68,13 @@ done
 [ -n "$PROJECT_DIR" ] || { echo "--project is required" >&2; exit 2; }
 [ -n "$TARGET" ] || { echo "--to is required" >&2; exit 2; }
 [ -n "$TASK_ID" ] || { echo "--task is required" >&2; exit 2; }
+case "$PRIORITY" in
+  1|2|3) ;;
+  *)
+    echo "--priority must be 1, 2, or 3" >&2
+    exit 2
+    ;;
+esac
 
 case "$TARGET" in
   claude-code|codex-cli) ;;
@@ -84,7 +98,7 @@ fi
 INBOX_FILE="$HARNESS_DIR/inbox.yaml"
 CONTRACT_FILE="$HARNESS_DIR/contract.yaml"
 if [ -z "$ITEM_ID" ]; then
-  ITEM_ID="$(date -u +%Y%m%dT%H%M%SZ)-${TASK_ID}"
+  ITEM_ID="$(date -u +%Y%m%dT%H%M%SZ)-${TASK_ID}-$$-$(awk 'BEGIN{srand(); printf "%06d\n", int(rand()*1000000)}')"
 fi
 
 # Validate task project_path mapping when available in contract.
@@ -130,7 +144,7 @@ if [ -f "$CONTRACT_FILE" ]; then
 fi
 
 if [ ! -f "$INBOX_FILE" ]; then
-  printf '# Delegation inbox\n# status: pending|prepared|launched|done|failed\n' > "$INBOX_FILE"
+  printf '# Delegation inbox\n# status: pending|launched|running|done|failed\n' > "$INBOX_FILE"
 fi
 
 {
@@ -140,6 +154,9 @@ fi
   echo "  task: $TASK_ID"
   echo "  project: $PROJECT_DIR"
   echo "  status: pending"
+  echo "  priority: $PRIORITY"
+  echo "  retry_count: 0"
+  echo "  max_retries: 3"
   echo "  created_at: $(date -u +%FT%TZ)"
 } >> "$INBOX_FILE"
 
@@ -147,4 +164,5 @@ echo "Enqueued inbox item:"
 echo "  id: $ITEM_ID"
 echo "  to: $TARGET"
 echo "  task: $TASK_ID"
+echo "  priority: $PRIORITY"
 echo "  file: $INBOX_FILE"
