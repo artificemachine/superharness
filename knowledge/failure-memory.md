@@ -7,7 +7,7 @@ Every framework tracks what to do. None track what NOT to do. Knowing what faile
 ## Where Failures Live (3 tiers)
 
 ### Tier 1: Contract (project-specific, short-lived)
-The `failures:` section of `.superharness/contract.yaml`. Captures what didn't work during a feature. Any agent can read it, any agent can write to it.
+The `failures:` section of `.superreins/contract.yaml`. Captures what didn't work during a feature. Any agent can read it, any agent can write to it.
 
 ```yaml
 failures:
@@ -19,10 +19,10 @@ failures:
 ```
 
 ### Tier 2: Cross-agent store (project-level, persistent)
-File: `.superharness/failures.yaml` — survives across contracts. Both Claude Code and Codex CLI read this before starting work.
+File: `.superreins/failures.yaml` — survives across contracts. Both Claude Code and Codex CLI read this before starting work.
 
 ```yaml
-# .superharness/failures.yaml
+# .superreins/failures.yaml
 - what: "SQLite for concurrent writes"
   why_failed: "Write locks under load, 500ms+ latency with 5 concurrent users"
   date: 2026-02-15
@@ -38,26 +38,26 @@ File: `.superharness/failures.yaml` — survives across contracts. Both Claude C
   applies_to: "middleware architecture"
 ```
 
-**Why this tier exists:** Claude Code's native Auto Memory and Session Memory only work for Claude Code. Codex CLI can't read them. `.superharness/failures.yaml` is a plain file both agents access.
+**Why this tier exists:** Claude Code's native Auto Memory and Session Memory only work for Claude Code. Codex CLI can't read them. `.superreins/failures.yaml` is a plain file both agents access.
 
 ### Tier 3: Vault (global, permanent, cross-project)
 For failures that apply everywhere — deposited via /upvault with tag `failure-memory`. Claude Code can search these via Obsidian MCP. Codex gets them through AGENTS.md "Do Not" rules.
 
 ### Promotion rules
 - Failure appears in 1 contract → stays in contract
-- Same failure in 2+ contracts → promote to `.superharness/failures.yaml`
+- Same failure in 2+ contracts → promote to `.superreins/failures.yaml`
 - Failure applies across projects → promote to vault + add to AGENTS.md "Do Not"
 
 ---
 
 ## Integration with Claude Code Native Memory
 
-Claude Code now has Auto Memory (automatic) and Session Memory (conversation summaries). These capture failures within Claude sessions automatically. superharness does NOT duplicate this.
+Claude Code now has Auto Memory (automatic) and Session Memory (conversation summaries). These capture failures within Claude sessions automatically. superreins does NOT duplicate this.
 
 **What Claude Code handles:** failures within a single Claude Code session chain.
-**What superharness handles:** failures that need to cross to Codex CLI, Ollama, or future agents.
+**What superreins handles:** failures that need to cross to Codex CLI, Ollama, or future agents.
 
-Rule: if a failure only matters for Claude Code → let Auto Memory handle it. If it matters for ANY other agent → write it to `.superharness/failures.yaml`.
+Rule: if a failure only matters for Claude Code → let Auto Memory handle it. If it matters for ANY other agent → write it to `.superreins/failures.yaml`.
 
 ---
 
@@ -65,7 +65,7 @@ Rule: if a failure only matters for Claude Code → let Auto Memory handle it. I
 
 Before implementing any non-trivial approach:
 
-1. Read `.superharness/failures.yaml` (cross-agent store)
+1. Read `.superreins/failures.yaml` (cross-agent store)
 2. Read current contract's `failures:` section
 3. Read CLAUDE.md / AGENTS.md "Do Not" sections
 4. (Claude Code only) Check vault for `failure-memory` + technology name
