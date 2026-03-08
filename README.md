@@ -66,14 +66,18 @@ superharness/
 │   └── agent-context.md               ← Hub doc with @imports to other layers
 │
 ├── agents/                            ← Layer 2: WHAT + cross-agent protocol
-│   └── protocol.md                    ← Cross-agent communication protocol
+│   ├── protocol.md                    ← Cross-agent communication protocol
+│   └── review-lenses.md              ← Specialized review perspectives (7 lenses)
 │
 ├── adapters/                          ← Delivery mechanism per agent
 │   ├── claude-code/                   ← Claude Code plugin
-│   │   ├── .claude-plugin/plugin.json ← Plugin manifest (auto-discovered by Claude Code)
+│   │   ├── .claude-plugin/plugin.json ← Plugin manifest
 │   │   ├── hooks/
-│   │   │   ├── hooks.json             ← SessionStart hook config
-│   │   │   └── session-start.sh       ← Injects identity + protocol on every session
+│   │   │   ├── hooks.json             ← SessionStart + PreToolUse + PostToolUse hooks
+│   │   │   ├── session-start.sh       ← Injects identity + protocol on every session
+│   │   │   ├── scope-guard.sh         ← Blocks .env/credential writes, warns on system files
+│   │   │   ├── branch-guard.sh        ← Blocks push to main, warns on destructive git ops
+│   │   │   └── ledger-append.sh       ← Auto-logs file changes to .superharness/ledger.md
 │   │   ├── install.sh                 ← Symlinks plugin into ~/.claude/plugins/
 │   │   └── CLAUDE.md.template         ← Per-project CLAUDE.md generator
 │   └── codex-cli/
@@ -81,19 +85,19 @@ superharness/
 │
 ├── methodology/                       ← Layers 3-5: WHERE, WHEN, HOW GOOD
 │   ├── routing.md                     ← Dispatch protocol + model escalation
-│   ├── session-discipline.md          ← Evening/weekend templates
+│   ├── session-discipline.md          ← DEPRECATED (replaced by hooks)
 │   ├── ship-pipeline.md               ← Security + architectural guardrails
 │   └── cross-agent-review.md          ← Review across agents
 │
 ├── knowledge/                         ← Layer 6: COMPOUNDS
 │   ├── harness-thesis.md              ← The 78% vs 42% thesis
 │   ├── vault-protocol.md              ← /remember, /upvault, mid-session triggers
-│   ├── failure-memory.md              ← Track what didn't work and why
-│   └── decision-journal.md            ← Track WHY decisions were made
+│   ├── failure-memory.md              ← Cross-agent failure memory (3-tier)
+│   └── decision-journal.md            ← Cross-agent decision records (ADR-lite)
 │
-├── context/                           ← Layer 7: HOW MUCH
-│   ├── context-engineering.md         ← Write/Select/Compress/Isolate operations
-│   └── anti-rot.md                    ← Compaction survival strategies
+├── context/                           ← Layer 7: DEPRECATED
+│   ├── context-engineering.md         ← DEPRECATED (Claude Code handles natively)
+│   └── anti-rot.md                    ← DEPRECATED (SessionStart hook solves this)
 │
 ├── state/                             ← Layer 8: SURVIVES
 │   ├── state-protocol.md              ← Progress files, handoff format
@@ -120,9 +124,12 @@ my-project/
 │   ├── contract.yaml              ← Active feature contract
 │   ├── contracts/                 ← Archived completed contracts
 │   ├── handoffs/                  ← Agent-to-agent handoff files
+│   ├── failures.yaml              ← Cross-agent failure memory (persistent)
+│   ├── decisions.yaml             ← Cross-agent decision records (persistent)
+│   ├── review-lenses/             ← Project-specific review lenses (optional)
 │   └── ledger.md                  ← Append-only activity log
-├── CLAUDE.md                      ← Generated from superharness identity + methodology
-├── AGENTS.md                      ← Generated from superharness identity + methodology
+├── CLAUDE.md                      ← Generated from superharness template
+├── AGENTS.md                      ← Generated from superharness template
 └── ...
 ```
 
@@ -155,13 +162,12 @@ cp adapters/codex-cli/AGENTS.md.template my-project/AGENTS.md
 
 ### Per-project protocol
 ```bash
-mkdir -p my-project/.superharness/handoffs
-touch my-project/.superharness/contract.yaml
-touch my-project/.superharness/ledger.md
+mkdir -p my-project/.superharness/{handoffs,contracts,review-lenses}
+touch my-project/.superharness/{contract.yaml,failures.yaml,decisions.yaml,ledger.md}
 ```
 
 ---
 
-## Current State: v0.5
+## Current State: v0.6
 
-Eight layers defined. Claude Code adapter is a proper plugin with SessionStart hook — installs alongside superpowers with no conflicts. Codex CLI adapter provides AGENTS.md template. Cross-agent protocol supports peer review (two seniors challenging each other), hierarchical (plan → implement → review), and subagent (codex exec) patterns per-task. Agent strengths and weaknesses documented so each knows what to watch for when reviewing the other's work. See CHANGELOG.md for full iteration history.
+Eight layers defined, three deprecated (replaced by hooks and native Claude Code features). Claude Code adapter is a proper plugin with enforcement hooks — scope guard blocks credential writes, branch guard blocks push to main, ledger auto-appends on file changes. Cross-agent protocol supports peer review, hierarchical, and subagent patterns with 7 specialized review lenses assignable per-task. Failure memory and decision journal redesigned as cross-agent stores (.superharness/failures.yaml, decisions.yaml) that both Claude Code and Codex CLI can read/write. See CHANGELOG.md for full iteration history.

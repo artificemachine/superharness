@@ -37,6 +37,7 @@ tasks:
     description: "Create Express middleware for JWT validation"
     assigned_to: codex-cli    # claude-code | codex-cli | ollama | any
     reviewer: claude-code     # who reviews this task (peer review pattern)
+    review_lenses: [security, architecture, error-handling]
     role: builder             # builder | reviewer | planner
     status: done
     branch: feat/auth-middleware
@@ -46,6 +47,7 @@ tasks:
     description: "Add login/logout/refresh endpoints"
     assigned_to: claude-code
     reviewer: codex-cli       # Codex reviews Claude's work
+    review_lenses: [security, tests, api-contract]
     role: builder
     status: in_progress
     branch: feat/auth-routes
@@ -297,9 +299,12 @@ project-root/
 │   ├── contract.yaml          ← current active contract
 │   ├── contracts/             ← archive of completed contracts
 │   ├── handoffs/              ← handoff files between agents
+│   ├── failures.yaml          ← cross-agent failure memory (persistent)
+│   ├── decisions.yaml         ← cross-agent decision records (persistent)
+│   ├── review-lenses/         ← project-specific review lenses (optional)
 │   └── ledger.md              ← append-only activity log
-├── CLAUDE.md                  ← Claude Code project config
-├── AGENTS.md                  ← Codex CLI project config
+├── CLAUDE.md                  ← Claude Code project config (from superharness template)
+├── AGENTS.md                  ← Codex CLI project config (from superharness template)
 └── ...
 ```
 

@@ -543,6 +543,91 @@ adapters/claude-code/install.sh                  ← REWRITTEN: plugin symlink i
 
 ---
 
+## Iteration 6 — Enforcement Hooks, Review Lenses, Cross-Agent Memory
+
+**Date:** 2026-03-08
+**Agent:** Cowork (Claude Opus 4.6)
+**Session type:** Continued from iteration 5 (same session)
+
+### Research Findings
+
+Deep web research on 2026 harness engineering. Full synthesis in `research/iteration-6-research.md`. Key findings:
+
+- Claude Code now has 3-tier native memory (Auto Memory + Session Memory + CLAUDE.md) — don't duplicate it
+- PreToolUse/PostToolUse hooks can enforce rules with teeth, not just documentation
+- Specialized parallel review agents (9 lenses) outperform single-reviewer pattern
+- Archgate CLI turns ADRs into CI/CD enforcement
+- Claude-Mem plugin solves cross-session memory for Claude Code (but not Codex)
+- Memory engineering now recognizes 4 types: working, procedural, semantic, episodic
+- Industry protocols (A2A, OpenAI Agents SDK) validate our handoff pattern — ours is simpler (file-based)
+
+### What Was Built
+
+**1. Enforcement Hooks (PreToolUse + PostToolUse)**
+The iteration 3b critique said superharness had "no enforcement, no teeth." Now it does:
+- `scope-guard.sh` — PreToolUse on Write/Edit. Blocks .env/credentials/keys writes. Warns on system files.
+- `branch-guard.sh` — PreToolUse on Bash. Blocks `git push` to main/master. Blocks force push. Warns on destructive git operations and `rm -rf /`.
+- `ledger-append.sh` — PostToolUse on Write/Edit. Auto-appends file changes to `.superharness/ledger.md`. No manual logging needed.
+
+**2. Review Lenses (`agents/review-lenses.md`)**
+7 specialized review perspectives: security, architecture, performance, tests, error-handling, devops, api-contract. Assignable per-task in the contract via `review_lenses` field. Can run as parallel subagents or sequential checklist. Custom project-specific lenses supported in `.superharness/review-lenses/`.
+
+**3. Cross-Agent Failure Store**
+Redesigned `knowledge/failure-memory.md` with 3 tiers:
+- Tier 1: Contract failures (short-lived, per-feature)
+- Tier 2: `.superharness/failures.yaml` (persistent, cross-agent — both Claude and Codex read this)
+- Tier 3: Vault (permanent, cross-project)
+
+No longer duplicates Claude Code's native Auto Memory. Only stores what needs to cross to other agents.
+
+**4. Cross-Agent Decision Store**
+Redesigned `knowledge/decision-journal.md` with 3 tiers:
+- Tier 1: Contract decisions (short-lived)
+- Tier 2: `.superharness/decisions.yaml` (persistent ADR-lite format, cross-agent)
+- Tier 3: Vault (permanent full ADRs)
+
+Optional Archgate integration for enforcement via pre-commit hooks.
+
+**5. Deprecated Files**
+Replaced with hooks and native Claude Code features:
+- `context/context-engineering.md` → DEPRECATED (Claude Code handles context natively)
+- `context/anti-rot.md` → DEPRECATED (SessionStart hook re-injection solves this)
+- `methodology/session-discipline.md` → DEPRECATED (replaced by enforcement hooks)
+
+Files kept with deprecation notices pointing to replacements.
+
+### Files Created/Modified in Iteration 6
+
+```
+adapters/claude-code/hooks/hooks.json      ← UPDATED: added PreToolUse + PostToolUse hooks
+adapters/claude-code/hooks/scope-guard.sh  ← NEW: blocks credential writes, warns on system files
+adapters/claude-code/hooks/branch-guard.sh ← NEW: blocks push to main, warns on destructive ops
+adapters/claude-code/hooks/ledger-append.sh ← NEW: auto-logs file changes to ledger
+adapters/claude-code/hooks/session-start.sh ← UPDATED: added review lenses + enforcement awareness
+adapters/claude-code/CLAUDE.md.template    ← UPDATED: review lenses, failures/decisions awareness
+adapters/codex-cli/AGENTS.md.template      ← UPDATED: review lenses, failures/decisions awareness
+agents/protocol.md                         ← UPDATED: per-project structure + review_lenses in contract
+agents/review-lenses.md                    ← NEW: 7 specialized review perspectives
+knowledge/failure-memory.md                ← REWRITTEN: 3-tier cross-agent store
+knowledge/decision-journal.md              ← REWRITTEN: 3-tier cross-agent store + Archgate
+context/context-engineering.md             ← DEPRECATED
+context/anti-rot.md                        ← DEPRECATED
+methodology/session-discipline.md          ← DEPRECATED
+research/iteration-6-research.md           ← NEW: full research synthesis
+README.md                                  ← UPDATED: v0.6, new structure
+CHANGELOG.md                               ← UPDATED: this entry
+```
+
+### Iteration 6 Open Questions
+
+1. **Hook testing:** All hooks need real-world testing. Does scope-guard correctly parse JSON stdin? Does ledger-append handle all Write/Edit variants?
+2. **Review lens subagents:** Can Claude Code spawn 7 parallel subagents for review? What's the token cost? Is sequential review sufficient?
+3. **failures.yaml format:** Is YAML the right choice for cross-agent failure store? Codex CLI needs to reliably read/write it.
+4. **Archgate integration:** Worth installing for decision enforcement? Or overkill for solo dev?
+5. **Naming:** Still unresolved.
+
+---
+
 ## How to Continue
 
 If you're an agent picking this up:
