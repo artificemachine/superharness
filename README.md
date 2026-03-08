@@ -8,6 +8,7 @@ It provides:
 - contract/handoff/ledger protocol files
 - delegation inbox queue + dispatch/watch automation
 - shell entrypoint integrity guard in CI and pre-commit
+- layered runtime split (`protocol/`, `engine/`, `cli/`, `scripts/` compatibility shims)
 
 Architecture and philosophy are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -44,18 +45,24 @@ bash /path/to/superharness/init-project.sh "Project Name" "Tech/Stack" "active"
 
 ### Delegation launchers
 ```bash
-bash scripts/delegate-to-codex.sh --project /path/to/project
-bash scripts/delegate-to-claude.sh --project /path/to/project
+bash cli/delegate.sh --to codex-cli --project /path/to/project
+bash cli/delegate.sh --to claude-code --project /path/to/project
 ```
 
 Use `--task <TASK_ID>` to force a specific task.
 Use `--print-only` to generate prompt text without launching the CLI.
 
+Compatibility shims remain available:
+```bash
+bash scripts/delegate-to-codex.sh --project /path/to/project
+bash scripts/delegate-to-claude.sh --project /path/to/project
+```
+
 ### Inbox queue
 ```bash
-bash scripts/inbox-enqueue.sh --project /path/to/project --to codex-cli --task task-id --priority 1
-bash scripts/inbox-dispatch.sh --project /path/to/project
-bash scripts/inbox-watch.sh --project /path/to/project --to both
+bash cli/enqueue.sh --project /path/to/project --to codex-cli --task task-id --priority 1
+bash cli/dispatch.sh --project /path/to/project
+bash cli/watch.sh --project /path/to/project --to both
 ```
 
 Status flow:
@@ -65,7 +72,7 @@ Status flow:
 
 ### Inbox maintenance
 ```bash
-bash scripts/inbox-normalize.sh --project /path/to/project --archive
+bash cli/normalize.sh --project /path/to/project --archive
 ```
 
 ### macOS background watcher
@@ -79,12 +86,12 @@ bash scripts/uninstall-launchd-inbox-watcher.sh --project /path/to/project
 
 Check project protocol quality:
 ```bash
-bash scripts/check-contract-hygiene.sh --project /path/to/project
+bash cli/hygiene.sh --project /path/to/project
 ```
 
 Strict mode also requires promotion alignment for contract decisions/failures:
 ```bash
-bash scripts/check-contract-hygiene.sh --project /path/to/project --strict
+bash cli/hygiene.sh --project /path/to/project --strict
 ```
 
 ## CI And Local Guardrails
@@ -110,8 +117,11 @@ Guard guarantees:
 Operational directories (most users only need these):
 ```text
 superharness/
+├── protocol/              # protocol spec + templates
+├── engine/                # ruby runtime helpers (yaml/queue/validation)
+├── cli/                   # primary user-facing shell commands
 ├── adapters/              # Claude/Codex adapter assets
-├── scripts/               # dispatch, delegation, launchd, guard scripts
+├── scripts/               # compatibility shims + launchd + guard scripts
 ├── docs/                  # architecture and rationale docs
 ├── tests/                 # unit/integration/e2e tests
 ├── init-project.sh
