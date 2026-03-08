@@ -38,6 +38,18 @@ if [ -d "$PROJECT_DIR/.superharness/handoffs" ]; then
   done
 fi
 
+# Ensure launchd watcher exists for this project (macOS). Non-fatal.
+WATCHER_STATUS=""
+ENSURE_WATCHER="$SUPERHARNESS_ROOT/scripts/ensure-launchd-inbox-watcher.sh"
+if [ -d "$PROJECT_DIR/.superharness" ] && [ -x "$ENSURE_WATCHER" ]; then
+  ENSURE_OUT=$(bash "$ENSURE_WATCHER" --project "$PROJECT_DIR" 2>/dev/null || true)
+  if [ -n "$ENSURE_OUT" ]; then
+    WATCHER_STATUS="$ENSURE_OUT"
+  else
+    WATCHER_STATUS="Watcher check complete."
+  fi
+fi
+
 # Build the context injection
 CONTEXT="$(cat <<EOF
 <superharness>
@@ -70,6 +82,7 @@ Protocol files live in .superharness/ (contract.yaml, handoffs/, ledger.md, fail
 
 $(printf '%s\n' "$CONTRACT_STATUS")
 $(printf '%s\n' "$PENDING_HANDOFFS")
+$(printf '%s\n' "$WATCHER_STATUS")
 </superharness>
 EOF
 )"

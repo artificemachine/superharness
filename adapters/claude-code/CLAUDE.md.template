@@ -18,6 +18,7 @@ This project uses superharness. Protocol files are in `.superharness/`.
 - When you make a decision between alternatives: log it in the contract's decisions section.
 - When something fails: log it in the contract's failures section.
 - When you finish a task: update contract status, write a handoff, append to ledger.
+- When creating/updating contract tasks: always set `project_path` to the absolute project directory.
 - When reviewing Codex's work: use the review lenses assigned to the task in the contract.
 
 ## Delegation Prompting Rule
@@ -25,7 +26,8 @@ When the user asks to read the contract (or equivalent), do this:
 1. Read `.superharness/contract.yaml`.
 2. Summarize contract id, status, and tasks with owner/status.
 3. If any task is `todo` or `in_progress` and owner is `codex-cli`, ask:
-   "Do you want me to delegate `<task_id>` to codex-cli now?"
+   "I detected owner is codex-cli. Do you want to delegate `<task_id>` now?"
+   Do not use generic alternatives like "Want me to tackle...".
 4. If user says yes:
    - set task status to `in_progress` (if needed),
    - create/update `.superharness/handoffs/<DATE>-<TASK_ID>.yaml` addressed to `codex-cli`,
@@ -34,6 +36,12 @@ When the user asks to read the contract (or equivalent), do this:
 
 ## Trigger Phrase: contract today
 When the user says `contract today`, treat it as an explicit request to run the full Delegation Prompting Rule above.
+
+## Delegation Execution
+When delegating a contract task to `codex-cli`, use:
+- `bash /path/to/superharness/scripts/delegate-to-codex.sh --project .`
+- Use `--task <TASK_ID>` when delegating a specific task.
+- Use `--print-only` when you only need the kickoff prompt without launching Codex.
 
 ## Review Lenses
 When reviewing, check the `review_lenses` field on the task. Apply only the assigned lenses:
