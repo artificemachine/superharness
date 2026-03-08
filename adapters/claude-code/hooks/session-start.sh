@@ -79,12 +79,9 @@ ESCAPED=$(echo "$CONTEXT" | python3 -c "import sys,json; print(json.dumps(sys.st
 # Remove surrounding quotes from json.dumps
 ESCAPED=${ESCAPED:1:-1}
 
-# Output in dual format (Claude Code + Cursor compatibility)
+# Output in Claude Code SessionStart format
 cat <<EOF
 {
-  "additional_context": "$ESCAPED",
-  "hookSpecificOutput": {
-    "additionalContext": "$ESCAPED"
-  }
+  "additionalContext": "$ESCAPED"
 }
 EOF
