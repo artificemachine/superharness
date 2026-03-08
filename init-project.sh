@@ -202,6 +202,28 @@ When the user asks to read the contract (or equivalent), do this:
 ## Trigger Phrase: contract today
 When the user says \`contract today\`, treat it as an explicit request to run the full Delegation Prompting Rule above.
 
+## Canonical contract today Output (Highest Priority)
+This section overrides any conflicting \`contract today\` formatting guidance above.
+- Output header exactly: \`Contract <id> — <created date>\`
+- Output next line exactly: \`Goal: <goal>\`
+- Render a Unicode box-drawing table (not markdown) with columns in this exact order:
+  1. \`ID\`
+  2. \`Title\`
+  3. \`Status\`
+  4. \`Owner\`
+- Include ALL tasks from contract (no truncation).
+- Render one task per single-line row; never wrap/split a task across multiple lines.
+- If content exceeds width, truncate with `...` rather than wrapping.
+- Status must be emoji + text:
+  - \`done\` -> \`✅ done\`
+  - \`in_progress\` -> \`🟡 in_progress\`
+  - \`todo\` -> \`🔲 todo\`
+  - \`failed\` -> \`❌ failed\`
+  - \`stale\` -> \`⚠️ stale\`
+- If any task is \`todo\` or \`in_progress\` and owner is \`codex-cli\`, the final line MUST be exactly:
+  \`I detected owner is codex-cli. Do you want to delegate <task_id> now?\`
+  Use the first matching task in contract order.
+
 ## Delegation Execution
 When delegating a contract task to \`codex-cli\`, use:
 - \`bash /path/to/superharness/scripts/delegate-to-codex.sh --project .\`
@@ -292,6 +314,28 @@ When the user asks to read the contract (or equivalent), do this:
 
 ## Trigger Phrase: contract today
 When the user says `contract today`, treat it as an explicit request to run the full Delegation Prompting Rule above.
+
+## Canonical contract today Output (Highest Priority)
+This section overrides any conflicting `contract today` formatting guidance above.
+- Output header exactly: `Contract <id> — <created date>`
+- Output next line exactly: `Goal: <goal>`
+- Render a Unicode box-drawing table (not markdown) with columns in this exact order:
+  1. `ID`
+  2. `Title`
+  3. `Status`
+  4. `Owner`
+- Include ALL tasks from contract (no truncation).
+- Render one task per single-line row; never wrap/split a task across multiple lines.
+- If content exceeds width, truncate with `...` rather than wrapping.
+- Status must be emoji + text:
+  - `done` -> `✅ done`
+  - `in_progress` -> `🟡 in_progress`
+  - `todo` -> `🔲 todo`
+  - `failed` -> `❌ failed`
+  - `stale` -> `⚠️ stale`
+- If any task is `todo` or `in_progress` and owner is `claude-code`, the final line MUST be exactly:
+  `I detected owner is claude-code. Do you want to delegate <task_id> now?`
+  Use the first matching task in contract order.
 
 ## Delegation Execution
 When delegating a contract task to `claude-code`, use:
