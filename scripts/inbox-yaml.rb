@@ -3,15 +3,21 @@
 
 require "optparse"
 require "yaml"
+require "psych"
+require "time"
+require "date"
 
 HEADER = <<~HDR
   # Delegation inbox
   # status: pending|launched|running|done|failed|stale
 HDR
 
+ARCHIVE_HEADER = "# Inbox archive\n"
+
 def load_items(path)
   return [] unless File.exist?(path)
-  data = YAML.load_file(path)
+  content = File.read(path)
+  data = Psych.safe_load(content, permitted_classes: [Time, Date], aliases: false)
   return [] if data.nil?
   raise "Inbox YAML must be a sequence: #{path}" unless data.is_a?(Array)
   data
@@ -21,6 +27,18 @@ def write_items(path, items)
   tmp = "#{path}.tmp.#{$$}"
   File.write(tmp, HEADER + YAML.dump(items))
   File.rename(tmp, path)
+end
+
+def append_archive(path, items, now:)
+  return if items.empty?
+  unless File.exist?(path)
+    File.write(path, ARCHIVE_HEADER)
+  end
+  File.open(path, "a") do |f|
+    f.write("\n")
+    f.write("# normalized_at: #{now}\n")
+    f.write(YAML.dump(items))
+  end
 end
 
 def norm_priority(v)
@@ -107,20 +125,30 @@ def set_status(file:, id:, from:, to:, now:, stamp_key: nil)
   0
 end
 
-def normalize(file:, drop_statuses:, drop_prefixes:)
+def normalize(file:, drop_statuses:, drop_prefixes:, archive_file: nil, now: nil)
   items = load_items(file)
   statuses = drop_statuses.map(&:to_s)
   prefixes = drop_prefixes.map(&:to_s)
 
-  filtered = items.select do |item|
-    next true unless item.is_a?(Hash)
+  filtered = []
+  dropped = []
+  items.each do |item|
+    unless item.is_a?(Hash)
+      filtered << item
+      next
+    end
     id = item["id"].to_s
     status = item["status"].to_s
     drop_by_status = statuses.include?(status)
     drop_by_prefix = prefixes.any? { |p| !p.empty? && id.start_with?(p) }
-    !(drop_by_status || drop_by_prefix)
+    if drop_by_status || drop_by_prefix
+      dropped << item
+    else
+      filtered << item
+    end
   end
   write_items(file, filtered)
+  append_archive(archive_file, dropped, now: now || Time.now.utc.iso8601) if archive_file
   0
 end
 
@@ -161,10 +189,18 @@ when "normalize"
     o.on("--file FILE") { |v| opts[:file] = v }
     o.on("--drop-status STATUS") { |v| opts[:drop_statuses] << v }
     o.on("--drop-prefix PREFIX") { |v| opts[:drop_prefixes] << v }
+    o.on("--archive-file FILE") { |v| opts[:archive_file] = v }
+    o.on("--now TS") { |v| opts[:now] = v }
   end.parse!(ARGV)
   abort("--file is required") unless opts[:file]
   opts[:drop_statuses] = ["prepared"] if opts[:drop_statuses].empty?
-  exit normalize(file: opts[:file], drop_statuses: opts[:drop_statuses], drop_prefixes: opts[:drop_prefixes])
+  exit normalize(
+    file: opts[:file],
+    drop_statuses: opts[:drop_statuses],
+    drop_prefixes: opts[:drop_prefixes],
+    archive_file: opts[:archive_file],
+    now: opts[:now]
+  )
 else
   abort("Usage: inbox-yaml.rb <next_pending|launch|set_status|normalize> [options]")
 end

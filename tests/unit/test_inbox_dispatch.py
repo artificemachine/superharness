@@ -37,7 +37,7 @@ def _fake_bin(tmp_path: Path) -> Path:
     return bin_dir
 
 
-def test_dispatch_picks_highest_priority_and_sets_launched(repo_root, tmp_path) -> None:
+def test_dispatch_picks_highest_priority_and_sets_launched_in_print_only_mode(repo_root, tmp_path) -> None:
     project = tmp_path / "proj"
     project.mkdir()
     _write_contract(project)
@@ -117,7 +117,7 @@ def test_dispatch_marks_failed_when_retry_limit_reached(repo_root, tmp_path) -> 
     result = run_bash(
         script,
         cwd=repo_root,
-        args=["--project", str(project), "--to", "codex-cli", "--print-only"],
+        args=["--project", str(project), "--to", "codex-cli"],
         env={"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"},
     )
 
@@ -127,3 +127,50 @@ def test_dispatch_marks_failed_when_retry_limit_reached(repo_root, tmp_path) -> 
     assert "id: exhausted-retries" in inbox_text
     assert "  status: failed" in inbox_text
     assert "  failed_at:" in inbox_text
+
+
+def test_normalize_archives_only_dropped_rows(repo_root, tmp_path) -> None:
+    project = tmp_path / "proj3"
+    project.mkdir()
+    _write_contract(project)
+    _write_inbox(
+        project,
+        [
+            "# Delegation inbox",
+            "# status: pending|launched|running|done|failed|stale",
+            "",
+            "- id: keep-row",
+            "  to: codex-cli",
+            "  task: mcp-docs",
+            f"  project: {project}",
+            "  status: pending",
+            "  priority: 2",
+            "  retry_count: 0",
+            "  max_retries: 3",
+            "",
+            "- id: drop-row",
+            "  to: codex-cli",
+            "  task: mcp-docs",
+            f"  project: {project}",
+            "  status: prepared",
+            "  priority: 2",
+            "  retry_count: 0",
+            "  max_retries: 3",
+        ],
+    )
+
+    script = repo_root / "scripts" / "inbox-normalize.sh"
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=["--project", str(project), "--archive", "--drop-status", "prepared"],
+    )
+    assert result.returncode == 0, result.stderr
+
+    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
+    assert "id: keep-row" in inbox_text
+    assert "id: drop-row" not in inbox_text
+
+    archive_text = (project / ".superharness" / "inbox.archive.yaml").read_text()
+    assert "id: drop-row" in archive_text
+    assert "id: keep-row" not in archive_text
