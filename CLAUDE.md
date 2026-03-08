@@ -22,3 +22,13 @@ pytest tests/
 - Hook output must be valid JSON with `additionalContext` and `hookSpecificOutput` keys
 - All shell scripts must be executable (`chmod +x`)
 - Tests use `pytest` with fixtures in `conftest.py`
+
+## Superharness Session Lifecycle (Required)
+- Start of task: read `.superharness/contract.yaml`, `.superharness/failures.yaml`, `.superharness/decisions.yaml`, and relevant handoffs in `.superharness/handoffs/`.
+- During task: keep work inside assigned contract scope; record important tradeoffs/choices in contract decisions.
+- End of task: update contract task status, append one line to `.superharness/ledger.md`, and create/update a handoff YAML in `.superharness/handoffs/`.
+- If blocked/failure: log failure details in contract failures (and promote to `failures.yaml` when reusable).
+
+## Operator Shortcuts
+- `continue contract`: resume the active contract and execute the full lifecycle above automatically.
+- `close task <task_id>`: mark task status, append ledger, and write handoff before stopping.

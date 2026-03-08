@@ -168,6 +168,16 @@ This project uses superharness. Protocol files are in \`.superharness/\`.
 - When you finish a task: update contract status, write a handoff, append to ledger.
 - When reviewing Codex's work: use the review lenses assigned to the task in the contract.
 
+## Session Lifecycle (Required)
+- Start of task: read \`.superharness/contract.yaml\`, \`.superharness/failures.yaml\`, \`.superharness/decisions.yaml\`, and relevant handoffs.
+- During task: stay in assigned scope; log important tradeoffs in contract decisions.
+- End of task: update contract task status, append one line to \`.superharness/ledger.md\`, and create/update a handoff file in \`.superharness/handoffs/\`.
+- If blocked/failure: log the failure in contract failures (and promote reusable failures to \`failures.yaml\`).
+
+## Operator Shortcuts
+- \`continue contract\`: resume active contract and execute the full lifecycle automatically.
+- \`close task <task_id>\`: mark task status, append ledger, and write handoff before stopping.
+
 ## Review Lenses
 When reviewing, check the \`review_lenses\` field on the task. Apply only the assigned lenses:
 - security: auth, secrets, injection, data exposure
@@ -225,6 +235,16 @@ Protocol files are in `.superharness/`.
 - When something fails: log it in the contract's failures section.
 - When you finish a task: update contract status, write a handoff YAML, append to `ledger.md`.
 - When reviewing: use the review lenses assigned to the task in the contract. Never rubber-stamp.
+
+## Session Lifecycle (Required)
+- Start of task: read `.superharness/contract.yaml`, `.superharness/failures.yaml`, `.superharness/decisions.yaml`, and relevant handoffs.
+- During task: stay in assigned scope; log important tradeoffs in contract decisions.
+- End of task: update contract task status, append one line to `.superharness/ledger.md`, and create/update a handoff file in `.superharness/handoffs/`.
+- If blocked/failure: log the failure in contract failures (and promote reusable failures to `failures.yaml`).
+
+## Operator Shortcuts
+- `continue contract`: resume active contract and execute the full lifecycle automatically.
+- `close task <task_id>`: mark task status, append ledger, and write handoff before stopping.
 
 ## Review Lenses
 When reviewing, check the `review_lenses` field on the task. Apply only the assigned lenses:
