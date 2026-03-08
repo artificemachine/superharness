@@ -186,60 +186,20 @@ This project uses superharness. Protocol files are in \`.superharness/\`.
 - \`continue contract\`: resume active contract and execute the full lifecycle automatically.
 - \`close task <task_id>\`: mark task status, append ledger, and write handoff before stopping.
 
-## Delegation Prompting Rule
-When the user asks to read the contract (or equivalent), do this:
+## Delegation (Minimal)
+When the user asks for contract status (for example: \`contract today\`):
 1. Read \`.superharness/contract.yaml\`.
-2. Summarize contract id, status, and tasks with owner/status.
+2. Show contract id, goal, and tasks with status/owner.
 3. If any task is \`todo\` or \`in_progress\` and owner is \`codex-cli\`, ask:
-   "I detected owner is codex-cli. Do you want to delegate \`<task_id>\` now?"
-   Do not use generic alternatives like "Want me to tackle...".
+   \`I detected owner is codex-cli. Do you want to delegate <task_id> now?\`
 4. If user says yes:
    - set task status to \`in_progress\` (if needed),
-   - create/update \`.superharness/handoffs/<DATE>-<TASK_ID>.yaml\` addressed to \`codex-cli\`,
+   - create/update \`.superharness/handoffs/<DATE>-<TASK_ID>.yaml\` for \`codex-cli\`,
    - append one line to \`.superharness/ledger.md\`,
-   - return the exact Codex kickoff prompt.
+   - run \`bash /path/to/superharness/scripts/delegate-to-codex.sh --project . --task <TASK_ID> --print-only\`.
 
-## Trigger Phrase: contract today
-When the user says \`contract today\`, treat it as an explicit request to run the full Delegation Prompting Rule above.
-
-## Canonical contract today Output (Highest Priority)
-This section overrides any conflicting \`contract today\` formatting guidance above.
-- Output header exactly: \`Contract <id> — <created date>\`
-- Output next line exactly: \`Goal: <goal>\`
-- Render a Unicode box-drawing table (not markdown) with columns in this exact order:
-  1. \`ID\`
-  2. \`Title\`
-  3. \`Status\`
-  4. \`Owner\`
-- Include ALL tasks from contract (no truncation).
-- Render one task per single-line row; never wrap/split a task across multiple lines.
-- If content exceeds width, truncate with \`...\` rather than wrapping.
-- Add a full horizontal separator line between every task row for readability.
-- Status must be emoji + text:
-  - \`done\` -> \`✅ done\`
-  - \`in_progress\` -> \`🟡 in_progress\`
-  - \`todo\` -> \`🔲 todo\`
-  - \`failed\` -> \`❌ failed\`
-  - \`stale\` -> \`⚠️ stale\`
-- If any task is \`todo\` or \`in_progress\` and owner is \`codex-cli\`, the final line MUST be exactly:
-  \`I detected owner is codex-cli. Do you want to delegate <task_id> now?\`
-  Use the first matching task in contract order.
-
-## Delegation Execution
-When delegating a contract task to \`codex-cli\`, use:
-- \`bash /path/to/superharness/scripts/delegate-to-codex.sh --project .\`
-- Use \`--task <TASK_ID>\` when delegating a specific task.
-- Use \`--print-only\` when you only need the kickoff prompt without launching Codex.
-
-## Review Lenses
-When reviewing, check the \`review_lenses\` field on the task. Apply only the assigned lenses:
-- security: auth, secrets, injection, data exposure
-- architecture: patterns, coupling, dependency direction
-- performance: N+1 queries, memory, scaling
-- tests: coverage, edge cases, determinism
-- error-handling: failure modes, logging, graceful degradation
-- devops: config, CI/CD, observability
-- api-contract: backwards compatibility, versioning
+## Advanced Behavior
+For strict output formatting, review lenses, and advanced delegation policies, follow project-specific rules in this repository's docs/templates.
 
 ## Do Not
 <!-- Promoted failures go here — paste from .superharness/failures.yaml when severity=critical -->
@@ -300,87 +260,20 @@ Protocol files are in `.superharness/`.
 - `continue contract`: resume active contract and execute the full lifecycle automatically.
 - `close task <task_id>`: mark task status, append ledger, and write handoff before stopping.
 
-## Delegation Prompting Rule
-When the user asks to read the contract (or equivalent), do this:
+## Delegation (Minimal)
+When the user asks for contract status (for example: `contract today`):
 1. Read `.superharness/contract.yaml`.
-2. Summarize contract id, status, and tasks with owner/status.
+2. Show contract id, goal, and tasks with status/owner.
 3. If any task is `todo` or `in_progress` and owner is `claude-code`, ask:
-   "I detected owner is claude-code. Do you want to delegate `<task_id>` now?"
-   Do not use generic alternatives like "Want me to tackle...".
+   `I detected owner is claude-code. Do you want to delegate <task_id> now?`
 4. If user says yes:
    - set task status to `in_progress` (if needed),
-   - create/update `.superharness/handoffs/<DATE>-<TASK_ID>.yaml` addressed to `claude-code`,
+   - create/update `.superharness/handoffs/<DATE>-<TASK_ID>.yaml` for `claude-code`,
    - append one line to `.superharness/ledger.md`,
-   - return the exact Claude kickoff prompt.
+   - run `bash /path/to/superharness/scripts/delegate-to-claude.sh --project . --task <TASK_ID> --print-only`.
 
-## Trigger Phrase: contract today
-When the user says `contract today`, treat it as an explicit request to run the full Delegation Prompting Rule above.
-
-## Canonical contract today Output (Highest Priority)
-This section overrides any conflicting `contract today` formatting guidance above.
-- Output header exactly: `Contract <id> — <created date>`
-- Output next line exactly: `Goal: <goal>`
-- Render a Unicode box-drawing table (not markdown) with columns in this exact order:
-  1. `ID`
-  2. `Title`
-  3. `Status`
-  4. `Owner`
-- Include ALL tasks from contract (no truncation).
-- Render one task per single-line row; never wrap/split a task across multiple lines.
-- If content exceeds width, truncate with \`...\` rather than wrapping.
-- Add a full horizontal separator line between every task row for readability.
-- Status must be emoji + text:
-  - `done` -> `✅ done`
-  - `in_progress` -> `🟡 in_progress`
-  - `todo` -> `🔲 todo`
-  - `failed` -> `❌ failed`
-  - `stale` -> `⚠️ stale`
-- If any task is `todo` or `in_progress` and owner is `claude-code`, the final line MUST be exactly:
-  `I detected owner is claude-code. Do you want to delegate <task_id> now?`
-  Use the first matching task in contract order.
-
-## Delegation Execution
-When delegating a contract task to `claude-code`, use:
-- `bash /path/to/superharness/scripts/delegate-to-claude.sh --project .`
-- Use `--task <TASK_ID>` when delegating a specific task.
-- Use `--print-only` when you only need the kickoff prompt without launching Claude.
-
-## Watcher Ensure (Session Start)
-At the beginning of each Codex session, ensure watcher is installed for this project:
-- `bash /path/to/superharness/scripts/ensure-launchd-inbox-watcher.sh --project .`
-
-## Review Lenses
-When reviewing, check the `review_lenses` field on the task. Apply only the assigned lenses:
-- security: auth, secrets, injection, data exposure
-- architecture: patterns, coupling, dependency direction
-- performance: N+1 queries, memory, scaling
-- tests: coverage, edge cases, determinism
-- error-handling: failure modes, logging, graceful degradation
-- devops: config, CI/CD, observability
-- api-contract: backwards compatibility, versioning
-
-## Handoff Format
-When you complete a task, create `.superharness/handoffs/<DATE>-<TASK_ID>.yaml`:
-```yaml
-from: codex-cli
-to: claude-code
-date: <ISO_DATETIME>
-contract: <CONTRACT_ID>
-task: <TASK_ID>
-context:
-  branch: <BRANCH>
-  files_changed: []
-  tests: "X/Y passing"
-  build: "clean|failing"
-what_was_done: |
-  Brief summary of what you implemented.
-what_to_check: |
-  - Things the reviewer should look at
-review_findings: |
-  - Findings per review lens (if this was a review task)
-do_not:
-  - Things that are out of scope
-```
+## Advanced Behavior
+For strict output formatting, review lenses, watcher automation, and advanced handoff policy, follow project-specific rules in this repository's docs/templates.
 
 ## Do Not
 <!-- Promoted failures go here — paste from .superharness/failures.yaml when severity=critical -->
