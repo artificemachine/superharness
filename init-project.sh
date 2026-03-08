@@ -7,7 +7,7 @@
 #   bash /path/to/superharness/init-project.sh "My Project" "Python/FastAPI" "greenfield"
 #
 # Arguments:
-#   $1 — Project name (e.g. "Cypher Farms Infra")
+#   $1 — Project name (e.g. "Acme Platform")
 #   $2 — Tech stack (e.g. "Proxmox/Ansible/Python")
 #   $3 — Status (e.g. "greenfield", "active", "maintenance")
 #
@@ -112,7 +112,7 @@ cat > "$PROJECT_DIR/.superharness/decisions.yaml" << 'YAML'
 #     why: "rationale"
 #     alternatives: ["alt1", "alt2"]
 #     date: YYYY-MM-DD
-#     by: claude-code | codex-cli | maxime
+#     by: claude-code | codex-cli | owner
 #     status: accepted | superseded | deprecated
 decisions: []
 YAML
@@ -130,7 +130,7 @@ cat > "$PROJECT_DIR/.superharness/contract.yaml" << EOF
 # Active contract for $PROJECT_NAME
 id: initial-setup
 created: $(printf '%s' "$DATE")
-created_by: maxime
+created_by: owner
 status: draft
 
 goal: "TBD — describe the current objective"
@@ -213,7 +213,7 @@ This section overrides any conflicting \`contract today\` formatting guidance ab
   4. \`Owner\`
 - Include ALL tasks from contract (no truncation).
 - Render one task per single-line row; never wrap/split a task across multiple lines.
-- If content exceeds width, truncate with `...` rather than wrapping.
+- If content exceeds width, truncate with \`...\` rather than wrapping.
 - Add a full horizontal separator line between every task row for readability.
 - Status must be emoji + text:
   - \`done\` -> \`✅ done\`
@@ -260,8 +260,8 @@ if [ ! -f "$PROJECT_DIR/AGENTS.md" ]; then
 # {{PROJECT_NAME}}
 
 ## Identity
-You are working for Maxime Roy. Solo dev, 15+ yrs. C++/Python/Rust/Solidity.
-Constraints: 10-20 hrs/week side projects. Evenings + weekends. Ship > plan.
+You are working for the project owner.
+Constraints: limited weekly bandwidth. Ship > plan.
 
 Anti-patterns to guard against:
 1. Scope creep — don't start features outside the current task
@@ -271,7 +271,7 @@ Anti-patterns to guard against:
 ## Cross-Agent Protocol
 You are one of two senior devs. The other is Claude Code.
 You both build AND review each other's work. Neither is the boss.
-Maxime is the tech lead — he assigns roles per task in the contract.
+The project owner is the tech lead and assigns roles per task in the contract.
 
 Your strengths: fast sandboxed execution, test-driven, focused single-task work, headless batch.
 Your weaknesses: limited context (no MCP/browser), can miss big picture, no memory between runs, may choose naive solutions.
@@ -327,7 +327,7 @@ This section overrides any conflicting `contract today` formatting guidance abov
   4. `Owner`
 - Include ALL tasks from contract (no truncation).
 - Render one task per single-line row; never wrap/split a task across multiple lines.
-- If content exceeds width, truncate with `...` rather than wrapping.
+- If content exceeds width, truncate with \`...\` rather than wrapping.
 - Add a full horizontal separator line between every task row for readability.
 - Status must be emoji + text:
   - `done` -> `✅ done`
@@ -393,15 +393,9 @@ do_not:
 
 ## This Project
 AGENTSEOF
-  # Replace the placeholder with actual project info
-  python3 - "$PROJECT_DIR/AGENTS.md" "$PROJECT_NAME" << 'PY'
-import pathlib
-import sys
-
-path = pathlib.Path(sys.argv[1])
-project_name = sys.argv[2]
-path.write_text(path.read_text().replace("{{PROJECT_NAME}}", project_name))
-PY
+  TMP_AGENTS="$PROJECT_DIR/AGENTS.md.tmp.$$"
+  awk -v project_name="$PROJECT_NAME" '{ gsub(/\{\{PROJECT_NAME\}\}/, project_name); print }' "$PROJECT_DIR/AGENTS.md" > "$TMP_AGENTS"
+  mv "$TMP_AGENTS" "$PROJECT_DIR/AGENTS.md"
   echo "- What: $PROJECT_NAME" >> "$PROJECT_DIR/AGENTS.md"
   echo "- Stack: $TECH_STACK" >> "$PROJECT_DIR/AGENTS.md"
   echo "- Status: $STATUS" >> "$PROJECT_DIR/AGENTS.md"
