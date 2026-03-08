@@ -4,12 +4,12 @@ set -euo pipefail
 usage() {
   cat << 'USAGE'
 Usage:
-  inbox-normalize.sh --project DIR [--archive] [--drop-status prepared] [--drop-id-prefix PREFIX]
+  inbox-normalize.sh --project DIR [--archive] [--drop-status STATUS] [--drop-id-prefix PREFIX]
 
 Options:
   -p, --project DIR         Project directory containing .superharness/ (required)
       --archive             Archive dropped rows into .superharness/inbox.archive.yaml
-      --drop-status STATUS  Drop rows with this status (repeatable). Default: prepared
+      --drop-status STATUS  Drop rows with this status (repeatable). Default: stale
       --drop-id-prefix PFX  Drop rows whose id starts with prefix (repeatable)
   -h, --help                Show this help message and exit
 USAGE
@@ -67,7 +67,7 @@ if [ ! -f "$INBOX_FILE" ]; then
 fi
 
 if [ ${#DROP_STATUSES[@]} -eq 0 ]; then
-  DROP_STATUSES=("prepared")
+  DROP_STATUSES=("stale")
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -16,7 +16,7 @@ pytest tests/
 - `tests/unit/` — Unit tests for hooks
 - `tests/integration/` — Integration tests
 - `tests/e2e/` — End-to-end tests
-- `templates/` — Handoff/contract YAML templates
+- `.superharness/` — Contract, handoffs, and protocol state in each initialized project
 
 ## Conventions
 - Hook output must be valid JSON with `additionalContext` and `hookSpecificOutput` keys
