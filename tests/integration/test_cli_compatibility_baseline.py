@@ -9,6 +9,13 @@ from tests.helpers import run_bash
 
 HELP_ENTRYPOINTS = [
     "init-project.sh",
+    "cli/init.sh",
+    "cli/delegate.sh",
+    "cli/enqueue.sh",
+    "cli/dispatch.sh",
+    "cli/watch.sh",
+    "cli/normalize.sh",
+    "cli/hygiene.sh",
     "scripts/delegate-to-claude.sh",
     "scripts/delegate-to-codex.sh",
     "scripts/inbox-enqueue.sh",
