@@ -99,8 +99,8 @@ fi
 INBOX_FILE="$HARNESS_DIR/inbox.yaml"
 CONTRACT_FILE="$HARNESS_DIR/contract.yaml"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INBOX_YAML="$SCRIPT_DIR/inbox-yaml.rb"
-[ -x "$INBOX_YAML" ] || { echo "Missing helper script: $INBOX_YAML" >&2; exit 1; }
+CONTRACT_HELPER="$SCRIPT_DIR/../engine/contract.rb"
+[ -f "$CONTRACT_HELPER" ] || { echo "Missing contract helper: $CONTRACT_HELPER" >&2; exit 1; }
 
 if [ -z "$ITEM_ID" ]; then
   RAND_SUFFIX="$(od -An -N3 -tu1 /dev/urandom | tr -d ' \n')"
@@ -109,11 +109,11 @@ fi
 
 # Validate task project_path mapping when available in contract.
 if [ -f "$CONTRACT_FILE" ]; then
-  if ! TASK_EXISTS="$(ruby "$INBOX_YAML" contract_task_exists --file "$CONTRACT_FILE" --task "$TASK_ID")"; then
+  if ! TASK_EXISTS="$(ruby "$CONTRACT_HELPER" task_exists --file "$CONTRACT_FILE" --task "$TASK_ID")"; then
     echo "Failed to read task metadata from contract: $CONTRACT_FILE" >&2
     exit 1
   fi
-  if ! TASK_PATH="$(ruby "$INBOX_YAML" contract_task_project_path --file "$CONTRACT_FILE" --task "$TASK_ID")"; then
+  if ! TASK_PATH="$(ruby "$CONTRACT_HELPER" task_project_path --file "$CONTRACT_FILE" --task "$TASK_ID")"; then
     echo "Failed to read task project_path from contract: $CONTRACT_FILE" >&2
     exit 1
   fi
