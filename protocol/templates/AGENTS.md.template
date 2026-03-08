@@ -1,0 +1,19 @@
+# {{PROJECT_NAME}}
+
+## Identity
+You are working for the project owner.
+Constraints: limited bandwidth. Ship > plan.
+
+## This Project
+- What: {{PROJECT_NAME}}
+- Stack: {{TECH_STACK}}
+- Status: {{STATUS}}
+
+## Cross-Agent Protocol
+- Read `.superharness/contract.yaml` before starting work.
+- Read `.superharness/failures.yaml` and `.superharness/decisions.yaml`.
+- Read handoffs addressed to `codex-cli`.
+- Keep task status, ledger, and handoff updated before stopping.
+- Keep task `project_path` absolute and accurate.
+
+Reference: `superharness/protocol/spec.md`.

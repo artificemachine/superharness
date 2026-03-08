@@ -60,6 +60,36 @@ PROJECT_DIR="$(pwd)"
 PROJECT_NAME="${1:-$(basename "$PROJECT_DIR")}"
 TECH_STACK="${2:-TBD}"
 STATUS="${3:-greenfield}"
+DATE="$(date +%Y-%m-%d)"
+TEMPLATE_DIR="$SCRIPT_DIR/protocol/templates"
+
+render_template() {
+  local src="$1"
+  local dst="$2"
+  local identity_block="${3:-}"
+  python3 - "$src" "$dst" "$PROJECT_NAME" "$TECH_STACK" "$STATUS" "$PROJECT_DIR" "$DATE" "$identity_block" <<'PY'
+import pathlib
+import sys
+
+src = pathlib.Path(sys.argv[1])
+dst = pathlib.Path(sys.argv[2])
+project_name = sys.argv[3]
+tech_stack = sys.argv[4]
+status = sys.argv[5]
+project_dir = sys.argv[6]
+date = sys.argv[7]
+identity_block = sys.argv[8]
+
+text = src.read_text()
+text = text.replace("{{PROJECT_NAME}}", project_name)
+text = text.replace("{{TECH_STACK}}", tech_stack)
+text = text.replace("{{STATUS}}", status)
+text = text.replace("{{PROJECT_DIR}}", project_dir)
+text = text.replace("{{DATE}}", date)
+text = text.replace("{{IDENTITY_BLOCK}}", identity_block)
+dst.write_text(text)
+PY
+}
 
 echo "superharness — init project"
 echo "==========================="
@@ -118,15 +148,21 @@ decisions: []
 YAML
 
 # Create empty ledger
-cat > "$PROJECT_DIR/.superharness/ledger.md" << EOF
+if [ -f "$TEMPLATE_DIR/ledger.md" ]; then
+  render_template "$TEMPLATE_DIR/ledger.md" "$PROJECT_DIR/.superharness/ledger.md"
+else
+  cat > "$PROJECT_DIR/.superharness/ledger.md" << EOF
 # Ledger — $PROJECT_NAME
 
 Append-only activity log. Never edit previous entries.
 EOF
+fi
 
 # Create starter contract
-DATE=$(date +%Y-%m-%d)
-cat > "$PROJECT_DIR/.superharness/contract.yaml" << EOF
+if [ -f "$TEMPLATE_DIR/contract.yaml" ]; then
+  render_template "$TEMPLATE_DIR/contract.yaml" "$PROJECT_DIR/.superharness/contract.yaml"
+else
+  cat > "$PROJECT_DIR/.superharness/contract.yaml" << EOF
 # Active contract for $PROJECT_NAME
 id: initial-setup
 created: $(printf '%s' "$DATE")
@@ -135,6 +171,16 @@ status: draft
 
 goal: "TBD — describe the current objective"
 
+tasks: []
+
+decisions: []
+
+failures: []
+EOF
+fi
+
+cat >> "$PROJECT_DIR/.superharness/contract.yaml" << EOF
+
 # Task schema (recommended):
 # tasks:
 #   - id: "task-id"
@@ -142,18 +188,16 @@ goal: "TBD — describe the current objective"
 #     status: "todo|in_progress|done"
 #     owner: "claude-code|codex-cli"
 #     project_path: "$PROJECT_DIR"
-tasks: []
-
-decisions: []
-
-failures: []
 EOF
 
 # Generate CLAUDE.md from template
 IDENTITY_CONTENT=$(cat "$SCRIPT_DIR/identity/core.md")
 
 if [ ! -f "$PROJECT_DIR/CLAUDE.md" ]; then
-  cat > "$PROJECT_DIR/CLAUDE.md" << EOF
+  if [ -f "$TEMPLATE_DIR/CLAUDE.md.template" ]; then
+    render_template "$TEMPLATE_DIR/CLAUDE.md.template" "$PROJECT_DIR/CLAUDE.md" "$(printf '%s' "$IDENTITY_CONTENT")"
+  else
+    cat > "$PROJECT_DIR/CLAUDE.md" << EOF
 # $(printf '%s' "$PROJECT_NAME")
 
 ## Identity
@@ -165,50 +209,10 @@ $(printf '%s\n' "$IDENTITY_CONTENT")
 - Status: $(printf '%s' "$STATUS")
 
 ## Cross-Agent Protocol
-This project uses superharness. Protocol files are in \`.superharness/\`.
-- Read \`contract.yaml\` before starting any work.
-- Read \`failures.yaml\` before implementing — search for past failures with this technology.
-- Read \`decisions.yaml\` for architectural context.
-- Read any handoffs in \`handoffs/\` addressed to \`claude-code\`.
-- When you make a decision between alternatives: log it in the contract's decisions section.
-- When something fails: log it in the contract's failures section.
-- When you finish a task: update contract status, write a handoff, append to ledger.
-- When creating/updating contract tasks: always set \`project_path\` to the absolute project directory.
-- When reviewing Codex's work: use the review lenses assigned to the task in the contract.
-
-## Session Lifecycle (Required)
-- Start of task: read \`.superharness/contract.yaml\`, \`.superharness/failures.yaml\`, \`.superharness/decisions.yaml\`, and relevant handoffs.
-- During task: stay in assigned scope; log important tradeoffs in contract decisions.
-- End of task: update contract task status, append one line to \`.superharness/ledger.md\`, and create/update a handoff file in \`.superharness/handoffs/\`.
-- If blocked/failure: log the failure in contract failures (and promote reusable failures to \`failures.yaml\`).
-
-## Operator Shortcuts
-- \`continue contract\`: resume active contract and execute the full lifecycle automatically.
-- \`close task <task_id>\`: mark task status, append ledger, and write handoff before stopping.
-
-## Delegation (Minimal)
-When the user asks for contract status (for example: \`contract today\`):
-1. Read \`.superharness/contract.yaml\`.
-2. Show contract id, goal, and tasks with status/owner.
-3. If any task is \`todo\` or \`in_progress\` and owner is \`codex-cli\`, ask:
-   \`I detected owner is codex-cli. Do you want to delegate <task_id> now?\`
-4. If user says yes:
-   - set task status to \`in_progress\` (if needed),
-   - create/update \`.superharness/handoffs/<DATE>-<TASK_ID>.yaml\` for \`codex-cli\`,
-   - append one line to \`.superharness/ledger.md\`,
-   - run \`bash /path/to/superharness/scripts/delegate-to-codex.sh --project . --task <TASK_ID> --print-only\`.
-
-## Advanced Behavior
-For strict output formatting, review lenses, and advanced delegation policies, follow project-specific rules in this repository's docs/templates.
-
-## Do Not
-<!-- Promoted failures go here — paste from .superharness/failures.yaml when severity=critical -->
-
-## Project Rules
-- Security: never commit secrets, never skip security scan
-- Branches: feature branches, never push to main
-- Tests: run before every handoff
+- Read \`.superharness/contract.yaml\` before starting work.
+- Keep task status, ledger, and handoff updated before stopping.
 EOF
+  fi
   echo "Created: CLAUDE.md"
 else
   echo "Skipped: CLAUDE.md (already exists)"
@@ -216,82 +220,25 @@ fi
 
 # Generate AGENTS.md from template
 if [ ! -f "$PROJECT_DIR/AGENTS.md" ]; then
-  cat > "$PROJECT_DIR/AGENTS.md" << 'AGENTSEOF'
-# {{PROJECT_NAME}}
+  if [ -f "$TEMPLATE_DIR/AGENTS.md.template" ]; then
+    render_template "$TEMPLATE_DIR/AGENTS.md.template" "$PROJECT_DIR/AGENTS.md"
+  else
+    cat > "$PROJECT_DIR/AGENTS.md" << EOF
+# $PROJECT_NAME
 
 ## Identity
 You are working for the project owner.
-Constraints: limited weekly bandwidth. Ship > plan.
-
-Anti-patterns to guard against:
-1. Scope creep — don't start features outside the current task
-2. Over-planning — implement, don't plan more
-3. Shiny object — use what's already chosen, don't switch tools
-
-## Cross-Agent Protocol
-You are one of two senior devs. The other is Claude Code.
-You both build AND review each other's work. Neither is the boss.
-The project owner is the tech lead and assigns roles per task in the contract.
-
-Your strengths: fast sandboxed execution, test-driven, focused single-task work, headless batch.
-Your weaknesses: limited context (no MCP/browser), can miss big picture, no memory between runs, may choose naive solutions.
-
-When reviewing Claude's work: check for over-abstraction, unnecessary layers, verbose code, hallucinated dependencies.
-When Claude reviews YOUR work: expect challenges on edge cases and architectural impact. Take them seriously.
-
-Protocol files are in `.superharness/`.
-- Read `contract.yaml` before starting any work. Find YOUR assigned tasks.
-- Read `failures.yaml` before implementing — search for past failures with this technology.
-- Read `decisions.yaml` for architectural context.
-- Read any handoffs in `handoffs/` addressed to `codex-cli`.
-- When you make a decision between alternatives: log it in the contract's decisions section.
-- When something fails: log it in the contract's failures section.
-- When you finish a task: update contract status, write a handoff YAML, append to `ledger.md`.
-- When creating/updating contract tasks: always set `project_path` to the absolute project directory.
-- When reviewing: use the review lenses assigned to the task in the contract. Never rubber-stamp.
-
-## Session Lifecycle (Required)
-- Start of task: read `.superharness/contract.yaml`, `.superharness/failures.yaml`, `.superharness/decisions.yaml`, and relevant handoffs.
-- During task: stay in assigned scope; log important tradeoffs in contract decisions.
-- End of task: update contract task status, append one line to `.superharness/ledger.md`, and create/update a handoff file in `.superharness/handoffs/`.
-- If blocked/failure: log the failure in contract failures (and promote reusable failures to `failures.yaml`).
-
-## Operator Shortcuts
-- `continue contract`: resume active contract and execute the full lifecycle automatically.
-- `close task <task_id>`: mark task status, append ledger, and write handoff before stopping.
-
-## Delegation (Minimal)
-When the user asks for contract status (for example: `contract today`):
-1. Read `.superharness/contract.yaml`.
-2. Show contract id, goal, and tasks with status/owner.
-3. If any task is `todo` or `in_progress` and owner is `claude-code`, ask:
-   `I detected owner is claude-code. Do you want to delegate <task_id> now?`
-4. If user says yes:
-   - set task status to `in_progress` (if needed),
-   - create/update `.superharness/handoffs/<DATE>-<TASK_ID>.yaml` for `claude-code`,
-   - append one line to `.superharness/ledger.md`,
-   - run `bash /path/to/superharness/scripts/delegate-to-claude.sh --project . --task <TASK_ID> --print-only`.
-
-## Advanced Behavior
-For strict output formatting, review lenses, watcher automation, and advanced handoff policy, follow project-specific rules in this repository's docs/templates.
-
-## Do Not
-<!-- Promoted failures go here — paste from .superharness/failures.yaml when severity=critical -->
-
-## Rules
-- Never edit .env, credentials, tokens
-- Never skip tests before handoff
-- Never push directly to main
-- Stay in scope. If something needs doing but isn't in the contract, note it in the handoff — don't do it.
 
 ## This Project
-AGENTSEOF
-  TMP_AGENTS="$PROJECT_DIR/AGENTS.md.tmp.$$"
-  awk -v project_name="$PROJECT_NAME" '{ gsub(/\{\{PROJECT_NAME\}\}/, project_name); print }' "$PROJECT_DIR/AGENTS.md" > "$TMP_AGENTS"
-  mv "$TMP_AGENTS" "$PROJECT_DIR/AGENTS.md"
-  echo "- What: $PROJECT_NAME" >> "$PROJECT_DIR/AGENTS.md"
-  echo "- Stack: $TECH_STACK" >> "$PROJECT_DIR/AGENTS.md"
-  echo "- Status: $STATUS" >> "$PROJECT_DIR/AGENTS.md"
+- What: $PROJECT_NAME
+- Stack: $TECH_STACK
+- Status: $STATUS
+
+## Cross-Agent Protocol
+- Read \`.superharness/contract.yaml\` before starting work.
+- Keep task status, ledger, and handoff updated before stopping.
+EOF
+  fi
   echo "Created: AGENTS.md"
 else
   echo "Skipped: AGENTS.md (already exists)"
