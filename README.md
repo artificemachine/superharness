@@ -200,6 +200,11 @@ bash /path/to/superharness/scripts/inbox-dispatch.sh --project /path/to/project 
 Inbox file: `.superharness/inbox.yaml` with item statuses `pending|prepared|launched|done|failed`.
 For multi-project safety, contract tasks should include `project_path` and `inbox-enqueue.sh` validates it before queuing.
 
+Normalize legacy/test rows:
+```bash
+bash /path/to/superharness/scripts/inbox-normalize.sh --project /path/to/project --archive
+```
+
 ### Full automation (macOS launchd watcher)
 ```bash
 # Install background watcher (non-interactive dispatch every 30s)
