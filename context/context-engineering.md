@@ -2,7 +2,7 @@
 
 **This file is no longer maintained.**
 
-Claude Code now handles context engineering internally (Auto Memory, Session Memory, KV-cache optimization). superharness no longer needs to document these patterns.
+Claude Code now handles context engineering internally (Auto Memory, Session Memory, KV-cache optimization). superreins no longer needs to document these patterns.
 
 For cross-agent context concerns, see:
 - `agents/protocol.md` — how agents share context via contracts/handoffs

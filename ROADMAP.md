@@ -1,20 +1,20 @@
-# superharness Roadmap
+# superreins Roadmap
 
 ## What "Done" Means
 
-superharness is never feature-complete — it's a living system. But it needs a 1.0 definition or it becomes the ultimate scope-creep project (anti-pattern #2: over-planning as procrastination).
+superreins is never feature-complete — it's a living system. But it needs a 1.0 definition or it becomes the ultimate scope-creep project (anti-pattern #2: over-planning as procrastination).
 
 ---
 
 ## v1.0 Definition — "It works"
 
-superharness is 1.0 when ALL of these are true:
+superreins is 1.0 when ALL of these are true:
 
 1. **Identity core loads automatically** in every Claude Code and Codex CLI session
 2. **Cross-agent protocol is tested** — at least one feature built with Claude planning + Codex implementing, using contract + handoff + ledger
 3. **Ship pressure is visible** — days-since-last-ship shows at session start
 4. **Failure memory is active** — at least 5 logged failures searchable in vault
-5. **One real project runs on it** — not superharness itself, a real venture (VidDocs, RepoSec, etc.)
+5. **One real project runs on it** — not superreins itself, a real venture (VidDocs, RepoSec, etc.)
 
 That's it. Not "all 8 layers are perfectly documented." Not "every skill is executable." One real project using the cross-agent protocol with identity loaded and ship pressure visible.
 
@@ -52,7 +52,7 @@ Make ONE thing executable per category:
 |------|-----|-----------|
 | Identity loads automatically | CLAUDE.md `@imports` identity/core.md | Layer 1 works |
 | Ship pressure shows at session start | bash script: `git log --tags --oneline -1` + days math | Original innovation works |
-| Contract file gets created for a real feature | Manually create `.superharness/contract.yaml` for one VidDocs feature | Protocol is usable |
+| Contract file gets created for a real feature | Manually create `.superreins/contract.yaml` for one VidDocs feature | Protocol is usable |
 | One Codex handoff happens | Claude plans → Codex implements → handoff written | Cross-agent works |
 | One failure gets logged and later prevents re-attempt | Log a failure, search for it next session | Failure memory works |
 
@@ -71,10 +71,10 @@ v0.5 is about TESTING, not building more docs.
 
 ## v0.7 — "It's portable"
 
-- Second project runs on superharness (not just the first)
+- Second project runs on superreins (not just the first)
 - CLAUDE.md template generates correctly for new project
 - AGENTS.md template generates correctly for new project
-- `.superharness/` directory bootstraps with `superharness init`
+- `.superreins/` directory bootstraps with `superreins init`
 
 ---
 
@@ -100,4 +100,4 @@ After 1.0: maintenance mode. 1 hour/month max.
 2. **v0.5 is about testing, not building.** The docs exist. Test them with real work.
 3. **Skip versions if needed.** If v0.6 concepts prove useless during v0.5 testing, drop them.
 4. **The roadmap itself has a maintenance budget.** Update it once per version. Not every session.
-5. **If you're reading this instead of working on a real project, stop.** superharness exists to make real work better, not to be the work.
+5. **If you're reading this instead of working on a real project, stop.** superreins exists to make real work better, not to be the work.
