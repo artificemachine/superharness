@@ -20,7 +20,22 @@ def load_yaml_document(path, expected_class)
   data = Psych.safe_load(content, permitted_classes: [Time, Date], aliases: false)
   return(expected_class == Hash ? {} : []) if data.nil?
   raise "YAML document has unexpected type in #{path}" unless data.is_a?(expected_class)
-  data
+  normalize_scalar_values(data)
+end
+
+def normalize_scalar_values(value)
+  case value
+  when Time
+    value.utc.iso8601
+  when Date
+    value.iso8601
+  when Array
+    value.map { |v| normalize_scalar_values(v) }
+  when Hash
+    value.transform_values { |v| normalize_scalar_values(v) }
+  else
+    value
+  end
 end
 
 def load_items(path)

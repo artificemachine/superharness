@@ -88,7 +88,7 @@ fi
 LATEST_HANDOFF=""
 if [ -z "$TASK_ID" ]; then
   while IFS= read -r file; do
-    if rg -q '^to:[[:space:]]*claude-code[[:space:]]*$' "$file"; then
+    if grep -Eq '^to:[[:space:]]*claude-code[[:space:]]*$' "$file"; then
       LATEST_HANDOFF="$file"
       break
     fi
@@ -104,11 +104,19 @@ if [ -z "$TASK_ID" ]; then
   exit 1
 fi
 
-PROMPT="continue contract
+if [ -n "$LATEST_HANDOFF" ]; then
+  PROMPT="continue contract
 Read the latest handoff addressed to claude-code and execute task ${TASK_ID}.
 Use scope, commands, and acceptance criteria from the handoff.
 Update .superharness/contract.yaml task status, append .superharness/ledger.md, and refresh the handoff with outcomes.
 Contract id: ${CONTRACT_ID}."
+else
+  PROMPT="continue contract
+No handoff exists yet for task ${TASK_ID}.
+Read .superharness/contract.yaml directly and execute task ${TASK_ID}.
+Update .superharness/contract.yaml task status, append .superharness/ledger.md, and create a new handoff with outcomes.
+Contract id: ${CONTRACT_ID}."
+fi
 
 echo "Project: $PROJECT_DIR"
 echo "Contract: $CONTRACT_ID"
