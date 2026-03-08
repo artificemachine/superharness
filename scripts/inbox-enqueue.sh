@@ -119,6 +119,9 @@ if [ -f "$CONTRACT_FILE" ]; then
   fi
 
   # Missing task id in contract is allowed to support pre-contract queueing.
+  if [ "$TASK_EXISTS" = "false" ]; then
+    echo "Warning: task '$TASK_ID' not found in contract. Enqueuing anyway." >&2
+  fi
   if [ "$TASK_EXISTS" = "true" ] && [ -z "$TASK_PATH" ]; then
     echo "Task '$TASK_ID' is missing project_path in $CONTRACT_FILE" >&2
     echo "Add: project_path: \"$PROJECT_DIR\"" >&2
