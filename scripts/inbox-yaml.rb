@@ -14,13 +14,17 @@ HDR
 
 ARCHIVE_HEADER = "# Inbox archive\n"
 
-def load_items(path)
-  return [] unless File.exist?(path)
+def load_yaml_document(path, expected_class)
+  return(expected_class == Hash ? {} : []) unless File.exist?(path)
   content = File.read(path)
   data = Psych.safe_load(content, permitted_classes: [Time, Date], aliases: false)
-  return [] if data.nil?
-  raise "Inbox YAML must be a sequence: #{path}" unless data.is_a?(Array)
+  return(expected_class == Hash ? {} : []) if data.nil?
+  raise "YAML document has unexpected type in #{path}" unless data.is_a?(expected_class)
   data
+end
+
+def load_items(path)
+  load_yaml_document(path, Array)
 end
 
 def write_items(path, items)
@@ -152,6 +156,30 @@ def normalize(file:, drop_statuses:, drop_prefixes:, archive_file: nil, now: nil
   0
 end
 
+def contract_task_project_path(file:, task_id:)
+  contract = load_yaml_document(file, Hash)
+  tasks = contract["tasks"]
+  return 0 if tasks.nil?
+  raise "contract tasks must be a sequence: #{file}" unless tasks.is_a?(Array)
+
+  task = tasks.find { |t| t.is_a?(Hash) && t["id"].to_s == task_id.to_s }
+  return 0 if task.nil?
+  puts task["project_path"].to_s
+  0
+end
+
+def contract_task_exists(file:, task_id:)
+  contract = load_yaml_document(file, Hash)
+  tasks = contract["tasks"]
+  if tasks.nil?
+    puts "false"
+    return 0
+  end
+  raise "contract tasks must be a sequence: #{file}" unless tasks.is_a?(Array)
+  puts(tasks.any? { |t| t.is_a?(Hash) && t["id"].to_s == task_id.to_s } ? "true" : "false")
+  0
+end
+
 cmd = ARGV.shift
 case cmd
 when "next_pending"
@@ -193,7 +221,7 @@ when "normalize"
     o.on("--now TS") { |v| opts[:now] = v }
   end.parse!(ARGV)
   abort("--file is required") unless opts[:file]
-  opts[:drop_statuses] = ["prepared"] if opts[:drop_statuses].empty?
+  opts[:drop_statuses] = ["stale"] if opts[:drop_statuses].empty?
   exit normalize(
     file: opts[:file],
     drop_statuses: opts[:drop_statuses],
@@ -201,6 +229,22 @@ when "normalize"
     archive_file: opts[:archive_file],
     now: opts[:now]
   )
+when "contract_task_project_path"
+  opts = {}
+  OptionParser.new do |o|
+    o.on("--file FILE") { |v| opts[:file] = v }
+    o.on("--task TASK_ID") { |v| opts[:task] = v }
+  end.parse!(ARGV)
+  abort("--file and --task are required") unless opts[:file] && opts[:task]
+  exit contract_task_project_path(file: opts[:file], task_id: opts[:task])
+when "contract_task_exists"
+  opts = {}
+  OptionParser.new do |o|
+    o.on("--file FILE") { |v| opts[:file] = v }
+    o.on("--task TASK_ID") { |v| opts[:task] = v }
+  end.parse!(ARGV)
+  abort("--file and --task are required") unless opts[:file] && opts[:task]
+  exit contract_task_exists(file: opts[:file], task_id: opts[:task])
 else
-  abort("Usage: inbox-yaml.rb <next_pending|launch|set_status|normalize> [options]")
+  abort("Usage: inbox-yaml.rb <next_pending|launch|set_status|normalize|contract_task_project_path|contract_task_exists> [options]")
 end
