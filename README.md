@@ -11,6 +11,14 @@ You've already built this harness — organically, over months. superharness is 
 **superpowers teaches an agent how to work.**
 **superharness teaches an agent how to work with you.**
 
+### Agent-Agnostic
+
+superharness is NOT a Claude Code plugin. It works across ALL your agents — Claude Code, Codex CLI, Ollama, whatever comes next. It defines a cross-agent communication protocol (contracts, handoffs, ledger) that any LLM can read and write. Agent-specific configs (CLAUDE.md, AGENTS.md, system prompts) are generated FROM superharness, not the other way around.
+
+### Relationship to obra/superpowers
+
+[obra/superpowers](https://github.com/obra/superpowers) is a community Claude Code plugin with generic skills. superharness complements it — superpowers provides community-maintained skills, superharness provides the personal layer (identity, methodology, cross-agent protocol) that superpowers will never have because it's generic. Install both. They don't conflict.
+
 ---
 
 ## The Problem
@@ -57,13 +65,10 @@ superharness/
 │   ├── developer-profile.md           ← Full profile (imported when needed)
 │   └── agent-context.md               ← Hub doc with @imports to other layers
 │
-├── agents/                            ← Layer 2: WHAT
-│   ├── claude-code/
-│   │   ├── CLAUDE.md.global           ← Model selection, cost guards
-│   │   └── commands/                  ← /ship, /remember, /upvault...
-│   └── codex-cli/
-│       ├── AGENTS.md.global           ← Codex-native global rules
-│       └── skills/                    ← ship, remember, upvault...
+├── agents/                            ← Layer 2: WHAT + cross-agent protocol
+│   ├── protocol.md                    ← Cross-agent communication protocol
+│   ├── claude-code/                   ← Claude Code specific configs
+│   └── codex-cli/                     ← Codex CLI specific configs
 │
 ├── methodology/                       ← Layers 3-5: WHERE, WHEN, HOW GOOD
 │   ├── routing.md                     ← Dispatch protocol + model escalation
@@ -74,7 +79,8 @@ superharness/
 ├── knowledge/                         ← Layer 6: COMPOUNDS
 │   ├── harness-thesis.md              ← The 78% vs 42% thesis
 │   ├── vault-protocol.md              ← /remember, /upvault, mid-session triggers
-│   └── instinct-protocol.md           ← Auto-detected patterns (future)
+│   ├── failure-memory.md              ← Track what didn't work and why
+│   └── decision-journal.md            ← Track WHY decisions were made
 │
 ├── context/                           ← Layer 7: HOW MUCH
 │   ├── context-engineering.md         ← Write/Select/Compress/Isolate operations
@@ -84,17 +90,33 @@ superharness/
 │   ├── state-protocol.md              ← Progress files, handoff format
 │   └── templates/
 │       ├── handoff.yaml               ← Session transition template
-│       └── progress.md                ← In-session state template
+│       ├── progress.md                ← In-session state template
+│       ├── plan.md                    ← Current plan template
+│       └── tasks.md                   ← Remaining tasks template
 │
 ├── templates/                         ← Bootstrap for new projects
-│   ├── CLAUDE.md.template             ← Generate per-project CLAUDE.md
-│   └── AGENTS.md.template             ← Generate per-project AGENTS.md
+│   └── (TO DO: CLAUDE.md + AGENTS.md generators)
 │
 ├── research/                          ← Research notes per iteration
-│   └── iteration-3-research.md        ← Web research synthesis
-│
+├── ROADMAP.md                         ← Version targets + 1.0 definition
 ├── CHANGELOG.md                       ← Iteration log for cross-agent continuity
 └── README.md                          ← This file
+```
+
+### Per-Project Instance
+
+When a project uses superharness, it gets a `.superharness/` directory:
+
+```
+my-project/
+├── .superharness/
+│   ├── contract.yaml              ← Active feature contract
+│   ├── contracts/                 ← Archived completed contracts
+│   ├── handoffs/                  ← Agent-to-agent handoff files
+│   └── ledger.md                  ← Append-only activity log
+├── CLAUDE.md                      ← Generated from superharness identity + methodology
+├── AGENTS.md                      ← Generated from superharness identity + methodology
+└── ...
 ```
 
 ---

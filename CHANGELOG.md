@@ -121,6 +121,56 @@ Maxime then said: **"I want some kind of framework that I can include in my work
 - `.claude-plugin/plugin.json` — still references old skills-only structure
 - `install.sh` — outdated, references old structure
 
+### Iteration 2 File Inventory
+
+```
+superharness/
+├── README.md                              ← v2 manifesto
+├── CHANGELOG.md                           ← This file
+├── identity/
+│   ├── developer-profile.md               ← Copied from workspace
+│   └── agent-context.md                   ← Copied from workspace
+├── agents/
+│   ├── claude-code/                       ← EMPTY — needs global CLAUDE.md, commands
+│   └── codex-cli/                         ← EMPTY — needs global AGENTS.md, skills
+├── methodology/
+│   └── harness-thesis.md                  ← Written (78% vs 42%, compounding)
+├── templates/                             ← EMPTY — needs CLAUDE.md and AGENTS.md templates
+├── context/                               ← Legacy from between iterations (duplicates identity/)
+│   ├── developer-profile.md
+│   └── agent-context.md
+├── skills/                                ← FROM ITERATION 1 — valid content, wrong framing
+│   ├── session-routing/SKILL.md
+│   ├── cross-agent-review/SKILL.md
+│   ├── ship-pipeline/SKILL.md
+│   ├── vault-sync/SKILL.md
+│   ├── evening-session/SKILL.md
+│   ├── weekend-block/SKILL.md
+│   └── harness-engineering/SKILL.md
+├── hooks/
+│   └── session-start.sh                   ← FROM ITERATION 1 — needs update
+├── .claude-plugin/
+│   └── plugin.json                        ← FROM ITERATION 1 — needs update
+├── install.sh                             ← FROM ITERATION 1 — outdated
+└── knowledge/                             ← Created but EMPTY
+```
+
+### Iteration 2 Open Questions
+
+1. **Should skills/ stay as a subdirectory?** The skill files have valid content (routing table, ship pipeline, session templates). They could live under `methodology/` as plain markdown, or stay as Claude Code-compatible SKILL.md files. Trade-off: SKILL.md format is directly loadable by Claude Code. Plain markdown is more portable.
+
+2. **What goes in agents/?** The global CLAUDE.md and AGENTS.md already exist on the user's machine in their respective config directories. Should superharness contain copies (portable, versionable) or references (single source of truth)?
+
+3. **What goes in templates/?** When Maxime starts a new project, superharness should generate the right CLAUDE.md and AGENTS.md. How much is templated vs generated?
+
+4. **How does superharness relate to DevOpsCelstn?** The user's `goclaude` alias points to the DevOpsCelstn directory. Is superharness a subdirectory inside DevOpsCelstn, or is DevOpsCelstn part of the harness?
+
+5. **Cleanup:** The `context/` directory duplicates `identity/`. The old `install.sh` and `.claude-plugin/plugin.json` reference the iteration 1 structure. These need cleaning.
+
+6. **Vault integration:** The vault protocol (how /remember and /upvault work) is described in the README but not formalized in its own document yet.
+
+7. **Is superharness a git repo?** If yes, it becomes versionable, cloneable, and the compounding thesis becomes literally true — every commit is a deposit. If no, it stays as a local directory structure.
+
 ---
 
 ## Iteration 3 — Research-Backed Architecture Expansion
@@ -281,6 +331,77 @@ superharness/
 
 ---
 
+## Iteration 4 — Original Thinking + Cross-Agent Protocol
+
+**Date:** 2026-03-08
+**Agent:** Cowork (Claude Opus 4.6)
+**Session type:** Continued from iteration 3 (new session, context carried over via summary)
+
+### Self-Critique (iteration 3b)
+
+Honest assessment: iteration 3 was mostly organized web research, not genuine innovation. 15 markdown files describing good intentions, nothing executable. Full critique in `research/iteration-3b-critique.md`. Seven problems identified:
+
+1. It's a documentation project, not a system — no enforcement, no teeth
+2. Doesn't solve the REAL bottleneck (shipping, not session efficiency)
+3. Eight layers is too many for daily operation
+4. Doesn't account for motivation decay (tired after day job)
+5. Vault protocol is backwards (bolted on edges, not woven into work)
+6. Cross-agent review is theater without metrics
+7. No concept of "done" — infinite iteration risk (anti-pattern #2)
+
+### Key Architectural Decisions
+
+**superharness is agent-agnostic.** NOT a Claude Code plugin. Works across Claude Code, Codex CLI, Ollama, and any future LLM. This was a critical correction — previous iterations kept drifting toward Claude-Code-specific plugin structure.
+
+**superharness complements obra/superpowers.** superpowers is a community Claude Code plugin (40K stars, not ours). superharness provides the personal layer superpowers can't — identity, cross-agent protocol, failure memory. Install both, they don't conflict.
+
+**The `superpowers/` directory in harness/ was a mistake.** Created in iteration 1 as a misnamed clone. Should be deleted or replaced with an actual obra/superpowers install.
+
+### Cross-Agent Communication Protocol (NEW — the real innovation)
+
+Three file types that let ANY agent participate in a superharness workflow:
+
+1. **Contract** (`contract.yaml`) — what needs to happen, task assignments, decisions, failures. One per feature. Any agent reads it to understand context, updates its own tasks.
+
+2. **Handoff** (`handoffs/*.yaml`) — passing the baton between agents. Written by finishing agent, read by next agent. Includes what was done, what to check, what NOT to do.
+
+3. **Ledger** (`ledger.md`) — append-only chronological log. One line per action. Any agent appends. This IS the session log.
+
+Per-project instance: `.superharness/` directory in each project root.
+Protocol definition: `agents/protocol.md` in superharness repo.
+
+### Original Innovations (from critique)
+
+Six ideas that no existing framework implements:
+
+1. **Ship Pressure** — days-since-last-ship counter, visible at session start
+2. **Energy-Based Routing** — route by developer energy level, not just task type
+3. **5-Minute Session** — minimum viable session for low-energy days
+4. **Failure Memory** — log what didn't work, auto-search before re-attempting
+5. **Decision Journal** — auto-log WHY during work, not after
+6. **Harness Scorecard** — monthly quantified self-assessment
+
+### Files Created in Iteration 4
+
+```
+agents/protocol.md                  ← NEW: cross-agent communication protocol
+knowledge/failure-memory.md         ← NEW: track what didn't work
+knowledge/decision-journal.md       ← NEW: track WHY decisions were made
+research/iteration-3b-critique.md   ← NEW: honest self-critique + original ideas
+ROADMAP.md                          ← NEW: version targets + 1.0 definition
+README.md                           ← UPDATED: agent-agnostic + superpowers relationship
+```
+
+### Iteration 4 Open Questions
+
+1. **superpowers/ cleanup:** The fake superpowers directory in harness/ should be deleted or replaced with obra/superpowers install. Which?
+2. **Contract format:** Is YAML the right format for contracts? Or would markdown be more accessible to all agents?
+3. **Ledger vs vault:** The ledger is per-project, the vault is global. When does a ledger entry get promoted to a vault note?
+4. **Agent-specific configs:** agents/claude-code/ and agents/codex-cli/ are still empty. What exactly goes there — generated CLAUDE.md/AGENTS.md, or instructions for generating them?
+5. **Testing the protocol:** Which real project should be the first to use `.superharness/` ? VidDocs? RepoSec?
+
+---
+
 ## Related Files Outside superharness
 
 These documents were created in the same session and contain context relevant to superharness:
@@ -318,10 +439,13 @@ If you're an agent picking this up:
 
 ### Key files by purpose
 - **Understanding the philosophy:** `knowledge/harness-thesis.md`
-- **Understanding the research:** `research/iteration-3-research.md`
+- **Understanding the research:** `research/iteration-3-research.md`, `research/iteration-3b-critique.md`
+- **Understanding cross-agent work:** `agents/protocol.md` (the core innovation)
 - **Understanding the methodology:** `methodology/routing.md`, `methodology/session-discipline.md`
 - **Understanding context management:** `context/context-engineering.md`, `context/anti-rot.md`
 - **Understanding state management:** `state/state-protocol.md`
+- **Understanding what compounds:** `knowledge/failure-memory.md`, `knowledge/decision-journal.md`
+- **Understanding the roadmap:** `ROADMAP.md` (what "done" looks like)
 
 ### User preferences (Maxime / Rocha)
 - Honest assessment over hype
