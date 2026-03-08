@@ -8,7 +8,7 @@ Date: 2026-03-08
 - Auto Memory: automatic, extracts architecture notes/debug insights/code style
 - Session Memory: converts conversations to structured summaries at `$HOME/.claude/projects/<project>/memory/`
 - CLAUDE.md: user-written project memory
-- **Impact:** superharness should NOT duplicate what Claude Code handles natively. Focus on cross-agent memory.
+- **Impact:** superreins should NOT duplicate what Claude Code handles natively. Focus on cross-agent memory.
 - Source: code.claude.com/docs/en/memory
 
 ### 2. PreToolUse/PostToolUse Hooks
@@ -65,6 +65,6 @@ Date: 2026-03-08
 1. **PreToolUse hooks** — scope-guard.sh (blocks .env edits, warns on system files), branch-guard.sh (blocks push to main, warns on destructive git ops)
 2. **PostToolUse hooks** — ledger-append.sh (auto-logs file changes to ledger)
 3. **Review lenses** — 7 specialized review perspectives, assignable per-task in contract
-4. **Cross-agent failure store** — .superharness/failures.yaml (both agents read/write)
-5. **Cross-agent decision store** — .superharness/decisions.yaml (ADR-lite format)
+4. **Cross-agent failure store** — .superreins/failures.yaml (both agents read/write)
+5. **Cross-agent decision store** — .superreins/decisions.yaml (ADR-lite format)
 6. **Deprecated** — context-engineering.md, anti-rot.md, session-discipline.md (replaced by hooks + native Claude Code features)

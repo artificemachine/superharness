@@ -80,4 +80,4 @@ A good harness means:
 - Session discipline is structural, not willpower
 - Knowledge compounds whether you're disciplined about it or not
 
-That's what superharness is for.
+That's what superreins is for.

@@ -1,7 +1,7 @@
 {
-  "name": "superharness",
+  "name": "superreins",
   "version": "0.6.0",
   "description": "Personal harness architecture — injects identity, cross-agent protocol, and peer review awareness into every session. Complements obra/superpowers.",
   "author": "Maxime Roy",
-  "repository": "https://github.com/celstnblacc/superharness"
+  "repository": "https://github.com/celstnblacc/superreins"
 }

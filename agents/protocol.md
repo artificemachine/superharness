@@ -13,18 +13,18 @@ Current bridges:
 - Files (CLAUDE.md, AGENTS.md) — config, not state
 - Your head — you remember, you re-explain, you lose context
 
-superharness replaces "your head" with a protocol that any agent can read and write.
+superreins replaces "your head" with a protocol that any agent can read and write.
 
 ---
 
 ## The Shared Language
 
-Three file types form the communication layer. Any agent that reads and writes these can participate in a superharness workflow, regardless of what model it runs.
+Three file types form the communication layer. Any agent that reads and writes these can participate in a superreins workflow, regardless of what model it runs.
 
 ### 1. Contract — What needs to happen
 
 ```yaml
-# .superharness/contract.yaml
+# .superreins/contract.yaml
 id: feat-auth-module
 created: 2026-03-08
 created_by: claude-code
@@ -94,7 +94,7 @@ failures:
 ### 2. Handoff — Passing the baton
 
 ```yaml
-# .superharness/handoffs/2026-03-08-auth-middleware.yaml
+# .superreins/handoffs/2026-03-08-auth-middleware.yaml
 from: codex-cli
 to: claude-code
 date: 2026-03-08T22:30:00
@@ -134,7 +134,7 @@ do_not:
 ### 3. Ledger — What happened over time
 
 ```markdown
-# .superharness/ledger.md
+# .superreins/ledger.md
 
 ## 2026-03-08
 
@@ -295,7 +295,7 @@ In every project that uses multi-agent workflows:
 
 ```
 project-root/
-├── .superharness/
+├── .superreins/
 │   ├── contract.yaml          ← current active contract
 │   ├── contracts/             ← archive of completed contracts
 │   ├── handoffs/              ← handoff files between agents
@@ -303,22 +303,22 @@ project-root/
 │   ├── decisions.yaml         ← cross-agent decision records (persistent)
 │   ├── review-lenses/         ← project-specific review lenses (optional)
 │   └── ledger.md              ← append-only activity log
-├── CLAUDE.md                  ← Claude Code project config (from superharness template)
-├── AGENTS.md                  ← Codex CLI project config (from superharness template)
+├── CLAUDE.md                  ← Claude Code project config (from superreins template)
+├── AGENTS.md                  ← Codex CLI project config (from superreins template)
 └── ...
 ```
 
-**Note:** `.superharness/` is project-local. superharness itself (the repo) defines the PROTOCOL. Each project gets its own instance of the protocol files.
+**Note:** `.superreins/` is project-local. superreins itself (the repo) defines the PROTOCOL. Each project gets its own instance of the protocol files.
 
 ---
 
-## Relationship to superharness
+## Relationship to superreins
 
-The protocol is DEFINED in `superharness/agents/protocol.md` (this file).
-The protocol is INSTANTIATED in each project as `.superharness/`.
+The protocol is DEFINED in `superreins/agents/protocol.md` (this file).
+The protocol is INSTANTIATED in each project as `.superreins/`.
 The protocol is AGENT-AGNOSTIC — any LLM that can read/write YAML and markdown can participate.
 
-This is what makes superharness different from a Claude Code plugin or a Codex config. It's the shared language between ALL your agents.
+This is what makes superreins different from a Claude Code plugin or a Codex config. It's the shared language between ALL your agents.
 
 ---
 
