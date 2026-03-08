@@ -59,6 +59,7 @@ This section overrides any conflicting `contract today` formatting guidance abov
 - Include ALL tasks from contract (no truncation).
 - Render one task per single-line row; never wrap/split a task across multiple lines.
 - If content exceeds width, truncate with `...` rather than wrapping.
+- Add a full horizontal separator line between every task row for readability.
 - Status must be emoji + text:
   - `done` -> `✅ done`
   - `in_progress` -> `🟡 in_progress`
