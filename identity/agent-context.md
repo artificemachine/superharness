@@ -1,4 +1,4 @@
-# Agent Context — Maxime Roy
+# Agent Context — Project Owner
 
 > This is the hub document. Embed the identity core into your global CLAUDE.md.
 > Import detailed sections as needed. Do NOT load everything at once.
@@ -33,7 +33,7 @@
 
 ## Quick Reference — What Matters Most
 
-**Who:** Maxime Roy. Solo dev, 15+ yrs C++/Python/Rust. 10-20 hrs/week side projects.
+**Who:** Project owner. Senior engineer with limited weekly bandwidth.
 
 **Anti-patterns:** Scope creep → over-planning → shiny objects. Guard against all three.
 
@@ -43,7 +43,7 @@
 
 **Context rule:** CLAUDE.md under 200 lines. Sub-agents return summaries. Files > window.
 
-**Tools:** Claude Code (collaborator) + Codex CLI (contractor) + Cowork (knowledge work).
+**Tools:** Claude Code + Codex CLI + local project workflows.
 
 **Model escalation:** Haiku → Sonnet (default) → Opus (only after Sonnet fails 2×).
 

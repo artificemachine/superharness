@@ -11,6 +11,15 @@ It provides:
 
 Architecture and philosophy are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+## Prerequisites
+
+- `bash` (scripts are Bash-based)
+- `ruby` (required by inbox YAML helpers and hygiene checks)
+- `python3` (used by Claude session-start hook JSON escaping)
+- `claude` CLI (for Claude delegation commands)
+- `codex` CLI (for Codex delegation commands)
+- macOS `launchd` is required only for background watcher install/ensure scripts
+
 ## Quick Start
 
 1. Install Claude plugin hooks:
