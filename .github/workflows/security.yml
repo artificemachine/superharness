@@ -1,0 +1,31 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  shipguard:
+    name: ShipGuard Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Install ShipGuard
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install shipguard
+
+      - name: Run ShipGuard
+        run: |
+          shipguard scan . --format terminal > shipguard.txt
+          sed -n '1,260p' shipguard.txt
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: shipguard-report
+          path: shipguard.txt

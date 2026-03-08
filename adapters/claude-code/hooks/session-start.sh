@@ -39,9 +39,10 @@ if [ -d "$PROJECT_DIR/.superreins/handoffs" ]; then
 fi
 
 # Build the context injection
-CONTEXT="<superreins>
+CONTEXT="$(cat <<EOF
+<superreins>
 ## Identity
-$IDENTITY
+$(printf '%s\n' "$IDENTITY")
 
 ## Cross-Agent Protocol
 You are one of two senior devs. The other is Codex CLI.
@@ -67,9 +68,11 @@ Protocol files live in .superreins/ (contract.yaml, handoffs/, ledger.md, failur
 - branch-guard: blocks push to main/master, warns on force push and destructive git ops
 - ledger-append: auto-logs file changes to .superreins/ledger.md
 
-$CONTRACT_STATUS
-$PENDING_HANDOFFS
-</superreins>"
+$(printf '%s\n' "$CONTRACT_STATUS")
+$(printf '%s\n' "$PENDING_HANDOFFS")
+</superreins>
+EOF
+)"
 
 # Escape for JSON output
 ESCAPED=$(echo "$CONTEXT" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))")

@@ -1,0 +1,37 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  shell-tests:
+    name: Shell Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Entrypoint guard
+        run: scripts/check-shell-entrypoints.sh
+
+      - name: Syntax checks
+        run: |
+          bash -n init-project.sh
+          bash -n adapters/claude-code/install.sh
+          bash -n adapters/claude-code/hooks/session-start.sh
+          bash -n adapters/claude-code/hooks/scope-guard.sh
+          bash -n adapters/claude-code/hooks/branch-guard.sh
+          bash -n adapters/claude-code/hooks/ledger-append.sh
+          bash -n scripts/check-shell-entrypoints.sh
+          bash -n scripts/install-git-hooks.sh
+          bash -n .githooks/pre-commit
+
+      - name: Script smoke tests
+        run: |
+          bash init-project.sh --help
+          bash init-project.sh --dry-run "CI Smoke" "Bash" "active"
+          bash adapters/claude-code/install.sh --help
+          HOME="$(mktemp -d)" bash adapters/claude-code/install.sh --dry-run
