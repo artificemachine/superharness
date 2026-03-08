@@ -18,6 +18,43 @@
 
 set -euo pipefail
 
+usage() {
+  cat << 'EOF'
+Usage:
+  init-project.sh [--dry-run] [PROJECT_NAME] [TECH_STACK] [STATUS]
+
+Options:
+  -h, --help      Show this help message and exit
+  -n, --dry-run   Print planned actions without writing files
+EOF
+}
+
+DRY_RUN=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -n|--dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(pwd)"
 PROJECT_NAME="${1:-$(basename "$PROJECT_DIR")}"
@@ -31,6 +68,13 @@ echo "  Stack:    $TECH_STACK"
 echo "  Status:   $STATUS"
 echo "  Dir:      $PROJECT_DIR"
 echo ""
+
+if [ "$DRY_RUN" -eq 1 ]; then
+  echo "[dry-run] Would create: .superreins/{handoffs,contracts,review-lenses}"
+  echo "[dry-run] Would create: .superreins/{failures.yaml,decisions.yaml,ledger.md,contract.yaml}"
+  echo "[dry-run] Would create if missing: CLAUDE.md, AGENTS.md"
+  exit 0
+fi
 
 # Abort if already initialized
 if [ -d "$PROJECT_DIR/.superreins" ]; then
@@ -85,7 +129,7 @@ DATE=$(date +%Y-%m-%d)
 cat > "$PROJECT_DIR/.superreins/contract.yaml" << EOF
 # Active contract for $PROJECT_NAME
 id: initial-setup
-created: $DATE
+created: $(printf '%s' "$DATE")
 created_by: maxime
 status: draft
 
@@ -103,15 +147,15 @@ IDENTITY_CONTENT=$(cat "$SCRIPT_DIR/identity/core.md")
 
 if [ ! -f "$PROJECT_DIR/CLAUDE.md" ]; then
   cat > "$PROJECT_DIR/CLAUDE.md" << EOF
-# $PROJECT_NAME
+# $(printf '%s' "$PROJECT_NAME")
 
 ## Identity
-$IDENTITY_CONTENT
+$(printf '%s\n' "$IDENTITY_CONTENT")
 
 ## This Project
-- What: $PROJECT_NAME
-- Stack: $TECH_STACK
-- Status: $STATUS
+- What: $(printf '%s' "$PROJECT_NAME")
+- Stack: $(printf '%s' "$TECH_STACK")
+- Status: $(printf '%s' "$STATUS")
 
 ## Cross-Agent Protocol
 This project uses superreins. Protocol files are in \`.superreins/\`.
@@ -227,7 +271,14 @@ do_not:
 ## This Project
 AGENTSEOF
   # Replace the placeholder with actual project info
-  sed -i "s/{{PROJECT_NAME}}/$PROJECT_NAME/g" "$PROJECT_DIR/AGENTS.md"
+  python3 - "$PROJECT_DIR/AGENTS.md" "$PROJECT_NAME" << 'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+project_name = sys.argv[2]
+path.write_text(path.read_text().replace("{{PROJECT_NAME}}", project_name))
+PY
   echo "- What: $PROJECT_NAME" >> "$PROJECT_DIR/AGENTS.md"
   echo "- Stack: $TECH_STACK" >> "$PROJECT_DIR/AGENTS.md"
   echo "- Status: $STATUS" >> "$PROJECT_DIR/AGENTS.md"

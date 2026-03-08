@@ -1,0 +1,35 @@
+name: Shell Guards
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  shell-entrypoint-guard:
+    name: Shebang + Execute Bit Guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Validate shell entrypoints
+        run: scripts/check-shell-entrypoints.sh
+
+  shell-smoke:
+    name: Script Smoke Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: init-project help + dry-run
+        run: |
+          bash init-project.sh --help
+          bash init-project.sh --dry-run "CI Smoke" "Bash" "active"
+
+      - name: install help + dry-run
+        run: |
+          bash adapters/claude-code/install.sh --help
+          HOME="$(mktemp -d)" bash adapters/claude-code/install.sh --dry-run

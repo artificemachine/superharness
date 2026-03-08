@@ -168,6 +168,17 @@ bash /path/to/superreins/init-project.sh "Project Name" "Tech/Stack" "active"
 ```
 Creates `.superreins/` with contract, failure store, decision store, ledger, plus generates `CLAUDE.md` and `AGENTS.md` from templates. Idempotent — won't overwrite existing files.
 
+### Shell guardrails (CI + local hook)
+```bash
+# Run manually
+scripts/check-shell-entrypoints.sh
+
+# Enable repo pre-commit hook
+scripts/install-git-hooks.sh
+```
+The guard enforces: a curated entrypoint/hook allowlist must keep a shebang, stay executable (and `100755` once tracked), and pass `bash -n`.
+If you add a new executable shell entrypoint or `.githooks/*` hook, update the allowlist in `scripts/check-shell-entrypoints.sh` in the same change.
+
 ---
 
 ## Current State: v0.6
