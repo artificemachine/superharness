@@ -23,9 +23,20 @@ def _copy_guard_tree(tmp_path: Path) -> Path:
         "adapters/claude-code/hooks/scope-guard.sh",
         "adapters/claude-code/hooks/session-start.sh",
         "scripts/check-shell-entrypoints.sh",
+        "scripts/check-contract-hygiene.sh",
+        "scripts/delegate-to-claude.sh",
+        "scripts/delegate-to-codex.sh",
+        "scripts/ensure-launchd-inbox-watcher.sh",
+        "scripts/inbox-dispatch.sh",
+        "scripts/inbox-enqueue.sh",
+        "scripts/inbox-normalize.sh",
+        "scripts/inbox-watch.sh",
+        "scripts/install-launchd-inbox-watcher.sh",
         "scripts/install-git-hooks.sh",
+        "scripts/uninstall-launchd-inbox-watcher.sh",
         ".githooks/pre-commit",
         "identity/core.md",
+        "scripts/inbox-yaml.rb",
     ]
 
     for rel in required:

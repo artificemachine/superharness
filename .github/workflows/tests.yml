@@ -19,21 +19,24 @@ jobs:
 
       - name: Syntax checks
         run: |
-          bash -n init-project.sh
-          bash -n adapters/claude-code/install.sh
-          bash -n adapters/claude-code/hooks/session-start.sh
-          bash -n adapters/claude-code/hooks/scope-guard.sh
-          bash -n adapters/claude-code/hooks/branch-guard.sh
-          bash -n adapters/claude-code/hooks/ledger-append.sh
-          bash -n scripts/check-shell-entrypoints.sh
-          bash -n scripts/install-git-hooks.sh
-          bash -n .githooks/pre-commit
+          # Shell syntax for entrypoints/hooks is enforced by scripts/check-shell-entrypoints.sh.
+          ruby -c scripts/inbox-yaml.rb
 
       - name: Script smoke tests
         run: |
           bash init-project.sh --help
           bash init-project.sh --dry-run "CI Smoke" "Bash" "active"
           bash adapters/claude-code/install.sh --help
+          bash scripts/check-contract-hygiene.sh --help
+          bash scripts/delegate-to-claude.sh --help
+          bash scripts/delegate-to-codex.sh --help
+          bash scripts/inbox-enqueue.sh --help
+          bash scripts/inbox-dispatch.sh --help
+          bash scripts/inbox-normalize.sh --help
+          bash scripts/inbox-watch.sh --help
+          bash scripts/install-launchd-inbox-watcher.sh --help
+          bash scripts/ensure-launchd-inbox-watcher.sh --help
+          bash scripts/uninstall-launchd-inbox-watcher.sh --help
           HOME="$(mktemp -d)" bash adapters/claude-code/install.sh --dry-run
 
       - name: Install pytest

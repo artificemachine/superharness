@@ -174,3 +174,23 @@ def test_normalize_archives_only_dropped_rows(repo_root, tmp_path) -> None:
     archive_text = (project / ".superharness" / "inbox.archive.yaml").read_text()
     assert "id: drop-row" in archive_text
     assert "id: keep-row" not in archive_text
+
+
+def test_dispatch_fails_on_malformed_inbox_yaml(repo_root, tmp_path) -> None:
+    project = tmp_path / "proj4"
+    project.mkdir()
+    _write_contract(project)
+    inbox = project / ".superharness" / "inbox.yaml"
+    inbox.write_text(":\n  - invalid\n")
+
+    bin_dir = _fake_bin(tmp_path)
+    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=["--project", str(project), "--to", "codex-cli"],
+        env={"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"},
+    )
+
+    assert result.returncode == 1
+    assert "Failed to read pending inbox item" in result.stderr
