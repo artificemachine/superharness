@@ -107,21 +107,24 @@ Guard guarantees:
 
 ## Repository Layout
 
+Operational directories (most users only need these):
 ```text
 superharness/
 ├── adapters/              # Claude/Codex adapter assets
 ├── scripts/               # dispatch, delegation, launchd, guard scripts
-├── identity/              # base identity content
-├── agents/                # protocol + review lenses
-├── knowledge/             # decision/failure/vault references
-├── methodology/           # routing and review method docs
-├── state/                 # state protocol and templates
 ├── docs/                  # architecture and rationale docs
 ├── tests/                 # unit/integration/e2e tests
 ├── init-project.sh
 ├── ROADMAP.md
 └── CHANGELOG.md
 ```
+
+Reference content (advanced/internal methodology):
+- `identity/`
+- `agents/`
+- `knowledge/`
+- `methodology/`
+- `state/`
 
 ## Current Version
 
