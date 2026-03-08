@@ -426,6 +426,123 @@ These documents were created in the same session and contain context relevant to
 
 ---
 
+## Iteration 5 — Delivery Mechanism + Peer Review Model
+
+**Date:** 2026-03-08
+**Agent:** Cowork (Claude Opus 4.6)
+**Session type:** Continued from iteration 4 (new session, context carried over via summary)
+
+### Key Insight: superharness had no delivery mechanism
+
+The existential question from iteration 4 ("is this project a harness?") had a clear answer: no, because it was a folder of docs no agent reads automatically. Superpowers works because of ONE thing — a SessionStart hook that injects content before Claude's first response. superharness had content but no delivery.
+
+### How superpowers works (research)
+
+Superpowers is a Claude Code plugin. Its entire mechanism:
+1. `hooks/hooks.json` registers a SessionStart hook
+2. `hooks/session-start.sh` reads the `using-superpowers` meta-skill
+3. Wraps it in `<EXTREMELY_IMPORTANT>` tags, outputs dual-format JSON
+4. Content injected into session before Claude says a word
+5. Meta-skill tells Claude: "if 1% chance a skill applies, invoke it"
+
+Personal skills live in `~/.config/superpowers/skills/` and shadow core skills.
+
+### What was built
+
+**Adapters** — the delivery mechanism per agent:
+
+```
+adapters/
+├── claude-code/
+│   ├── hooks/
+│   │   ├── hooks.json          ← SessionStart hook config
+│   │   └── session-start.sh    ← Injects identity + protocol awareness
+│   ├── install.sh              ← Symlinks hooks into Claude Code
+│   └── CLAUDE.md.template      ← Per-project CLAUDE.md generator
+└── codex-cli/
+    └── AGENTS.md.template      ← Per-project AGENTS.md generator
+```
+
+The Claude Code hook:
+- Reads `identity/core.md` on every session start
+- Detects active `.superharness/contract.yaml` in current project
+- Checks for pending handoffs addressed to `claude-code`
+- Injects everything as context before first response
+- Works alongside superpowers — they inject skills, we inject identity + protocol
+
+### Peer Review Model (user insight)
+
+User clarification: Claude Code and Codex CLI are NOT architect/executor. They are **two senior devops/devsec engineers who challenge each other's work**. Both build AND review.
+
+Protocol updated to support both patterns per-task:
+
+**Pattern A: Peer Review** — both agents build different tasks, review each other's. Quality through mutual challenge. Used for security-critical or architecture-impacting work.
+
+**Pattern B: Hierarchical** — one plans, one executes, one reviews. Speed through specialization. Used when architecture is clear and execution is the bottleneck.
+
+**Pattern C: Subagent** — `codex exec` inside Claude Code session. Used for small isolated subtasks.
+
+Contract format updated with `reviewer` and `role` fields per task. Maxime (tech lead) decides which pattern per task.
+
+### Agent Strengths & Weaknesses (NEW)
+
+Added to protocol.md so each agent knows:
+- Its own strengths and weaknesses
+- What to watch for when reviewing the other's work
+
+Claude Code: strong at reasoning/architecture/security, weak at over-engineering/verbosity/context rot
+Codex CLI: strong at focused execution/testing/speed, weak at big picture/memory/complex reasoning
+Ollama: strong at offline/free, weak at everything else (treat as junior dev)
+
+### Files Created/Modified in Iteration 5
+
+```
+adapters/claude-code/hooks/hooks.json      ← NEW: SessionStart hook config
+adapters/claude-code/hooks/session-start.sh ← NEW: identity injection script
+adapters/claude-code/install.sh            ← NEW: symlink installer
+adapters/claude-code/CLAUDE.md.template    ← NEW: per-project template
+adapters/codex-cli/AGENTS.md.template      ← NEW: per-project template
+agents/protocol.md                         ← UPDATED: peer review + hierarchical patterns, strengths/weaknesses
+README.md                                  ← UPDATED: adapters in structure, v0.5
+CHANGELOG.md                               ← UPDATED: this entry
+```
+
+### Iteration 5b — Plugin Format Fix (same session)
+
+Research revealed that the original install.sh approach (symlink into `~/.claude/hooks/`) would **conflict** with superpowers — both would fight over the same `hooks.json` file. Claude Code's plugin system automatically merges hooks from all plugins, so the fix was to make superharness a proper Claude Code plugin.
+
+**Changes:**
+- Added `.claude-plugin/plugin.json` — plugin manifest
+- Rewrote `hooks/hooks.json` to correct array format with `${CLAUDE_PLUGIN_ROOT}`
+- Rewrote `install.sh` — now symlinks `adapters/claude-code/` into `~/.claude/plugins/superharness`
+- Updated `session-start.sh` — uses `CLAUDE_PLUGIN_ROOT` env var (set by Claude Code) with fallback for manual testing
+
+**How it works now:**
+```bash
+bash adapters/claude-code/install.sh
+# Creates: ~/.claude/plugins/superharness → adapters/claude-code/
+# Claude Code discovers it as a plugin, merges hooks with superpowers automatically
+# Verify: /plugins in Claude Code should list superharness
+# Uninstall: rm ~/.claude/plugins/superharness
+```
+
+**Files added/modified:**
+```
+adapters/claude-code/.claude-plugin/plugin.json  ← NEW: plugin manifest
+adapters/claude-code/hooks/hooks.json            ← REWRITTEN: correct plugin format
+adapters/claude-code/hooks/session-start.sh      ← UPDATED: CLAUDE_PLUGIN_ROOT support
+adapters/claude-code/install.sh                  ← REWRITTEN: plugin symlink install
+```
+
+### Iteration 5 Open Questions
+
+1. **Testing the plugin:** Need to test in a real Claude Code session. Does `/plugins` list superharness? Does the hook fire alongside superpowers? Does JSON output parse correctly?
+2. **AGENTS.md generation:** The Codex template is static. Should there be a `generate.sh` that reads `identity/core.md` and outputs a project-specific AGENTS.md? Or is manual copy+edit sufficient?
+3. **Naming:** User still questioning "superharness" as a name. Decision deferred.
+4. **Marketplace:** Should superharness be published to a Claude Code marketplace (like superpowers uses obra/superpowers-marketplace)? Or keep it as manual git clone + install.sh?
+
+---
+
 ## How to Continue
 
 If you're an agent picking this up:

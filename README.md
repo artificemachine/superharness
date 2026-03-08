@@ -66,9 +66,18 @@ superharness/
 │   └── agent-context.md               ← Hub doc with @imports to other layers
 │
 ├── agents/                            ← Layer 2: WHAT + cross-agent protocol
-│   ├── protocol.md                    ← Cross-agent communication protocol
-│   ├── claude-code/                   ← Claude Code specific configs
-│   └── codex-cli/                     ← Codex CLI specific configs
+│   └── protocol.md                    ← Cross-agent communication protocol
+│
+├── adapters/                          ← Delivery mechanism per agent
+│   ├── claude-code/                   ← Claude Code plugin
+│   │   ├── .claude-plugin/plugin.json ← Plugin manifest (auto-discovered by Claude Code)
+│   │   ├── hooks/
+│   │   │   ├── hooks.json             ← SessionStart hook config
+│   │   │   └── session-start.sh       ← Injects identity + protocol on every session
+│   │   ├── install.sh                 ← Symlinks plugin into ~/.claude/plugins/
+│   │   └── CLAUDE.md.template         ← Per-project CLAUDE.md generator
+│   └── codex-cli/
+│       └── AGENTS.md.template         ← Per-project AGENTS.md generator
 │
 ├── methodology/                       ← Layers 3-5: WHERE, WHEN, HOW GOOD
 │   ├── routing.md                     ← Dispatch protocol + model escalation
@@ -94,8 +103,6 @@ superharness/
 │       ├── plan.md                    ← Current plan template
 │       └── tasks.md                   ← Remaining tasks template
 │
-├── templates/                         ← Bootstrap for new projects
-│   └── (TO DO: CLAUDE.md + AGENTS.md generators)
 │
 ├── research/                          ← Research notes per iteration
 ├── ROADMAP.md                         ← Version targets + 1.0 definition
@@ -130,6 +137,31 @@ my-project/
 
 ---
 
-## Current State: v0.3
+## Install
 
-Eight layers defined. Identity, methodology, knowledge, context, and state layers populated with docs. Research-backed by Anthropic's harness engineering papers, OpenAI's Codex patterns, pi.dev's minimal extensibility philosophy, and the 2026 agentic coding community's best practices. See CHANGELOG.md for full iteration history.
+### Claude Code (plugin — coexists with superpowers)
+```bash
+bash adapters/claude-code/install.sh
+# Verify: /plugins in Claude Code → superharness should appear
+# Uninstall: rm ~/.claude/plugins/superharness
+```
+Hooks merge automatically with superpowers. Superpowers injects skills, superharness injects identity + protocol.
+
+### Codex CLI (per-project)
+```bash
+cp adapters/codex-cli/AGENTS.md.template my-project/AGENTS.md
+# Edit the {{placeholders}} with your project details
+```
+
+### Per-project protocol
+```bash
+mkdir -p my-project/.superharness/handoffs
+touch my-project/.superharness/contract.yaml
+touch my-project/.superharness/ledger.md
+```
+
+---
+
+## Current State: v0.5
+
+Eight layers defined. Claude Code adapter is a proper plugin with SessionStart hook — installs alongside superpowers with no conflicts. Codex CLI adapter provides AGENTS.md template. Cross-agent protocol supports peer review (two seniors challenging each other), hierarchical (plan → implement → review), and subagent (codex exec) patterns per-task. Agent strengths and weaknesses documented so each knows what to watch for when reviewing the other's work. See CHANGELOG.md for full iteration history.

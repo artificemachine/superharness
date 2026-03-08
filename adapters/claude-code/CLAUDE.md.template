@@ -1,0 +1,23 @@
+# {{PROJECT_NAME}}
+
+## Identity
+@import ../../identity/core.md
+
+## This Project
+<!-- Add project-specific context here -->
+- What: {{PROJECT_DESCRIPTION}}
+- Stack: {{TECH_STACK}}
+- Status: {{STATUS}}
+
+## Cross-Agent Protocol
+This project uses superharness. Protocol files are in `.superharness/`.
+- Read `contract.yaml` before starting any work.
+- Read any handoffs in `handoffs/` addressed to `claude-code`.
+- When you finish a task: update contract status, write a handoff, append to ledger.
+- When reviewing Codex's work: be a senior dev. Challenge decisions. Check edge cases.
+
+## Project Rules
+<!-- Add project-specific rules here -->
+- Security: never commit secrets, never skip security scan
+- Branches: feature branches, never push to main
+- Tests: run before every handoff
