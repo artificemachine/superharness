@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-07
 **Agent:** Cowork (Claude Opus 4.6)
-**Purpose:** Find everything that can improve superreins from the current state of the art.
+**Purpose:** Find everything that can improve superharness from the current state of the art.
 
 ---
 
@@ -23,7 +23,7 @@
 
 ---
 
-## Key Concepts That Are Missing from superreins
+## Key Concepts That Are Missing from superharness
 
 ### 1. CONTEXT ENGINEERING AS A FORMAL LAYER
 
@@ -35,7 +35,7 @@ Four operations: Write, Select, Compress, Isolate.
 - **Compress** — sub-agents summarize before returning (not raw dumps)
 - **Isolate** — each sub-agent gets lean context for its specific task
 
-**What this means for superreins:**
+**What this means for superharness:**
 We have a Knowledge layer (Layer 6) that handles vault deposits/withdrawals. But we don't have a **Context Engineering** discipline — the systematic practice of managing what goes INTO the context window at any given moment. This is arguably the highest-leverage skill a solo dev can build, because:
 
 - Past ~60% context utilization, performance degrades ("context rot")
@@ -67,7 +67,7 @@ The initializer + coding agent pattern:
 - Before compaction, auto-write handoff document
 - Three files: `plan.md`, `context.md`, `tasks.md`
 
-**What this means for superreins:**
+**What this means for superharness:**
 We have /remember and /upvault for session bookends, but we're missing the **intra-session state management** — what happens during a long session when compaction hits. The harness thesis talks about compounding across sessions, but not about surviving WITHIN a session.
 
 **Proposal:** Add a **state protocol** under methodology: progress files, handoff templates, pre-compaction hooks.
@@ -88,8 +88,8 @@ We have /remember and /upvault for session bookends, but we're missing the **int
 - For each line, ask: "If I remove this, will Claude produce worse output?"
 - Make rules specific and testable: not "handle errors properly" but "All async functions must have try/catch blocks"
 
-**What this means for superreins:**
-The current `identity/agent-context.md` is 139 lines and mixes WHO, HOW, WHAT, and WHERE. The README itself is 163 lines of manifesto. If superreins is supposed to generate per-project CLAUDE.md files, those need to follow the table-of-contents pattern — lean pointers, not encyclopedias.
+**What this means for superharness:**
+The current `identity/agent-context.md` is 139 lines and mixes WHO, HOW, WHAT, and WHERE. The README itself is 163 lines of manifesto. If superharness is supposed to generate per-project CLAUDE.md files, those need to follow the table-of-contents pattern — lean pointers, not encyclopedias.
 
 **Proposal:** Restructure agent-context.md into a **hub document** (~60 lines) that `@imports` from identity/, methodology/, and agents/ rather than containing everything inline.
 
@@ -104,7 +104,7 @@ The current `identity/agent-context.md` is 139 lines and mixes WHO, HOW, WHAT, a
 - Instincts evolve/cluster into skills over time
 - Three-phase code quality: auto-format (40-50% of issues) → structured JSON violations → subprocess fixes
 
-**What this means for superreins:**
+**What this means for superharness:**
 Our Knowledge layer (Layer 6) is about vault deposits (manual). Instincts are about **automatic pattern detection** — the harness gets smarter without you explicitly telling it to. This is the difference between a notebook (you write in it) and a learning system (it writes in itself).
 
 **Proposal:** Consider an **instinct protocol** — patterns the harness learns from repeated behaviors (e.g., "you always run tests before committing in this project" → auto-suggest test run if you skip it). This could start as a simple log and evolve.
@@ -126,7 +126,7 @@ Every major tool shipped multi-agent in the same two-week window:
 - GSD coordinator (Claude Opus) dispatches nested workers (Codex, Spark, Claude)
 - Codex can spawn Claude as a sub-agent and vice versa
 
-**What this means for superreins:**
+**What this means for superharness:**
 Our Layer 2 (Agents) and Layer 3 (Routing) describe Claude Code vs Codex as a binary choice. But the state of the art is **orchestration** — one agent dispatching others, not a human manually choosing. The routing table should evolve from a human decision matrix into an agent-executable dispatch protocol.
 
 **Proposal:** Evolve routing from a decision table into an **orchestration protocol** that agents can execute, not just humans can read. Include agent-mux-style JSON contracts.
@@ -148,7 +148,7 @@ Our Layer 2 (Agents) and Layer 3 (Routing) describe Claude Code vs Codex as a bi
 - Pre-compaction hooks that checkpoint state
 - Ledger systems (Continuous-Claude-v3)
 
-**What this means for superreins:**
+**What this means for superharness:**
 Our harness thesis talks about compounding. But compounding assumes continuity. Context rot breaks continuity. The harness needs an **anti-rot protocol** — specific practices that prevent context degradation during long sessions.
 
 **Proposal:** Add anti-rot strategies to the methodology: progress file triplet, pre-compaction hooks, CLAUDE.md budget discipline (<200 lines), context checkpointing.
@@ -163,7 +163,7 @@ Our harness thesis talks about compounding. But compounding assumes continuity. 
 - Mechanical rules and structural tests enforce boundaries
 - Result: 1M lines of code, ~1,500 PRs, 3 engineers
 
-**What this means for superreins:**
+**What this means for superharness:**
 Our Quality layer (Layer 5) focuses on security scans and cross-agent review. But it's missing **architectural guardrails** — rules that prevent agents from creating spaghetti across boundaries. For a solo dev building multiple projects, this is crucial: without guardrails, each agent session can introduce drift.
 
 **Proposal:** Add architectural guardrails to the Quality layer — dependency direction rules, module boundary enforcement, structural tests.
@@ -179,14 +179,14 @@ Our Quality layer (Layer 5) focuses on security scans and cross-agent review. Bu
 - Smart Connections: RAG over your entire vault
 - The vault compounds: every session makes Claude more personalized
 
-**What this means for superreins:**
+**What this means for superharness:**
 Our /upvault is a deposit. But the vault should also be an **active retrieval source during work**, not just at session start (/remember) and end (/upvault). Mid-session vault queries could prevent re-solving problems you've already solved.
 
 **Proposal:** Extend the vault protocol to include **mid-session retrieval triggers** — specific moments when the harness should auto-search the vault (e.g., before implementing a pattern, before choosing a library, when hitting an error).
 
 ---
 
-## Summary: What's Missing from superreins v0.2
+## Summary: What's Missing from superharness v0.2
 
 | Gap | Current State | Proposed Fix | Priority |
 |-----|--------------|-------------|----------|
@@ -204,7 +204,7 @@ Our /upvault is a deposit. But the vault should also be an **active retrieval so
 ## Proposed Layer Architecture v0.3
 
 ```
-superreins v0.3 — Eight Layers
+superharness v0.3 — Eight Layers
 
 Layer 1: Identity     — WHO you are (stable, high-value-per-token)
 Layer 2: Agents       — WHAT each agent needs (config parity)
@@ -236,8 +236,8 @@ Layer 8: State        — HOW IT SURVIVES (progress files, handoffs, continuity)
 - **Progressive feature building**: Deliberately omits sub-agents, plan mode, MCP from core — encourages you to build exactly what you need
 - **Four modes**: interactive, print/JSON, RPC (process integration), SDK (embed in your apps)
 
-**What this means for superreins:**
-Pi's philosophy is deeply aligned with superreins: the harness adapts to you, not the other way around. But pi adds two concepts we're missing:
+**What this means for superharness:**
+Pi's philosophy is deeply aligned with superharness: the harness adapts to you, not the other way around. But pi adds two concepts we're missing:
 
 1. **Session tree branching** — sessions aren't linear. You should be able to branch from any checkpoint. Our state protocol (Layer 8) should account for tree-shaped session histories, not just linear handoffs.
 
@@ -247,7 +247,7 @@ Pi's philosophy is deeply aligned with superreins: the harness adapts to you, no
 
 ---
 
-## Summary: What's Missing from superreins v0.2
+## Summary: What's Missing from superharness v0.2
 
 | Gap | Current State | Proposed Fix | Priority |
 |-----|--------------|-------------|----------|
@@ -268,7 +268,7 @@ Pi's philosophy is deeply aligned with superreins: the harness adapts to you, no
 ## Proposed Layer Architecture v0.3
 
 ```
-superreins v0.3 — Eight Layers
+superharness v0.3 — Eight Layers
 
 Layer 1: Identity     — WHO you are (stable, high-value-per-token)
 Layer 2: Agents       — WHAT each agent needs (config parity)
@@ -288,7 +288,7 @@ Layer 8: State        — HOW IT SURVIVES (progress files, handoffs, session tre
 - Layer 8: NEW — intra-session state management
 
 **Core design principle (from pi.dev):**
-Minimal core, maximal extensibility. The superreins identity core should be ~30 lines.
+Minimal core, maximal extensibility. The superharness identity core should be ~30 lines.
 Everything else is discoverable, not preloaded.
 
 ---
@@ -300,5 +300,5 @@ Everything else is discoverable, not preloaded.
 3. Is the instinct protocol too ambitious for v0.3? Should it be v0.4?
 4. Should the routing layer include actual agent-mux JSON contracts or stay conceptual?
 5. What's the right format for progress files? Anthropic uses .txt, community uses .md/.yaml.
-6. How much of pi.dev's "minimal core" philosophy should superreins adopt? Is 30 lines realistic?
+6. How much of pi.dev's "minimal core" philosophy should superharness adopt? Is 30 lines realistic?
 7. Should session tree branching be a protocol or left to the tools (Claude Code already has /tree-like features)?

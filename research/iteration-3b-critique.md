@@ -11,7 +11,7 @@
 
 Every file is a .md describing how things SHOULD work. None of it is executable. None of it enforces anything. If Maxime ignores session-discipline.md tomorrow, nothing happens. The harness has no teeth.
 
-**The gap:** superreins describes a system. It doesn't implement one. A real harness would have hooks, scripts, automations, and enforcement — not just documents about good intentions.
+**The gap:** superharness describes a system. It doesn't implement one. A real harness would have hooks, scripts, automations, and enforcement — not just documents about good intentions.
 
 **What would teeth look like:**
 - A session-start hook that REFUSES to proceed without /remember
@@ -77,12 +77,12 @@ No framework in the research addresses this. They all assume the developer shows
 
 ### 7. No concept of "done"
 
-superreins describes a perpetual improvement cycle. But when is a project DONE? When is a feature DONE? When do you stop iterating on the harness itself and start using it?
+superharness describes a perpetual improvement cycle. But when is a project DONE? When is a feature DONE? When do you stop iterating on the harness itself and start using it?
 
-The risk: superreins becomes the ultimate scope-creep — infinitely iterable, never finished, a perfect expression of anti-pattern #2 (over-planning as procrastination).
+The risk: superharness becomes the ultimate scope-creep — infinitely iterable, never finished, a perfect expression of anti-pattern #2 (over-planning as procrastination).
 
 **What would "done" look like:**
-- superreins has a 1.0 definition: "the harness is 1.0 when [these specific things] work"
+- superharness has a 1.0 definition: "the harness is 1.0 when [these specific things] work"
 - Each project has a ship criteria in its CLAUDE.md
 - The harness itself has a maintenance budget: max 1 hour/month on harness improvement
 - After 1.0, changes are reactive (fix what breaks), not proactive (add what might be nice)
@@ -164,5 +164,5 @@ Not more documentation. Implementation.
 3. **5-minute session protocol** — a real, usable template
 4. **Failure memory format** — add to vault protocol
 5. **Decision journal** — agent instruction to auto-log decisions during work
-6. **Define 1.0** — what does "done" look like for superreins itself?
+6. **Define 1.0** — what does "done" look like for superharness itself?
 7. **One executable hook** — even just a session-start hook that prints context. Make the harness DO something, not just DESCRIBE something.

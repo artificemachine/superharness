@@ -1,11 +1,11 @@
 # Tests Still Need
 
-This document lists missing test coverage for `superreins` and prioritizes what to implement next.
+This document lists missing test coverage for `superharness` and prioritizes what to implement next.
 
 ## Unit Tests
 - `init-project.sh`
 - Argument parsing (`--help`, `--dry-run`, invalid flags).
-- Idempotency and existing `.superreins` handling.
+- Idempotency and existing `.superharness` handling.
 - Generated file content assertions for `contract.yaml`, `CLAUDE.md`, `AGENTS.md`.
 - `adapters/claude-code/install.sh`
 - Symlink lifecycle: not installed, already installed, wrong symlink target, target path exists as directory.
@@ -22,7 +22,7 @@ This document lists missing test coverage for `superreins` and prioritizes what 
 
 ## Integration Tests
 - Bootstrap integration
-- Run `init-project.sh` in temp repo and assert full `.superreins/` tree + generated docs.
+- Run `init-project.sh` in temp repo and assert full `.superharness/` tree + generated docs.
 - Git hook integration
 - Run `scripts/install-git-hooks.sh`; verify `core.hooksPath` and execute `.githooks/pre-commit` in a temp git repo.
 - Hook protocol integration

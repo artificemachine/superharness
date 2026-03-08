@@ -27,10 +27,10 @@ def test_init_project_creates_expected_files(repo_root, tmp_path) -> None:
     result = run_bash(script, cwd=project, args=["Demo", "Python", "active"])
     assert result.returncode == 0, result.stderr
 
-    assert (project / ".superreins/contract.yaml").exists()
-    assert (project / ".superreins/failures.yaml").exists()
-    assert (project / ".superreins/decisions.yaml").exists()
-    assert (project / ".superreins/ledger.md").exists()
+    assert (project / ".superharness/contract.yaml").exists()
+    assert (project / ".superharness/failures.yaml").exists()
+    assert (project / ".superharness/decisions.yaml").exists()
+    assert (project / ".superharness/ledger.md").exists()
     assert (project / "CLAUDE.md").exists()
     assert (project / "AGENTS.md").exists()
 

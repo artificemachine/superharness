@@ -1,7 +1,7 @@
-# superreins — Claude Rules
+# superharness — Claude Rules
 
 ## Project Description
-superreins is a multi-agent session handoff framework for Claude Code. It manages contracts, handoffs, and context between sessions via shell hooks and adapters.
+superharness is a multi-agent session handoff framework for Claude Code. It manages contracts, handoffs, and context between sessions via shell hooks and adapters.
 
 ## Project Type
 Shell scripts + Python tests (no build step)

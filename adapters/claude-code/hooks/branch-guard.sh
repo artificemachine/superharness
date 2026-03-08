@@ -14,7 +14,7 @@ if echo "$COMMAND" | grep -qE 'git\s+push.*\b(main|master)\b'; then
   cat <<EOF
 {
   "decision": "block",
-  "reason": "superreins: BLOCKED — never push directly to main/master. Use a feature branch and PR."
+  "reason": "superharness: BLOCKED — never push directly to main/master. Use a feature branch and PR."
 }
 EOF
   exit 0
@@ -25,7 +25,7 @@ if echo "$COMMAND" | grep -qE 'git\s+push\s+.*--force'; then
   cat <<EOF
 {
   "decision": "block",
-  "reason": "superreins: BLOCKED — force push is destructive. Review and use a safer approach."
+  "reason": "superharness: BLOCKED — force push is destructive. Review and use a safer approach."
 }
 EOF
   exit 0
@@ -36,7 +36,7 @@ if echo "$COMMAND" | grep -qE 'git\s+(reset\s+--hard|clean\s+-f|checkout\s+--\s+
   cat <<EOF
 {
   "decision": "warn",
-  "reason": "superreins: WARNING — destructive git operation detected. Make sure this is intentional."
+  "reason": "superharness: WARNING — destructive git operation detected. Make sure this is intentional."
 }
 EOF
   exit 0
@@ -47,7 +47,7 @@ if echo "$COMMAND" | grep -qE 'rm\s+-rf\s+/'; then
   cat <<EOF
 {
   "decision": "warn",
-  "reason": "superreins: WARNING — recursive delete on root path. Double-check the target."
+  "reason": "superharness: WARNING — recursive delete on root path. Double-check the target."
 }
 EOF
   exit 0
