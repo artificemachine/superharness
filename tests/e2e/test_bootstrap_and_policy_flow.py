@@ -13,7 +13,7 @@ def test_bootstrap_and_hook_install_flow(repo_root, tmp_path) -> None:
     init_res = run_bash(init_script, cwd=project, args=["Demo", "Python", "active"])
     assert init_res.returncode == 0, init_res.stderr
 
-    assert (project / ".superreins/contract.yaml").exists()
+    assert (project / ".superharness/contract.yaml").exists()
     assert (project / "CLAUDE.md").exists()
     assert (project / "AGENTS.md").exists()
 

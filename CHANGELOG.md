@@ -1,10 +1,10 @@
-# superreins — Iteration Log
+# superharness — Iteration Log
 
-This document is the full context for any agent (Claude Code, Codex CLI, Cowork, or any other LLM) continuing work on superreins. Read this first. It tells you what superreins is, how it got here, and where to push next.
+This document is the full context for any agent (Claude Code, Codex CLI, Cowork, or any other LLM) continuing work on superharness. Read this first. It tells you what superharness is, how it got here, and where to push next.
 
 ---
 
-## What Is superreins?
+## What Is superharness?
 
 **Your personal harness architecture — the full operating environment that determines whether an AI model's intelligence translates into useful work for you, specifically.**
 
@@ -15,7 +15,7 @@ Same Claude model scored 78% inside one harness and 42% inside another. Same bra
 
 ### Key distinction
 - **obra/superpowers** = a generic skills plugin anyone installs. Teaches an agent how to work.
-- **superreins** = a personal harness architecture. Teaches an agent how to work **with Maxime Roy**.
+- **superharness** = a personal harness architecture. Teaches an agent how to work **with Maxime Roy**.
 
 ### Six layers
 
@@ -36,7 +36,7 @@ Same Claude model scored 78% inside one harness and 42% inside another. Same bra
 **Agent:** Cowork (Claude Opus 4.6)
 **Session type:** Extended multi-hour conversation, continued from a previous session
 
-### What happened before superreins
+### What happened before superharness
 
 This session began with building two foundational documents for Maxime Roy:
 
@@ -54,7 +54,7 @@ This session began with building two foundational documents for Maxime Roy:
 
 3. **CLAUDE.md Template** (`CLAUDE-md-template.md`) — A generic/reusable template derived from the agent context doc, with HTML comment instructions.
 
-### Key decisions made before superreins
+### Key decisions made before superharness
 - **Removed Ralph** (autonomous loop driver) from all documents. Reason: bottleneck is shipping, not coding speed. Token costs are real. Never used.
 - **Removed @fix_plan.md** references — was Ralph-specific.
 - **Added 7,000 hours crypto/finance** — major correction that changed the entire strategic analysis.
@@ -62,7 +62,7 @@ This session began with building two foundational documents for Maxime Roy:
 - **Proxmox partnership** clarified — co-operated with a friend.
 - **Toned down hyperbole** — "most advanced solo-dev AI harness" replaced with honest assessment.
 
-### The spark for superreins
+### The spark for superharness
 
 Maxime shared a vault note: transcript of Nate Herk's YouTube video "Claude Code vs Codex: The Decision That Compounds Every Week You Delay." Key insights absorbed:
 - 78% vs 42% benchmark (harness > model)
@@ -99,7 +99,7 @@ Maxime then said: **"I want some kind of framework that I can include in my work
    - 100+ shell aliases in `.zshrc`
    - Security audit of obra/superpowers in vault
 
-2. Realized: **the harness already exists. It's scattered.** superreins is the framework that gives it a name, a structure, and portability.
+2. Realized: **the harness already exists. It's scattered.** superharness is the framework that gives it a name, a structure, and portability.
 
 3. Defined six layers (Identity, Agents, Routing, Discipline, Quality, Knowledge)
 
@@ -124,7 +124,7 @@ Maxime then said: **"I want some kind of framework that I can include in my work
 ### Iteration 2 File Inventory
 
 ```
-superreins/
+superharness/
 ├── README.md                              ← v2 manifesto
 ├── CHANGELOG.md                           ← This file
 ├── identity/
@@ -159,17 +159,17 @@ superreins/
 
 1. **Should skills/ stay as a subdirectory?** The skill files have valid content (routing table, ship pipeline, session templates). They could live under `methodology/` as plain markdown, or stay as Claude Code-compatible SKILL.md files. Trade-off: SKILL.md format is directly loadable by Claude Code. Plain markdown is more portable.
 
-2. **What goes in agents/?** The global CLAUDE.md and AGENTS.md already exist on the user's machine in their respective config directories. Should superreins contain copies (portable, versionable) or references (single source of truth)?
+2. **What goes in agents/?** The global CLAUDE.md and AGENTS.md already exist on the user's machine in their respective config directories. Should superharness contain copies (portable, versionable) or references (single source of truth)?
 
-3. **What goes in templates/?** When Maxime starts a new project, superreins should generate the right CLAUDE.md and AGENTS.md. How much is templated vs generated?
+3. **What goes in templates/?** When Maxime starts a new project, superharness should generate the right CLAUDE.md and AGENTS.md. How much is templated vs generated?
 
-4. **How does superreins relate to DevOpsCelstn?** The user's `goclaude` alias points to the DevOpsCelstn directory. Is superreins a subdirectory inside DevOpsCelstn, or is DevOpsCelstn part of the harness?
+4. **How does superharness relate to DevOpsCelstn?** The user's `goclaude` alias points to the DevOpsCelstn directory. Is superharness a subdirectory inside DevOpsCelstn, or is DevOpsCelstn part of the harness?
 
 5. **Cleanup:** The `context/` directory duplicates `identity/`. The old `install.sh` and `.claude-plugin/plugin.json` reference the iteration 1 structure. These need cleaning.
 
 6. **Vault integration:** The vault protocol (how /remember and /upvault work) is described in the README but not formalized in its own document yet.
 
-7. **Is superreins a git repo?** If yes, it becomes versionable, cloneable, and the compounding thesis becomes literally true — every commit is a deposit. If no, it stays as a local directory structure.
+7. **Is superharness a git repo?** If yes, it becomes versionable, cloneable, and the compounding thesis becomes literally true — every commit is a deposit. If no, it stays as a local directory structure.
 
 ---
 
@@ -248,7 +248,7 @@ README.md                           ← REWRITTEN: 8-layer architecture, minimal
 ### Legacy Files to Clean Up
 Run this on the host machine (sandbox cannot delete):
 ```bash
-cd superreins
+cd superharness
 rm -rf skills/ hooks/ .claude-plugin/ install.sh
 rm context/agent-context.md context/developer-profile.md
 ```
@@ -259,7 +259,7 @@ These are iteration 1 remnants. Their content has been absorbed into the new met
 ## Current File Inventory (v0.3)
 
 ```
-superreins/
+superharness/
 ├── README.md                              ← v3 (8 layers, minimal)
 ├── CHANGELOG.md                           ← This file
 │
@@ -321,13 +321,13 @@ superreins/
 
 4. **agent-mux integration:** Should routing.md include actual JSON contracts for cross-engine dispatch, or stay conceptual until agent-mux is installed?
 
-5. **DevOpsCelstn relationship:** superreins lives at `DevOpsCelstn/harness/superreins`. Is this the right home? Should goclaude alias point to superreins?
+5. **DevOpsCelstn relationship:** superharness lives at `DevOpsCelstn/harness/superharness`. Is this the right home? Should goclaude alias point to superharness?
 
 6. **Hub document @imports:** Claude Code supports `@file` imports in CLAUDE.md. Should identity/agent-context.md literally use `@` syntax, or stay as prose references?
 
 7. **Context budget enforcement:** Should there be a pre-commit hook or lint rule that checks CLAUDE.md line count? HumanLayer recommends <200 lines.
 
-8. **Obsidian vault structure alignment:** superreins defines vault location rules. Do these match the current vault structure, or does the vault need reorganizing?
+8. **Obsidian vault structure alignment:** superharness defines vault location rules. Do these match the current vault structure, or does the vault need reorganizing?
 
 ---
 
@@ -351,15 +351,15 @@ Honest assessment: iteration 3 was mostly organized web research, not genuine in
 
 ### Key Architectural Decisions
 
-**superreins is agent-agnostic.** NOT a Claude Code plugin. Works across Claude Code, Codex CLI, Ollama, and any future LLM. This was a critical correction — previous iterations kept drifting toward Claude-Code-specific plugin structure.
+**superharness is agent-agnostic.** NOT a Claude Code plugin. Works across Claude Code, Codex CLI, Ollama, and any future LLM. This was a critical correction — previous iterations kept drifting toward Claude-Code-specific plugin structure.
 
-**superreins complements obra/superpowers.** superpowers is a community Claude Code plugin (40K stars, not ours). superreins provides the personal layer superpowers can't — identity, cross-agent protocol, failure memory. Install both, they don't conflict.
+**superharness complements obra/superpowers.** superpowers is a community Claude Code plugin (40K stars, not ours). superharness provides the personal layer superpowers can't — identity, cross-agent protocol, failure memory. Install both, they don't conflict.
 
 **The `superpowers/` directory in harness/ was a mistake.** Created in iteration 1 as a misnamed clone. Should be deleted or replaced with an actual obra/superpowers install.
 
 ### Cross-Agent Communication Protocol (NEW — the real innovation)
 
-Three file types that let ANY agent participate in a superreins workflow:
+Three file types that let ANY agent participate in a superharness workflow:
 
 1. **Contract** (`contract.yaml`) — what needs to happen, task assignments, decisions, failures. One per feature. Any agent reads it to understand context, updates its own tasks.
 
@@ -367,8 +367,8 @@ Three file types that let ANY agent participate in a superreins workflow:
 
 3. **Ledger** (`ledger.md`) — append-only chronological log. One line per action. Any agent appends. This IS the session log.
 
-Per-project instance: `.superreins/` directory in each project root.
-Protocol definition: `agents/protocol.md` in superreins repo.
+Per-project instance: `.superharness/` directory in each project root.
+Protocol definition: `agents/protocol.md` in superharness repo.
 
 ### Original Innovations (from critique)
 
@@ -398,13 +398,13 @@ README.md                           ← UPDATED: agent-agnostic + superpowers re
 2. **Contract format:** Is YAML the right format for contracts? Or would markdown be more accessible to all agents?
 3. **Ledger vs vault:** The ledger is per-project, the vault is global. When does a ledger entry get promoted to a vault note?
 4. **Agent-specific configs:** agents/claude-code/ and agents/codex-cli/ are still empty. What exactly goes there — generated CLAUDE.md/AGENTS.md, or instructions for generating them?
-5. **Testing the protocol:** Which real project should be the first to use `.superreins/` ? VidDocs? RepoSec?
+5. **Testing the protocol:** Which real project should be the first to use `.superharness/` ? VidDocs? RepoSec?
 
 ---
 
-## Related Files Outside superreins
+## Related Files Outside superharness
 
-These documents were created in the same session and contain context relevant to superreins:
+These documents were created in the same session and contain context relevant to superharness:
 
 | File | Location | Relevance |
 |------|----------|-----------|
@@ -432,9 +432,9 @@ These documents were created in the same session and contain context relevant to
 **Agent:** Cowork (Claude Opus 4.6)
 **Session type:** Continued from iteration 4 (new session, context carried over via summary)
 
-### Key Insight: superreins had no delivery mechanism
+### Key Insight: superharness had no delivery mechanism
 
-The existential question from iteration 4 ("is this project a harness?") had a clear answer: no, because it was a folder of docs no agent reads automatically. Superpowers works because of ONE thing — a SessionStart hook that injects content before Claude's first response. superreins had content but no delivery.
+The existential question from iteration 4 ("is this project a harness?") had a clear answer: no, because it was a folder of docs no agent reads automatically. Superpowers works because of ONE thing — a SessionStart hook that injects content before Claude's first response. superharness had content but no delivery.
 
 ### How superpowers works (research)
 
@@ -465,7 +465,7 @@ adapters/
 
 The Claude Code hook:
 - Reads `identity/core.md` on every session start
-- Detects active `.superreins/contract.yaml` in current project
+- Detects active `.superharness/contract.yaml` in current project
 - Checks for pending handoffs addressed to `claude-code`
 - Injects everything as context before first response
 - Works alongside superpowers — they inject skills, we inject identity + protocol
@@ -509,21 +509,21 @@ CHANGELOG.md                               ← UPDATED: this entry
 
 ### Iteration 5b — Plugin Format Fix (same session)
 
-Research revealed that the original install.sh approach (symlink into `~/.claude/hooks/`) would **conflict** with superpowers — both would fight over the same `hooks.json` file. Claude Code's plugin system automatically merges hooks from all plugins, so the fix was to make superreins a proper Claude Code plugin.
+Research revealed that the original install.sh approach (symlink into `~/.claude/hooks/`) would **conflict** with superpowers — both would fight over the same `hooks.json` file. Claude Code's plugin system automatically merges hooks from all plugins, so the fix was to make superharness a proper Claude Code plugin.
 
 **Changes:**
 - Added `.claude-plugin/plugin.json` — plugin manifest
 - Rewrote `hooks/hooks.json` to correct array format with `${CLAUDE_PLUGIN_ROOT}`
-- Rewrote `install.sh` — now symlinks `adapters/claude-code/` into `~/.claude/plugins/superreins`
+- Rewrote `install.sh` — now symlinks `adapters/claude-code/` into `~/.claude/plugins/superharness`
 - Updated `session-start.sh` — uses `CLAUDE_PLUGIN_ROOT` env var (set by Claude Code) with fallback for manual testing
 
 **How it works now:**
 ```bash
 bash adapters/claude-code/install.sh
-# Creates: ~/.claude/plugins/superreins → adapters/claude-code/
+# Creates: ~/.claude/plugins/superharness → adapters/claude-code/
 # Claude Code discovers it as a plugin, merges hooks with superpowers automatically
-# Verify: /plugins in Claude Code should list superreins
-# Uninstall: rm ~/.claude/plugins/superreins
+# Verify: /plugins in Claude Code should list superharness
+# Uninstall: rm ~/.claude/plugins/superharness
 ```
 
 **Files added/modified:**
@@ -536,10 +536,10 @@ adapters/claude-code/install.sh                  ← REWRITTEN: plugin symlink i
 
 ### Iteration 5 Open Questions
 
-1. **Testing the plugin:** Need to test in a real Claude Code session. Does `/plugins` list superreins? Does the hook fire alongside superpowers? Does JSON output parse correctly?
+1. **Testing the plugin:** Need to test in a real Claude Code session. Does `/plugins` list superharness? Does the hook fire alongside superpowers? Does JSON output parse correctly?
 2. **AGENTS.md generation:** The Codex template is static. Should there be a `generate.sh` that reads `identity/core.md` and outputs a project-specific AGENTS.md? Or is manual copy+edit sufficient?
-3. **Naming:** User still questioning "superreins" as a name. Decision deferred.
-4. **Marketplace:** Should superreins be published to a Claude Code marketplace (like superpowers uses obra/superpowers-marketplace)? Or keep it as manual git clone + install.sh?
+3. **Naming:** User still questioning "superharness" as a name. Decision deferred.
+4. **Marketplace:** Should superharness be published to a Claude Code marketplace (like superpowers uses obra/superpowers-marketplace)? Or keep it as manual git clone + install.sh?
 
 ---
 
@@ -564,18 +564,18 @@ Deep web research on 2026 harness engineering. Full synthesis in `research/itera
 ### What Was Built
 
 **1. Enforcement Hooks (PreToolUse + PostToolUse)**
-The iteration 3b critique said superreins had "no enforcement, no teeth." Now it does:
+The iteration 3b critique said superharness had "no enforcement, no teeth." Now it does:
 - `scope-guard.sh` — PreToolUse on Write/Edit. Blocks .env/credentials/keys writes. Warns on system files.
 - `branch-guard.sh` — PreToolUse on Bash. Blocks `git push` to main/master. Blocks force push. Warns on destructive git operations and `rm -rf /`.
-- `ledger-append.sh` — PostToolUse on Write/Edit. Auto-appends file changes to `.superreins/ledger.md`. No manual logging needed.
+- `ledger-append.sh` — PostToolUse on Write/Edit. Auto-appends file changes to `.superharness/ledger.md`. No manual logging needed.
 
 **2. Review Lenses (`agents/review-lenses.md`)**
-7 specialized review perspectives: security, architecture, performance, tests, error-handling, devops, api-contract. Assignable per-task in the contract via `review_lenses` field. Can run as parallel subagents or sequential checklist. Custom project-specific lenses supported in `.superreins/review-lenses/`.
+7 specialized review perspectives: security, architecture, performance, tests, error-handling, devops, api-contract. Assignable per-task in the contract via `review_lenses` field. Can run as parallel subagents or sequential checklist. Custom project-specific lenses supported in `.superharness/review-lenses/`.
 
 **3. Cross-Agent Failure Store**
 Redesigned `knowledge/failure-memory.md` with 3 tiers:
 - Tier 1: Contract failures (short-lived, per-feature)
-- Tier 2: `.superreins/failures.yaml` (persistent, cross-agent — both Claude and Codex read this)
+- Tier 2: `.superharness/failures.yaml` (persistent, cross-agent — both Claude and Codex read this)
 - Tier 3: Vault (permanent, cross-project)
 
 No longer duplicates Claude Code's native Auto Memory. Only stores what needs to cross to other agents.
@@ -583,7 +583,7 @@ No longer duplicates Claude Code's native Auto Memory. Only stores what needs to
 **4. Cross-Agent Decision Store**
 Redesigned `knowledge/decision-journal.md` with 3 tiers:
 - Tier 1: Contract decisions (short-lived)
-- Tier 2: `.superreins/decisions.yaml` (persistent ADR-lite format, cross-agent)
+- Tier 2: `.superharness/decisions.yaml` (persistent ADR-lite format, cross-agent)
 - Tier 3: Vault (permanent full ADRs)
 
 Optional Archgate integration for enforcement via pre-commit hooks.

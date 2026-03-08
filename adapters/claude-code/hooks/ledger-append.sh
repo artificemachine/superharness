@@ -1,15 +1,15 @@
 #!/bin/bash
 # PostToolUse hook: Auto-append to ledger
-# Fires after every Write/Edit. If a .superreins/ledger.md exists,
+# Fires after every Write/Edit. If a .superharness/ledger.md exists,
 # appends a one-line entry tracking the file change.
 #
 # Input: JSON on stdin with tool_input.file_path and tool_result
 # Output: empty (PostToolUse hooks don't affect the tool result)
 
 PROJECT_DIR="$(pwd)"
-LEDGER="$PROJECT_DIR/.superreins/ledger.md"
+LEDGER="$PROJECT_DIR/.superharness/ledger.md"
 
-# Only run if superreins is active for this project
+# Only run if superharness is active for this project
 if [ ! -f "$LEDGER" ]; then
   exit 0
 fi
@@ -27,8 +27,8 @@ if [[ "$FILE_PATH" == *"ledger.md"* ]]; then
   exit 0
 fi
 
-# Skip superreins protocol files (contract, handoffs)
-if [[ "$FILE_PATH" == *".superreins/"* ]]; then
+# Skip superharness protocol files (contract, handoffs)
+if [[ "$FILE_PATH" == *".superharness/"* ]]; then
   exit 0
 fi
 
