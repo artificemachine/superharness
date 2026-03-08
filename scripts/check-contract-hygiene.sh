@@ -185,9 +185,7 @@ while IFS= read -r line; do
       fi
       ;;
   esac
-done << EOF
-$analysis
-EOF
+done <<< "$analysis"
 
 if [ "$failures" -ne 0 ]; then
   echo ""

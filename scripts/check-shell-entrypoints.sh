@@ -10,6 +10,7 @@ ENTRYPOINT_FILES=(
   "adapters/claude-code/hooks/scope-guard.sh"
   "adapters/claude-code/hooks/session-start.sh"
   "scripts/check-shell-entrypoints.sh"
+  "scripts/check-contract-hygiene.sh"
   "scripts/delegate-to-claude.sh"
   "scripts/delegate-to-codex.sh"
   "scripts/ensure-launchd-inbox-watcher.sh"
