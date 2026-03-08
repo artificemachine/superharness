@@ -98,43 +98,32 @@ fi
 
 INBOX_FILE="$HARNESS_DIR/inbox.yaml"
 CONTRACT_FILE="$HARNESS_DIR/contract.yaml"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INBOX_YAML="$SCRIPT_DIR/inbox-yaml.rb"
+[ -x "$INBOX_YAML" ] || { echo "Missing helper script: $INBOX_YAML" >&2; exit 1; }
+
 if [ -z "$ITEM_ID" ]; then
   ITEM_ID="$(date -u +%Y%m%dT%H%M%SZ)-${TASK_ID}-$$-$(awk 'BEGIN{srand(); printf "%06d\n", int(rand()*1000000)}')"
 fi
 
 # Validate task project_path mapping when available in contract.
 if [ -f "$CONTRACT_FILE" ]; then
-  TASK_PATH="$(awk -v task="$TASK_ID" '
-    BEGIN { in_task=0; found=0; path="" }
-    /^[[:space:]]*-[[:space:]]*id:[[:space:]]*/ {
-      if (in_task == 1) { exit }
-      id = $0
-      sub(/^[[:space:]]*-[[:space:]]*id:[[:space:]]*/, "", id)
-      gsub(/"/, "", id)
-      if (id == task) { in_task=1; found=1 }
-      next
-    }
-    in_task == 1 && /^[[:space:]]*project_path:[[:space:]]*/ {
-      path = $0
-      sub(/^[[:space:]]*project_path:[[:space:]]*/, "", path)
-      gsub(/"/, "", path)
-      print path
-      exit
-    }
-    in_task == 1 && /^[[:space:]]*-[[:space:]]*id:[[:space:]]*/ { exit }
-    END {
-      if (found == 0) {
-        # Task id missing in contract; allow enqueue but note upstream.
-      }
-    }
-  ' "$CONTRACT_FILE")"
+  if ! TASK_EXISTS="$(ruby "$INBOX_YAML" contract_task_exists --file "$CONTRACT_FILE" --task "$TASK_ID")"; then
+    echo "Failed to read task metadata from contract: $CONTRACT_FILE" >&2
+    exit 1
+  fi
+  if ! TASK_PATH="$(ruby "$INBOX_YAML" contract_task_project_path --file "$CONTRACT_FILE" --task "$TASK_ID")"; then
+    echo "Failed to read task project_path from contract: $CONTRACT_FILE" >&2
+    exit 1
+  fi
 
-  if grep -Eq "^[[:space:]]*-[[:space:]]*id:[[:space:]]*\"?${TASK_ID}\"?[[:space:]]*$" "$CONTRACT_FILE"; then
-    if [ -z "$TASK_PATH" ]; then
-      echo "Task '$TASK_ID' is missing project_path in $CONTRACT_FILE" >&2
-      echo "Add: project_path: \"$PROJECT_DIR\"" >&2
-      exit 1
-    fi
+  # Missing task id in contract is allowed to support pre-contract queueing.
+  if [ "$TASK_EXISTS" = "true" ] && [ -z "$TASK_PATH" ]; then
+    echo "Task '$TASK_ID' is missing project_path in $CONTRACT_FILE" >&2
+    echo "Add: project_path: \"$PROJECT_DIR\"" >&2
+    exit 1
+  fi
+  if [ -n "$TASK_PATH" ]; then
     if printf '%s' "$TASK_PATH" | grep -q '\$'; then
       echo "Task '$TASK_ID' project_path must be an absolute path, not an environment variable expression." >&2
       echo "  contract: $TASK_PATH" >&2
@@ -148,11 +137,6 @@ if [ -f "$CONTRACT_FILE" ]; then
       exit 1
     fi
     TASK_PATH_CANONICAL="$(cd "$TASK_PATH" && pwd -P)"
-    if [ "$TASK_PATH" != "$PROJECT_DIR" ]; then
-      if [ "$TASK_PATH_CANONICAL" = "$PROJECT_DIR" ]; then
-        TASK_PATH="$TASK_PATH_CANONICAL"
-      fi
-    fi
     if [ "$TASK_PATH_CANONICAL" != "$PROJECT_DIR" ]; then
       echo "Task '$TASK_ID' project_path mismatch." >&2
       echo "  contract: $TASK_PATH_CANONICAL" >&2
