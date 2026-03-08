@@ -135,6 +135,13 @@ status: draft
 
 goal: "TBD — describe the current objective"
 
+# Task schema (recommended):
+# tasks:
+#   - id: "task-id"
+#     title: "Task title"
+#     status: "todo|in_progress|done"
+#     owner: "claude-code|codex-cli"
+#     project_path: "$PROJECT_DIR"
 tasks: []
 
 decisions: []
@@ -166,6 +173,7 @@ This project uses superharness. Protocol files are in \`.superharness/\`.
 - When you make a decision between alternatives: log it in the contract's decisions section.
 - When something fails: log it in the contract's failures section.
 - When you finish a task: update contract status, write a handoff, append to ledger.
+- When creating/updating contract tasks: always set \`project_path\` to the absolute project directory.
 - When reviewing Codex's work: use the review lenses assigned to the task in the contract.
 
 ## Session Lifecycle (Required)
@@ -183,7 +191,8 @@ When the user asks to read the contract (or equivalent), do this:
 1. Read \`.superharness/contract.yaml\`.
 2. Summarize contract id, status, and tasks with owner/status.
 3. If any task is \`todo\` or \`in_progress\` and owner is \`codex-cli\`, ask:
-   "Do you want me to delegate \`<task_id>\` to codex-cli now?"
+   "I detected owner is codex-cli. Do you want to delegate \`<task_id>\` now?"
+   Do not use generic alternatives like "Want me to tackle...".
 4. If user says yes:
    - set task status to \`in_progress\` (if needed),
    - create/update \`.superharness/handoffs/<DATE>-<TASK_ID>.yaml\` addressed to \`codex-cli\`,
@@ -192,6 +201,12 @@ When the user asks to read the contract (or equivalent), do this:
 
 ## Trigger Phrase: contract today
 When the user says \`contract today\`, treat it as an explicit request to run the full Delegation Prompting Rule above.
+
+## Delegation Execution
+When delegating a contract task to \`codex-cli\`, use:
+- \`bash /path/to/superharness/scripts/delegate-to-codex.sh --project .\`
+- Use \`--task <TASK_ID>\` when delegating a specific task.
+- Use \`--print-only\` when you only need the kickoff prompt without launching Codex.
 
 ## Review Lenses
 When reviewing, check the \`review_lenses\` field on the task. Apply only the assigned lenses:
@@ -249,6 +264,7 @@ Protocol files are in `.superharness/`.
 - When you make a decision between alternatives: log it in the contract's decisions section.
 - When something fails: log it in the contract's failures section.
 - When you finish a task: update contract status, write a handoff YAML, append to `ledger.md`.
+- When creating/updating contract tasks: always set `project_path` to the absolute project directory.
 - When reviewing: use the review lenses assigned to the task in the contract. Never rubber-stamp.
 
 ## Session Lifecycle (Required)
@@ -266,7 +282,8 @@ When the user asks to read the contract (or equivalent), do this:
 1. Read `.superharness/contract.yaml`.
 2. Summarize contract id, status, and tasks with owner/status.
 3. If any task is `todo` or `in_progress` and owner is `claude-code`, ask:
-   "Do you want me to delegate `<task_id>` to claude-code now?"
+   "I detected owner is claude-code. Do you want to delegate `<task_id>` now?"
+   Do not use generic alternatives like "Want me to tackle...".
 4. If user says yes:
    - set task status to `in_progress` (if needed),
    - create/update `.superharness/handoffs/<DATE>-<TASK_ID>.yaml` addressed to `claude-code`,
@@ -275,6 +292,16 @@ When the user asks to read the contract (or equivalent), do this:
 
 ## Trigger Phrase: contract today
 When the user says `contract today`, treat it as an explicit request to run the full Delegation Prompting Rule above.
+
+## Delegation Execution
+When delegating a contract task to `claude-code`, use:
+- `bash /path/to/superharness/scripts/delegate-to-claude.sh --project .`
+- Use `--task <TASK_ID>` when delegating a specific task.
+- Use `--print-only` when you only need the kickoff prompt without launching Claude.
+
+## Watcher Ensure (Session Start)
+At the beginning of each Codex session, ensure watcher is installed for this project:
+- `bash /path/to/superharness/scripts/ensure-launchd-inbox-watcher.sh --project .`
 
 ## Review Lenses
 When reviewing, check the `review_lenses` field on the task. Apply only the assigned lenses:
@@ -335,6 +362,16 @@ PY
   echo "Created: AGENTS.md"
 else
   echo "Skipped: AGENTS.md (already exists)"
+fi
+
+# Ensure launchd watcher is installed (macOS). Non-fatal if unavailable.
+ENSURE_WATCHER="$SCRIPT_DIR/scripts/ensure-launchd-inbox-watcher.sh"
+if [ -x "$ENSURE_WATCHER" ]; then
+  if bash "$ENSURE_WATCHER" --project "$PROJECT_DIR" >/dev/null 2>&1; then
+    echo "Watcher: launchd inbox watcher is configured."
+  else
+    echo "Watcher: unable to auto-configure launchd watcher (continuing)."
+  fi
 fi
 
 echo ""

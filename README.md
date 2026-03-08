@@ -179,6 +179,41 @@ scripts/install-git-hooks.sh
 The guard enforces: a curated entrypoint/hook allowlist must keep a shebang, stay executable (and `100755` once tracked), and pass `bash -n`.
 If you add a new executable shell entrypoint or `.githooks/*` hook, update the allowlist in `scripts/check-shell-entrypoints.sh` in the same change.
 
+### Delegation launchers
+```bash
+# Launch Codex from latest handoff addressed to codex-cli
+bash /path/to/superharness/scripts/delegate-to-codex.sh --project /path/to/project
+
+# Launch Claude from latest handoff addressed to claude-code
+bash /path/to/superharness/scripts/delegate-to-claude.sh --project /path/to/project
+```
+Use `--task <TASK_ID>` to target a specific task and `--print-only` to output the kickoff prompt without launching the CLI.
+
+### Delegation inbox listener
+```bash
+# Enqueue a task for Claude or Codex
+bash /path/to/superharness/scripts/inbox-enqueue.sh --project /path/to/project --to claude-code --task mcp-smoke-test
+
+# Dispatch first pending item (print-only smoke mode)
+bash /path/to/superharness/scripts/inbox-dispatch.sh --project /path/to/project --print-only
+```
+Inbox file: `.superharness/inbox.yaml` with item statuses `pending|prepared|launched|done|failed`.
+For multi-project safety, contract tasks should include `project_path` and `inbox-enqueue.sh` validates it before queuing.
+
+### Full automation (macOS launchd watcher)
+```bash
+# Install background watcher (non-interactive dispatch every 30s)
+bash /path/to/superharness/scripts/install-launchd-inbox-watcher.sh --project /path/to/project --interval 30
+
+# Optional safe mode (prepare prompts only)
+bash /path/to/superharness/scripts/install-launchd-inbox-watcher.sh --project /path/to/project --interval 30 --print-only
+
+# Remove watcher
+bash /path/to/superharness/scripts/uninstall-launchd-inbox-watcher.sh --project /path/to/project
+```
+The watcher runs `scripts/inbox-watch.sh`, which polls inbox and routes pending tasks to Claude/Codex via delegation launchers.
+`init-project.sh` now auto-ensures watcher install when possible, and Claude SessionStart re-checks watcher presence each session.
+
 ---
 
 ## Current State: v0.6
