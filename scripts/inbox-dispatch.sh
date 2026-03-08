@@ -171,35 +171,24 @@ if [ -z "$NEW_RETRY_COUNT" ]; then
 fi
 echo "Inbox item updated: $ITEM_ID -> launched (priority=$ITEM_PRIORITY, retries=$NEW_RETRY_COUNT/$ITEM_MAX_RETRIES)"
 
+LAUNCHER=""
 case "$ITEM_TO" in
-  claude-code)
-    if ! bash "$LAUNCH_CLAUDE" "${LAUNCH_ARGS[@]}"; then
-      FAIL_NOW="$(date -u +%FT%TZ)"
-      if ! acquire_lock; then
-        echo "Failed to acquire inbox lock while marking failure for $ITEM_ID" >&2
-        exit 1
-      fi
-      ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to failed --now "$FAIL_NOW" --stamp-key failed_at >/dev/null
-      release_lock
-      echo "Inbox item updated: $ITEM_ID -> failed"
-      exit 1
-    fi
-    ;;
-  codex-cli)
-    if ! bash "$LAUNCH_CODEX" "${LAUNCH_ARGS[@]}"; then
-      FAIL_NOW="$(date -u +%FT%TZ)"
-      if ! acquire_lock; then
-        echo "Failed to acquire inbox lock while marking failure for $ITEM_ID" >&2
-        exit 1
-      fi
-      ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to failed --now "$FAIL_NOW" --stamp-key failed_at >/dev/null
-      release_lock
-      echo "Inbox item updated: $ITEM_ID -> failed"
-      exit 1
-    fi
-    ;;
+  claude-code) LAUNCHER="$LAUNCH_CLAUDE" ;;
+  codex-cli) LAUNCHER="$LAUNCH_CODEX" ;;
   *)
     echo "Unsupported target '$ITEM_TO' for inbox item '$ITEM_ID'" >&2
     exit 1
     ;;
 esac
+
+if ! bash "$LAUNCHER" "${LAUNCH_ARGS[@]}"; then
+  FAIL_NOW="$(date -u +%FT%TZ)"
+  if ! acquire_lock; then
+    echo "Failed to acquire inbox lock while marking failure for $ITEM_ID" >&2
+    exit 1
+  fi
+  ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to failed --now "$FAIL_NOW" --stamp-key failed_at >/dev/null
+  release_lock
+  echo "Inbox item updated: $ITEM_ID -> failed"
+  exit 1
+fi

@@ -9,7 +9,7 @@
 → See `identity/core.md` (~30 lines — always loaded)
 
 ## Full Developer Profile
-→ See `identity/developer-profile.md` (load when you need tech stack, domain expertise, or venture details)
+→ See `identity/core.md` plus repository docs (the old standalone profile file is no longer maintained)
 
 ## Task Routing
 → See `methodology/routing.md` (load when deciding which agent/model handles a task)
@@ -22,9 +22,6 @@
 
 ## Cross-Agent Review
 → See `methodology/cross-agent-review.md` (load before merge)
-
-## Context Engineering
-→ See `context/context-engineering.md` (load when managing long sessions)
 
 ## State Protocol
 → See `state/state-protocol.md` (load when checkpointing or recovering)
