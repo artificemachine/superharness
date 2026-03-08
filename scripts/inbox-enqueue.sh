@@ -103,7 +103,8 @@ INBOX_YAML="$SCRIPT_DIR/inbox-yaml.rb"
 [ -x "$INBOX_YAML" ] || { echo "Missing helper script: $INBOX_YAML" >&2; exit 1; }
 
 if [ -z "$ITEM_ID" ]; then
-  ITEM_ID="$(date -u +%Y%m%dT%H%M%SZ)-${TASK_ID}-$$-$(awk 'BEGIN{srand(); printf "%06d\n", int(rand()*1000000)}')"
+  RAND_SUFFIX="$(od -An -N3 -tu1 /dev/urandom | tr -d ' \n')"
+  ITEM_ID="$(date -u +%Y%m%dT%H%M%SZ)-${TASK_ID}-$$-${RAND_SUFFIX}"
 fi
 
 # Validate task project_path mapping when available in contract.
