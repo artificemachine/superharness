@@ -84,7 +84,28 @@ if [ ! -x "$LAUNCH_CLAUDE" ] || [ ! -x "$LAUNCH_CODEX" ] || [ ! -x "$INBOX_YAML"
   exit 1
 fi
 
-ITEM="$(ruby "$INBOX_YAML" next_pending --file "$INBOX_FILE" ${TARGET_FILTER:+--to "$TARGET_FILTER"} || true)"
+LOCK_FILE="${INBOX_FILE}.lock"
+LOCK_DIR="${LOCK_FILE}.d"
+
+acquire_lock() {
+  mkdir "$LOCK_DIR" 2>/dev/null
+}
+
+release_lock() {
+  rmdir "$LOCK_DIR" 2>/dev/null || true
+}
+
+if ! acquire_lock; then
+  echo "Another inbox dispatcher is active for $INBOX_FILE; skipping."
+  exit 0
+fi
+trap 'release_lock' EXIT
+
+READ_ARGS=(next_pending --file "$INBOX_FILE")
+if [ -n "$TARGET_FILTER" ]; then
+  READ_ARGS+=(--to "$TARGET_FILTER")
+fi
+ITEM="$(ruby "$INBOX_YAML" "${READ_ARGS[@]}" || true)"
 if [ -z "$ITEM" ]; then
   echo "No pending inbox items found in $INBOX_FILE"
   exit 0
@@ -125,6 +146,7 @@ fi
 LAUNCH_NOW="$(date -u +%FT%TZ)"
 LAUNCH_RESULT="$(ruby "$INBOX_YAML" launch --file "$INBOX_FILE" --id "$ITEM_ID" --now "$LAUNCH_NOW")" || LAUNCH_RC=$?
 LAUNCH_RC=${LAUNCH_RC:-0}
+release_lock
 
 if [ "$LAUNCH_RC" -eq 4 ]; then
   echo "Inbox item updated: $ITEM_ID -> failed (retry limit reached: $ITEM_RETRY_COUNT/$ITEM_MAX_RETRIES)"
@@ -146,7 +168,9 @@ case "$ITEM_TO" in
     if ! bash "$LAUNCH_CLAUDE" "${LAUNCH_ARGS[@]}"; then
       if [ "$STATUS_AFTER" = "launched" ]; then
         FAIL_NOW="$(date -u +%FT%TZ)"
+        acquire_lock || true
         ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to failed --now "$FAIL_NOW" --stamp-key failed_at >/dev/null
+        release_lock
         echo "Inbox item updated: $ITEM_ID -> failed"
       fi
       exit 1
@@ -156,7 +180,9 @@ case "$ITEM_TO" in
     if ! bash "$LAUNCH_CODEX" "${LAUNCH_ARGS[@]}"; then
       if [ "$STATUS_AFTER" = "launched" ]; then
         FAIL_NOW="$(date -u +%FT%TZ)"
+        acquire_lock || true
         ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to failed --now "$FAIL_NOW" --stamp-key failed_at >/dev/null
+        release_lock
         echo "Inbox item updated: $ITEM_ID -> failed"
       fi
       exit 1

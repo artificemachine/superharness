@@ -88,6 +88,7 @@ if [ ! -d "$PROJECT_DIR" ]; then
   echo "Project directory does not exist: $PROJECT_DIR" >&2
   exit 1
 fi
+PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd -P)"
 
 HARNESS_DIR="$PROJECT_DIR/.superharness"
 if [ ! -d "$HARNESS_DIR" ]; then
@@ -128,15 +129,33 @@ if [ -f "$CONTRACT_FILE" ]; then
     }
   ' "$CONTRACT_FILE")"
 
-  if rg -q "^[[:space:]]*-[[:space:]]*id:[[:space:]]*\"?${TASK_ID}\"?[[:space:]]*$" "$CONTRACT_FILE"; then
+  if grep -Eq "^[[:space:]]*-[[:space:]]*id:[[:space:]]*\"?${TASK_ID}\"?[[:space:]]*$" "$CONTRACT_FILE"; then
     if [ -z "$TASK_PATH" ]; then
       echo "Task '$TASK_ID' is missing project_path in $CONTRACT_FILE" >&2
       echo "Add: project_path: \"$PROJECT_DIR\"" >&2
       exit 1
     fi
-    if [ "$TASK_PATH" != "$PROJECT_DIR" ]; then
-      echo "Task '$TASK_ID' project_path mismatch." >&2
+    if printf '%s' "$TASK_PATH" | grep -q '\$'; then
+      echo "Task '$TASK_ID' project_path must be an absolute path, not an environment variable expression." >&2
       echo "  contract: $TASK_PATH" >&2
+      echo "  expected: $PROJECT_DIR" >&2
+      exit 1
+    fi
+    if [ ! -d "$TASK_PATH" ]; then
+      echo "Task '$TASK_ID' project_path does not exist on disk." >&2
+      echo "  contract: $TASK_PATH" >&2
+      echo "  expected: $PROJECT_DIR" >&2
+      exit 1
+    fi
+    TASK_PATH_CANONICAL="$(cd "$TASK_PATH" && pwd -P)"
+    if [ "$TASK_PATH" != "$PROJECT_DIR" ]; then
+      if [ "$TASK_PATH_CANONICAL" = "$PROJECT_DIR" ]; then
+        TASK_PATH="$TASK_PATH_CANONICAL"
+      fi
+    fi
+    if [ "$TASK_PATH_CANONICAL" != "$PROJECT_DIR" ]; then
+      echo "Task '$TASK_ID' project_path mismatch." >&2
+      echo "  contract: $TASK_PATH_CANONICAL" >&2
       echo "  expected: $PROJECT_DIR" >&2
       exit 1
     fi
@@ -144,7 +163,7 @@ if [ -f "$CONTRACT_FILE" ]; then
 fi
 
 if [ ! -f "$INBOX_FILE" ]; then
-  printf '# Delegation inbox\n# status: pending|launched|running|done|failed\n' > "$INBOX_FILE"
+  printf '# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n' > "$INBOX_FILE"
 fi
 
 {
