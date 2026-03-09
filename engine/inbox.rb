@@ -6,6 +6,7 @@ require "yaml"
 require "psych"
 require "time"
 require "date"
+require "json"
 
 HEADER = <<~HDR
   # Delegation inbox
@@ -77,15 +78,42 @@ def next_pending(file:, target: nil)
   return if best.nil?
 
   item = best[:item]
-  puts [
-    item["id"].to_s,
-    item["to"].to_s,
-    item["task"].to_s,
-    item["project"].to_s,
-    (item["retry_count"] || 0).to_i.to_s,
-    (item["max_retries"] || 3).to_i.to_s,
-    best[:prio].to_s
-  ].join("|")
+  puts JSON.generate(
+    {
+      "id" => item["id"].to_s,
+      "to" => item["to"].to_s,
+      "task" => item["task"].to_s,
+      "project" => item["project"].to_s,
+      "retry_count" => (item["retry_count"] || 0).to_i,
+      "max_retries" => (item["max_retries"] || 3).to_i,
+      "priority" => best[:prio]
+    }
+  )
+end
+
+def enqueue(file:, id:, to:, task:, project:, priority:, created_at:, retry_count: 0, max_retries: 3)
+  items = load_items(file)
+  if items.any? { |x| x.is_a?(Hash) && x["id"].to_s == id.to_s }
+    puts "result=duplicate_id id=#{id}"
+    return 2
+  end
+
+  item = {
+    "id" => id.to_s,
+    "to" => to.to_s,
+    "task" => task.to_s,
+    "project" => project.to_s,
+    "status" => "pending",
+    "priority" => norm_priority(priority),
+    "retry_count" => retry_count.to_i,
+    "max_retries" => max_retries.to_i,
+    "created_at" => created_at.to_s
+  }
+
+  items << item
+  write_items(file, items)
+  puts "result=enqueued id=#{id} priority=#{item["priority"]}"
+  0
 end
 
 def launch(file:, id:, now:)
@@ -241,6 +269,32 @@ when "launch"
   end.parse!(ARGV)
   abort("--file, --id, --now are required") unless opts[:file] && opts[:id] && opts[:now]
   exit launch(file: opts[:file], id: opts[:id], now: opts[:now])
+when "enqueue"
+  opts = {}
+  OptionParser.new do |o|
+    o.on("--file FILE") { |v| opts[:file] = v }
+    o.on("--id ID") { |v| opts[:id] = v }
+    o.on("--to TARGET") { |v| opts[:to] = v }
+    o.on("--task TASK_ID") { |v| opts[:task] = v }
+    o.on("--project DIR") { |v| opts[:project] = v }
+    o.on("--priority N") { |v| opts[:priority] = v.to_i }
+    o.on("--created-at TS") { |v| opts[:created_at] = v }
+    o.on("--retry-count N") { |v| opts[:retry_count] = v.to_i }
+    o.on("--max-retries N") { |v| opts[:max_retries] = v.to_i }
+  end.parse!(ARGV)
+  required = %i[file id to task project priority created_at]
+  abort("--file, --id, --to, --task, --project, --priority, --created-at are required") unless required.all? { |k| opts.key?(k) }
+  exit enqueue(
+    file: opts[:file],
+    id: opts[:id],
+    to: opts[:to],
+    task: opts[:task],
+    project: opts[:project],
+    priority: opts[:priority],
+    created_at: opts[:created_at],
+    retry_count: opts.fetch(:retry_count, 0),
+    max_retries: opts.fetch(:max_retries, 3)
+  )
 when "set_status"
   opts = {}
   OptionParser.new do |o|
@@ -288,5 +342,5 @@ when "recover_launched"
     action: opts[:action]
   )
 else
-  abort("Usage: inbox.rb <next_pending|launch|set_status|normalize|recover_launched> [options]")
+  abort("Usage: inbox.rb <next_pending|launch|enqueue|set_status|normalize|recover_launched> [options]")
 end
