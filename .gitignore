@@ -5,3 +5,14 @@
 shipguard.txt
 __pycache__/
 *.py[cod]
+
+# codex-pii-guard:start
+.env
+.env.local
+.env.*.local
+*.log
+*.session
+*.transcript
+.git_new/
+!.env.example
+# codex-pii-guard:end
