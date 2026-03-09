@@ -11,6 +11,8 @@ ENTRYPOINT_FILES=(
   "adapters/claude-code/hooks/session-start.sh"
   "scripts/check-shell-entrypoints.sh"
   "scripts/check-contract-hygiene.sh"
+  "scripts/contract-today.sh"
+  "scripts/doctor.sh"
   "scripts/delegate-to-claude.sh"
   "scripts/delegate-to-codex.sh"
   "scripts/ensure-launchd-inbox-watcher.sh"
@@ -19,8 +21,10 @@ ENTRYPOINT_FILES=(
   "scripts/inbox-normalize.sh"
   "scripts/inbox-recover-stale.sh"
   "scripts/inbox-watch.sh"
+  "scripts/install-wrapper.sh"
   "scripts/install-launchd-inbox-watcher.sh"
   "scripts/install-git-hooks.sh"
+  "scripts/task.sh"
   "scripts/uninstall-launchd-inbox-watcher.sh"
 )
 

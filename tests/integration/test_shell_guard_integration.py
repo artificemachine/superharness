@@ -24,6 +24,8 @@ def _copy_guard_tree(tmp_path: Path) -> Path:
         "adapters/claude-code/hooks/session-start.sh",
         "scripts/check-shell-entrypoints.sh",
         "scripts/check-contract-hygiene.sh",
+        "scripts/contract-today.sh",
+        "scripts/doctor.sh",
         "scripts/delegate-to-claude.sh",
         "scripts/delegate-to-codex.sh",
         "scripts/ensure-launchd-inbox-watcher.sh",
@@ -33,11 +35,19 @@ def _copy_guard_tree(tmp_path: Path) -> Path:
         "scripts/inbox-recover-stale.sh",
         "scripts/inbox-watch.sh",
         "scripts/install-launchd-inbox-watcher.sh",
+        "scripts/install-wrapper.sh",
         "scripts/install-git-hooks.sh",
+        "scripts/task.sh",
         "scripts/uninstall-launchd-inbox-watcher.sh",
         ".githooks/pre-commit",
         "protocol/templates/identity-core.md",
         "scripts/inbox-yaml.rb",
+        "cli/contract-today.sh",
+        "cli/doctor.sh",
+        "cli/install-wrapper.sh",
+        "cli/delegate-task.sh",
+        "cli/task.sh",
+        "superharness",
     ]
 
     for rel in required:
