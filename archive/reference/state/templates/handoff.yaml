@@ -1,0 +1,33 @@
+# Session Handoff Template
+# Copy this to your project's state/ directory when transitioning sessions.
+
+date: YYYY-MM-DD
+agent: Claude Code | Codex CLI | Cowork
+session_type: evening | weekend | continued
+
+context:
+  project:
+  branch:
+  goal:
+
+accomplished:
+  -
+
+state:
+  current_step:
+  files_modified:
+    - path:
+      change:
+  blockers:
+    -
+
+next:
+  -
+
+decisions:
+  - decision:
+    chosen:
+    reason:
+
+do_not:
+  -

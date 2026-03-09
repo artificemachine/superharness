@@ -191,7 +191,12 @@ cat >> "$PROJECT_DIR/.superharness/contract.yaml" << EOF
 EOF
 
 # Generate CLAUDE.md from template
-IDENTITY_CONTENT=$(cat "$SCRIPT_DIR/identity/core.md")
+IDENTITY_SOURCE="$TEMPLATE_DIR/identity-core.md"
+if [ ! -f "$IDENTITY_SOURCE" ]; then
+  echo "Missing identity template: $IDENTITY_SOURCE" >&2
+  exit 1
+fi
+IDENTITY_CONTENT=$(cat "$IDENTITY_SOURCE")
 
 if [ ! -f "$PROJECT_DIR/CLAUDE.md" ]; then
   if [ -f "$TEMPLATE_DIR/CLAUDE.md.template" ]; then
