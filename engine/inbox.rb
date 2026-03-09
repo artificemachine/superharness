@@ -7,6 +7,7 @@ require "psych"
 require "time"
 require "date"
 require "json"
+require "tempfile"
 
 HEADER = <<~HDR
   # Delegation inbox
@@ -39,9 +40,25 @@ def load_items(path)
 end
 
 def write_items(path, items)
-  tmp = "#{path}.tmp.#{$$}"
-  File.write(tmp, HEADER + YAML.dump(items))
-  File.rename(tmp, path)
+  dir = File.dirname(path)
+  base = File.basename(path)
+  tmp = Tempfile.new([base, ".tmp"], dir)
+  begin
+    tmp.write(HEADER + YAML.dump(items))
+    tmp.flush
+    tmp.fsync
+    tmp.close
+    File.rename(tmp.path, path)
+  ensure
+    if tmp
+      begin
+        tmp.close unless tmp.closed?
+      rescue IOError
+        nil
+      end
+      File.unlink(tmp.path) if File.exist?(tmp.path)
+    end
+  end
 end
 
 def append_archive(path, items, now:)

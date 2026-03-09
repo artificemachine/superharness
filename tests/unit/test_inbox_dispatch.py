@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 
 from tests.helpers import run_bash
@@ -343,3 +344,72 @@ def test_dispatch_handles_pipe_character_in_item_id(repo_root, tmp_path) -> None
     inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
     assert "id: id|with|pipe" in inbox_text
     assert "  status: launched" in inbox_text
+
+
+def test_dispatch_marks_failed_after_transient_lock_contention(repo_root, tmp_path) -> None:
+    project = tmp_path / "proj8"
+    project.mkdir()
+    _write_contract(project)
+    _write_inbox(
+        project,
+        [
+            "# Delegation inbox",
+            "# status: pending|launched|running|done|failed|stale",
+            "",
+            "- id: lock-race-item",
+            "  to: codex-cli",
+            "  task: mcp-docs",
+            f"  project: {project}",
+            "  status: pending",
+            "  priority: 1",
+            "  retry_count: 0",
+            "  max_retries: 3",
+            "  created_at: 2026-03-08T18:00:00Z",
+        ],
+    )
+
+    bin_dir = _fake_bin(tmp_path)
+    codex_path = bin_dir / "codex"
+    codex_path.write_text("#!/bin/bash\nsleep 0.2\nexit 1\n")
+    codex_path.chmod(0o755)
+
+    inbox_path = project / ".superharness" / "inbox.yaml"
+    lock_dir = project / ".superharness" / "inbox.yaml.lock.d"
+    locker = tmp_path / "locker.sh"
+    locker.write_text(
+        "\n".join(
+            [
+                "#!/bin/bash",
+                "set -euo pipefail",
+                f'inbox="{inbox_path}"',
+                f'lock_dir="{lock_dir}"',
+                "while ! grep -q 'status: launched' \"$inbox\"; do sleep 0.02; done",
+                "mkdir \"$lock_dir\"",
+                "sleep 0.5",
+                "rmdir \"$lock_dir\"",
+            ]
+        )
+        + "\n"
+    )
+    locker.chmod(0o755)
+    locker_proc = subprocess.Popen(["bash", str(locker)], cwd=repo_root)
+
+    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    try:
+        result = run_bash(
+            script,
+            cwd=repo_root,
+            args=["--project", str(project), "--to", "codex-cli", "--non-interactive"],
+            env={
+                "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+                "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
+            },
+        )
+    finally:
+        locker_proc.wait(timeout=5)
+
+    assert result.returncode == 1
+    assert "lock-race-item -> failed" in result.stdout
+    inbox_text = inbox_path.read_text()
+    assert "id: lock-race-item" in inbox_text
+    assert "  status: failed" in inbox_text
