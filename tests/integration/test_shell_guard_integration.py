@@ -30,6 +30,7 @@ def _copy_guard_tree(tmp_path: Path) -> Path:
         "scripts/inbox-dispatch.sh",
         "scripts/inbox-enqueue.sh",
         "scripts/inbox-normalize.sh",
+        "scripts/inbox-recover-stale.sh",
         "scripts/inbox-watch.sh",
         "scripts/install-launchd-inbox-watcher.sh",
         "scripts/install-git-hooks.sh",

@@ -163,6 +163,65 @@ def normalize(file:, drop_statuses:, drop_prefixes:, archive_file: nil, now: nil
   0
 end
 
+def recover_launched(file:, now:, timeout_minutes:, action:)
+  items = load_items(file)
+  now_time = Time.parse(now)
+  timeout_seconds = timeout_minutes.to_i * 60
+  updated = false
+  stale_count = 0
+  retried_count = 0
+  failed_count = 0
+
+  items.each_with_index do |item, idx|
+    next unless item.is_a?(Hash)
+    next unless item["status"].to_s == "launched"
+
+    launched_at = item["launched_at"].to_s
+    next if launched_at.empty?
+    begin
+      launched_time = Time.parse(launched_at)
+    rescue ArgumentError
+      # If timestamp is malformed, mark stale so it can be inspected.
+      item["status"] = "stale"
+      item["stale_at"] = now
+      item["stale_reason"] = "invalid_launched_at"
+      items[idx] = item
+      stale_count += 1
+      updated = true
+      next
+    end
+    next if (now_time - launched_time) < timeout_seconds
+
+    if action == "retry"
+      retry_count = (item["retry_count"] || 0).to_i
+      max_retries = (item["max_retries"] || 3).to_i
+      if retry_count >= max_retries
+        item["status"] = "failed"
+        item["failed_at"] = now
+        item["failed_reason"] = "stale_timeout_exhausted"
+        failed_count += 1
+      else
+        item["status"] = "pending"
+        item["stale_at"] = now
+        item["stale_reason"] = "stale_timeout_retry"
+        retried_count += 1
+      end
+    else
+      item["status"] = "stale"
+      item["stale_at"] = now
+      item["stale_reason"] = "stale_timeout"
+      stale_count += 1
+    end
+    item.delete("launched_at")
+    items[idx] = item
+    updated = true
+  end
+
+  write_items(file, items) if updated
+  puts "result=ok updated=#{updated ? 1 : 0} stale=#{stale_count} retried=#{retried_count} failed=#{failed_count}"
+  0
+end
+
 cmd = ARGV.shift
 case cmd
 when "next_pending"
@@ -212,6 +271,22 @@ when "normalize"
     archive_file: opts[:archive_file],
     now: opts[:now]
   )
+when "recover_launched"
+  opts = { timeout_minutes: 20, action: "stale" }
+  OptionParser.new do |o|
+    o.on("--file FILE") { |v| opts[:file] = v }
+    o.on("--now TS") { |v| opts[:now] = v }
+    o.on("--timeout-minutes N") { |v| opts[:timeout_minutes] = v.to_i }
+    o.on("--action MODE") { |v| opts[:action] = v }
+  end.parse!(ARGV)
+  abort("--file and --now are required") unless opts[:file] && opts[:now]
+  abort("--action must be stale or retry") unless %w[stale retry].include?(opts[:action])
+  exit recover_launched(
+    file: opts[:file],
+    now: opts[:now],
+    timeout_minutes: opts[:timeout_minutes],
+    action: opts[:action]
+  )
 else
-  abort("Usage: inbox.rb <next_pending|launch|set_status|normalize> [options]")
+  abort("Usage: inbox.rb <next_pending|launch|set_status|normalize|recover_launched> [options]")
 end
