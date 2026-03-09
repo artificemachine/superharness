@@ -55,6 +55,33 @@ confirm_non_interactive_risk() {
   esac
 }
 
+confirm_dangerous_flag_risk() {
+  local env_name="$1"
+  local risk_msg="$2"
+
+  if [ -n "${!env_name:-}" ]; then
+    case "${!env_name}" in
+      YES|yes|Y|y) return 0 ;;
+    esac
+  fi
+
+  if [ ! -t 0 ]; then
+    echo "Refusing dangerous launch without explicit confirmation." >&2
+    echo "Set ${env_name}=YES to allow this specific bypass." >&2
+    exit 1
+  fi
+
+  printf '%s [y/N]: ' "$risk_msg" >&2
+  read -r ans
+  case "$ans" in
+    y|Y|yes|YES) ;;
+    *)
+      echo "Aborted by user." >&2
+      exit 1
+      ;;
+  esac
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --to)
@@ -202,6 +229,9 @@ if [ "$TARGET" = "claude-code" ]; then
   fi
   echo ""
   if [ "$NON_INTERACTIVE" -eq 1 ]; then
+    confirm_dangerous_flag_risk \
+      "SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS" \
+      "Risk: Claude --dangerously-skip-permissions disables permission prompts. Continue?"
     echo "Launching Claude (non-interactive)..."
     cd "$PROJECT_DIR"
     exec claude -p --dangerously-skip-permissions "$PROMPT"
@@ -218,6 +248,9 @@ else
   if [ "$NON_INTERACTIVE" -eq 1 ]; then
     echo "Launching Codex (non-interactive)..."
     if [ "$CODEX_BYPASS" -eq 1 ]; then
+      confirm_dangerous_flag_risk \
+        "SUPERHARNESS_CONFIRM_CODEX_BYPASS" \
+        "Risk: Codex bypass disables sandbox and approval prompts. Continue?"
       exec codex exec --dangerously-bypass-approvals-and-sandbox -C "$PROJECT_DIR" "$PROMPT"
     fi
     exec codex exec --full-auto -C "$PROJECT_DIR" "$PROMPT"

@@ -91,6 +91,12 @@ case "$RECOVER_ACTION" in
     exit 2
     ;;
 esac
+case "$RECOVER_TIMEOUT_MINUTES" in
+  ''|*[!0-9]*)
+    echo "--recover-timeout-minutes must be a non-negative integer" >&2
+    exit 2
+    ;;
+esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DISPATCH="$SCRIPT_DIR/inbox-dispatch.sh"

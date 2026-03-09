@@ -71,8 +71,8 @@ def latest_handoff_task(dir:, to:)
   files.each do |file|
     begin
       data = safe_load(file, Hash)
-    rescue StandardError
-      next
+    rescue StandardError => e
+      abort("Failed to parse handoff #{file}: #{e.message}")
     end
     next unless data["to"].to_s == to.to_s
     task = data["task"].to_s
