@@ -47,6 +47,11 @@ Use the wrapper CLI (thin dispatcher to `cli/*.sh`):
 bash /path/to/superharness/superharness help
 ```
 
+Install wrapper into PATH:
+```bash
+bash /path/to/superharness/superharness install-wrapper
+```
+
 ### Delegation launchers
 ```bash
 bash /path/to/superharness/superharness delegate --to codex-cli --project /path/to/project
@@ -55,6 +60,22 @@ bash /path/to/superharness/superharness delegate --to claude-code --project /pat
 
 Use `--task <TASK_ID>` to force a specific task.
 Use `--print-only` to generate prompt text without launching the CLI.
+Shorthand by task id (auto owner routing):
+```bash
+bash /path/to/superharness/superharness delegate mcp-docs --project /path/to/project --print-only
+```
+
+### Contract snapshot
+```bash
+bash /path/to/superharness/superharness contract today --project /path/to/project
+```
+
+### Task helper (guided)
+```bash
+bash /path/to/superharness/superharness task
+bash /path/to/superharness/superharness task create --project /path/to/project --id task-id --title "Task title" --owner codex-cli
+bash /path/to/superharness/superharness task delete --project /path/to/project --id task-id
+```
 
 Compatibility shims remain available:
 ```bash
@@ -97,6 +118,11 @@ bash /path/to/superharness/superharness hygiene --project /path/to/project
 Strict mode also requires promotion alignment for contract decisions/failures:
 ```bash
 bash /path/to/superharness/superharness hygiene --project /path/to/project --strict
+```
+
+### Doctor checks
+```bash
+bash /path/to/superharness/superharness doctor --project /path/to/project
 ```
 
 ## CI And Local Guardrails
