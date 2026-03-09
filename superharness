@@ -1,0 +1,50 @@
+#!/bin/bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+usage() {
+  cat << 'USAGE'
+Usage:
+  superharness <command> [args]
+
+Commands:
+  init        Initialize project protocol files
+  delegate    Delegate task to claude-code or codex-cli
+  enqueue     Add inbox item
+  dispatch    Dispatch next inbox item
+  watch       Run one watch cycle (optional launchd automation)
+  recover     Recover stale launched items
+  normalize   Normalize/archive inbox rows
+  hygiene     Check contract hygiene
+  help        Show this help message
+
+Examples:
+  superharness init "My App" "Node" "active"
+  superharness delegate --to codex-cli --project . --print-only
+  superharness enqueue --project . --to claude-code --task task-id --priority 1
+  superharness dispatch --project . --to codex-cli --print-only
+USAGE
+}
+
+cmd="${1:-help}"
+if [ $# -gt 0 ]; then
+  shift
+fi
+
+case "$cmd" in
+  init) exec bash "$ROOT_DIR/cli/init.sh" "$@" ;;
+  delegate) exec bash "$ROOT_DIR/cli/delegate.sh" "$@" ;;
+  enqueue) exec bash "$ROOT_DIR/cli/enqueue.sh" "$@" ;;
+  dispatch) exec bash "$ROOT_DIR/cli/dispatch.sh" "$@" ;;
+  watch) exec bash "$ROOT_DIR/cli/watch.sh" "$@" ;;
+  recover) exec bash "$ROOT_DIR/cli/recover.sh" "$@" ;;
+  normalize) exec bash "$ROOT_DIR/cli/normalize.sh" "$@" ;;
+  hygiene) exec bash "$ROOT_DIR/cli/hygiene.sh" "$@" ;;
+  help|-h|--help) usage ;;
+  *)
+    echo "Unknown command: $cmd" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

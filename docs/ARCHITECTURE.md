@@ -14,12 +14,13 @@ superharness is split into four operational layers:
 
 3. `cli/`
 - Primary user-facing shell commands.
-- Delegation, enqueue/dispatch/watch, normalize, hygiene, and init wrappers.
+- Delegation, enqueue/dispatch/watch/recover, normalize, hygiene, and init wrappers.
 
 4. `scripts/`
 - Backward-compatible shims for legacy entrypoints.
 - launchd watcher install/ensure/uninstall.
 - shell entrypoint integrity guard.
+- stale launched-item recovery helper.
 
 ## Project Runtime State
 
