@@ -9,7 +9,7 @@
 
 ### 1. It's a documentation project, not a system
 
-Every file is a .md describing how things SHOULD work. None of it is executable. None of it enforces anything. If Maxime ignores session-discipline.md tomorrow, nothing happens. The harness has no teeth.
+Every file is a .md describing how things SHOULD work. None of it is executable. None of it enforces anything. If User ignores session-discipline.md tomorrow, nothing happens. The harness has no teeth.
 
 **The gap:** superharness describes a system. It doesn't implement one. A real harness would have hooks, scripts, automations, and enforcement — not just documents about good intentions.
 
@@ -22,7 +22,7 @@ Every file is a .md describing how things SHOULD work. None of it is executable.
 
 ### 2. It doesn't solve the REAL bottleneck
 
-The harness thesis says the bottleneck is harness quality. But Maxime's actual bottleneck — documented in his own profile — is **shipping**. Zero shipped SaaS. Zero revenue. Five ventures, none generating income. Anti-pattern #1: scope creep.
+The harness thesis says the bottleneck is harness quality. But User's actual bottleneck — documented in his own profile — is **shipping**. Zero shipped SaaS. Zero revenue. Five ventures, none generating income. Anti-pattern #1: scope creep.
 
 A harness that makes AI sessions more efficient doesn't fix the shipping problem. A more efficient session that still doesn't ship is just a more efficient way to not ship.
 
@@ -46,7 +46,7 @@ Everything else is support documentation that gets loaded on demand. The 8-layer
 
 ### 4. It doesn't account for motivation decay
 
-Maxime works evenings and weekends. After a full day at Zimmer Biomet. The harness assumes a disciplined, motivated developer who follows protocols. But the real failure mode is: you're tired, you skip /remember, you noodle around for 45 minutes, you close the laptop having done nothing useful.
+User works evenings and weekends. After a full day at Zimmer Biomet. The harness assumes a disciplined, motivated developer who follows protocols. But the real failure mode is: you're tired, you skip /remember, you noodle around for 45 minutes, you close the laptop having done nothing useful.
 
 No framework in the research addresses this. They all assume the developer shows up ready to work. The real harness innovation would be designing for LOW-ENERGY states, not just optimal ones.
 

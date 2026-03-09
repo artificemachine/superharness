@@ -8,14 +8,14 @@ This document is the full context for any agent (Claude Code, Codex CLI, Cowork,
 
 **Your personal harness architecture — the full operating environment that determines whether an AI model's intelligence translates into useful work for you, specifically.**
 
-It is NOT a superpowers clone. It is NOT a skills plugin. It is the name, structure, and portability layer for the harness Maxime Roy has already built organically across the Claude config directory, Codex config directory, the DevOpsCelstn workspace, the Obsidian vault, and his own working patterns.
+It is NOT a superpowers clone. It is NOT a skills plugin. It is the name, structure, and portability layer for the harness User has already built organically across the Claude config directory, Codex config directory, the DevOpsCelstn workspace, the Obsidian vault, and his own working patterns.
 
 ### Core thesis
 Same Claude model scored 78% inside one harness and 42% inside another. Same brain, different body, nearly double the performance. The harness is a performance multiplier, not an optimization layer.
 
 ### Key distinction
 - **obra/superpowers** = a generic skills plugin anyone installs. Teaches an agent how to work.
-- **superharness** = a personal harness architecture. Teaches an agent how to work **with Maxime Roy**.
+- **superharness** = a personal harness architecture. Teaches an agent how to work **with User**.
 
 ### Six layers
 
@@ -38,9 +38,9 @@ Same Claude model scored 78% inside one harness and 42% inside another. Same bra
 
 ### What happened before superharness
 
-This session began with building two foundational documents for Maxime Roy:
+This session began with building two foundational documents for User:
 
-1. **Developer Profile** (`maxime-roy-developer-profile.md`) — A comprehensive, honest assessment of who Maxime is as a developer and entrepreneur. Includes:
+1. **Developer Profile** (`maxime-roy-developer-profile.md`) — A comprehensive, honest assessment of who User is as a developer and entrepreneur. Includes:
    - 15+ years C++/Python/Rust/Solidity
    - 7,000 hours studying crypto, DeFi, staking, lending, TradingView, TFSA, ETF, macroeconomics over 5 years
    - Zimmer Biomet contract (C++/Qt/QML, medical devices)
@@ -50,7 +50,7 @@ This session began with building two foundational documents for Maxime Roy:
    - Anti-patterns ranked by likelihood: scope creep, over-planning, shiny object syndrome
    - Freedom number: $5K CAD/month intermediate, $12-16K+ full replacement
 
-2. **Agent Context Document** (`maxime-roy-agent-context.md`) — An embeddable CLAUDE.md-style doc that tells any agent how to work with Maxime specifically. Includes routing table, tech stack, session templates, protected files, anti-patterns.
+2. **Agent Context Document** (`maxime-roy-agent-context.md`) — An embeddable CLAUDE.md-style doc that tells any agent how to work with User specifically. Includes routing table, tech stack, session templates, protected files, anti-patterns.
 
 3. **CLAUDE.md Template** (`CLAUDE-md-template.md`) — A generic/reusable template derived from the agent context doc, with HTML comment instructions.
 
@@ -64,13 +64,13 @@ This session began with building two foundational documents for Maxime Roy:
 
 ### The spark for superharness
 
-Maxime shared a vault note: transcript of Nate Herk's YouTube video "Claude Code vs Codex: The Decision That Compounds Every Week You Delay." Key insights absorbed:
+User shared a vault note: transcript of Nate Herk's YouTube video "Claude Code vs Codex: The Decision That Compounds Every Week You Delay." Key insights absorbed:
 - 78% vs 42% benchmark (harness > model)
 - Calvin French Owen's workflow: Claude Code for planning, Codex for implementation, cross-agent review
 - Compounding skill layers: /commit → /worktree → /implement → /implement-all
 - Harness lock-in: switching resets compounding to zero
 
-Maxime then said: **"I want some kind of framework that I can include in my workflow."**
+User then said: **"I want some kind of framework that I can include in my workflow."**
 
 ---
 
@@ -161,7 +161,7 @@ superharness/
 
 2. **What goes in agents/?** The global CLAUDE.md and AGENTS.md already exist on the user's machine in their respective config directories. Should superharness contain copies (portable, versionable) or references (single source of truth)?
 
-3. **What goes in templates/?** When Maxime starts a new project, superharness should generate the right CLAUDE.md and AGENTS.md. How much is templated vs generated?
+3. **What goes in templates/?** When User starts a new project, superharness should generate the right CLAUDE.md and AGENTS.md. How much is templated vs generated?
 
 4. **How does superharness relate to DevOpsCelstn?** The user's `goclaude` alias points to the DevOpsCelstn directory. Is superharness a subdirectory inside DevOpsCelstn, or is DevOpsCelstn part of the harness?
 
@@ -482,7 +482,7 @@ Protocol updated to support both patterns per-task:
 
 **Pattern C: Subagent** — `codex exec` inside Claude Code session. Used for small isolated subtasks.
 
-Contract format updated with `reviewer` and `role` fields per task. Maxime (tech lead) decides which pattern per task.
+Contract format updated with `reviewer` and `role` fields per task. User (tech lead) decides which pattern per task.
 
 ### Agent Strengths & Weaknesses (NEW)
 
@@ -649,10 +649,92 @@ If you're an agent picking this up:
 - **Understanding what compounds:** `knowledge/failure-memory.md`, `knowledge/decision-journal.md`
 - **Understanding the roadmap:** `ROADMAP.md` (what "done" looks like)
 
-### User preferences (Maxime / Rocha)
+### User preferences (User / Rocha)
 - Honest assessment over hype
 - "Show before doing" — preview actions, wait for approval
 - One task at a time, no context-switching
 - Markdown by default unless code is needed
 - Vault search before starting any new task (use Obsidian MCP if available)
 - Minimal core, discoverable detail — don't load everything into context at once
+
+---
+
+## Iteration 7 — Cross-Agent Hardening, Identity Sanitization, and UX Simplification
+
+**Date:** 2026-03-08  
+**Agent:** Codex CLI (GPT-5)  
+**Session type:** Multi-commit hardening + ship pipeline + user UX review follow-up
+
+### What Was Delivered
+
+1. **Inbox lifecycle and atomicity hardening**
+- Replaced ad-hoc YAML mutation logic with structured helper operations in `scripts/inbox-yaml.rb`.
+- Made dispatch claim transition atomic: `pending -> launched` plus `retry_count` increment and timestamp in one write.
+- Added retry-limit enforcement inside helper transition.
+- Added safe YAML parsing (`Psych.safe_load`) for inbox/state operations.
+
+2. **Dispatch robustness improvements**
+- Added dispatcher lock ownership tracking and safer lock release behavior.
+- Stopped swallowing helper parsing errors as “no pending items.”
+- Consolidated duplicated launch-failure handling into a single path.
+
+3. **Inbox parser consolidation**
+- Removed last awk-on-YAML contract parsing from enqueue path.
+- Added helper subcommands:
+  - `contract_task_exists`
+  - `contract_task_project_path`
+- Updated `inbox-enqueue.sh` to use helper subcommands.
+
+4. **Lifecycle consistency cleanup**
+- Removed `prepared` from active lifecycle docs and behavior.
+- Standardized active lifecycle to: `pending -> launched -> running -> done|failed` (+ optional `stale`).
+- Updated ROADMAP/architecture/readme references accordingly.
+
+5. **Protocol hygiene improvements**
+- Added/updated `check-contract-hygiene.sh` to use safe YAML loading in embedded Ruby.
+- Removed redundant type checks.
+
+6. **Identity and privacy sanitization**
+- Removed personal identity/company details from active generated paths and hook context.
+- Switched generated defaults to neutral owner language.
+- Updated starter contract metadata from `created_by: maxime` to `created_by: owner`.
+
+7. **User-flow fixes and UX polish**
+- Fixed heredoc backtick command-substitution bug in `init-project.sh` (`\`...\`` escaped).
+- Added warning when enqueueing unknown task IDs.
+- Delegate scripts now emit handoff-aware prompts; if no handoff exists, they instruct contract-first execution.
+- Preserved readable ISO timestamp strings across YAML round-trips.
+- Added explicit prerequisites to README.
+- Simplified generated `CLAUDE.md` / `AGENTS.md` defaults for first-time users (minimal core + advanced behavior note).
+- Simplified README repo layout into operational vs reference directories.
+
+8. **Repository cleanup**
+- Removed deprecated `context/` files and cleaned stale references.
+- Removed empty `templates/` directory.
+
+### Tests and Validation
+
+- Shell syntax checks passed on updated entrypoints.
+- Ruby syntax checks passed for helper scripts.
+- Unit tests extended and passing:
+  - dispatch lifecycle/retry/priority coverage
+  - malformed inbox behavior
+  - enqueue contract-path validation
+  - normalize archive behavior
+- Full test suite executed during ship flow: **39 passed**.
+- Security scan (`shipguard`) clean after fixes.
+
+### Key Commits (Iteration 7)
+
+- `3e0d1bc` — fix: make inbox dispatch atomic and parse YAML safely
+- `14177a9` — fix: harden inbox lifecycle and atomic dispatch
+- `a51ee91` — refactor: move enqueue contract parsing to Ruby helper
+- `c3d5dc0` — refactor: tighten enqueue/dispatch and remove deprecated context docs
+- `1dd2836` — fix: remove personal identity leakage and polish first-run UX
+- `ac25d3e` — chore: harden protocol hygiene checks and refresh docs/tests
+- `acbd711` — docs: simplify generated agent templates for first-time users
+
+### Current Status
+
+- Core cross-agent protocol (contract/handoff/ledger + inbox dispatch/watch) is stable and externally usable.
+- Remaining work is mainly optional UX/productization polish, not correctness blockers.
