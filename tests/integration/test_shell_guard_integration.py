@@ -36,7 +36,7 @@ def _copy_guard_tree(tmp_path: Path) -> Path:
         "scripts/install-git-hooks.sh",
         "scripts/uninstall-launchd-inbox-watcher.sh",
         ".githooks/pre-commit",
-        "identity/core.md",
+        "protocol/templates/identity-core.md",
         "scripts/inbox-yaml.rb",
     ]
 
