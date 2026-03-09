@@ -10,10 +10,15 @@ Usage:
 
 Commands:
   init        Initialize project protocol files
-  delegate    Delegate task to claude-code or codex-cli
+  contract    Show active contract summary and delegate suggestion
+  delegate    Delegate task (explicit --to ... or shorthand delegate <task-id>)
+  delagate    Typo alias for delegate <task-id>
   enqueue     Add inbox item
+  task        Create/delete contract tasks
   dispatch    Dispatch next inbox item
   watch       Run one watch cycle (optional launchd automation)
+  doctor      Check local setup and project protocol health
+  install-wrapper  Symlink this wrapper into a PATH directory
   recover     Recover stale launched items
   normalize   Normalize/archive inbox rows
   hygiene     Check contract hygiene
@@ -21,6 +26,9 @@ Commands:
 
 Examples:
   superharness init "My App" "Node" "active"
+  superharness contract today --project .
+  superharness delegate mcp-docs --project . --print-only
+  superharness task create --project . --id mcp-docs --title "Write docs" --owner codex-cli
   superharness delegate --to codex-cli --project . --print-only
   superharness enqueue --project . --to claude-code --task task-id --priority 1
   superharness dispatch --project . --to codex-cli --print-only
@@ -34,8 +42,26 @@ fi
 
 case "$cmd" in
   init) exec bash "$ROOT_DIR/cli/init.sh" "$@" ;;
-  delegate) exec bash "$ROOT_DIR/cli/delegate.sh" "$@" ;;
+  contract)
+    sub="${1:-today}"
+    if [ "$sub" = "today" ]; then
+      if [ $# -gt 0 ]; then shift; fi
+      exec bash "$ROOT_DIR/cli/contract-today.sh" "$@"
+    fi
+    echo "Unknown contract subcommand: $sub" >&2
+    exit 2
+    ;;
+  delegate)
+    if [ $# -gt 0 ] && [[ "$1" != -* ]]; then
+      exec bash "$ROOT_DIR/cli/delegate-task.sh" "$@"
+    fi
+    exec bash "$ROOT_DIR/cli/delegate.sh" "$@"
+    ;;
+  delagate) exec bash "$ROOT_DIR/cli/delegate-task.sh" "$@" ;;
+  doctor) exec bash "$ROOT_DIR/cli/doctor.sh" "$@" ;;
+  install-wrapper) exec bash "$ROOT_DIR/cli/install-wrapper.sh" "$@" ;;
   enqueue) exec bash "$ROOT_DIR/cli/enqueue.sh" "$@" ;;
+  task) exec bash "$ROOT_DIR/cli/task.sh" "$@" ;;
   dispatch) exec bash "$ROOT_DIR/cli/dispatch.sh" "$@" ;;
   watch) exec bash "$ROOT_DIR/cli/watch.sh" "$@" ;;
   recover) exec bash "$ROOT_DIR/cli/recover.sh" "$@" ;;
