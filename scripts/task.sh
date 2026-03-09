@@ -39,6 +39,21 @@ STATUS="todo"
 ACTOR=""
 DEPENDENCY=""
 
+validate_task_token() {
+  local name="$1"
+  local value="$2"
+  case "$value" in
+    *$'\n'*|*$'\r'*|*$'\t'*)
+      echo "$name contains control characters" >&2
+      exit 2
+      ;;
+  esac
+  if [[ ! "$value" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "$name must match ^[A-Za-z0-9._-]+$" >&2
+    exit 2
+  fi
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --project|-p)
@@ -140,6 +155,11 @@ if [ "$SUBCMD" = "create" ]; then
     STATUS="todo"
   fi
 
+  validate_task_token "task id" "$TASK_ID"
+  if [ -n "$DEPENDENCY" ]; then
+    validate_task_token "dependency id" "$DEPENDENCY"
+  fi
+
   case "$OWNER" in
     claude-code|codex-cli) ;;
     *) echo "owner must be claude-code or codex-cli" >&2; exit 2 ;;
@@ -201,6 +221,7 @@ elif [ "$SUBCMD" = "delete" ]; then
     printf "Task id to delete: "
     read -r TASK_ID
   fi
+  validate_task_token "task id" "$TASK_ID"
 
   ruby - "$CONTRACT_FILE" "$TASK_ID" <<'RUBY'
 require "psych"
@@ -250,6 +271,7 @@ else
     todo|in_progress|done) ;;
     *) echo "status must be todo, in_progress, or done" >&2; exit 2 ;;
   esac
+  validate_task_token "task id" "$TASK_ID"
 
   ruby - "$CONTRACT_FILE" "$TASK_ID" "$STATUS" "$ACTOR" <<'RUBY'
 require "psych"

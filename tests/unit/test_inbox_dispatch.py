@@ -305,3 +305,41 @@ def test_dispatch_non_interactive_reconciles_to_done_from_contract(repo_root, tm
     assert "id: reconcile-done-item" in inbox_text
     assert "  status: done" in inbox_text
     assert "  done_at:" in inbox_text
+
+
+def test_dispatch_handles_pipe_character_in_item_id(repo_root, tmp_path) -> None:
+    project = tmp_path / "proj7"
+    project.mkdir()
+    _write_contract(project)
+    _write_inbox(
+        project,
+        [
+            "# Delegation inbox",
+            "# status: pending|launched|running|done|failed|stale",
+            "",
+            "- id: id|with|pipe",
+            "  to: codex-cli",
+            "  task: mcp-docs",
+            f"  project: {project}",
+            "  status: pending",
+            "  priority: 1",
+            "  retry_count: 0",
+            "  max_retries: 3",
+            "  created_at: 2026-03-08T18:00:00Z",
+        ],
+    )
+
+    bin_dir = _fake_bin(tmp_path)
+    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=["--project", str(project), "--to", "codex-cli", "--print-only"],
+        env={"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "id|with|pipe -> launched" in result.stdout
+    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
+    assert "id: id|with|pipe" in inbox_text
+    assert "  status: launched" in inbox_text
