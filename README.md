@@ -11,6 +11,7 @@ It provides:
 - layered runtime split (`protocol/`, `engine/`, `cli/`, `scripts/` compatibility shims)
 
 Architecture and philosophy are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Fast path setup is in [docs/QUICKSTART.md](docs/QUICKSTART.md).
 
 ## Prerequisites
 
@@ -43,10 +44,15 @@ bash /path/to/superharness/init-project.sh "Project Name" "Tech/Stack" "active"
 
 ## Core Commands
 
+Use the wrapper CLI (thin dispatcher to `cli/*.sh`):
+```bash
+bash /path/to/superharness/superharness help
+```
+
 ### Delegation launchers
 ```bash
-bash cli/delegate.sh --to codex-cli --project /path/to/project
-bash cli/delegate.sh --to claude-code --project /path/to/project
+bash /path/to/superharness/superharness delegate --to codex-cli --project /path/to/project
+bash /path/to/superharness/superharness delegate --to claude-code --project /path/to/project
 ```
 
 Use `--task <TASK_ID>` to force a specific task.
@@ -60,9 +66,9 @@ bash scripts/delegate-to-claude.sh --project /path/to/project
 
 ### Inbox queue
 ```bash
-bash cli/enqueue.sh --project /path/to/project --to codex-cli --task task-id --priority 1
-bash cli/dispatch.sh --project /path/to/project
-bash cli/watch.sh --project /path/to/project --to both
+bash /path/to/superharness/superharness enqueue --project /path/to/project --to codex-cli --task task-id --priority 1
+bash /path/to/superharness/superharness dispatch --project /path/to/project
+bash /path/to/superharness/superharness watch --project /path/to/project --to both
 ```
 
 Status flow:
@@ -72,7 +78,8 @@ Status flow:
 
 ### Inbox maintenance
 ```bash
-bash cli/normalize.sh --project /path/to/project --archive
+bash /path/to/superharness/superharness recover --project /path/to/project --timeout-minutes 20 --action stale
+bash /path/to/superharness/superharness normalize --project /path/to/project --archive
 ```
 
 ### macOS background watcher
@@ -86,12 +93,12 @@ bash scripts/uninstall-launchd-inbox-watcher.sh --project /path/to/project
 
 Check project protocol quality:
 ```bash
-bash cli/hygiene.sh --project /path/to/project
+bash /path/to/superharness/superharness hygiene --project /path/to/project
 ```
 
 Strict mode also requires promotion alignment for contract decisions/failures:
 ```bash
-bash cli/hygiene.sh --project /path/to/project --strict
+bash /path/to/superharness/superharness hygiene --project /path/to/project --strict
 ```
 
 ## CI And Local Guardrails

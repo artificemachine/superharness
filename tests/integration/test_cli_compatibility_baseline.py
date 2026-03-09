@@ -8,12 +8,14 @@ from tests.helpers import run_bash
 
 
 HELP_ENTRYPOINTS = [
+    "superharness",
     "init-project.sh",
     "cli/init.sh",
     "cli/delegate.sh",
     "cli/enqueue.sh",
     "cli/dispatch.sh",
     "cli/watch.sh",
+    "cli/recover.sh",
     "cli/normalize.sh",
     "cli/hygiene.sh",
     "scripts/delegate-to-claude.sh",
@@ -22,6 +24,7 @@ HELP_ENTRYPOINTS = [
     "scripts/inbox-dispatch.sh",
     "scripts/inbox-watch.sh",
     "scripts/inbox-normalize.sh",
+    "scripts/inbox-recover-stale.sh",
     "scripts/check-contract-hygiene.sh",
     "scripts/install-launchd-inbox-watcher.sh",
     "scripts/ensure-launchd-inbox-watcher.sh",
