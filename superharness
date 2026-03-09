@@ -17,6 +17,7 @@ Commands:
   task        Create/delete contract tasks
   dispatch    Dispatch next inbox item
   watch       Run one watch cycle (optional launchd automation)
+  monitor-ui  Launch local watcher dashboard in browser
   doctor      Check local setup and project protocol health
   install-wrapper  Symlink this wrapper into a PATH directory
   recover     Recover stale launched items
@@ -64,6 +65,7 @@ case "$cmd" in
   task) exec bash "$ROOT_DIR/cli/task.sh" "$@" ;;
   dispatch) exec bash "$ROOT_DIR/cli/dispatch.sh" "$@" ;;
   watch) exec bash "$ROOT_DIR/cli/watch.sh" "$@" ;;
+  monitor-ui) exec bash "$ROOT_DIR/cli/monitor-ui.sh" "$@" ;;
   recover) exec bash "$ROOT_DIR/cli/recover.sh" "$@" ;;
   normalize) exec bash "$ROOT_DIR/cli/normalize.sh" "$@" ;;
   hygiene) exec bash "$ROOT_DIR/cli/hygiene.sh" "$@" ;;

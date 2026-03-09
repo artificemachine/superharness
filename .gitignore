@@ -16,3 +16,4 @@ __pycache__/
 .git_new/
 !.env.example
 # codex-pii-guard:end
+logdy-core/

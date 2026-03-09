@@ -4,13 +4,14 @@ set -euo pipefail
 usage() {
   cat << 'USAGE'
 Usage:
-  inbox-watch.sh --project DIR [--to claude-code|codex-cli|both] [--print-only] [--non-interactive] [--recover-timeout-minutes N] [--recover-action stale|retry]
+  inbox-watch.sh --project DIR [--to claude-code|codex-cli|both] [--print-only] [--non-interactive] [--codex-bypass] [--recover-timeout-minutes N] [--recover-action stale|retry]
 
 Options:
   -p, --project DIR   Project directory containing .superharness/
       --to TARGET     Dispatch target filter (default: both)
       --print-only    Prepare prompts only, do not launch CLIs
       --non-interactive  Launch CLIs non-interactively where supported
+      --codex-bypass  For codex-cli only: use dangerous bypass in non-interactive mode
       --recover-timeout-minutes N  Mark launched rows stale/retry after N minutes (default: 20)
       --recover-action MODE  stale (default) or retry
   -h, --help          Show this help message and exit
@@ -21,6 +22,7 @@ PROJECT_DIR=""
 TARGET="both"
 PRINT_ONLY=0
 NON_INTERACTIVE=0
+CODEX_BYPASS=0
 RECOVER_TIMEOUT_MINUTES=20
 RECOVER_ACTION="stale"
 
@@ -42,6 +44,10 @@ while [ $# -gt 0 ]; do
       ;;
     --non-interactive)
       NON_INTERACTIVE=1
+      shift
+      ;;
+    --codex-bypass)
+      CODEX_BYPASS=1
       shift
       ;;
     --recover-timeout-minutes)
@@ -110,6 +116,9 @@ if [ "$PRINT_ONLY" -eq 1 ]; then
 fi
 if [ "$NON_INTERACTIVE" -eq 1 ]; then
   COMMON_ARGS+=(--non-interactive)
+fi
+if [ "$CODEX_BYPASS" -eq 1 ]; then
+  COMMON_ARGS+=(--codex-bypass)
 fi
 
 RECOVER_ARGS=(--project "$PROJECT_DIR" --timeout-minutes "$RECOVER_TIMEOUT_MINUTES" --action "$RECOVER_ACTION")
