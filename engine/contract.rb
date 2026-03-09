@@ -49,6 +49,17 @@ def task_owner(file:, task:)
   0
 end
 
+def task_status(file:, task:)
+  doc = safe_load(file, Hash)
+  tasks = doc["tasks"]
+  return 0 if tasks.nil?
+  raise "contract tasks must be a sequence: #{file}" unless tasks.is_a?(Array)
+  row = tasks.find { |t| t.is_a?(Hash) && t["id"].to_s == task.to_s }
+  return 0 if row.nil?
+  puts row["status"].to_s
+  0
+end
+
 def contract_id(file:)
   doc = safe_load(file, Hash)
   puts(doc["id"].to_s)
@@ -98,6 +109,14 @@ when "task_owner"
   end.parse!(ARGV)
   abort("--file and --task are required") unless opts[:file] && opts[:task]
   exit task_owner(file: opts[:file], task: opts[:task])
+when "task_status"
+  opts = {}
+  OptionParser.new do |o|
+    o.on("--file FILE") { |v| opts[:file] = v }
+    o.on("--task TASK_ID") { |v| opts[:task] = v }
+  end.parse!(ARGV)
+  abort("--file and --task are required") unless opts[:file] && opts[:task]
+  exit task_status(file: opts[:file], task: opts[:task])
 when "contract_id"
   opts = {}
   OptionParser.new do |o|
@@ -114,5 +133,5 @@ when "latest_handoff_task"
   abort("--dir and --to are required") unless opts[:dir] && opts[:to]
   exit latest_handoff_task(dir: opts[:dir], to: opts[:to])
 else
-  abort("Usage: contract.rb <task_exists|task_project_path|task_owner|contract_id|latest_handoff_task> [options]")
+  abort("Usage: contract.rb <task_exists|task_project_path|task_owner|task_status|contract_id|latest_handoff_task> [options]")
 end

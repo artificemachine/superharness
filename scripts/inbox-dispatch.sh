@@ -4,13 +4,14 @@ set -euo pipefail
 usage() {
   cat << 'USAGE'
 Usage:
-  inbox-dispatch.sh --project DIR [--to claude-code|codex-cli] [--print-only] [--non-interactive]
+  inbox-dispatch.sh --project DIR [--to claude-code|codex-cli] [--print-only] [--non-interactive] [--codex-bypass]
 
 Options:
   -p, --project DIR   Project directory containing .superharness/
       --to TARGET     Optional target filter: claude-code or codex-cli
       --print-only    Build and print kickoff prompt without launching CLI
       --non-interactive  Run target launchers in non-interactive mode
+      --codex-bypass  For codex-cli only: use dangerous bypass in non-interactive mode
   -h, --help          Show this help message and exit
 USAGE
 }
@@ -19,6 +20,7 @@ PROJECT_DIR=""
 TARGET_FILTER=""
 PRINT_ONLY=0
 NON_INTERACTIVE=0
+CODEX_BYPASS=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -38,6 +40,10 @@ while [ $# -gt 0 ]; do
       ;;
     --non-interactive)
       NON_INTERACTIVE=1
+      shift
+      ;;
+    --codex-bypass)
+      CODEX_BYPASS=1
       shift
       ;;
     -h|--help)
@@ -68,6 +74,7 @@ esac
 
 HARNESS_DIR="$PROJECT_DIR/.superharness"
 INBOX_FILE="$HARNESS_DIR/inbox.yaml"
+CONTRACT_FILE="$HARNESS_DIR/contract.yaml"
 
 if [ ! -f "$INBOX_FILE" ]; then
   echo "Inbox file not found: $INBOX_FILE" >&2
@@ -78,8 +85,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAUNCH_CLAUDE="$SCRIPT_DIR/delegate-to-claude.sh"
 LAUNCH_CODEX="$SCRIPT_DIR/delegate-to-codex.sh"
 INBOX_YAML="$SCRIPT_DIR/inbox-yaml.rb"
+CONTRACT_YAML="$SCRIPT_DIR/../engine/contract.rb"
 
-if [ ! -x "$LAUNCH_CLAUDE" ] || [ ! -x "$LAUNCH_CODEX" ] || [ ! -x "$INBOX_YAML" ]; then
+if [ ! -x "$LAUNCH_CLAUDE" ] || [ ! -x "$LAUNCH_CODEX" ] || [ ! -x "$INBOX_YAML" ] || [ ! -f "$CONTRACT_YAML" ]; then
   echo "Missing launcher scripts in $SCRIPT_DIR" >&2
   exit 1
 fi
@@ -150,6 +158,9 @@ fi
 if [ "$NON_INTERACTIVE" -eq 1 ]; then
   LAUNCH_ARGS+=(--non-interactive)
 fi
+if [ "$CODEX_BYPASS" -eq 1 ]; then
+  LAUNCH_ARGS+=(--codex-bypass)
+fi
 
 LAUNCH_NOW="$(date -u +%FT%TZ)"
 LAUNCH_RESULT="$(ruby "$INBOX_YAML" launch --file "$INBOX_FILE" --id "$ITEM_ID" --now "$LAUNCH_NOW")" || LAUNCH_RC=$?
@@ -191,4 +202,54 @@ if ! bash "$LAUNCHER" "${LAUNCH_ARGS[@]}"; then
   release_lock
   echo "Inbox item updated: $ITEM_ID -> failed"
   exit 1
+fi
+
+# In non-interactive mode, the launched process has already exited. If the task
+# did not transition itself to done/failed, reconcile stuck states immediately.
+if [ "$NON_INTERACTIVE" -eq 1 ] && [ "$PRINT_ONLY" -eq 0 ]; then
+  RECONCILE_NOW="$(date -u +%FT%TZ)"
+  if ! acquire_lock; then
+    echo "Failed to acquire inbox lock while reconciling status for $ITEM_ID" >&2
+    exit 1
+  fi
+  RECONCILED=0
+  FINAL_STATE=""
+
+  if [ -f "$CONTRACT_FILE" ]; then
+    FINAL_STATE="$(ruby "$CONTRACT_YAML" task_status --file "$CONTRACT_FILE" --task "$ITEM_TASK" 2>/dev/null || true)"
+  fi
+
+  case "$FINAL_STATE" in
+    done)
+      if ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to done --now "$RECONCILE_NOW" --stamp-key done_at >/dev/null 2>&1; then
+        RECONCILED=1
+      elif ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from running --to done --now "$RECONCILE_NOW" --stamp-key done_at >/dev/null 2>&1; then
+        RECONCILED=1
+      fi
+      ;;
+    failed)
+      if ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to failed --now "$RECONCILE_NOW" --stamp-key failed_at >/dev/null 2>&1; then
+        RECONCILED=1
+      elif ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from running --to failed --now "$RECONCILE_NOW" --stamp-key failed_at >/dev/null 2>&1; then
+        RECONCILED=1
+      fi
+      ;;
+    *)
+      if ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to failed --now "$RECONCILE_NOW" --stamp-key failed_at >/dev/null 2>&1; then
+        RECONCILED=1
+      elif ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from running --to failed --now "$RECONCILE_NOW" --stamp-key failed_at >/dev/null 2>&1; then
+        RECONCILED=1
+      fi
+      ;;
+  esac
+  release_lock
+
+  if [ "$RECONCILED" -eq 1 ]; then
+    if [ "$FINAL_STATE" = "done" ]; then
+      echo "Inbox item updated: $ITEM_ID -> done (reconciled from contract task status)"
+      exit 0
+    fi
+    echo "Inbox item updated: $ITEM_ID -> failed (non-interactive launch exited without done/failed)"
+    exit 1
+  fi
 fi

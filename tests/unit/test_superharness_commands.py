@@ -92,6 +92,162 @@ def test_task_create_and_delete(repo_root, tmp_path) -> None:
     assert delete_res.returncode == 0, delete_res.stderr
 
 
+def test_task_create_with_dependency(repo_root, tmp_path) -> None:
+    project = _setup_project(tmp_path)
+    wrapper = repo_root / "superharness"
+
+    create_res = run_bash(
+        wrapper,
+        cwd=repo_root,
+        args=[
+            "task",
+            "create",
+            "--project",
+            str(project),
+            "--id",
+            "integration-tests",
+            "--title",
+            "Integration tests",
+            "--owner",
+            "codex-cli",
+            "--status",
+            "todo",
+            "--dependency",
+            "mcp-docs",
+        ],
+    )
+    assert create_res.returncode == 0, create_res.stderr
+    contract_text = (project / ".superharness" / "contract.yaml").read_text()
+    assert "id: integration-tests" in contract_text
+    assert "dependency: mcp-docs" in contract_text
+
+
+def test_task_status_update_requires_owner_actor(repo_root, tmp_path) -> None:
+    project = _setup_project(tmp_path)
+    wrapper = repo_root / "superharness"
+
+    forbidden = run_bash(
+        wrapper,
+        cwd=repo_root,
+        args=[
+            "task",
+            "status",
+            "--project",
+            str(project),
+            "--id",
+            "mcp-docs",
+            "--status",
+            "in_progress",
+            "--actor",
+            "claude-code",
+        ],
+    )
+    assert forbidden.returncode == 1
+    assert "forbidden:" in forbidden.stderr
+
+    allowed = run_bash(
+        wrapper,
+        cwd=repo_root,
+        args=[
+            "task",
+            "status",
+            "--project",
+            str(project),
+            "--id",
+            "mcp-docs",
+            "--status",
+            "in_progress",
+            "--actor",
+            "codex-cli",
+        ],
+    )
+    assert allowed.returncode == 0, allowed.stderr
+    contract_text = (project / ".superharness" / "contract.yaml").read_text()
+    assert "status: in_progress" in contract_text
+
+
+def test_task_status_blocked_until_dependency_done(repo_root, tmp_path) -> None:
+    project = _setup_project(tmp_path)
+    wrapper = repo_root / "superharness"
+
+    create_res = run_bash(
+        wrapper,
+        cwd=repo_root,
+        args=[
+            "task",
+            "create",
+            "--project",
+            str(project),
+            "--id",
+            "dependent-task",
+            "--title",
+            "Dependent task",
+            "--owner",
+            "codex-cli",
+            "--status",
+            "todo",
+            "--dependency",
+            "mcp-docs",
+        ],
+    )
+    assert create_res.returncode == 0, create_res.stderr
+
+    blocked = run_bash(
+        wrapper,
+        cwd=repo_root,
+        args=[
+            "task",
+            "status",
+            "--project",
+            str(project),
+            "--id",
+            "dependent-task",
+            "--status",
+            "in_progress",
+            "--actor",
+            "codex-cli",
+        ],
+    )
+    assert blocked.returncode == 1
+    assert "blocked:" in blocked.stderr
+
+    dep_done = run_bash(
+        wrapper,
+        cwd=repo_root,
+        args=[
+            "task",
+            "status",
+            "--project",
+            str(project),
+            "--id",
+            "mcp-docs",
+            "--status",
+            "done",
+            "--actor",
+            "codex-cli",
+        ],
+    )
+    assert dep_done.returncode == 0, dep_done.stderr
+
+    allowed = run_bash(
+        wrapper,
+        cwd=repo_root,
+        args=[
+            "task",
+            "status",
+            "--project",
+            str(project),
+            "--id",
+            "dependent-task",
+            "--status",
+            "in_progress",
+            "--actor",
+            "codex-cli",
+        ],
+    )
+    assert allowed.returncode == 0, allowed.stderr
+
+
 def test_doctor_passes_on_minimal_project(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
     wrapper = repo_root / "superharness"

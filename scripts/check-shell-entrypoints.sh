@@ -26,6 +26,9 @@ ENTRYPOINT_FILES=(
   "scripts/install-git-hooks.sh"
   "scripts/task.sh"
   "scripts/uninstall-launchd-inbox-watcher.sh"
+  "scripts/check-changelog-append-only.sh"
+  "scripts/reset-watcher-and-test.sh"
+  "cli/monitor-ui.sh"
 )
 
 HOOK_FILES=(

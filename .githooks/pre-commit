@@ -3,3 +3,4 @@ set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
 "$repo_root/scripts/check-shell-entrypoints.sh"
+"$repo_root/scripts/check-changelog-append-only.sh" --staged
