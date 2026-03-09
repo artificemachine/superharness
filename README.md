@@ -1,14 +1,13 @@
 # superharness
 
-superharness is a cross-agent execution harness for Claude Code and Codex CLI.
+superharness lets Claude Code and Codex CLI work on the same project without stepping on each other.
+It gives you a shared contract, queue-based delegation, and handoff/ledger state so tasks survive across sessions.
 
-It provides:
-- project bootstrap (`init-project.sh`)
-- Claude hooks (session context + guardrails)
-- contract/handoff/ledger protocol files
-- delegation inbox queue + dispatch/watch automation
-- shell entrypoint integrity guard in CI and pre-commit
-- layered runtime split (`protocol/`, `engine/`, `cli/`, `scripts/` compatibility shims)
+What you get:
+- `superharness init` to bootstrap protocol files
+- `superharness delegate|enqueue|dispatch|watch` for cross-agent routing
+- stale launched-item recovery + inbox normalization
+- contract hygiene checks and shell entrypoint guardrails
 
 Architecture and philosophy are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 Fast path setup is in [docs/QUICKSTART.md](docs/QUICKSTART.md).
@@ -22,25 +21,24 @@ Fast path setup is in [docs/QUICKSTART.md](docs/QUICKSTART.md).
 - `codex` CLI (for Codex delegation commands)
 - macOS `launchd` is required only for background watcher install/ensure scripts
 
-## Quick Start
+## 3-Step Start
 
-1. Install Claude plugin hooks:
+1. Install Claude hooks:
 ```bash
 bash adapters/claude-code/install.sh
 ```
 
-2. Initialize a project:
+2. Initialize your project:
 ```bash
 cd /path/to/project
-bash /path/to/superharness/init-project.sh "Project Name" "Tech/Stack" "active"
+bash /path/to/superharness/superharness init "Project Name" "Tech/Stack" "active"
 ```
 
-3. Review generated files:
-- `CLAUDE.md`
-- `AGENTS.md`
-- `.superharness/contract.yaml`
-
-4. Add first tasks in `.superharness/contract.yaml` with absolute `project_path` values.
+3. Add a task and dispatch it:
+```bash
+bash /path/to/superharness/superharness enqueue --project . --to codex-cli --task task-id --priority 1
+bash /path/to/superharness/superharness dispatch --project . --to codex-cli --print-only
+```
 
 ## Core Commands
 
@@ -121,9 +119,10 @@ Guard guarantees:
 
 ## Repository Layout
 
-Operational directories (most users only need these):
+Runtime directories:
 ```text
 superharness/
+├── superharness            # thin command dispatcher
 ├── protocol/              # protocol spec + templates
 ├── engine/                # ruby runtime helpers (yaml/queue/validation)
 ├── cli/                   # primary user-facing shell commands
@@ -136,12 +135,7 @@ superharness/
 └── CHANGELOG.md
 ```
 
-Reference content (advanced/internal methodology):
-- `identity/`
-- `agents/`
-- `knowledge/`
-- `methodology/`
-- `state/`
+Archived historical/reference material lives in `archive/reference/`.
 
 ## Current Version
 

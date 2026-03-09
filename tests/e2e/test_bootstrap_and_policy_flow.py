@@ -39,7 +39,7 @@ def test_bootstrap_and_hook_install_flow(repo_root, tmp_path) -> None:
         "adapters/claude-code/hooks/ledger-append.sh",
         "adapters/claude-code/hooks/scope-guard.sh",
         "adapters/claude-code/hooks/session-start.sh",
-        "identity/core.md",
+        "protocol/templates/identity-core.md",
         "scripts/inbox-yaml.rb",
     ]:
         copy_from_repo(rel, project)
