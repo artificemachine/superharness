@@ -11,6 +11,7 @@ What you get:
 
 Architecture and philosophy are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 Fast path setup is in [docs/QUICKSTART.md](docs/QUICKSTART.md).
+Operational safety notes are in [SECURITY.md](SECURITY.md).
 
 ## Prerequisites
 
@@ -105,11 +106,12 @@ bash /path/to/superharness/superharness normalize --project /path/to/project --a
 
 ### macOS background watcher
 ```bash
-bash scripts/install-launchd-inbox-watcher.sh --project /path/to/project --interval 30
+bash scripts/install-launchd-inbox-watcher.sh --project /path/to/project --interval 30 --confirm-non-interactive yes --confirm-skip-permissions yes
 bash scripts/ensure-launchd-inbox-watcher.sh --project /path/to/project
 bash scripts/uninstall-launchd-inbox-watcher.sh --project /path/to/project
 ```
 Note: avoid `~/Documents`, `~/Desktop`, and `~/Downloads` for watcher-managed projects on macOS; launchd can fail with `Operation not permitted` there.
+The watcher will not install unattended launch mode unless you explicitly confirm each required risk flag.
 
 ## Protocol Hygiene
 
