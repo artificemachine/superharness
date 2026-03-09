@@ -74,6 +74,8 @@ bash /path/to/superharness/superharness contract today --project /path/to/projec
 ```bash
 bash /path/to/superharness/superharness task
 bash /path/to/superharness/superharness task create --project /path/to/project --id task-id --title "Task title" --owner codex-cli
+bash /path/to/superharness/superharness task create --project /path/to/project --id test-task --title "Run tests" --owner codex-cli --dependency task-id
+bash /path/to/superharness/superharness task status --project /path/to/project --id task-id --status in_progress --actor codex-cli
 bash /path/to/superharness/superharness task delete --project /path/to/project --id task-id
 ```
 
@@ -107,6 +109,7 @@ bash scripts/install-launchd-inbox-watcher.sh --project /path/to/project --inter
 bash scripts/ensure-launchd-inbox-watcher.sh --project /path/to/project
 bash scripts/uninstall-launchd-inbox-watcher.sh --project /path/to/project
 ```
+Note: avoid `~/Documents`, `~/Desktop`, and `~/Downloads` for watcher-managed projects on macOS; launchd can fail with `Operation not permitted` there.
 
 ## Protocol Hygiene
 

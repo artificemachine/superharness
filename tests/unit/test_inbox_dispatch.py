@@ -15,6 +15,8 @@ def _write_contract(project: Path) -> None:
                 "id: test-contract",
                 "tasks:",
                 "  - id: mcp-docs",
+                "    owner: codex-cli",
+                "    status: todo",
                 f'    project_path: "{project}"',
             ]
         )
@@ -194,3 +196,112 @@ def test_dispatch_fails_on_malformed_inbox_yaml(repo_root, tmp_path) -> None:
 
     assert result.returncode == 1
     assert "Failed to read pending inbox item" in result.stderr
+
+
+def test_dispatch_non_interactive_reconciles_stuck_launched_to_failed(repo_root, tmp_path) -> None:
+    project = tmp_path / "proj5"
+    project.mkdir()
+    _write_contract(project)
+    _write_inbox(
+        project,
+        [
+            "# Delegation inbox",
+            "# status: pending|launched|running|done|failed|stale",
+            "",
+            "- id: reconcile-item",
+            "  to: codex-cli",
+            "  task: mcp-docs",
+            f"  project: {project}",
+            "  status: pending",
+            "  priority: 1",
+            "  retry_count: 0",
+            "  max_retries: 3",
+            "  created_at: 2026-03-08T18:00:00Z",
+        ],
+    )
+
+    bin_dir = _fake_bin(tmp_path)
+    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=["--project", str(project), "--to", "codex-cli", "--non-interactive"],
+        env={
+            "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+            "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
+        },
+    )
+
+    assert result.returncode == 1
+    assert "non-interactive launch exited without done/failed" in result.stdout
+    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
+    assert "id: reconcile-item" in inbox_text
+    assert "  status: failed" in inbox_text
+    assert "  failed_at:" in inbox_text
+
+
+def test_dispatch_non_interactive_reconciles_to_done_from_contract(repo_root, tmp_path) -> None:
+    project = tmp_path / "proj6"
+    project.mkdir()
+    _write_contract(project)
+    _write_inbox(
+        project,
+        [
+            "# Delegation inbox",
+            "# status: pending|launched|running|done|failed|stale",
+            "",
+            "- id: reconcile-done-item",
+            "  to: codex-cli",
+            "  task: mcp-docs",
+            f"  project: {project}",
+            "  status: pending",
+            "  priority: 1",
+            "  retry_count: 0",
+            "  max_retries: 3",
+            "  created_at: 2026-03-08T18:00:00Z",
+        ],
+    )
+
+    bin_dir = _fake_bin(tmp_path)
+    codex_path = bin_dir / "codex"
+    codex_path.write_text(
+        "\n".join(
+            [
+                "#!/bin/bash",
+                "set -euo pipefail",
+                'proj=""',
+                "while [ $# -gt 0 ]; do",
+                '  if [ \"$1\" = \"-C\" ] && [ $# -ge 2 ]; then',
+                '    proj=\"$2\"',
+                "    shift 2",
+                "    continue",
+                "  fi",
+                "  shift",
+                "done",
+                'if [ -n \"$proj\" ] && [ -f \"$proj/.superharness/contract.yaml\" ]; then',
+                "  perl -0pi -e 's/(id:\\s*mcp-docs\\s*\\n(?:[^\\n]*\\n)*?\\s*status:\\s*)(?:todo|in_progress|running|failed|done)/${1}done/s' \"$proj/.superharness/contract.yaml\"",
+                "fi",
+                "echo fake-codex",
+            ]
+        )
+        + "\n"
+    )
+    codex_path.chmod(0o755)
+
+    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=["--project", str(project), "--to", "codex-cli", "--non-interactive"],
+        env={
+            "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+            "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
+        },
+    )
+
+    assert result.returncode == 0
+    assert "reconciled from contract task status" in result.stdout
+    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
+    assert "id: reconcile-done-item" in inbox_text
+    assert "  status: done" in inbox_text
+    assert "  done_at:" in inbox_text

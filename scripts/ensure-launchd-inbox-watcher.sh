@@ -68,6 +68,15 @@ if [ ! -d "$PROJECT_DIR/.superharness" ]; then
   echo "Skipped watcher ensure: .superharness missing in $PROJECT_DIR"
   exit 0
 fi
+PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd -P)"
+
+case "$PROJECT_DIR" in
+  "$HOME/Documents"/*|"$HOME/Desktop"/*|"$HOME/Downloads"/*)
+    echo "Skipped watcher ensure: protected macOS folder ($PROJECT_DIR)."
+    echo "Move project outside Documents/Desktop/Downloads for reliable launchd execution."
+    exit 0
+    ;;
+esac
 
 PROJECT_SLUG="$(basename "$PROJECT_DIR" | tr -cs 'A-Za-z0-9' '-')"
 LABEL="com.superharness.inbox.${PROJECT_SLUG}"
