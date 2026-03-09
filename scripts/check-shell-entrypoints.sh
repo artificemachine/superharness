@@ -17,6 +17,7 @@ ENTRYPOINT_FILES=(
   "scripts/inbox-dispatch.sh"
   "scripts/inbox-enqueue.sh"
   "scripts/inbox-normalize.sh"
+  "scripts/inbox-recover-stale.sh"
   "scripts/inbox-watch.sh"
   "scripts/install-launchd-inbox-watcher.sh"
   "scripts/install-git-hooks.sh"
