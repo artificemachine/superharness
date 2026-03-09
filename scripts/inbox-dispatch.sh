@@ -130,13 +130,25 @@ if [ -z "$ITEM" ]; then
   exit 0
 fi
 
-ITEM_ID="$(printf '%s' "$ITEM" | cut -d'|' -f1)"
-ITEM_TO="$(printf '%s' "$ITEM" | cut -d'|' -f2)"
-ITEM_TASK="$(printf '%s' "$ITEM" | cut -d'|' -f3)"
-ITEM_PROJECT="$(printf '%s' "$ITEM" | cut -d'|' -f4)"
-ITEM_RETRY_COUNT="$(printf '%s' "$ITEM" | cut -d'|' -f5)"
-ITEM_MAX_RETRIES="$(printf '%s' "$ITEM" | cut -d'|' -f6)"
-ITEM_PRIORITY="$(printf '%s' "$ITEM" | cut -d'|' -f7)"
+readarray -d '' -t ITEM_FIELDS < <(
+  printf '%s' "$ITEM" | ruby -rjson -e '
+    h = JSON.parse(STDIN.read)
+    keys = %w[id to task project retry_count max_retries priority]
+    keys.each { |k| print(h.fetch(k, "").to_s); print("\0") }
+  '
+)
+if [ "${#ITEM_FIELDS[@]}" -lt 7 ]; then
+  echo "Failed to parse pending inbox item from $INBOX_FILE" >&2
+  exit 1
+fi
+
+ITEM_ID="${ITEM_FIELDS[0]}"
+ITEM_TO="${ITEM_FIELDS[1]}"
+ITEM_TASK="${ITEM_FIELDS[2]}"
+ITEM_PROJECT="${ITEM_FIELDS[3]}"
+ITEM_RETRY_COUNT="${ITEM_FIELDS[4]}"
+ITEM_MAX_RETRIES="${ITEM_FIELDS[5]}"
+ITEM_PRIORITY="${ITEM_FIELDS[6]}"
 
 if [ -z "$ITEM_PROJECT" ]; then
   ITEM_PROJECT="$PROJECT_DIR"
@@ -221,23 +233,23 @@ if [ "$NON_INTERACTIVE" -eq 1 ] && [ "$PRINT_ONLY" -eq 0 ]; then
 
   case "$FINAL_STATE" in
     done)
-      if ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to done --now "$RECONCILE_NOW" --stamp-key done_at >/dev/null 2>&1; then
+      if ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to "done" --now "$RECONCILE_NOW" --stamp-key done_at >/dev/null 2>&1; then
         RECONCILED=1
-      elif ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from running --to done --now "$RECONCILE_NOW" --stamp-key done_at >/dev/null 2>&1; then
+      elif ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from running --to "done" --now "$RECONCILE_NOW" --stamp-key done_at >/dev/null 2>&1; then
         RECONCILED=1
       fi
       ;;
     failed)
-      if ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to failed --now "$RECONCILE_NOW" --stamp-key failed_at >/dev/null 2>&1; then
+      if ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to "failed" --now "$RECONCILE_NOW" --stamp-key failed_at >/dev/null 2>&1; then
         RECONCILED=1
-      elif ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from running --to failed --now "$RECONCILE_NOW" --stamp-key failed_at >/dev/null 2>&1; then
+      elif ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from running --to "failed" --now "$RECONCILE_NOW" --stamp-key failed_at >/dev/null 2>&1; then
         RECONCILED=1
       fi
       ;;
     *)
-      if ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to failed --now "$RECONCILE_NOW" --stamp-key failed_at >/dev/null 2>&1; then
+      if ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to "failed" --now "$RECONCILE_NOW" --stamp-key failed_at >/dev/null 2>&1; then
         RECONCILED=1
-      elif ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from running --to failed --now "$RECONCILE_NOW" --stamp-key failed_at >/dev/null 2>&1; then
+      elif ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from running --to "failed" --now "$RECONCILE_NOW" --stamp-key failed_at >/dev/null 2>&1; then
         RECONCILED=1
       fi
       ;;

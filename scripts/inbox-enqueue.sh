@@ -100,12 +100,33 @@ INBOX_FILE="$HARNESS_DIR/inbox.yaml"
 CONTRACT_FILE="$HARNESS_DIR/contract.yaml"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONTRACT_HELPER="$SCRIPT_DIR/../engine/contract.rb"
+INBOX_YAML="$SCRIPT_DIR/inbox-yaml.rb"
 [ -f "$CONTRACT_HELPER" ] || { echo "Missing contract helper: $CONTRACT_HELPER" >&2; exit 1; }
+[ -x "$INBOX_YAML" ] || { echo "Missing inbox helper: $INBOX_YAML" >&2; exit 1; }
+
+validate_token() {
+  local name="$1"
+  local value="$2"
+  case "$value" in
+    *$'\n'*|*$'\r'*|*$'\t'*)
+      echo "Invalid $name: contains control characters" >&2
+      exit 2
+      ;;
+  esac
+  if [[ ! "$value" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "Invalid $name: '$value'" >&2
+    echo "$name must match ^[A-Za-z0-9._-]+$ (no spaces, pipes, or control characters)." >&2
+    exit 2
+  fi
+}
+
+validate_token "task id" "$TASK_ID"
 
 if [ -z "$ITEM_ID" ]; then
   RAND_SUFFIX="$(od -An -N3 -tu1 /dev/urandom | tr -d ' \n')"
   ITEM_ID="$(date -u +%Y%m%dT%H%M%SZ)-${TASK_ID}-$$-${RAND_SUFFIX}"
 fi
+validate_token "inbox id" "$ITEM_ID"
 
 # Validate task project_path mapping when available in contract.
 if [ -f "$CONTRACT_FILE" ]; then
@@ -150,22 +171,15 @@ if [ -f "$CONTRACT_FILE" ]; then
   fi
 fi
 
-if [ ! -f "$INBOX_FILE" ]; then
-  printf '# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n' > "$INBOX_FILE"
+CREATED_AT="$(date -u +%FT%TZ)"
+if ! ENQUEUE_RESULT="$(ruby "$INBOX_YAML" enqueue --file "$INBOX_FILE" --id "$ITEM_ID" --to "$TARGET" --task "$TASK_ID" --project "$PROJECT_DIR" --priority "$PRIORITY" --created-at "$CREATED_AT")"; then
+  echo "Failed to enqueue inbox item: $INBOX_FILE" >&2
+  exit 1
 fi
-
-{
-  echo ""
-  echo "- id: $ITEM_ID"
-  echo "  to: $TARGET"
-  echo "  task: $TASK_ID"
-  echo "  project: $PROJECT_DIR"
-  echo "  status: pending"
-  echo "  priority: $PRIORITY"
-  echo "  retry_count: 0"
-  echo "  max_retries: 3"
-  echo "  created_at: $(date -u +%FT%TZ)"
-} >> "$INBOX_FILE"
+if printf '%s' "$ENQUEUE_RESULT" | grep -q '^result=duplicate_id '; then
+  echo "Inbox item id already exists: $ITEM_ID" >&2
+  exit 1
+fi
 
 echo "Enqueued inbox item:"
 echo "  id: $ITEM_ID"
