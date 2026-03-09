@@ -111,6 +111,42 @@ release_lock() {
   fi
 }
 
+acquire_lock_with_retry() {
+  local attempts="${1:-50}"
+  local delay_seconds="${2:-0.1}"
+  local attempt=0
+
+  while [ "$attempt" -lt "$attempts" ]; do
+    if acquire_lock; then
+      return 0
+    fi
+    sleep "$delay_seconds"
+    attempt=$((attempt + 1))
+  done
+  return 1
+}
+
+mark_item_failed() {
+  local item_id="$1"
+  local failed_at="$2"
+
+  if ! acquire_lock_with_retry 50 0.1; then
+    echo "Failed to acquire inbox lock while marking failure for $item_id" >&2
+    return 1
+  fi
+
+  if ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$item_id" --from launched --to failed --now "$failed_at" --stamp-key failed_at >/dev/null 2>&1 \
+    || ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$item_id" --from running --to failed --now "$failed_at" --stamp-key failed_at >/dev/null 2>&1; then
+    release_lock
+    echo "Inbox item updated: $item_id -> failed"
+    return 0
+  fi
+
+  release_lock
+  echo "Failed to mark inbox item as failed for $item_id" >&2
+  return 1
+}
+
 if ! acquire_lock; then
   echo "Another inbox dispatcher is active for $INBOX_FILE; skipping."
   exit 0
@@ -121,8 +157,8 @@ READ_ARGS=(next_pending --file "$INBOX_FILE")
 if [ -n "$TARGET_FILTER" ]; then
   READ_ARGS+=(--to "$TARGET_FILTER")
 fi
-if ! ITEM="$(ruby "$INBOX_YAML" "${READ_ARGS[@]}")"; then
-  echo "Failed to read pending inbox item from $INBOX_FILE" >&2
+if ! ITEM="$(ruby "$INBOX_YAML" "${READ_ARGS[@]}" 2>&1)"; then
+  echo "Failed to read pending inbox item from $INBOX_FILE: $ITEM" >&2
   exit 1
 fi
 if [ -z "$ITEM" ]; then
@@ -130,7 +166,10 @@ if [ -z "$ITEM" ]; then
   exit 0
 fi
 
-readarray -d '' -t ITEM_FIELDS < <(
+ITEM_FIELDS=()
+while IFS= read -r -d '' field; do
+  ITEM_FIELDS+=("$field")
+done < <(
   printf '%s' "$ITEM" | ruby -rjson -e '
     h = JSON.parse(STDIN.read)
     keys = %w[id to task project retry_count max_retries priority]
@@ -163,6 +202,16 @@ if [ -z "$ITEM_PRIORITY" ]; then
   ITEM_PRIORITY=2
 fi
 
+LAUNCHER=""
+case "$ITEM_TO" in
+  claude-code) LAUNCHER="$LAUNCH_CLAUDE" ;;
+  codex-cli) LAUNCHER="$LAUNCH_CODEX" ;;
+  *)
+    echo "Unsupported target '$ITEM_TO' for inbox item '$ITEM_ID'" >&2
+    exit 1
+    ;;
+esac
+
 LAUNCH_ARGS=(--project "$ITEM_PROJECT" --task "$ITEM_TASK")
 if [ "$PRINT_ONLY" -eq 1 ]; then
   LAUNCH_ARGS+=(--print-only)
@@ -175,7 +224,7 @@ if [ "$CODEX_BYPASS" -eq 1 ]; then
 fi
 
 LAUNCH_NOW="$(date -u +%FT%TZ)"
-LAUNCH_RESULT="$(ruby "$INBOX_YAML" launch --file "$INBOX_FILE" --id "$ITEM_ID" --now "$LAUNCH_NOW")" || LAUNCH_RC=$?
+LAUNCH_RESULT="$(ruby "$INBOX_YAML" launch --file "$INBOX_FILE" --id "$ITEM_ID" --now "$LAUNCH_NOW" 2>&1)" || LAUNCH_RC=$?
 LAUNCH_RC=${LAUNCH_RC:-0}
 release_lock
 
@@ -194,25 +243,9 @@ if [ -z "$NEW_RETRY_COUNT" ]; then
 fi
 echo "Inbox item updated: $ITEM_ID -> launched (priority=$ITEM_PRIORITY, retries=$NEW_RETRY_COUNT/$ITEM_MAX_RETRIES)"
 
-LAUNCHER=""
-case "$ITEM_TO" in
-  claude-code) LAUNCHER="$LAUNCH_CLAUDE" ;;
-  codex-cli) LAUNCHER="$LAUNCH_CODEX" ;;
-  *)
-    echo "Unsupported target '$ITEM_TO' for inbox item '$ITEM_ID'" >&2
-    exit 1
-    ;;
-esac
-
 if ! bash "$LAUNCHER" "${LAUNCH_ARGS[@]}"; then
   FAIL_NOW="$(date -u +%FT%TZ)"
-  if ! acquire_lock; then
-    echo "Failed to acquire inbox lock while marking failure for $ITEM_ID" >&2
-    exit 1
-  fi
-  ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to failed --now "$FAIL_NOW" --stamp-key failed_at >/dev/null
-  release_lock
-  echo "Inbox item updated: $ITEM_ID -> failed"
+  mark_item_failed "$ITEM_ID" "$FAIL_NOW"
   exit 1
 fi
 
@@ -220,7 +253,7 @@ fi
 # did not transition itself to done/failed, reconcile stuck states immediately.
 if [ "$NON_INTERACTIVE" -eq 1 ] && [ "$PRINT_ONLY" -eq 0 ]; then
   RECONCILE_NOW="$(date -u +%FT%TZ)"
-  if ! acquire_lock; then
+  if ! acquire_lock_with_retry 50 0.1; then
     echo "Failed to acquire inbox lock while reconciling status for $ITEM_ID" >&2
     exit 1
   fi
@@ -228,7 +261,10 @@ if [ "$NON_INTERACTIVE" -eq 1 ] && [ "$PRINT_ONLY" -eq 0 ]; then
   FINAL_STATE=""
 
   if [ -f "$CONTRACT_FILE" ]; then
-    FINAL_STATE="$(ruby "$CONTRACT_YAML" task_status --file "$CONTRACT_FILE" --task "$ITEM_TASK" 2>/dev/null || true)"
+    if ! FINAL_STATE="$(ruby "$CONTRACT_YAML" task_status --file "$CONTRACT_FILE" --task "$ITEM_TASK" 2>&1)"; then
+      echo "Failed to read contract task status for $ITEM_TASK: $FINAL_STATE" >&2
+      FINAL_STATE=""
+    fi
   fi
 
   case "$FINAL_STATE" in

@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat << 'USAGE'
 Usage:
-  install-launchd-inbox-watcher.sh --project DIR [--interval SEC] [--to claude-code|codex-cli|both] [--print-only] [--codex-bypass] [--confirm-non-interactive yes|no] [--allow-protected-path]
+  install-launchd-inbox-watcher.sh --project DIR [--interval SEC] [--to claude-code|codex-cli|both] [--print-only] [--codex-bypass] [--confirm-non-interactive yes|no] [--confirm-skip-permissions yes|no] [--confirm-codex-bypass yes|no] [--allow-protected-path]
 
 Options:
   -p, --project DIR   Project directory containing .superharness/ (required)
@@ -13,6 +13,8 @@ Options:
       --print-only    Prepare prompts only; do not launch CLIs
       --codex-bypass  For codex-cli only: use dangerous bypass in non-interactive mode
       --confirm-non-interactive yes|no  Set SUPERHARNESS_CONFIRM_NON_INTERACTIVE explicitly
+      --confirm-skip-permissions yes|no  Set SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS explicitly
+      --confirm-codex-bypass yes|no  Set SUPERHARNESS_CONFIRM_CODEX_BYPASS explicitly
       --allow-protected-path  Allow install for macOS protected folders (Documents/Desktop/Downloads)
   -h, --help          Show this help message and exit
 USAGE
@@ -24,7 +26,75 @@ TARGET="both"
 PRINT_ONLY=0
 CODEX_BYPASS=0
 CONFIRM_NON_INTERACTIVE=""
+CONFIRM_SKIP_PERMISSIONS=""
+CONFIRM_CODEX_BYPASS=""
 ALLOW_PROTECTED_PATH=0
+
+xml_escape() {
+  local escaped="${1//&/&amp;}"
+  escaped="${escaped//</&lt;}"
+  escaped="${escaped//>/&gt;}"
+  escaped="${escaped//\"/&quot;}"
+  escaped="${escaped//\'/&apos;}"
+  printf '%s' "$escaped"
+}
+
+prompt_confirmation() {
+  local prompt="$1"
+  local answer
+  if [ ! -t 0 ]; then
+    return 1
+  fi
+  printf '%s [y/N]: ' "$prompt" >&2
+  read -r answer
+  case "$answer" in
+    y|Y|yes|YES) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+resolve_confirmation_flag() {
+  local flag_name="$1"
+  local prompt="$2"
+  local current_value="$3"
+
+  case "$current_value" in
+    yes|no)
+      printf '%s' "$current_value"
+      return 0
+      ;;
+    "")
+      if prompt_confirmation "$prompt"; then
+        printf 'yes'
+      else
+        printf 'no'
+      fi
+      return 0
+      ;;
+    *)
+      echo "Internal error: unsupported confirmation state for $flag_name" >&2
+      exit 2
+      ;;
+  esac
+}
+
+require_confirmation_yes() {
+  local flag_name="$1"
+  local flag_value="$2"
+  local guidance="$3"
+  if [ "$flag_value" != "yes" ]; then
+    echo "$guidance" >&2
+    exit 1
+  fi
+}
+
+plist_key() {
+  printf '      <key>%s</key>\n' "$(xml_escape "$1")"
+}
+
+plist_string() {
+  printf '      <string>%s</string>\n' "$(xml_escape "$1")"
+}
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -54,6 +124,16 @@ while [ $# -gt 0 ]; do
     --confirm-non-interactive)
       [ $# -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
       CONFIRM_NON_INTERACTIVE="$2"
+      shift 2
+      ;;
+    --confirm-skip-permissions)
+      [ $# -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
+      CONFIRM_SKIP_PERMISSIONS="$2"
+      shift 2
+      ;;
+    --confirm-codex-bypass)
+      [ $# -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
+      CONFIRM_CODEX_BYPASS="$2"
       shift 2
       ;;
     --allow-protected-path)
@@ -94,6 +174,29 @@ case "$CONFIRM_NON_INTERACTIVE" in
     ;;
 esac
 
+case "$CONFIRM_SKIP_PERMISSIONS" in
+  ""|yes|no) ;;
+  *)
+    echo "--confirm-skip-permissions must be yes or no" >&2
+    exit 2
+    ;;
+esac
+
+case "$CONFIRM_CODEX_BYPASS" in
+  ""|yes|no) ;;
+  *)
+    echo "--confirm-codex-bypass must be yes or no" >&2
+    exit 2
+    ;;
+esac
+
+case "$INTERVAL" in
+  ''|*[!0-9]*|0)
+    echo "--interval must be a positive integer" >&2
+    exit 2
+    ;;
+esac
+
 if [ "$(uname -s)" = "Darwin" ] && [ "$ALLOW_PROTECTED_PATH" -ne 1 ]; then
   case "$PROJECT_DIR" in
     "$HOME/Documents"/*|"$HOME/Desktop"/*|"$HOME/Downloads"/*)
@@ -113,17 +216,44 @@ if [ ! -d "$PROJECT_DIR/.superharness" ]; then
   exit 1
 fi
 
-if [ -z "$CONFIRM_NON_INTERACTIVE" ]; then
-  if [ -t 0 ]; then
-    printf 'Allow unattended non-interactive launches (sets SUPERHARNESS_CONFIRM_NON_INTERACTIVE=YES)? [y/N]: ' >&2
-    read -r ans
-    case "$ans" in
-      y|Y|yes|YES) CONFIRM_NON_INTERACTIVE="yes" ;;
-      *) CONFIRM_NON_INTERACTIVE="no" ;;
-    esac
-  else
-    # Non-interactive install defaults to current behavior to avoid breaking automation.
-    CONFIRM_NON_INTERACTIVE="yes"
+if [ "$PRINT_ONLY" -eq 0 ]; then
+  CONFIRM_NON_INTERACTIVE="$(
+    resolve_confirmation_flag \
+      "SUPERHARNESS_CONFIRM_NON_INTERACTIVE" \
+      "Allow unattended non-interactive launches (sets SUPERHARNESS_CONFIRM_NON_INTERACTIVE=YES)?" \
+      "$CONFIRM_NON_INTERACTIVE"
+  )"
+  require_confirmation_yes \
+    "SUPERHARNESS_CONFIRM_NON_INTERACTIVE" \
+    "$CONFIRM_NON_INTERACTIVE" \
+    "Refusing to install unattended watcher without --confirm-non-interactive yes."
+
+  case "$TARGET" in
+    both|claude-code)
+      CONFIRM_SKIP_PERMISSIONS="$(
+        resolve_confirmation_flag \
+          "SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS" \
+          "Allow Claude to run unattended with --dangerously-skip-permissions (sets SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS=YES)?" \
+          "$CONFIRM_SKIP_PERMISSIONS"
+      )"
+      require_confirmation_yes \
+        "SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS" \
+        "$CONFIRM_SKIP_PERMISSIONS" \
+        "Refusing to install Claude unattended watcher without --confirm-skip-permissions yes."
+      ;;
+  esac
+
+  if [ "$CODEX_BYPASS" -eq 1 ]; then
+    CONFIRM_CODEX_BYPASS="$(
+      resolve_confirmation_flag \
+        "SUPERHARNESS_CONFIRM_CODEX_BYPASS" \
+        "Allow Codex to run unattended with --dangerously-bypass-approvals-and-sandbox (sets SUPERHARNESS_CONFIRM_CODEX_BYPASS=YES)?" \
+        "$CONFIRM_CODEX_BYPASS"
+    )"
+    require_confirmation_yes \
+      "SUPERHARNESS_CONFIRM_CODEX_BYPASS" \
+      "$CONFIRM_CODEX_BYPASS" \
+      "Refusing to install Codex bypass watcher without --confirm-codex-bypass yes."
   fi
 fi
 
@@ -169,33 +299,45 @@ fi
   echo "<plist version=\"1.0\">"
   echo "  <dict>"
   echo "    <key>Label</key>"
-  echo "    <string>${LABEL}</string>"
+  printf '    <string>%s</string>\n' "$(xml_escape "$LABEL")"
   echo "    <key>ProgramArguments</key>"
   echo "    <array>"
   echo "      <string>/bin/bash</string>"
   for arg in "${ARGS[@]}"; do
-    echo "      <string>${arg}</string>"
+    plist_string "$arg"
   done
   echo "    </array>"
   echo "    <key>RunAtLoad</key>"
   echo "    <true/>"
   echo "    <key>StartInterval</key>"
-  echo "    <integer>${INTERVAL}</integer>"
+  printf '    <integer>%s</integer>\n' "$INTERVAL"
   echo "    <key>EnvironmentVariables</key>"
   echo "    <dict>"
-  echo "      <key>PATH</key>"
-  echo "      <string>${LAUNCHD_PATH}</string>"
-  echo "      <key>SUPERHARNESS_CONFIRM_NON_INTERACTIVE</key>"
+  plist_key "PATH"
+  plist_string "$LAUNCHD_PATH"
+  plist_key "SUPERHARNESS_CONFIRM_NON_INTERACTIVE"
   if [ "$CONFIRM_NON_INTERACTIVE" = "yes" ]; then
-    echo "      <string>YES</string>"
+    plist_string "YES"
   else
-    echo "      <string>NO</string>"
+    plist_string "NO"
+  fi
+  plist_key "SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS"
+  if [ "$CONFIRM_SKIP_PERMISSIONS" = "yes" ]; then
+    plist_string "YES"
+  else
+    plist_string "NO"
+  fi
+  plist_key "SUPERHARNESS_CONFIRM_CODEX_BYPASS"
+  if [ "$CONFIRM_CODEX_BYPASS" = "yes" ]; then
+    plist_string "YES"
+  else
+    plist_string "NO"
   fi
   echo "    </dict>"
   echo "    <key>StandardOutPath</key>"
-  echo "    <string>${LOG_DIR}/${LABEL}.out.log</string>"
+  printf '    <string>%s</string>\n' "$(xml_escape "${LOG_DIR}/${LABEL}.out.log")"
   echo "    <key>StandardErrorPath</key>"
-  echo "    <string>${LOG_DIR}/${LABEL}.err.log</string>"
+  printf '    <string>%s</string>\n' "$(xml_escape "${LOG_DIR}/${LABEL}.err.log")"
   echo "  </dict>"
   echo "</plist>"
 } > "$PLIST_PATH"
@@ -220,6 +362,16 @@ if [ "$CONFIRM_NON_INTERACTIVE" = "yes" ]; then
   echo "  Non-interactive confirmation: enabled (YES)"
 else
   echo "  Non-interactive confirmation: disabled (NO)"
+fi
+if [ "$CONFIRM_SKIP_PERMISSIONS" = "yes" ]; then
+  echo "  Claude skip-permissions confirmation: enabled (YES)"
+elif [ "$PRINT_ONLY" -eq 0 ] && { [ "$TARGET" = "both" ] || [ "$TARGET" = "claude-code" ]; }; then
+  echo "  Claude skip-permissions confirmation: disabled (NO)"
+fi
+if [ "$CONFIRM_CODEX_BYPASS" = "yes" ]; then
+  echo "  Codex bypass confirmation: enabled (YES)"
+elif [ "$CODEX_BYPASS" -eq 1 ]; then
+  echo "  Codex bypass confirmation: disabled (NO)"
 fi
 echo "  PATH: $LAUNCHD_PATH"
 echo "  Logs: $LOG_DIR/${LABEL}.out.log"
