@@ -128,6 +128,16 @@ bash /path/to/superharness/superharness hygiene --project /path/to/project --str
 bash /path/to/superharness/superharness doctor --project /path/to/project
 ```
 
+### Browser monitor UI
+```bash
+bash /path/to/superharness/superharness monitor-ui --project /path/to/project
+```
+The monitor UI includes:
+- watcher state + inbox counters
+- one-click queue actions (`dispatch preview`, `recover retry`, `normalize stale`)
+- optional `Open in Logdy` deep log view (only if `logdy` is installed)
+The monitor binds to loopback only and protects mutating actions with a per-session token.
+
 ## CI And Local Guardrails
 
 Run shell entrypoint guard:
