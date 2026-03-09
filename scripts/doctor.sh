@@ -72,6 +72,13 @@ else
   failures=$((failures + 1))
 fi
 
+case "$PROJECT_DIR" in
+  "$HOME/Documents"/*|"$HOME/Desktop"/*|"$HOME/Downloads"/*)
+    echo "WARN project:path is macOS protected folder (launchd may fail: Operation not permitted)"
+    warns=$((warns + 1))
+    ;;
+esac
+
 for f in contract.yaml ledger.md decisions.yaml failures.yaml; do
   if [ -f "$HARNESS_DIR/$f" ]; then
     echo "PASS file:$f"

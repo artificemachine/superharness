@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat << 'USAGE'
 Usage:
-  delegate.sh --to claude-code|codex-cli [--project DIR] [--task TASK_ID] [--print-only] [--non-interactive]
+  delegate.sh --to claude-code|codex-cli [--project DIR] [--task TASK_ID] [--print-only] [--non-interactive] [--codex-bypass]
 
 Options:
       --to TARGET     Required: claude-code or codex-cli
@@ -12,6 +12,7 @@ Options:
   -t, --task TASK_ID  Specific task id to run (otherwise read from latest handoff for target)
       --print-only    Print generated prompt and exit (do not launch CLI)
       --non-interactive  Launch target in non-interactive mode where supported
+      --codex-bypass  For codex-cli only: use dangerous bypass in non-interactive mode
   -h, --help          Show this help message and exit
 USAGE
 }
@@ -21,6 +22,38 @@ TARGET=""
 TASK_ID=""
 PRINT_ONLY=0
 NON_INTERACTIVE=0
+CODEX_BYPASS=0
+
+confirm_non_interactive_risk() {
+  local risk_msg
+  if [ "$TARGET" = "codex-cli" ] && [ "$CODEX_BYPASS" -eq 1 ]; then
+    risk_msg="Risk: non-interactive Codex bypass disables sandbox and approval prompts. Continue?"
+  else
+    risk_msg="Risk: non-interactive mode runs without live user supervision. Continue?"
+  fi
+
+  if [ -n "${SUPERHARNESS_CONFIRM_NON_INTERACTIVE:-}" ]; then
+    case "${SUPERHARNESS_CONFIRM_NON_INTERACTIVE}" in
+      YES|yes|Y|y) return 0 ;;
+    esac
+  fi
+
+  if [ ! -t 0 ]; then
+    echo "Refusing non-interactive launch without explicit confirmation." >&2
+    echo "Set SUPERHARNESS_CONFIRM_NON_INTERACTIVE=YES to allow unattended launch." >&2
+    exit 1
+  fi
+
+  printf '%s [y/N]: ' "$risk_msg" >&2
+  read -r ans
+  case "$ans" in
+    y|Y|yes|YES) ;;
+    *)
+      echo "Aborted by user." >&2
+      exit 1
+      ;;
+  esac
+}
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -45,6 +78,10 @@ while [ $# -gt 0 ]; do
       ;;
     --non-interactive)
       NON_INTERACTIVE=1
+      shift
+      ;;
+    --codex-bypass)
+      CODEX_BYPASS=1
       shift
       ;;
     -h|--help)
@@ -103,19 +140,25 @@ if [ -z "$TASK_ID" ]; then
   exit 1
 fi
 
+AUTO_DIRECTIVE=""
+if [ "$NON_INTERACTIVE" -eq 1 ]; then
+  AUTO_DIRECTIVE="
+This is an automated non-interactive run. Do not ask for confirmation or approval. Proceed and apply all changes immediately."
+fi
+
 if [ "$TARGET" = "claude-code" ]; then
   if [ -n "$LATEST_HANDOFF" ]; then
     PROMPT="continue contract
 Read the latest handoff addressed to claude-code and execute task ${TASK_ID}.
 Use scope, commands, and acceptance criteria from the handoff.
 Update .superharness/contract.yaml task status, append .superharness/ledger.md, and refresh the handoff with outcomes.
-Contract id: ${CONTRACT_ID}."
+Contract id: ${CONTRACT_ID}.${AUTO_DIRECTIVE}"
   else
     PROMPT="continue contract
 No handoff exists yet for task ${TASK_ID}.
 Read .superharness/contract.yaml directly and execute task ${TASK_ID}.
 Update .superharness/contract.yaml task status, append .superharness/ledger.md, and create a new handoff with outcomes.
-Contract id: ${CONTRACT_ID}."
+Contract id: ${CONTRACT_ID}.${AUTO_DIRECTIVE}"
   fi
 else
   if [ -n "$LATEST_HANDOFF" ]; then
@@ -148,6 +191,10 @@ if [ "$PRINT_ONLY" -eq 1 ]; then
   exit 0
 fi
 
+if [ "$NON_INTERACTIVE" -eq 1 ]; then
+  confirm_non_interactive_risk
+fi
+
 if [ "$TARGET" = "claude-code" ]; then
   if ! command -v claude >/dev/null 2>&1; then
     echo "claude CLI is not installed or not on PATH" >&2
@@ -157,7 +204,7 @@ if [ "$TARGET" = "claude-code" ]; then
   if [ "$NON_INTERACTIVE" -eq 1 ]; then
     echo "Launching Claude (non-interactive)..."
     cd "$PROJECT_DIR"
-    exec claude -p "$PROMPT"
+    exec claude -p --dangerously-skip-permissions "$PROMPT"
   fi
   echo "Launching Claude..."
   cd "$PROJECT_DIR"
@@ -170,7 +217,10 @@ else
   echo ""
   if [ "$NON_INTERACTIVE" -eq 1 ]; then
     echo "Launching Codex (non-interactive)..."
-    exec codex exec -C "$PROJECT_DIR" "$PROMPT"
+    if [ "$CODEX_BYPASS" -eq 1 ]; then
+      exec codex exec --dangerously-bypass-approvals-and-sandbox -C "$PROJECT_DIR" "$PROMPT"
+    fi
+    exec codex exec --full-auto -C "$PROJECT_DIR" "$PROMPT"
   fi
   echo "Launching Codex..."
   exec codex -C "$PROJECT_DIR" "$PROMPT"
