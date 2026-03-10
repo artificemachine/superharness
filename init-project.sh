@@ -229,18 +229,19 @@ if [ ! -f "$PROJECT_DIR/AGENTS.md" ]; then
     render_template "$TEMPLATE_DIR/AGENTS.md.template" "$PROJECT_DIR/AGENTS.md"
   else
     cat > "$PROJECT_DIR/AGENTS.md" << EOF
-# $PROJECT_NAME
+# ${PROJECT_NAME}
 
 ## Identity
 You are working for the project owner.
 
 ## This Project
-- What: $PROJECT_NAME
-- Stack: $TECH_STACK
-- Status: $STATUS
-
+EOF
+    printf '%s\n' "- What: ${PROJECT_NAME}" >> "$PROJECT_DIR/AGENTS.md"
+    printf '%s\n' "- Stack: ${TECH_STACK}" >> "$PROJECT_DIR/AGENTS.md"
+    printf '%s\n\n' "- Status: ${STATUS}" >> "$PROJECT_DIR/AGENTS.md"
+    cat >> "$PROJECT_DIR/AGENTS.md" << 'EOF'
 ## Cross-Agent Protocol
-- Read \`.superharness/contract.yaml\` before starting work.
+- Read `.superharness/contract.yaml` before starting work.
 - Keep task status, ledger, and handoff updated before stopping.
 EOF
   fi

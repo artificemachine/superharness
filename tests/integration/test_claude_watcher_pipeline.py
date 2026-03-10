@@ -39,6 +39,7 @@ def test_claude_watcher_dispatch_smoke(repo_root: Path, tmp_path: Path) -> None:
             "cli/delegate-task.sh",
             "cli/task.sh",
             "engine/contract.rb",
+            "engine/inbox.rb",
             "superharness",
         ]
     )
@@ -82,59 +83,68 @@ def test_claude_watcher_dispatch_smoke(repo_root: Path, tmp_path: Path) -> None:
 
     # Create mock delegate-to-claude.sh that marks task done without launching Claude
     mock_launcher = project / "scripts/delegate-to-claude.sh"
-    mock_launcher.write_text("""#!/usr/bin/env python3
-import sys
-import yaml
-from pathlib import Path
-from datetime import datetime
+    mock_launcher.write_text("""#!/bin/bash
+set -euo pipefail
 
-# Mock launcher: parse args and mark task done without launching claude
-project_dir = None
-task_id = None
-print_only = False
+PROJECT_DIR=""
+TASK_ID=""
+PRINT_ONLY=0
 
-i = 1
-while i < len(sys.argv):
-    if sys.argv[i] == "--project":
-        project_dir = sys.argv[i+1]
-        i += 2
-    elif sys.argv[i] == "--task":
-        task_id = sys.argv[i+1]
-        i += 2
-    elif sys.argv[i] == "--print-only":
-        print_only = True
-        i += 1
-    else:
-        i += 1
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --project)
+      PROJECT_DIR="$2"
+      shift 2
+      ;;
+    --task)
+      TASK_ID="$2"
+      shift 2
+      ;;
+    --print-only)
+      PRINT_ONLY=1
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
 
-if print_only:
-    sys.exit(0)
+if [ "$PRINT_ONLY" -eq 1 ]; then
+  exit 0
+fi
 
-# Mock: mark contract task as done
-contract_file = Path(project_dir) / ".superharness/contract.yaml"
-with open(contract_file) as f:
-    contract_doc = yaml.safe_load(f)
+ruby - "$PROJECT_DIR" "$TASK_ID" <<'RB'
+require "psych"
+require "time"
+require "date"
 
-for task in contract_doc.get("tasks", []):
-    if task.get("id") == task_id:
-        task["status"] = "done"
-        break
+project_dir = ARGV[0]
+task_id = ARGV[1]
 
-with open(contract_file, "w") as f:
-    yaml.dump(contract_doc, f, default_flow_style=False, sort_keys=False)
+contract_file = File.join(project_dir, ".superharness", "contract.yaml")
+contract_doc = Psych.safe_load(File.read(contract_file), permitted_classes: [Time, Date], aliases: false) || {}
+tasks = contract_doc["tasks"]
+tasks = [] unless tasks.is_a?(Array)
+tasks.each do |task|
+  next unless task.is_a?(Hash)
+  if task["id"].to_s == task_id.to_s
+    task["status"] = "done"
+    break
+  end
+end
+contract_doc["tasks"] = tasks
+File.write(contract_file, Psych.dump(contract_doc))
 
-# Mock: append ledger
-ledger_file = Path(project_dir) / ".superharness/ledger.md"
-today = datetime.utcnow().strftime("%Y-%m-%d")
-with open(ledger_file, "a") as f:
-    f.write(f"{today} | {task_id} | claude-code | Mock smoke test execution\\n")
-
-sys.exit(0)
+ledger_file = File.join(project_dir, ".superharness", "ledger.md")
+today = Time.now.utc.strftime("%Y-%m-%d")
+File.open(ledger_file, "a") { |f| f.puts("#{today} | #{task_id} | claude-code | Mock smoke test execution") }
+RB
 """)
     mock_launcher.chmod(0o755)
 
     # Run inbox-dispatch in non-interactive mode
-    dispatch_script = repo_root / "scripts/inbox-dispatch.sh"
+    dispatch_script = project / "scripts/inbox-dispatch.sh"
     dispatch_env = {
         "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
         "SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS": "YES",
@@ -154,7 +164,7 @@ sys.exit(0)
 
     # Verify dispatch succeeded (may exit 0 even if task execution fails in reconcile)
     assert dispatch_res.returncode == 0, f"dispatch failed: {dispatch_res.stderr}\nstdout: {dispatch_res.stdout}"
-    assert "Inbox item updated" in dispatch_res.stdout, f"No inbox update in output: {dispatch_res.stdout}"
+    assert "Inbox item updated" in dispatch_res.stdout, "No inbox update in output: " + dispatch_res.stdout
 
     # Verify contract task status is done (read YAML directly)
     with open(contract_file) as f:
