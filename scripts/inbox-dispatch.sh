@@ -176,7 +176,6 @@ if ! ITEM="$(ruby "$INBOX_YAML" "${READ_ARGS[@]}" 2>&1)"; then
   exit 1
 fi
 if [ -z "$ITEM" ]; then
-  echo "No pending inbox items found in $INBOX_FILE"
   exit 0
 fi
 

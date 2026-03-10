@@ -859,3 +859,8 @@ If you're an agent picking this up:
 - launchd watcher install no longer silently enables dangerous modes.
 - Dispatch failure handling is more resilient under lock contention and malformed handoff input.
 - Added pipeline-smoke-claude integration test (tests/integration/test_claude_watcher_pipeline.py) — verifies end-to-end watcher dispatch flow for claude-code target.
+
+---
+
+> **Note:** For release-oriented changelogs with semver tags, see [RELEASES.md](RELEASES.md).
+> This file continues as the full iteration log.

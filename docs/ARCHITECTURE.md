@@ -93,9 +93,9 @@ superharness is split into four operational layers:
 - YAML schemas and Markdown templates.
 
 **Key files:**
-- `protocol/contract-schema.yaml` — contract structure
-- `protocol/handoff-template.yaml` — handoff structure
-- `protocol/inbox-lifecycle.md` — inbox state machine
+- `protocol/spec.md` — protocol specification and lifecycle rules
+- `protocol/templates/contract.yaml` — contract template
+- `protocol/templates/handoff.yaml` — handoff template
 
 ### 2. `engine/`
 - Ruby runtime for structured YAML operations.
