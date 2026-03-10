@@ -5,6 +5,7 @@ import json
 import threading
 import urllib.error
 import urllib.request
+import uuid
 from pathlib import Path
 
 import pytest
@@ -63,9 +64,12 @@ def _start_server(module, repo_root: Path, project: Path):
     module.Handler.refresh_seconds = 3
     module.Handler.scripts_dir = repo_root / "scripts"
     module.Handler.logdy_port = 8797
-    module.Handler.auth_token = "test-token"
+    module.Handler.auth_token = f"unit-{uuid.uuid4().hex}"
     module.Handler.logdy_process = None
-    server = module.ThreadingHTTPServer(("127.0.0.1", 0), module.Handler)
+    try:
+        server = module.ThreadingHTTPServer(("127.0.0.1", 0), module.Handler)
+    except PermissionError as exc:
+        pytest.skip(f"Socket bind not permitted in this environment: {exc}")
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     host, port = server.server_address
@@ -144,7 +148,7 @@ def test_monitor_action_rejects_cross_origin_with_token(repo_root, tmp_path, mon
             headers={
                 "Origin": "https://evil.example",
                 "Content-Type": "application/json",
-                "X-Superharness-Token": "test-token",
+                "X-Superharness-Token": module.Handler.auth_token,
             },
         )
     finally:
@@ -169,7 +173,7 @@ def test_monitor_action_accepts_same_origin_with_token(repo_root, tmp_path, monk
                 "Origin": base_url,
                 "Referer": base_url + "/",
                 "Content-Type": "application/json",
-                "X-Superharness-Token": "test-token",
+                "X-Superharness-Token": module.Handler.auth_token,
             },
         )
     finally:

@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat << 'USAGE'
 Usage:
-  inbox-dispatch.sh --project DIR [--to claude-code|codex-cli] [--print-only] [--non-interactive] [--codex-bypass]
+  inbox-dispatch.sh --project DIR [--to claude-code|codex-cli] [--print-only] [--non-interactive] [--codex-bypass] [--launcher-timeout SECONDS]
 
 Options:
   -p, --project DIR   Project directory containing .superharness/
@@ -12,6 +12,7 @@ Options:
       --print-only    Build and print kickoff prompt without launching CLI
       --non-interactive  Run target launchers in non-interactive mode
       --codex-bypass  For codex-cli only: use dangerous bypass in non-interactive mode
+      --launcher-timeout SECONDS  Kill launcher after SECONDS (default: 0 = no timeout)
   -h, --help          Show this help message and exit
 USAGE
 }
@@ -21,6 +22,7 @@ TARGET_FILTER=""
 PRINT_ONLY=0
 NON_INTERACTIVE=0
 CODEX_BYPASS=0
+LAUNCHER_TIMEOUT=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -46,6 +48,11 @@ while [ $# -gt 0 ]; do
       CODEX_BYPASS=1
       shift
       ;;
+    --launcher-timeout)
+      [ $# -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
+      LAUNCHER_TIMEOUT="$2"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -68,6 +75,13 @@ case "$TARGET_FILTER" in
   ""|claude-code|codex-cli) ;;
   *)
     echo "--to must be claude-code or codex-cli" >&2
+    exit 2
+    ;;
+esac
+
+case "$LAUNCHER_TIMEOUT" in
+  ''|*[!0-9]*)
+    echo "--launcher-timeout must be a non-negative integer" >&2
     exit 2
     ;;
 esac
@@ -243,8 +257,61 @@ if [ -z "$NEW_RETRY_COUNT" ]; then
 fi
 echo "Inbox item updated: $ITEM_ID -> launched (priority=$ITEM_PRIORITY, retries=$NEW_RETRY_COUNT/$ITEM_MAX_RETRIES)"
 
-if ! bash "$LAUNCHER" "${LAUNCH_ARGS[@]}"; then
+run_with_timeout() {
+  local secs="$1"
+  shift
+  python3 - "$secs" "$@" <<'PY'
+import os
+import signal
+import subprocess
+import sys
+
+timeout = int(sys.argv[1])
+argv = sys.argv[2:]
+if not argv:
+    raise SystemExit(2)
+
+proc = subprocess.Popen(argv, preexec_fn=os.setsid)
+timed_out = False
+
+def on_alarm(signum, frame):
+    global timed_out
+    timed_out = True
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+
+signal.signal(signal.SIGALRM, on_alarm)
+signal.alarm(timeout)
+rc = proc.wait()
+signal.alarm(0)
+if timed_out:
+    sys.exit(124)
+sys.exit(rc)
+PY
+}
+
+LAUNCHER_RC=0
+if [ "$LAUNCHER_TIMEOUT" -gt 0 ]; then
+  run_with_timeout "$LAUNCHER_TIMEOUT" bash "$LAUNCHER" "${LAUNCH_ARGS[@]}" &
+  LAUNCHER_PID=$!
+else
+  bash "$LAUNCHER" "${LAUNCH_ARGS[@]}" &
+  LAUNCHER_PID=$!
+fi
+
+ruby "$INBOX_YAML" set_field --file "$INBOX_FILE" --id "$ITEM_ID" --key pid --value "$LAUNCHER_PID" 2>/dev/null || true
+
+wait "$LAUNCHER_PID" || LAUNCHER_RC=$?
+
+ruby "$INBOX_YAML" set_field --file "$INBOX_FILE" --id "$ITEM_ID" --key pid --value "" 2>/dev/null || true
+
+if [ "$LAUNCHER_RC" -ne 0 ]; then
   FAIL_NOW="$(date -u +%FT%TZ)"
+  if [ "$LAUNCHER_RC" -eq 124 ]; then
+    echo "Launcher timed out after ${LAUNCHER_TIMEOUT}s for $ITEM_ID" >&2
+  fi
   mark_item_failed "$ITEM_ID" "$FAIL_NOW"
   exit 1
 fi
