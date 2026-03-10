@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VERSION="0.7.0"
 
 usage() {
   cat << 'USAGE'
@@ -12,17 +13,18 @@ Commands:
   init        Initialize project protocol files
   contract    Show active contract summary and delegate suggestion
   delegate    Delegate task (explicit --to ... or shorthand delegate <task-id>)
-  delagate    Typo alias for delegate <task-id>
   enqueue     Add inbox item
   task        Create/delete contract tasks
   dispatch    Dispatch next inbox item
-  watch       Run one watch cycle (optional launchd automation)
+  watch       Run one watch cycle or foreground loop
+  uninstall   Remove system-level artifacts (plists, symlinks, locks)
   monitor-ui  Launch local watcher dashboard in browser
   doctor      Check local setup and project protocol health
   install-wrapper  Symlink this wrapper into a PATH directory
   recover     Recover stale launched items
   normalize   Normalize/archive inbox rows
   hygiene     Check contract hygiene
+  version     Show version
   help        Show this help message
 
 Examples:
@@ -42,34 +44,36 @@ if [ $# -gt 0 ]; then
 fi
 
 case "$cmd" in
-  init) exec bash "$ROOT_DIR/cli/init.sh" "$@" ;;
+  init) exec bash "$ROOT_DIR/init-project.sh" "$@" ;;
   contract)
     sub="${1:-today}"
     if [ "$sub" = "today" ]; then
       if [ $# -gt 0 ]; then shift; fi
-      exec bash "$ROOT_DIR/cli/contract-today.sh" "$@"
+      exec bash "$ROOT_DIR/scripts/contract-today.sh" "$@"
     fi
     echo "Unknown contract subcommand: $sub" >&2
     exit 2
     ;;
   delegate)
     if [ $# -gt 0 ] && [[ "$1" != -* ]]; then
-      exec bash "$ROOT_DIR/cli/delegate-task.sh" "$@"
+      exec bash "$ROOT_DIR/scripts/delegate-task.sh" "$@"
     fi
-    exec bash "$ROOT_DIR/cli/delegate.sh" "$@"
+    exec bash "$ROOT_DIR/scripts/delegate.sh" "$@"
     ;;
-  delagate) exec bash "$ROOT_DIR/cli/delegate-task.sh" "$@" ;;
-  doctor) exec bash "$ROOT_DIR/cli/doctor.sh" "$@" ;;
-  install-wrapper) exec bash "$ROOT_DIR/cli/install-wrapper.sh" "$@" ;;
-  enqueue) exec bash "$ROOT_DIR/cli/enqueue.sh" "$@" ;;
-  task) exec bash "$ROOT_DIR/cli/task.sh" "$@" ;;
-  dispatch) exec bash "$ROOT_DIR/cli/dispatch.sh" "$@" ;;
-  watch) exec bash "$ROOT_DIR/cli/watch.sh" "$@" ;;
-  monitor-ui) exec bash "$ROOT_DIR/cli/monitor-ui.sh" "$@" ;;
-  recover) exec bash "$ROOT_DIR/cli/recover.sh" "$@" ;;
-  normalize) exec bash "$ROOT_DIR/cli/normalize.sh" "$@" ;;
-  hygiene) exec bash "$ROOT_DIR/cli/hygiene.sh" "$@" ;;
+  delagate) exec bash "$ROOT_DIR/scripts/delegate-task.sh" "$@" ;;
+  doctor) exec bash "$ROOT_DIR/scripts/doctor.sh" "$@" ;;
+  install-wrapper) exec bash "$ROOT_DIR/scripts/install-wrapper.sh" "$@" ;;
+  enqueue) exec bash "$ROOT_DIR/scripts/inbox-enqueue.sh" "$@" ;;
+  task) exec bash "$ROOT_DIR/scripts/task.sh" "$@" ;;
+  dispatch) exec bash "$ROOT_DIR/scripts/inbox-dispatch.sh" "$@" ;;
+  watch) exec bash "$ROOT_DIR/scripts/inbox-watch.sh" "$@" ;;
+  monitor-ui) exec bash "$ROOT_DIR/scripts/monitor-ui.sh" "$@" ;;
+  recover) exec bash "$ROOT_DIR/scripts/inbox-recover-stale.sh" "$@" ;;
+  normalize) exec bash "$ROOT_DIR/scripts/inbox-normalize.sh" "$@" ;;
+  hygiene) exec bash "$ROOT_DIR/scripts/check-contract-hygiene.sh" "$@" ;;
+  uninstall) exec bash "$ROOT_DIR/scripts/uninstall.sh" "$@" ;;
   help|-h|--help) usage ;;
+  version|--version|-v) echo "superharness $VERSION" ;;
   *)
     echo "Unknown command: $cmd" >&2
     usage >&2
