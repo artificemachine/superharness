@@ -101,6 +101,7 @@ esac
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DISPATCH="$SCRIPT_DIR/inbox-dispatch.sh"
 RECOVER="$SCRIPT_DIR/inbox-recover-stale.sh"
+DEADLINE_CHECK="$SCRIPT_DIR/inbox-deadline-check.sh"
 
 if [ ! -x "$DISPATCH" ] || [ ! -x "$RECOVER" ]; then
   echo "Missing executable dispatcher: $DISPATCH" >&2
@@ -125,6 +126,10 @@ if [ "$NON_INTERACTIVE" -eq 1 ]; then
 fi
 if [ "$CODEX_BYPASS" -eq 1 ]; then
   COMMON_ARGS+=(--codex-bypass)
+fi
+
+if [ -x "$DEADLINE_CHECK" ]; then
+  bash "$DEADLINE_CHECK" --project "$PROJECT_DIR" || true
 fi
 
 RECOVER_ARGS=(--project "$PROJECT_DIR" --timeout-minutes "$RECOVER_TIMEOUT_MINUTES" --action "$RECOVER_ACTION")

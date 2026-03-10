@@ -140,6 +140,8 @@ def test_task_status_update_requires_owner_actor(repo_root, tmp_path) -> None:
             "in_progress",
             "--actor",
             "claude-code",
+            "--summary",
+            "Starting work.",
         ],
     )
     assert forbidden.returncode == 1
@@ -159,6 +161,8 @@ def test_task_status_update_requires_owner_actor(repo_root, tmp_path) -> None:
             "in_progress",
             "--actor",
             "codex-cli",
+            "--summary",
+            "Starting work.",
         ],
     )
     assert allowed.returncode == 0, allowed.stderr
@@ -206,6 +210,8 @@ def test_task_status_blocked_until_dependency_done(repo_root, tmp_path) -> None:
             "in_progress",
             "--actor",
             "codex-cli",
+            "--summary",
+            "Starting dependent work.",
         ],
     )
     assert blocked.returncode == 1
@@ -225,6 +231,8 @@ def test_task_status_blocked_until_dependency_done(repo_root, tmp_path) -> None:
             "done",
             "--actor",
             "codex-cli",
+            "--summary",
+            "Completed mcp-docs.",
         ],
     )
     assert dep_done.returncode == 0, dep_done.stderr
@@ -243,6 +251,8 @@ def test_task_status_blocked_until_dependency_done(repo_root, tmp_path) -> None:
             "in_progress",
             "--actor",
             "codex-cli",
+            "--summary",
+            "Starting dependent work.",
         ],
     )
     assert allowed.returncode == 0, allowed.stderr

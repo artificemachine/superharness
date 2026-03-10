@@ -11,7 +11,7 @@ Create options:
   --id TASK_ID       Task id
   --title TEXT       Task title
   --owner OWNER      claude-code|codex-cli
-  --status STATUS    todo|in_progress|done (default: todo)
+  --status STATUS    todo|in_progress|done|failed|stopped (default: todo)
   --dependency ID    Optional task id this task depends on
 
 Delete options:
@@ -21,8 +21,10 @@ Delete options:
 Status options:
   --project DIR      Project directory containing .superharness/ (default: current dir)
   --id TASK_ID       Task id to update
-  --status STATUS    todo|in_progress|done
+  --status STATUS    todo|in_progress|done|failed
   --actor ACTOR      Actor updating status (must match task owner)
+  --reason TEXT      Required when status=failed or stopped — why the task ended
+  --summary TEXT     Required for todo|in_progress|done — what was done or what's next
 
 If create fields are missing, interactive prompts are shown.
 If no subcommand is provided, a guided prompt asks for create/delete/status.
@@ -38,6 +40,8 @@ OWNER=""
 STATUS="todo"
 ACTOR=""
 DEPENDENCY=""
+REASON=""
+SUMMARY=""
 
 validate_task_token() {
   local name="$1"
@@ -89,6 +93,16 @@ while [ $# -gt 0 ]; do
     --dependency)
       [ $# -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
       DEPENDENCY="$2"
+      shift 2
+      ;;
+    --reason)
+      [ $# -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
+      REASON="$2"
+      shift 2
+      ;;
+    --summary)
+      [ $# -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
+      SUMMARY="$2"
       shift 2
       ;;
     -h|--help)
@@ -268,17 +282,25 @@ else
   fi
 
   case "$STATUS" in
-    todo|in_progress|done) ;;
-    *) echo "status must be todo, in_progress, or done" >&2; exit 2 ;;
+    todo|in_progress|done|failed|stopped) ;;
+    *) echo "status must be todo, in_progress, done, failed, or stopped" >&2; exit 2 ;;
   esac
+  if [[ "$STATUS" == "failed" || "$STATUS" == "stopped" ]] && [ -z "$REASON" ]; then
+    echo "error: --reason is required when status=$STATUS" >&2
+    exit 2
+  fi
+  if [[ "$STATUS" == "todo" || "$STATUS" == "in_progress" || "$STATUS" == "done" ]] && [ -z "$SUMMARY" ]; then
+    echo "error: --summary is required when status=$STATUS" >&2
+    exit 2
+  fi
   validate_task_token "task id" "$TASK_ID"
 
-  ruby - "$CONTRACT_FILE" "$TASK_ID" "$STATUS" "$ACTOR" <<'RUBY'
+  ruby - "$CONTRACT_FILE" "$TASK_ID" "$STATUS" "$ACTOR" "$REASON" "$SUMMARY" <<'RUBY'
 require "psych"
 require "time"
 require "date"
 
-file, id, status, actor = ARGV
+file, id, status, actor, reason, summary = ARGV
 
 doc = Psych.safe_load(File.read(file), permitted_classes: [Time, Date], aliases: false) || {}
 unless doc.is_a?(Hash)
@@ -313,6 +335,18 @@ if !dependency.empty? && %w[in_progress done].include?(status)
 end
 
 task["status"] = status
+if %w[failed stopped].include?(status) && !reason.to_s.empty?
+  task["stopped_reason"] = reason
+  task["stopped_at"] = Time.now.utc.iso8601
+else
+  task.delete("stopped_reason")
+  task.delete("stopped_at")
+end
+if !summary.to_s.empty?
+  task["summary"] = summary
+else
+  task.delete("summary") unless %w[failed stopped].include?(status)
+end
 doc["tasks"] = tasks
 
 tmp = "#{file}.tmp.#{$$}"
