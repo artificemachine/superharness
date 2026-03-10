@@ -267,6 +267,46 @@ def recover_launched(file:, now:, timeout_minutes:, action:)
   0
 end
 
+def list_launched(file:)
+  items = load_items(file)
+  result = items.select { |x| x.is_a?(Hash) && x["status"].to_s == "launched" }.map do |item|
+    {
+      "id"          => item["id"].to_s,
+      "to"          => item["to"].to_s,
+      "task"        => item["task"].to_s,
+      "project"     => item["project"].to_s,
+      "launched_at" => item["launched_at"].to_s,
+      "priority"    => norm_priority(item["priority"] || 2),
+      "retry_count" => (item["retry_count"] || 0).to_i,
+      "max_retries" => (item["max_retries"] || 3).to_i
+    }
+  end
+  puts JSON.generate(result)
+  0
+end
+
+def deadline_fail(file:, id:, now:, reason:)
+  items = load_items(file)
+  idx = items.index { |x| x.is_a?(Hash) && x["id"].to_s == id.to_s }
+  if idx.nil?
+    puts "result=not_found"
+    return 2
+  end
+  item = items[idx]
+  unless item["status"].to_s == "launched"
+    puts "result=status_mismatch status=#{item["status"]}"
+    return 3
+  end
+  item["status"] = "failed"
+  item["failed_at"] = now
+  item["failed_reason"] = reason.to_s.empty? ? "deadline_exceeded" : reason.to_s
+  item.delete("launched_at")
+  items[idx] = item
+  write_items(file, items)
+  puts "result=ok id=#{id} task=#{item["task"]} to=#{item["to"]} project=#{item["project"]}"
+  0
+end
+
 cmd = ARGV.shift
 case cmd
 when "next_pending"
@@ -358,6 +398,23 @@ when "recover_launched"
     timeout_minutes: opts[:timeout_minutes],
     action: opts[:action]
   )
+when "list_launched"
+  opts = {}
+  OptionParser.new do |o|
+    o.on("--file FILE") { |v| opts[:file] = v }
+  end.parse!(ARGV)
+  abort("--file is required") unless opts[:file]
+  exit list_launched(file: opts[:file])
+when "deadline_fail"
+  opts = { reason: "deadline_exceeded" }
+  OptionParser.new do |o|
+    o.on("--file FILE") { |v| opts[:file] = v }
+    o.on("--id ID") { |v| opts[:id] = v }
+    o.on("--now TS") { |v| opts[:now] = v }
+    o.on("--reason REASON") { |v| opts[:reason] = v }
+  end.parse!(ARGV)
+  abort("--file, --id, --now are required") unless opts[:file] && opts[:id] && opts[:now]
+  exit deadline_fail(file: opts[:file], id: opts[:id], now: opts[:now], reason: opts[:reason])
 else
-  abort("Usage: inbox.rb <next_pending|launch|enqueue|set_status|normalize|recover_launched> [options]")
+  abort("Usage: inbox.rb <next_pending|launch|enqueue|set_status|normalize|recover_launched|list_launched|deadline_fail> [options]")
 end
