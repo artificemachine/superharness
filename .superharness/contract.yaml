@@ -1,0 +1,50 @@
+---
+id: v07-readiness
+created: 2026-03-10
+created_by: owner
+status: active
+goal: Drive superharness to v0.7 — reliability and adoption milestone
+tasks:
+- id: docs-split-audience
+  title: 'Split README: execution-first user docs vs architecture/philosophy docs'
+  status: done
+  owner: claude-code
+  project_path: "/Users/airm2max/DevOpsSec/superharness"
+- id: protocol-hygiene-ci
+  title: Add CI check enforcing handoff+ledger evidence on done tasks
+  status: done
+  owner: claude-code
+  project_path: "/Users/airm2max/DevOpsSec/superharness"
+- id: second-project-validate
+  title: Run superharness repo itself through full inbox+handoff lifecycle as validation
+  status: done
+  owner: claude-code
+  project_path: "/Users/airm2max/DevOpsSec/superharness"
+- id: ci-parity-entrypoints
+  title: Ensure new executable scripts automatically inherit entrypoint validation
+    and smoke coverage
+  status: done
+  owner: codex-cli
+  project_path: "/Users/airm2max/DevOpsSec/superharness"
+- id: failure-memory-promote
+  title: Document and test failure-memory promotion workflow (per-contract -> failures.yaml)
+  status: done
+  owner: codex-cli
+  project_path: "/Users/airm2max/DevOpsSec/superharness"
+- id: pipeline-smoke-claude
+  title: 'Pipeline smoke: verify claude-code watcher dispatch end-to-end'
+  owner: claude-code
+  status: done
+  project_path: "/Users/airm2max/DevOpsSec/superharness"
+- id: pipeline-smoke-codex
+  title: 'Pipeline smoke: verify codex-cli watcher dispatch end-to-end'
+  owner: codex-cli
+  status: done
+  project_path: "/Users/airm2max/DevOpsSec/superharness"
+- id: deadline-enforcement-smoke
+  title: 'Smoke: verify inbox-deadline-check sets contract failed+reason on expiry'
+  owner: claude-code
+  status: done
+  project_path: "/Users/airm2max/DevOpsSec/superharness"
+decisions: []
+failures: []

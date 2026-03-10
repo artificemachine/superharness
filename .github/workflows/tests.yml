@@ -39,20 +39,12 @@ jobs:
 
       - name: Script smoke tests
         run: |
-          bash init-project.sh --help
-          bash init-project.sh --dry-run "CI Smoke" "Bash" "active"
-          bash adapters/claude-code/install.sh --help
-          bash scripts/check-contract-hygiene.sh --help
-          bash scripts/delegate-to-claude.sh --help
-          bash scripts/delegate-to-codex.sh --help
-          bash scripts/inbox-enqueue.sh --help
-          bash scripts/inbox-dispatch.sh --help
-          bash scripts/inbox-normalize.sh --help
-          bash scripts/inbox-watch.sh --help
-          bash scripts/install-launchd-inbox-watcher.sh --help
-          bash scripts/ensure-launchd-inbox-watcher.sh --help
-          bash scripts/uninstall-launchd-inbox-watcher.sh --help
+          while IFS= read -r entrypoint; do
+            [ -n "$entrypoint" ] || continue
+            bash "$entrypoint" --help
+          done < <(bash scripts/check-shell-entrypoints.sh --list-entrypoints)
           HOME="$(mktemp -d)" bash adapters/claude-code/install.sh --dry-run
+          bash init-project.sh --dry-run "CI Smoke" "Bash" "active"
 
       - name: Install pytest
         run: |

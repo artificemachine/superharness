@@ -80,6 +80,11 @@ def test_deadline_exceeded_marks_failed_and_reenqueues(repo_root, tmp_path) -> N
     assert "claude-code" in handoff_text
     assert "codex-cli" in handoff_text
 
+    # Verify contract task is marked as failed with reason.
+    contract_text = (project / ".superharness" / "contract.yaml").read_text()
+    assert "status: failed" in contract_text
+    assert "stopped_reason: deadline_exceeded_after_" in contract_text
+
 
 def test_deadline_not_exceeded_does_nothing(repo_root, tmp_path) -> None:
     from datetime import datetime, timezone

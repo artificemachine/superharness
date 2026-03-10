@@ -738,3 +738,124 @@ If you're an agent picking this up:
 
 - Core cross-agent protocol (contract/handoff/ledger + inbox dispatch/watch) is stable and externally usable.
 - Remaining work is mainly optional UX/productization polish, not correctness blockers.
+
+---
+
+## Iteration 8 — Security Hardening and Monitor Control Surface
+
+**Date:** 2026-03-09
+**Agent:** Codex CLI
+**Session type:** Security hardening, CI pinning, and monitor UI control-surface review/fix loop
+
+### What changed
+
+1. **Inbox pipeline hardening**
+- Moved inbox enqueue writes into the Ruby engine to avoid raw shell YAML appends.
+- Replaced pipe-delimited dispatch item transport with JSON to prevent field-splitting corruption.
+- Added strict token validation for task ids and inbox ids to block control-character and delimiter injection.
+- Added regression coverage for newline, pipe, and malformed-id cases.
+
+2. **CI supply-chain hardening**
+- Pinned `shipguard` in GitHub Actions security workflow to `0.2.0` to avoid version drift in CI security scans.
+
+3. **Browser monitor upgrade**
+- Extended `monitor-ui` from a passive dashboard into an operations panel with:
+  - dispatch preview for Claude/Codex
+  - stale recovery retry
+  - stale normalization
+  - ledger tail and watcher log tails
+  - optional Logdy deep-view launch
+
+4. **Monitor security fixes**
+- Added per-session auth token enforcement for all mutating monitor endpoints.
+- Added origin/referer validation to block cross-site requests against localhost.
+- Forced monitor binding to loopback-only hosts.
+- Added `no-store` and defensive response headers for monitor responses.
+- Added verified Logdy startup flow with port-in-use detection, readiness polling, and shutdown cleanup.
+- Added a lock around Logdy launch to prevent duplicate concurrent starts.
+
+### Tests and Validation
+
+- Focused injection regression tests added and passing.
+- Monitor HTTP/control-surface unit tests added and passing.
+- Full unit suite executed after fixes: **57 passed**.
+- Secret scan (`gitleaks`) clean.
+- Replayed prior enqueue/dispatch injection probes and confirmed they are blocked.
+
+### Key Commits (Iteration 8)
+
+- `c321ade` — Harden inbox pipeline against YAML and delimiter injection
+- `f0a0dcb` — Pin ShipGuard version in CI security workflow
+- `a72b77e` — Harden monitor UI control surface
+
+### Current Status
+
+- Inbox enqueue/dispatch path is hardened against YAML injection and delimiter corruption.
+- CI security workflow is pinned to a known ShipGuard version.
+- Monitor UI now has a usable local operations surface with explicit security controls.
+
+---
+
+## Iteration 9 — Unattended Dispatch and Watcher Hardening
+
+**Date:** 2026-03-09
+**Agent:** Codex CLI
+**Session type:** Audit-driven hardening pass for delegate, dispatch, watcher install, and scope guard flows
+
+### What changed
+
+1. **Dangerous unattended launch gating**
+- Added separate explicit confirmation gates for:
+  - `SUPERHARNESS_CONFIRM_NON_INTERACTIVE`
+  - `SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS`
+  - `SUPERHARNESS_CONFIRM_CODEX_BYPASS`
+- `cli/delegate.sh` now refuses dangerous Claude/Codex unattended modes without the specific confirmation env var.
+
+2. **launchd watcher safety**
+- `install-launchd-inbox-watcher.sh` now validates `--interval` as a positive integer.
+- launchd plist values are now XML-escaped before writing.
+- watcher install now requires explicit confirmation flags before enabling unattended launch and dangerous bypass modes.
+- `ensure-launchd-inbox-watcher.sh` and `reset-watcher-and-test.sh` now forward and validate the new confirmation options.
+
+3. **Dispatch and inbox robustness**
+- `engine/inbox.rb` now uses `Tempfile` for atomic writes instead of predictable PID-based temp files.
+- `inbox-dispatch.sh` now:
+  - retries lock reacquisition before failure reconciliation
+  - marks failed items more reliably after launcher errors
+  - validates target routing before item launch
+  - avoids `readarray` so it no longer assumes Bash 4+
+  - surfaces Ruby helper errors more directly
+- `engine/contract.rb` now fails loudly on malformed handoff YAML instead of silently skipping it.
+
+4. **Sensitive path guardrails**
+- Expanded Claude scope guard to block writes to:
+  - `~/.ssh/*`
+  - `~/.kube/config`
+  - `terraform.tfvars`, `*.tfvars`, `*.tfvars.json`
+
+5. **Operator documentation**
+- Added `SECURITY.md` documenting dangerous flags, confirmation env vars, and recommended watcher install modes.
+- Linked the security guidance from the README.
+
+### Tests and Validation
+
+- Added unit coverage for:
+  - delegate dangerous-flag confirmations
+  - malformed handoff surfacing
+  - launchd installer confirmation and plist escaping
+  - dispatch lock-contention failure handling
+  - expanded scope-guard sensitive path blocking
+- Full unit suite executed after fixes: **67 passed**.
+- `bash scripts/check-shell-entrypoints.sh` passed.
+- `git diff --check` passed.
+
+### Key Commit (Iteration 9)
+
+- `50b7190` — Harden unattended dispatch and watcher flows
+
+### Current Status
+
+- Unattended Claude/Codex launch paths now require explicit per-risk confirmations.
+- launchd watcher install no longer silently enables dangerous modes.
+- Dispatch failure handling is more resilient under lock contention and malformed handoff input.
+- Added pipeline-smoke-claude integration test (tests/integration/test_claude_watcher_pipeline.py) — verifies end-to-end watcher dispatch flow for claude-code target.
