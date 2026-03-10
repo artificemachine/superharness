@@ -17,3 +17,6 @@ __pycache__/
 !.env.example
 # codex-pii-guard:end
 logdy-core/
+*.pem
+*.key
+*.p12
