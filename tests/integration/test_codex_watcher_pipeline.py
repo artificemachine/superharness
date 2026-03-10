@@ -114,32 +114,32 @@ if [ "$PRINT_ONLY" -eq 1 ]; then
   exit 0
 fi
 
-python3 - "$PROJECT_DIR" "$TASK_ID" <<'PY'
-import sys
-from datetime import datetime
-from pathlib import Path
-import yaml
+ruby - "$PROJECT_DIR" "$TASK_ID" <<'RB'
+require "psych"
+require "time"
+require "date"
 
-project_dir = Path(sys.argv[1])
-task_id = sys.argv[2]
+project_dir = ARGV[0]
+task_id = ARGV[1]
 
-contract_file = project_dir / ".superharness/contract.yaml"
-with open(contract_file) as f:
-    contract_doc = yaml.safe_load(f)
+contract_file = File.join(project_dir, ".superharness", "contract.yaml")
+contract_doc = Psych.safe_load(File.read(contract_file), permitted_classes: [Time, Date], aliases: false) || {}
+tasks = contract_doc["tasks"]
+tasks = [] unless tasks.is_a?(Array)
+tasks.each do |task|
+  next unless task.is_a?(Hash)
+  if task["id"].to_s == task_id.to_s
+    task["status"] = "done"
+    break
+  end
+end
+contract_doc["tasks"] = tasks
+File.write(contract_file, Psych.dump(contract_doc))
 
-for task in contract_doc.get("tasks", []):
-    if task.get("id") == task_id:
-        task["status"] = "done"
-        break
-
-with open(contract_file, "w") as f:
-    yaml.dump(contract_doc, f, default_flow_style=False, sort_keys=False)
-
-ledger_file = project_dir / ".superharness/ledger.md"
-today = datetime.utcnow().strftime("%Y-%m-%d")
-with open(ledger_file, "a") as f:
-    f.write(f"{today} | {task_id} | codex-cli | Mock smoke test execution\\n")
-PY
+ledger_file = File.join(project_dir, ".superharness", "ledger.md")
+today = Time.now.utc.strftime("%Y-%m-%d")
+File.open(ledger_file, "a") { |f| f.puts("#{today} | #{task_id} | codex-cli | Mock smoke test execution") }
+RB
 """
     )
     mock_launcher.chmod(0o755)
@@ -162,7 +162,7 @@ PY
     )
 
     assert dispatch_res.returncode == 0, f"dispatch failed: {dispatch_res.stderr}\nstdout: {dispatch_res.stdout}"
-    assert "Inbox item updated" in dispatch_res.stdout, f"No inbox update in output: {dispatch_res.stdout}"
+    assert "Inbox item updated" in dispatch_res.stdout, "No inbox update in output: " + dispatch_res.stdout
 
     with open(contract_file) as f:
         contract_result = yaml.safe_load(f)

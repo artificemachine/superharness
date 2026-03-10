@@ -18,9 +18,9 @@ jobs:
         id: check_harness
         run: |
           if [ -d ".superharness" ] && [ -f ".superharness/contract.yaml" ]; then
-            echo "has_harness=true" >> $GITHUB_OUTPUT
+            echo "has_harness=true" >> "$GITHUB_OUTPUT"
           else
-            echo "has_harness=false" >> $GITHUB_OUTPUT
+            echo "has_harness=false" >> "$GITHUB_OUTPUT"
             echo "No .superharness directory found; skipping protocol hygiene check."
           fi
 
