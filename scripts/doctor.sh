@@ -4,15 +4,17 @@ set -euo pipefail
 usage() {
   cat << 'USAGE'
 Usage:
-  doctor.sh [--project DIR]
+  doctor.sh [--project DIR] [--check]
 
 Options:
   -p, --project DIR   Project directory to validate (default: current dir)
+  --check             Exit with non-zero on any failure or warning (for CI)
   -h, --help          Show this help message and exit
 USAGE
 }
 
 PROJECT_DIR="$(pwd)"
+CHECK_MODE=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -20,6 +22,10 @@ while [ $# -gt 0 ]; do
       [ $# -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
       PROJECT_DIR="$2"
       shift 2
+      ;;
+    --check)
+      CHECK_MODE=1
+      shift
       ;;
     -h|--help)
       usage
@@ -46,12 +52,39 @@ PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd -P)"
 failures=0
 warns=0
 
+install_hint() {
+  local dep="$1"
+  case "$dep" in
+    ruby)
+      if [ "$(uname -s)" = "Darwin" ]; then
+        echo "       brew install ruby"
+      else
+        echo "       sudo apt install ruby   # or: sudo dnf install ruby"
+      fi
+      ;;
+    python3)
+      if [ "$(uname -s)" = "Darwin" ]; then
+        echo "       brew install python3"
+      else
+        echo "       sudo apt install python3   # or: sudo dnf install python3"
+      fi
+      ;;
+    claude)
+      echo "       npm install -g @anthropic-ai/claude-code"
+      ;;
+    codex)
+      echo "       npm install -g @openai/codex"
+      ;;
+  esac
+}
+
 check_dep() {
   local dep="$1"
   if command -v "$dep" >/dev/null 2>&1; then
     echo "PASS dep:$dep"
   else
     echo "WARN dep:$dep missing"
+    install_hint "$dep"
     warns=$((warns + 1))
   fi
 }
@@ -69,6 +102,7 @@ if [ -d "$HARNESS_DIR" ]; then
   echo "PASS project:.superharness present"
 else
   echo "FAIL project:.superharness missing"
+  echo "       Run: superharness init \"Project\" \"Stack\" \"active\""
   failures=$((failures + 1))
 fi
 
@@ -84,6 +118,7 @@ for f in contract.yaml ledger.md decisions.yaml failures.yaml; do
     echo "PASS file:$f"
   else
     echo "FAIL file:$f missing"
+    echo "       Re-initialize: superharness init"
     failures=$((failures + 1))
   fi
 done
@@ -92,6 +127,7 @@ if [ -d "$HARNESS_DIR/handoffs" ]; then
   echo "PASS dir:handoffs"
 else
   echo "FAIL dir:handoffs missing"
+  echo "       Run: mkdir -p .superharness/handoffs"
   failures=$((failures + 1))
 fi
 
@@ -104,6 +140,7 @@ if git -C "$PROJECT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     warns=$((warns + 1))
   else
     echo "WARN git:core.hooksPath not set"
+    echo "       Run: git config core.hooksPath .githooks"
     warns=$((warns + 1))
   fi
 else
@@ -118,14 +155,19 @@ if [ "$(uname -s)" = "Darwin" ]; then
     echo "PASS watcher:$label loaded"
   else
     echo "WARN watcher:$label not loaded"
+    echo "       Use --foreground mode: superharness watch --foreground --project ."
+    echo "       Or install launchd: bash scripts/install-launchd-inbox-watcher.sh --project ."
     warns=$((warns + 1))
   fi
 else
-  echo "WARN watcher:launchd check skipped (non-macOS)"
-  warns=$((warns + 1))
+  echo "INFO watcher:launchd not available (non-macOS)"
+  echo "       Use foreground mode: superharness watch --foreground --project ."
 fi
 
 echo "summary: failures=$failures warnings=$warns"
 if [ "$failures" -gt 0 ]; then
+  exit 1
+fi
+if [ "$CHECK_MODE" -eq 1 ] && [ "$warns" -gt 0 ]; then
   exit 1
 fi

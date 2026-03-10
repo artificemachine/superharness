@@ -19,7 +19,23 @@ OptionParser.new do |o|
   o.on("--project DIR") { |v| opts[:project] = v }
   o.on("--strict") { opts[:strict] = true }
   o.on("-h", "--help") do
-    puts "Usage: validate.rb --project DIR [--strict]"
+    puts <<~HELP
+      Usage:
+        hygiene --project DIR [--strict]
+
+      Validates contract protocol hygiene for a superharness project.
+
+      Options:
+        -p, --project DIR   Project directory containing .superharness/ (required)
+        --strict            Warn on empty decision/failure stores
+        -h, --help          Show this help message and exit
+
+      Checks:
+        - All required protocol files and directories exist
+        - Every done task has a matching handoff YAML
+        - Every done task appears in ledger.md
+        - (strict) Decisions/failures in contract are promoted to store files
+    HELP
     exit 0
   end
 end.parse!(ARGV)
