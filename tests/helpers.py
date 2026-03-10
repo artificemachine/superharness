@@ -12,7 +12,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 def run_bash(script: Path, *, cwd: Path, stdin: str | None = None, env: dict[str, str] | None = None, args: list[str] | None = None) -> subprocess.CompletedProcess[str]:
     merged_env = os.environ.copy()
     if env:
-        merged_env.update(env)
+        for k, v in env.items():
+            if v is None:
+                merged_env.pop(k, None)
+            else:
+                merged_env[k] = v
     command = ["bash", str(script)]
     if args:
         command.extend(args)
@@ -38,6 +42,17 @@ def copy_from_repo(rel_path: str, dest_root: Path) -> Path:
     shutil.copy2(src, dst)
     dst.chmod(src.stat().st_mode)
     return dst
+
+
+def shell_guard_list(repo_root: Path, flag: str) -> list[str]:
+    result = run_bash(
+        repo_root / "scripts/check-shell-entrypoints.sh",
+        cwd=repo_root,
+        args=[flag],
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"check-shell-entrypoints {flag} failed: {result.stderr}")
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
 def parse_json_output(stdout: str) -> dict[str, object]:

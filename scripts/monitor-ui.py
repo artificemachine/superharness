@@ -8,15 +8,12 @@ import os
 import secrets
 import shlex
 import shutil
-import socket
 import subprocess
-import threading
 import time
-import urllib.request
 from collections import Counter
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 
 HTML = """<!doctype html>
@@ -28,18 +25,24 @@ HTML = """<!doctype html>
   <style>
     :root { --bg:#0b1220; --panel:#131c2e; --text:#e7ecf6; --muted:#9fb0d0; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444; --line:#23314d; --btn:#1b2a46; --btn2:#334e7d; }
     body { margin:0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:var(--bg); color:var(--text); }
-    .wrap { max-width:1180px; margin:20px auto; padding:0 14px; }
+    .wrap { max-width:100%; margin:12px 0; padding:0 8px; }
     .grid { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:10px; }
     .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; }
     .k { color:var(--muted); font-size:12px; }
-    .v { font-size:17px; margin-top:6px; }
+    .v { font-size:13px; margin-top:6px; word-break:break-all; overflow-wrap:anywhere; }
     .ok { color:var(--ok); } .warn { color:var(--warn); } .bad { color:var(--bad); }
     h1 { font-size:20px; margin:0 0 12px; }
     h2 { font-size:14px; margin:0 0 8px; color:var(--muted); }
     pre { margin:0; white-space:pre-wrap; word-break:break-word; font-size:12px; line-height:1.3; }
     .logs { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
     .meta { margin:8px 0 12px; color:var(--muted); font-size:12px; }
-    .pill { display:inline-block; border:1px solid var(--line); border-radius:999px; padding:2px 8px; margin-right:6px; margin-top:4px; }
+    .pill { display:inline-block; border:1px solid var(--line); border-radius:999px; padding:2px 8px; margin-right:6px; margin-top:4px; font-size:13px; cursor:pointer; user-select:none; }
+    .pill:hover { background:var(--btn); }
+    .pill.sel { background:var(--btn2); border-color:#4a6fa5; color:#fff; }
+    .inbox-detail { margin-top:10px; overflow-x:auto; }
+    .inbox-detail table { width:100%; border-collapse:collapse; font-size:12px; }
+    .inbox-detail th { text-align:left; color:var(--muted); border-bottom:1px solid var(--line); padding:4px 8px; }
+    .inbox-detail td { padding:4px 8px; border-bottom:1px solid var(--line); word-break:break-all; }
     .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
     button { background:var(--btn); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px 10px; cursor:pointer; }
     button:hover { background:var(--btn2); }
@@ -62,15 +65,17 @@ HTML = """<!doctype html>
     <div class=\"card\" style=\"margin-top:10px;\">
       <h2>inbox status counts</h2>
       <div id=\"counts\"></div>
+      <div class=\"inbox-detail\" id=\"inboxDetail\" style=\"display:none\">
+        <table><thead><tr><th>id</th><th>task</th><th>to</th><th>priority</th><th>launched_at</th></tr></thead>
+        <tbody id=\"inboxRows\"></tbody></table>
+      </div>
       <div class=\"actions\">
         <button onclick=\"act('dispatch_print_codex')\">Dispatch preview codex</button>
         <button onclick=\"act('dispatch_print_claude')\">Dispatch preview claude</button>
         <button onclick=\"act('recover_retry')\">Recover stale -> retry</button>
         <button onclick=\"act('normalize_stale')\">Normalize stale</button>
-        <button onclick=\"startLogdy()\">Open in Logdy</button>
       </div>
       <div class=\"status\" id=\"actionStatus\">ready</div>
-      <div class=\"small\" id=\"logdyHint\"></div>
     </div>
 
     <div class=\"logs\">
@@ -85,6 +90,7 @@ HTML = """<!doctype html>
   </div>
 <script>
 let lastActionText = '-';
+let selectedStatus = null;
 const AUTH_TOKEN = __AUTH_TOKEN__;
 
 async function api(path, init) {
@@ -104,29 +110,59 @@ async function refresh() {
     s.className = 'v ' + (d.launchctl_state === 'running' ? 'ok' : (d.launchctl_state ? 'warn' : 'bad'));
     document.getElementById('contract').textContent = d.contract_id || '-';
     document.getElementById('ts').textContent = d.now_utc;
-    document.getElementById('ledger').textContent = (d.ledger_tail || []).join('\n');
-    document.getElementById('out').textContent = (d.out_tail || []).join('\n');
-    document.getElementById('err').textContent = (d.err_tail || []).join('\n');
+    document.getElementById('ledger').textContent = (d.ledger_tail || []).join('\\n');
+    document.getElementById('out').textContent = (d.out_tail || []).join('\\n');
+    document.getElementById('err').textContent = (d.err_tail || []).join('\\n');
     document.getElementById('actionOut').textContent = lastActionText;
 
     const counts = document.getElementById('counts');
     counts.innerHTML = '';
     const keys = Object.keys(d.inbox_counts || {}).sort();
-    if (!keys.length) { counts.textContent = 'no inbox rows'; }
+    if (!keys.length) { counts.textContent = 'no inbox rows'; selectedStatus = null; }
     for (const k of keys) {
       const el = document.createElement('span');
-      el.className = 'pill';
+      el.className = 'pill' + (k === selectedStatus ? ' sel' : '');
       el.textContent = `${k}: ${d.inbox_counts[k]}`;
+      el.onclick = () => selectStatus(k);
       counts.appendChild(el);
     }
+    if (selectedStatus) await loadInboxDetail(selectedStatus);
 
-    const hint = [];
-    if (!d.logdy_installed) hint.push('logdy not installed in PATH');
-    if (d.logdy_url) hint.push(`logdy: ${d.logdy_url}`);
-    document.getElementById('logdyHint').textContent = hint.join(' | ');
   } catch (e) {
     document.getElementById('meta').textContent = 'error: ' + e;
   }
+}
+
+async function selectStatus(k) {
+  selectedStatus = (selectedStatus === k) ? null : k;
+  if (!selectedStatus) {
+    document.getElementById('inboxDetail').style.display = 'none';
+    document.querySelectorAll('.pill').forEach(p => p.classList.remove('sel'));
+    return;
+  }
+  document.querySelectorAll('.pill').forEach(p => {
+    p.classList.toggle('sel', p.textContent.startsWith(k + ':'));
+  });
+  await loadInboxDetail(selectedStatus);
+}
+
+async function loadInboxDetail(status) {
+  try {
+    const d = await api('/api/inbox?status=' + encodeURIComponent(status));
+    const tbody = document.getElementById('inboxRows');
+    tbody.innerHTML = '';
+    if (!d.items.length) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td colspan="5" style="color:var(--muted)">no items</td>';
+      tbody.appendChild(tr);
+    }
+    for (const item of d.items) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${item.id||''}</td><td>${item.task||''}</td><td>${item.to||''}</td><td>${item.priority||''}</td><td>${item.launched_at||''}</td>`;
+      tbody.appendChild(tr);
+    }
+    document.getElementById('inboxDetail').style.display = 'block';
+  } catch(e) {}
 }
 
 async function act(action) {
@@ -138,7 +174,7 @@ async function act(action) {
       headers: {'Content-Type': 'application/json', 'X-Superharness-Token': AUTH_TOKEN},
       body: JSON.stringify({action})
     });
-    lastActionText = (d.stdout || '') + (d.stderr ? ('\n' + d.stderr) : '');
+    lastActionText = (d.stdout || '') + (d.stderr ? ('\\n' + d.stderr) : '');
     st.textContent = `ok: ${action} (exit=${d.exit_code})`;
   } catch (e) {
     st.textContent = 'error: ' + e;
@@ -146,19 +182,6 @@ async function act(action) {
   await refresh();
 }
 
-async function startLogdy() {
-  const st = document.getElementById('actionStatus');
-  st.textContent = 'starting logdy ...';
-  try {
-    const d = await api('/api/logdy/start', { method: 'POST', headers: {'X-Superharness-Token': AUTH_TOKEN} });
-    lastActionText = d.message || '';
-    st.textContent = d.started ? `logdy started: ${d.url}` : `logdy already running: ${d.url}`;
-    if (d.url) window.open(d.url, '_blank', 'noopener');
-  } catch (e) {
-    st.textContent = 'error: ' + e;
-  }
-  await refresh();
-}
 
 refresh();
 setInterval(refresh, 3000);
@@ -183,6 +206,7 @@ def watcher_state(label: str) -> str:
             capture_output=True,
             text=True,
             check=False,
+            timeout=3,
         )
         if out.returncode != 0:
             return ""
@@ -192,6 +216,27 @@ def watcher_state(label: str) -> str:
     except Exception:
         return ""
     return ""
+
+
+def inbox_items(inbox_file: Path) -> list[dict]:
+    if not inbox_file.exists():
+        return []
+    items: list[dict] = []
+    current: dict = {}
+    for raw in inbox_file.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw.strip()
+        if line.startswith("- id:"):
+            if current:
+                items.append(current)
+            current = {"id": line[5:].strip()}
+        elif ":" in line and current:
+            k, _, v = line.partition(":")
+            k = k.strip()
+            if k and k not in current:
+                current[k] = v.strip()
+    if current:
+        items.append(current)
+    return items
 
 
 def inbox_counts(inbox_file: Path) -> dict[str, int]:
@@ -224,9 +269,11 @@ def contract_id(contract_file: Path) -> str:
 
 
 def project_label(project_dir: Path) -> str:
-    slug = "".join(ch if ch.isalnum() else "-" for ch in project_dir.name).strip("-")
-    if not slug:
-        slug = "project"
+    # Match install-launchd-inbox-watcher.sh: basename | tr -cs 'A-Za-z0-9' '-'
+    import re
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", project_dir.name + " ")
+    if not slug.strip("-"):
+        slug = "project-"
     return f"com.superharness.inbox.{slug}"
 
 
@@ -235,10 +282,7 @@ class Handler(BaseHTTPRequestHandler):
     label: str
     refresh_seconds: int
     scripts_dir: Path
-    logdy_port: int
     auth_token: str
-    logdy_process: subprocess.Popen | None = None
-    logdy_lock = threading.Lock()
 
     def _set_common_headers(self, content_type: str, body_len: int) -> None:
         self.send_header("Content-Type", content_type)
@@ -307,71 +351,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._run_cmd(["bash", normalize, "--project", str(self.project_dir), "--archive", "--drop-status", "stale"]), 200
         return ({"error": f"unsupported action: {action}"}, 400)
 
-    def _logdy_url(self) -> str:
-        return f"http://127.0.0.1:{self.logdy_port}"
-
-    def _port_in_use(self, host: str, port: int) -> bool:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.settimeout(0.2)
-            return sock.connect_ex((host, port)) == 0
-
-    def _wait_for_http_ready(self, url: str, timeout_seconds: float) -> bool:
-        deadline = time.time() + timeout_seconds
-        while time.time() < deadline:
-            try:
-                with urllib.request.urlopen(url, timeout=0.5) as resp:
-                    if 200 <= resp.status < 500:
-                        return True
-            except Exception:
-                pass
-            time.sleep(0.1)
-        return False
-
-    def _logdy_running(self) -> bool:
-        p = self.logdy_process
-        return p is not None and p.poll() is None
-
-    def _start_logdy(self) -> tuple[dict, int]:
-        with self.logdy_lock:
-            if shutil.which("logdy") is None:
-                return ({"error": "logdy not installed in PATH"}, 400)
-
-            if self._logdy_running():
-                return ({"started": False, "url": self._logdy_url(), "message": "logdy already running"}, 200)
-            if self._port_in_use("127.0.0.1", self.logdy_port):
-                return ({"error": f"logdy port already in use: {self.logdy_port}"}, 400)
-
-            outlog = Path.home() / "Library/Logs/superharness" / f"{self.label}.out.log"
-            errlog = Path.home() / "Library/Logs/superharness" / f"{self.label}.err.log"
-
-            cmd = [
-                "logdy",
-                "follow",
-                str(outlog),
-                str(errlog),
-                "--ui-ip",
-                "127.0.0.1",
-                "--port",
-                str(self.logdy_port),
-                "--no-updates",
-                "--no-analytics",
-            ]
-            self.logdy_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            time.sleep(0.2)
-            if self.logdy_process.poll() is not None:
-                code = self.logdy_process.returncode
-                self.logdy_process = None
-                return ({"error": f"logdy exited during startup (code={code})"}, 400)
-            if not self._wait_for_http_ready(self._logdy_url(), 3.0):
-                self.logdy_process.terminate()
-                try:
-                    self.logdy_process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    self.logdy_process.kill()
-                self.logdy_process = None
-                return ({"error": "logdy did not become ready on time"}, 400)
-            return ({"started": True, "url": self._logdy_url(), "message": "logdy launched"}, 200)
-
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         p = parsed.path
@@ -395,12 +374,20 @@ class Handler(BaseHTTPRequestHandler):
                     "ledger_tail": tail_lines(ledger, 18),
                     "out_tail": tail_lines(outlog, 16),
                     "err_tail": tail_lines(errlog, 16),
-                    "logdy_installed": shutil.which("logdy") is not None,
-                    "logdy_url": self._logdy_url() if self._logdy_running() else "",
                     "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                     "refresh_seconds": self.refresh_seconds,
                 }
             )
+            return
+
+        if p == "/api/inbox":
+            qs = parse_qs(parsed.query)
+            status_filter = qs.get("status", [""])[0]
+            inbox = self.project_dir / ".superharness" / "inbox.yaml"
+            items = inbox_items(inbox)
+            if status_filter:
+                items = [i for i in items if i.get("status") == status_filter]
+            self._json({"items": items, "status": status_filter})
             return
 
         self._json({"error": "not found"}, 404)
@@ -428,16 +415,6 @@ class Handler(BaseHTTPRequestHandler):
             self._json(data, status)
             return
 
-        if p == "/api/logdy/start":
-            auth_error = self._verify_mutation_auth()
-            if auth_error is not None:
-                data, status = auth_error
-                self._json(data, status)
-                return
-            data, status = self._start_logdy()
-            self._json(data, status)
-            return
-
         self._json({"error": "not found"}, 404)
 
 
@@ -447,7 +424,6 @@ def main() -> int:
     ap.add_argument("--port", type=int, default=8787, help="HTTP port (default: 8787)")
     ap.add_argument("--host", default="127.0.0.1", help="bind host (default: 127.0.0.1)")
     ap.add_argument("--refresh-seconds", type=int, default=3, help="ui refresh seconds (default: 3)")
-    ap.add_argument("--logdy-port", type=int, default=8797, help="port used when launching optional logdy follow (default: 8797)")
     args = ap.parse_args()
 
     project_dir = Path(args.project).expanduser().resolve()
@@ -465,27 +441,16 @@ def main() -> int:
     Handler.label = project_label(project_dir)
     Handler.refresh_seconds = args.refresh_seconds
     Handler.scripts_dir = scripts_dir
-    Handler.logdy_port = args.logdy_port
     Handler.auth_token = secrets.token_urlsafe(24)
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"monitor ui: http://{args.host}:{args.port}")
     print(f"project: {project_dir}")
     print(f"watcher label: {Handler.label}")
-    print(f"logdy deep-view port: {args.logdy_port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
-    finally:
-        with Handler.logdy_lock:
-            proc = Handler.logdy_process
-            if proc is not None and proc.poll() is None:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
     return 0
 
 
