@@ -25,7 +25,7 @@ It gives you a shared contract, queue-based delegation, and handoff/ledger state
 - `python3` (used by Claude session-start hook JSON escaping)
 - `claude` CLI (for Claude delegation commands)
 - `codex` CLI (for Codex delegation commands)
-- macOS `launchd` is required only for background watcher install/ensure scripts
+- macOS `launchd` (only for background watcher; use `--foreground` mode on Linux/Docker/CI)
 
 ---
 

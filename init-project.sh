@@ -21,15 +21,17 @@ set -euo pipefail
 usage() {
   cat << 'EOF'
 Usage:
-  init-project.sh [--dry-run] [PROJECT_NAME] [TECH_STACK] [STATUS]
+  init-project.sh [--dry-run] [--with-watcher] [PROJECT_NAME] [TECH_STACK] [STATUS]
 
 Options:
-  -h, --help      Show this help message and exit
-  -n, --dry-run   Print planned actions without writing files
+  -h, --help          Show this help message and exit
+  -n, --dry-run       Print planned actions without writing files
+  --with-watcher      Also install macOS launchd background watcher (default: off)
 EOF
 }
 
 DRY_RUN=0
+WITH_WATCHER=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help)
@@ -38,6 +40,10 @@ while [ $# -gt 0 ]; do
       ;;
     -n|--dry-run)
       DRY_RUN=1
+      shift
+      ;;
+    --with-watcher)
+      WITH_WATCHER=1
       shift
       ;;
     --)
@@ -250,13 +256,15 @@ else
   echo "Skipped: AGENTS.md (already exists)"
 fi
 
-# Ensure launchd watcher is installed (macOS). Non-fatal if unavailable.
-ENSURE_WATCHER="$SCRIPT_DIR/scripts/ensure-launchd-inbox-watcher.sh"
-if [ -x "$ENSURE_WATCHER" ]; then
-  if bash "$ENSURE_WATCHER" --project "$PROJECT_DIR" >/dev/null 2>&1; then
-    echo "Watcher: launchd inbox watcher is configured."
-  else
-    echo "Watcher: unable to auto-configure launchd watcher (continuing)."
+# Install launchd watcher only when explicitly requested.
+if [ "$WITH_WATCHER" -eq 1 ]; then
+  ENSURE_WATCHER="$SCRIPT_DIR/scripts/ensure-launchd-inbox-watcher.sh"
+  if [ -x "$ENSURE_WATCHER" ]; then
+    if bash "$ENSURE_WATCHER" --project "$PROJECT_DIR" >/dev/null 2>&1; then
+      echo "Watcher: launchd inbox watcher is configured."
+    else
+      echo "Watcher: unable to auto-configure launchd watcher (continuing)."
+    fi
   fi
 fi
 
@@ -274,7 +282,11 @@ echo "  ├── decisions.yaml       ← cross-agent decision records"
 echo "  └── ledger.md            ← append-only activity log"
 echo ""
 echo "Next steps:"
-echo "  1. Edit .superharness/contract.yaml with your first task"
+echo "  0. Run 'superharness doctor --project .' to verify your setup"
+echo "  1. Add a task:  superharness task create --project . --id my-task --title \"...\" --owner codex-cli"
 echo "  2. Review CLAUDE.md and AGENTS.md — add project-specific context"
 echo "  3. Add .superharness/ to .gitignore OR commit it (your choice)"
 echo "  4. Start a Claude Code or Codex session — the hooks will pick it up"
+echo ""
+echo "Tip: To enable a background watcher (macOS only), re-run with --with-watcher"
+echo "     or use: superharness watch --foreground --project . --interval 30"

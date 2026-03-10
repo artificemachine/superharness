@@ -10,7 +10,7 @@ superharness lets AI coding assistants work on the same project without stepping
 
 📘 **[User Guide](docs/GUIDE.md)** — How to use superharness (installation, commands, troubleshooting)
 🏗️ **[Architecture](docs/ARCHITECTURE.md)** — Why it exists, how it works, design philosophy
-⚡ **[Quickstart](docs/QUICKSTART.md)** — Shortest path to first delegation (3 steps)
+⚡ **[Quickstart](docs/QUICKSTART.md)** — Shortest path to first delegation
 🔒 **[Security](SECURITY.md)** — Operational safety notes
 🗺️ **[Roadmap](ROADMAP.md)** — Current maturity target and next milestones
 
@@ -22,27 +22,41 @@ superharness lets AI coding assistants work on the same project without stepping
 - **`superharness delegate`** — Launch agent with contract context
 - **`superharness enqueue|dispatch|watch`** — Queue-based task routing
 - **`superharness hygiene`** — Protocol compliance checks
-- **Background watcher** — Unattended execution via macOS launchd
+- **`superharness watch --foreground`** — Cross-platform continuous watcher
+- **`superharness doctor`** — Prerequisite and setup health check
+- **`superharness uninstall`** — Clean removal of system artifacts
+- **Background watcher** — Unattended execution via macOS launchd (opt-in)
 
 ---
 
-## 3-Step Start
+## Quick Start
 
-### 1. Install Claude hooks
+> **Requires:** `bash`, `ruby`, `python3`. See [Prerequisites](#prerequisites) for install commands.
+
+### 0. Install the CLI
 ```bash
-bash adapters/claude-code/install.sh
+bash scripts/install-wrapper.sh
+# Creates a symlink at ~/.local/bin/superharness
+# If ~/.local/bin is not in PATH: export PATH="$HOME/.local/bin:$PATH"
 ```
 
-### 2. Initialize your project
+### 1. Initialize your project
 ```bash
 cd /path/to/project
-bash /path/to/superharness/superharness init "Project Name" "Tech/Stack" "active"
+superharness init "Project Name" "Tech/Stack" "active"
+# Creates .superharness/, CLAUDE.md, and AGENTS.md in your project root
 ```
 
-### 3. Enqueue and dispatch a task
+### 2. Verify setup
 ```bash
-bash /path/to/superharness/superharness enqueue --project . --to codex-cli --task task-id --priority 1
-bash /path/to/superharness/superharness dispatch --project . --to codex-cli --print-only
+superharness doctor --project .
+```
+
+### 3. Create a task and dispatch it
+```bash
+superharness task create --project . --id my-task --title "First task" --owner codex-cli
+superharness enqueue --project . --to codex-cli --task my-task --priority 1
+superharness dispatch --project . --to codex-cli --print-only
 ```
 
 **Full setup guide:** [docs/QUICKSTART.md](docs/QUICKSTART.md)
@@ -76,11 +90,11 @@ superharness monitor-ui --project /path/to/project
 ## Prerequisites
 
 - `bash` (scripts are Bash-based)
-- `ruby` (required by inbox YAML helpers and hygiene checks)
-- `python3` (used by Claude session-start hook JSON escaping)
-- `claude` CLI (for Claude delegation commands)
-- `codex` CLI (for Codex delegation commands)
-- macOS `launchd` (only for background watcher install/ensure scripts)
+- `ruby` (required by inbox YAML helpers and hygiene checks) — see `.ruby-version`
+- `python3` + `pytest` (tests and hook JSON escaping) — see `requirements.txt`
+- `claude` CLI (for Claude delegation commands): `npm install -g @anthropic-ai/claude-code`
+- `codex` CLI (for Codex delegation commands): `npm install -g @openai/codex`
+- macOS `launchd` (only for background watcher; use `--foreground` mode on Linux/Docker/CI)
 
 ---
 
@@ -139,4 +153,4 @@ bash scripts/install-launchd-inbox-watcher.sh \
 
 Current execution maturity target: **v0.7** (reliability and adoption milestone)
 
-See [ROADMAP.md](ROADMAP.md) for details and [CHANGELOG.md](CHANGELOG.md) for version history.
+See [ROADMAP.md](ROADMAP.md) for details, [RELEASES.md](RELEASES.md) for release notes, and [CHANGELOG.md](CHANGELOG.md) for the full iteration log.
