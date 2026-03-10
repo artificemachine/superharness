@@ -55,19 +55,18 @@ HANDOFFS_DIR="$PROJECT_DIR/.superharness/handoffs"
 [ -f "$CONTRACT_FILE" ] || { echo "result=ok exceeded=0 (no contract)"; exit 0; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INBOX_YAML="$SCRIPT_DIR/inbox-yaml.rb"
+INBOX_YAML="$SCRIPT_DIR/../engine/inbox.rb"
 CONTRACT_RB="$SCRIPT_DIR/../engine/contract.rb"
 ENQUEUE="$SCRIPT_DIR/inbox-enqueue.sh"
 
-[ -x "$INBOX_YAML" ] || { echo "Missing helper: $INBOX_YAML" >&2; exit 1; }
+[ -f "$INBOX_YAML" ] || { echo "Missing helper: $INBOX_YAML" >&2; exit 1; }
 [ -f "$CONTRACT_RB" ] || { echo "Missing helper: $CONTRACT_RB" >&2; exit 1; }
 [ -x "$ENQUEUE" ]    || { echo "Missing helper: $ENQUEUE" >&2; exit 1; }
 
 NOW="$(date -u +%FT%TZ)"
 NOW_EPOCH="$(date -u +%s)"
 
-# Write a small Ruby helper to a temp file to avoid stdin conflicts.
-RUBY_HELPER="$(mktemp /tmp/superharness-deadline-XXXXXX.rb)"
+RUBY_HELPER="$(mktemp /tmp/superharness-deadline-XXXXXX)"
 trap 'rm -f "$RUBY_HELPER"' EXIT
 
 cat > "$RUBY_HELPER" << 'RUBY'
@@ -91,13 +90,11 @@ items.each do |item|
 end
 RUBY
 
-# Write launched items JSON to a temp file.
-JSON_TMP="$(mktemp /tmp/superharness-launched-XXXXXX.json)"
+JSON_TMP="$(mktemp /tmp/superharness-launched-XXXXXX)"
 trap 'rm -f "$RUBY_HELPER" "$JSON_TMP"' EXIT
 
 ruby "$INBOX_YAML" list_launched --file "$INBOX_FILE" > "$JSON_TMP"
 
-# Parse into tab-separated lines: id\ttask\towner\tproject\tpriority\telapsed_minutes\tlaunched_at
 LAUNCHED_LINES="$(ruby "$RUBY_HELPER" "$JSON_TMP" "$NOW_EPOCH")"
 
 exceeded_count=0
@@ -128,14 +125,12 @@ while IFS=$'\t' read -r item_id task_id owner project priority elapsed_minutes l
 
   echo "Deadline exceeded: task=$task_id owner=$owner elapsed=${elapsed_minutes}m deadline=${deadline_minutes}m -> reassigning to $new_owner"
 
-  # Mark inbox item as failed.
   ruby "$INBOX_YAML" deadline_fail \
     --file "$INBOX_FILE" \
     --id "$item_id" \
     --now "$NOW" \
     --reason "deadline_exceeded_after_${elapsed_minutes}m"
 
-  # Mark contract task as failed with reason.
   bash "$SCRIPT_DIR/task.sh" status \
     --project "$project" \
     --id "$task_id" \
@@ -143,10 +138,8 @@ while IFS=$'\t' read -r item_id task_id owner project priority elapsed_minutes l
     --actor "$owner" \
     --reason "deadline_exceeded_after_${elapsed_minutes}m" 2>/dev/null || true
 
-  # Resolve contract id for handoff.
   contract_id="$(ruby "$CONTRACT_RB" contract_id --file "$CONTRACT_FILE" 2>/dev/null || echo "unknown")"
 
-  # Write a handoff documenting why the task was stopped.
   mkdir -p "$HANDOFFS_DIR"
   HANDOFF_FILE="$HANDOFFS_DIR/${NOW:0:10}-deadline-${task_id}.yaml"
   cat > "$HANDOFF_FILE" << HANDOFF

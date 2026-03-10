@@ -1,0 +1,52 @@
+name: Contract Hygiene
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  protocol-hygiene:
+    name: Protocol Hygiene Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Check .superharness exists
+        id: check_harness
+        run: |
+          if [ -d ".superharness" ] && [ -f ".superharness/contract.yaml" ]; then
+            echo "has_harness=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_harness=false" >> $GITHUB_OUTPUT
+            echo "No .superharness directory found; skipping protocol hygiene check."
+          fi
+
+      - name: Validate contract protocol hygiene
+        if: steps.check_harness.outputs.has_harness == 'true'
+        run: |
+          echo "Running protocol hygiene validation..."
+          scripts/check-contract-hygiene.sh --project . --strict
+          echo "✓ All done tasks have handoff files and ledger entries"
+
+      - name: Validate handoff YAML syntax
+        if: steps.check_harness.outputs.has_harness == 'true'
+        run: |
+          echo "Validating handoff YAML files..."
+          for handoff in .superharness/handoffs/*.yaml; do
+            if [ -f "$handoff" ]; then
+              echo "Checking $handoff"
+              ruby -e "require 'psych'; require 'date'; Psych.safe_load(File.read('$handoff'), permitted_classes: [Time, Date], aliases: false)"
+            fi
+          done
+          echo "✓ All handoff files are valid YAML"
+
+      - name: Validate decisions and failures YAML
+        if: steps.check_harness.outputs.has_harness == 'true'
+        run: |
+          echo "Validating decisions.yaml and failures.yaml..."
+          ruby -e "require 'psych'; require 'date'; Psych.safe_load(File.read('.superharness/decisions.yaml'), permitted_classes: [Time, Date], aliases: false)"
+          ruby -e "require 'psych'; require 'date'; Psych.safe_load(File.read('.superharness/failures.yaml'), permitted_classes: [Time, Date], aliases: false)"
+          echo "✓ decisions.yaml and failures.yaml are valid"

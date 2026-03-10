@@ -19,6 +19,7 @@ ENTRYPOINT_FILES=(
   "scripts/inbox-dispatch.sh"
   "scripts/inbox-enqueue.sh"
   "scripts/inbox-normalize.sh"
+  "scripts/inbox-deadline-check.sh"
   "scripts/inbox-recover-stale.sh"
   "scripts/inbox-watch.sh"
   "scripts/install-wrapper.sh"
@@ -34,6 +35,58 @@ ENTRYPOINT_FILES=(
 HOOK_FILES=(
   ".githooks/pre-commit"
 )
+
+usage() {
+  cat <<'USAGE'
+Usage: check-shell-entrypoints.sh [--list-entrypoints|--list-hooks|--list-all]
+
+Validates configured shell entrypoints/hooks for:
+  - shebang presence
+  - executable mode
+  - bash syntax
+  - allowlist drift against tracked executable files
+
+Optional listing modes:
+  --list-entrypoints  Print entrypoint files (one per line) and exit
+  --list-hooks        Print hook files (one per line) and exit
+  --list-all          Print entrypoints and hooks (one per line) and exit
+  -h, --help          Show this help message
+USAGE
+}
+
+list_entries() {
+  local item
+  for item in "$@"; do
+    echo "$item"
+  done
+}
+
+if [ $# -gt 0 ]; then
+  case "$1" in
+    --list-entrypoints)
+      list_entries "${ENTRYPOINT_FILES[@]}"
+      exit 0
+      ;;
+    --list-hooks)
+      list_entries "${HOOK_FILES[@]}"
+      exit 0
+      ;;
+    --list-all)
+      list_entries "${ENTRYPOINT_FILES[@]}"
+      list_entries "${HOOK_FILES[@]}"
+      exit 0
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+fi
 
 if [ ${#ENTRYPOINT_FILES[@]} -eq 0 ] && [ ${#HOOK_FILES[@]} -eq 0 ]; then
   echo "No shell entrypoints/hooks configured for validation."

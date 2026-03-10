@@ -55,3 +55,77 @@ def test_contract_hygiene_strict_fails_when_decisions_not_promoted(repo_root, tm
 
     assert result.returncode == 1
     assert "Contract has decisions but decisions.yaml is empty" in result.stdout
+
+
+def test_contract_hygiene_strict_fails_when_failures_not_promoted(repo_root, tmp_path) -> None:
+    project = tmp_path / "proj3"
+    project.mkdir()
+    _write_project(project)
+
+    (project / ".superharness" / "contract.yaml").write_text(
+        "\n".join(
+            [
+                "id: test-contract",
+                "tasks:",
+                "  - id: done-task",
+                "    status: done",
+                f'    project_path: "{project}"',
+                "decisions: []",
+                "failures:",
+                "  - date: 2026-03-10",
+                "    by: codex-cli",
+                "    summary: launch status drift not recovered",
+            ]
+        )
+        + "\n"
+    )
+
+    script = repo_root / "scripts" / "check-contract-hygiene.sh"
+    result = run_bash(script, cwd=repo_root, args=["--project", str(project), "--strict"])
+
+    assert result.returncode == 1
+    assert "Contract has failures but failures.yaml is empty" in result.stdout
+
+
+def test_contract_hygiene_strict_passes_when_failures_are_promoted(repo_root, tmp_path) -> None:
+    project = tmp_path / "proj4"
+    project.mkdir()
+    _write_project(project)
+
+    (project / ".superharness" / "contract.yaml").write_text(
+        "\n".join(
+            [
+                "id: test-contract",
+                "tasks:",
+                "  - id: done-task",
+                "    status: done",
+                f'    project_path: "{project}"',
+                "decisions: []",
+                "failures:",
+                "  - date: 2026-03-10",
+                "    by: codex-cli",
+                "    summary: launch status drift not recovered",
+            ]
+        )
+        + "\n"
+    )
+    (project / ".superharness" / "failures.yaml").write_text(
+        "\n".join(
+            [
+                "failures:",
+                "  - date: 2026-03-10",
+                "    source_task: done-task",
+                "    by: codex-cli",
+                "    summary: launch status drift not recovered",
+                "    mitigation: run inbox recovery before dispatch",
+                "    promoted: false",
+            ]
+        )
+        + "\n"
+    )
+
+    script = repo_root / "scripts" / "check-contract-hygiene.sh"
+    result = run_bash(script, cwd=repo_root, args=["--project", str(project), "--strict"])
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Contract hygiene check passed" in result.stdout

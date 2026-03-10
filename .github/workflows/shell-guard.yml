@@ -24,12 +24,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
-      - name: init-project help + dry-run
+      - name: Entrypoint help smoke
         run: |
-          bash init-project.sh --help
-          bash init-project.sh --dry-run "CI Smoke" "Bash" "active"
+          while IFS= read -r entrypoint; do
+            [ -n "$entrypoint" ] || continue
+            bash "$entrypoint" --help
+          done < <(bash scripts/check-shell-entrypoints.sh --list-entrypoints)
 
-      - name: install help + dry-run
+      - name: Script dry-run smoke
         run: |
-          bash adapters/claude-code/install.sh --help
           HOME="$(mktemp -d)" bash adapters/claude-code/install.sh --dry-run
+          bash init-project.sh --dry-run "CI Smoke" "Bash" "active"

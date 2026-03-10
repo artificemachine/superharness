@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tests.helpers import copy_from_repo, run_bash, run_cmd
+from tests.helpers import REPO_ROOT, copy_from_repo, run_bash, run_cmd, shell_guard_list
 
 
 def _init_git_repo(path: Path) -> None:
@@ -15,42 +15,22 @@ def _copy_guard_tree(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
 
-    required = [
-        "init-project.sh",
-        "adapters/claude-code/install.sh",
-        "adapters/claude-code/hooks/branch-guard.sh",
-        "adapters/claude-code/hooks/ledger-append.sh",
-        "adapters/claude-code/hooks/scope-guard.sh",
-        "adapters/claude-code/hooks/session-start.sh",
-        "scripts/check-shell-entrypoints.sh",
-        "scripts/check-contract-hygiene.sh",
-        "scripts/contract-today.sh",
-        "scripts/doctor.sh",
-        "scripts/delegate-to-claude.sh",
-        "scripts/delegate-to-codex.sh",
-        "scripts/ensure-launchd-inbox-watcher.sh",
-        "scripts/inbox-dispatch.sh",
-        "scripts/inbox-enqueue.sh",
-        "scripts/inbox-normalize.sh",
-        "scripts/inbox-recover-stale.sh",
-        "scripts/inbox-watch.sh",
-        "scripts/install-launchd-inbox-watcher.sh",
-        "scripts/install-wrapper.sh",
-        "scripts/install-git-hooks.sh",
-        "scripts/task.sh",
-        "scripts/uninstall-launchd-inbox-watcher.sh",
-        ".githooks/pre-commit",
-        "protocol/templates/identity-core.md",
-        "scripts/inbox-yaml.rb",
-        "cli/contract-today.sh",
-        "cli/doctor.sh",
-        "cli/install-wrapper.sh",
-        "cli/delegate-task.sh",
-        "cli/task.sh",
-        "superharness",
-    ]
+    required = (
+        shell_guard_list(REPO_ROOT, "--list-entrypoints")
+        + shell_guard_list(REPO_ROOT, "--list-hooks")
+        + [
+            "protocol/templates/identity-core.md",
+            "scripts/inbox-yaml.rb",
+            "cli/contract-today.sh",
+            "cli/doctor.sh",
+            "cli/install-wrapper.sh",
+            "cli/delegate-task.sh",
+            "cli/task.sh",
+            "superharness",
+        ]
+    )
 
-    for rel in required:
+    for rel in sorted(set(required)):
         copy_from_repo(rel, repo)
 
     _init_git_repo(repo)
