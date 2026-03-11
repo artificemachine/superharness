@@ -1,0 +1,16 @@
+---
+id: discuss-20260311T220550Z-74578-194192319
+topic: 'Review 3 watcher reliability fixes: (1) KeepAlive with SuccessfulExit:false
+  in launchd plist, (2) .superharness/ exclusion from dirty worktree git status check,
+  (3) rsync worker sync before each dispatch cycle. Are the fixes correct and complete?
+  Any edge cases or race conditions?'
+participants:
+- claude-code
+- codex-cli
+max_rounds: 3
+current_round: 1
+status: active
+created_at: '2026-03-11T22:05:50Z'
+created_by: owner
+project: "/Users/airm2max/DevOpsSec/superharness"
+task_id: consensus-watcher-reliability-20260311
