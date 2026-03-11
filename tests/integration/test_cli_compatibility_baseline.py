@@ -7,6 +7,9 @@ from tests.helpers import run_bash, shell_guard_list
 
 HELP_ENTRYPOINTS = [
     "superharness",
+    "scripts/delegate.sh",
+    "scripts/delegate-task.sh",
+    "scripts/monitor-ui.sh",
     "cli/init.sh",
     "cli/contract-today.sh",
     "cli/doctor.sh",

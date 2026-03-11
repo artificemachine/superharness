@@ -38,7 +38,7 @@ def _fake_bin(tmp_path: Path, *names: str) -> Path:
 
 def test_delegate_print_only_does_not_require_target_cli(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
-    script = repo_root / "cli" / "delegate.sh"
+    script = repo_root / "scripts" / "delegate.sh"
 
     # Use a minimal PATH that does not include user-installed codex/claude CLIs.
     result = run_bash(
@@ -55,7 +55,7 @@ def test_delegate_print_only_does_not_require_target_cli(repo_root, tmp_path) ->
 
 def test_delegate_claude_non_interactive_requires_specific_skip_permissions_confirmation(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
-    script = repo_root / "cli" / "delegate.sh"
+    script = repo_root / "scripts" / "delegate.sh"
     bin_dir = _fake_bin(tmp_path, "claude")
 
     result = run_bash(
@@ -74,7 +74,7 @@ def test_delegate_claude_non_interactive_requires_specific_skip_permissions_conf
 
 def test_delegate_codex_bypass_requires_specific_confirmation(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
-    script = repo_root / "cli" / "delegate.sh"
+    script = repo_root / "scripts" / "delegate.sh"
     bin_dir = _fake_bin(tmp_path, "codex")
 
     result = run_bash(
@@ -93,7 +93,7 @@ def test_delegate_codex_bypass_requires_specific_confirmation(repo_root, tmp_pat
 
 def test_delegate_surfaces_malformed_handoff_error(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
-    script = repo_root / "cli" / "delegate.sh"
+    script = repo_root / "scripts" / "delegate.sh"
     handoff = project / ".superharness" / "handoffs" / "bad.yaml"
     handoff.write_text(":\n  - invalid\n")
 
