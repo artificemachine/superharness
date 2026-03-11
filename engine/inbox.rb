@@ -531,6 +531,22 @@ when "sync_task_status"
   end.parse!(ARGV)
   abort("--file, --task, --to, --now are required") unless opts[:file] && opts[:task] && opts[:to] && opts[:now]
   with_inbox_lock(opts[:file]) { exit sync_task_status(file: opts[:file], task: opts[:task], to: opts[:to], now: opts[:now]) }
+when "has_active"
+  opts = {}
+  OptionParser.new do |o|
+    o.on("--file FILE") { |v| opts[:file] = v }
+    o.on("--to TARGET") { |v| opts[:to] = v }
+    o.on("--task TASK_ID") { |v| opts[:task] = v }
+  end.parse!(ARGV)
+  abort("--file, --to, --task are required") unless opts[:file] && opts[:to] && opts[:task]
+  items = load_items(opts[:file])
+  active = items.any? do |item|
+    next false unless item.is_a?(Hash)
+    item["task"].to_s == opts[:task] &&
+      item["to"].to_s == opts[:to] &&
+      %w[pending paused launched running].include?(item["status"].to_s)
+  end
+  puts active ? "true" : "false"
 else
-  abort("Usage: inbox.rb <next_pending|launch|enqueue|set_status|set_field|remove|sync_task_status|normalize|recover_launched|list_launched|deadline_fail> [options]")
+  abort("Usage: inbox.rb <next_pending|launch|enqueue|set_status|set_field|remove|sync_task_status|normalize|recover_launched|list_launched|deadline_fail|has_active> [options]")
 end

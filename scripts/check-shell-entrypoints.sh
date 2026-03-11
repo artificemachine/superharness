@@ -37,6 +37,7 @@ ENTRYPOINT_FILES=(
   "scripts/reset-watcher-and-test.sh"
   "cli/monitor-ui.sh"
   "cli/discuss.sh"
+  "scripts/discussion-dispatch.sh"
 )
 
 HOOK_FILES=(
