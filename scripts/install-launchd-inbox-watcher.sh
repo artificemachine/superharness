@@ -359,6 +359,8 @@ fi
   echo "    <true/>"
   echo "    <key>StartInterval</key>"
   printf '    <integer>%s</integer>\n' "$INTERVAL"
+  echo "    <key>KeepAlive</key>"
+  echo "    <true/>"
   echo "    <key>EnvironmentVariables</key>"
   echo "    <dict>"
   plist_key "PATH"

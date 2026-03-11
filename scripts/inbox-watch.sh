@@ -218,7 +218,20 @@ run_dispatch() {
   bash "$DISPATCH" "${COMMON_ARGS[@]}" --to "$to" || true
 }
 
+sync_worker_copy() {
+  local source_repo="$PROJECT_DIR"
+  local worker_dir="$HOME/.superharness-workers/$(basename "$source_repo")"
+  if [ -d "$worker_dir" ] && [ -d "$source_repo/.git" ]; then
+    rsync -a --delete \
+      --exclude '.git' \
+      --exclude '.superharness/inbox.yaml' \
+      "$source_repo/" "$worker_dir/" 2>/dev/null || true
+  fi
+}
+
 run_cycle() {
+  sync_worker_copy
+
   if [ -x "$DEADLINE_CHECK" ]; then
     bash "$DEADLINE_CHECK" --project "$PROJECT_DIR" || true
   fi

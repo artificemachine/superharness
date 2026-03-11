@@ -1,0 +1,36 @@
+---
+task: consensus-watcher-reliability-20260311
+to: codex-cli
+date: 2026-03-11
+status: approved
+contract_id: v08-reliability
+approval_gate:
+  required: true
+  approved_by_user: true
+  approved_at: '2026-03-11T19:30:27Z'
+  approved_by: owner
+  note: Review watcher reliability fixes, find consensus
+summary: |
+  Consensus review of 3 watcher reliability fixes applied to superharness:
+
+  1. KeepAlive added to launchd plist (install-launchd-inbox-watcher.sh)
+     - Watcher now auto-restarts after exit instead of staying dead
+  2. Dirty worktree exclusion (inbox-dispatch.sh:173)
+     - git status now excludes .superharness/ so watcher's own state changes
+       no longer trigger the dirty worktree pause loop
+  3. Worker copy sync (inbox-watch.sh sync_worker_copy)
+     - rsync from source repo to ~/.superharness-workers/ before each dispatch
+       cycle so Codex always works on current code
+
+  Both agents should review:
+  - Are the fixes correct and complete?
+  - Any edge cases or race conditions?
+  - Should rsync exclude additional paths beyond .git and inbox.yaml?
+  - Is KeepAlive the right restart strategy vs KeepAlive with SuccessfulExit?
+  - Does the .superharness/ exclusion in git status risk masking real issues?
+
+  Files changed:
+  - scripts/inbox-dispatch.sh (line 173)
+  - scripts/install-launchd-inbox-watcher.sh (lines 362-363)
+  - scripts/inbox-watch.sh (new sync_worker_copy function)
+prior_review: 

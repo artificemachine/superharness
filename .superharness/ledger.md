@@ -277,3 +277,7 @@ Append-only activity log. Never edit previous entries.
 - 2026-03-11T18:26:21Z — codex-cli — task public-readiness-review-20260311 done — audited /Users/airm2max/DevOpsSec/superharness for public GitHub readiness; quickstart reproduced, hygiene passed, doctor warned watcher inactive, pytest failed (2), ShipGuard found 1 high issue, CONTRIBUTING.md and LICENSE missing; verdict no-go
 - 2026-03-11T18:30:03Z — claude-code — modified: monitor-ui.py
 - 2026-03-11T18:30:25Z — claude-code — modified: monitor-ui.py
+- 2026-03-11T19:02:53Z — codex-cli — task public-readiness-reaudit-20260311 done — re-audited /Users/airm2max/DevOpsSec/superharness; quickstart, doctor, hygiene, ShipGuard, and CI governance passed, but CONTRIBUTING.md and LICENSE are missing and pytest failed (2: delegate confirmation gate, uninstall --all); verdict no-go
+- 2026-03-11T19:18:58Z — claude-code — modified: inbox-dispatch.sh
+- 2026-03-11T19:19:00Z — claude-code — modified: install-launchd-inbox-watcher.sh
+- 2026-03-11T19:19:03Z — claude-code — modified: inbox-watch.sh
