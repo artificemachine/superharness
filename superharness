@@ -1,7 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SCRIPT_SOURCE" ]; do
+  SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+  LINK_TARGET="$(readlink "$SCRIPT_SOURCE")"
+  if [[ "$LINK_TARGET" = /* ]]; then
+    SCRIPT_SOURCE="$LINK_TARGET"
+  else
+    SCRIPT_SOURCE="$SCRIPT_DIR/$LINK_TARGET"
+  fi
+done
+ROOT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
 VERSION="0.7.0"
 
 usage() {
@@ -61,33 +71,50 @@ if ! _has_project_arg "$@"; then
   fi
 fi
 
+exec_with_optional_project() {
+  local script_path="$1"
+  shift
+  if [ "${#auto_project_args[@]}" -gt 0 ]; then
+    exec bash "$script_path" "$@" "${auto_project_args[@]}"
+  else
+    exec bash "$script_path" "$@"
+  fi
+}
+
 case "$cmd" in
   init) exec bash "$ROOT_DIR/init-project.sh" "$@" ;;
   contract)
     sub="${1:-today}"
-    if [ "$sub" = "today" ]; then
-      if [ $# -gt 0 ]; then shift; fi
-      exec bash "$ROOT_DIR/scripts/contract-today.sh" "$@" "${auto_project_args[@]}"
-    fi
-    echo "Unknown contract subcommand: $sub" >&2
-    exit 2
+    case "$sub" in
+      today)
+        if [ $# -gt 0 ]; then shift; fi
+        exec_with_optional_project "$ROOT_DIR/scripts/contract-today.sh" "$@"
+        ;;
+      help|-h|--help)
+        exec bash "$ROOT_DIR/scripts/contract-today.sh" --help
+        ;;
+      *)
+        echo "Unknown contract subcommand: $sub" >&2
+        exit 2
+        ;;
+    esac
     ;;
   delegate)
     if [ $# -gt 0 ] && [[ "$1" != -* ]]; then
-      exec bash "$ROOT_DIR/scripts/delegate-task.sh" "$@" "${auto_project_args[@]}"
+      exec_with_optional_project "$ROOT_DIR/scripts/delegate-task.sh" "$@"
     fi
-    exec bash "$ROOT_DIR/scripts/delegate.sh" "$@" "${auto_project_args[@]}"
+    exec_with_optional_project "$ROOT_DIR/scripts/delegate.sh" "$@"
     ;;
-  doctor) exec bash "$ROOT_DIR/scripts/doctor.sh" "$@" "${auto_project_args[@]}" ;;
+  doctor) exec_with_optional_project "$ROOT_DIR/scripts/doctor.sh" "$@" ;;
   install-wrapper) exec bash "$ROOT_DIR/scripts/install-wrapper.sh" "$@" ;;
-  enqueue) exec bash "$ROOT_DIR/scripts/inbox-enqueue.sh" "$@" "${auto_project_args[@]}" ;;
-  task) exec bash "$ROOT_DIR/scripts/task.sh" "$@" "${auto_project_args[@]}" ;;
-  dispatch) exec bash "$ROOT_DIR/scripts/inbox-dispatch.sh" "$@" "${auto_project_args[@]}" ;;
-  watch) exec bash "$ROOT_DIR/scripts/inbox-watch.sh" "$@" "${auto_project_args[@]}" ;;
-  monitor-ui) exec bash "$ROOT_DIR/scripts/monitor-ui.sh" "$@" "${auto_project_args[@]}" ;;
-  recover) exec bash "$ROOT_DIR/scripts/inbox-recover-stale.sh" "$@" "${auto_project_args[@]}" ;;
-  normalize) exec bash "$ROOT_DIR/scripts/inbox-normalize.sh" "$@" "${auto_project_args[@]}" ;;
-  hygiene) exec bash "$ROOT_DIR/scripts/check-contract-hygiene.sh" "$@" "${auto_project_args[@]}" ;;
+  enqueue) exec_with_optional_project "$ROOT_DIR/scripts/inbox-enqueue.sh" "$@" ;;
+  task) exec_with_optional_project "$ROOT_DIR/scripts/task.sh" "$@" ;;
+  dispatch) exec_with_optional_project "$ROOT_DIR/scripts/inbox-dispatch.sh" "$@" ;;
+  watch) exec_with_optional_project "$ROOT_DIR/scripts/inbox-watch.sh" "$@" ;;
+  monitor-ui) exec_with_optional_project "$ROOT_DIR/scripts/monitor-ui.sh" "$@" ;;
+  recover) exec_with_optional_project "$ROOT_DIR/scripts/inbox-recover-stale.sh" "$@" ;;
+  normalize) exec_with_optional_project "$ROOT_DIR/scripts/inbox-normalize.sh" "$@" ;;
+  hygiene) exec_with_optional_project "$ROOT_DIR/scripts/check-contract-hygiene.sh" "$@" ;;
   uninstall) exec bash "$ROOT_DIR/scripts/uninstall.sh" "$@" ;;
   help|-h|--help) usage ;;
   version|--version|-v) echo "superharness $VERSION" ;;

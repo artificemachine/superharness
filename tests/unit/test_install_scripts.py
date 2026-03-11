@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 
 from tests.helpers import run_bash, run_cmd
@@ -48,6 +49,42 @@ def test_claude_install_symlink_lifecycle(repo_root, tmp_path) -> None:
     assert first.returncode == 0, first.stderr
     assert second.returncode == 0, second.stderr
     assert "Already installed" in second.stdout
+
+
+def test_install_wrapper_symlink_executes_scripts_from_outside_repo(repo_root, tmp_path) -> None:
+    script = repo_root / "scripts" / "install-wrapper.sh"
+    home = tmp_path / "home"
+    home.mkdir()
+    work = tmp_path / "work"
+    work.mkdir()
+
+    install = run_bash(script, cwd=repo_root, env={"HOME": str(home)})
+    assert install.returncode == 0, install.stderr
+
+    wrapper = home / ".local" / "bin" / "superharness"
+    assert wrapper.exists()
+
+    doctor_help = subprocess.run(
+        [str(wrapper), "doctor", "--help"],
+        cwd=work,
+        text=True,
+        capture_output=True,
+        env={**os.environ, "HOME": str(home)},
+        check=False,
+    )
+    assert doctor_help.returncode == 0, doctor_help.stderr
+    assert "Usage:" in doctor_help.stdout
+
+    contract_help = subprocess.run(
+        [str(wrapper), "contract", "--help"],
+        cwd=work,
+        text=True,
+        capture_output=True,
+        env={**os.environ, "HOME": str(home)},
+        check=False,
+    )
+    assert contract_help.returncode == 0, contract_help.stderr
+    assert "Usage:" in contract_help.stdout
 
 
 def test_install_git_hooks_force_behavior(repo_root, tmp_path) -> None:
