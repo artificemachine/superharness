@@ -14,6 +14,7 @@ ENTRYPOINT_FILES=(
   "scripts/contract-today.sh"
   "scripts/delegate.sh"
   "scripts/delegate-task.sh"
+  "scripts/discuss.sh"
   "scripts/doctor.sh"
   "scripts/delegate-to-claude.sh"
   "scripts/delegate-to-codex.sh"
@@ -34,6 +35,7 @@ ENTRYPOINT_FILES=(
   "scripts/check-changelog-append-only.sh"
   "scripts/reset-watcher-and-test.sh"
   "cli/monitor-ui.sh"
+  "cli/discuss.sh"
 )
 
 HOOK_FILES=(
