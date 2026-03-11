@@ -1,7 +1,7 @@
 # {{PROJECT_NAME}}
 
 ## Identity
-@import ../../identity/core.md
+@import ../../protocol/templates/identity-core.md
 
 ## This Project
 <!-- Add project-specific context here -->

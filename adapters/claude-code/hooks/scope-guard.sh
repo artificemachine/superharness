@@ -16,7 +16,7 @@ FILE_PATH=$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin);
 
 # Block writes to sensitive files — ALWAYS, regardless of contract
 case "$FILE_PATH" in
-  *.env|*.env.*|*credentials*|*secrets*|*.pem|*.key)
+  *.env|*.env.*|*credentials*|*secrets.json|*secrets.yaml|*secrets.yml|*secrets.toml|*.pem|*.key|*/.ssh/*|*/.kube/config|*terraform.tfvars|*.tfvars|*.tfvars.json)
     cat <<EOF
 {
   "decision": "block",

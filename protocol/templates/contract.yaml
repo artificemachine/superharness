@@ -1,0 +1,13 @@
+# Active contract for {{PROJECT_NAME}}
+id: initial-setup
+created: {{DATE}}
+created_by: owner
+status: draft
+
+goal: "TBD — describe the current objective"
+
+tasks: []
+
+decisions: []
+
+failures: []
