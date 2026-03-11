@@ -1,0 +1,53 @@
+id: 2026-03-10-deadline-enforcement-smoke
+contract_id: v07-readiness
+task: deadline-enforcement-smoke
+from: claude-code
+to: owner
+status: completed
+summary: |
+  Created comprehensive smoke tests for inbox-deadline-check.sh to verify that
+  when a contract task deadline is exceeded, the system correctly:
+  1. Marks the inbox item as failed with deadline_exceeded reason
+  2. Marks the contract task as failed with stopped_reason containing deadline_exceeded_after_Xm
+  3. Creates a handoff documenting the deadline enforcement
+  4. Re-enqueues the task for the alternate owner
+  5. Appends a ledger entry documenting the enforcement action
+
+scope:
+  - Created tests/integration/test_deadline_enforcement_smoke.py (2 integration tests)
+  - Enhanced tests/unit/test_inbox_deadline.py to verify contract task failed status and stopped_reason
+  - All tests pass (7 deadline-related tests total: 5 unit + 2 integration)
+
+commands:
+  - pytest tests/unit/test_inbox_deadline.py -v
+  - pytest tests/integration/test_deadline_enforcement_smoke.py -v
+
+acceptance:
+  - All 7 deadline-related tests pass (5 unit + 2 integration)
+  - test_deadline_exceeded_marks_failed_and_reenqueues verifies contract task is marked as failed with stopped_reason
+  - test_deadline_enforcement_full_integration verifies complete end-to-end flow
+  - test_deadline_not_yet_exceeded_no_action verifies no action when deadline not exceeded
+
+risks:
+  - None. Tests validate existing inbox-deadline-check.sh behavior without code changes.
+
+artifacts:
+  - tests/integration/test_deadline_enforcement_smoke.py (new file, 146 lines)
+  - tests/unit/test_inbox_deadline.py (enhanced, added contract verification)
+  - .superharness/ledger.md (appended entry)
+  - .superharness/contract.yaml (marked task done)
+  - .superharness/handoffs/2026-03-10-deadline-enforcement-smoke.yaml (this file)
+
+test_results: |
+  Unit tests (tests/unit/test_inbox_deadline.py):
+    ✓ test_deadline_exceeded_marks_failed_and_reenqueues
+    ✓ test_deadline_not_exceeded_does_nothing
+    ✓ test_no_deadline_set_does_nothing
+    ✓ test_deadline_reassigns_codex_to_claude
+    ✓ test_missing_inbox_exits_cleanly
+
+  Integration tests (tests/integration/test_deadline_enforcement_smoke.py):
+    ✓ test_deadline_enforcement_full_integration
+    ✓ test_deadline_not_yet_exceeded_no_action
+
+  All 7 tests PASSED in 4.61s
