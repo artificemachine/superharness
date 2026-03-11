@@ -12,7 +12,13 @@ CONTRACT="$PROJECT_DIR/.superharness/contract.yaml"
 
 # Read tool input from stdin
 INPUT=$(cat)
-FILE_PATH=$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tool_input',{}).get('file_path',''))" 2>/dev/null)
+FILE_PATH=$(printf '%s' "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tool_input',{}).get('file_path',''))" 2>/dev/null)
+
+# Fail-closed: if JSON parsing failed, warn rather than silently allowing
+if [ -z "$FILE_PATH" ] && [ -n "$INPUT" ]; then
+  echo '{"decision": "warn", "reason": "superharness: scope-guard could not parse tool input. Proceeding with caution."}'
+  exit 0
+fi
 
 # Block writes to sensitive files — ALWAYS, regardless of contract
 case "$FILE_PATH" in

@@ -247,13 +247,14 @@ else
   echo ""
   if [ "$NON_INTERACTIVE" -eq 1 ]; then
     echo "Launching Codex (non-interactive)..."
+    CODEX_COMMON_ARGS=(exec --skip-git-repo-check -C "$PROJECT_DIR")
     if [ "$CODEX_BYPASS" -eq 1 ]; then
       confirm_dangerous_flag_risk \
         "SUPERHARNESS_CONFIRM_CODEX_BYPASS" \
         "Risk: Codex bypass disables sandbox and approval prompts. Continue?"
-      exec codex exec --dangerously-bypass-approvals-and-sandbox -C "$PROJECT_DIR" "$PROMPT"
+      exec codex "${CODEX_COMMON_ARGS[@]}" --dangerously-bypass-approvals-and-sandbox "$PROMPT"
     fi
-    exec codex exec --full-auto -C "$PROJECT_DIR" "$PROMPT"
+    exec codex "${CODEX_COMMON_ARGS[@]}" --full-auto "$PROMPT"
   fi
   echo "Launching Codex..."
   exec codex -C "$PROJECT_DIR" "$PROMPT"
