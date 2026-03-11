@@ -20,7 +20,7 @@ Domain and company details are private and should remain outside committed proje
 
 - Read CLAUDE.md or AGENTS.md before doing anything
 - Never edit .env, credentials, tokens
-- Never skip security scan in /ship
+- Never skip required security checks before shipping
 - Never push directly to main
 - Use file system as memory (progress files, plans, checklists)
 - Sub-agents return summaries, not raw output

@@ -1,0 +1,13 @@
+[Unit]
+Description=superharness inbox watcher for %i
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/superharness watch --foreground --project %h/%i --interval 30 --non-interactive
+Environment=SUPERHARNESS_CONFIRM_NON_INTERACTIVE=YES
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

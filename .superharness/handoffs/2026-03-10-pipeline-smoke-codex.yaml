@@ -1,0 +1,24 @@
+id: 2026-03-10-pipeline-smoke-codex
+contract_id: v07-readiness
+task: pipeline-smoke-codex
+from: codex-cli
+to: claude-code
+status: done
+summary: "Implemented end-to-end smoke coverage for codex-cli watcher dispatch pipeline with a hermetic integration test using a project-local mock launcher."
+outcomes:
+  - "Added tests/integration/test_codex_watcher_pipeline.py validating enqueue -> dispatch -> mock execution -> reconciliation -> done."
+  - "Smoke test runs dispatch from copied project scripts so mock delegate-to-codex launcher is used, avoiding dependence on host codex trust state."
+  - "Confirmed contract task status reconciliation to done and inbox item transition to done in non-interactive mode."
+  - "Verified ledger append behavior from launcher execution path in the smoke fixture."
+scope:
+  - "Codex watcher integration smoke test"
+  - "Non-interactive dispatch reconciliation validation"
+commands:
+  - ". .venv/bin/activate && PYTHONPATH=. python -m pytest tests/integration/test_codex_watcher_pipeline.py -q"
+acceptance:
+  - "pipeline-smoke-codex task objective covered by dedicated integration smoke test."
+  - "Targeted test passed (1 passed)."
+risks:
+  - "Codex smoke test currently validates a hermetic mocked launcher path; separate non-mocked trust/CLI integration remains environment-dependent by design."
+artifacts:
+  - "tests/integration/test_codex_watcher_pipeline.py"

@@ -21,15 +21,17 @@ set -euo pipefail
 usage() {
   cat << 'EOF'
 Usage:
-  init-project.sh [--dry-run] [PROJECT_NAME] [TECH_STACK] [STATUS]
+  init-project.sh [--dry-run] [--with-watcher] [PROJECT_NAME] [TECH_STACK] [STATUS]
 
 Options:
-  -h, --help      Show this help message and exit
-  -n, --dry-run   Print planned actions without writing files
+  -h, --help          Show this help message and exit
+  -n, --dry-run       Print planned actions without writing files
+  --with-watcher      Also install macOS launchd background watcher (default: off)
 EOF
 }
 
 DRY_RUN=0
+WITH_WATCHER=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help)
@@ -38,6 +40,10 @@ while [ $# -gt 0 ]; do
       ;;
     -n|--dry-run)
       DRY_RUN=1
+      shift
+      ;;
+    --with-watcher)
+      WITH_WATCHER=1
       shift
       ;;
     --)
@@ -60,6 +66,36 @@ PROJECT_DIR="$(pwd)"
 PROJECT_NAME="${1:-$(basename "$PROJECT_DIR")}"
 TECH_STACK="${2:-TBD}"
 STATUS="${3:-greenfield}"
+DATE="$(date +%Y-%m-%d)"
+TEMPLATE_DIR="$SCRIPT_DIR/protocol/templates"
+
+render_template() {
+  local src="$1"
+  local dst="$2"
+  local identity_block="${3:-}"
+  python3 - "$src" "$dst" "$PROJECT_NAME" "$TECH_STACK" "$STATUS" "$PROJECT_DIR" "$DATE" "$identity_block" <<'PY'
+import pathlib
+import sys
+
+src = pathlib.Path(sys.argv[1])
+dst = pathlib.Path(sys.argv[2])
+project_name = sys.argv[3]
+tech_stack = sys.argv[4]
+status = sys.argv[5]
+project_dir = sys.argv[6]
+date = sys.argv[7]
+identity_block = sys.argv[8]
+
+text = src.read_text()
+text = text.replace("{{PROJECT_NAME}}", project_name)
+text = text.replace("{{TECH_STACK}}", tech_stack)
+text = text.replace("{{STATUS}}", status)
+text = text.replace("{{PROJECT_DIR}}", project_dir)
+text = text.replace("{{DATE}}", date)
+text = text.replace("{{IDENTITY_BLOCK}}", identity_block)
+dst.write_text(text)
+PY
+}
 
 echo "superharness — init project"
 echo "==========================="
@@ -118,15 +154,21 @@ decisions: []
 YAML
 
 # Create empty ledger
-cat > "$PROJECT_DIR/.superharness/ledger.md" << EOF
+if [ -f "$TEMPLATE_DIR/ledger.md" ]; then
+  render_template "$TEMPLATE_DIR/ledger.md" "$PROJECT_DIR/.superharness/ledger.md"
+else
+  cat > "$PROJECT_DIR/.superharness/ledger.md" << EOF
 # Ledger — $PROJECT_NAME
 
 Append-only activity log. Never edit previous entries.
 EOF
+fi
 
 # Create starter contract
-DATE=$(date +%Y-%m-%d)
-cat > "$PROJECT_DIR/.superharness/contract.yaml" << EOF
+if [ -f "$TEMPLATE_DIR/contract.yaml" ]; then
+  render_template "$TEMPLATE_DIR/contract.yaml" "$PROJECT_DIR/.superharness/contract.yaml"
+else
+  cat > "$PROJECT_DIR/.superharness/contract.yaml" << EOF
 # Active contract for $PROJECT_NAME
 id: initial-setup
 created: $(printf '%s' "$DATE")
@@ -135,6 +177,16 @@ status: draft
 
 goal: "TBD — describe the current objective"
 
+tasks: []
+
+decisions: []
+
+failures: []
+EOF
+fi
+
+cat >> "$PROJECT_DIR/.superharness/contract.yaml" << EOF
+
 # Task schema (recommended):
 # tasks:
 #   - id: "task-id"
@@ -142,18 +194,21 @@ goal: "TBD — describe the current objective"
 #     status: "todo|in_progress|done"
 #     owner: "claude-code|codex-cli"
 #     project_path: "$PROJECT_DIR"
-tasks: []
-
-decisions: []
-
-failures: []
 EOF
 
 # Generate CLAUDE.md from template
-IDENTITY_CONTENT=$(cat "$SCRIPT_DIR/identity/core.md")
+IDENTITY_SOURCE="$TEMPLATE_DIR/identity-core.md"
+if [ ! -f "$IDENTITY_SOURCE" ]; then
+  echo "Missing identity template: $IDENTITY_SOURCE" >&2
+  exit 1
+fi
+IDENTITY_CONTENT=$(cat "$IDENTITY_SOURCE")
 
 if [ ! -f "$PROJECT_DIR/CLAUDE.md" ]; then
-  cat > "$PROJECT_DIR/CLAUDE.md" << EOF
+  if [ -f "$TEMPLATE_DIR/CLAUDE.md.template" ]; then
+    render_template "$TEMPLATE_DIR/CLAUDE.md.template" "$PROJECT_DIR/CLAUDE.md" "$(printf '%s' "$IDENTITY_CONTENT")"
+  else
+    cat > "$PROJECT_DIR/CLAUDE.md" << EOF
 # $(printf '%s' "$PROJECT_NAME")
 
 ## Identity
@@ -165,90 +220,10 @@ $(printf '%s\n' "$IDENTITY_CONTENT")
 - Status: $(printf '%s' "$STATUS")
 
 ## Cross-Agent Protocol
-This project uses superharness. Protocol files are in \`.superharness/\`.
-- Read \`contract.yaml\` before starting any work.
-- Read \`failures.yaml\` before implementing — search for past failures with this technology.
-- Read \`decisions.yaml\` for architectural context.
-- Read any handoffs in \`handoffs/\` addressed to \`claude-code\`.
-- When you make a decision between alternatives: log it in the contract's decisions section.
-- When something fails: log it in the contract's failures section.
-- When you finish a task: update contract status, write a handoff, append to ledger.
-- When creating/updating contract tasks: always set \`project_path\` to the absolute project directory.
-- When reviewing Codex's work: use the review lenses assigned to the task in the contract.
-
-## Session Lifecycle (Required)
-- Start of task: read \`.superharness/contract.yaml\`, \`.superharness/failures.yaml\`, \`.superharness/decisions.yaml\`, and relevant handoffs.
-- During task: stay in assigned scope; log important tradeoffs in contract decisions.
-- End of task: update contract task status, append one line to \`.superharness/ledger.md\`, and create/update a handoff file in \`.superharness/handoffs/\`.
-- If blocked/failure: log the failure in contract failures (and promote reusable failures to \`failures.yaml\`).
-
-## Operator Shortcuts
-- \`continue contract\`: resume active contract and execute the full lifecycle automatically.
-- \`close task <task_id>\`: mark task status, append ledger, and write handoff before stopping.
-
-## Delegation Prompting Rule
-When the user asks to read the contract (or equivalent), do this:
-1. Read \`.superharness/contract.yaml\`.
-2. Summarize contract id, status, and tasks with owner/status.
-3. If any task is \`todo\` or \`in_progress\` and owner is \`codex-cli\`, ask:
-   "I detected owner is codex-cli. Do you want to delegate \`<task_id>\` now?"
-   Do not use generic alternatives like "Want me to tackle...".
-4. If user says yes:
-   - set task status to \`in_progress\` (if needed),
-   - create/update \`.superharness/handoffs/<DATE>-<TASK_ID>.yaml\` addressed to \`codex-cli\`,
-   - append one line to \`.superharness/ledger.md\`,
-   - return the exact Codex kickoff prompt.
-
-## Trigger Phrase: contract today
-When the user says \`contract today\`, treat it as an explicit request to run the full Delegation Prompting Rule above.
-
-## Canonical contract today Output (Highest Priority)
-This section overrides any conflicting \`contract today\` formatting guidance above.
-- Output header exactly: \`Contract <id> — <created date>\`
-- Output next line exactly: \`Goal: <goal>\`
-- Render a Unicode box-drawing table (not markdown) with columns in this exact order:
-  1. \`ID\`
-  2. \`Title\`
-  3. \`Status\`
-  4. \`Owner\`
-- Include ALL tasks from contract (no truncation).
-- Render one task per single-line row; never wrap/split a task across multiple lines.
-- If content exceeds width, truncate with \`...\` rather than wrapping.
-- Add a full horizontal separator line between every task row for readability.
-- Status must be emoji + text:
-  - \`done\` -> \`✅ done\`
-  - \`in_progress\` -> \`🟡 in_progress\`
-  - \`todo\` -> \`🔲 todo\`
-  - \`failed\` -> \`❌ failed\`
-  - \`stale\` -> \`⚠️ stale\`
-- If any task is \`todo\` or \`in_progress\` and owner is \`codex-cli\`, the final line MUST be exactly:
-  \`I detected owner is codex-cli. Do you want to delegate <task_id> now?\`
-  Use the first matching task in contract order.
-
-## Delegation Execution
-When delegating a contract task to \`codex-cli\`, use:
-- \`bash /path/to/superharness/scripts/delegate-to-codex.sh --project .\`
-- Use \`--task <TASK_ID>\` when delegating a specific task.
-- Use \`--print-only\` when you only need the kickoff prompt without launching Codex.
-
-## Review Lenses
-When reviewing, check the \`review_lenses\` field on the task. Apply only the assigned lenses:
-- security: auth, secrets, injection, data exposure
-- architecture: patterns, coupling, dependency direction
-- performance: N+1 queries, memory, scaling
-- tests: coverage, edge cases, determinism
-- error-handling: failure modes, logging, graceful degradation
-- devops: config, CI/CD, observability
-- api-contract: backwards compatibility, versioning
-
-## Do Not
-<!-- Promoted failures go here — paste from .superharness/failures.yaml when severity=critical -->
-
-## Project Rules
-- Security: never commit secrets, never skip security scan
-- Branches: feature branches, never push to main
-- Tests: run before every handoff
+- Read \`.superharness/contract.yaml\` before starting work.
+- Keep task status, ledger, and handoff updated before stopping.
 EOF
+  fi
   echo "Created: CLAUDE.md"
 else
   echo "Skipped: CLAUDE.md (already exists)"
@@ -256,161 +231,40 @@ fi
 
 # Generate AGENTS.md from template
 if [ ! -f "$PROJECT_DIR/AGENTS.md" ]; then
-  cat > "$PROJECT_DIR/AGENTS.md" << 'AGENTSEOF'
-# {{PROJECT_NAME}}
+  if [ -f "$TEMPLATE_DIR/AGENTS.md.template" ]; then
+    render_template "$TEMPLATE_DIR/AGENTS.md.template" "$PROJECT_DIR/AGENTS.md"
+  else
+    cat > "$PROJECT_DIR/AGENTS.md" << EOF
+# ${PROJECT_NAME}
 
 ## Identity
 You are working for the project owner.
-Constraints: limited weekly bandwidth. Ship > plan.
-
-Anti-patterns to guard against:
-1. Scope creep — don't start features outside the current task
-2. Over-planning — implement, don't plan more
-3. Shiny object — use what's already chosen, don't switch tools
-
-## Cross-Agent Protocol
-You are one of two senior devs. The other is Claude Code.
-You both build AND review each other's work. Neither is the boss.
-The project owner is the tech lead and assigns roles per task in the contract.
-
-Your strengths: fast sandboxed execution, test-driven, focused single-task work, headless batch.
-Your weaknesses: limited context (no MCP/browser), can miss big picture, no memory between runs, may choose naive solutions.
-
-When reviewing Claude's work: check for over-abstraction, unnecessary layers, verbose code, hallucinated dependencies.
-When Claude reviews YOUR work: expect challenges on edge cases and architectural impact. Take them seriously.
-
-Protocol files are in `.superharness/`.
-- Read `contract.yaml` before starting any work. Find YOUR assigned tasks.
-- Read `failures.yaml` before implementing — search for past failures with this technology.
-- Read `decisions.yaml` for architectural context.
-- Read any handoffs in `handoffs/` addressed to `codex-cli`.
-- When you make a decision between alternatives: log it in the contract's decisions section.
-- When something fails: log it in the contract's failures section.
-- When you finish a task: update contract status, write a handoff YAML, append to `ledger.md`.
-- When creating/updating contract tasks: always set `project_path` to the absolute project directory.
-- When reviewing: use the review lenses assigned to the task in the contract. Never rubber-stamp.
-
-## Session Lifecycle (Required)
-- Start of task: read `.superharness/contract.yaml`, `.superharness/failures.yaml`, `.superharness/decisions.yaml`, and relevant handoffs.
-- During task: stay in assigned scope; log important tradeoffs in contract decisions.
-- End of task: update contract task status, append one line to `.superharness/ledger.md`, and create/update a handoff file in `.superharness/handoffs/`.
-- If blocked/failure: log the failure in contract failures (and promote reusable failures to `failures.yaml`).
-
-## Operator Shortcuts
-- `continue contract`: resume active contract and execute the full lifecycle automatically.
-- `close task <task_id>`: mark task status, append ledger, and write handoff before stopping.
-
-## Delegation Prompting Rule
-When the user asks to read the contract (or equivalent), do this:
-1. Read `.superharness/contract.yaml`.
-2. Summarize contract id, status, and tasks with owner/status.
-3. If any task is `todo` or `in_progress` and owner is `claude-code`, ask:
-   "I detected owner is claude-code. Do you want to delegate `<task_id>` now?"
-   Do not use generic alternatives like "Want me to tackle...".
-4. If user says yes:
-   - set task status to `in_progress` (if needed),
-   - create/update `.superharness/handoffs/<DATE>-<TASK_ID>.yaml` addressed to `claude-code`,
-   - append one line to `.superharness/ledger.md`,
-   - return the exact Claude kickoff prompt.
-
-## Trigger Phrase: contract today
-When the user says `contract today`, treat it as an explicit request to run the full Delegation Prompting Rule above.
-
-## Canonical contract today Output (Highest Priority)
-This section overrides any conflicting `contract today` formatting guidance above.
-- Output header exactly: `Contract <id> — <created date>`
-- Output next line exactly: `Goal: <goal>`
-- Render a Unicode box-drawing table (not markdown) with columns in this exact order:
-  1. `ID`
-  2. `Title`
-  3. `Status`
-  4. `Owner`
-- Include ALL tasks from contract (no truncation).
-- Render one task per single-line row; never wrap/split a task across multiple lines.
-- If content exceeds width, truncate with \`...\` rather than wrapping.
-- Add a full horizontal separator line between every task row for readability.
-- Status must be emoji + text:
-  - `done` -> `✅ done`
-  - `in_progress` -> `🟡 in_progress`
-  - `todo` -> `🔲 todo`
-  - `failed` -> `❌ failed`
-  - `stale` -> `⚠️ stale`
-- If any task is `todo` or `in_progress` and owner is `claude-code`, the final line MUST be exactly:
-  `I detected owner is claude-code. Do you want to delegate <task_id> now?`
-  Use the first matching task in contract order.
-
-## Delegation Execution
-When delegating a contract task to `claude-code`, use:
-- `bash /path/to/superharness/scripts/delegate-to-claude.sh --project .`
-- Use `--task <TASK_ID>` when delegating a specific task.
-- Use `--print-only` when you only need the kickoff prompt without launching Claude.
-
-## Watcher Ensure (Session Start)
-At the beginning of each Codex session, ensure watcher is installed for this project:
-- `bash /path/to/superharness/scripts/ensure-launchd-inbox-watcher.sh --project .`
-
-## Review Lenses
-When reviewing, check the `review_lenses` field on the task. Apply only the assigned lenses:
-- security: auth, secrets, injection, data exposure
-- architecture: patterns, coupling, dependency direction
-- performance: N+1 queries, memory, scaling
-- tests: coverage, edge cases, determinism
-- error-handling: failure modes, logging, graceful degradation
-- devops: config, CI/CD, observability
-- api-contract: backwards compatibility, versioning
-
-## Handoff Format
-When you complete a task, create `.superharness/handoffs/<DATE>-<TASK_ID>.yaml`:
-```yaml
-from: codex-cli
-to: claude-code
-date: <ISO_DATETIME>
-contract: <CONTRACT_ID>
-task: <TASK_ID>
-context:
-  branch: <BRANCH>
-  files_changed: []
-  tests: "X/Y passing"
-  build: "clean|failing"
-what_was_done: |
-  Brief summary of what you implemented.
-what_to_check: |
-  - Things the reviewer should look at
-review_findings: |
-  - Findings per review lens (if this was a review task)
-do_not:
-  - Things that are out of scope
-```
-
-## Do Not
-<!-- Promoted failures go here — paste from .superharness/failures.yaml when severity=critical -->
-
-## Rules
-- Never edit .env, credentials, tokens
-- Never skip tests before handoff
-- Never push directly to main
-- Stay in scope. If something needs doing but isn't in the contract, note it in the handoff — don't do it.
 
 ## This Project
-AGENTSEOF
-  TMP_AGENTS="$PROJECT_DIR/AGENTS.md.tmp.$$"
-  awk -v project_name="$PROJECT_NAME" '{ gsub(/\{\{PROJECT_NAME\}\}/, project_name); print }' "$PROJECT_DIR/AGENTS.md" > "$TMP_AGENTS"
-  mv "$TMP_AGENTS" "$PROJECT_DIR/AGENTS.md"
-  echo "- What: $PROJECT_NAME" >> "$PROJECT_DIR/AGENTS.md"
-  echo "- Stack: $TECH_STACK" >> "$PROJECT_DIR/AGENTS.md"
-  echo "- Status: $STATUS" >> "$PROJECT_DIR/AGENTS.md"
+EOF
+    printf '%s\n' "- What: ${PROJECT_NAME}" >> "$PROJECT_DIR/AGENTS.md"
+    printf '%s\n' "- Stack: ${TECH_STACK}" >> "$PROJECT_DIR/AGENTS.md"
+    printf '%s\n\n' "- Status: ${STATUS}" >> "$PROJECT_DIR/AGENTS.md"
+    cat >> "$PROJECT_DIR/AGENTS.md" << 'EOF'
+## Cross-Agent Protocol
+- Read `.superharness/contract.yaml` before starting work.
+- Keep task status, ledger, and handoff updated before stopping.
+EOF
+  fi
   echo "Created: AGENTS.md"
 else
   echo "Skipped: AGENTS.md (already exists)"
 fi
 
-# Ensure launchd watcher is installed (macOS). Non-fatal if unavailable.
-ENSURE_WATCHER="$SCRIPT_DIR/scripts/ensure-launchd-inbox-watcher.sh"
-if [ -x "$ENSURE_WATCHER" ]; then
-  if bash "$ENSURE_WATCHER" --project "$PROJECT_DIR" >/dev/null 2>&1; then
-    echo "Watcher: launchd inbox watcher is configured."
-  else
-    echo "Watcher: unable to auto-configure launchd watcher (continuing)."
+# Install launchd watcher only when explicitly requested.
+if [ "$WITH_WATCHER" -eq 1 ]; then
+  ENSURE_WATCHER="$SCRIPT_DIR/scripts/ensure-launchd-inbox-watcher.sh"
+  if [ -x "$ENSURE_WATCHER" ]; then
+    if bash "$ENSURE_WATCHER" --project "$PROJECT_DIR" >/dev/null 2>&1; then
+      echo "Watcher: launchd inbox watcher is configured."
+    else
+      echo "Watcher: unable to auto-configure launchd watcher (continuing)."
+    fi
   fi
 fi
 
@@ -428,7 +282,11 @@ echo "  ├── decisions.yaml       ← cross-agent decision records"
 echo "  └── ledger.md            ← append-only activity log"
 echo ""
 echo "Next steps:"
-echo "  1. Edit .superharness/contract.yaml with your first task"
+echo "  0. Run 'superharness doctor --project .' to verify your setup"
+echo "  1. Add a task:  superharness task create --project . --id my-task --title \"...\" --owner codex-cli"
 echo "  2. Review CLAUDE.md and AGENTS.md — add project-specific context"
 echo "  3. Add .superharness/ to .gitignore OR commit it (your choice)"
 echo "  4. Start a Claude Code or Codex session — the hooks will pick it up"
+echo ""
+echo "Tip: To enable a background watcher (macOS only), re-run with --with-watcher"
+echo "     or use: superharness watch --foreground --project . --interval 30"

@@ -1,0 +1,31 @@
+id: 2026-03-10-ci-parity-entrypoints
+contract_id: v07-readiness
+task: ci-parity-entrypoints
+from: codex-cli
+to: claude-code
+status: done
+summary: "Implemented CI/test parity so shell entrypoint smoke coverage is derived from the guard allowlist; new allowlisted executable scripts now inherit smoke checks automatically."
+scope:
+  - "Shell entrypoint guard script"
+  - "GitHub Actions shell smoke jobs"
+  - "Integration and E2E tests that mirrored entrypoint lists"
+commands:
+  - "bash scripts/check-shell-entrypoints.sh"
+  - "bash scripts/check-shell-entrypoints.sh --list-entrypoints"
+  - ". .venv/bin/activate && PYTHONPATH=. python -m pytest tests/integration/test_shell_guard_integration.py tests/integration/test_cli_compatibility_baseline.py tests/e2e/test_bootstrap_and_policy_flow.py -q"
+acceptance:
+  - "check-shell-entrypoints.sh now supports --list-entrypoints/--list-hooks/--list-all for machine-readable discovery."
+  - "tests.yml and shell-guard.yml smoke steps iterate over guard-discovered entrypoints with --help."
+  - "test_cli_compatibility_baseline dynamically merges stable CLI entrypoints with guard-discovered entrypoints."
+  - "Guard-related integration/E2E tests dynamically copy allowlisted entrypoint/hook files instead of hardcoded mirrors."
+  - "Targeted pytest subset passed (6 passed)."
+risks:
+  - "Smoke help coverage now depends on entrypoints accepting --help with exit 0; non-conforming new scripts will fail CI until aligned."
+artifacts:
+  - "scripts/check-shell-entrypoints.sh"
+  - ".github/workflows/tests.yml"
+  - ".github/workflows/shell-guard.yml"
+  - "tests/helpers.py"
+  - "tests/integration/test_shell_guard_integration.py"
+  - "tests/e2e/test_bootstrap_and_policy_flow.py"
+  - "tests/integration/test_cli_compatibility_baseline.py"
