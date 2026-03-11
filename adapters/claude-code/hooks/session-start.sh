@@ -15,8 +15,8 @@ fi
 
 # Read identity core
 IDENTITY=""
-if [ -f "$SUPERHARNESS_ROOT/identity/core.md" ]; then
-  IDENTITY=$(cat "$SUPERHARNESS_ROOT/identity/core.md")
+if [ -f "$SUPERHARNESS_ROOT/protocol/templates/identity-core.md" ]; then
+  IDENTITY=$(cat "$SUPERHARNESS_ROOT/protocol/templates/identity-core.md")
 fi
 
 # Detect if this project has an active superharness contract

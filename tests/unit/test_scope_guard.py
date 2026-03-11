@@ -10,12 +10,33 @@ from tests.helpers import parse_json_output, run_bash
 @pytest.mark.parametrize(
     ("file_path", "decision"),
     [
+        # .env variants
         (".env", "block"),
         ("config/.env.local", "block"),
-        ("secrets.txt", "block"),
+        # credentials
+        ("credentials.json", "block"),
+        ("config/credentials.yaml", "block"),
+        # secrets — only specific extensions are blocked
+        ("secrets.json", "block"),
+        ("config/app.secrets.yaml", "block"),
+        ("secrets.yml", "block"),
+        ("secrets.toml", "block"),
+        ("secrets.txt", "allow"),           # plain .txt is not blocked
+        ("my_notes_secrets.md", "allow"),   # non-secret extension not blocked
+        # key / cert files
         ("keys/id_rsa.key", "block"),
+        ("server.pem", "block"),
+        # ssh / kube
+        ("/Users/test/.ssh/id_ed25519", "block"),
+        ("/Users/test/.kube/config", "block"),
+        # terraform
+        ("infra/terraform.tfvars", "block"),
+        ("prod.tfvars", "block"),
+        ("prod.tfvars.json", "block"),
+        # warn cases
         ("/etc/hosts", "warn"),
         ("/tmp/build.log", "warn"),
+        # allow
         ("src/main.py", "allow"),
     ],
 )

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from tests.helpers import copy_from_repo, parse_json_output, run_bash, run_cmd
+from tests.helpers import REPO_ROOT, copy_from_repo, parse_json_output, run_bash, run_cmd, shell_guard_list
 
 
 def test_bootstrap_and_hook_install_flow(repo_root, tmp_path) -> None:
@@ -18,7 +18,21 @@ def test_bootstrap_and_hook_install_flow(repo_root, tmp_path) -> None:
     assert (project / "AGENTS.md").exists()
 
     # Install git hooks into a temp git repo that has the required scripts/hook files.
-    for rel in ["scripts/check-shell-entrypoints.sh", "scripts/install-git-hooks.sh", ".githooks/pre-commit", "init-project.sh", "adapters/claude-code/install.sh", "adapters/claude-code/hooks/branch-guard.sh", "adapters/claude-code/hooks/ledger-append.sh", "adapters/claude-code/hooks/scope-guard.sh", "adapters/claude-code/hooks/session-start.sh", "identity/core.md"]:
+    required = (
+        shell_guard_list(REPO_ROOT, "--list-entrypoints")
+        + shell_guard_list(REPO_ROOT, "--list-hooks")
+        + [
+            "protocol/templates/identity-core.md",
+            "scripts/inbox-yaml.rb",
+            "cli/contract-today.sh",
+            "cli/doctor.sh",
+            "cli/install-wrapper.sh",
+            "cli/delegate-task.sh",
+            "cli/task.sh",
+            "superharness",
+        ]
+    )
+    for rel in sorted(set(required)):
         copy_from_repo(rel, project)
 
     run_cmd(["git", "init"], cwd=project)

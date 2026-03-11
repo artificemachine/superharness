@@ -1,0 +1,24 @@
+task: claude-review-dual-audit-plan-20260311
+to: claude-code
+date: 2026-03-11
+status: done
+summary: |
+  Ran parallel senior + user review audits on current branch state.
+  Cross-referenced findings against already-completed hardening work.
+  Produced prioritized remediation plan (5 do-now + 4 defer items).
+  Executed all 9 items in a single pass.
+
+changes:
+  do_now:
+    - "GUIDE.md quick start: added task create step to match QUICKSTART.md"
+    - "README + QUICKSTART: added pytest tests/ command and pip install step"
+    - "inbox-watch.sh: fixed error message (line 160-163) to distinguish dispatch vs recover"
+    - "validate.rb: corrupt handoff YAML now warns instead of silently skipping"
+    - "QUICKSTART.md: added pip install -r requirements.txt"
+  defer_executed:
+    - "--project auto-detect: wrapper injects --project . when .superharness/ in cwd, or from SUPERHARNESS_PROJECT env var"
+    - "Consolidated 3 duplicate YAML loaders into engine/yaml_helpers.rb shared module"
+    - "Added SIGHUP to foreground watcher trap (terminal disconnect cleanup)"
+    - "Added flock-based advisory locking to all inbox.rb mutating commands"
+
+tests: 183 passed

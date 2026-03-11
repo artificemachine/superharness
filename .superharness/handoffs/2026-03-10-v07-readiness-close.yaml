@@ -1,0 +1,28 @@
+id: 2026-03-10-v07-readiness-close
+contract_id: v07-readiness
+from: claude-code
+to: owner
+status: closed
+closed_at: "2026-03-10T14:18:35Z"
+summary: >
+  Contract v07-readiness completed. All 8 tasks done across claude-code and
+  codex-cli. Branch chore/ship-hardening-pass pushed; pending merge to main.
+tasks_completed:
+  - docs-split-audience
+  - protocol-hygiene-ci
+  - second-project-validate
+  - ci-parity-entrypoints
+  - failure-memory-promote
+  - pipeline-smoke-claude
+  - pipeline-smoke-codex
+  - deadline-enforcement-smoke
+key_deliverables:
+  - "task.sh: failed/stopped statuses with required --reason and --summary enforcement"
+  - "inbox-deadline-check.sh: deadline enforcement writes failed+reason to contract task"
+  - "monitor-ui.py: logdy removed, clickable inbox status pills with detail table"
+  - "CI: contract-hygiene workflow enforcing handoff+ledger evidence on done tasks"
+  - "tests: 105 passing (unit + integration + e2e), watcher pipeline smoke tests added"
+  - "docs: GUIDE.md (user-facing), ARCHITECTURE.md expanded, README simplified"
+next_steps:
+  - Merge chore/ship-hardening-pass -> main
+  - Open v08 contract (suggested focus: multi-project dashboard, inbox normalization UX)

@@ -1,0 +1,126 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SCRIPT_SOURCE" ]; do
+  SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+  LINK_TARGET="$(readlink "$SCRIPT_SOURCE")"
+  if [[ "$LINK_TARGET" = /* ]]; then
+    SCRIPT_SOURCE="$LINK_TARGET"
+  else
+    SCRIPT_SOURCE="$SCRIPT_DIR/$LINK_TARGET"
+  fi
+done
+ROOT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+VERSION="0.7.0"
+
+usage() {
+  cat << 'USAGE'
+Usage:
+  superharness <command> [args]
+
+Commands:
+  init        Initialize project protocol files
+  contract    Show active contract summary and delegate suggestion
+  delegate    Delegate task (explicit --to ... or shorthand delegate <task-id>)
+  enqueue     Add inbox item
+  task        Create/delete contract tasks
+  dispatch    Dispatch next inbox item
+  watch       Run one watch cycle or foreground loop
+  uninstall   Remove system-level artifacts (plists, symlinks, locks)
+  monitor-ui  Launch local watcher dashboard in browser
+  doctor      Check local setup and project protocol health
+  install-wrapper  Symlink this wrapper into a PATH directory
+  recover     Recover stale launched items
+  normalize   Normalize/archive inbox rows
+  hygiene     Check contract hygiene
+  version     Show version
+  help        Show this help message
+
+Examples:
+  superharness init "My App" "Node" "active"
+  superharness contract today --project .
+  superharness delegate mcp-docs --project . --print-only
+  superharness task create --project . --id mcp-docs --title "Write docs" --owner codex-cli
+  superharness delegate --to codex-cli --project . --print-only
+  superharness enqueue --project . --to claude-code --task task-id --priority 1
+  superharness dispatch --project . --to codex-cli --print-only
+USAGE
+}
+
+cmd="${1:-help}"
+if [ $# -gt 0 ]; then
+  shift
+fi
+
+_has_project_arg() {
+  for arg in "$@"; do
+    case "$arg" in
+      --project|-p) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+auto_project_args=()
+if ! _has_project_arg "$@"; then
+  if [ -n "${SUPERHARNESS_PROJECT:-}" ]; then
+    auto_project_args=(--project "$SUPERHARNESS_PROJECT")
+  elif [ -d ".superharness" ]; then
+    auto_project_args=(--project .)
+  fi
+fi
+
+exec_with_optional_project() {
+  local script_path="$1"
+  shift
+  if [ "${#auto_project_args[@]}" -gt 0 ]; then
+    exec bash "$script_path" "$@" "${auto_project_args[@]}"
+  else
+    exec bash "$script_path" "$@"
+  fi
+}
+
+case "$cmd" in
+  init) exec bash "$ROOT_DIR/init-project.sh" "$@" ;;
+  contract)
+    sub="${1:-today}"
+    case "$sub" in
+      today)
+        if [ $# -gt 0 ]; then shift; fi
+        exec_with_optional_project "$ROOT_DIR/scripts/contract-today.sh" "$@"
+        ;;
+      help|-h|--help)
+        exec bash "$ROOT_DIR/scripts/contract-today.sh" --help
+        ;;
+      *)
+        echo "Unknown contract subcommand: $sub" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+  delegate)
+    if [ $# -gt 0 ] && [[ "$1" != -* ]]; then
+      exec_with_optional_project "$ROOT_DIR/scripts/delegate-task.sh" "$@"
+    fi
+    exec_with_optional_project "$ROOT_DIR/scripts/delegate.sh" "$@"
+    ;;
+  doctor) exec_with_optional_project "$ROOT_DIR/scripts/doctor.sh" "$@" ;;
+  install-wrapper) exec bash "$ROOT_DIR/scripts/install-wrapper.sh" "$@" ;;
+  enqueue) exec_with_optional_project "$ROOT_DIR/scripts/inbox-enqueue.sh" "$@" ;;
+  task) exec_with_optional_project "$ROOT_DIR/scripts/task.sh" "$@" ;;
+  dispatch) exec_with_optional_project "$ROOT_DIR/scripts/inbox-dispatch.sh" "$@" ;;
+  watch) exec_with_optional_project "$ROOT_DIR/scripts/inbox-watch.sh" "$@" ;;
+  monitor-ui) exec_with_optional_project "$ROOT_DIR/scripts/monitor-ui.sh" "$@" ;;
+  recover) exec_with_optional_project "$ROOT_DIR/scripts/inbox-recover-stale.sh" "$@" ;;
+  normalize) exec_with_optional_project "$ROOT_DIR/scripts/inbox-normalize.sh" "$@" ;;
+  hygiene) exec_with_optional_project "$ROOT_DIR/scripts/check-contract-hygiene.sh" "$@" ;;
+  uninstall) exec bash "$ROOT_DIR/scripts/uninstall.sh" "$@" ;;
+  help|-h|--help) usage ;;
+  version|--version|-v) echo "superharness $VERSION" ;;
+  *)
+    echo "Unknown command: $cmd" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

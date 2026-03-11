@@ -2,7 +2,7 @@
   "name": "superharness",
   "version": "0.6.1",
   "description": "Personal harness architecture — injects identity, cross-agent protocol, and peer review awareness into every session. Complements obra/superpowers.",
-  "author": "Maxime Roy",
+  "author": "User",
   "repository": "https://github.com/celstnblacc/superharness",
   "hooks": "hooks/hooks.json"
 }

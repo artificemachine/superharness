@@ -231,7 +231,7 @@ Know what each agent is good at — and what to watch out for when reviewing its
 
 ## Workflow Patterns
 
-You (Maxime) are the tech lead. You choose which pattern to use per-task by setting `role` and `reviewer` fields in the contract.
+You (User) are the tech lead. You choose which pattern to use per-task by setting `role` and `reviewer` fields in the contract.
 
 ### Pattern A: Peer Review (two seniors)
 
