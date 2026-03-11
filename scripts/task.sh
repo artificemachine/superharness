@@ -366,11 +366,15 @@ RUBY
     case "$STATUS" in
       done|failed|stopped)
         NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        if ! SYNC_RESULT="$(ruby "$INBOX_ENGINE" sync_task_status \
+        set +e
+        SYNC_RESULT="$(ruby "$INBOX_ENGINE" sync_task_status \
           --file "$INBOX_FILE" \
           --task "$TASK_ID" \
           --to "$STATUS" \
-          --now "$NOW" 2>&1)"; then
+          --now "$NOW" 2>&1)"
+        SYNC_RC=$?
+        set -e
+        if [ "$SYNC_RC" -ne 0 ]; then
           echo "Warning: failed to sync inbox task status for '$TASK_ID': $SYNC_RESULT" >&2
         fi
         ;;

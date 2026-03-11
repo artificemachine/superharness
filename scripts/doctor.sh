@@ -71,10 +71,10 @@ install_hint() {
       fi
       ;;
     claude)
-      echo "       npm install -g @anthropic-ai/claude-code"
+      echo "       npm i -g @anthropic-ai/claude-code"
       ;;
     codex)
-      echo "       npm install -g @openai/codex"
+      echo "       npm i -g @openai/codex"
       ;;
   esac
 }
