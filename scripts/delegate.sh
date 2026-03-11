@@ -173,7 +173,112 @@ if [ "$NON_INTERACTIVE" -eq 1 ]; then
 This is an automated non-interactive run. Do not ask for confirmation or approval. Proceed and apply all changes immediately."
 fi
 
-if [ "$TARGET" = "claude-code" ]; then
+# Discussion-round detection: task format is {discussion-id}/round-{N}
+DISCUSSION_ID=""
+DISCUSSION_ROUND=""
+if [[ "$TASK_ID" =~ ^(discuss-[^/]+)/round-([0-9]+)$ ]]; then
+  DISCUSSION_ID="${BASH_REMATCH[1]}"
+  DISCUSSION_ROUND="${BASH_REMATCH[2]}"
+fi
+
+DISCUSSION_ENGINE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/engine/discussion.rb"
+DISCUSSIONS_DIR="$HARNESS_DIR/discussions"
+
+if [ -n "$DISCUSSION_ID" ] && [ -n "$DISCUSSION_ROUND" ]; then
+  DISC_DIR="$DISCUSSIONS_DIR/$DISCUSSION_ID"
+  if [ ! -d "$DISC_DIR" ]; then
+    echo "Discussion directory not found: $DISC_DIR" >&2
+    exit 1
+  fi
+
+  # Get round context (topic, prior positions)
+  CONTEXT_JSON="$(ruby "$DISCUSSION_ENGINE" round_context \
+    --discussion-dir "$DISC_DIR" \
+    --round "$DISCUSSION_ROUND" \
+    --agent "$TARGET" 2>/dev/null)" || { echo "Failed to get discussion context" >&2; exit 1; }
+
+  DISC_TOPIC="$(printf '%s' "$CONTEXT_JSON" | ruby -rjson -e 'puts JSON.parse(STDIN.read)["topic"]')"
+  DISC_MAX="$(printf '%s' "$CONTEXT_JSON" | ruby -rjson -e 'puts JSON.parse(STDIN.read)["max_rounds"]')"
+
+  # Build prior round context for round 2+
+  PRIOR_CONTEXT=""
+  if [ "$DISCUSSION_ROUND" -gt 1 ]; then
+    PRIOR_CONTEXT="$(printf '%s' "$CONTEXT_JSON" | ruby -rjson -e '
+      ctx = JSON.parse(STDIN.read)
+      ctx["prior_rounds"].each do |r|
+        puts "--- Round #{r["round"]} ---"
+        r["positions"].each do |p|
+          puts "Agent: #{p["agent"]}"
+          puts "Verdict: #{p["verdict"]}"
+          puts "Position: #{p["position"]}"
+          if p["points"].is_a?(Array) && !p["points"].empty?
+            puts "Points:"
+            p["points"].each do |pt|
+              puts "  - #{pt["id"]}: #{pt["verdict"]} — #{pt["rationale"]}"
+            end
+          end
+          puts ""
+        end
+      end
+    ')"
+  fi
+
+  SUBMIT_PATH="$DISC_DIR/round-${DISCUSSION_ROUND}-${TARGET}.yaml"
+
+  if [ "$DISCUSSION_ROUND" -eq 1 ]; then
+    PROMPT="You are participating in a multi-agent discussion.
+Topic: ${DISC_TOPIC}
+You are: ${TARGET}
+This is round ${DISCUSSION_ROUND} of ${DISC_MAX}.
+
+Review the topic and write your position. Be specific about what you agree or disagree with.
+
+When done, write a YAML file to: ${SUBMIT_PATH}
+The file must have these fields:
+  discussion_id: ${DISCUSSION_ID}
+  round: ${DISCUSSION_ROUND}
+  agent: ${TARGET}
+  verdict: agree OR disagree OR partial
+  position: your free-form analysis
+  points: list of {id, verdict, rationale} for each sub-point
+  submitted_at: (current UTC ISO 8601 timestamp)
+
+If you agree with everything, set verdict: agree. Otherwise set verdict: disagree or partial and explain in points.
+Read .superharness/discussions/${DISCUSSION_ID}/state.yaml for the full discussion context.
+Read the handoff referenced in .superharness/contract.yaml for the task details.${AUTO_DIRECTIVE}"
+  else
+    PROMPT="You are participating in a multi-agent discussion.
+Topic: ${DISC_TOPIC}
+You are: ${TARGET}
+This is round ${DISCUSSION_ROUND} of ${DISC_MAX}.
+
+Here are the positions from prior rounds:
+${PRIOR_CONTEXT}
+
+Consider the other agent's position carefully. If you now agree with all points, set verdict: agree.
+If you still disagree, explain specifically what remains unresolved.
+
+Write your response to: ${SUBMIT_PATH}
+The file must have these fields:
+  discussion_id: ${DISCUSSION_ID}
+  round: ${DISCUSSION_ROUND}
+  agent: ${TARGET}
+  verdict: agree OR disagree OR partial
+  position: your free-form analysis
+  points: list of {id, verdict, rationale} for each sub-point
+  submitted_at: (current UTC ISO 8601 timestamp)
+
+Read .superharness/discussions/${DISCUSSION_ID}/state.yaml for full context.${AUTO_DIRECTIVE}"
+  fi
+
+  echo "Project: $PROJECT_DIR"
+  echo "Discussion: $DISCUSSION_ID"
+  echo "Round: $DISCUSSION_ROUND"
+  echo "Agent: $TARGET"
+  echo "Topic: $DISC_TOPIC"
+fi
+
+if [ "$TARGET" = "claude-code" ] && [ -z "$DISCUSSION_ID" ]; then
   if [ -n "$LATEST_HANDOFF" ]; then
     PROMPT="continue contract
 Read the latest handoff addressed to claude-code and execute task ${TASK_ID}.
@@ -203,11 +308,13 @@ Contract id: ${CONTRACT_ID}."
   fi
 fi
 
-echo "Project: $PROJECT_DIR"
-echo "Contract: $CONTRACT_ID"
-echo "Task: $TASK_ID"
-if [ -n "$LATEST_HANDOFF" ]; then
-  echo "Handoff: $LATEST_HANDOFF"
+if [ -z "$DISCUSSION_ID" ]; then
+  echo "Project: $PROJECT_DIR"
+  echo "Contract: $CONTRACT_ID"
+  echo "Task: $TASK_ID"
+  if [ -n "$LATEST_HANDOFF" ]; then
+    echo "Handoff: $LATEST_HANDOFF"
+  fi
 fi
 
 if [ "$PRINT_ONLY" -eq 1 ]; then
@@ -222,7 +329,48 @@ if [ "$NON_INTERACTIVE" -eq 1 ]; then
   confirm_non_interactive_risk
 fi
 
-if [ "$TARGET" = "claude-code" ]; then
+# Discussion round launch (both agents use the same flow)
+if [ -n "$DISCUSSION_ID" ]; then
+  if [ "$TARGET" = "claude-code" ]; then
+    if ! command -v claude >/dev/null 2>&1; then
+      echo "claude CLI is not installed or not on PATH" >&2
+      exit 1
+    fi
+    echo ""
+    if [ "$NON_INTERACTIVE" -eq 1 ]; then
+      confirm_dangerous_flag_risk \
+        "SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS" \
+        "Risk: Claude --dangerously-skip-permissions disables permission prompts. Continue?"
+      echo "Launching Claude for discussion round $DISCUSSION_ROUND..."
+      cd "$PROJECT_DIR"
+      exec claude -p --dangerously-skip-permissions "$PROMPT"
+    fi
+    echo "Launching Claude for discussion round $DISCUSSION_ROUND..."
+    cd "$PROJECT_DIR"
+    exec claude "$PROMPT"
+  else
+    if ! command -v codex >/dev/null 2>&1; then
+      echo "codex CLI is not installed or not on PATH" >&2
+      exit 1
+    fi
+    echo ""
+    if [ "$NON_INTERACTIVE" -eq 1 ]; then
+      echo "Launching Codex for discussion round $DISCUSSION_ROUND..."
+      CODEX_COMMON_ARGS=(exec --skip-git-repo-check -C "$PROJECT_DIR")
+      if [ "$CODEX_BYPASS" -eq 1 ]; then
+        confirm_dangerous_flag_risk \
+          "SUPERHARNESS_CONFIRM_CODEX_BYPASS" \
+          "Risk: Codex bypass disables sandbox and approval prompts. Continue?"
+        exec codex "${CODEX_COMMON_ARGS[@]}" --dangerously-bypass-approvals-and-sandbox "$PROMPT"
+      fi
+      exec codex "${CODEX_COMMON_ARGS[@]}" --full-auto "$PROMPT"
+    fi
+    echo "Launching Codex for discussion round $DISCUSSION_ROUND..."
+    exec codex -C "$PROJECT_DIR" "$PROMPT"
+  fi
+fi
+
+if [ "$TARGET" = "claude-code" ] && [ -z "$DISCUSSION_ID" ]; then
   if ! command -v claude >/dev/null 2>&1; then
     echo "claude CLI is not installed or not on PATH" >&2
     exit 1
