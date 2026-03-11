@@ -73,8 +73,8 @@ HTML = """<!doctype html>
       <h2>watcher control</h2>
       <div class=\"watcher-health\" id=\"watcherHealth\">-</div>
       <div class=\"actions\">
-        <button onclick=\"act('watcher_start')\">Start watcher (15s)</button>
-        <button onclick=\"act('watcher_restart')\">Restart watcher (15s)</button>
+        <button onclick=\"act('watcher_start')\">Start watcher</button>
+        <button onclick=\"act('watcher_restart')\">Restart watcher</button>
       </div>
     </div>
 
@@ -264,8 +264,8 @@ async function act(action) {
 
 async function viewApprovalReport(path, task) {
   try {
-    const full = path.startsWith('/') ? path : '/' + path;
-    const r = await fetch(full);
+    const sanitized = '/.superharness/handoffs/' + path.split('/').pop();  // restrict to handoffs dir
+    const r = await fetch(sanitized);
     if (!r.ok) throw new Error('failed to load report: http ' + r.status);
     const text = await r.text();
     document.getElementById('approvalReportCard').style.display = 'block';
@@ -311,7 +311,13 @@ def tail_lines(path: Path, n: int) -> list[str]:
     return [ln.rstrip("\n") for ln in lines[-n:]]
 
 
-def watcher_state(label: str) -> str:
+def watcher_runtime(label: str) -> dict:
+    info = {
+        "loaded": False,
+        "state": "",
+        "last_exit_code": "",
+        "run_interval_seconds": 0,
+    }
     try:
         out = subprocess.run(
             ["launchctl", "print", f"gui/{os.getuid()}/{label}"],
@@ -321,13 +327,22 @@ def watcher_state(label: str) -> str:
             timeout=3,
         )
         if out.returncode != 0:
-            return ""
+            return info
+        info["loaded"] = True
         for ln in out.stdout.splitlines():
-            if "state =" in ln:
-                return ln.split("=", 1)[1].strip()
+            if "state =" in ln and not info["state"]:
+                info["state"] = ln.split("=", 1)[1].strip()
+            elif "last exit code =" in ln:
+                info["last_exit_code"] = ln.split("=", 1)[1].strip()
+            elif "run interval =" in ln and "seconds" in ln:
+                raw = ln.split("=", 1)[1].strip().split(" ", 1)[0]
+                try:
+                    info["run_interval_seconds"] = int(raw)
+                except ValueError:
+                    info["run_interval_seconds"] = 0
     except Exception:
-        return ""
-    return ""
+        return info
+    return info
 
 
 def inbox_items(inbox_file: Path) -> list[dict]:
@@ -374,17 +389,61 @@ def parse_utc_timestamp(raw: str) -> dt.datetime | None:
         return None
 
 
-def watcher_health(state: str, items: list[dict], now_utc: str) -> dict:
+def watcher_health(runtime: dict, items: list[dict], now_utc: str) -> dict:
     now_dt = parse_utc_timestamp(now_utc)
+    state = runtime.get("state", "")
+    loaded = bool(runtime.get("loaded", False))
+    last_exit_code = str(runtime.get("last_exit_code", "")).strip()
+    run_interval_seconds = int(runtime.get("run_interval_seconds", 0) or 0)
     pending_items = [x for x in items if x.get("status", "") == "pending"]
     pending_count = len(pending_items)
     stale_count = sum(1 for x in items if x.get("status", "") == "stale")
     failed_count = sum(1 for x in items if x.get("status", "") == "failed")
 
-    if state != "running":
+    if not loaded:
         return {
             "level": "bad",
             "message": "Watcher is not running. Use Start watcher (15s) to install/start it.",
+            "pending_count": pending_count,
+            "stale_count": stale_count,
+            "failed_count": failed_count,
+        }
+    if state == "not running" and run_interval_seconds > 0 and last_exit_code in {"0", "(never exited)"}:
+        if stale_count > 0 or failed_count > 0:
+            return {
+                "level": "warn",
+                "message": f"Watcher loaded and idle between runs ({run_interval_seconds}s), but backlog issues exist (stale={stale_count}, failed={failed_count}).",
+                "pending_count": pending_count,
+                "stale_count": stale_count,
+                "failed_count": failed_count,
+            }
+        return {
+            "level": "ok",
+            "message": f"Watcher loaded and idle between runs (every {run_interval_seconds}s).",
+            "pending_count": pending_count,
+            "stale_count": stale_count,
+            "failed_count": failed_count,
+        }
+    if state in {"running", "active"} and run_interval_seconds > 0 and last_exit_code in {"0", "(never exited)"}:
+        if stale_count > 0 or failed_count > 0:
+            return {
+                "level": "warn",
+                "message": f"Watcher loaded and active (every {run_interval_seconds}s), but backlog issues exist (stale={stale_count}, failed={failed_count}).",
+                "pending_count": pending_count,
+                "stale_count": stale_count,
+                "failed_count": failed_count,
+            }
+        return {
+            "level": "ok",
+            "message": f"Watcher loaded and active (every {run_interval_seconds}s).",
+            "pending_count": pending_count,
+            "stale_count": stale_count,
+            "failed_count": failed_count,
+        }
+    if state != "running" and state != "not running":
+        return {
+            "level": "warn",
+            "message": f"Watcher loaded but in state '{state}' (last exit={last_exit_code or 'unknown'}).",
             "pending_count": pending_count,
             "stale_count": stale_count,
             "failed_count": failed_count,
@@ -487,6 +546,52 @@ def pending_approvals(handoff_dir: Path) -> list[dict]:
     return rows
 
 
+def watcher_config(project_dir: Path) -> dict:
+    cfg_map = {
+        "watcher_project": str(project_dir),
+        "interval_seconds": 15,
+        "recover_timeout_minutes": 3,
+        "recover_action": "retry",
+        "launcher_timeout_seconds": 180,
+        "target": "both",
+        "codex_bypass": False,
+    }
+    cfg = project_dir / ".superharness" / "watcher.yaml"
+    if not cfg.exists():
+        return cfg_map
+    for raw in cfg.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw.strip()
+        if line.startswith("watcher_project:"):
+            val = line.split(":", 1)[1].strip().strip("'\"")
+            if val:
+                candidate = Path(val).expanduser().resolve()
+                if (candidate / ".superharness").exists():
+                    cfg_map["watcher_project"] = str(candidate)
+        elif line.startswith("interval_seconds:"):
+            raw_val = line.split(":", 1)[1].strip()
+            if raw_val.isdigit() and int(raw_val) > 0:
+                cfg_map["interval_seconds"] = int(raw_val)
+        elif line.startswith("recover_timeout_minutes:"):
+            raw_val = line.split(":", 1)[1].strip()
+            if raw_val.isdigit():
+                cfg_map["recover_timeout_minutes"] = int(raw_val)
+        elif line.startswith("recover_action:"):
+            val = line.split(":", 1)[1].strip().strip("'\"")
+            if val in {"stale", "retry"}:
+                cfg_map["recover_action"] = val
+        elif line.startswith("launcher_timeout_seconds:"):
+            raw_val = line.split(":", 1)[1].strip()
+            if raw_val.isdigit():
+                cfg_map["launcher_timeout_seconds"] = int(raw_val)
+        elif line.startswith("target:"):
+            val = line.split(":", 1)[1].strip().strip("'\"")
+            if val in {"both", "claude-code", "codex-cli"}:
+                cfg_map["target"] = val
+        elif line.startswith("codex_bypass:"):
+            cfg_map["codex_bypass"] = line.split(":", 1)[1].strip().lower() == "true"
+    return cfg_map
+
+
 def project_label(project_dir: Path) -> str:
     # Match install-launchd-inbox-watcher.sh: basename | tr -cs 'A-Za-z0-9' '-'
     import re
@@ -556,6 +661,8 @@ class Handler(BaseHTTPRequestHandler):
         return None
 
     def _action(self, action: str) -> tuple[dict, int]:
+        wcfg = watcher_config(self.project_dir)
+        watcher_project = Path(str(wcfg.get("watcher_project", str(self.project_dir))))
         dispatch = str(self.scripts_dir / "inbox-dispatch.sh")
         recover = str(self.scripts_dir / "inbox-recover-stale.sh")
         normalize = str(self.scripts_dir / "inbox-normalize.sh")
@@ -567,16 +674,24 @@ class Handler(BaseHTTPRequestHandler):
                 "bash",
                 install_watcher,
                 "--project",
-                str(self.project_dir),
+                str(watcher_project),
                 "--interval",
-                "15",
+                str(int(wcfg.get("interval_seconds", 15))),
+                "--recover-timeout-minutes",
+                str(int(wcfg.get("recover_timeout_minutes", 3))),
+                "--recover-action",
+                str(wcfg.get("recover_action", "retry")),
+                "--launcher-timeout",
+                str(int(wcfg.get("launcher_timeout_seconds", 180))),
                 "--to",
-                "both",
+                str(wcfg.get("target", "both")),
                 "--confirm-non-interactive",
                 "yes",
                 "--confirm-skip-permissions",
                 "yes",
             ]
+            if bool(wcfg.get("codex_bypass", False)):
+                install_args.extend(["--codex-bypass", "--confirm-codex-bypass", "yes"])
             install_result = self._run_cmd(install_args, timeout=120)
             if install_result["exit_code"] != 0:
                 return install_result, 200
@@ -679,7 +794,7 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/.superharness/handoffs/") and p.endswith(".md"):
             report_path = (self.project_dir / p.lstrip("/")).resolve()
             handoff_root = (self.project_dir / ".superharness" / "handoffs").resolve()
-            if handoff_root not in report_path.parents:
+            if not report_path.is_relative_to(handoff_root):
                 self._json({"error": "forbidden"}, 403)
                 return
             if not report_path.exists():
@@ -699,14 +814,19 @@ class Handler(BaseHTTPRequestHandler):
             outlog = Path.home() / "Library/Logs/superharness" / f"{self.label}.out.log"
             errlog = Path.home() / "Library/Logs/superharness" / f"{self.label}.err.log"
             now_utc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            state = watcher_state(self.label)
+            runtime = watcher_runtime(self.label)
+            state = str(runtime.get("state", ""))
             items = inbox_items(inbox)
+            wcfg = watcher_config(self.project_dir)
             self._json(
                 {
                     "project": str(self.project_dir),
                     "label": self.label,
-                    "launchctl_state": state,
-                    "watcher_health": watcher_health(state, items, now_utc),
+                    "launchctl_state": state or ("loaded" if runtime.get("loaded") else ""),
+                    "watcher_health": watcher_health(runtime, items, now_utc),
+                    "watcher_runtime": runtime,
+                    "watcher_project": str(wcfg.get("watcher_project", str(self.project_dir))),
+                    "watcher_config": wcfg,
                     "contract_id": contract_id(contract),
                     "pending_approvals": pending_approvals(self.project_dir / ".superharness" / "handoffs"),
                     "inbox_counts": inbox_counts(inbox),
