@@ -45,6 +45,35 @@ def test_contract_today_outputs_delegate_prompt(repo_root, tmp_path) -> None:
     assert "I detected owner is codex-cli. Do you want to delegate mcp-docs now?" in result.stdout
 
 
+def test_contract_today_auto_detects_project_from_cwd(repo_root, tmp_path) -> None:
+    project = _setup_project(tmp_path)
+    wrapper = repo_root / "superharness"
+
+    result = run_bash(
+        wrapper,
+        cwd=project,
+        args=["contract", "today"],
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Contract demo-contract" in result.stdout
+
+
+def test_delegate_shorthand_auto_detects_project_from_cwd(repo_root, tmp_path) -> None:
+    project = _setup_project(tmp_path)
+    wrapper = repo_root / "superharness"
+
+    result = run_bash(
+        wrapper,
+        cwd=project,
+        args=["delegate", "mcp-docs", "--print-only"],
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Task: mcp-docs" in result.stdout
+    assert "Generated prompt:" in result.stdout
+
+
 def test_delegate_shorthand_uses_task_owner(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
     wrapper = repo_root / "superharness"
