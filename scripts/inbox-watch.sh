@@ -157,8 +157,12 @@ DISPATCH="$SCRIPT_DIR/inbox-dispatch.sh"
 RECOVER="$SCRIPT_DIR/inbox-recover-stale.sh"
 DEADLINE_CHECK="$SCRIPT_DIR/inbox-deadline-check.sh"
 
-if [ ! -x "$DISPATCH" ] || [ ! -x "$RECOVER" ]; then
+if [ ! -x "$DISPATCH" ]; then
   echo "Missing executable dispatcher: $DISPATCH" >&2
+  exit 1
+fi
+if [ ! -x "$RECOVER" ]; then
+  echo "Missing executable recover script: $RECOVER" >&2
   exit 1
 fi
 
@@ -237,7 +241,7 @@ run_cycle() {
 
 if [ "$FOREGROUND" -eq 1 ]; then
   RUNNING=1
-  trap 'RUNNING=0; echo ""; echo "Watcher stopped."; rmdir "$LOCK_DIR" >/dev/null 2>&1 || true; exit 0' INT TERM
+  trap 'RUNNING=0; echo ""; echo "Watcher stopped."; rmdir "$LOCK_DIR" >/dev/null 2>&1 || true; exit 0' INT TERM HUP
   echo "superharness watcher (foreground) — project: $PROJECT_DIR"
   echo "Polling every ${INTERVAL}s. Press Ctrl+C to stop."
   while [ "$RUNNING" -eq 1 ]; do

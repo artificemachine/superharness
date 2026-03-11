@@ -2,17 +2,10 @@
 # frozen_string_literal: true
 
 require "optparse"
-require "psych"
-require "time"
-require "date"
+require_relative "yaml_helpers"
 
 def safe_load(path, expected)
-  return(expected == Hash ? {} : []) unless File.exist?(path)
-  content = File.read(path)
-  data = Psych.safe_load(content, permitted_classes: [Time, Date], aliases: false)
-  return(expected == Hash ? {} : []) if data.nil?
-  raise "YAML document has unexpected type in #{path}" unless data.is_a?(expected)
-  data
+  YamlHelpers.safe_load(path, expected)
 end
 
 def task_exists(file:, task:)

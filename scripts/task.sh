@@ -354,4 +354,24 @@ File.write(tmp, Psych.dump(doc))
 File.rename(tmp, file)
 puts "Updated task '#{id}' status=#{status} by actor=#{actor}"
 RUBY
+
+  # Watcher and task handler are decoupled: contract task completion
+  # doesn't auto-update inbox. Sync closes the gap so inbox items
+  # don't stay "launched" after the contract task reaches terminal status.
+  INBOX_FILE="$PROJECT_DIR/.superharness/inbox.yaml"
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  INBOX_ENGINE="$SCRIPT_DIR/../engine/inbox.rb"
+
+  if [ -f "$INBOX_FILE" ] && [ -f "$INBOX_ENGINE" ]; then
+    case "$STATUS" in
+      done|failed|stopped)
+        NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        ruby "$INBOX_ENGINE" sync_task_status \
+          --file "$INBOX_FILE" \
+          --task "$TASK_ID" \
+          --to "$STATUS" \
+          --now "$NOW" 2>/dev/null || true
+        ;;
+    esac
+  fi
 fi

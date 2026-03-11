@@ -43,6 +43,30 @@ if [ $# -gt 0 ]; then
   shift
 fi
 
+# Auto-detect --project from cwd or SUPERHARNESS_PROJECT env var.
+# Only inject if the command accepts --project and it was not explicitly passed.
+_needs_project() {
+  case "$cmd" in
+    contract|delegate|enqueue|task|dispatch|watch|monitor-ui|doctor|recover|normalize|hygiene) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+_has_project_arg() {
+  for arg in "$@"; do
+    case "$arg" in
+      --project|-p) return 0 ;;
+    esac
+  done
+  return 1
+}
+if _needs_project && ! _has_project_arg "$@"; then
+  if [ -n "${SUPERHARNESS_PROJECT:-}" ]; then
+    set -- --project "$SUPERHARNESS_PROJECT" "$@"
+  elif [ -d ".superharness" ]; then
+    set -- --project . "$@"
+  fi
+fi
+
 case "$cmd" in
   init) exec bash "$ROOT_DIR/init-project.sh" "$@" ;;
   contract)
@@ -60,7 +84,6 @@ case "$cmd" in
     fi
     exec bash "$ROOT_DIR/scripts/delegate.sh" "$@"
     ;;
-  delagate) exec bash "$ROOT_DIR/scripts/delegate-task.sh" "$@" ;;
   doctor) exec bash "$ROOT_DIR/scripts/doctor.sh" "$@" ;;
   install-wrapper) exec bash "$ROOT_DIR/scripts/install-wrapper.sh" "$@" ;;
   enqueue) exec bash "$ROOT_DIR/scripts/inbox-enqueue.sh" "$@" ;;
