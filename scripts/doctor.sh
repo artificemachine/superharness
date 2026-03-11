@@ -51,19 +51,20 @@ PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd -P)"
 
 failures=0
 warns=0
+PLATFORM="$(uname -s)"
 
 install_hint() {
   local dep="$1"
   case "$dep" in
     ruby)
-      if [ "$(uname -s)" = "Darwin" ]; then
+      if [ "$PLATFORM" = "Darwin" ]; then
         echo "       brew install ruby"
       else
         echo "       sudo apt install ruby   # or: sudo dnf install ruby"
       fi
       ;;
     python3)
-      if [ "$(uname -s)" = "Darwin" ]; then
+      if [ "$PLATFORM" = "Darwin" ]; then
         echo "       brew install python3"
       else
         echo "       sudo apt install python3   # or: sudo dnf install python3"
@@ -148,7 +149,7 @@ else
   warns=$((warns + 1))
 fi
 
-if [ "$(uname -s)" = "Darwin" ]; then
+if [ "$PLATFORM" = "Darwin" ]; then
   slug="$(basename "$PROJECT_DIR" | tr -cs 'A-Za-z0-9' '-')"
   label="com.superharness.inbox.${slug}"
   if launchctl list | grep -q "$label"; then

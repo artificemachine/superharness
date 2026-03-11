@@ -146,11 +146,7 @@ case "$LOCK_STALE_MINUTES" in
     ;;
 esac
 case "$INTERVAL" in
-  ''|*[!0-9]*)
-    echo "--interval must be a positive integer" >&2
-    exit 2
-    ;;
-  0)
+  ''|0|*[!0-9]*)
     echo "--interval must be a positive integer" >&2
     exit 2
     ;;
@@ -211,6 +207,7 @@ if [ "$LAUNCHER_TIMEOUT" -gt 0 ]; then
 fi
 
 RECOVER_ARGS=(--project "$PROJECT_DIR" --timeout-minutes "$RECOVER_TIMEOUT_MINUTES" --action "$RECOVER_ACTION")
+INBOX_FILE="$PROJECT_DIR/.superharness/inbox.yaml"
 
 run_dispatch() {
   local to="$1"
@@ -218,8 +215,6 @@ run_dispatch() {
 }
 
 run_cycle() {
-  INBOX_FILE="$PROJECT_DIR/.superharness/inbox.yaml"
-
   if [ -x "$DEADLINE_CHECK" ]; then
     bash "$DEADLINE_CHECK" --project "$PROJECT_DIR" || true
   fi
@@ -242,7 +237,7 @@ run_cycle() {
 
 if [ "$FOREGROUND" -eq 1 ]; then
   RUNNING=1
-  trap 'RUNNING=0; echo ""; echo "Watcher stopped."; exit 0' INT TERM
+  trap 'RUNNING=0; echo ""; echo "Watcher stopped."; rmdir "$LOCK_DIR" >/dev/null 2>&1 || true; exit 0' INT TERM
   echo "superharness watcher (foreground) — project: $PROJECT_DIR"
   echo "Polling every ${INTERVAL}s. Press Ctrl+C to stop."
   while [ "$RUNNING" -eq 1 ]; do
