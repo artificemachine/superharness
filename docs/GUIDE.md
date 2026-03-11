@@ -54,11 +54,12 @@ This creates `.superharness/` with:
 - `failures.yaml` (failure memory)
 - `inbox.yaml` (dispatch queue)
 
-### 3. Add a task and dispatch it
+### 3. Create a task, enqueue it, and preview dispatch
 
 ```bash
-bash /path/to/superharness/superharness enqueue --project . --to codex-cli --task task-id --priority 1
-bash /path/to/superharness/superharness dispatch --project . --to codex-cli --print-only
+superharness task create --project . --id demo-task --title "First task" --owner codex-cli
+superharness enqueue --project . --to codex-cli --task demo-task --priority 1
+superharness dispatch --project . --to codex-cli --print-only
 ```
 
 Use `--print-only` to preview the prompt without launching the CLI.
@@ -87,7 +88,7 @@ superharness contract today --project /path/to/project
 
 ### Wrapper CLI
 
-The thin dispatcher to all `cli/*.sh` commands:
+The thin dispatcher to all subcommands:
 
 ```bash
 bash /path/to/superharness/superharness help
@@ -189,6 +190,16 @@ bash /path/to/superharness/superharness normalize --project /path/to/project --a
 ```
 
 Archives `done` and `failed` items to `.superharness/inbox-archive.yaml`.
+
+---
+
+## Project Auto-Detection
+
+Most commands require `--project DIR`. To avoid repeating it:
+
+1. **Auto-detect from cwd:** If `.superharness/` exists in the current directory, `--project .` is injected automatically.
+2. **Environment variable:** Set `SUPERHARNESS_PROJECT=/path/to/project` to use a fixed project directory.
+3. **Explicit flag:** `--project DIR` always takes precedence.
 
 ---
 
@@ -312,9 +323,9 @@ superharness/
 ├── superharness            # thin command dispatcher
 ├── protocol/              # protocol spec + templates
 ├── engine/                # ruby runtime helpers (yaml/queue/validation)
-├── cli/                   # primary user-facing shell commands
+├── cli/                   # legacy shims (deprecated, routes to scripts/)
 ├── adapters/              # Claude/Codex adapter assets
-├── scripts/               # compatibility shims + launchd + guard scripts
+├── scripts/               # all CLI commands, launchd, guard scripts
 ├── docs/                  # architecture and rationale docs
 ├── tests/                 # unit/integration/e2e tests
 ├── init-project.sh

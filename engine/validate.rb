@@ -2,16 +2,10 @@
 # frozen_string_literal: true
 
 require "optparse"
-require "psych"
-require "time"
-require "date"
+require_relative "yaml_helpers"
 
 def safe_load_yaml(path, expected_class)
-  content = File.read(path)
-  data = Psych.safe_load(content, permitted_classes: [Time, Date], aliases: false)
-  data = expected_class == Hash ? {} : [] if data.nil?
-  raise "#{File.basename(path)} must be a #{expected_class}" unless data.is_a?(expected_class)
-  data
+  YamlHelpers.safe_load(path, expected_class)
 end
 
 opts = { strict: false }
@@ -79,7 +73,9 @@ handoff_map = {}
 handoff_files.each do |file|
   begin
     data = safe_load_yaml(file, Hash)
-  rescue StandardError
+  rescue StandardError => e
+    puts "Warning: corrupt handoff file #{file}: #{e.message}"
+    issues += 1
     next
   end
   task_id = data["task"].to_s
