@@ -413,3 +413,112 @@ def test_dispatch_marks_failed_after_transient_lock_contention(repo_root, tmp_pa
     inbox_text = inbox_path.read_text()
     assert "id: lock-race-item" in inbox_text
     assert "  status: failed" in inbox_text
+
+
+def test_dispatch_launcher_timeout_kills_hung_process(repo_root, tmp_path) -> None:
+    project = tmp_path / "proj_timeout"
+    project.mkdir()
+    _write_contract(project)
+    _write_inbox(
+        project,
+        [
+            "# Delegation inbox",
+            "# status: pending|launched|running|done|failed|stale",
+            "",
+            "- id: timeout-item",
+            "  to: codex-cli",
+            "  task: mcp-docs",
+            f"  project: {project}",
+            "  status: pending",
+            "  priority: 1",
+            "  retry_count: 0",
+            "  max_retries: 3",
+            "  created_at: 2026-03-08T18:00:00Z",
+        ],
+    )
+
+    bin_dir = _fake_bin(tmp_path)
+    # Create a launcher that sleeps forever (simulates a hung process)
+    codex_path = bin_dir / "codex"
+    codex_path.write_text("#!/bin/bash\nsleep 300\n")
+    codex_path.chmod(0o755)
+
+    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project", str(project),
+            "--to", "codex-cli",
+            "--non-interactive",
+            "--launcher-timeout", "2",
+        ],
+        env={
+            "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+            "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
+        },
+    )
+
+    assert result.returncode == 1
+    assert "timed out after 2s" in result.stderr
+    assert "timeout-item -> failed" in result.stdout
+    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
+    assert "  status: failed" in inbox_text
+    assert "  failed_at:" in inbox_text
+
+
+def test_dispatch_launcher_timeout_zero_means_no_timeout(repo_root, tmp_path) -> None:
+    project = tmp_path / "proj_no_timeout"
+    project.mkdir()
+    _write_contract(project)
+    _write_inbox(
+        project,
+        [
+            "# Delegation inbox",
+            "# status: pending|launched|running|done|failed|stale",
+            "",
+            "- id: no-timeout-item",
+            "  to: codex-cli",
+            "  task: mcp-docs",
+            f"  project: {project}",
+            "  status: pending",
+            "  priority: 1",
+            "  retry_count: 0",
+            "  max_retries: 3",
+            "  created_at: 2026-03-08T18:00:00Z",
+        ],
+    )
+
+    bin_dir = _fake_bin(tmp_path)
+    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project", str(project),
+            "--to", "codex-cli",
+            "--print-only",
+            "--launcher-timeout", "0",
+        ],
+        env={"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "no-timeout-item -> launched" in result.stdout
+
+
+def test_dispatch_rejects_invalid_launcher_timeout(repo_root, tmp_path) -> None:
+    project = tmp_path / "proj_bad_timeout"
+    project.mkdir()
+    (project / ".superharness").mkdir(parents=True)
+    (project / ".superharness" / "inbox.yaml").write_text("- id: x\n  status: pending\n")
+
+    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=["--project", str(project), "--launcher-timeout", "abc"],
+    )
+
+    assert result.returncode == 2
+    assert "non-negative integer" in result.stderr

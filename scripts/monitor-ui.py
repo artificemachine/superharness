@@ -66,7 +66,7 @@ HTML = """<!doctype html>
       <h2>inbox status counts</h2>
       <div id=\"counts\"></div>
       <div class=\"inbox-detail\" id=\"inboxDetail\" style=\"display:none\">
-        <table><thead><tr><th>id</th><th>task</th><th>to</th><th>priority</th><th>launched_at</th></tr></thead>
+        <table><thead><tr><th>id</th><th>task</th><th>to</th><th>priority</th><th>launched_at</th><th>timer</th><th></th></tr></thead>
         <tbody id=\"inboxRows\"></tbody></table>
       </div>
       <div class=\"actions\">
@@ -153,12 +153,29 @@ async function loadInboxDetail(status) {
     tbody.innerHTML = '';
     if (!d.items.length) {
       const tr = document.createElement('tr');
-      tr.innerHTML = '<td colspan="5" style="color:var(--muted)">no items</td>';
+      tr.innerHTML = '<td colspan="7" style="color:var(--muted)">no items</td>';
       tbody.appendChild(tr);
     }
+    const now = new Date(d.now_utc);
     for (const item of d.items) {
+      let timer = '';
+      const la = (item.launched_at || '').replace(/^'|'$/g, '');
+      if (la) {
+        const diff = Math.max(0, Math.floor((now - new Date(la)) / 1000));
+        const h = Math.floor(diff / 3600);
+        const m = Math.floor((diff % 3600) / 60);
+        const s = diff % 60;
+        timer = h > 0 ? `${h}h${m}m` : m > 0 ? `${m}m${s}s` : `${s}s`;
+      }
+      let btn = '';
+      const st = item.status || '';
+      const eid = (item.id || '').replace(/'/g, "\\\\'");
+      if (st === 'pending') btn = `<button onclick="act('pause_item:${eid}')" style="font-size:11px;padding:2px 6px">Pause</button>`;
+      else if (st === 'paused') btn = `<button onclick="act('resume_item:${eid}')" style="font-size:11px;padding:2px 6px">Resume</button>`;
+      else if (st === 'launched' || st === 'running') btn = `<button onclick="act('stop_item:${eid}')" style="font-size:11px;padding:2px 6px;color:var(--bad)">Stop</button>`;
+      else if (st === 'stale' || st === 'failed' || st === 'stopped') btn = `<button onclick="act('retry_item:${eid}')" style="font-size:11px;padding:2px 6px;color:var(--warn)">Retry</button>`;
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${item.id||''}</td><td>${item.task||''}</td><td>${item.to||''}</td><td>${item.priority||''}</td><td>${item.launched_at||''}</td>`;
+      tr.innerHTML = `<td>${item.id||''}</td><td>${item.task||''}</td><td>${item.to||''}</td><td>${item.priority||''}</td><td>${la}</td><td>${timer}</td><td>${btn}</td>`;
       tbody.appendChild(tr);
     }
     document.getElementById('inboxDetail').style.display = 'block';
@@ -349,6 +366,43 @@ class Handler(BaseHTTPRequestHandler):
             return self._run_cmd(["bash", recover, "--project", str(self.project_dir), "--action", "retry", "--timeout-minutes", "20"]), 200
         if action == "normalize_stale":
             return self._run_cmd(["bash", normalize, "--project", str(self.project_dir), "--archive", "--drop-status", "stale"]), 200
+
+        inbox_rb = str(Path(__file__).resolve().parent.parent / "engine" / "inbox.rb")
+        inbox_file = str(self.project_dir / ".superharness" / "inbox.yaml")
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+        if action.startswith("pause_item:"):
+            item_id = action.split(":", 1)[1]
+            return self._run_cmd(["ruby", inbox_rb, "set_status", "--file", inbox_file, "--id", item_id, "--from", "pending", "--to", "paused", "--now", now, "--stamp-key", "paused_at"]), 200
+        if action.startswith("resume_item:"):
+            item_id = action.split(":", 1)[1]
+            return self._run_cmd(["ruby", inbox_rb, "set_status", "--file", inbox_file, "--id", item_id, "--from", "paused", "--to", "pending", "--now", now, "--stamp-key", "resumed_at"]), 200
+        if action.startswith("retry_item:"):
+            item_id = action.split(":", 1)[1]
+            items = inbox_items(self.project_dir / ".superharness" / "inbox.yaml")
+            target = next((i for i in items if i.get("id") == item_id), None)
+            if not target:
+                return ({"error": f"item not found: {item_id}"}, 404)
+            from_status = target.get("status", "")
+            if from_status not in ("stale", "failed", "stopped"):
+                return ({"error": f"cannot retry from status: {from_status}"}, 400)
+            return self._run_cmd(["ruby", inbox_rb, "set_status", "--file", inbox_file, "--id", item_id, "--from", from_status, "--to", "pending", "--now", now, "--stamp-key", "retried_at"]), 200
+        if action.startswith("stop_item:"):
+            item_id = action.split(":", 1)[1]
+            items = inbox_items(self.project_dir / ".superharness" / "inbox.yaml")
+            target = next((i for i in items if i.get("id") == item_id), None)
+            if not target:
+                return ({"error": f"item not found: {item_id}"}, 404)
+            pid_str = target.get("pid", "")
+            if pid_str:
+                try:
+                    os.kill(int(pid_str), 15)
+                except (ProcessLookupError, ValueError, PermissionError):
+                    pass
+            from_status = target.get("status", "launched")
+            result = self._run_cmd(["ruby", inbox_rb, "set_status", "--file", inbox_file, "--id", item_id, "--from", from_status, "--to", "stopped", "--now", now, "--stamp-key", "stopped_at"])
+            return result, 200
+
         return ({"error": f"unsupported action: {action}"}, 400)
 
     def do_GET(self) -> None:  # noqa: N802
@@ -387,7 +441,7 @@ class Handler(BaseHTTPRequestHandler):
             items = inbox_items(inbox)
             if status_filter:
                 items = [i for i in items if i.get("status") == status_filter]
-            self._json({"items": items, "status": status_filter})
+            self._json({"items": items, "status": status_filter, "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
             return
 
         self._json({"error": "not found"}, 404)

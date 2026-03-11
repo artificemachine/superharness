@@ -181,6 +181,21 @@ def set_status(file:, id:, from:, to:, now:, stamp_key: nil)
   0
 end
 
+def set_field(file:, id:, key:, value:)
+  items = load_items(file)
+  idx = items.index { |x| x.is_a?(Hash) && x["id"].to_s == id.to_s }
+  return 2 if idx.nil?
+  item = items[idx]
+  if value.nil? || value.to_s.empty?
+    item.delete(key)
+  else
+    item[key] = value
+  end
+  items[idx] = item
+  write_items(file, items)
+  0
+end
+
 def normalize(file:, drop_statuses:, drop_prefixes:, archive_file: nil, now: nil)
   items = load_items(file)
   statuses = drop_statuses.map(&:to_s)
@@ -364,6 +379,16 @@ when "set_status"
   end.parse!(ARGV)
   abort("--file, --id, --from, --to, --now are required") unless opts[:file] && opts[:id] && opts[:from] && opts[:to] && opts[:now]
   exit set_status(file: opts[:file], id: opts[:id], from: opts[:from], to: opts[:to], now: opts[:now], stamp_key: opts[:stamp_key])
+when "set_field"
+  opts = {}
+  OptionParser.new do |o|
+    o.on("--file FILE") { |v| opts[:file] = v }
+    o.on("--id ID") { |v| opts[:id] = v }
+    o.on("--key KEY") { |v| opts[:key] = v }
+    o.on("--value VALUE") { |v| opts[:value] = v }
+  end.parse!(ARGV)
+  abort("--file, --id, --key are required") unless opts[:file] && opts[:id] && opts[:key]
+  exit set_field(file: opts[:file], id: opts[:id], key: opts[:key], value: opts[:value])
 when "normalize"
   opts = { drop_statuses: [], drop_prefixes: [] }
   OptionParser.new do |o|
