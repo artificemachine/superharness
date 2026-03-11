@@ -311,6 +311,36 @@ def test_set_field(repo_root, tmp_path) -> None:
     assert r.returncode == 0
 
 
+def test_sync_task_status_closes_launched_items(repo_root, tmp_path) -> None:
+    f = _inbox_file(tmp_path)
+    _run_inbox(repo_root, "enqueue", [
+        "--file", str(f), "--id", "sync1", "--to", "claude-code",
+        "--task", "my-task", "--project", "/p", "--priority", "1",
+        "--created-at", "2026-01-01T00:00:00Z",
+    ])
+    _run_inbox(repo_root, "launch", ["--file", str(f), "--id", "sync1", "--now", "2026-01-01T00:01:00Z"])
+    r = _run_inbox(repo_root, "sync_task_status", [
+        "--file", str(f), "--task", "my-task", "--to", "done",
+        "--now", "2026-01-01T00:10:00Z",
+    ])
+    assert r.returncode == 0
+    assert "synced=1" in r.stdout
+    # Verify item is no longer launched
+    r2 = _run_inbox(repo_root, "list_launched", ["--file", str(f)])
+    data = json.loads(r2.stdout)
+    assert len(data) == 0
+
+
+def test_sync_task_status_no_match(repo_root, tmp_path) -> None:
+    f = _inbox_file(tmp_path)
+    r = _run_inbox(repo_root, "sync_task_status", [
+        "--file", str(f), "--task", "nonexistent", "--to", "done",
+        "--now", "2026-01-01T00:00:00Z",
+    ])
+    assert r.returncode == 0
+    assert "synced=0" in r.stdout
+
+
 def test_unknown_command(repo_root) -> None:
     r = _run_inbox(repo_root, "bogus", [])
     assert r.returncode != 0

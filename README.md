@@ -85,13 +85,20 @@ superharness monitor-ui --project /path/to/project
 
 **Full command reference:** [docs/GUIDE.md](docs/GUIDE.md)
 
+### Run Tests
+
+```bash
+pip install -r requirements.txt
+pytest tests/ -q
+```
+
 ---
 
 ## Prerequisites
 
 - `bash` (scripts are Bash-based)
 - `ruby` (required by inbox YAML helpers and hygiene checks) — see `.ruby-version`
-- `python3` + `pytest` (tests and hook JSON escaping) — see `requirements.txt`
+- `python3` + `pytest` (tests and hook JSON escaping) — `pip install -r requirements.txt`
 - `claude` CLI (for Claude delegation commands): `npm install -g @anthropic-ai/claude-code`
 - `codex` CLI (for Codex delegation commands): `npm install -g @openai/codex`
 - macOS `launchd` or Linux `systemd` for background watcher (see `scripts/superharness-watcher@.service`); `--foreground` mode works everywhere

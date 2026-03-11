@@ -3,11 +3,9 @@
 
 require "optparse"
 require "yaml"
-require "psych"
-require "time"
-require "date"
 require "json"
 require "tempfile"
+require_relative "yaml_helpers"
 
 HEADER = <<~HDR
   # Delegation inbox
@@ -17,22 +15,7 @@ HDR
 ARCHIVE_HEADER = "# Inbox archive\n"
 
 def load_yaml_document(path, expected_class)
-  return(expected_class == Hash ? {} : []) unless File.exist?(path)
-  content = File.read(path)
-  data = Psych.safe_load(content, permitted_classes: [Time, Date], aliases: false)
-  return(expected_class == Hash ? {} : []) if data.nil?
-  raise "YAML document has unexpected type in #{path}" unless data.is_a?(expected_class)
-  normalize_scalar_values(data)
-end
-
-def normalize_scalar_values(value)
-  case value
-  when Time then value.utc.iso8601
-  when Date then value.iso8601
-  when Array then value.map { |v| normalize_scalar_values(v) }
-  when Hash then value.transform_values { |v| normalize_scalar_values(v) }
-  else value
-  end
+  YamlHelpers.safe_load_normalized(path, expected_class)
 end
 
 def load_items(path)
@@ -58,6 +41,16 @@ def write_items(path, items)
       end
       File.unlink(tmp.path) if File.exist?(tmp.path)
     end
+  end
+end
+
+# File-level advisory lock to prevent concurrent read-modify-write races.
+# Uses flock on a .lock file adjacent to the inbox file.
+def with_inbox_lock(path)
+  lock_path = "#{path}.flock"
+  File.open(lock_path, File::CREAT | File::RDWR) do |lock_file|
+    lock_file.flock(File::LOCK_EX)
+    yield
   end
 end
 
@@ -322,6 +315,30 @@ def deadline_fail(file:, id:, now:, reason:)
   0
 end
 
+def sync_task_status(file:, task:, to:, now:)
+  items = load_items(file)
+  active_statuses = %w[pending launched running]
+  updated = 0
+  items.each_with_index do |item, idx|
+    next unless item.is_a?(Hash)
+    next unless item["task"].to_s == task.to_s
+    next unless active_statuses.include?(item["status"].to_s)
+    item["status"] = to
+    stamp = case to
+            when "done" then "done_at"
+            when "failed" then "failed_at"
+            when "stopped" then "stopped_at"
+            end
+    item[stamp] = now if stamp
+    item.delete("launched_at")
+    items[idx] = item
+    updated += 1
+  end
+  write_items(file, items) if updated > 0
+  puts "result=ok synced=#{updated}"
+  0
+end
+
 cmd = ARGV.shift
 case cmd
 when "next_pending"
@@ -340,7 +357,7 @@ when "launch"
     o.on("--now TS") { |v| opts[:now] = v }
   end.parse!(ARGV)
   abort("--file, --id, --now are required") unless opts[:file] && opts[:id] && opts[:now]
-  exit launch(file: opts[:file], id: opts[:id], now: opts[:now])
+  with_inbox_lock(opts[:file]) { exit launch(file: opts[:file], id: opts[:id], now: opts[:now]) }
 when "enqueue"
   opts = {}
   OptionParser.new do |o|
@@ -356,17 +373,19 @@ when "enqueue"
   end.parse!(ARGV)
   required = %i[file id to task project priority created_at]
   abort("--file, --id, --to, --task, --project, --priority, --created-at are required") unless required.all? { |k| opts.key?(k) }
-  exit enqueue(
-    file: opts[:file],
-    id: opts[:id],
-    to: opts[:to],
-    task: opts[:task],
-    project: opts[:project],
-    priority: opts[:priority],
-    created_at: opts[:created_at],
-    retry_count: opts.fetch(:retry_count, 0),
-    max_retries: opts.fetch(:max_retries, 3)
-  )
+  with_inbox_lock(opts[:file]) do
+    exit enqueue(
+      file: opts[:file],
+      id: opts[:id],
+      to: opts[:to],
+      task: opts[:task],
+      project: opts[:project],
+      priority: opts[:priority],
+      created_at: opts[:created_at],
+      retry_count: opts.fetch(:retry_count, 0),
+      max_retries: opts.fetch(:max_retries, 3)
+    )
+  end
 when "set_status"
   opts = {}
   OptionParser.new do |o|
@@ -378,7 +397,7 @@ when "set_status"
     o.on("--stamp-key KEY") { |v| opts[:stamp_key] = v }
   end.parse!(ARGV)
   abort("--file, --id, --from, --to, --now are required") unless opts[:file] && opts[:id] && opts[:from] && opts[:to] && opts[:now]
-  exit set_status(file: opts[:file], id: opts[:id], from: opts[:from], to: opts[:to], now: opts[:now], stamp_key: opts[:stamp_key])
+  with_inbox_lock(opts[:file]) { exit set_status(file: opts[:file], id: opts[:id], from: opts[:from], to: opts[:to], now: opts[:now], stamp_key: opts[:stamp_key]) }
 when "set_field"
   opts = {}
   OptionParser.new do |o|
@@ -388,7 +407,7 @@ when "set_field"
     o.on("--value VALUE") { |v| opts[:value] = v }
   end.parse!(ARGV)
   abort("--file, --id, --key are required") unless opts[:file] && opts[:id] && opts[:key]
-  exit set_field(file: opts[:file], id: opts[:id], key: opts[:key], value: opts[:value])
+  with_inbox_lock(opts[:file]) { exit set_field(file: opts[:file], id: opts[:id], key: opts[:key], value: opts[:value]) }
 when "normalize"
   opts = { drop_statuses: [], drop_prefixes: [] }
   OptionParser.new do |o|
@@ -400,13 +419,15 @@ when "normalize"
   end.parse!(ARGV)
   abort("--file is required") unless opts[:file]
   opts[:drop_statuses] = ["stale"] if opts[:drop_statuses].empty?
-  exit normalize(
-    file: opts[:file],
-    drop_statuses: opts[:drop_statuses],
-    drop_prefixes: opts[:drop_prefixes],
-    archive_file: opts[:archive_file],
-    now: opts[:now]
-  )
+  with_inbox_lock(opts[:file]) do
+    exit normalize(
+      file: opts[:file],
+      drop_statuses: opts[:drop_statuses],
+      drop_prefixes: opts[:drop_prefixes],
+      archive_file: opts[:archive_file],
+      now: opts[:now]
+    )
+  end
 when "recover_launched"
   opts = { timeout_minutes: 20, action: "stale" }
   OptionParser.new do |o|
@@ -417,12 +438,14 @@ when "recover_launched"
   end.parse!(ARGV)
   abort("--file and --now are required") unless opts[:file] && opts[:now]
   abort("--action must be stale or retry") unless %w[stale retry].include?(opts[:action])
-  exit recover_launched(
-    file: opts[:file],
-    now: opts[:now],
-    timeout_minutes: opts[:timeout_minutes],
-    action: opts[:action]
-  )
+  with_inbox_lock(opts[:file]) do
+    exit recover_launched(
+      file: opts[:file],
+      now: opts[:now],
+      timeout_minutes: opts[:timeout_minutes],
+      action: opts[:action]
+    )
+  end
 when "list_launched"
   opts = {}
   OptionParser.new do |o|
@@ -439,7 +462,17 @@ when "deadline_fail"
     o.on("--reason REASON") { |v| opts[:reason] = v }
   end.parse!(ARGV)
   abort("--file, --id, --now are required") unless opts[:file] && opts[:id] && opts[:now]
-  exit deadline_fail(file: opts[:file], id: opts[:id], now: opts[:now], reason: opts[:reason])
+  with_inbox_lock(opts[:file]) { exit deadline_fail(file: opts[:file], id: opts[:id], now: opts[:now], reason: opts[:reason]) }
+when "sync_task_status"
+  opts = {}
+  OptionParser.new do |o|
+    o.on("--file FILE") { |v| opts[:file] = v }
+    o.on("--task TASK_ID") { |v| opts[:task] = v }
+    o.on("--to STATUS") { |v| opts[:to] = v }
+    o.on("--now TS") { |v| opts[:now] = v }
+  end.parse!(ARGV)
+  abort("--file, --task, --to, --now are required") unless opts[:file] && opts[:task] && opts[:to] && opts[:now]
+  with_inbox_lock(opts[:file]) { exit sync_task_status(file: opts[:file], task: opts[:task], to: opts[:to], now: opts[:now]) }
 else
-  abort("Usage: inbox.rb <next_pending|launch|enqueue|set_status|normalize|recover_launched|list_launched|deadline_fail> [options]")
+  abort("Usage: inbox.rb <next_pending|launch|enqueue|set_status|sync_task_status|normalize|recover_launched|list_launched|deadline_fail> [options]")
 end

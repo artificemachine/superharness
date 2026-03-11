@@ -4,6 +4,10 @@ Shortest path from clone to first dispatch.
 
 **Prerequisites:** `bash`, `ruby`, `python3`. Run `superharness doctor` after install to verify.
 
+```bash
+pip install -r requirements.txt   # pytest (for running tests)
+```
+
 ## 0) Install the CLI wrapper
 
 Creates a symlink at `~/.local/bin/superharness` pointing to the repo wrapper.
@@ -100,6 +104,15 @@ superharness hygiene --project .
 superharness uninstall --dry-run   # preview what would be removed
 superharness uninstall --all       # remove all system artifacts
 ```
+
+## 8) Run the test suite (optional)
+
+```bash
+pip install -r requirements.txt
+pytest tests/ -q
+```
+
+---
 
 ## Notes
 
