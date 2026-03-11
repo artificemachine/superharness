@@ -1,0 +1,25 @@
+---
+task: public-readiness-review-20260311
+to: codex-cli
+date: 2026-03-11
+status: approved
+contract_id: v08-reliability
+approval_gate:
+  required: true
+  approved_by_user: true
+  approved_at: '2026-03-11T18:20:19Z'
+  approved_by: owner
+  note: Go
+summary: |
+  Dual-agent public readiness review. Both Claude Code and Codex CLI audit the
+  superharness repo for public release readiness:
+  - No hardcoded paths or usernames in source
+  - No committed secrets (.env, credentials, keys)
+  - Install flow works on a fresh machine
+  - README, CONTRIBUTING.md, LICENSE are complete
+  - Test suite passes clean
+  - Doctor check passes
+  - ShipGuard scan clean
+  - CHANGELOG is consistent
+  Consensus required from both agents before proceeding.
+markdown_report: ".superharness/handoffs/2026-03-11-public-readiness-review-20260311.md"
