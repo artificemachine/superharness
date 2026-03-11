@@ -3,38 +3,55 @@ id: v08-reliability
 created: 2026-03-10
 created_by: owner
 status: active
-goal: "Harden watcher reliability, unify internals, and expand test/monitoring coverage"
+goal: Harden watcher reliability, unify internals, and expand test/monitoring coverage
 tasks:
 - id: watcher-timeout-and-lock-guard
-  title: "Add launcher timeout to inbox-dispatch.sh and stale lock auto-break to inbox-watch.sh"
+  title: Add launcher timeout to inbox-dispatch.sh and stale lock auto-break to inbox-watch.sh
   status: done
   owner: claude-code
   project_path: "/Users/airm2max/DevOpsSec/superharness"
-  summary: "Added --launcher-timeout to inbox-dispatch.sh (portable perl-based process-group kill) and --lock-stale-minutes to inbox-watch.sh (auto-break stale watcher locks). Both options pass through the watcher pipeline. 8 new tests."
+  summary: Added --launcher-timeout to inbox-dispatch.sh (portable perl-based process-group
+    kill) and --lock-stale-minutes to inbox-watch.sh (auto-break stale watcher locks).
+    Both options pass through the watcher pipeline. 8 new tests.
 - id: structured-error-logging
-  title: "Replace silent error suppression (|| true, 2>/dev/null) with structured logging preserving exit codes and stderr context"
+  title: Replace silent error suppression (|| true, 2>/dev/null) with structured logging
+    preserving exit codes and stderr context
   status: todo
   owner: codex-cli
   project_path: "/Users/airm2max/DevOpsSec/superharness"
 - id: unify-yaml-parser
-  title: "Consolidate 3 YAML parsers (Ruby, Python line-by-line, Shell grep) into single abstraction; remove monitor-ui naive parser"
+  title: Consolidate 3 YAML parsers (Ruby, Python line-by-line, Shell grep) into single
+    abstraction; remove monitor-ui naive parser
   status: todo
   owner: codex-cli
   project_path: "/Users/airm2max/DevOpsSec/superharness"
 - id: ci-hook-test-coverage
-  title: "Add tests for untested CI hooks: check-changelog-append-only.sh, check-contract-hygiene.sh, check-shell-entrypoints.sh"
+  title: 'Add tests for untested CI hooks: check-changelog-append-only.sh, check-contract-hygiene.sh,
+    check-shell-entrypoints.sh'
   status: todo
   owner: claude-code
   project_path: "/Users/airm2max/DevOpsSec/superharness"
 - id: monitor-multi-project
-  title: "Extend monitor-ui to support multiple projects in a single dashboard with project switcher"
+  title: Extend monitor-ui to support multiple projects in a single dashboard with
+    project switcher
   status: todo
   owner: claude-code
   project_path: "/Users/airm2max/DevOpsSec/superharness"
 - id: eliminate-cli-shim-layer
-  title: "Remove cli/ shim indirection; route superharness wrapper directly to scripts/"
+  title: Remove cli/ shim indirection; route superharness wrapper directly to scripts/
   status: todo
   owner: codex-cli
   project_path: "/Users/airm2max/DevOpsSec/superharness"
+- id: claude-review-dual-audit-plan-20260311
+  title: Review Codex senior+user audit findings and return a plan acceptable to both
+    reviewers
+  owner: claude-code
+  status: done
+  project_path: "/Users/airm2max/DevOpsSec/superharness"
+  summary: 'Ran dual audit (senior + user reviewer). Executed all 9 remediation items:
+    fixed GUIDE.md quickstart consistency, added test docs to README/QUICKSTART, fixed
+    watch error message and SIGHUP trap, added validate.rb corrupt handoff warning,
+    consolidated Ruby YAML helpers into shared module, added --project auto-detect
+    from cwd/env var, added flock-based inbox.yaml concurrent write protection.'
 decisions: []
 failures: []

@@ -105,46 +105,54 @@
   to: codex-cli
   task: structured-error-logging
   project: "/Users/airm2max/DevOpsSec/superharness"
-  status: stale
+  status: paused
   priority: 2
   retry_count: 1
   max_retries: 3
   created_at: '2026-03-10T14:26:19Z'
   stale_at: '2026-03-10T14:47:04Z'
   stale_reason: stale_timeout
+  retried_at: '2026-03-11T11:15:13Z'
+  paused_at: '2026-03-11T11:15:19Z'
 - id: 20260310T142619Z-unify-yaml-parser-57383-2282282
   to: codex-cli
   task: unify-yaml-parser
   project: "/Users/airm2max/DevOpsSec/superharness"
-  status: stale
+  status: paused
   priority: 3
   retry_count: 1
   max_retries: 3
   created_at: '2026-03-10T14:26:19Z'
   stale_at: '2026-03-10T14:48:37Z'
   stale_reason: stale_timeout
+  retried_at: '2026-03-11T11:15:13Z'
+  paused_at: '2026-03-11T11:15:20Z'
 - id: 20260310T142619Z-ci-hook-test-coverage-57459-15298197
   to: claude-code
   task: ci-hook-test-coverage
   project: "/Users/airm2max/DevOpsSec/superharness"
-  status: stale
+  status: paused
   priority: 2
   retry_count: 1
   max_retries: 3
   created_at: '2026-03-10T14:26:19Z'
   stale_at: '2026-03-10T14:47:04Z'
   stale_reason: stale_timeout
+  retried_at: '2026-03-11T11:15:14Z'
+  paused_at: '2026-03-11T11:15:22Z'
 - id: 20260310T142619Z-monitor-multi-project-57492-341492
   to: claude-code
   task: monitor-multi-project
   project: "/Users/airm2max/DevOpsSec/superharness"
-  status: stale
+  status: paused
   priority: 3
   retry_count: 1
   max_retries: 3
   created_at: '2026-03-10T14:26:20Z'
   stale_at: '2026-03-10T14:48:37Z'
   stale_reason: stale_timeout
+  retried_at: '2026-03-11T11:15:15Z'
+  paused_at: '2026-03-11T11:15:22Z'
 - id: 20260310T142620Z-eliminate-cli-shim-layer-57526-237154115
   to: codex-cli
   task: eliminate-cli-shim-layer
@@ -159,3 +167,15 @@
   retried_at: '2026-03-10T14:52:55Z'
   launched_at: '2026-03-10T14:53:15Z'
   failed_at: '2026-03-10T14:58:41Z'
+- id: 20260311T110948Z-claude-review-dual-audit-plan-20260311-20163-2422092
+  to: claude-code
+  task: claude-review-dual-audit-plan-20260311
+  project: "/Users/airm2max/DevOpsSec/superharness"
+  status: done
+  priority: 1
+  retry_count: 1
+  max_retries: 3
+  created_at: '2026-03-11T11:09:48Z'
+  launched_at: '2026-03-11T11:17:18Z'
+  pid: '27762'
+  done_at: '2026-03-11T11:24:17Z'

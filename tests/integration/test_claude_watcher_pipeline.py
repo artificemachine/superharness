@@ -40,6 +40,7 @@ def test_claude_watcher_dispatch_smoke(repo_root: Path, tmp_path: Path) -> None:
             "cli/task.sh",
             "engine/contract.rb",
             "engine/inbox.rb",
+            "engine/yaml_helpers.rb",
             "superharness",
         ]
     )
