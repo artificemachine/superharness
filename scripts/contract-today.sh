@@ -117,6 +117,32 @@ rows_raw.each_with_index do |r, idx|
 end
 puts hline("└", "┴", "┘", widths)
 
+handoff_dir = File.join(File.dirname(contract_file), "handoffs")
+pending_approvals = []
+if Dir.exist?(handoff_dir)
+  Dir.glob(File.join(handoff_dir, "*.yaml")).sort.each do |file|
+    begin
+      hdoc = Psych.safe_load(File.read(file), permitted_classes: [Time, Date], aliases: false) || {}
+    rescue StandardError
+      next
+    end
+    next unless hdoc.is_a?(Hash)
+    gate = hdoc["approval_gate"]
+    pending = hdoc["status"].to_s == "pending_user_approval" || (gate.is_a?(Hash) && gate["required"] && !gate["approved_by_user"])
+    next unless pending
+    pending_approvals << [hdoc["task"].to_s, hdoc["markdown_report"].to_s]
+  end
+end
+
+if pending_approvals.any?
+  puts ""
+  puts "⚠️  USER APPROVAL REQUIRED"
+  pending_approvals.each do |task_id, report|
+    puts "- task=#{task_id} report=#{report}"
+    puts "  approve: superharness discuss approve --task #{task_id} --by owner --note \"Approved\""
+  end
+end
+
 candidate = tasks.find do |t|
   next false unless t.is_a?(Hash)
   status = t["status"].to_s

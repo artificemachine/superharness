@@ -193,6 +193,27 @@ def test_set_status_wrong_from(repo_root, tmp_path) -> None:
     assert r.returncode == 3
 
 
+def test_remove_item_deletes_row(repo_root, tmp_path) -> None:
+    f = _inbox_file(tmp_path)
+    _run_inbox(repo_root, "enqueue", [
+        "--file", str(f), "--id", "rm1", "--to", "claude-code",
+        "--task", "t1", "--project", "/p", "--priority", "1",
+        "--created-at", "2026-01-01T00:00:00Z",
+    ])
+    r = _run_inbox(repo_root, "remove", ["--file", str(f), "--id", "rm1"])
+    assert r.returncode == 0
+    assert "result=removed id=rm1" in r.stdout
+    after = f.read_text()
+    assert "rm1" not in after
+
+
+def test_remove_item_not_found(repo_root, tmp_path) -> None:
+    f = _inbox_file(tmp_path)
+    r = _run_inbox(repo_root, "remove", ["--file", str(f), "--id", "missing"])
+    assert r.returncode == 2
+    assert "result=not_found id=missing" in r.stdout
+
+
 def test_recover_launched_marks_stale(repo_root, tmp_path) -> None:
     f = _inbox_file(tmp_path)
     _run_inbox(repo_root, "enqueue", [
