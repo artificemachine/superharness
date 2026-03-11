@@ -142,6 +142,80 @@ def test_watch_passes_launcher_timeout_to_dispatch(repo_root, tmp_path) -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_watch_foreground_exits_on_sigterm(repo_root, tmp_path) -> None:
+    """Foreground mode should start and respond to SIGTERM."""
+    import signal
+
+    project = _write_project(tmp_path)
+    script = repo_root / "scripts" / "inbox-watch.sh"
+
+    import subprocess as sp
+
+    proc = sp.Popen(
+        ["bash", str(script),
+         "--project", str(project),
+         "--foreground",
+         "--interval", "60",
+         "--print-only"],
+        stdout=sp.PIPE, stderr=sp.PIPE, text=True,
+        cwd=repo_root,
+    )
+
+    # Wait for watcher startup message
+    import select
+    ready, _, _ = select.select([proc.stdout], [], [], 5)
+    assert ready, "Foreground watcher did not produce output within 5s"
+
+    # Read the startup lines
+    line = proc.stdout.readline()
+    assert "foreground" in line.lower() or "watcher" in line.lower()
+
+    # Send SIGTERM
+    proc.send_signal(signal.SIGTERM)
+    proc.wait(timeout=5)
+    assert proc.returncode == 0
+
+
+def test_watch_foreground_rejects_zero_interval(repo_root, tmp_path) -> None:
+    project = _write_project(tmp_path)
+    script = repo_root / "scripts" / "inbox-watch.sh"
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project", str(project),
+            "--foreground",
+            "--interval", "0",
+        ],
+    )
+    assert result.returncode == 2
+    assert "positive integer" in result.stderr
+
+
+def test_watch_validates_project_dir(repo_root, tmp_path) -> None:
+    script = repo_root / "scripts" / "inbox-watch.sh"
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=["--project", str(tmp_path / "nonexistent")],
+    )
+    assert result.returncode == 1
+    assert "does not exist" in result.stderr
+
+
+def test_watch_validates_superharness_dir(repo_root, tmp_path) -> None:
+    project = tmp_path / "no-harness"
+    project.mkdir()
+    script = repo_root / "scripts" / "inbox-watch.sh"
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=["--project", str(project)],
+    )
+    assert result.returncode == 1
+    assert "Not a superharness project" in result.stderr
+
+
 def test_watch_rejects_invalid_lock_stale_minutes(repo_root, tmp_path) -> None:
     project = _write_project(tmp_path)
 

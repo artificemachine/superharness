@@ -35,6 +35,44 @@ def test_init_project_creates_expected_files(repo_root, tmp_path) -> None:
     assert (project / "AGENTS.md").exists()
 
 
+def test_init_project_no_watcher_by_default(repo_root, tmp_path) -> None:
+    """Without --with-watcher, init must NOT install a launchd plist."""
+    import subprocess
+
+    script = repo_root / "init-project.sh"
+    project = tmp_path / "no-watcher"
+    project.mkdir()
+
+    result = run_bash(script, cwd=project, args=["Demo", "Python", "active"])
+    assert result.returncode == 0, result.stderr
+    # "Watcher:" line should not appear without --with-watcher
+    assert "Watcher:" not in result.stdout
+
+
+def test_init_project_with_watcher_flag_accepted(repo_root, tmp_path) -> None:
+    """--with-watcher flag should be accepted (even if launchd script is missing)."""
+    script = repo_root / "init-project.sh"
+    project = tmp_path / "with-watcher"
+    project.mkdir()
+
+    result = run_bash(script, cwd=project, args=["--with-watcher", "Demo", "Python", "active"])
+    assert result.returncode == 0, result.stderr
+    # The flag was accepted; watcher line may or may not appear depending on platform
+    assert (project / ".superharness/contract.yaml").exists()
+
+
+def test_init_project_doctor_hint_in_output(repo_root, tmp_path) -> None:
+    """Init output should mention doctor and task create."""
+    script = repo_root / "init-project.sh"
+    project = tmp_path / "hints"
+    project.mkdir()
+
+    result = run_bash(script, cwd=project, args=["Demo", "Python", "active"])
+    assert result.returncode == 0
+    assert "doctor" in result.stdout.lower()
+    assert "task create" in result.stdout
+
+
 def test_init_project_is_not_reentrant(repo_root, tmp_path) -> None:
     script = repo_root / "init-project.sh"
     project = tmp_path / "demo2"
