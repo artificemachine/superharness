@@ -51,6 +51,7 @@ action() {
   local label="$1"
   local path="$2"
   local type="$3"  # file or dir
+  local confirm=""
 
   if [ "$DRY_RUN" -eq 1 ]; then
     echo "[dry-run] Would remove $type: $path ($label)"
@@ -60,9 +61,12 @@ action() {
 
   if [ "$ALL" -eq 1 ]; then
     confirm="y"
-  else
+  elif [ -t 0 ]; then
     printf "Remove %s: %s (%s)? [y/N] " "$type" "$path" "$label"
     read -r confirm
+  else
+    echo "Skipped (non-interactive, use --all to force): $path"
+    return
   fi
 
   if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
