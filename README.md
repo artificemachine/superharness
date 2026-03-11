@@ -25,7 +25,7 @@ superharness lets AI coding assistants work on the same project without stepping
 - **`superharness watch --foreground`** — Cross-platform continuous watcher
 - **`superharness doctor`** — Prerequisite and setup health check
 - **`superharness uninstall`** — Clean removal of system artifacts
-- **Background watcher** — Unattended execution via macOS launchd (opt-in)
+- **Background watcher** — Unattended execution via macOS launchd or Linux systemd (opt-in)
 
 ---
 
@@ -94,7 +94,7 @@ superharness monitor-ui --project /path/to/project
 - `python3` + `pytest` (tests and hook JSON escaping) — see `requirements.txt`
 - `claude` CLI (for Claude delegation commands): `npm install -g @anthropic-ai/claude-code`
 - `codex` CLI (for Codex delegation commands): `npm install -g @openai/codex`
-- macOS `launchd` (only for background watcher; use `--foreground` mode on Linux/Docker/CI)
+- macOS `launchd` or Linux `systemd` for background watcher (see `scripts/superharness-watcher@.service`); `--foreground` mode works everywhere
 
 ---
 
