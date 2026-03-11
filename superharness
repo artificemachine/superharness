@@ -43,14 +43,6 @@ if [ $# -gt 0 ]; then
   shift
 fi
 
-# Auto-detect --project from cwd or SUPERHARNESS_PROJECT env var.
-# Only inject if the command accepts --project and it was not explicitly passed.
-_needs_project() {
-  case "$cmd" in
-    contract|delegate|enqueue|task|dispatch|watch|monitor-ui|doctor|recover|normalize|hygiene) return 0 ;;
-    *) return 1 ;;
-  esac
-}
 _has_project_arg() {
   for arg in "$@"; do
     case "$arg" in
@@ -59,11 +51,13 @@ _has_project_arg() {
   done
   return 1
 }
-if _needs_project && ! _has_project_arg "$@"; then
+
+auto_project_args=()
+if ! _has_project_arg "$@"; then
   if [ -n "${SUPERHARNESS_PROJECT:-}" ]; then
-    set -- --project "$SUPERHARNESS_PROJECT" "$@"
+    auto_project_args=(--project "$SUPERHARNESS_PROJECT")
   elif [ -d ".superharness" ]; then
-    set -- --project . "$@"
+    auto_project_args=(--project .)
   fi
 fi
 
@@ -73,27 +67,27 @@ case "$cmd" in
     sub="${1:-today}"
     if [ "$sub" = "today" ]; then
       if [ $# -gt 0 ]; then shift; fi
-      exec bash "$ROOT_DIR/scripts/contract-today.sh" "$@"
+      exec bash "$ROOT_DIR/scripts/contract-today.sh" "$@" "${auto_project_args[@]}"
     fi
     echo "Unknown contract subcommand: $sub" >&2
     exit 2
     ;;
   delegate)
     if [ $# -gt 0 ] && [[ "$1" != -* ]]; then
-      exec bash "$ROOT_DIR/scripts/delegate-task.sh" "$@"
+      exec bash "$ROOT_DIR/scripts/delegate-task.sh" "$@" "${auto_project_args[@]}"
     fi
-    exec bash "$ROOT_DIR/scripts/delegate.sh" "$@"
+    exec bash "$ROOT_DIR/scripts/delegate.sh" "$@" "${auto_project_args[@]}"
     ;;
-  doctor) exec bash "$ROOT_DIR/scripts/doctor.sh" "$@" ;;
+  doctor) exec bash "$ROOT_DIR/scripts/doctor.sh" "$@" "${auto_project_args[@]}" ;;
   install-wrapper) exec bash "$ROOT_DIR/scripts/install-wrapper.sh" "$@" ;;
-  enqueue) exec bash "$ROOT_DIR/scripts/inbox-enqueue.sh" "$@" ;;
-  task) exec bash "$ROOT_DIR/scripts/task.sh" "$@" ;;
-  dispatch) exec bash "$ROOT_DIR/scripts/inbox-dispatch.sh" "$@" ;;
-  watch) exec bash "$ROOT_DIR/scripts/inbox-watch.sh" "$@" ;;
-  monitor-ui) exec bash "$ROOT_DIR/scripts/monitor-ui.sh" "$@" ;;
-  recover) exec bash "$ROOT_DIR/scripts/inbox-recover-stale.sh" "$@" ;;
-  normalize) exec bash "$ROOT_DIR/scripts/inbox-normalize.sh" "$@" ;;
-  hygiene) exec bash "$ROOT_DIR/scripts/check-contract-hygiene.sh" "$@" ;;
+  enqueue) exec bash "$ROOT_DIR/scripts/inbox-enqueue.sh" "$@" "${auto_project_args[@]}" ;;
+  task) exec bash "$ROOT_DIR/scripts/task.sh" "$@" "${auto_project_args[@]}" ;;
+  dispatch) exec bash "$ROOT_DIR/scripts/inbox-dispatch.sh" "$@" "${auto_project_args[@]}" ;;
+  watch) exec bash "$ROOT_DIR/scripts/inbox-watch.sh" "$@" "${auto_project_args[@]}" ;;
+  monitor-ui) exec bash "$ROOT_DIR/scripts/monitor-ui.sh" "$@" "${auto_project_args[@]}" ;;
+  recover) exec bash "$ROOT_DIR/scripts/inbox-recover-stale.sh" "$@" "${auto_project_args[@]}" ;;
+  normalize) exec bash "$ROOT_DIR/scripts/inbox-normalize.sh" "$@" "${auto_project_args[@]}" ;;
+  hygiene) exec bash "$ROOT_DIR/scripts/check-contract-hygiene.sh" "$@" "${auto_project_args[@]}" ;;
   uninstall) exec bash "$ROOT_DIR/scripts/uninstall.sh" "$@" ;;
   help|-h|--help) usage ;;
   version|--version|-v) echo "superharness $VERSION" ;;
