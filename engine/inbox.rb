@@ -331,6 +331,8 @@ def sync_task_status(file:, task:, to:, now:)
             end
     item[stamp] = now if stamp
     item.delete("launched_at")
+    item.delete("running_at")
+    item.delete("pid")
     items[idx] = item
     updated += 1
   end
