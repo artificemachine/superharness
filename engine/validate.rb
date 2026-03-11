@@ -69,6 +69,7 @@ end
 ledger_text = File.exist?(ledger_file) ? File.read(ledger_file) : ""
 handoff_files = Dir.glob(File.join(handoff_dir, "*.yaml"))
 
+issues = 0
 handoff_map = {}
 handoff_files.each do |file|
   begin
@@ -83,8 +84,6 @@ handoff_files.each do |file|
   handoff_map[task_id] ||= []
   handoff_map[task_id] << file
 end
-
-issues = 0
 done_tasks.each do |task|
   id = task["id"].to_s
   if (handoff_map[id] || []).empty?
