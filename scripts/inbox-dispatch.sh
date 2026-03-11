@@ -170,7 +170,7 @@ project_has_dirty_worktree() {
   if ! git -C "$project_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     return 1
   fi
-  if [ -n "$(git -C "$project_dir" status --porcelain --untracked-files=normal 2>/dev/null)" ]; then
+  if [ -n "$(git -C "$project_dir" status --porcelain --untracked-files=normal -- ':!.superharness/' 2>/dev/null)" ]; then
     return 0
   fi
   return 1
