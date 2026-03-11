@@ -2,6 +2,9 @@
 *.swp
 .env
 .venv/
+.coverage
+.claude/
+.superharness/*.flock
 shipguard.txt
 __pycache__/
 *.py[cod]
