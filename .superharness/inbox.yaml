@@ -113,25 +113,51 @@
   launched_at: '2026-03-11T11:17:18Z'
   pid: '27762'
   done_at: '2026-03-11T11:24:17Z'
-- id: 20260311T160736Z-consensus-audit-plan-20260311-160736-12876-112161247
+- id: 20260311T172514Z-consensus-audit-plan-20260311-160736-codex-29463
   to: codex-cli
   task: consensus-audit-plan-20260311-160736
   project: "/Users/airm2max/DevOpsSec/superharness"
-  status: failed
+  status: done
   priority: 1
-  retry_count: 1
+  retry_count: 3
   max_retries: 3
-  created_at: '2026-03-11T16:07:36Z'
-  launched_at: '2026-03-11T16:18:35Z'
-  failed_at: '2026-03-11T16:19:16Z'
-- id: 20260311T160736Z-consensus-audit-plan-20260311-160736-12914-5522863
-  to: claude-code
-  task: consensus-audit-plan-20260311-160736
+  created_at: '2026-03-11T17:25:14Z'
+  launched_at: '2026-03-11T17:40:15Z'
+  failed_at: '2026-03-11T17:33:03Z'
+  retried_at: '2026-03-11T17:33:15Z'
+  done_at: '2026-03-11T17:42:06Z'
+- id: 20260311T175103Z-consensus-audit-plan-20260311-175103-38047-248105132
+  to: codex-cli
+  task: consensus-audit-plan-20260311-175103
   project: "/Users/airm2max/DevOpsSec/superharness"
-  status: launched
+  status: done
   priority: 1
   retry_count: 1
   max_retries: 3
-  created_at: '2026-03-11T16:07:36Z'
-  launched_at: '2026-03-11T16:17:19Z'
-  pid: '21259'
+  created_at: '2026-03-11T17:51:03Z'
+  launched_at: '2026-03-11T17:54:14Z'
+  done_at: '2026-03-11T17:56:11Z'
+- id: 20260311T175104Z-consensus-audit-plan-20260311-175103-38082-45428
+  to: claude-code
+  task: consensus-audit-plan-20260311-175103
+  project: "/Users/airm2max/DevOpsSec/superharness"
+  status: done
+  priority: 1
+  retry_count: 2
+  max_retries: 3
+  created_at: '2026-03-11T17:51:04Z'
+  launched_at: '2026-03-11T18:00:08Z'
+  failed_at: '2026-03-11T17:54:13Z'
+  retried_at: '2026-03-11T17:59:58Z'
+  done_at: '2026-03-11T18:01:02Z'
+- id: 20260311T184229Z-public-readiness-reaudit-20260311-20913-586735539
+  to: codex-cli
+  task: public-readiness-reaudit-20260311
+  project: "/Users/airm2max/DevOpsSec/superharness"
+  status: paused
+  priority: 1
+  retry_count: 0
+  max_retries: 3
+  created_at: '2026-03-11T18:42:29Z'
+  paused_at: '2026-03-11T18:46:01Z'
+  pause_reason: dirty_worktree_requires_user_confirmation
