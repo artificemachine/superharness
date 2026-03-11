@@ -62,7 +62,7 @@ action() {
   if [ "$ALL" -eq 1 ]; then
     confirm="y"
   elif [ -t 0 ]; then
-    printf "Remove %s: %s (%s)? [y/N] " "$type" "$path" "$label"
+    echo -n "Remove $type: $path ($label)? [y/N] "
     read -r confirm
   else
     echo "Skipped (non-interactive, use --all to force): $path"
