@@ -178,3 +178,57 @@ def test_install_launchd_escapes_plist_values_and_writes_confirmation_envs(repo_
     assert "<string>YES</string>" in plist_text
     assert "<key>SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS</key>" in plist_text
     assert "<key>SUPERHARNESS_CONFIRM_CODEX_BYPASS</key>" in plist_text
+
+
+def test_setup_watcher_worker_creates_clean_worker_and_watcher_config(repo_root, tmp_path) -> None:
+    script = repo_root / "scripts" / "setup-watcher-worker.sh"
+    project = tmp_path / "source-proj"
+    (project / ".superharness").mkdir(parents=True, exist_ok=True)
+    (project / "scripts").mkdir(parents=True, exist_ok=True)
+    # Minimal script set required by setup script + installer checks.
+    (project / "scripts" / "install-launchd-inbox-watcher.sh").write_text(
+        (repo_root / "scripts" / "install-launchd-inbox-watcher.sh").read_text()
+    )
+    (project / "scripts" / "inbox-watch.sh").write_text(
+        (repo_root / "scripts" / "inbox-watch.sh").read_text()
+    )
+    (project / "scripts" / "install-launchd-inbox-watcher.sh").chmod(0o755)
+    (project / "scripts" / "inbox-watch.sh").chmod(0o755)
+    (project / "README.md").write_text("source\n")
+    (project / ".superharness" / "contract.yaml").write_text("id: demo\n")
+
+    home = tmp_path / "home"
+    home.mkdir()
+    fake_bin = _fake_launchd_bin(tmp_path)
+    worker = tmp_path / "worker-proj"
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project",
+            str(project),
+            "--worker",
+            str(worker),
+            "--interval",
+            "15",
+            "--to",
+            "both",
+        ],
+        env={
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Watcher worker is ready." in result.stdout
+    assert (worker / "README.md").exists()
+    assert (worker / ".superharness").is_symlink()
+    assert (worker / ".superharness").resolve() == (project / ".superharness").resolve()
+    watcher_cfg = project / ".superharness" / "watcher.yaml"
+    assert watcher_cfg.exists()
+    cfg_text = watcher_cfg.read_text()
+    assert f'watcher_project: "{worker.resolve()}"' in cfg_text
+    assert "launcher_timeout_seconds: 180" in cfg_text
+    assert "codex_bypass: false" in cfg_text

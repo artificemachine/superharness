@@ -29,7 +29,13 @@ def write_items(path, items)
   begin
     tmp.write(HEADER + YAML.dump(items))
     tmp.flush
-    tmp.fsync
+    begin
+      tmp.fsync
+    rescue IOError, Errno::EIO => e
+      tmp.close unless tmp.closed?
+      File.unlink(tmp.path) if File.exist?(tmp.path)
+      raise "Failed to fsync inbox #{path}: #{e.message}"
+    end
     tmp.close
     File.rename(tmp.path, path)
   ensure
@@ -62,6 +68,26 @@ def append_archive(path, items, now:)
     f.write("# normalized_at: #{now}\n")
     f.write(YAML.dump(items))
   end
+end
+
+def process_alive?(pid_str)
+  pid = Integer(pid_str.to_s, exception: false)
+  return false if pid.nil? || pid <= 0
+
+  begin
+    Process.kill(0, pid)
+    true
+  rescue Errno::ESRCH
+    false
+  rescue Errno::EPERM
+    true
+  end
+end
+
+def strict_int(v, name)
+  n = Integer(v.to_s, exception: false)
+  abort("#{name} must be an integer, got: #{v}") if n.nil?
+  n
 end
 
 def norm_priority(v)
@@ -232,7 +258,11 @@ end
 
 def recover_launched(file:, now:, timeout_minutes:, action:)
   items = load_items(file)
-  now_time = Time.parse(now)
+  begin
+    now_time = Time.parse(now)
+  rescue ArgumentError
+    abort("recover_launched: invalid --now timestamp: #{now}")
+  end
   timeout_seconds = timeout_minutes.to_i * 60
   updated = false
   stale_count = 0
@@ -242,6 +272,7 @@ def recover_launched(file:, now:, timeout_minutes:, action:)
   items.each_with_index do |item, idx|
     next unless item.is_a?(Hash)
     next unless item["status"].to_s == "launched"
+    next if process_alive?(item["pid"])
 
     launched_at = item["launched_at"].to_s
     next if launched_at.empty?
@@ -252,6 +283,8 @@ def recover_launched(file:, now:, timeout_minutes:, action:)
       item["status"] = "stale"
       item["stale_at"] = now
       item["stale_reason"] = "invalid_launched_at"
+      item.delete("pid")
+      item.delete("launched_at")
       items[idx] = item
       stale_count += 1
       updated = true
@@ -280,6 +313,7 @@ def recover_launched(file:, now:, timeout_minutes:, action:)
       stale_count += 1
     end
     item.delete("launched_at")
+    item.delete("pid")
     items[idx] = item
     updated = true
   end
@@ -382,10 +416,10 @@ when "enqueue"
     o.on("--to TARGET") { |v| opts[:to] = v }
     o.on("--task TASK_ID") { |v| opts[:task] = v }
     o.on("--project DIR") { |v| opts[:project] = v }
-    o.on("--priority N") { |v| opts[:priority] = v.to_i }
+    o.on("--priority N") { |v| opts[:priority] = strict_int(v, "--priority") }
     o.on("--created-at TS") { |v| opts[:created_at] = v }
-    o.on("--retry-count N") { |v| opts[:retry_count] = v.to_i }
-    o.on("--max-retries N") { |v| opts[:max_retries] = v.to_i }
+    o.on("--retry-count N") { |v| opts[:retry_count] = strict_int(v, "--retry-count") }
+    o.on("--max-retries N") { |v| opts[:max_retries] = strict_int(v, "--max-retries") }
   end.parse!(ARGV)
   required = %i[file id to task project priority created_at]
   abort("--file, --id, --to, --task, --project, --priority, --created-at are required") unless required.all? { |k| opts.key?(k) }
@@ -457,7 +491,7 @@ when "recover_launched"
   OptionParser.new do |o|
     o.on("--file FILE") { |v| opts[:file] = v }
     o.on("--now TS") { |v| opts[:now] = v }
-    o.on("--timeout-minutes N") { |v| opts[:timeout_minutes] = v.to_i }
+    o.on("--timeout-minutes N") { |v| opts[:timeout_minutes] = strict_int(v, "--timeout-minutes") }
     o.on("--action MODE") { |v| opts[:action] = v }
   end.parse!(ARGV)
   abort("--file and --now are required") unless opts[:file] && opts[:now]

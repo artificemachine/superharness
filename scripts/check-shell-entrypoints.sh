@@ -30,6 +30,7 @@ ENTRYPOINT_FILES=(
   "scripts/install-launchd-inbox-watcher.sh"
   "scripts/install-git-hooks.sh"
   "scripts/task.sh"
+  "scripts/setup-watcher-worker.sh"
   "scripts/uninstall-launchd-inbox-watcher.sh"
   "scripts/uninstall.sh"
   "scripts/check-changelog-append-only.sh"

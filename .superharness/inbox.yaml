@@ -159,5 +159,5 @@
   retry_count: 0
   max_retries: 3
   created_at: '2026-03-11T18:42:29Z'
-  paused_at: '2026-03-11T18:46:01Z'
+  paused_at: '2026-03-11T18:52:59Z'
   pause_reason: dirty_worktree_requires_user_confirmation

@@ -98,7 +98,16 @@ def _stop_server(server, thread) -> None:
 def test_monitor_status_returns_contract_and_counts(repo_root, tmp_path, monkeypatch) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
-    monkeypatch.setattr(module, "watcher_state", lambda label: "running")
+    monkeypatch.setattr(
+        module,
+        "watcher_runtime",
+        lambda label: {
+            "loaded": True,
+            "state": "running",
+            "last_exit_code": "0",
+            "run_interval_seconds": 15,
+        },
+    )
     monkeypatch.setattr(module, "contract_id", lambda path: "monitor-contract")
     monkeypatch.setattr(module.shutil, "which", lambda name: None)
 
@@ -258,6 +267,8 @@ def test_monitor_action_watcher_start_installs_and_kickstarts(repo_root, tmp_pat
     assert "15" in install_call
     assert "--confirm-non-interactive" in install_call
     assert "--confirm-skip-permissions" in install_call
+    assert "--launcher-timeout" in install_call
+    assert "180" in install_call
     assert kickstart_call[:3] == ["launchctl", "kickstart", "-k"]
 
 
