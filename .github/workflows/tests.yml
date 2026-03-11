@@ -13,28 +13,38 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        with:
+          fetch-depth: 0
+
+      - name: Changelog append-only guard
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE_REF="${{ github.event.before }}"
+          fi
+          if [ -z "$BASE_REF" ] || [ "$BASE_REF" = "0000000000000000000000000000000000000000" ]; then
+            echo "No usable base ref for append-only check; skipping."
+            exit 0
+          fi
+          bash scripts/check-changelog-append-only.sh --base-ref "$BASE_REF" --head-ref HEAD
 
       - name: Entrypoint guard
         run: scripts/check-shell-entrypoints.sh
 
       - name: Syntax checks
         run: |
-          bash -n init-project.sh
-          bash -n adapters/claude-code/install.sh
-          bash -n adapters/claude-code/hooks/session-start.sh
-          bash -n adapters/claude-code/hooks/scope-guard.sh
-          bash -n adapters/claude-code/hooks/branch-guard.sh
-          bash -n adapters/claude-code/hooks/ledger-append.sh
-          bash -n scripts/check-shell-entrypoints.sh
-          bash -n scripts/install-git-hooks.sh
-          bash -n .githooks/pre-commit
+          # Shell syntax for entrypoints/hooks is enforced by scripts/check-shell-entrypoints.sh.
+          ruby -c scripts/inbox-yaml.rb
 
       - name: Script smoke tests
         run: |
-          bash init-project.sh --help
-          bash init-project.sh --dry-run "CI Smoke" "Bash" "active"
-          bash adapters/claude-code/install.sh --help
+          while IFS= read -r entrypoint; do
+            [ -n "$entrypoint" ] || continue
+            bash "$entrypoint" --help
+          done < <(bash scripts/check-shell-entrypoints.sh --list-entrypoints)
           HOME="$(mktemp -d)" bash adapters/claude-code/install.sh --dry-run
+          bash init-project.sh --dry-run "CI Smoke" "Bash" "active"
 
       - name: Install pytest
         run: |

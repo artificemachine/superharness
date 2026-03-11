@@ -1,128 +1,163 @@
 # superharness
 
-superharness is a cross-agent execution harness for Claude Code and Codex CLI.
+**Multi-agent task coordination for Claude Code and Codex CLI**
 
-It provides:
-- project bootstrap (`init-project.sh`)
-- Claude hooks (session context + guardrails)
-- contract/handoff/ledger protocol files
-- delegation inbox queue + dispatch/watch automation
-- shell entrypoint integrity guard in CI and pre-commit
+superharness lets AI coding assistants work on the same project without stepping on each other. It provides a shared contract, queue-based delegation, and handoff/ledger state so tasks survive across sessions.
 
-Architecture and philosophy are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+---
+
+## Quick Links
+
+📘 **[User Guide](docs/GUIDE.md)** — How to use superharness (installation, commands, troubleshooting)
+🏗️ **[Architecture](docs/ARCHITECTURE.md)** — Why it exists, how it works, design philosophy
+⚡ **[Quickstart](docs/QUICKSTART.md)** — Shortest path to first delegation
+🔒 **[Security](SECURITY.md)** — Operational safety notes
+🗺️ **[Roadmap](ROADMAP.md)** — Current maturity target and next milestones
+
+---
+
+## What You Get
+
+- **`superharness init`** — Bootstrap protocol files (`.superharness/`)
+- **`superharness delegate`** — Launch agent with contract context
+- **`superharness enqueue|dispatch|watch`** — Queue-based task routing
+- **`superharness hygiene`** — Protocol compliance checks
+- **`superharness watch --foreground`** — Cross-platform continuous watcher
+- **`superharness doctor`** — Prerequisite and setup health check
+- **`superharness uninstall`** — Clean removal of system artifacts
+- **Background watcher** — Unattended execution via macOS launchd or Linux systemd (opt-in)
+
+---
+
+## Quick Start
+
+> **Requires:** `bash`, `ruby`, `python3`. See [Prerequisites](#prerequisites) for install commands.
+
+### 0. Install the CLI
+```bash
+bash scripts/install-wrapper.sh
+# Creates a symlink at ~/.local/bin/superharness
+# If ~/.local/bin is not in PATH: export PATH="$HOME/.local/bin:$PATH"
+```
+
+### 1. Initialize your project
+```bash
+cd /path/to/project
+superharness init "Project Name" "Tech/Stack" "active"
+# Creates .superharness/, CLAUDE.md, and AGENTS.md in your project root
+```
+
+### 2. Verify setup
+```bash
+superharness doctor --project .
+```
+
+### 3. Create a task and dispatch it
+```bash
+superharness task create --project . --id my-task --title "First task" --owner codex-cli
+superharness enqueue --project . --to codex-cli --task my-task --priority 1
+superharness dispatch --project . --to codex-cli --print-only
+```
+
+**Full setup guide:** [docs/QUICKSTART.md](docs/QUICKSTART.md)
+
+---
+
+## Core Commands
+
+```bash
+# Contract snapshot
+superharness contract today --project /path/to/project
+
+# Delegate to agent
+superharness delegate --to codex-cli --project /path/to/project
+
+# Queue management
+superharness enqueue --project . --to codex-cli --task task-id --priority 1
+superharness dispatch --project . --to codex-cli
+
+# Protocol hygiene
+superharness hygiene --project /path/to/project
+
+# Browser monitor
+superharness monitor-ui --project /path/to/project
+```
+
+**Full command reference:** [docs/GUIDE.md](docs/GUIDE.md)
+
+### Run Tests
+
+```bash
+pip install -r requirements.txt
+pytest tests/ -q
+```
+
+---
 
 ## Prerequisites
 
 - `bash` (scripts are Bash-based)
-- `ruby` (required by inbox YAML helpers and hygiene checks)
-- `python3` (used by Claude session-start hook JSON escaping)
-- `claude` CLI (for Claude delegation commands)
-- `codex` CLI (for Codex delegation commands)
-- macOS `launchd` is required only for background watcher install/ensure scripts
+- `ruby` (required by inbox YAML helpers and hygiene checks) — see `.ruby-version`
+- `python3` + `pytest` (tests and hook JSON escaping) — `pip install -r requirements.txt`
+- `claude` CLI (for Claude delegation commands): `npm install -g @anthropic-ai/claude-code`
+- `codex` CLI (for Codex delegation commands): `npm install -g @openai/codex`
+- macOS `launchd` or Linux `systemd` for background watcher (see `scripts/superharness-watcher@.service`); `--foreground` mode works everywhere
 
-## Quick Start
+---
 
-1. Install Claude plugin hooks:
-```bash
-bash adapters/claude-code/install.sh
+## Project Runtime State
+
+Per-project state lives in `.superharness/`:
+
+```text
+.superharness/
+├── contract.yaml          # tasks, decisions, failures
+├── handoffs/              # session handoff state
+├── ledger.md              # append-only event log
+├── decisions.yaml         # cross-agent ADRs
+├── failures.yaml          # failure memory
+└── inbox.yaml             # dispatch queue
 ```
 
-2. Initialize a project:
-```bash
-cd /path/to/project
-bash /path/to/superharness/init-project.sh "Project Name" "Tech/Stack" "active"
-```
+**Architecture details:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
-3. Review generated files:
-- `CLAUDE.md`
-- `AGENTS.md`
-- `.superharness/contract.yaml`
-
-4. Add first tasks in `.superharness/contract.yaml` with absolute `project_path` values.
-
-## Core Commands
-
-### Delegation launchers
-```bash
-bash scripts/delegate-to-codex.sh --project /path/to/project
-bash scripts/delegate-to-claude.sh --project /path/to/project
-```
-
-Use `--task <TASK_ID>` to force a specific task.
-Use `--print-only` to generate prompt text without launching the CLI.
-
-### Inbox queue
-```bash
-bash scripts/inbox-enqueue.sh --project /path/to/project --to codex-cli --task task-id --priority 1
-bash scripts/inbox-dispatch.sh --project /path/to/project
-bash scripts/inbox-watch.sh --project /path/to/project --to both
-```
-
-Status flow:
-- `pending` -> `launched` (dispatch claims item; retry count increments)
-- `launched` -> `running` (agent begins work)
-- then `done|failed` via lifecycle updates
-
-### Inbox maintenance
-```bash
-bash scripts/inbox-normalize.sh --project /path/to/project --archive
-```
-
-### macOS background watcher
-```bash
-bash scripts/install-launchd-inbox-watcher.sh --project /path/to/project --interval 30
-bash scripts/ensure-launchd-inbox-watcher.sh --project /path/to/project
-bash scripts/uninstall-launchd-inbox-watcher.sh --project /path/to/project
-```
-
-## Protocol Hygiene
-
-Check project protocol quality:
-```bash
-bash scripts/check-contract-hygiene.sh --project /path/to/project
-```
-
-Strict mode also requires promotion alignment for contract decisions/failures:
-```bash
-bash scripts/check-contract-hygiene.sh --project /path/to/project --strict
-```
-
-## CI And Local Guardrails
-
-Run shell entrypoint guard:
-```bash
-bash scripts/check-shell-entrypoints.sh
-```
-
-Install git pre-commit hook:
-```bash
-bash scripts/install-git-hooks.sh
-```
-
-Guard guarantees:
-- explicit allowlist for executable shell entrypoints
-- shebang presence
-- executable mode (`100755` for tracked files)
-- `bash -n` syntax validity
+---
 
 ## Repository Layout
 
 ```text
 superharness/
+├── superharness            # thin command dispatcher
+├── protocol/              # protocol spec + templates
+├── engine/                # ruby runtime helpers
+├── cli/                   # primary shell commands
 ├── adapters/              # Claude/Codex adapter assets
-├── scripts/               # dispatch, delegation, launchd, guard scripts
-├── identity/              # base identity content
-├── agents/                # protocol + review lenses
-├── knowledge/             # decision/failure/vault references
-├── methodology/           # routing and review method docs
-├── state/                 # state protocol and templates
-├── docs/                  # architecture and rationale docs
+├── scripts/               # launchd + guard scripts
+├── docs/                  # architecture and user guide
 ├── tests/                 # unit/integration/e2e tests
-├── init-project.sh
-├── ROADMAP.md
 └── CHANGELOG.md
 ```
 
+---
+
+## Security Note
+
+The background watcher enables **unattended execution** (agents run without human supervision). This is powerful but requires explicit confirmation:
+
+```bash
+bash scripts/install-launchd-inbox-watcher.sh \
+  --project /path/to/project \
+  --interval 30 \
+  --confirm-non-interactive yes \
+  --confirm-skip-permissions yes
+```
+
+**Read the full threat model:** [SECURITY.md](SECURITY.md)
+
+---
+
 ## Current Version
 
-Current execution maturity target is tracked in [ROADMAP.md](ROADMAP.md).
+Current execution maturity target: **v0.7** (reliability and adoption milestone)
+
+See [ROADMAP.md](ROADMAP.md) for details, [RELEASES.md](RELEASES.md) for release notes, and [CHANGELOG.md](CHANGELOG.md) for the full iteration log.

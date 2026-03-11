@@ -1,0 +1,49 @@
+---
+id: 2026-03-10-protocol-hygiene-ci
+contract_id: v07-readiness
+task: protocol-hygiene-ci
+from: claude-code
+to: claude-code
+created: 2026-03-10T13:05:00Z
+created_by: claude-code
+outcomes:
+  - "Added .github/workflows/contract-hygiene.yml CI workflow enforcing handoff+ledger evidence for done tasks"
+  - "Workflow runs on pull_request and push to main, validates contract protocol hygiene"
+  - "Created comprehensive integration test suite in tests/integration/test_contract_hygiene_ci.py"
+  - "All 8 tests pass (4 integration + 4 unit tests for contract hygiene)"
+  - "Fixed existing handoff file docs-split-audience.yaml to use correct 'task:' key instead of 'task_id:'"
+  - "Hygiene check validates: done tasks have handoff files, done tasks mentioned in ledger, YAML syntax valid"
+  - "Strict mode validates: decisions/failures promoted from contract to global stores when applicable"
+decisions:
+  - what: "Use existing validate.rb script instead of creating new validator"
+    why: "validate.rb already implements all required logic; reuse prevents duplication and maintenance burden"
+    alternatives:
+      - "Create Python validator (rejected: Ruby works, tests pass, no justification for rewrite)"
+      - "Inline validation in workflow (rejected: not testable, violates DRY)"
+  - what: "Add integration tests in tests/integration/ instead of e2e/"
+    why: "Contract hygiene is integration-level (script + filesystem), not full e2e system test"
+    alternatives:
+      - "Add to tests/e2e/ (rejected: too heavyweight for this scope)"
+      - "Add to tests/unit/ (rejected: requires filesystem, not pure unit test)"
+  - what: "Fix handoff format to use 'task:' key, not 'task_id:'"
+    why: "validate.rb expects 'task' key (line 69); existing codex-cli handoffs use 'task:' convention"
+    alternatives:
+      - "Change validate.rb to accept both (rejected: breaks existing handoffs, adds complexity)"
+      - "Leave as task_id and fail CI (rejected: breaks v07-readiness contract validation)"
+blockers: []
+next_steps:
+  - "Monitor first CI run on PR or main push to verify workflow executes correctly"
+  - "Consider adding GitHub Actions status badge to README once workflow runs"
+artifacts:
+  - path: ".github/workflows/contract-hygiene.yml"
+    description: "CI workflow enforcing handoff+ledger evidence on done tasks"
+  - path: "tests/integration/test_contract_hygiene_ci.py"
+    description: "Integration tests validating hygiene check script behavior"
+  - path: ".superharness/handoffs/docs-split-audience.yaml"
+    description: "Fixed handoff file format (task_id -> task)"
+notes:
+  - "Workflow is conditionally executed only when .superharness/ directory exists"
+  - "Hygiene check uses --strict flag in CI to enforce decision/failure promotion"
+  - "Fixed broken pip in pyenv 3.11.6 during test execution (reinstalled via get-pip.py)"
+  - "All 8 contract hygiene tests pass (4 integration + 4 unit)"
+  - "Hygiene check passes on current repo state after handoff format fix"
