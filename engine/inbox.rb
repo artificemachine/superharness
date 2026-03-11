@@ -189,6 +189,20 @@ def set_field(file:, id:, key:, value:)
   0
 end
 
+def remove_item(file:, id:)
+  items = load_items(file)
+  idx = items.index { |x| x.is_a?(Hash) && x["id"].to_s == id.to_s }
+  if idx.nil?
+    puts "result=not_found id=#{id}"
+    return 2
+  end
+  item = items[idx]
+  items.delete_at(idx)
+  write_items(file, items)
+  puts "result=removed id=#{id} status=#{item["status"]} task=#{item["task"]} to=#{item["to"]}"
+  0
+end
+
 def normalize(file:, drop_statuses:, drop_prefixes:, archive_file: nil, now: nil)
   items = load_items(file)
   statuses = drop_statuses.map(&:to_s)
@@ -410,6 +424,14 @@ when "set_field"
   end.parse!(ARGV)
   abort("--file, --id, --key are required") unless opts[:file] && opts[:id] && opts[:key]
   with_inbox_lock(opts[:file]) { exit set_field(file: opts[:file], id: opts[:id], key: opts[:key], value: opts[:value]) }
+when "remove"
+  opts = {}
+  OptionParser.new do |o|
+    o.on("--file FILE") { |v| opts[:file] = v }
+    o.on("--id ID") { |v| opts[:id] = v }
+  end.parse!(ARGV)
+  abort("--file and --id are required") unless opts[:file] && opts[:id]
+  with_inbox_lock(opts[:file]) { exit remove_item(file: opts[:file], id: opts[:id]) }
 when "normalize"
   opts = { drop_statuses: [], drop_prefixes: [] }
   OptionParser.new do |o|
@@ -476,5 +498,5 @@ when "sync_task_status"
   abort("--file, --task, --to, --now are required") unless opts[:file] && opts[:task] && opts[:to] && opts[:now]
   with_inbox_lock(opts[:file]) { exit sync_task_status(file: opts[:file], task: opts[:task], to: opts[:to], now: opts[:now]) }
 else
-  abort("Usage: inbox.rb <next_pending|launch|enqueue|set_status|sync_task_status|normalize|recover_launched|list_launched|deadline_fail> [options]")
+  abort("Usage: inbox.rb <next_pending|launch|enqueue|set_status|set_field|remove|sync_task_status|normalize|recover_launched|list_launched|deadline_fail> [options]")
 end
