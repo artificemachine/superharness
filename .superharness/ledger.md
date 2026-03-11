@@ -281,3 +281,17 @@ Append-only activity log. Never edit previous entries.
 - 2026-03-11T19:18:58Z — claude-code — modified: inbox-dispatch.sh
 - 2026-03-11T19:19:00Z — claude-code — modified: install-launchd-inbox-watcher.sh
 - 2026-03-11T19:19:03Z — claude-code — modified: inbox-watch.sh
+- 2026-03-11T19:49:49Z — codex-cli — task consensus-watcher-reliability-20260311 done — reviewed watcher reliability fixes; accepted dirty-worktree exclusion, but rejected KeepAlive=true and current worker sync as not ready to ship due to launchd relaunch loop and .superharness symlink replacement
+- 2026-03-11T19:52:26Z — claude-code — modified: install-launchd-inbox-watcher.sh
+- 2026-03-11T19:52:30Z — claude-code — modified: inbox-watch.sh
+- 2026-03-11T19:53:18Z — claude-code — modified: test_install_scripts.py
+- 2026-03-11T19:56:10Z — claude-code — modified: discussion.rb
+- 2026-03-11T19:56:40Z — claude-code — modified: discussion-dispatch.sh
+- 2026-03-11T19:57:26Z — claude-code — modified: discuss.sh
+- 2026-03-11T19:57:55Z — claude-code — modified: delegate.sh
+- 2026-03-11T19:57:56Z — claude-code — modified: delegate.sh
+- 2026-03-11T19:58:31Z — claude-code — modified: delegate.sh
+- 2026-03-11T19:58:42Z — claude-code — modified: inbox-watch.sh
+- 2026-03-11T19:58:44Z — claude-code — modified: inbox-watch.sh
+- 2026-03-11T19:59:22Z — claude-code — modified: inbox.rb
+- 2026-03-11T22:06:23Z — claude-code — modified: check-shell-entrypoints.sh
