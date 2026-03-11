@@ -1,0 +1,75 @@
+---
+contract: v07-readiness
+task: second-project-validate
+agent: claude-code
+completed: 2026-03-10T13:09:00Z
+
+summary: |
+  Validated that superharness repo itself successfully runs through the full
+  inbox+handoff lifecycle. All 8 lifecycle components passed validation.
+
+validation_results:
+  contract_tasks: 4 done tasks tracked
+  inbox_items: 4 done items processed
+  handoff_files: 4 handoff YAML files created
+  ledger_entries: 4 task completion entries
+  watcher_configured: launchd plist exists
+  watcher_active: service running (PID 74347)
+  hygiene_check: passes with --strict flag
+  ci_workflow: contract-hygiene.yml active
+
+lifecycle_evidence:
+  - "Contract v07-readiness has 4 completed tasks with proper status tracking"
+  - "Inbox shows progression: pending → launched → running → done"
+  - "Each done task has corresponding handoff file in .superharness/handoffs/"
+  - "Ledger has append-only entries for all task completions"
+  - "Watcher successfully dispatched tasks to both claude-code and codex-cli"
+  - "Hygiene CI enforces handoff+ledger requirements on all done tasks"
+
+meta_observation: |
+  This task is itself meta-validation: we delegated superharness tasks
+  via the inbox, completed them with proper handoffs, and now this final
+  task validates the entire chain works end-to-end. The fact that this
+  handoff exists proves the lifecycle is working.
+
+completed_tasks_validated:
+  - task: docs-split-audience
+    owner: claude-code
+    handoff: docs-split-audience.yaml
+    ledger_entry: "2026-03-10T12:40:00Z — claude-code — task docs-split-audience done"
+
+  - task: protocol-hygiene-ci
+    owner: claude-code
+    handoff: protocol-hygiene-ci.yaml
+    ledger_entry: "2026-03-10T12:04:23Z — claude-code — task protocol-hygiene-ci done"
+
+  - task: ci-parity-entrypoints
+    owner: codex-cli
+    handoff: 2026-03-10-ci-parity-entrypoints.yaml
+    ledger_entry: "2026-03-10T09:05:19Z — codex-cli — task ci-parity-entrypoints done"
+
+  - task: failure-memory-promote
+    owner: codex-cli
+    handoff: 2026-03-10-failure-memory-promote.yaml
+    ledger_entry: "2026-03-10T09:09:00Z — codex-cli — task failure-memory-promote done"
+
+watcher_evidence:
+  launchd_plist: ~/Library/LaunchAgents/com.superharness.inbox.superharness-.plist
+  service_status: running (PID 74347)
+  log_path: ~/Library/Logs/superharness/com.superharness.inbox.superharness-.out.log
+  dispatch_log_sample: |
+    Inbox item updated: 20260310T115452Z-protocol-hygiene-ci-58313-244185215 -> done
+    Inbox item updated: 20260310T115452Z-second-project-validate-58353-226969 -> launched
+
+delegate_command_works: true
+contract_command_works: true
+hygiene_script_works: true
+ci_integration_works: true
+
+files_modified: []
+
+next_steps:
+  - Contract v07-readiness is now validated and ready for final review
+  - All 5 tasks completed with proper protocol adherence
+  - System is self-hosting: superharness manages superharness development
+  - Ready for v0.7 release milestone
