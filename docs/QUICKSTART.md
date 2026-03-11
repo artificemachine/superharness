@@ -70,7 +70,18 @@ superharness watch --foreground --project . --interval 60 \
 ```
 Set `SUPERHARNESS_CONFIRM_NON_INTERACTIVE=YES` in the environment to confirm unattended execution.
 
-**Background (macOS launchd only):**
+**Background on Linux (systemd):**
+```bash
+# Copy the template unit file
+cp scripts/superharness-watcher@.service ~/.config/systemd/user/
+
+# Enable and start for your project directory (relative to $HOME)
+# Example: project at ~/myproject → instance name "myproject"
+systemctl --user enable --now superharness-watcher@myproject.service
+systemctl --user status superharness-watcher@myproject.service
+```
+
+**Background on macOS (launchd):**
 ```bash
 bash scripts/install-launchd-inbox-watcher.sh --project . --interval 30 \
   --confirm-non-interactive yes --confirm-skip-permissions yes
