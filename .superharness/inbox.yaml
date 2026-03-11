@@ -154,10 +154,57 @@
   to: codex-cli
   task: public-readiness-reaudit-20260311
   project: "/Users/airm2max/DevOpsSec/superharness"
-  status: pending
+  status: done
   priority: 1
-  retry_count: 0
+  retry_count: 1
   max_retries: 3
   created_at: '2026-03-11T18:42:29Z'
   paused_at: '2026-03-11T18:56:04Z'
   pause_reason: dirty_worktree_requires_user_confirmation
+  launched_at: '2026-03-11T18:58:08Z'
+  done_at: '2026-03-11T19:04:18Z'
+- id: 20260311T193027Z-consensus-watcher-reliability-20260311-77676-868284256
+  to: codex-cli
+  task: consensus-watcher-reliability-20260311
+  project: "/Users/airm2max/DevOpsSec/superharness"
+  status: done
+  priority: 1
+  retry_count: 1
+  max_retries: 3
+  created_at: '2026-03-11T19:30:27Z'
+  paused_at: '2026-03-11T19:44:48Z'
+  pause_reason: dirty_worktree_requires_user_confirmation
+  resumed_at: '2026-03-11T19:46:23Z'
+  launched_at: '2026-03-11T19:46:25Z'
+  done_at: '2026-03-11T19:51:20Z'
+- id: 20260311T195024Z-consensus-watcher-reliability-20260311-claude-3630-168620028
+  to: claude-code
+  task: consensus-watcher-reliability-20260311
+  project: "/Users/airm2max/DevOpsSec/superharness"
+  status: launched
+  priority: 1
+  retry_count: 2
+  max_retries: 3
+  created_at: '2026-03-11T19:50:24Z'
+  stale_at: '2026-03-11T22:07:45Z'
+  stale_reason: stale_timeout_retry
+  launched_at: '2026-03-11T22:07:45Z'
+  pid: '78190'
+- id: 20260311T220550Z-discuss-20260311T220550Z-74578-194192319-r1-claude-code-74567-110456568
+  to: claude-code
+  task: discuss-20260311T220550Z-74578-194192319/round-1
+  project: "/Users/airm2max/DevOpsSec/superharness"
+  status: pending
+  priority: 1
+  retry_count: 0
+  max_retries: 3
+  created_at: '2026-03-11T22:05:50Z'
+- id: 20260311T220551Z-discuss-20260311T220550Z-74578-194192319-r1-codex-cli-74567-124399054
+  to: codex-cli
+  task: discuss-20260311T220550Z-74578-194192319/round-1
+  project: "/Users/airm2max/DevOpsSec/superharness"
+  status: pending
+  priority: 1
+  retry_count: 0
+  max_retries: 3
+  created_at: '2026-03-11T22:05:51Z'

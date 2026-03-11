@@ -99,9 +99,12 @@ tasks:
   title: 'Consensus review: watcher reliability fixes (KeepAlive, dirty worktree exclusion,
     worker sync)'
   owner: codex-cli
-  status: todo
+  status: done
   project_path: "/Users/airm2max/DevOpsSec/superharness"
-  summary: 'User approval granted at 2026-03-11T19:30:27Z by owner: Review watcher
-    reliability fixes, find consensus'
+  summary: 'Consensus review completed 2026-03-11T19:49:49Z: dirty-worktree exclusion
+    is accepted, but KeepAlive=true for the single-cycle launchd watcher and the
+    current worker rsync sync are not ready to ship because they create an immediate
+    relaunch loop and replace the worker .superharness symlink with a copied directory.
+    Targeted watcher tests still passed, confirming coverage gaps.'
 decisions: []
 failures: []
