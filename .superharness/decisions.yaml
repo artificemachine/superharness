@@ -1,0 +1,11 @@
+# Cross-agent decision records (ADR-lite)
+# Both Claude Code and Codex CLI read/write this file.
+# Format:
+#   - id: "short-kebab-id"
+#     what: "decision title"
+#     why: "rationale"
+#     alternatives: ["alt1", "alt2"]
+#     date: YYYY-MM-DD
+#     by: claude-code | codex-cli | owner
+#     status: accepted | superseded | deprecated
+decisions: []
