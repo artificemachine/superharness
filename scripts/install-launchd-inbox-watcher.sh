@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat << 'USAGE'
 Usage:
-  install-launchd-inbox-watcher.sh --project DIR [--interval SEC] [--to claude-code|codex-cli|both] [--print-only] [--codex-bypass] [--confirm-non-interactive yes|no] [--confirm-skip-permissions yes|no] [--confirm-codex-bypass yes|no] [--allow-protected-path]
+  install-launchd-inbox-watcher.sh --project DIR [--interval SEC] [--to claude-code|codex-cli|both] [--print-only] [--codex-bypass] [--recover-timeout-minutes N] [--recover-action stale|retry] [--launcher-timeout SECONDS] [--confirm-non-interactive yes|no] [--confirm-skip-permissions yes|no] [--confirm-codex-bypass yes|no] [--allow-protected-path]
 
 Options:
   -p, --project DIR   Project directory containing .superharness/ (required)
@@ -12,6 +12,9 @@ Options:
       --to TARGET     Dispatch target filter (default: both)
       --print-only    Prepare prompts only; do not launch CLIs
       --codex-bypass  For codex-cli only: use dangerous bypass in non-interactive mode
+      --recover-timeout-minutes N  Mark launched rows stale/retry after N minutes (default: 20)
+      --recover-action MODE  stale or retry (default: retry)
+      --launcher-timeout SECONDS  Kill launcher after SECONDS (default: 0 = no timeout)
       --confirm-non-interactive yes|no  Set SUPERHARNESS_CONFIRM_NON_INTERACTIVE explicitly
       --confirm-skip-permissions yes|no  Set SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS explicitly
       --confirm-codex-bypass yes|no  Set SUPERHARNESS_CONFIRM_CODEX_BYPASS explicitly
@@ -25,6 +28,9 @@ INTERVAL=30
 TARGET="both"
 PRINT_ONLY=0
 CODEX_BYPASS=0
+RECOVER_TIMEOUT_MINUTES=20
+RECOVER_ACTION=retry
+LAUNCHER_TIMEOUT=0
 CONFIRM_NON_INTERACTIVE=""
 CONFIRM_SKIP_PERMISSIONS=""
 CONFIRM_CODEX_BYPASS=""
@@ -121,6 +127,21 @@ while [ $# -gt 0 ]; do
       CODEX_BYPASS=1
       shift
       ;;
+    --recover-timeout-minutes)
+      [ $# -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
+      RECOVER_TIMEOUT_MINUTES="$2"
+      shift 2
+      ;;
+    --recover-action)
+      [ $# -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
+      RECOVER_ACTION="$2"
+      shift 2
+      ;;
+    --launcher-timeout)
+      [ $# -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
+      LAUNCHER_TIMEOUT="$2"
+      shift 2
+      ;;
     --confirm-non-interactive)
       [ $# -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
       CONFIRM_NON_INTERACTIVE="$2"
@@ -193,6 +214,28 @@ esac
 case "$INTERVAL" in
   ''|*[!0-9]*|0)
     echo "--interval must be a positive integer" >&2
+    exit 2
+    ;;
+esac
+
+case "$RECOVER_TIMEOUT_MINUTES" in
+  ''|*[!0-9]*)
+    echo "--recover-timeout-minutes must be a non-negative integer" >&2
+    exit 2
+    ;;
+esac
+
+case "$RECOVER_ACTION" in
+  stale|retry) ;;
+  *)
+    echo "--recover-action must be stale or retry" >&2
+    exit 2
+    ;;
+esac
+
+case "$LAUNCHER_TIMEOUT" in
+  ''|*[!0-9]*)
+    echo "--launcher-timeout must be a non-negative integer" >&2
     exit 2
     ;;
 esac
@@ -289,6 +332,11 @@ ARGS=("$WATCHER" "--project" "$PROJECT_DIR" "--to" "$TARGET" "--non-interactive"
 if [ "$PRINT_ONLY" -eq 1 ]; then
   ARGS=("$WATCHER" "--project" "$PROJECT_DIR" "--to" "$TARGET" "--print-only")
 fi
+ARGS+=("--recover-timeout-minutes" "$RECOVER_TIMEOUT_MINUTES")
+ARGS+=("--recover-action" "$RECOVER_ACTION")
+if [ "$LAUNCHER_TIMEOUT" -gt 0 ]; then
+  ARGS+=("--launcher-timeout" "$LAUNCHER_TIMEOUT")
+fi
 if [ "$CODEX_BYPASS" -eq 1 ]; then
   ARGS+=("--codex-bypass")
 fi
@@ -349,6 +397,13 @@ echo "Installed launchd inbox watcher:"
 echo "  Label: $LABEL"
 echo "  Plist: $PLIST_PATH"
 echo "  Interval: ${INTERVAL}s"
+echo "  Recover timeout: ${RECOVER_TIMEOUT_MINUTES}m"
+echo "  Recover action: ${RECOVER_ACTION}"
+if [ "$LAUNCHER_TIMEOUT" -gt 0 ]; then
+  echo "  Launcher timeout: ${LAUNCHER_TIMEOUT}s"
+else
+  echo "  Launcher timeout: disabled"
+fi
 echo "  Target: $TARGET"
 if [ "$PRINT_ONLY" -eq 1 ]; then
   echo "  Mode: print-only"

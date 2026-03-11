@@ -66,7 +66,7 @@ ENQUEUE="$SCRIPT_DIR/inbox-enqueue.sh"
 NOW="$(date -u +%FT%TZ)"
 NOW_EPOCH="$(date -u +%s)"
 
-RUBY_HELPER="$(mktemp /tmp/superharness-deadline-XXXXXX)"
+RUBY_HELPER="$(mktemp "${TMPDIR:-/tmp}/superharness-deadline-XXXXXX")"
 trap 'rm -f "$RUBY_HELPER"' EXIT
 
 cat > "$RUBY_HELPER" << 'RUBY'
@@ -90,7 +90,7 @@ items.each do |item|
 end
 RUBY
 
-JSON_TMP="$(mktemp /tmp/superharness-launched-XXXXXX)"
+JSON_TMP="$(mktemp "${TMPDIR:-/tmp}/superharness-launched-XXXXXX")"
 trap 'rm -f "$RUBY_HELPER" "$JSON_TMP"' EXIT
 
 ruby "$INBOX_YAML" list_launched --file "$INBOX_FILE" > "$JSON_TMP"
