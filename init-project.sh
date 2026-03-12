@@ -242,9 +242,11 @@ You are working for the project owner.
 
 ## This Project
 EOF
-    printf '%s\n' "- What: ${PROJECT_NAME}" >> "$PROJECT_DIR/AGENTS.md"
-    printf '%s\n' "- Stack: ${TECH_STACK}" >> "$PROJECT_DIR/AGENTS.md"
-    printf '%s\n\n' "- Status: ${STATUS}" >> "$PROJECT_DIR/AGENTS.md"
+    {
+      printf '%s\n' "- What: ${PROJECT_NAME}"
+      printf '%s\n' "- Stack: ${TECH_STACK}"
+      printf '%s\n\n' "- Status: ${STATUS}"
+    } >> "$PROJECT_DIR/AGENTS.md"
     cat >> "$PROJECT_DIR/AGENTS.md" << 'EOF'
 ## Cross-Agent Protocol
 - Read `.superharness/contract.yaml` before starting work.

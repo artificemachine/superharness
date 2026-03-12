@@ -179,6 +179,49 @@ def test_normalize_archives_only_dropped_rows(repo_root, tmp_path) -> None:
     assert "id: keep-row" not in archive_text
 
 
+def test_normalize_drops_rows_by_id_prefix(repo_root, tmp_path) -> None:
+    project = tmp_path / "proj3-prefix"
+    project.mkdir()
+    _write_contract(project)
+    _write_inbox(
+        project,
+        [
+            "# Delegation inbox",
+            "# status: pending|launched|running|done|failed|stale",
+            "",
+            "- id: keep-row",
+            "  to: codex-cli",
+            "  task: mcp-docs",
+            f"  project: {project}",
+            "  status: pending",
+            "  priority: 2",
+            "  retry_count: 0",
+            "  max_retries: 3",
+            "",
+            "- id: 20260312T010101Z-prefixed",
+            "  to: codex-cli",
+            "  task: mcp-docs",
+            f"  project: {project}",
+            "  status: pending",
+            "  priority: 2",
+            "  retry_count: 0",
+            "  max_retries: 3",
+        ],
+    )
+
+    script = repo_root / "scripts" / "inbox-normalize.sh"
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=["--project", str(project), "--drop-id-prefix", "20260312T"],
+    )
+    assert result.returncode == 0, result.stderr
+
+    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
+    assert "id: keep-row" in inbox_text
+    assert "id: 20260312T010101Z-prefixed" not in inbox_text
+
+
 def test_dispatch_fails_on_malformed_inbox_yaml(repo_root, tmp_path) -> None:
     project = tmp_path / "proj4"
     project.mkdir()
