@@ -1,25 +1,21 @@
 # Delegation inbox
 # status: pending|launched|running|done|failed|stale
 ---
-- id: 20260312T004127Z-discuss-20260312T004127Z-84960-439659850-r1-claude-code-84954-255543030
+- id: 20260312T160141Z-discuss-20260312T160141Z-18147-458055308-r1-claude-code-18136-1009767031
   to: claude-code
-  task: discuss-20260312T004127Z-84960-439659850/round-1
+  task: discuss-20260312T160141Z-18147-458055308/round-1
   project: "/Users/airm2max/DevOpsSec/superharness"
-  status: done
+  status: pending
   priority: 1
-  retry_count: 1
+  retry_count: 0
   max_retries: 3
-  created_at: '2026-03-12T00:41:27Z'
-  launched_at: '2026-03-12T00:41:31Z'
-  done_at: '2026-03-12T00:42:14Z'
-- id: 20260312T004127Z-discuss-20260312T004127Z-84960-439659850-r1-codex-cli-84954-77584902
+  created_at: '2026-03-12T16:01:41Z'
+- id: 20260312T160141Z-discuss-20260312T160141Z-18147-458055308-r1-codex-cli-18136-15127287
   to: codex-cli
-  task: discuss-20260312T004127Z-84960-439659850/round-1
+  task: discuss-20260312T160141Z-18147-458055308/round-1
   project: "/Users/airm2max/DevOpsSec/superharness"
-  status: done
+  status: pending
   priority: 1
-  retry_count: 1
+  retry_count: 0
   max_retries: 3
-  created_at: '2026-03-12T00:41:27Z'
-  launched_at: '2026-03-12T00:41:31Z'
-  done_at: '2026-03-12T00:43:09Z'
+  created_at: '2026-03-12T16:01:41Z'

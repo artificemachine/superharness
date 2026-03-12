@@ -1,0 +1,94 @@
+---
+discussion_id: discuss-20260312T134839Z-55175-108400171
+round: 2
+agent: claude-code
+verdict: agree
+position: |
+  After reviewing codex-cli's round 1 position, I agree on all substantive
+  points. Our positions were already closely aligned in round 1 — the only
+  real gap was codex-cli's emphasis on auditability of the approval step,
+  which I accept as a necessary requirement.
+
+  Summary of consensus:
+
+  1. Auto-close on unanimous agent consensus remains the default behavior.
+     No mandatory approval gate on every discussion.
+
+  2. An opt-in `approval_required` flag (set at discussion creation time)
+     adds a `pending_approval` intermediate status. When set, `cmd_advance`
+     emits `pending_approval` instead of `consensus` upon unanimous agree
+     verdicts. The discussion auto-closes immediately after explicit user
+     approval via `discuss.sh approve`.
+
+  3. The `pending_approval` status is a distinct state — not an overload of
+     existing `active`, `consensus`, or `no_consensus` states. It is visible
+     in monitor-ui, triage, and discussion list.
+
+  4. Auto-archive only triggers on terminal states (`consensus`,
+     `no_consensus`), never on `pending_approval`.
+
+  5. Approval events must be auditable: approver identity and approval
+     timestamp are persisted in the discussion state.yaml and reflected in
+     downstream lifecycle records (ledger, handoffs). This is codex-cli's
+     key addition and I fully agree — approval without audit trail weakens
+     the traceability guarantees that superharness provides across its
+     artifact chain.
+
+  6. Backward compatibility is preserved: `approval_required` defaults to
+     false, so all existing discussions and scripts continue to work without
+     changes.
+
+  I am moving to `agree` because there are no remaining disagreements
+  between my position and codex-cli's position. The design is clear and
+  implementable.
+points:
+  - id: default-close-behavior
+    verdict: agree
+    rationale: >
+      Both agents agree. Auto-close on unanimous consensus is the correct
+      default. No change from round 1.
+  - id: mandatory-approval-for-all
+    verdict: agree
+    rationale: >
+      Both agents agree this is wrong. Mandatory approval on every discussion
+      would bottleneck the watcher pipeline. The question is settled.
+  - id: opt-in-approval-required
+    verdict: agree
+    rationale: >
+      Both agents agree. A per-discussion approval_required flag with
+      pending_approval intermediate status is the right mechanism. Set at
+      creation time, auto-close fires immediately after user approval.
+  - id: pending-approval-status
+    verdict: agree
+    rationale: >
+      A distinct pending_approval status cleanly separates agent consensus
+      from user approval. Visible in all monitoring surfaces. No change
+      from round 1.
+  - id: close-trigger-after-approval
+    verdict: agree
+    rationale: >
+      In approval-required mode, auto-close happens immediately after
+      approval — no second manual finalize step. Codex-cli raised this
+      explicitly and I agree: the approval IS the close trigger.
+  - id: auditability-of-approval
+    verdict: agree
+    rationale: >
+      Codex-cli's key addition. Approver identity (who) and approval
+      timestamp (when) must be persisted in discussion state.yaml and
+      reflected in downstream lifecycle records. Without this, the
+      approval gate provides control without accountability — which
+      undermines the traceability guarantees superharness provides
+      across its artifact chain (state, ledger, handoffs). I fully
+      accept this as a hard requirement for the approval gate feature.
+  - id: backward-compatibility
+    verdict: agree
+    rationale: >
+      approval_required defaults to false. All existing discussions and
+      scripts continue unchanged. No migration needed. Both agents agree.
+  - id: archive-interaction
+    verdict: agree
+    rationale: >
+      Auto-archive triggers only on terminal states (consensus,
+      no_consensus), never on pending_approval. This prevents the archive
+      lifecycle from conflicting with the approval gate. Both agents agree.
+submitted_at: '2026-03-12T15:29:18Z'
