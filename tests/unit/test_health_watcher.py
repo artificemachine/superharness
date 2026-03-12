@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -136,3 +137,119 @@ def test_session_start_ok_when_heartbeat_fresh(repo_root: Path, tmp_path: Path) 
     # Should NOT contain stale/down warnings
     assert "stale" not in ctx.lower(), f"fresh heartbeat should not trigger stale warning: {ctx}"
     assert "not running" not in ctx.lower(), f"fresh heartbeat should not say not running: {ctx}"
+
+
+# ---------------------------------------------------------------------------
+# 3. Watcher cycle must not block on dispatch
+# ---------------------------------------------------------------------------
+
+
+def test_watcher_cycle_completes_while_dispatch_runs(repo_root: Path, tmp_path: Path) -> None:
+    """Watcher cycle must return quickly even when dispatch launches a long-running process."""
+    project = _setup_project(tmp_path)
+    (project / ".superharness" / "inbox.yaml").write_text(
+        "- id: slow-task\n"
+        "  to: claude-code\n"
+        "  task: test-slow\n"
+        f"  project: {project}\n"
+        "  status: pending\n"
+        "  retry_count: 0\n"
+        "  max_retries: 3\n"
+        "  created_at: 2026-03-12T00:00:00Z\n"
+    )
+
+    fake_dispatch = tmp_path / "fake-dispatch.sh"
+    fake_dispatch.write_text(
+        "#!/bin/bash\n"
+        f"echo $$ > {tmp_path}/dispatch.pid\n"
+        "sleep 30\n"
+    )
+    fake_dispatch.chmod(0o755)
+
+    fake_recover = tmp_path / "fake-recover.sh"
+    fake_recover.write_text("#!/bin/bash\nexit 0\n")
+    fake_recover.chmod(0o755)
+
+    import subprocess
+
+    env = os.environ.copy()
+    env["DISPATCH"] = str(fake_dispatch)
+    env["RECOVER"] = str(fake_recover)
+
+    start = time.monotonic()
+    result = subprocess.run(
+        ["bash", str(repo_root / "scripts" / "inbox-watch.sh"),
+         "--project", str(project)],
+        cwd=repo_root, capture_output=True, text=True, timeout=10, env=env,
+    )
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 5, (
+        f"Watcher cycle took {elapsed:.1f}s — dispatch is blocking the cycle. "
+        "Dispatch must run in background."
+    )
+
+    pid_file = tmp_path / "dispatch.pid"
+    if pid_file.exists():
+        for line in pid_file.read_text().strip().splitlines():
+            try:
+                os.kill(int(line.strip()), 9)
+            except (ProcessLookupError, ValueError):
+                pass
+
+
+def test_watcher_lock_released_during_dispatch(repo_root: Path, tmp_path: Path) -> None:
+    """Watcher lock must be released after cycle even if dispatch is still running."""
+    project = _setup_project(tmp_path)
+    (project / ".superharness" / "inbox.yaml").write_text(
+        "- id: lock-test\n"
+        "  to: claude-code\n"
+        "  task: test-lock\n"
+        f"  project: {project}\n"
+        "  status: pending\n"
+        "  retry_count: 0\n"
+        "  max_retries: 3\n"
+        "  created_at: 2026-03-12T00:00:00Z\n"
+    )
+
+    fake_dispatch = tmp_path / "fake-dispatch.sh"
+    fake_dispatch.write_text(
+        "#!/bin/bash\n"
+        f"echo $$ >> {tmp_path}/dispatch.pid\n"
+        "sleep 30\n"
+    )
+    fake_dispatch.chmod(0o755)
+
+    fake_recover = tmp_path / "fake-recover.sh"
+    fake_recover.write_text("#!/bin/bash\nexit 0\n")
+    fake_recover.chmod(0o755)
+
+    import subprocess
+
+    env = os.environ.copy()
+    env["DISPATCH"] = str(fake_dispatch)
+    env["RECOVER"] = str(fake_recover)
+
+    subprocess.run(
+        ["bash", str(repo_root / "scripts" / "inbox-watch.sh"),
+         "--project", str(project)],
+        cwd=repo_root, capture_output=True, text=True, timeout=10, env=env,
+    )
+
+    result2 = subprocess.run(
+        ["bash", str(repo_root / "scripts" / "inbox-watch.sh"),
+         "--project", str(project)],
+        cwd=repo_root, capture_output=True, text=True, timeout=10, env=env,
+    )
+
+    assert "already running" not in result2.stdout.lower(), (
+        "Lock must be released after cycle completes, but second cycle says 'already running'"
+    )
+
+    pid_file = tmp_path / "dispatch.pid"
+    if pid_file.exists():
+        for line in pid_file.read_text().strip().splitlines():
+            try:
+                os.kill(int(line.strip()), 9)
+            except (ProcessLookupError, ValueError):
+                pass

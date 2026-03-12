@@ -31,7 +31,13 @@ def test_discussion_cli_lifecycle_to_consensus(repo_root, tmp_path) -> None:
         )
         + "\n"
     )
-    (harness / "contract.yaml").write_text("id: c1\ntasks: []\n")
+    (harness / "contract.yaml").write_text(
+        "id: c1\ntasks:\n"
+        "  - id: t-claude\n    owner: claude-code\n    status: todo\n"
+        f'    project_path: "{project}"\n'
+        "  - id: t-codex\n    owner: codex-cli\n    status: todo\n"
+        f'    project_path: "{project}"\n'
+    )
 
     started = run_bash(
         repo_root / "scripts" / "discuss.sh",

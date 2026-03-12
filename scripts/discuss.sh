@@ -34,6 +34,7 @@ Start options:
   --topic TEXT       Discussion topic (required)
   --task TASK_ID     Link to contract task (optional)
   --max-rounds N     Max deliberation rounds (default: 3)
+  --exclude OWNER    Exclude an owner from the discussion (repeatable)
 
 Rounds options:
   --project DIR      Project directory (default: current dir)
@@ -47,6 +48,7 @@ Examples:
   discuss.sh status --project .
   discuss.sh approve --project . --task <task-id> --by owner --note "Approved"
   discuss.sh start --project . --topic "Review watcher fixes" --max-rounds 3
+  discuss.sh start --project . --topic "Review watcher fixes" --exclude codex-cli
   discuss.sh rounds --project . --id discuss-20260311T200000Z-1234-567
   discuss.sh consensus --project . --id discuss-20260311T200000Z-1234-567
   discuss.sh list --project .
@@ -73,6 +75,7 @@ NOTE=""
 TOPIC=""
 MAX_ROUNDS=3
 DISC_ID=""
+EXCLUDE_OWNERS=()  # owners to exclude from discussion
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -109,6 +112,11 @@ while [ $# -gt 0 ]; do
     --id)
       [ $# -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
       DISC_ID="$2"
+      shift 2
+      ;;
+    --exclude)
+      [ $# -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
+      EXCLUDE_OWNERS+=("$2")
       shift 2
       ;;
     -h|--help)
@@ -159,14 +167,51 @@ case "$SUBCMD" in
 
   start)
     [ -n "$TOPIC" ] || { echo "--topic is required for start" >&2; exit 2; }
+
+    # Read distinct owners from contract
+    mapfile -t ALL_OWNERS < <(ruby -rpsych -rdate -e '
+      doc = Psych.safe_load(File.read(ARGV[0]), permitted_classes: [Time, Date], aliases: false) || {}
+      tasks = doc["tasks"] || []
+      owners = tasks.select { |t| t.is_a?(Hash) }.map { |t| t["owner"] }.compact.uniq
+      owners.each { |o| puts o }
+    ' "$CONTRACT_FILE" 2>/dev/null)
+
+    # Apply exclusions
+    PARTICIPANTS=()
+    for OWNER in "${ALL_OWNERS[@]}"; do
+      EXCLUDED=false
+      for EX in "${EXCLUDE_OWNERS[@]}"; do
+        if [ "$OWNER" = "$EX" ]; then
+          EXCLUDED=true
+          break
+        fi
+      done
+      if [ "$EXCLUDED" = false ]; then
+        PARTICIPANTS+=("$OWNER")
+      fi
+    done
+
+    if [ "${#PARTICIPANTS[@]}" -lt 2 ]; then
+      echo "Error: discussions require at least 2 distinct task owners in contract (found: ${#PARTICIPANTS[@]} after exclusions)." >&2
+      if [ "${#EXCLUDE_OWNERS[@]}" -gt 0 ]; then
+        echo "Excluded: ${EXCLUDE_OWNERS[*]}" >&2
+      fi
+      echo "Add tasks for both claude-code and codex-cli before starting a discussion." >&2
+      exit 2
+    fi
+
     mkdir -p "$DISCUSSIONS_DIR"
 
-    # Create discussion with both agents as participants
+    # Build participant args dynamically
+    PARTICIPANT_ARGS=()
+    for P in "${PARTICIPANTS[@]}"; do
+      PARTICIPANT_ARGS+=(--participant "$P")
+    done
+
     RESULT="$(ruby "$DISCUSSION_ENGINE" start \
       --discussions-dir "$DISCUSSIONS_DIR" \
       --topic "$TOPIC" \
-      --participant claude-code \
-      --participant codex-cli \
+      "${PARTICIPANT_ARGS[@]}" \
       --max-rounds "$MAX_ROUNDS" \
       --project "$PROJECT_DIR" \
       --created-by "$ACTOR" \
@@ -178,10 +223,21 @@ case "$SUBCMD" in
     echo "Discussion started: $DISC_ID_NEW"
     echo "  Topic: $TOPIC"
     echo "  Max rounds: $MAX_ROUNDS"
+    echo "  Participants: ${PARTICIPANTS[*]}"
     echo "  Directory: $DISC_DIR"
 
-    # Enqueue round 1 inbox items for both agents
-    for AGENT in claude-code codex-cli; do
+    # Create contract task for round 1
+    TASK_SH="$SCRIPT_DIR/task.sh"
+    ROUND_TASK_ID="${DISC_ID_NEW}/round-1"
+    bash "$TASK_SH" create \
+      --project "$PROJECT_DIR" \
+      --id "$ROUND_TASK_ID" \
+      --title "Discussion round 1: ${TOPIC}" \
+      --owner "${PARTICIPANTS[0]}" \
+      --status in_progress
+
+    # Enqueue round 1 inbox items for each participant
+    for AGENT in "${PARTICIPANTS[@]}"; do
       NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
       ITEM_ID="$(date -u +%Y%m%dT%H%M%SZ)-${DISC_ID_NEW}-r1-${AGENT}-$$-$(( RANDOM * RANDOM ))"
       ruby "$INBOX_ENGINE" enqueue \

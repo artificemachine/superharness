@@ -195,3 +195,117 @@ def test_discussion_dispatch_closes_max_rounds_without_enqueuing_next_round(repo
 
     inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
     assert f"task: {discussion_id}/round-2" not in inbox_text
+
+
+def _setup_project_with_contract(tmp_path: Path, owners: list[str] | None = None) -> Path:
+    """Create a project with contract containing tasks for given owners."""
+    if owners is None:
+        owners = ["claude-code", "codex-cli"]
+    project = tmp_path / "proj-discuss-start"
+    harness = project / ".superharness"
+    (harness / "discussions").mkdir(parents=True, exist_ok=True)
+    (harness / "inbox.yaml").write_text("# inbox\n")
+    tasks = []
+    for i, owner in enumerate(owners):
+        tasks.append(f"  - id: task-{i}\n    owner: {owner}\n    status: todo\n    project_path: \"{project}\"")
+    contract = "id: test\ntasks:\n" + "\n".join(tasks) + "\n"
+    (harness / "contract.yaml").write_text(contract)
+    return project
+
+
+def test_discuss_start_creates_contract_task_and_enqueues(repo_root, tmp_path) -> None:
+    """discuss.sh start creates a contract task for round-1 and enqueues both agents."""
+    project = _setup_project_with_contract(tmp_path)
+    script = repo_root / "scripts" / "discuss.sh"
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=["start", "--project", str(project), "--topic", "Test topic", "--max-rounds", "2"],
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Discussion started:" in result.stdout
+    assert "Enqueued round 1 for claude-code" in result.stdout
+    assert "Enqueued round 1 for codex-cli" in result.stdout
+
+    # Verify contract task was created
+    contract_text = (project / ".superharness" / "contract.yaml").read_text()
+    assert "/round-1" in contract_text
+    assert "status: in_progress" in contract_text
+
+    # Both agents enqueued
+    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
+    assert "to: claude-code" in inbox_text
+    assert "to: codex-cli" in inbox_text
+
+
+def test_discuss_start_rejects_single_owner(repo_root, tmp_path) -> None:
+    """discuss.sh start requires at least 2 distinct owners in the contract."""
+    project = _setup_project_with_contract(tmp_path, owners=["codex-cli"])
+    script = repo_root / "scripts" / "discuss.sh"
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=["start", "--project", str(project), "--topic", "Should fail"],
+    )
+    assert result.returncode == 2
+    assert "at least 2 distinct task owners" in result.stderr
+
+
+def test_discuss_start_rejects_no_owners(repo_root, tmp_path) -> None:
+    """discuss.sh start fails when contract has no tasks."""
+    project = _setup_project_with_contract(tmp_path, owners=[])
+    script = repo_root / "scripts" / "discuss.sh"
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=["start", "--project", str(project), "--topic", "Should fail"],
+    )
+    assert result.returncode == 2
+    assert "at least 2 distinct task owners" in result.stderr
+
+
+def test_discuss_start_exclude_owner(repo_root, tmp_path) -> None:
+    """discuss.sh start --exclude removes an owner from participants."""
+    project = _setup_project_with_contract(tmp_path, owners=["claude-code", "codex-cli", "gemini-cli"])
+    script = repo_root / "scripts" / "discuss.sh"
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "start", "--project", str(project), "--topic", "Exclude test",
+            "--exclude", "codex-cli", "--max-rounds", "2",
+        ],
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Discussion started:" in result.stdout
+    assert "Participants: claude-code gemini-cli" in result.stdout
+    assert "Enqueued round 1 for claude-code" in result.stdout
+    assert "Enqueued round 1 for gemini-cli" in result.stdout
+    assert "codex-cli" not in result.stdout.split("Participants:")[1]
+
+    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
+    assert "to: claude-code" in inbox_text
+    assert "to: gemini-cli" in inbox_text
+    assert "to: codex-cli" not in inbox_text
+
+
+def test_discuss_start_exclude_too_many_rejects(repo_root, tmp_path) -> None:
+    """discuss.sh start --exclude fails if fewer than 2 owners remain."""
+    project = _setup_project_with_contract(tmp_path, owners=["claude-code", "codex-cli"])
+    script = repo_root / "scripts" / "discuss.sh"
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "start", "--project", str(project), "--topic", "Should fail",
+            "--exclude", "codex-cli",
+        ],
+    )
+    assert result.returncode == 2
+    assert "at least 2 distinct task owners" in result.stderr
+    assert "Excluded: codex-cli" in result.stderr

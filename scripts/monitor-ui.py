@@ -35,6 +35,11 @@ HTML = """<!doctype html>
     h1 { font-size:20px; margin:0 0 12px; }
     h2 { font-size:14px; margin:0 0 8px; color:var(--muted); }
     pre { margin:0; white-space:pre-wrap; word-break:break-word; font-size:12px; line-height:1.3; }
+    .report-scroll { max-height:60vh; overflow-y:scroll; }
+    .report-scroll::-webkit-scrollbar { width:8px; }
+    .report-scroll::-webkit-scrollbar-track { background:var(--bg); border-radius:4px; }
+    .report-scroll::-webkit-scrollbar-thumb { background:var(--btn2); border-radius:4px; }
+    .report-scroll::-webkit-scrollbar-thumb:hover { background:#4a6fa5; }
     .logs { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
     .meta { margin:8px 0 12px; color:var(--muted); font-size:12px; }
     .pill { display:inline-block; border:1px solid var(--line); border-radius:999px; padding:2px 8px; margin-right:6px; margin-top:4px; font-size:13px; cursor:pointer; user-select:none; }
@@ -84,14 +89,21 @@ HTML = """<!doctype html>
       <div class=\"v\" id=\"approvalCount\">-</div>
       <div class=\"approval-list\" id=\"approvalList\">-</div>
     </div>
-    <div class=\"card\" style=\"margin-top:10px; display:none\" id=\"approvalReportCard\">
-      <h2>approval report preview</h2>
-      <div class=\"small\" id=\"approvalReportMeta\">-</div>
+    <div class=\"card report-scroll\" style=\"margin-top:10px; display:none;\" id=\"approvalReportCard\">
+      <h2 style=\"position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;\">approval report preview <button onclick=\"document.getElementById('approvalReportCard').style.display='none'\" style=\"font-size:11px;padding:2px 8px;float:right\">close</button></h2>
+      <div class=\"small\" id=\"approvalReportMeta\" style=\"position:sticky;top:28px;background:var(--panel);padding-bottom:4px;z-index:1;\">-</div>
       <pre id=\"approvalReportBody\">-</pre>
+    </div>
+
+    <div class=\"card report-scroll\" style=\"margin-top:10px; display:none;\" id=\"taskReportCard\">
+      <h2 style=\"position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;\">task report <button onclick=\"document.getElementById('taskReportCard').style.display='none'\" style=\"font-size:11px;padding:2px 8px;float:right\">close</button></h2>
+      <div class=\"small\" id=\"taskReportMeta\" style=\"position:sticky;top:28px;background:var(--panel);padding-bottom:4px;z-index:1;\">-</div>
+      <pre id=\"taskReportBody\">-</pre>
     </div>
 
     <div class=\"card\" style=\"margin-top:10px;\">
       <h2>inbox status counts</h2>
+      <div id=\"ownerFilter\" style=\"margin-bottom:8px;\"></div>
       <div id=\"counts\"></div>
       <div class=\"inbox-detail\" id=\"inboxDetail\" style=\"display:none\">
         <table><thead><tr><th>id</th><th>task</th><th>to</th><th>priority</th><th>launched_at</th><th>timer</th><th></th></tr></thead>
@@ -104,6 +116,16 @@ HTML = """<!doctype html>
         <button onclick=\"act('normalize_stale')\">Normalize stale</button>
       </div>
       <div class=\"status\" id=\"actionStatus\">ready</div>
+    </div>
+
+    <div class=\"card\" style=\"margin-top:10px;\">
+      <h2>contract owners</h2>
+      <div id=\"ownersList\" style=\"margin-bottom:8px;\"></div>
+      <div style=\"display:flex;gap:6px;align-items:center;\">
+        <input id=\"newOwnerInput\" type=\"text\" placeholder=\"new-agent-name\" style=\"background:var(--btn);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;font-family:inherit;\" />
+        <button onclick=\"addOwner()\">Add owner</button>
+      </div>
+      <div class=\"small\" id=\"ownerStatus\" style=\"margin-top:4px;\"></div>
     </div>
 
     <div class=\"logs\">
@@ -119,6 +141,8 @@ HTML = """<!doctype html>
 <script>
 let lastActionText = '-';
 let selectedStatus = null;
+let selectedOwners = new Set();
+let knownOwners = [];
 let viewedApprovalTasks = new Set();
 const AUTH_TOKEN = __AUTH_TOKEN__;
 
@@ -147,6 +171,7 @@ async function refresh() {
     hbEl.className = 'v ' + (hb.level === 'ok' ? 'ok' : (hb.level === 'warn' ? 'warn' : 'bad'));
     document.getElementById('contract').textContent = d.contract_id || '-';
     document.getElementById('ts').textContent = d.now_utc;
+    renderOwnersList(d.contract_owners || []);
     const pa = d.pending_approvals || [];
     const banner = document.getElementById('approvalBanner');
     if (pa.length) {
@@ -181,14 +206,36 @@ async function refresh() {
     document.getElementById('err').textContent = (d.err_tail || []).join('\\n');
     document.getElementById('actionOut').textContent = lastActionText;
 
+    // Owner filter checkboxes
+    const ownerDiv = document.getElementById('ownerFilter');
+    const owners = Object.keys(d.inbox_owners || {}).sort();
+    if (owners.length && (knownOwners.join() !== owners.join())) {
+      knownOwners = owners;
+      rebuildOwnerCheckboxes();
+    }
+
+    // Inbox status counts (filtered by owner if active)
     const counts = document.getElementById('counts');
     counts.innerHTML = '';
-    const keys = Object.keys(d.inbox_counts || {}).sort();
+    let filteredCounts = d.inbox_counts || {};
+    if (selectedOwners.size > 0) {
+      // Recompute counts from owner-filtered items
+      filteredCounts = {};
+      const ownerParams = [...selectedOwners].map(o => 'owner=' + encodeURIComponent(o)).join('&');
+      try {
+        const allFiltered = await api('/api/inbox?' + ownerParams);
+        for (const item of allFiltered.items) {
+          const st = item.status || '';
+          filteredCounts[st] = (filteredCounts[st] || 0) + 1;
+        }
+      } catch(e) {}
+    }
+    const keys = Object.keys(filteredCounts).sort();
     if (!keys.length) { counts.textContent = 'no inbox rows'; selectedStatus = null; }
     for (const k of keys) {
       const el = document.createElement('span');
       el.className = 'pill' + (k === selectedStatus ? ' sel' : '');
-      el.textContent = `${k}: ${d.inbox_counts[k]}`;
+      el.textContent = `${k}: ${filteredCounts[k]}`;
       el.onclick = () => selectStatus(k);
       counts.appendChild(el);
     }
@@ -197,6 +244,41 @@ async function refresh() {
   } catch (e) {
     document.getElementById('meta').textContent = 'error: ' + e;
   }
+}
+
+function rebuildOwnerCheckboxes() {
+  const ownerDiv = document.getElementById('ownerFilter');
+  ownerDiv.innerHTML = '<span class=\"k\">filter by owner:</span> ';
+  for (const o of knownOwners) {
+    const lbl = document.createElement('label');
+    lbl.style.cssText = 'margin-right:12px;cursor:pointer;font-size:13px;';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = selectedOwners.size === 0 || selectedOwners.has(o);
+    cb.style.cssText = 'margin-right:4px;cursor:pointer;accent-color:var(--ok);';
+    cb.onchange = () => { toggleOwner(o, cb.checked); };
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(o));
+    ownerDiv.appendChild(lbl);
+  }
+}
+
+function toggleOwner(owner, checked) {
+  if (checked) {
+    selectedOwners.add(owner);
+    // If all are checked, clear the filter (show all)
+    if (selectedOwners.size >= knownOwners.length) selectedOwners.clear();
+  } else {
+    // If filter was empty (all shown), populate with all except unchecked
+    if (selectedOwners.size === 0) {
+      for (const o of knownOwners) { if (o !== owner) selectedOwners.add(o); }
+    } else {
+      selectedOwners.delete(owner);
+      if (selectedOwners.size === 0) selectedOwners.clear();
+    }
+  }
+  rebuildOwnerCheckboxes();
+  refresh();
 }
 
 async function selectStatus(k) {
@@ -214,7 +296,11 @@ async function selectStatus(k) {
 
 async function loadInboxDetail(status) {
   try {
-    const d = await api('/api/inbox?status=' + encodeURIComponent(status));
+    let url = '/api/inbox?status=' + encodeURIComponent(status);
+    if (selectedOwners.size > 0) {
+      url += '&' + [...selectedOwners].map(o => 'owner=' + encodeURIComponent(o)).join('&');
+    }
+    const d = await api(url);
     const tbody = document.getElementById('inboxRows');
     tbody.innerHTML = '';
     if (!d.items.length) {
@@ -241,7 +327,10 @@ async function loadInboxDetail(status) {
       else if (st === 'launched' || st === 'running') btn = `<button onclick="act('stop_item:${eid}')" style="font-size:11px;padding:2px 6px;color:var(--bad)">Stop</button>`;
       else if (st === 'stale' || st === 'failed' || st === 'stopped') btn = `<button onclick="act('retry_item:${eid}')" style="font-size:11px;padding:2px 6px;color:var(--warn)">Retry</button>`;
       const removeBtn = `<button onclick="removeItem('${eid}')" style="font-size:11px;padding:2px 6px;color:var(--bad)">Remove</button>`;
-      const actionCell = btn ? `${btn} ${removeBtn}` : removeBtn;
+      const taskEsc = (item.task||'').replace(/'/g, "\\\\'");
+      const agentEsc = (item.to||'').replace(/'/g, "\\\\'");
+      const viewBtn = `<button onclick="viewTaskReport('${taskEsc}','${agentEsc}')" style="font-size:11px;padding:2px 6px">View</button>`;
+      const actionCell = `${viewBtn} ${btn ? btn + ' ' : ''}${removeBtn}`;
       const tr = document.createElement('tr');
       tr.innerHTML = `<td>${item.id||''}</td><td>${item.task||''}</td><td>${item.to||''}</td><td>${item.priority||''}</td><td>${la}</td><td>${timer}</td><td>${actionCell}</td>`;
       tbody.appendChild(tr);
@@ -293,12 +382,92 @@ async function approveTask(task) {
   await act('approve_task:' + task);
 }
 
+async function viewTaskReport(taskId, agent) {
+  const card = document.getElementById('taskReportCard');
+  const meta = document.getElementById('taskReportMeta');
+  const body = document.getElementById('taskReportBody');
+  meta.textContent = `Loading report for task=${taskId} agent=${agent}...`;
+  body.textContent = '...';
+  card.style.display = 'block';
+  try {
+    const d = await api('/api/task-report?task=' + encodeURIComponent(taskId) + '&agent=' + encodeURIComponent(agent));
+    meta.textContent = `task=${taskId}  agent=${agent}  status=${d.contract_status || '-'}`;
+    let report = '';
+    if (d.discussion_topic) {
+      report += '## Discussion\\n';
+      report += 'Topic: ' + d.discussion_topic + '\\n';
+      report += 'Status: ' + (d.discussion_status||'-') + '\\n';
+      report += 'Round: ' + (d.discussion_round||'?') + '/' + (d.discussion_max_rounds||'?') + '\\n\\n';
+    }
+    if (d.contract_status) report += '## Contract Task\\nStatus: ' + d.contract_status + '\\n';
+    if (d.contract_summary) report += d.contract_summary + '\\n\\n';
+    if (d.discussion_position) report += '## Discussion Position (' + (d.discussion_agent||agent) + ')\\n' + d.discussion_position + '\\n\\n';
+    if (d.discussion_verdict) report += 'Verdict: ' + d.discussion_verdict + '\\n\\n';
+    if (d.handoff_summary) report += '## Handoff Summary\\n' + d.handoff_summary + '\\n\\n';
+    if (d.markdown_report) report += '## Handoff Report\\n' + d.markdown_report + '\\n\\n';
+    if (!report) report = '(no report data found for this task)';
+    body.textContent = report;
+  } catch (e) {
+    body.textContent = 'Error: ' + e;
+  }
+}
+
 async function removeItem(itemId) {
   const ok = window.confirm(`Remove task item ${itemId} from inbox?`);
   if (!ok) return;
   await act('remove_item:' + itemId);
 }
 
+function renderOwnersList(owners) {
+  const el = document.getElementById('ownersList');
+  if (!owners || !owners.length) { el.textContent = '(no owners)'; return; }
+  el.innerHTML = '';
+  for (const o of owners) {
+    const pill = document.createElement('span');
+    pill.className = 'pill sel';
+    pill.innerHTML = o + (owners.length > 2 ? ' <span style="cursor:pointer;margin-left:4px;color:var(--bad)" onclick="removeOwner(\\'' + o.replace(/'/g, "\\\\'") + '\\')">×</span>' : '');
+    el.appendChild(pill);
+  }
+}
+
+async function addOwner() {
+  const input = document.getElementById('newOwnerInput');
+  const name = input.value.trim();
+  if (!name) return;
+  const st = document.getElementById('ownerStatus');
+  st.textContent = 'adding ' + name + '...';
+  try {
+    const d = await api('/api/owners', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-Superharness-Token': AUTH_TOKEN},
+      body: JSON.stringify({action: 'add', owner: name})
+    });
+    input.value = '';
+    st.textContent = d.note || 'added';
+    renderOwnersList(d.owners || []);
+    await refresh();
+  } catch (e) {
+    st.textContent = 'error: ' + e;
+  }
+}
+
+async function removeOwner(name) {
+  if (!window.confirm(`Remove owner "${name}" from contract? This removes all their tasks.`)) return;
+  const st = document.getElementById('ownerStatus');
+  st.textContent = 'removing ' + name + '...';
+  try {
+    const d = await api('/api/owners', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-Superharness-Token': AUTH_TOKEN},
+      body: JSON.stringify({action: 'remove', owner: name})
+    });
+    st.textContent = 'removed';
+    renderOwnersList(d.owners || []);
+    await refresh();
+  } catch (e) {
+    st.textContent = 'error: ' + e;
+  }
+}
 
 refresh();
 setInterval(refresh, 3000);
@@ -382,6 +551,144 @@ def inbox_counts(inbox_file: Path) -> dict[str, int]:
             if len(parts) == 2:
                 counts[parts[1].strip()] += 1
     return dict(counts)
+
+
+def inbox_owner_counts(inbox_file: Path) -> dict[str, int]:
+    counts = Counter()
+    for item in inbox_items(inbox_file):
+        owner = item.get("to", "unknown")
+        counts[owner] += 1
+    return dict(counts)
+
+
+def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
+    """Gather all report data for a given task and optional agent."""
+    harness = project_dir / ".superharness"
+    result: dict = {"task": task_id, "agent": agent}
+
+    # 1. Contract task summary
+    contract_file = harness / "contract.yaml"
+    if contract_file.exists():
+        try:
+            import yaml
+            doc = yaml.safe_load(contract_file.read_text()) or {}
+            for t in doc.get("tasks") or []:
+                if isinstance(t, dict) and t.get("id") == task_id:
+                    result["contract_status"] = t.get("status", "")
+                    result["contract_summary"] = t.get("summary", "")
+                    break
+        except Exception:
+            pass
+
+    # 2. Handoff YAML + markdown report
+    handoff_dir = harness / "handoffs"
+    if handoff_dir.exists():
+        for f in sorted(handoff_dir.glob("*.yaml"), reverse=True):
+            try:
+                content = f.read_text()
+                if f"task: {task_id}" not in content and f"task: '{task_id}'" not in content:
+                    continue
+                import yaml
+                hd = yaml.safe_load(content) or {}
+                if agent and hd.get("to") and hd["to"] != agent:
+                    continue
+                result["handoff_status"] = hd.get("status", "")
+                result["handoff_summary"] = hd.get("summary", "")
+                md_path = hd.get("markdown_report", "")
+                if md_path:
+                    md_file = project_dir / md_path if not Path(md_path).is_absolute() else Path(md_path)
+                    if md_file.exists():
+                        result["markdown_report"] = md_file.read_text(errors="replace")[:8000]
+                break
+            except Exception:
+                continue
+
+    # 3. Discussion submissions (task_id like discuss-XXX/round-N)
+    if "/" in task_id:
+        disc_id, round_part = task_id.rsplit("/", 1)
+        disc_dir = harness / "discussions" / disc_id
+        if disc_dir.exists():
+            # Discussion state
+            state_file = disc_dir / "state.yaml"
+            if state_file.exists():
+                try:
+                    import yaml
+                    st = yaml.safe_load(state_file.read_text()) or {}
+                    result["discussion_topic"] = st.get("topic", "")
+                    result["discussion_status"] = st.get("status", "")
+                    result["discussion_round"] = st.get("current_round", "")
+                    result["discussion_max_rounds"] = st.get("max_rounds", "")
+                except Exception:
+                    pass
+
+            # Agent submission for this round
+            round_num = round_part.replace("round-", "")
+            sub_file = disc_dir / f"round-{round_num}-{agent}.yaml"
+            if sub_file.exists():
+                try:
+                    import yaml
+                    sub = yaml.safe_load(sub_file.read_text()) or {}
+                    result["discussion_verdict"] = sub.get("verdict", "")
+                    result["discussion_position"] = sub.get("position", "")
+                    result["discussion_agent"] = sub.get("agent", agent)
+                except Exception:
+                    pass
+
+            # If no specific agent submission, try all agents
+            if "discussion_position" not in result:
+                all_positions = []
+                for sf in sorted(disc_dir.glob(f"round-{round_num}-*.yaml")):
+                    try:
+                        import yaml
+                        sub = yaml.safe_load(sf.read_text()) or {}
+                        a = sub.get("agent", sf.stem.split("-")[-1])
+                        v = sub.get("verdict", "?")
+                        p = sub.get("position", "")
+                        all_positions.append(f"[{a}] verdict={v}\n{p}")
+                    except Exception:
+                        continue
+                if all_positions:
+                    result["discussion_position"] = "\n\n".join(all_positions)
+
+            # Outcome handoff markdown
+            if "markdown_report" not in result:
+                for mf in sorted(handoff_dir.glob(f"*{disc_id}*outcome*.md"), reverse=True) if handoff_dir.exists() else []:
+                    try:
+                        result["markdown_report"] = mf.read_text(errors="replace")[:8000]
+                        break
+                    except Exception:
+                        continue
+                # Also check per-agent markdown
+                if "markdown_report" not in result and agent:
+                    for mf in sorted(handoff_dir.glob(f"*{disc_id}*{agent}*.md"), reverse=True) if handoff_dir.exists() else []:
+                        try:
+                            result["markdown_report"] = mf.read_text(errors="replace")[:8000]
+                            break
+                        except Exception:
+                            continue
+
+    return result
+
+
+def contract_owners(contract_file: Path) -> list[str]:
+    """Read distinct task owners from contract.yaml."""
+    if not contract_file.exists():
+        return []
+    try:
+        import yaml  # noqa: F811
+        doc = yaml.safe_load(contract_file.read_text()) or {}
+    except Exception:
+        return []
+    tasks = doc.get("tasks") or []
+    owners = []
+    seen = set()
+    for t in tasks:
+        if isinstance(t, dict):
+            o = t.get("owner")
+            if o and o not in seen:
+                owners.append(o)
+                seen.add(o)
+    return owners
 
 
 def parse_utc_timestamp(raw: str) -> dt.datetime | None:
@@ -873,7 +1180,9 @@ class Handler(BaseHTTPRequestHandler):
                     "watcher_config": wcfg,
                     "contract_id": contract_id(contract),
                     "pending_approvals": pending_approvals(self.project_dir / ".superharness" / "handoffs"),
+                    "contract_owners": contract_owners(contract),
                     "inbox_counts": inbox_counts(inbox),
+                    "inbox_owners": inbox_owner_counts(inbox),
                     "ledger_tail": tail_lines(ledger, 18),
                     "out_tail": tail_lines(outlog, 16),
                     "err_tail": tail_lines(errlog, 16),
@@ -886,11 +1195,24 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/inbox":
             qs = parse_qs(parsed.query)
             status_filter = qs.get("status", [""])[0]
+            owner_filter = qs.get("owner", [])
             inbox = self.project_dir / ".superharness" / "inbox.yaml"
             items = inbox_items(inbox)
             if status_filter:
                 items = [i for i in items if i.get("status") == status_filter]
+            if owner_filter:
+                items = [i for i in items if i.get("to") in owner_filter]
             self._json({"items": items, "status": status_filter, "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+            return
+
+        if p == "/api/task-report":
+            qs = parse_qs(parsed.query)
+            task_id = qs.get("task", [""])[0]
+            agent = qs.get("agent", [""])[0]
+            if not task_id:
+                self._json({"error": "task parameter required"}, 400)
+                return
+            self._json(task_report(self.project_dir, task_id, agent))
             return
 
         self._json({"error": "not found"}, 404)
@@ -916,6 +1238,74 @@ class Handler(BaseHTTPRequestHandler):
 
             data, status = self._action(action)
             self._json(data, status)
+            return
+
+        if p == "/api/owners":
+            auth_error = self._verify_mutation_auth()
+            if auth_error is not None:
+                data, status = auth_error
+                self._json(data, status)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                body = self.rfile.read(length) if length > 0 else b"{}"
+                payload = json.loads(body.decode("utf-8"))
+                action = str(payload.get("action", ""))
+                owner = str(payload.get("owner", "")).strip()
+            except Exception:
+                self._json({"error": "invalid request body"}, 400)
+                return
+
+            if not owner or not all(c.isalnum() or c in "-_" for c in owner):
+                self._json({"error": "invalid owner name"}, 400)
+                return
+
+            task_sh = self.scripts_dir / "task.sh"
+            contract = self.project_dir / ".superharness" / "contract.yaml"
+
+            if action == "add":
+                existing = contract_owners(contract)
+                if owner in existing:
+                    self._json({"ok": True, "owners": existing, "note": "already exists"})
+                    return
+                task_id = f"agent-{owner}"
+                run = subprocess.run(
+                    ["bash", str(task_sh), "create",
+                     "--project", str(self.project_dir),
+                     "--id", task_id,
+                     "--title", f"Tasks for {owner}",
+                     "--owner", owner,
+                     "--status", "todo"],
+                    capture_output=True, text=True, check=False, timeout=10,
+                )
+                if run.returncode != 0:
+                    self._json({"error": run.stderr.strip()}, 500)
+                    return
+                self._json({"ok": True, "owners": contract_owners(contract)})
+                return
+
+            if action == "remove":
+                existing = contract_owners(contract)
+                if owner not in existing:
+                    self._json({"ok": True, "owners": existing, "note": "not found"})
+                    return
+                if len(existing) <= 2:
+                    self._json({"error": "Cannot remove owner: at least 2 owners required"}, 400)
+                    return
+                # Remove all tasks owned by this owner
+                try:
+                    import yaml
+                    doc = yaml.safe_load(contract.read_text()) or {}
+                    tasks = doc.get("tasks") or []
+                    doc["tasks"] = [t for t in tasks if not (isinstance(t, dict) and t.get("owner") == owner)]
+                    contract.write_text(yaml.dump(doc, default_flow_style=False, sort_keys=False))
+                except Exception as e:
+                    self._json({"error": str(e)}, 500)
+                    return
+                self._json({"ok": True, "owners": contract_owners(contract)})
+                return
+
+            self._json({"error": f"unknown owner action: {action}"}, 400)
             return
 
         self._json({"error": "not found"}, 404)
