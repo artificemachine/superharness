@@ -44,14 +44,27 @@ bash adapters/claude-code/install.sh
 
 ## 2) Initialize your project
 
-This creates `.superharness/` (protocol state) plus `CLAUDE.md` and `AGENTS.md` in your project root.
+This creates `.superharness/` (protocol state) plus `CLAUDE.md`, `AGENTS.md`, and `SOUL.md` in your project root.
 
+**Option A — interactive (recommended for first-time setup):**
 ```bash
 cd /path/to/your/project
+superharness init --interactive
+# Detects your stack automatically, asks 2-3 questions, done.
+```
+
+**Option B — explicit args:**
+```bash
 superharness init "My Project" "Node/TypeScript" "active"
 ```
 
-> `CLAUDE.md` and `AGENTS.md` are agent configuration files — review and customize them for your project. If they already exist, `init` will skip them.
+**Option C — AI-driven install:**
+```bash
+superharness init --detect
+# Auto-detects stack, repo, and status from project files — no questions asked.
+```
+
+> `CLAUDE.md`, `AGENTS.md`, and `SOUL.md` are agent configuration files — review and customize them for your project. If they already exist, `init` will skip them.
 
 **Decide whether to commit `.superharness/` state files:**
 
@@ -67,6 +80,7 @@ git add .superharness/
 
 ```bash
 superharness doctor --project .
+superharness status --project .   # dashboard: contract, tasks, watcher, profile
 ```
 
 All checks should pass (except the watcher, which you haven't started yet).
@@ -143,4 +157,5 @@ pytest tests/ -q
 - `--print-only` never launches CLI processes — safe for exploration.
 - All commands accept `--help` for full usage info.
 - Check version: `superharness --version`
+- Search past session context: `superharness recall --project . "keyword"`
 - For the full command reference, see [GUIDE.md](GUIDE.md).
