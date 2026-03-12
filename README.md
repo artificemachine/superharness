@@ -10,11 +10,9 @@ superharness lets AI coding assistants work on the same project without stepping
 
 ## Quick Links
 
-📘 **[User Guide](docs/GUIDE.md)** — How to use superharness (installation, commands, troubleshooting)
-🏗️ **[Architecture](docs/ARCHITECTURE.md)** — Why it exists, how it works, design philosophy
-👥 **[Teams](docs/TEAMS.md)** — Multi-person setups, shared state, CI integration
-🔒 **[Security](SECURITY.md)** — Operational safety notes
-🗺️ **[Roadmap](docs/ROADMAP.md)** — Current maturity target and next milestones
+📘 **[User Guide](docs/GUIDE.md)** — Commands, background watcher, troubleshooting
+🏗️ **[Architecture](docs/ARCHITECTURE.md)** — Why it exists, how it works, design decisions
+🔒 **[Security](SECURITY.md)** — Threat model and operational safety notes
 
 ---
 
@@ -230,6 +228,6 @@ TODO (repo governance):
 
 ## Current Version
 
-Current execution maturity target: **v0.7** (reliability and adoption milestone)
+Current version: **v0.8** — profile wiring, recall, heartbeat, interactive init, status dashboard, SOUL.md.
 
-See [ROADMAP.md](docs/ROADMAP.md) for details, [RELEASES.md](docs/RELEASES.md) for release notes, and [CHANGELOG.md](CHANGELOG.md) for the full iteration log.
+See [CHANGELOG.md](CHANGELOG.md) for the full iteration log.
