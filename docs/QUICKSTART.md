@@ -8,6 +8,20 @@ Shortest path from clone to first dispatch.
 pip install -r requirements.txt   # pytest (for running tests)
 ```
 
+## Adoption tiers
+
+You don't need to set up everything at once. Start with what you need:
+
+| Tier | Setup | What you get |
+|------|-------|--------------|
+| **Minimal** | install-wrapper + init | Contracts, handoffs, ledger — no agent CLIs required |
+| **Interactive** | + `claude` or `codex` CLI | Live delegation with `delegate --to` |
+| **Background** | + launchd/systemd | Unattended auto-dispatch while you work on something else |
+
+The steps below cover the full path. Steps 1-3 are all you need for the minimal tier.
+
+---
+
 ## 0) Install the CLI wrapper
 
 Creates a symlink at `~/.local/bin/superharness` pointing to the repo wrapper.
@@ -38,6 +52,16 @@ superharness init "My Project" "Node/TypeScript" "active"
 ```
 
 > `CLAUDE.md` and `AGENTS.md` are agent configuration files — review and customize them for your project. If they already exist, `init` will skip them.
+
+**Decide whether to commit `.superharness/` state files:**
+
+```bash
+# Option A — ignore (recommended for personal/solo projects):
+echo '.superharness/' >> .gitignore
+
+# Option B — commit (recommended for team projects where all agents share state):
+git add .superharness/
+```
 
 ## 3) Verify setup
 
