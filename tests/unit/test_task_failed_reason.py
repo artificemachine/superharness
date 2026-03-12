@@ -3,6 +3,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from tests.helpers import run_bash
 
 
@@ -31,6 +33,48 @@ def _task_sh(repo_root: Path, project: Path, *args: str) -> subprocess.Completed
         cwd=repo_root,
         args=["status", "--project", str(project)] + list(args),
     )
+
+
+@pytest.mark.parametrize(
+    ("status", "summary", "reason", "expect_ok", "needle"),
+    [
+        ("todo", "", "", False, "summary"),
+        ("in_progress", "", "", False, "summary"),
+        ("pending_user_approval", "", "", False, "summary"),
+        ("done", "", "", False, "summary"),
+        ("failed", "", "", False, "reason"),
+        ("stopped", "", "", False, "reason"),
+        ("todo", "queued", "", True, "status: todo"),
+        ("in_progress", "working", "", True, "status: in_progress"),
+        ("pending_user_approval", "awaiting approval", "", True, "status: pending_user_approval"),
+        ("done", "completed", "", True, "status: done"),
+        ("failed", "", "runtime_failure", True, "status: failed"),
+        ("stopped", "", "operator_halt", True, "status: stopped"),
+    ],
+)
+def test_task_status_requirements_matrix(repo_root, tmp_path, status, summary, reason, expect_ok, needle) -> None:
+    project = _make_project(tmp_path, f"matrix-{status}", "claude-code")
+    args = [
+        "--id",
+        f"matrix-{status}",
+        "--status",
+        status,
+        "--actor",
+        "claude-code",
+    ]
+    if summary:
+        args.extend(["--summary", summary])
+    if reason:
+        args.extend(["--reason", reason])
+
+    result = _task_sh(repo_root, project, *args)
+    if expect_ok:
+        assert result.returncode == 0, result.stderr
+        contract_text = (project / ".superharness" / "contract.yaml").read_text()
+        assert needle in contract_text
+    else:
+        assert result.returncode != 0
+        assert needle in result.stderr
 
 
 def test_failed_status_records_reason(repo_root, tmp_path) -> None:
@@ -172,6 +216,37 @@ def test_summary_is_required_for_done(repo_root, tmp_path) -> None:
 
     assert result.returncode != 0
     assert "summary" in result.stderr
+
+
+def test_pending_user_approval_status_requires_summary(repo_root, tmp_path) -> None:
+    project = _make_project(tmp_path, "my-task-approval-summary", "claude-code")
+
+    result = _task_sh(
+        repo_root, project,
+        "--id", "my-task-approval-summary",
+        "--status", "pending_user_approval",
+        "--actor", "claude-code",
+    )
+
+    assert result.returncode != 0
+    assert "summary" in result.stderr
+
+
+def test_pending_user_approval_status_records_summary(repo_root, tmp_path) -> None:
+    project = _make_project(tmp_path, "my-task-approval", "claude-code")
+
+    result = _task_sh(
+        repo_root, project,
+        "--id", "my-task-approval",
+        "--status", "pending_user_approval",
+        "--actor", "claude-code",
+        "--summary", "Consensus reached, awaiting user approval.",
+    )
+
+    assert result.returncode == 0, result.stderr
+    contract_text = (project / ".superharness" / "contract.yaml").read_text()
+    assert "status: pending_user_approval" in contract_text
+    assert "awaiting user approval" in contract_text
 
 
 def test_deadline_check_sets_contract_failed_reason(repo_root, tmp_path) -> None:
