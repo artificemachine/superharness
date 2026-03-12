@@ -23,3 +23,4 @@ logdy-core/
 *.pem
 *.key
 *.p12
+*.pfx

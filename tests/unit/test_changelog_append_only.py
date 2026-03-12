@@ -94,6 +94,32 @@ def test_append_only_base_ref_mode(repo_root, tmp_path) -> None:
     assert result.returncode == 0
 
 
+def test_append_only_base_ref_with_head_ref(repo_root, tmp_path) -> None:
+    repo = _init_repo(tmp_path)
+    changelog = repo / "CHANGELOG.md"
+    with open(changelog, "a") as f:
+        f.write("\nBranch entry.\n")
+    subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, capture_output=True, check=True)
+    subprocess.run(["git", "commit", "-m", "branch update"], cwd=repo, capture_output=True, check=True)
+
+    base_ref = subprocess.run(
+        ["git", "rev-parse", "HEAD~1"],
+        cwd=repo, capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    head_ref = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo, capture_output=True, text=True, check=True,
+    ).stdout.strip()
+
+    script = repo_root / "scripts" / "check-changelog-append-only.sh"
+    result = run_bash(
+        script,
+        cwd=repo,
+        args=["--base-ref", base_ref, "--head-ref", head_ref],
+    )
+    assert result.returncode == 0
+
+
 def test_append_only_requires_mode(repo_root) -> None:
     script = repo_root / "scripts" / "check-changelog-append-only.sh"
     result = run_bash(script, cwd=repo_root, args=[])

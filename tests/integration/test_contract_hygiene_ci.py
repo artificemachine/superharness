@@ -1,9 +1,6 @@
 """Test contract hygiene CI enforcement."""
-import os
 import subprocess
-import tempfile
 import yaml
-from pathlib import Path
 
 
 def test_hygiene_check_passes_with_valid_contract(tmp_path):

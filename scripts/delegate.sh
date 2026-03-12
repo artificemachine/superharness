@@ -167,6 +167,18 @@ if [ -z "$TASK_ID" ]; then
   exit 1
 fi
 
+# Fetch acceptance criteria for the task (one per line, may be empty)
+ACCEPTANCE_CRITERIA=""
+if [ -n "$TASK_ID" ]; then
+  AC_RAW="$(ruby "$ENGINE_CONTRACT" task_acceptance_criteria --file "$CONTRACT_FILE" --task "$TASK_ID" 2>/dev/null)" || true
+  if [ -n "$AC_RAW" ]; then
+    ACCEPTANCE_CRITERIA="
+
+Acceptance criteria for this task:
+$(printf '%s\n' "$AC_RAW" | while IFS= read -r line; do echo "- $line"; done)"
+  fi
+fi
+
 AUTO_DIRECTIVE=""
 if [ "$NON_INTERACTIVE" -eq 1 ]; then
   AUTO_DIRECTIVE="
@@ -284,13 +296,13 @@ if [ "$TARGET" = "claude-code" ] && [ -z "$DISCUSSION_ID" ]; then
 Read the latest handoff addressed to claude-code and execute task ${TASK_ID}.
 Use scope, commands, and acceptance criteria from the handoff.
 Update .superharness/contract.yaml task status, append .superharness/ledger.md, and refresh the handoff with outcomes.
-Contract id: ${CONTRACT_ID}.${AUTO_DIRECTIVE}"
+Contract id: ${CONTRACT_ID}.${ACCEPTANCE_CRITERIA}${AUTO_DIRECTIVE}"
   else
     PROMPT="continue contract
 No handoff exists yet for task ${TASK_ID}.
 Read .superharness/contract.yaml directly and execute task ${TASK_ID}.
 Update .superharness/contract.yaml task status, append .superharness/ledger.md, and create a new handoff with outcomes.
-Contract id: ${CONTRACT_ID}.${AUTO_DIRECTIVE}"
+Contract id: ${CONTRACT_ID}.${ACCEPTANCE_CRITERIA}${AUTO_DIRECTIVE}"
   fi
 else
   if [ -n "$LATEST_HANDOFF" ]; then
@@ -298,13 +310,13 @@ else
 Read the latest handoff addressed to codex-cli and execute task ${TASK_ID}.
 Use scope, commands, and acceptance criteria from the handoff.
 Update .superharness/contract.yaml task status, append .superharness/ledger.md, and refresh the handoff with outcomes.
-Contract id: ${CONTRACT_ID}."
+Contract id: ${CONTRACT_ID}.${ACCEPTANCE_CRITERIA}"
   else
     PROMPT="continue contract
 No handoff exists yet for task ${TASK_ID}.
 Read .superharness/contract.yaml directly and execute task ${TASK_ID}.
 Update .superharness/contract.yaml task status, append .superharness/ledger.md, and create a new handoff with outcomes.
-Contract id: ${CONTRACT_ID}."
+Contract id: ${CONTRACT_ID}.${ACCEPTANCE_CRITERIA}"
   fi
 fi
 

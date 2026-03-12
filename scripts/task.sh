@@ -13,6 +13,7 @@ Create options:
   --owner OWNER      claude-code|codex-cli
   --status STATUS    todo|in_progress|pending_user_approval|done|failed|stopped (default: todo)
   --dependency ID    Optional task id this task depends on
+  --criteria TEXT    Acceptance criterion (repeatable — pass once per criterion)
 
 Delete options:
   --project DIR      Project directory containing .superharness/ (default: current dir)
@@ -42,6 +43,7 @@ ACTOR=""
 DEPENDENCY=""
 REASON=""
 SUMMARY=""
+CRITERIA=()  # repeatable --criteria flags
 
 validate_task_token() {
   local name="$1"
@@ -103,6 +105,11 @@ while [ $# -gt 0 ]; do
     --summary)
       [ $# -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
       SUMMARY="$2"
+      shift 2
+      ;;
+    --criteria)
+      [ $# -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
+      CRITERIA+=("$2")
       shift 2
       ;;
     -h|--help)
@@ -183,7 +190,17 @@ if [ "$SUBCMD" = "create" ]; then
     *) echo "status must be todo, in_progress, pending_user_approval, or done" >&2; exit 2 ;;
   esac
 
-  ruby - "$CONTRACT_FILE" "$TASK_ID" "$TITLE" "$OWNER" "$STATUS" "$PROJECT_DIR" "$DEPENDENCY" <<'RUBY'
+  # Pass criteria as newline-separated env var to Ruby
+  CRITERIA_NL=""
+  for c in "${CRITERIA[@]+"${CRITERIA[@]}"}"; do
+    if [ -n "$CRITERIA_NL" ]; then
+      CRITERIA_NL="${CRITERIA_NL}"$'\n'"${c}"
+    else
+      CRITERIA_NL="$c"
+    fi
+  done
+
+  SUPERHARNESS_CRITERIA="$CRITERIA_NL" ruby - "$CONTRACT_FILE" "$TASK_ID" "$TITLE" "$OWNER" "$STATUS" "$PROJECT_DIR" "$DEPENDENCY" <<'RUBY'
 require "psych"
 require "time"
 require "date"
@@ -218,6 +235,9 @@ task = {
   "project_path" => project
 }
 task["dependency"] = dependency unless dependency.to_s.empty?
+criteria_raw = ENV.fetch("SUPERHARNESS_CRITERIA", "")
+criteria = criteria_raw.split("\n").map(&:strip).reject(&:empty?)
+task["acceptance_criteria"] = criteria unless criteria.empty?
 tasks << task
 doc["tasks"] = tasks
 
@@ -332,6 +352,12 @@ if !dependency.empty? && %w[in_progress done].include?(status)
   if dep_status != "done"
     abort("blocked: task '#{id}' depends on '#{dependency}' (status=#{dep_status})")
   end
+end
+
+criteria = task["acceptance_criteria"]
+if status == "done" && criteria.is_a?(Array) && !criteria.empty?
+  warn "Note: task '#{id}' has acceptance criteria — verify they are met:"
+  criteria.each { |c| warn "  - #{c}" }
 end
 
 task["status"] = status
