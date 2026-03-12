@@ -138,3 +138,11 @@ def test_nonexistent_file(repo_root, tmp_path) -> None:
     r = _run_contract(repo_root, "task_exists", ["--file", str(tmp_path / "nope.yaml"), "--task", "x"])
     assert r.returncode == 0
     assert r.stdout.strip() == "false"
+
+
+def test_invalid_tasks_shape_fails(repo_root, tmp_path) -> None:
+    f = tmp_path / "bad-shape.yaml"
+    f.write_text("id: bad\n" 'tasks: "not-a-sequence"\n')
+    r = _run_contract(repo_root, "task_exists", ["--file", str(f), "--task", "x"])
+    assert r.returncode != 0
+    assert "tasks must be a sequence" in r.stderr
