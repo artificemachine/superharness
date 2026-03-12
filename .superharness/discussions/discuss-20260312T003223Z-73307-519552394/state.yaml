@@ -1,0 +1,26 @@
+---
+schema_version: 1
+id: discuss-20260312T003223Z-73307-519552394
+topic: Should superharness keep the watcher-worker architecture, or simplify to a
+  single-project watcher model?
+participants:
+- claude-code
+- codex-cli
+max_rounds: 3
+current_round: 1
+status: failed_participant
+dispatch_attempts:
+  '1':
+    claude-code: 4
+    codex-cli: 3
+created_at: '2026-03-12T00:32:23Z'
+created_by: owner
+project: "/Users/airm2max/DevOpsSec/superharness"
+task_id: 
+closed_at: '2026-03-12T00:40:26Z'
+failed_round: 1
+failed_agent: claude-code
+failed_reason: dispatch_attempts_exhausted
+handoff_file: ".superharness/handoffs/2026-03-12-discuss-20260312T003223Z-73307-519552394.yaml"
+markdown_report: ".superharness/handoffs/2026-03-12-discuss-20260312T003223Z-73307-519552394.md"
+finalized_at: '2026-03-12T00:40:27Z'

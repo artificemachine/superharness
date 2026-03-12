@@ -101,10 +101,13 @@ tasks:
   owner: codex-cli
   status: done
   project_path: "/Users/airm2max/DevOpsSec/superharness"
-  summary: 'Consensus review completed 2026-03-11T19:49:49Z: dirty-worktree exclusion
-    is accepted, but KeepAlive=true for the single-cycle launchd watcher and the
-    current worker rsync sync are not ready to ship because they create an immediate
-    relaunch loop and replace the worker .superharness symlink with a copied directory.
-    Targeted watcher tests still passed, confirming coverage gaps.'
+  summary: 'Direct continuation completed 2026-03-11T22:56:38Z from cancelled discussion
+    round-1: the current watcher reliability fixes are accepted. Verified that `git
+    status --porcelain --untracked-files=normal -- '':!.superharness/''` ignores protocol
+    churn, the launchd plist uses `KeepAlive` with `SuccessfulExit=false`, and `sync_worker_copy`
+    excludes `.superharness` so the worker symlink is preserved. Targeted watcher
+    tests passed (`21 passed`), plus local git/rsync repros matched. Non-blocking
+    follow-up: `sync_worker_copy` still suppresses rsync failures via `|| true`, which
+    belongs in `structured-error-logging`.'
 decisions: []
 failures: []
