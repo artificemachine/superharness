@@ -19,6 +19,11 @@ def _setup_project(tmp_path: Path) -> Path:
                 "    owner: codex-cli",
                 "    status: pending_user_approval",
                 f'    project_path: "{project}"',
+                "  - id: claude-task",
+                "    title: Claude task",
+                "    owner: claude-code",
+                "    status: todo",
+                f'    project_path: "{project}"',
             ]
         )
         + "\n"

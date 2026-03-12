@@ -476,6 +476,187 @@ def test_setup_watcher_worker_creates_clean_worker_and_watcher_config(repo_root,
     assert "codex_bypass: false" in cfg_text
 
 
+def test_install_launchd_creates_plist_from_scratch(repo_root, tmp_path) -> None:
+    """When no plist exists, install creates it with correct label and loads it."""
+    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    project = _setup_launchd_project(tmp_path)
+    home = tmp_path / "home-fresh"
+    home.mkdir()
+    fake_bin = _fake_launchd_bin(tmp_path)
+
+    plist_dir = home / "Library" / "LaunchAgents"
+    assert not plist_dir.exists(), "LaunchAgents dir should not exist yet"
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project", str(project),
+            "--interval", "15",
+            "--to", "codex-cli",
+            "--confirm-non-interactive", "yes",
+        ],
+        env={
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Installed launchd inbox watcher:" in result.stdout
+    label = "com.superharness.inbox.proj-demo-"
+    assert f"Label: {label}" in result.stdout
+    plist = plist_dir / f"{label}.plist"
+    assert plist.exists(), "Plist should be created from scratch"
+    plist_text = plist.read_text()
+    assert f"<string>{label}</string>" in plist_text
+    assert "<integer>15</integer>" in plist_text
+
+
+def test_install_launchd_reinstall_overwrites_existing_plist(repo_root, tmp_path) -> None:
+    """Reinstalling overwrites the plist with updated settings."""
+    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    project = _setup_launchd_project(tmp_path)
+    home = tmp_path / "home-reinstall"
+    home.mkdir()
+    fake_bin = _fake_launchd_bin(tmp_path)
+
+    # First install with interval 30
+    run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project", str(project),
+            "--interval", "30",
+            "--to", "codex-cli",
+            "--confirm-non-interactive", "yes",
+        ],
+        env={
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+        },
+    )
+
+    label = "com.superharness.inbox.proj-demo-"
+    plist = home / "Library" / "LaunchAgents" / f"{label}.plist"
+    first_text = plist.read_text()
+    assert "<integer>30</integer>" in first_text
+
+    # Reinstall with interval 15
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project", str(project),
+            "--interval", "15",
+            "--to", "codex-cli",
+            "--confirm-non-interactive", "yes",
+        ],
+        env={
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    second_text = plist.read_text()
+    assert "<integer>15</integer>" in second_text
+    # Old interval should be gone
+    assert "<integer>30</integer>" not in second_text
+
+
+def test_install_launchd_plist_contains_project_and_target(repo_root, tmp_path) -> None:
+    """Plist must contain the project path and target agent arguments."""
+    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    project = _setup_launchd_project(tmp_path)
+    home = tmp_path / "home-target"
+    home.mkdir()
+    fake_bin = _fake_launchd_bin(tmp_path)
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project", str(project),
+            "--to", "claude-code",
+            "--confirm-non-interactive", "yes",
+            "--confirm-skip-permissions", "yes",
+        ],
+        env={
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    label = "com.superharness.inbox.proj-demo-"
+    plist = home / "Library" / "LaunchAgents" / f"{label}.plist"
+    plist_text = plist.read_text()
+    assert "<string>--project</string>" in plist_text
+    assert "<string>--to</string>" in plist_text
+    assert "<string>claude-code</string>" in plist_text
+
+
+def test_install_launchd_output_reports_all_settings(repo_root, tmp_path) -> None:
+    """Install output must report interval, recover settings, target, and mode."""
+    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    project = _setup_launchd_project(tmp_path)
+    home = tmp_path / "home-output"
+    home.mkdir()
+    fake_bin = _fake_launchd_bin(tmp_path)
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project", str(project),
+            "--interval", "20",
+            "--to", "codex-cli",
+            "--confirm-non-interactive", "yes",
+            "--recover-timeout-minutes", "15",
+            "--recover-action", "stale",
+        ],
+        env={
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Interval: 20s" in result.stdout
+    assert "Recover timeout: 15m" in result.stdout
+    assert "Recover action: stale" in result.stdout
+    assert "Target: codex-cli" in result.stdout
+    assert "Mode: non-interactive" in result.stdout
+
+
+def test_install_launchd_missing_superharness_dir_fails(repo_root, tmp_path) -> None:
+    """Install fails if project has no .superharness directory."""
+    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    project = tmp_path / "no-harness"
+    project.mkdir()
+    home = tmp_path / "home-no-harness"
+    home.mkdir()
+    fake_bin = _fake_launchd_bin(tmp_path)
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project", str(project),
+            "--to", "codex-cli",
+            "--confirm-non-interactive", "yes",
+        ],
+        env={
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+        },
+    )
+
+    assert result.returncode == 1
+    assert "Missing .superharness" in result.stderr
+
+
 def test_setup_watcher_worker_persists_custom_recover_values(repo_root, tmp_path) -> None:
     script = repo_root / "scripts" / "setup-watcher-worker.sh"
     project = tmp_path / "source-proj-custom"

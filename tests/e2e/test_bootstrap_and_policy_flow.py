@@ -76,6 +76,16 @@ def test_bootstrap_discuss_start_enqueues_round_one_for_both_agents(repo_root, t
     init_res = run_bash(init_script, cwd=project, args=["Demo", "Python", "active"])
     assert init_res.returncode == 0, init_res.stderr
 
+    # Add tasks for both owners (required for discussion start)
+    task_script = repo_root / "scripts" / "task.sh"
+    for agent in ("claude-code", "codex-cli"):
+        t = run_bash(task_script, cwd=repo_root, args=[
+            "create", "--project", str(project),
+            "--id", f"e2e-{agent}", "--title", f"E2E task for {agent}",
+            "--owner", agent, "--status", "todo",
+        ])
+        assert t.returncode == 0, t.stderr
+
     discuss_script = repo_root / "scripts" / "discuss.sh"
     start_res = run_bash(
         discuss_script,
