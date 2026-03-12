@@ -98,6 +98,24 @@ pytest tests/ -q
 | **Integration** |
 | **E2E**         |
 
+### Readiness Audits
+
+Use this command for a generic cross-repo quality audit:
+
+```bash
+$production-ready
+```
+
+Use this command for superharness-specific release quality policy:
+
+```bash
+$superharness-production-ready
+```
+
+Rule of thumb:
+- Use `$production-ready` when working in any repository.
+- Use `$superharness-production-ready` when working in this repository and you want local mandatory checks (contract protocol, regression guard, watcher/doctor posture).
+
 ---
 
 ## Prerequisites
