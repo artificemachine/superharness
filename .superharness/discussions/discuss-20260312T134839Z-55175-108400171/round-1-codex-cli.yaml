@@ -1,0 +1,40 @@
+---
+discussion_id: discuss-20260312T134839Z-55175-108400171
+round: 1
+agent: codex-cli
+verdict: partial
+position: |
+  I partially agree. Superharness should auto-close discussions after user approval
+  only when the discussion is explicitly configured to require approval. It should
+  not add a mandatory approval gate to all consensus discussions.
+
+  The current default (close immediately on unanimous `agree`) is the right fast path
+  for low-risk discussion topics. Mandatory approval everywhere would slow the watcher
+  loop, add queue noise, and turn consensus into a manual bottleneck.
+
+  For execution-gating discussions (where outcomes trigger contract transitions,
+  dispatch behavior changes, or production-impacting actions), an approval-required
+  mode is justified. In that mode, consensus should transition to a visible
+  `pending_approval` state, and only then auto-close immediately after explicit user
+  approval. This preserves automation while keeping human control where risk is higher.
+
+  I also disagree with any proposal that lets approvals happen without recording
+  approver identity and timestamp in discussion state/history. Approval without durable
+  audit fields weakens traceability across state, ledger, and handoff artifacts.
+points:
+  - id: default-close-behavior
+    verdict: agree
+    rationale: Keep current auto-close on unanimous consensus as the default for routine discussions to maintain throughput and low operational friction.
+  - id: mandatory-approval-for-all
+    verdict: disagree
+    rationale: Requiring user approval on every discussion introduces avoidable latency and undermines the purpose of automated multi-agent consensus.
+  - id: opt-in-approval-required
+    verdict: agree
+    rationale: Add an explicit per-discussion flag to require approval only for high-impact outcomes, with consensus moving to `pending_approval` until approved.
+  - id: close-trigger-after-approval
+    verdict: agree
+    rationale: In approval-required mode, auto-close should happen immediately after approval so operators do not need a second manual finalize step.
+  - id: auditability-of-approval
+    verdict: partial
+    rationale: Approval gating is acceptable only if approver and approval timestamp are persisted in discussion state and reflected in downstream lifecycle records.
+submitted_at: '2026-03-12T15:14:36Z'
