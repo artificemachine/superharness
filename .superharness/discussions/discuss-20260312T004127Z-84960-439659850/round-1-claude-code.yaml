@@ -1,0 +1,48 @@
+---
+discussion_id: discuss-20260312T004127Z-84960-439659850
+round: 1
+agent: claude-code
+verdict: agree
+position: 'CHANGELOG.md should remain append-only. It serves as the full iteration
+  log (9 iterations, 867 lines) that every agent reads for context recovery during
+  handoffs. The append-only rule is already enforced by a CI hook (check-changelog-append-only.sh)
+  that byte-compares existing content and rejects mutations. Removing the rule would
+  break the audit trail that cross-agent handoffs depend on, orphan the enforcement
+  script and its tests, and undermine the ledger-style provenance model the project
+  is built around. The existing correction-entry policy (append a new correction rather
+  than rewrite history) handles mistakes without sacrificing integrity.
+
+'
+points:
+- id: audit-trail-integrity
+  verdict: agree
+  rationale: 'Both Claude Code and Codex CLI read CHANGELOG.md to reconstruct project
+    history. If either agent can rewrite the other''s entries, the context recovery
+    mechanism is compromised. Append-only is the simplest guarantee of stable history
+    in a multi-agent system.
+
+'
+- id: ci-enforcement-exists
+  verdict: agree
+  rationale: 'check-changelog-append-only.sh already enforces the rule via byte-level
+    comparison. The hook, its tests, and the CLAUDE.md policy form a coherent enforcement
+    stack. Removing the rule would leave dead infrastructure.
+
+'
+- id: correction-over-rewrite
+  verdict: agree
+  rationale: 'The correction-entry policy (append a new entry to fix mistakes rather
+    than editing history) mirrors append-only ledger semantics. This is the right
+    tradeoff — provenance is preserved, and the cost of an extra line is negligible
+    compared to the risk of silent history rewrites.
+
+'
+- id: file-size-concern
+  verdict: partial
+  rationale: 'At 867 lines and growing, CHANGELOG.md is large. A future mitigation
+    could archive older iterations into a separate file while keeping CHANGELOG.md
+    append-only for active iterations. But this is an optimization, not a reason to
+    drop the append-only rule itself.
+
+'
+submitted_at: '2026-03-12T00:42:15Z'

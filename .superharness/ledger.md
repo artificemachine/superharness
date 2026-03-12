@@ -295,3 +295,41 @@ Append-only activity log. Never edit previous entries.
 - 2026-03-11T19:58:44Z — claude-code — modified: inbox-watch.sh
 - 2026-03-11T19:59:22Z — claude-code — modified: inbox.rb
 - 2026-03-11T22:06:23Z — claude-code — modified: check-shell-entrypoints.sh
+- 2026-03-11T22:20:00Z — claude-code — discussion round-1 submitted for discuss-20260311T220550Z (watcher reliability fixes) — verdict: agree; all 3 fixes correct after code updates (KeepAlive uses SuccessfulExit=false, rsync excludes .superharness entirely, dirty worktree exclusion is sound)
+- 2026-03-11T22:56:38Z — codex-cli — task discuss-20260311T220550Z-74578-194192319/round-1 done — direct contract continuation reviewed current watcher code, accepted all 3 fixes, refreshed linked contract summary, and recorded a superseding handoff
+- 2026-03-11T23:28:36Z — claude-code — modified: testing-strategy.md
+- 2026-03-11T23:31:15Z — system — discussion discuss-20260311T220550Z-74578-194192319 finalized — status=cancelled report=.superharness/handoffs/2026-03-11-discuss-20260311T220550Z-74578-194192319.md
+- 2026-03-12T00:40:27Z — system — discussion discuss-20260312T003223Z-73307-519552394 finalized — status=failed_participant report=.superharness/handoffs/2026-03-12-discuss-20260312T003223Z-73307-519552394.md
+- 2026-03-12T07:48:51Z — claude-code — modified: migration-python-tdd.md
+- 2026-03-12T07:49:00Z — claude-code — modified: migration-python-tdd.md
+- 2026-03-12T07:49:18Z — claude-code — modified: migration-python-tdd.md
+- 2026-03-12T07:49:28Z — claude-code — modified: migration-python-tdd.md
+- 2026-03-12T07:49:38Z — claude-code — modified: migration-python-tdd.md
+- 2026-03-12T08:56:24Z — claude-code — modified: migration-python-tdd.md
+- 2026-03-12T10:21:35Z — claude-code — modified: production-ready.md
+- 2026-03-12T10:21:43Z — claude-code — modified: README.md
+- 2026-03-12T10:21:51Z — claude-code — modified: README.md
+- 2026-03-12T10:25:08Z — claude-code — modified: security-pipeline.md
+- 2026-03-12T10:25:39Z — claude-code — modified: simplify.md
+- 2026-03-12T10:25:46Z — claude-code — modified: ship.md
+- 2026-03-12T10:25:53Z — claude-code — modified: senior-reviewer.md
+- 2026-03-12T10:26:03Z — claude-code — modified: user-reviewer.md
+- 2026-03-12T10:26:18Z — claude-code — modified: CLAUDE.md
+- 2026-03-12T10:26:25Z — claude-code — modified: CLAUDE.md
+- 2026-03-12T10:27:31Z — claude-code — modified: security-pipeline.md
+- 2026-03-12T10:29:36Z — claude-code — modified: security-pipeline.md
+- 2026-03-12T10:30:43Z — claude-code — modified: ship.md
+- 2026-03-12T10:30:51Z — claude-code — modified: rotate-secret.md
+- 2026-03-12T10:40:36Z — claude-code — modified: githooks-inspector.md
+- 2026-03-12T10:40:51Z — claude-code — modified: README.md
+- 2026-03-12T10:41:00Z — claude-code — modified: README.md
+- 2026-03-12T10:42:10Z — claude-code — modified: production-ready.md
+- 2026-03-12T10:42:23Z — claude-code — modified: githooks-inspector.md
+- 2026-03-12T10:42:44Z — claude-code — modified: README.md
+- 2026-03-12T10:45:11Z — claude-code — modified: upvault.md
+- 2026-03-12T10:47:58Z — claude-code — modified: upvault-claude.md
+- 2026-03-12T10:48:13Z — claude-code — modified: upvault-claude.md
+- 2026-03-12T10:48:18Z — claude-code — modified: README.md
+- 2026-03-12T10:48:19Z — claude-code — modified: README.md
+- 2026-03-12T10:48:20Z — claude-code — modified: CLAUDE.md
+- 2026-03-12T10:49:36Z — claude-code — modified: superharness-2026-03-12-commands-refactor-and-migration-plan.md
