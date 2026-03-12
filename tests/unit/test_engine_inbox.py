@@ -362,6 +362,27 @@ def test_sync_task_status_no_match(repo_root, tmp_path) -> None:
     assert "synced=0" in r.stdout
 
 
+def test_has_active_detects_matching_pending_item(repo_root, tmp_path) -> None:
+    f = _inbox_file(tmp_path)
+    _run_inbox(repo_root, "enqueue", [
+        "--file", str(f), "--id", "ha1", "--to", "codex-cli",
+        "--task", "t-active", "--project", "/p", "--priority", "1",
+        "--created-at", "2026-01-01T00:00:00Z",
+    ])
+
+    active = _run_inbox(repo_root, "has_active", [
+        "--file", str(f), "--to", "codex-cli", "--task", "t-active",
+    ])
+    assert active.returncode == 0
+    assert active.stdout.strip() == "true"
+
+    inactive = _run_inbox(repo_root, "has_active", [
+        "--file", str(f), "--to", "claude-code", "--task", "t-active",
+    ])
+    assert inactive.returncode == 0
+    assert inactive.stdout.strip() == "false"
+
+
 def test_unknown_command(repo_root) -> None:
     r = _run_inbox(repo_root, "bogus", [])
     assert r.returncode != 0

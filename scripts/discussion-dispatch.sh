@@ -59,7 +59,6 @@ for state_file in "$DISCUSSIONS_DIR"/*/state.yaml; do
 
   CURRENT_ROUND="$(printf '%s' "$STATUS_JSON" | ruby -rjson -e 'puts JSON.parse(STDIN.read)["current_round"]')"
   DISC_ID="$(printf '%s' "$STATUS_JSON" | ruby -rjson -e 'puts JSON.parse(STDIN.read)["id"]')"
-  TOPIC="$(printf '%s' "$STATUS_JSON" | ruby -rjson -e 'puts JSON.parse(STDIN.read)["topic"]')"
 
   # Check if current round is complete
   CHECK_JSON="$(ruby "$ENGINE" check_round --discussion-dir "$DISCUSSION_DIR" --round "$CURRENT_ROUND" 2>/dev/null)" || continue
