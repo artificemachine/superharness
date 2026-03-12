@@ -333,3 +333,4 @@ Append-only activity log. Never edit previous entries.
 - 2026-03-12T10:48:19Z — claude-code — modified: README.md
 - 2026-03-12T10:48:20Z — claude-code — modified: CLAUDE.md
 - 2026-03-12T10:49:36Z — claude-code — modified: superharness-2026-03-12-commands-refactor-and-migration-plan.md
+- 2026-03-12T11:58:56Z — claude-code — modified: .gitignore

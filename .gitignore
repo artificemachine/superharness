@@ -4,7 +4,7 @@
 .venv/
 .coverage
 .claude/
-.superharness/*.flock
+.superharness/**/*.flock
 shipguard.txt
 __pycache__/
 *.py[cod]
