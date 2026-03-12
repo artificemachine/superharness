@@ -51,17 +51,24 @@ fi
 PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd -P)"
 CONTRACT_FILE="$PROJECT_DIR/.superharness/contract.yaml"
 
+TEAM_SIZE="team"
+if [ -f "$PROJECT_DIR/.superharness/profile.yaml" ]; then
+  _PROFILE_ENGINE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/engine/profile.rb"
+  TEAM_SIZE="$(ruby "$_PROFILE_ENGINE" --project "$PROJECT_DIR" team_size 2>/dev/null || echo 'team')"
+fi
+
 if [ ! -f "$CONTRACT_FILE" ]; then
   echo "Missing contract file: $CONTRACT_FILE" >&2
   exit 1
 fi
 
-ruby - "$CONTRACT_FILE" "$AGENT" <<'RUBY'
+ruby - "$CONTRACT_FILE" "$AGENT" "$TEAM_SIZE" <<'RUBY'
 require "psych"
 require "time"
 require "date"
 
-contract_file, agent = ARGV
+contract_file, agent, team_size = ARGV
+team_size = "solo" if team_size.nil? || team_size.empty?
 
 def status_label(s)
   case s.to_s
@@ -143,16 +150,18 @@ if pending_approvals.any?
   end
 end
 
-candidate = tasks.find do |t|
-  next false unless t.is_a?(Hash)
-  status = t["status"].to_s
-  owner = t["owner"].to_s
-  next false unless ["todo", "in_progress"].include?(status)
-  next false if owner.empty?
-  agent.empty? || owner != agent
-end
+if team_size != "solo"
+  candidate = tasks.find do |t|
+    next false unless t.is_a?(Hash)
+    status = t["status"].to_s
+    owner = t["owner"].to_s
+    next false unless ["todo", "in_progress"].include?(status)
+    next false if owner.empty?
+    agent.empty? || owner != agent
+  end
 
-if candidate
-  puts "I detected owner is #{candidate["owner"]}. Do you want to delegate #{candidate["id"]} now?"
+  if candidate
+    puts "I detected owner is #{candidate["owner"]}. Do you want to delegate #{candidate["id"]} now?"
+  end
 end
 RUBY
