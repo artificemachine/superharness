@@ -1,12 +1,18 @@
 # {{PROJECT_NAME}}
 
 ## Identity
+Read `SOUL.md` for operating constraints, guardrails, and identity context.
+
 {{IDENTITY_BLOCK}}
 
 ## This Project
 - What: {{PROJECT_NAME}}
 - Stack: {{TECH_STACK}}
 - Status: {{STATUS}}
+
+## Before Starting Work
+- Run `superharness recall --project . "KEYWORDS"` with terms related to your task
+- Check for prior decisions, failures, or context from earlier sessions
 
 ## Cross-Agent Protocol
 - Read `.superharness/contract.yaml` before starting work.

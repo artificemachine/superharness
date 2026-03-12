@@ -40,6 +40,8 @@ Commands:
   status      Show watcher and inbox health summary
   notify      Send notifications for pending approvals and stale items
   watcher-worker  Build clean watcher worker and install watcher there
+  heartbeat       Run proactive watcher checks (stale-recovery, idle-warning, hygiene-check)
+  recall         Search handoffs and ledger by keyword
   version     Show version
   help        Show this help message
 
@@ -126,6 +128,8 @@ case "$cmd" in
   status) exec_with_optional_project "$ROOT_DIR/scripts/status.sh" "$@" ;;
   notify) exec_with_optional_project "$ROOT_DIR/scripts/notify.sh" "$@" ;;
   watcher-worker) exec_with_optional_project "$ROOT_DIR/scripts/setup-watcher-worker.sh" "$@" ;;
+  heartbeat) exec_with_optional_project "$ROOT_DIR/scripts/heartbeat.sh" "$@" ;;
+  recall) exec bash "$ROOT_DIR/cli/recall.sh" "$@" ;;
   uninstall) exec bash "$ROOT_DIR/scripts/uninstall.sh" "$@" ;;
   help|-h|--help) usage ;;
   version|--version|-v) echo "superharness $VERSION" ;;

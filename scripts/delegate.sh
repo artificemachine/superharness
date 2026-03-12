@@ -141,6 +141,21 @@ if [ ! -d "$PROJECT_DIR" ]; then
 fi
 PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd -P)"
 
+# Read autonomy from profile.yaml if present
+if [ -f "$PROJECT_DIR/.superharness/profile.yaml" ]; then
+  _PROFILE_ENGINE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/engine/profile.rb"
+  PROFILE_AUTONOMY="$(ruby "$_PROFILE_ENGINE" --project "$PROJECT_DIR" autonomy 2>/dev/null || echo 'approval-gated')"
+  case "$PROFILE_AUTONOMY" in
+    autonomous)
+      export SUPERHARNESS_CONFIRM_NON_INTERACTIVE="${SUPERHARNESS_CONFIRM_NON_INTERACTIVE:-YES}"
+      export SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS="${SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS:-YES}"
+      ;;
+    supervised)
+      export SUPERHARNESS_CONFIRM_NON_INTERACTIVE="${SUPERHARNESS_CONFIRM_NON_INTERACTIVE:-YES}"
+      ;;
+  esac
+fi
+
 HARNESS_DIR="$PROJECT_DIR/.superharness"
 CONTRACT_FILE="$HARNESS_DIR/contract.yaml"
 HANDOFF_DIR="$HARNESS_DIR/handoffs"
