@@ -142,6 +142,59 @@ def test_watch_passes_launcher_timeout_to_dispatch(repo_root, tmp_path) -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_watch_accepts_recover_options(repo_root, tmp_path) -> None:
+    project = _write_project(tmp_path)
+
+    script = repo_root / "scripts" / "inbox-watch.sh"
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project", str(project),
+            "--to", "claude-code",
+            "--print-only",
+            "--recover-timeout-minutes", "7",
+            "--recover-action", "retry",
+        ],
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_watch_rejects_invalid_recover_action(repo_root, tmp_path) -> None:
+    project = _write_project(tmp_path)
+
+    script = repo_root / "scripts" / "inbox-watch.sh"
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project", str(project),
+            "--recover-action", "invalid",
+        ],
+    )
+
+    assert result.returncode == 2
+    assert "--recover-action must be one of: stale, retry" in result.stderr
+
+
+def test_watch_rejects_invalid_recover_timeout_minutes(repo_root, tmp_path) -> None:
+    project = _write_project(tmp_path)
+
+    script = repo_root / "scripts" / "inbox-watch.sh"
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project", str(project),
+            "--recover-timeout-minutes", "oops",
+        ],
+    )
+
+    assert result.returncode == 2
+    assert "--recover-timeout-minutes must be a non-negative integer" in result.stderr
+
+
 def test_watch_foreground_exits_on_sigterm(repo_root, tmp_path) -> None:
     """Foreground mode should start and respond to SIGTERM."""
     import signal

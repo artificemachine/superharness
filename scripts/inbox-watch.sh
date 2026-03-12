@@ -221,7 +221,8 @@ run_dispatch() {
 
 sync_worker_copy() {
   local source_repo="$PROJECT_DIR"
-  local worker_dir="$HOME/.superharness-workers/$(basename "$source_repo")"
+  local worker_dir
+  worker_dir="$HOME/.superharness-workers/$(basename "$source_repo")"
   if [ -d "$worker_dir" ] && [ -d "$source_repo/.git" ]; then
     # Exclude list aligned with setup-watcher-worker.sh.
     # Exclude .superharness entirely to preserve the worker symlink.

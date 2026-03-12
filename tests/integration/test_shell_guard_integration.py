@@ -65,3 +65,12 @@ def test_pre_commit_hook_executes_guard(tmp_path) -> None:
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Shell entrypoint guard passed" in result.stdout
+
+
+def test_shell_guard_list_all_includes_entrypoints_and_hooks(tmp_path) -> None:
+    repo = _copy_guard_tree(tmp_path)
+    result = run_bash(repo / "scripts/check-shell-entrypoints.sh", cwd=repo, args=["--list-all"])
+    assert result.returncode == 0, result.stderr
+    lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    assert "scripts/inbox-watch.sh" in lines
+    assert ".githooks/pre-commit" in lines

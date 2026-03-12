@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import json
 import yaml
 from pathlib import Path
 
-from tests.helpers import REPO_ROOT, copy_from_repo, run_bash, run_cmd, shell_guard_list
+from tests.helpers import REPO_ROOT, copy_from_repo, run_bash, shell_guard_list
 
 
 def test_claude_watcher_dispatch_smoke(repo_root: Path, tmp_path: Path) -> None:
@@ -201,4 +200,4 @@ RB
                 assert item.get("status") == "done", f"Inbox item not marked done: {item.get('status')}"
                 break
 
-    assert inbox_item_found, f"Inbox item not found for smoke-test-task"
+    assert inbox_item_found, "Inbox item not found for smoke-test-task"

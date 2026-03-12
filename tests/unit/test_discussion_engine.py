@@ -245,3 +245,71 @@ def test_discussion_engine_round_context_supports_utf8_content(repo_root, tmp_pa
     prior_positions = payload["prior_rounds"][0]["positions"]
     assert any("caf\u00e9" in p["position"] for p in prior_positions)
     assert any("na\u00efve" in p["position"] for p in prior_positions)
+
+
+def test_discussion_engine_check_round_and_consensus(repo_root, tmp_path) -> None:
+    _, discussion_dir = _start_discussion(repo_root, tmp_path, max_rounds=2)
+
+    before = _run_engine(
+        repo_root,
+        ["check_round", "--discussion-dir", str(discussion_dir), "--round", "1"],
+    )
+    assert before.returncode == 0, before.stderr
+    before_json = json.loads(before.stdout)
+    assert before_json["complete"] is False
+    assert set(before_json["agents_pending"]) == {"claude-code", "codex-cli"}
+
+    c1 = _run_engine(
+        repo_root,
+        [
+            "submit_round",
+            "--discussion-dir",
+            str(discussion_dir),
+            "--round",
+            "1",
+            "--agent",
+            "claude-code",
+            "--verdict",
+            "agree",
+            "--position",
+            "Looks good.",
+        ],
+    )
+    assert c1.returncode == 0, c1.stderr
+
+    c2 = _run_engine(
+        repo_root,
+        [
+            "submit_round",
+            "--discussion-dir",
+            str(discussion_dir),
+            "--round",
+            "1",
+            "--agent",
+            "codex-cli",
+            "--verdict",
+            "agree",
+            "--position",
+            "Ship it.",
+        ],
+    )
+    assert c2.returncode == 0, c2.stderr
+
+    after = _run_engine(
+        repo_root,
+        ["check_round", "--discussion-dir", str(discussion_dir), "--round", "1"],
+    )
+    assert after.returncode == 0, after.stderr
+    after_json = json.loads(after.stdout)
+    assert after_json["complete"] is True
+    assert set(after_json["agents_done"]) == {"claude-code", "codex-cli"}
+
+    consensus = _run_engine(
+        repo_root,
+        ["check_consensus", "--discussion-dir", str(discussion_dir)],
+    )
+    assert consensus.returncode == 0, consensus.stderr
+    consensus_json = json.loads(consensus.stdout)
+    assert consensus_json["all_submitted"] is True
+    assert consensus_json["consensus"] is True
+    assert consensus_json["verdicts"]["claude-code"] == "agree"

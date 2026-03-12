@@ -152,6 +152,34 @@ def test_install_launchd_requires_explicit_claude_skip_permissions_confirmation(
     assert "--confirm-skip-permissions yes" in result.stderr
 
 
+def test_install_launchd_rejects_invalid_confirm_codex_bypass(repo_root, tmp_path) -> None:
+    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    project = _setup_launchd_project(tmp_path)
+    home = tmp_path / "home-invalid-codex"
+    home.mkdir()
+    fake_bin = _fake_launchd_bin(tmp_path)
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project",
+            str(project),
+            "--to",
+            "codex-cli",
+            "--confirm-codex-bypass",
+            "maybe",
+        ],
+        env={
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+        },
+    )
+
+    assert result.returncode == 2
+    assert "--confirm-codex-bypass must be yes or no" in result.stderr
+
+
 def test_install_launchd_escapes_plist_values_and_writes_confirmation_envs(repo_root, tmp_path) -> None:
     script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
     project = _setup_launchd_project(tmp_path)
@@ -211,6 +239,116 @@ def test_install_launchd_plist_keepalive_only_restarts_on_crash(repo_root, tmp_p
     import re
     assert not re.search(r"<key>KeepAlive</key>\s*<true/>", plist_text), \
         "KeepAlive must not use unconditional <true/>"
+
+
+def test_install_launchd_protected_path_requires_allow_flag(repo_root, tmp_path) -> None:
+    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    home = tmp_path / "home-protected"
+    project = home / "Documents" / "proj"
+    (project / ".superharness").mkdir(parents=True, exist_ok=True)
+    home.mkdir(parents=True, exist_ok=True)
+    fake_bin = _fake_launchd_bin(tmp_path)
+
+    blocked = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project", str(project),
+            "--to", "codex-cli",
+            "--confirm-non-interactive", "yes",
+        ],
+        env={
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+        },
+    )
+    assert blocked.returncode == 1
+    assert "Refusing launchd install for protected macOS folder" in blocked.stderr
+
+    allowed = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project", str(project),
+            "--to", "codex-cli",
+            "--confirm-non-interactive", "yes",
+            "--allow-protected-path",
+        ],
+        env={
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+        },
+    )
+    assert allowed.returncode == 0, allowed.stderr
+
+
+def test_install_launchd_writes_recover_arguments_to_plist(repo_root, tmp_path) -> None:
+    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    project = _setup_launchd_project(tmp_path)
+    home = tmp_path / "home"
+    home.mkdir()
+    fake_bin = _fake_launchd_bin(tmp_path)
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project", str(project),
+            "--to", "codex-cli",
+            "--confirm-non-interactive", "yes",
+            "--recover-timeout-minutes", "11",
+            "--recover-action", "retry",
+        ],
+        env={
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    label = "com.superharness.inbox.proj-demo-"
+    plist = home / "Library" / "LaunchAgents" / f"{label}.plist"
+    plist_text = plist.read_text()
+    assert "<string>--recover-timeout-minutes</string>" in plist_text
+    assert "<string>11</string>" in plist_text
+    assert "<string>--recover-action</string>" in plist_text
+    assert "<string>retry</string>" in plist_text
+
+
+def test_ensure_launchd_rejects_invalid_confirm_codex_bypass(repo_root, tmp_path) -> None:
+    script = repo_root / "scripts" / "ensure-launchd-inbox-watcher.sh"
+    project = _setup_launchd_project(tmp_path)
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project",
+            str(project),
+            "--confirm-codex-bypass",
+            "maybe",
+        ],
+    )
+    assert result.returncode == 2
+    assert "--confirm-codex-bypass must be yes or no" in result.stderr
+
+
+def test_reset_watcher_rejects_invalid_confirm_codex_bypass(repo_root, tmp_path) -> None:
+    script = repo_root / "scripts" / "reset-watcher-and-test.sh"
+    project = _setup_launchd_project(tmp_path)
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project",
+            str(project),
+            "--confirm-codex-bypass",
+            "bad",
+        ],
+    )
+    assert result.returncode == 2
+    assert "--confirm-codex-bypass must be yes or no" in result.stderr
 
 
 def test_sync_worker_copy_preserves_superharness_symlink(repo_root, tmp_path) -> None:
@@ -336,3 +474,49 @@ def test_setup_watcher_worker_creates_clean_worker_and_watcher_config(repo_root,
     assert f'watcher_project: "{worker.resolve()}"' in cfg_text
     assert "launcher_timeout_seconds: 180" in cfg_text
     assert "codex_bypass: false" in cfg_text
+
+
+def test_setup_watcher_worker_persists_custom_recover_values(repo_root, tmp_path) -> None:
+    script = repo_root / "scripts" / "setup-watcher-worker.sh"
+    project = tmp_path / "source-proj-custom"
+    (project / ".superharness").mkdir(parents=True, exist_ok=True)
+    (project / "scripts").mkdir(parents=True, exist_ok=True)
+    (project / "scripts" / "install-launchd-inbox-watcher.sh").write_text(
+        (repo_root / "scripts" / "install-launchd-inbox-watcher.sh").read_text()
+    )
+    (project / "scripts" / "inbox-watch.sh").write_text(
+        (repo_root / "scripts" / "inbox-watch.sh").read_text()
+    )
+    (project / "scripts" / "install-launchd-inbox-watcher.sh").chmod(0o755)
+    (project / "scripts" / "inbox-watch.sh").chmod(0o755)
+    (project / ".superharness" / "contract.yaml").write_text("id: demo\n")
+
+    home = tmp_path / "home-custom"
+    home.mkdir()
+    fake_bin = _fake_launchd_bin(tmp_path)
+    worker = tmp_path / "worker-proj-custom"
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project", str(project),
+            "--worker", str(worker),
+            "--interval", "15",
+            "--recover-timeout-minutes", "12",
+            "--recover-action", "stale",
+            "--launcher-timeout", "45",
+            "--to", "both",
+        ],
+        env={
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    watcher_cfg = project / ".superharness" / "watcher.yaml"
+    cfg_text = watcher_cfg.read_text()
+    assert "recover_timeout_minutes: 12" in cfg_text
+    assert "recover_action: stale" in cfg_text
+    assert "launcher_timeout_seconds: 45" in cfg_text

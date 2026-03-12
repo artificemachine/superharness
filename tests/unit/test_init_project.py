@@ -37,7 +37,6 @@ def test_init_project_creates_expected_files(repo_root, tmp_path) -> None:
 
 def test_init_project_no_watcher_by_default(repo_root, tmp_path) -> None:
     """Without --with-watcher, init must NOT install a launchd plist."""
-    import subprocess
 
     script = repo_root / "init-project.sh"
     project = tmp_path / "no-watcher"
