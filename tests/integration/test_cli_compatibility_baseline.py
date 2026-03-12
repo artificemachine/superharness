@@ -39,3 +39,17 @@ def test_entrypoint_help_contract(repo_root: Path) -> None:
         assert result.returncode == 0, f"{rel_path} --help failed: {result.stderr}"
         if rel_path in usage_required:
             assert "Usage:" in result.stdout, f"{rel_path} --help missing Usage output"
+
+
+def test_discuss_help_lists_core_subcommands(repo_root: Path) -> None:
+    scripts = [
+        repo_root / "scripts" / "discuss.sh",
+        repo_root / "cli" / "discuss.sh",
+    ]
+    for script in scripts:
+        result = run_bash(script, cwd=repo_root, args=["--help"])
+        assert result.returncode == 0, f"{script} --help failed: {result.stderr}"
+        assert "start" in result.stdout
+        assert "rounds" in result.stdout
+        assert "consensus" in result.stdout
+        assert "list" in result.stdout
