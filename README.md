@@ -92,6 +92,12 @@ pip install -r requirements.txt
 pytest tests/ -q
 ```
 
+| **Smoke**       |
+| --------------- |
+| **Unit**        |
+| **Integration** |
+| **E2E**         |
+
 ---
 
 ## Prerequisites
@@ -153,6 +159,13 @@ bash scripts/install-launchd-inbox-watcher.sh \
 ```
 
 **Read the full threat model:** [SECURITY.md](SECURITY.md)
+
+TODO (repo governance):
+- Enforce branch protection required checks server-side on `main` once plan supports private-repo protections:
+  - `Tests / QA Gate`
+  - `Security / ShipGuard Scan`
+  - `Shell Guards / Shebang + Execute Bit Guard`
+  - `Contract Hygiene / Protocol Hygiene Check`
 
 ---
 

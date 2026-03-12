@@ -121,6 +121,60 @@ def test_task_create_and_delete(repo_root, tmp_path) -> None:
     assert delete_res.returncode == 0, delete_res.stderr
 
 
+def test_task_create_allows_pending_user_approval_status(repo_root, tmp_path) -> None:
+    project = _setup_project(tmp_path)
+    wrapper = repo_root / "superharness"
+
+    create_res = run_bash(
+        wrapper,
+        cwd=repo_root,
+        args=[
+            "task",
+            "create",
+            "--project",
+            str(project),
+            "--id",
+            "approval-task",
+            "--title",
+            "Approval gate task",
+            "--owner",
+            "claude-code",
+            "--status",
+            "pending_user_approval",
+        ],
+    )
+    assert create_res.returncode == 0, create_res.stderr
+    contract_text = (project / ".superharness" / "contract.yaml").read_text()
+    assert "id: approval-task" in contract_text
+    assert "status: pending_user_approval" in contract_text
+
+
+def test_task_create_rejects_failed_status(repo_root, tmp_path) -> None:
+    project = _setup_project(tmp_path)
+    wrapper = repo_root / "superharness"
+
+    create_res = run_bash(
+        wrapper,
+        cwd=repo_root,
+        args=[
+            "task",
+            "create",
+            "--project",
+            str(project),
+            "--id",
+            "bad-task",
+            "--title",
+            "Should fail",
+            "--owner",
+            "codex-cli",
+            "--status",
+            "failed",
+        ],
+    )
+    assert create_res.returncode == 2
+    assert "status must be todo, in_progress, pending_user_approval, or done" in create_res.stderr
+
+
 def test_task_create_with_dependency(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
     wrapper = repo_root / "superharness"

@@ -46,10 +46,98 @@ jobs:
           HOME="$(mktemp -d)" bash adapters/claude-code/install.sh --dry-run
           bash init-project.sh --dry-run "CI Smoke" "Bash" "active"
 
-      - name: Install pytest
+  smoke-tests:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install pytest
+          python3 -m pip install -r requirements.txt
 
-      - name: Run pytest suite
-        run: PYTHONPATH=. python3 -m pytest tests -q
+      - name: Run smoke tests
+        run: PYTHONPATH=. python3 -m pytest tests/test_smoke.py -q
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: PYTHONPATH=. python3 -m pytest tests/unit -q
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r requirements.txt
+
+      - name: Run integration tests
+        run: PYTHONPATH=. python3 -m pytest tests/integration -q
+
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r requirements.txt
+
+      - name: Run e2e tests
+        run: PYTHONPATH=. python3 -m pytest tests/e2e -q
+
+  qa-gate:
+    name: QA Gate
+    runs-on: ubuntu-latest
+    needs:
+      - shell-tests
+      - smoke-tests
+      - unit-tests
+      - integration-tests
+      - e2e-tests
+    if: always()
+    steps:
+      - name: Verify all quality layers passed
+        env:
+          SHELL_TESTS: ${{ needs.shell-tests.result }}
+          SMOKE_TESTS: ${{ needs.smoke-tests.result }}
+          UNIT_TESTS: ${{ needs.unit-tests.result }}
+          INTEGRATION_TESTS: ${{ needs.integration-tests.result }}
+          E2E_TESTS: ${{ needs.e2e-tests.result }}
+        run: |
+          failures=0
+          echo "shell-tests => $SHELL_TESTS"
+          echo "smoke-tests => $SMOKE_TESTS"
+          echo "unit-tests => $UNIT_TESTS"
+          echo "integration-tests => $INTEGRATION_TESTS"
+          echo "e2e-tests => $E2E_TESTS"
+          [ "$SHELL_TESTS" = "success" ] || failures=1
+          [ "$SMOKE_TESTS" = "success" ] || failures=1
+          [ "$UNIT_TESTS" = "success" ] || failures=1
+          [ "$INTEGRATION_TESTS" = "success" ] || failures=1
+          [ "$E2E_TESTS" = "success" ] || failures=1
+          if [ "$failures" -ne 0 ]; then
+            echo "QA Gate failed: one or more required test layers did not pass." >&2
+            exit 1
+          fi
+          echo "QA Gate passed: all required test layers succeeded."
