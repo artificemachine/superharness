@@ -1,6 +1,6 @@
 # superharness Command Reference
 
-Full command reference for superharness. For first-time setup, see [QUICKSTART.md](QUICKSTART.md).
+Full command reference for superharness. For first-time setup, see the [Quick Start](../README.md#quick-start) section in the README.
 
 ---
 
