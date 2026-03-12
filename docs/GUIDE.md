@@ -316,9 +316,47 @@ log show --predicate 'process == "launchd"' --last 5m | grep superharness
 
 ---
 
+---
+
+## Teams
+
+### Commit `.superharness/` or ignore it?
+
+| Scenario | Recommendation |
+|----------|----------------|
+| Solo / personal | `echo '.superharness/' >> .gitignore` |
+| Team / shared agents | `git add .superharness/` — everyone reads the same contract |
+| Agents opening PRs | Commit — agents read `contract.yaml` before each session |
+
+### Task ownership
+
+Tasks have an `owner` field (`claude-code` or `codex-cli`). Assign by agent type, not person — any team member can launch the owning agent.
+
+### Concurrency
+
+superharness uses file-based locking (`inbox.yaml.lock.d/`) — two watchers on the same directory won't double-dispatch. Avoid running watchers from different machines on the same directory (locking is local).
+
+### CI (Linux, foreground mode)
+
+```bash
+SUPERHARNESS_CONFIRM_NON_INTERACTIVE=YES \
+superharness watch --foreground --project . --interval 60 --launcher-timeout 300
+```
+
+### Onboarding a new team member
+
+```bash
+# Pull (if .superharness/ is committed)
+git pull
+bash /path/to/superharness/scripts/install-wrapper.sh
+superharness doctor --project .
+superharness contract today --project .   # pick up where the last session left off
+```
+
+---
+
 ## See Also
 
 - **Architecture:** [ARCHITECTURE.md](ARCHITECTURE.md) — how superharness works internally
-- **Security:** [SECURITY.md](../SECURITY.md) — operational safety notes
-- **Roadmap:** [ROADMAP.md](ROADMAP.md) — current maturity target and next milestones
+- **Security:** [SECURITY.md](../SECURITY.md) — threat model and mitigations
 - **Changelog:** [CHANGELOG.md](../CHANGELOG.md) — version history
