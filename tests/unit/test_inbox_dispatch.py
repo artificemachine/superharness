@@ -241,6 +241,59 @@ def test_dispatch_non_interactive_reconciles_stuck_launched_to_failed(repo_root,
     assert "  failed_at:" in inbox_text
 
 
+def test_dispatch_non_interactive_codex_pauses_when_worktree_dirty(repo_root, tmp_path) -> None:
+    project = tmp_path / "proj_dirty"
+    project.mkdir()
+    _write_contract(project)
+    _write_inbox(
+        project,
+        [
+            "# Delegation inbox",
+            "# status: pending|launched|running|done|failed|stale|paused",
+            "",
+            "- id: dirty-item",
+            "  to: codex-cli",
+            "  task: mcp-docs",
+            f"  project: {project}",
+            "  status: pending",
+            "  priority: 1",
+            "  retry_count: 0",
+            "  max_retries: 3",
+            "  created_at: 2026-03-08T18:00:00Z",
+        ],
+    )
+
+    run_cmd = subprocess.run
+    run_cmd(["git", "init"], cwd=project, check=True, capture_output=True, text=True)
+    run_cmd(["git", "config", "user.email", "test@example.com"], cwd=project, check=True, capture_output=True, text=True)
+    run_cmd(["git", "config", "user.name", "tester"], cwd=project, check=True, capture_output=True, text=True)
+    tracked = project / "tracked.txt"
+    tracked.write_text("base\n")
+    run_cmd(["git", "add", "tracked.txt"], cwd=project, check=True, capture_output=True, text=True)
+    run_cmd(["git", "commit", "-m", "init"], cwd=project, check=True, capture_output=True, text=True)
+    tracked.write_text("changed\n")
+
+    bin_dir = _fake_bin(tmp_path)
+    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=["--project", str(project), "--to", "codex-cli", "--non-interactive"],
+        env={
+            "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+            "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
+        },
+    )
+
+    assert result.returncode == 0
+    assert "dirty-item -> paused" in result.stdout
+    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
+    assert "id: dirty-item" in inbox_text
+    assert "  status: paused" in inbox_text
+    assert "  pause_reason: dirty_worktree_requires_user_confirmation" in inbox_text
+    assert "  retry_count: 0" in inbox_text
+
+
 def test_dispatch_non_interactive_reconciles_to_done_from_contract(repo_root, tmp_path) -> None:
     project = tmp_path / "proj6"
     project.mkdir()
@@ -306,6 +359,145 @@ def test_dispatch_non_interactive_reconciles_to_done_from_contract(repo_root, tm
     assert "id: reconcile-done-item" in inbox_text
     assert "  status: done" in inbox_text
     assert "  done_at:" in inbox_text
+
+
+def test_dispatch_non_interactive_pauses_when_contract_waits_user_approval(repo_root, tmp_path) -> None:
+    project = tmp_path / "proj6b"
+    project.mkdir()
+    _write_contract(project)
+    _write_inbox(
+        project,
+        [
+            "# Delegation inbox",
+            "# status: pending|launched|running|done|failed|stale|paused",
+            "",
+            "- id: reconcile-approval-item",
+            "  to: codex-cli",
+            "  task: mcp-docs",
+            f"  project: {project}",
+            "  status: pending",
+            "  priority: 1",
+            "  retry_count: 0",
+            "  max_retries: 3",
+            "  created_at: 2026-03-08T18:00:00Z",
+        ],
+    )
+
+    bin_dir = _fake_bin(tmp_path)
+    codex_path = bin_dir / "codex"
+    codex_path.write_text(
+        "\n".join(
+            [
+                "#!/bin/bash",
+                "set -euo pipefail",
+                'proj=""',
+                "while [ $# -gt 0 ]; do",
+                '  if [ \"$1\" = \"-C\" ] && [ $# -ge 2 ]; then',
+                '    proj=\"$2\"',
+                "    shift 2",
+                "    continue",
+                "  fi",
+                "  shift",
+                "done",
+                'if [ -n \"$proj\" ] && [ -f \"$proj/.superharness/contract.yaml\" ]; then',
+                "  perl -0pi -e 's/(id:\\s*mcp-docs\\s*\\n(?:[^\\n]*\\n)*?\\s*status:\\s*)(?:todo|in_progress|running|failed|done|pending_user_approval)/${1}pending_user_approval/s' \"$proj/.superharness/contract.yaml\"",
+                "fi",
+                "echo fake-codex",
+            ]
+        )
+        + "\n"
+    )
+    codex_path.chmod(0o755)
+
+    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=["--project", str(project), "--to", "codex-cli", "--non-interactive"],
+        env={
+            "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+            "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
+        },
+    )
+
+    assert result.returncode == 0
+    assert "paused (awaiting_user_approval)" in result.stdout
+    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
+    assert "id: reconcile-approval-item" in inbox_text
+    assert "  status: paused" in inbox_text
+    assert "  pause_reason: awaiting_user_approval" in inbox_text
+    assert "  paused_at:" in inbox_text
+
+
+def test_dispatch_worker_mode_uses_dispatch_project_for_execution(repo_root, tmp_path) -> None:
+    source = tmp_path / "source_proj"
+    source.mkdir()
+    _write_contract(source)
+    _write_inbox(
+        source,
+        [
+            "# Delegation inbox",
+            "# status: pending|launched|running|done|failed|stale|paused",
+            "",
+            "- id: worker-mode-item",
+            "  to: codex-cli",
+            "  task: mcp-docs",
+            f"  project: {source}",
+            "  status: pending",
+            "  priority: 1",
+            "  retry_count: 0",
+            "  max_retries: 3",
+            "  created_at: 2026-03-08T18:00:00Z",
+        ],
+    )
+    worker = tmp_path / "worker_proj"
+    worker.mkdir()
+    (worker / ".superharness").symlink_to(source / ".superharness", target_is_directory=True)
+
+    bin_dir = _fake_bin(tmp_path)
+    codex_path = bin_dir / "codex"
+    capture_path = tmp_path / "captured_exec_project.txt"
+    codex_path.write_text(
+        "\n".join(
+            [
+                "#!/bin/bash",
+                "set -euo pipefail",
+                'proj=""',
+                "while [ $# -gt 0 ]; do",
+                '  if [ \"$1\" = \"-C\" ] && [ $# -ge 2 ]; then',
+                '    proj=\"$2\"',
+                "    shift 2",
+                "    continue",
+                "  fi",
+                "  shift",
+                "done",
+                f'printf \"%s\" \"$proj\" > "{capture_path}"',
+                'if [ -n \"$proj\" ] && [ -f \"$proj/.superharness/contract.yaml\" ]; then',
+                "  perl -0pi -e 's/(id:\\s*mcp-docs\\s*\\n(?:[^\\n]*\\n)*?\\s*status:\\s*)(?:todo|in_progress|running|failed|done)/${1}done/s' \"$proj/.superharness/contract.yaml\"",
+                "fi",
+                "echo fake-codex",
+            ]
+        )
+        + "\n"
+    )
+    codex_path.chmod(0o755)
+
+    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=["--project", str(worker), "--to", "codex-cli", "--non-interactive"],
+        env={
+            "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+            "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
+        },
+    )
+
+    assert result.returncode == 0
+    assert capture_path.read_text() == str(worker)
+    inbox_text = (source / ".superharness" / "inbox.yaml").read_text()
+    assert "id: worker-mode-item" in inbox_text
+    assert "  status: done" in inbox_text
 
 
 def test_dispatch_handles_pipe_character_in_item_id(repo_root, tmp_path) -> None:

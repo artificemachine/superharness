@@ -34,6 +34,8 @@ Commands:
   recover     Recover stale launched items
   normalize   Normalize/archive inbox rows
   hygiene     Check contract hygiene
+  discuss     Approval-gated consensus helpers
+  watcher-worker  Build clean watcher worker and install watcher there
   version     Show version
   help        Show this help message
 
@@ -115,6 +117,8 @@ case "$cmd" in
   recover) exec_with_optional_project "$ROOT_DIR/scripts/inbox-recover-stale.sh" "$@" ;;
   normalize) exec_with_optional_project "$ROOT_DIR/scripts/inbox-normalize.sh" "$@" ;;
   hygiene) exec_with_optional_project "$ROOT_DIR/scripts/check-contract-hygiene.sh" "$@" ;;
+  discuss) exec_with_optional_project "$ROOT_DIR/scripts/discuss.sh" "$@" ;;
+  watcher-worker) exec_with_optional_project "$ROOT_DIR/scripts/setup-watcher-worker.sh" "$@" ;;
   uninstall) exec bash "$ROOT_DIR/scripts/uninstall.sh" "$@" ;;
   help|-h|--help) usage ;;
   version|--version|-v) echo "superharness $VERSION" ;;
