@@ -54,8 +54,8 @@ validate_task_token() {
       exit 2
       ;;
   esac
-  if [[ ! "$value" =~ ^[A-Za-z0-9._-]+$ ]]; then
-    echo "$name must match ^[A-Za-z0-9._-]+$" >&2
+  if [[ ! "$value" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+    echo "$name must match ^[A-Za-z0-9._/-]+$" >&2
     exit 2
   fi
 }

@@ -38,6 +38,7 @@ ENTRYPOINT_FILES=(
   "cli/monitor-ui.sh"
   "cli/discuss.sh"
   "scripts/discussion-dispatch.sh"
+  "scripts/status.sh"
 )
 
 HOOK_FILES=(

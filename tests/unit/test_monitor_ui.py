@@ -863,3 +863,109 @@ def test_monitor_action_stop_item_not_found(repo_root, tmp_path, monkeypatch) ->
     result, status = h._action("stop_item:nonexistent")
     assert status == 404
     assert "item not found" in result["error"]
+
+
+def test_task_report_contract_summary(repo_root, tmp_path) -> None:
+    """task_report returns contract task status and summary."""
+    module = _load_monitor_module(repo_root)
+    project = tmp_path / "proj-report"
+    harness = project / ".superharness"
+    harness.mkdir(parents=True)
+    (harness / "contract.yaml").write_text(
+        "id: c1\ntasks:\n"
+        "  - id: my-task\n    owner: claude-code\n    status: done\n"
+        "    summary: |\n      Implemented feature X with tests.\n"
+    )
+
+    result = module.task_report(project, "my-task", "claude-code")
+    assert result["contract_status"] == "done"
+    assert "feature X" in result["contract_summary"]
+
+
+def test_task_report_handoff_and_markdown(repo_root, tmp_path) -> None:
+    """task_report returns handoff summary and markdown report content."""
+    module = _load_monitor_module(repo_root)
+    project = tmp_path / "proj-report-md"
+    harness = project / ".superharness"
+    (harness / "handoffs").mkdir(parents=True)
+    (harness / "contract.yaml").write_text("id: c1\ntasks: []\n")
+    (harness / "handoffs" / "2026-03-12-my-task.yaml").write_text(
+        "task: my-task\nto: codex-cli\nstatus: done\n"
+        "summary: Did the thing.\n"
+        "markdown_report: .superharness/handoffs/2026-03-12-my-task.md\n"
+    )
+    (harness / "handoffs" / "2026-03-12-my-task.md").write_text(
+        "# My Task Report\n\nCompleted successfully.\n"
+    )
+
+    result = module.task_report(project, "my-task", "codex-cli")
+    assert result["handoff_summary"] == "Did the thing."
+    assert "Completed successfully" in result["markdown_report"]
+
+
+def test_task_report_discussion_submission(repo_root, tmp_path) -> None:
+    """task_report returns discussion state and agent submission."""
+    module = _load_monitor_module(repo_root)
+    project = tmp_path / "proj-report-disc"
+    harness = project / ".superharness"
+    disc_dir = harness / "discussions" / "discuss-test-123"
+    disc_dir.mkdir(parents=True)
+    (harness / "handoffs").mkdir(parents=True)
+    (harness / "contract.yaml").write_text("id: c1\ntasks: []\n")
+    (disc_dir / "state.yaml").write_text(
+        "id: discuss-test-123\ntopic: Review approach\n"
+        "status: active\ncurrent_round: 1\nmax_rounds: 3\n"
+        "participants:\n  - claude-code\n  - codex-cli\n"
+    )
+    (disc_dir / "round-1-claude-code.yaml").write_text(
+        "discussion_id: discuss-test-123\nround: 1\nagent: claude-code\n"
+        "verdict: partial\nposition: Need more testing.\n"
+    )
+
+    result = module.task_report(project, "discuss-test-123/round-1", "claude-code")
+    assert result["discussion_topic"] == "Review approach"
+    assert result["discussion_status"] == "active"
+    assert result["discussion_verdict"] == "partial"
+    assert "Need more testing" in result["discussion_position"]
+
+
+def test_task_report_discussion_all_agents(repo_root, tmp_path) -> None:
+    """task_report returns all agent positions when no specific agent match."""
+    module = _load_monitor_module(repo_root)
+    project = tmp_path / "proj-report-all"
+    harness = project / ".superharness"
+    disc_dir = harness / "discussions" / "discuss-all-456"
+    disc_dir.mkdir(parents=True)
+    (harness / "handoffs").mkdir(parents=True)
+    (harness / "contract.yaml").write_text("id: c1\ntasks: []\n")
+    (disc_dir / "state.yaml").write_text(
+        "id: discuss-all-456\ntopic: Multi agent\n"
+        "status: active\ncurrent_round: 1\nmax_rounds: 2\n"
+    )
+    (disc_dir / "round-1-claude-code.yaml").write_text(
+        "agent: claude-code\nverdict: agree\nposition: Looks good.\n"
+    )
+    (disc_dir / "round-1-codex-cli.yaml").write_text(
+        "agent: codex-cli\nverdict: disagree\nposition: Needs rework.\n"
+    )
+
+    result = module.task_report(project, "discuss-all-456/round-1", "gemini-cli")
+    assert "claude-code" in result.get("discussion_position", "")
+    assert "codex-cli" in result.get("discussion_position", "")
+    assert "Looks good" in result["discussion_position"]
+    assert "Needs rework" in result["discussion_position"]
+
+
+def test_task_report_missing_data(repo_root, tmp_path) -> None:
+    """task_report returns minimal dict when no data exists."""
+    module = _load_monitor_module(repo_root)
+    project = tmp_path / "proj-report-empty"
+    harness = project / ".superharness"
+    harness.mkdir(parents=True)
+    (harness / "contract.yaml").write_text("id: c1\ntasks: []\n")
+
+    result = module.task_report(project, "nonexistent-task", "claude-code")
+    assert result["task"] == "nonexistent-task"
+    assert result["agent"] == "claude-code"
+    assert "contract_summary" not in result
+    assert "markdown_report" not in result

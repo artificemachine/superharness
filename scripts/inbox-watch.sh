@@ -153,10 +153,10 @@ case "$INTERVAL" in
 esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DISPATCH="$SCRIPT_DIR/inbox-dispatch.sh"
-RECOVER="$SCRIPT_DIR/inbox-recover-stale.sh"
-DEADLINE_CHECK="$SCRIPT_DIR/inbox-deadline-check.sh"
-DISCUSSION_DISPATCH="$SCRIPT_DIR/discussion-dispatch.sh"
+DISPATCH="${DISPATCH:-$SCRIPT_DIR/inbox-dispatch.sh}"
+RECOVER="${RECOVER:-$SCRIPT_DIR/inbox-recover-stale.sh}"
+DEADLINE_CHECK="${DEADLINE_CHECK:-$SCRIPT_DIR/inbox-deadline-check.sh}"
+DISCUSSION_DISPATCH="${DISCUSSION_DISPATCH:-$SCRIPT_DIR/discussion-dispatch.sh}"
 
 if [ ! -x "$DISPATCH" ]; then
   echo "Missing executable dispatcher: $DISPATCH" >&2
@@ -216,7 +216,8 @@ INBOX_FILE="$PROJECT_DIR/.superharness/inbox.yaml"
 
 run_dispatch() {
   local to="$1"
-  bash "$DISPATCH" "${COMMON_ARGS[@]}" --to "$to" || true
+  bash "$DISPATCH" "${COMMON_ARGS[@]}" --to "$to" >/dev/null 2>&1 &
+  disown
 }
 
 sync_worker_copy() {
@@ -266,8 +267,11 @@ run_cycle() {
 
   # Advance any active multi-agent discussions
   if [ -x "$DISCUSSION_DISPATCH" ]; then
-    bash "$DISCUSSION_DISPATCH" --project "$PROJECT_DIR" || true
+    bash "$DISCUSSION_DISPATCH" --project "$PROJECT_DIR" >/dev/null 2>&1 &
+    disown
   fi
+
+  write_heartbeat
 }
 
 if [ "$FOREGROUND" -eq 1 ]; then
