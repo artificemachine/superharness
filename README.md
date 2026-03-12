@@ -12,7 +12,6 @@ superharness lets AI coding assistants work on the same project without stepping
 
 📘 **[User Guide](docs/GUIDE.md)** — How to use superharness (installation, commands, troubleshooting)
 🏗️ **[Architecture](docs/ARCHITECTURE.md)** — Why it exists, how it works, design philosophy
-⚡ **[Quickstart](docs/QUICKSTART.md)** — Shortest path to first delegation
 👥 **[Teams](docs/TEAMS.md)** — Multi-person setups, shared state, CI integration
 🔒 **[Security](SECURITY.md)** — Operational safety notes
 🗺️ **[Roadmap](docs/ROADMAP.md)** — Current maturity target and next milestones
@@ -100,8 +99,6 @@ superharness task create --project . --id my-task --title "First task" --owner c
 superharness enqueue --project . --to codex-cli --task my-task --priority 1
 superharness dispatch --project . --to codex-cli --print-only
 ```
-
-**Full setup guide:** [docs/QUICKSTART.md](docs/QUICKSTART.md)
 
 ---
 
