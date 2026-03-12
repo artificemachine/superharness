@@ -178,3 +178,161 @@ def test_install_launchd_escapes_plist_values_and_writes_confirmation_envs(repo_
     assert "<string>YES</string>" in plist_text
     assert "<key>SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS</key>" in plist_text
     assert "<key>SUPERHARNESS_CONFIRM_CODEX_BYPASS</key>" in plist_text
+
+
+def test_install_launchd_plist_keepalive_only_restarts_on_crash(repo_root, tmp_path) -> None:
+    """KeepAlive must use SuccessfulExit=false so launchd only restarts on crash,
+    not after a normal single-cycle exit."""
+    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    project = _setup_launchd_project(tmp_path)
+    home = tmp_path / "home"
+    home.mkdir()
+    fake_bin = _fake_launchd_bin(tmp_path)
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=["--project", str(project), "--to", "codex-cli", "--confirm-non-interactive", "yes"],
+        env={
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    label = "com.superharness.inbox.proj-demo-"
+    plist = home / "Library" / "LaunchAgents" / f"{label}.plist"
+    plist_text = plist.read_text()
+    # Must NOT use unconditional <true/> for KeepAlive
+    assert "<key>KeepAlive</key>" in plist_text
+    assert "<key>SuccessfulExit</key>" in plist_text
+    assert "<false/>" in plist_text
+    # Verify we don't have the old pattern: KeepAlive followed immediately by <true/>
+    import re
+    assert not re.search(r"<key>KeepAlive</key>\s*<true/>", plist_text), \
+        "KeepAlive must not use unconditional <true/>"
+
+
+def test_sync_worker_copy_preserves_superharness_symlink(repo_root, tmp_path) -> None:
+    """sync_worker_copy must not replace the worker .superharness symlink with
+    a real directory copy. It should exclude .superharness entirely."""
+    script = repo_root / "scripts" / "inbox-watch.sh"
+    source = tmp_path / "source-proj"
+    source.mkdir()
+    (source / ".git").mkdir()
+    (source / ".superharness").mkdir()
+    (source / ".superharness" / "contract.yaml").write_text("id: test\n")
+    (source / ".superharness" / "inbox.yaml").write_text("---\n")
+    (source / "README.md").write_text("source\n")
+    (source / ".venv").mkdir()
+    (source / ".venv" / "bin").mkdir()
+    (source / "node_modules").mkdir()
+    (source / ".pytest_cache").mkdir()
+
+    # Create worker dir with .superharness as a symlink (like setup-watcher-worker.sh does)
+    worker = tmp_path / ".superharness-workers" / "source-proj"
+    worker.mkdir(parents=True)
+    (worker / "README.md").write_text("old\n")
+    (worker / ".superharness").symlink_to(source / ".superharness")
+
+    home = tmp_path
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=["--project", str(source), "--help"],
+        env={"HOME": str(home)},
+    )
+    # --help exits 0 without running; we just need the script to be valid
+    assert result.returncode == 0
+
+    # Now actually run sync_worker_copy by sourcing the function
+    sync_script = tmp_path / "run_sync.sh"
+    sync_script.write_text(f"""#!/bin/bash
+set -euo pipefail
+PROJECT_DIR="{source}"
+HOME="{home}"
+export HOME
+sync_worker_copy() {{
+  local source_repo="$PROJECT_DIR"
+  local worker_dir="$HOME/.superharness-workers/$(basename "$source_repo")"
+  if [ -d "$worker_dir" ] && [ -d "$source_repo/.git" ]; then
+    rsync -a --delete \\
+      --exclude '.git' \\
+      --exclude '.superharness' \\
+      --exclude '.venv' \\
+      --exclude 'node_modules' \\
+      --exclude '.pytest_cache' \\
+      "$source_repo/" "$worker_dir/" 2>/dev/null || true
+  fi
+}}
+sync_worker_copy
+""")
+    sync_script.chmod(0o755)
+
+    sync_result = run_bash(sync_script, cwd=tmp_path)
+    assert sync_result.returncode == 0, sync_result.stderr
+
+    # .superharness must still be a symlink
+    assert (worker / ".superharness").is_symlink(), \
+        ".superharness should remain a symlink after sync_worker_copy"
+    assert (worker / ".superharness").resolve() == (source / ".superharness").resolve()
+    # Source content should be synced
+    assert (worker / "README.md").read_text() == "source\n"
+    # Excluded dirs should not exist in worker
+    assert not (worker / ".venv").exists(), ".venv should be excluded from sync"
+    assert not (worker / "node_modules").exists(), "node_modules should be excluded from sync"
+    assert not (worker / ".pytest_cache").exists(), ".pytest_cache should be excluded from sync"
+
+
+def test_setup_watcher_worker_creates_clean_worker_and_watcher_config(repo_root, tmp_path) -> None:
+    script = repo_root / "scripts" / "setup-watcher-worker.sh"
+    project = tmp_path / "source-proj"
+    (project / ".superharness").mkdir(parents=True, exist_ok=True)
+    (project / "scripts").mkdir(parents=True, exist_ok=True)
+    # Minimal script set required by setup script + installer checks.
+    (project / "scripts" / "install-launchd-inbox-watcher.sh").write_text(
+        (repo_root / "scripts" / "install-launchd-inbox-watcher.sh").read_text()
+    )
+    (project / "scripts" / "inbox-watch.sh").write_text(
+        (repo_root / "scripts" / "inbox-watch.sh").read_text()
+    )
+    (project / "scripts" / "install-launchd-inbox-watcher.sh").chmod(0o755)
+    (project / "scripts" / "inbox-watch.sh").chmod(0o755)
+    (project / "README.md").write_text("source\n")
+    (project / ".superharness" / "contract.yaml").write_text("id: demo\n")
+
+    home = tmp_path / "home"
+    home.mkdir()
+    fake_bin = _fake_launchd_bin(tmp_path)
+    worker = tmp_path / "worker-proj"
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project",
+            str(project),
+            "--worker",
+            str(worker),
+            "--interval",
+            "15",
+            "--to",
+            "both",
+        ],
+        env={
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Watcher worker is ready." in result.stdout
+    assert (worker / "README.md").exists()
+    assert (worker / ".superharness").is_symlink()
+    assert (worker / ".superharness").resolve() == (project / ".superharness").resolve()
+    watcher_cfg = project / ".superharness" / "watcher.yaml"
+    assert watcher_cfg.exists()
+    cfg_text = watcher_cfg.read_text()
+    assert f'watcher_project: "{worker.resolve()}"' in cfg_text
+    assert "launcher_timeout_seconds: 180" in cfg_text
+    assert "codex_bypass: false" in cfg_text

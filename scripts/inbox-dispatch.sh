@@ -109,6 +109,7 @@ fi
 LOCK_FILE="${INBOX_FILE}.lock"
 LOCK_DIR="${LOCK_FILE}.d"
 LOCK_HELD=0
+DIRTY_WORKTREE_REASON="dirty_worktree_requires_user_confirmation"
 
 acquire_lock() {
   if mkdir "$LOCK_DIR" 2>/dev/null; then
@@ -158,6 +159,32 @@ mark_item_failed() {
 
   release_lock
   echo "Failed to mark inbox item as failed for $item_id" >&2
+  return 1
+}
+
+project_has_dirty_worktree() {
+  local project_dir="$1"
+  if ! command -v git >/dev/null 2>&1; then
+    return 1
+  fi
+  if ! git -C "$project_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    return 1
+  fi
+  if [ -n "$(git -C "$project_dir" status --porcelain --untracked-files=normal -- ':!.superharness/' 2>/dev/null)" ]; then
+    return 0
+  fi
+  return 1
+}
+
+mark_item_paused_dirty_worktree() {
+  local item_id="$1"
+  local paused_at="$2"
+
+  if ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$item_id" --from pending --to paused --now "$paused_at" --stamp-key paused_at >/dev/null 2>&1; then
+    ruby "$INBOX_YAML" set_field --file "$INBOX_FILE" --id "$item_id" --key pause_reason --value "$DIRTY_WORKTREE_REASON" >/dev/null 2>&1 || true
+    echo "Inbox item updated: $item_id -> paused (dirty worktree requires interactive confirmation)"
+    return 0
+  fi
   return 1
 }
 
@@ -215,6 +242,22 @@ if [ -z "$ITEM_PRIORITY" ]; then
   ITEM_PRIORITY=2
 fi
 
+EXEC_PROJECT="$ITEM_PROJECT"
+PROJECT_HARNESS_REAL=""
+ITEM_HARNESS_REAL=""
+if [ -d "$PROJECT_DIR/.superharness" ]; then
+  PROJECT_HARNESS_REAL="$(cd "$PROJECT_DIR/.superharness" && pwd -P)"
+fi
+if [ -d "$ITEM_PROJECT/.superharness" ]; then
+  ITEM_HARNESS_REAL="$(cd "$ITEM_PROJECT/.superharness" && pwd -P)"
+fi
+# Worker-mode dispatch: when project and item share the same .superharness tree,
+# run the launcher from the dispatcher project path (clean worker) instead of
+# the source path recorded in inbox rows.
+if [ -n "$PROJECT_HARNESS_REAL" ] && [ -n "$ITEM_HARNESS_REAL" ] && [ "$PROJECT_HARNESS_REAL" = "$ITEM_HARNESS_REAL" ] && [ "$PROJECT_DIR" != "$ITEM_PROJECT" ]; then
+  EXEC_PROJECT="$PROJECT_DIR"
+fi
+
 LAUNCHER=""
 case "$ITEM_TO" in
   claude-code) LAUNCHER="$LAUNCH_CLAUDE" ;;
@@ -225,7 +268,15 @@ case "$ITEM_TO" in
     ;;
 esac
 
-LAUNCH_ARGS=(--project "$ITEM_PROJECT" --task "$ITEM_TASK")
+if [ "$NON_INTERACTIVE" -eq 1 ] && [ "$PRINT_ONLY" -eq 0 ] && [ "$ITEM_TO" = "codex-cli" ] && project_has_dirty_worktree "$EXEC_PROJECT"; then
+  PAUSE_NOW="$(date -u +%FT%TZ)"
+  if mark_item_paused_dirty_worktree "$ITEM_ID" "$PAUSE_NOW"; then
+    release_lock
+    exit 0
+  fi
+fi
+
+LAUNCH_ARGS=(--project "$EXEC_PROJECT" --task "$ITEM_TASK")
 if [ "$PRINT_ONLY" -eq 1 ]; then
   LAUNCH_ARGS+=(--print-only)
 fi
@@ -348,16 +399,43 @@ if [ "$NON_INTERACTIVE" -eq 1 ] && [ "$PRINT_ONLY" -eq 0 ]; then
         RECONCILED=1
       fi
       ;;
+    pending_user_approval)
+      if ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to "paused" --now "$RECONCILE_NOW" --stamp-key paused_at >/dev/null 2>&1; then
+        ruby "$INBOX_YAML" set_field --file "$INBOX_FILE" --id "$ITEM_ID" --key pause_reason --value "awaiting_user_approval" >/dev/null 2>&1 || true
+        RECONCILED=3
+      elif ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from running --to "paused" --now "$RECONCILE_NOW" --stamp-key paused_at >/dev/null 2>&1; then
+        ruby "$INBOX_YAML" set_field --file "$INBOX_FILE" --id "$ITEM_ID" --key pause_reason --value "awaiting_user_approval" >/dev/null 2>&1 || true
+        RECONCILED=3
+      fi
+      ;;
     *)
-      if ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to "failed" --now "$RECONCILE_NOW" --stamp-key failed_at >/dev/null 2>&1; then
-        RECONCILED=1
-      elif ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from running --to "failed" --now "$RECONCILE_NOW" --stamp-key failed_at >/dev/null 2>&1; then
-        RECONCILED=1
+      if [ "$ITEM_TO" = "codex-cli" ] && project_has_dirty_worktree "$EXEC_PROJECT"; then
+        if ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to "paused" --now "$RECONCILE_NOW" --stamp-key paused_at >/dev/null 2>&1; then
+          ruby "$INBOX_YAML" set_field --file "$INBOX_FILE" --id "$ITEM_ID" --key pause_reason --value "$DIRTY_WORKTREE_REASON" >/dev/null 2>&1 || true
+          RECONCILED=2
+        elif ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from running --to "paused" --now "$RECONCILE_NOW" --stamp-key paused_at >/dev/null 2>&1; then
+          ruby "$INBOX_YAML" set_field --file "$INBOX_FILE" --id "$ITEM_ID" --key pause_reason --value "$DIRTY_WORKTREE_REASON" >/dev/null 2>&1 || true
+          RECONCILED=2
+        fi
+      else
+        if ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from launched --to "failed" --now "$RECONCILE_NOW" --stamp-key failed_at >/dev/null 2>&1; then
+          RECONCILED=1
+        elif ruby "$INBOX_YAML" set_status --file "$INBOX_FILE" --id "$ITEM_ID" --from running --to "failed" --now "$RECONCILE_NOW" --stamp-key failed_at >/dev/null 2>&1; then
+          RECONCILED=1
+        fi
       fi
       ;;
   esac
   release_lock
 
+  if [ "$RECONCILED" -eq 2 ]; then
+    echo "Inbox item updated: $ITEM_ID -> paused ($DIRTY_WORKTREE_REASON)"
+    exit 0
+  fi
+  if [ "$RECONCILED" -eq 3 ]; then
+    echo "Inbox item updated: $ITEM_ID -> paused (awaiting_user_approval)"
+    exit 0
+  fi
   if [ "$RECONCILED" -eq 1 ]; then
     if [ "$FINAL_STATE" = "done" ]; then
       echo "Inbox item updated: $ITEM_ID -> done (reconciled from contract task status)"

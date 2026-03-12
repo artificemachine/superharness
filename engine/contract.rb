@@ -27,7 +27,9 @@ def task_project_path(file:, task:)
   raise "contract tasks must be a sequence: #{file}" unless tasks.is_a?(Array)
   row = tasks.find { |t| t.is_a?(Hash) && t["id"].to_s == task.to_s }
   return 0 if row.nil?
-  puts row["project_path"].to_s
+  val = row["project_path"]
+  warn "contract: task #{task} has no project_path" if val.nil?
+  puts val.to_s
   0
 end
 
@@ -38,7 +40,9 @@ def task_owner(file:, task:)
   raise "contract tasks must be a sequence: #{file}" unless tasks.is_a?(Array)
   row = tasks.find { |t| t.is_a?(Hash) && t["id"].to_s == task.to_s }
   return 0 if row.nil?
-  puts row["owner"].to_s
+  val = row["owner"]
+  warn "contract: task #{task} has no owner" if val.nil?
+  puts val.to_s
   0
 end
 
@@ -49,7 +53,9 @@ def task_status(file:, task:)
   raise "contract tasks must be a sequence: #{file}" unless tasks.is_a?(Array)
   row = tasks.find { |t| t.is_a?(Hash) && t["id"].to_s == task.to_s }
   return 0 if row.nil?
-  puts row["status"].to_s
+  val = row["status"]
+  warn "contract: task #{task} has no status" if val.nil?
+  puts val.to_s
   0
 end
 

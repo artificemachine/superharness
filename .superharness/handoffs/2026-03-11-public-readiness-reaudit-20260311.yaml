@@ -1,0 +1,21 @@
+---
+task: public-readiness-reaudit-20260311
+to: codex-cli
+date: 2026-03-11
+status: approved
+contract_id: v08-reliability
+approval_gate:
+  required: true
+  approved_by_user: true
+  approved_at: '2026-03-11T18:42:29Z'
+  approved_by: owner
+  note: All blockers fixed, re-audit for go verdict
+summary: |
+  Re-audit of superharness public readiness. All 3 blockers from initial
+  review (public-readiness-review-20260311) have been fixed:
+  1. LICENSE (Apache 2.0) and CONTRIBUTING.md — added
+  2. Delegate confirmation-gate tests — passing (were already fixed in working tree)
+  3. ShipGuard PY-004 in monitor-ui.py — fixed with is_relative_to + client-side path sanitization
+  Run the same audit checklist and confirm go/no-go.
+prior_review: public-readiness-review-20260311
+markdown_report: ".superharness/handoffs/2026-03-11-public-readiness-reaudit-20260311.md"

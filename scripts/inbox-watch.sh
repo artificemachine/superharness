@@ -156,6 +156,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DISPATCH="$SCRIPT_DIR/inbox-dispatch.sh"
 RECOVER="$SCRIPT_DIR/inbox-recover-stale.sh"
 DEADLINE_CHECK="$SCRIPT_DIR/inbox-deadline-check.sh"
+DISCUSSION_DISPATCH="$SCRIPT_DIR/discussion-dispatch.sh"
 
 if [ ! -x "$DISPATCH" ]; then
   echo "Missing executable dispatcher: $DISPATCH" >&2
@@ -218,7 +219,25 @@ run_dispatch() {
   bash "$DISPATCH" "${COMMON_ARGS[@]}" --to "$to" || true
 }
 
+sync_worker_copy() {
+  local source_repo="$PROJECT_DIR"
+  local worker_dir="$HOME/.superharness-workers/$(basename "$source_repo")"
+  if [ -d "$worker_dir" ] && [ -d "$source_repo/.git" ]; then
+    # Exclude list aligned with setup-watcher-worker.sh.
+    # Exclude .superharness entirely to preserve the worker symlink.
+    rsync -a --delete \
+      --exclude '.git' \
+      --exclude '.superharness' \
+      --exclude '.venv' \
+      --exclude 'node_modules' \
+      --exclude '.pytest_cache' \
+      "$source_repo/" "$worker_dir/" 2>/dev/null || true
+  fi
+}
+
 run_cycle() {
+  sync_worker_copy
+
   if [ -x "$DEADLINE_CHECK" ]; then
     bash "$DEADLINE_CHECK" --project "$PROJECT_DIR" || true
   fi
@@ -236,6 +255,11 @@ run_cycle() {
 
   if [ "$TARGET" = "both" ] || [ "$TARGET" = "codex-cli" ]; then
     run_dispatch "codex-cli"
+  fi
+
+  # Advance any active multi-agent discussions
+  if [ -x "$DISCUSSION_DISPATCH" ]; then
+    bash "$DISCUSSION_DISPATCH" --project "$PROJECT_DIR" || true
   fi
 }
 

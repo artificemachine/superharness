@@ -98,7 +98,16 @@ def _stop_server(server, thread) -> None:
 def test_monitor_status_returns_contract_and_counts(repo_root, tmp_path, monkeypatch) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
-    monkeypatch.setattr(module, "watcher_state", lambda label: "running")
+    monkeypatch.setattr(
+        module,
+        "watcher_runtime",
+        lambda label: {
+            "loaded": True,
+            "state": "running",
+            "last_exit_code": "0",
+            "run_interval_seconds": 15,
+        },
+    )
     monkeypatch.setattr(module, "contract_id", lambda path: "monitor-contract")
     monkeypatch.setattr(module.shutil, "which", lambda name: None)
 
@@ -111,6 +120,7 @@ def test_monitor_status_returns_contract_and_counts(repo_root, tmp_path, monkeyp
     assert status == 200
     assert payload["contract_id"] == "monitor-contract"
     assert payload["inbox_counts"]["pending"] == 1
+    assert payload["watcher_health"]["level"] == "ok"
     assert any("monitor test" in line for line in payload["ledger_tail"])
 
 
@@ -181,6 +191,85 @@ def test_monitor_action_accepts_same_origin_with_token(repo_root, tmp_path, monk
 
     assert status == 200
     assert payload["stdout"] == "dispatch_print_codex"
+
+
+def test_monitor_action_remove_item_calls_inbox_remove(repo_root, tmp_path, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    captured: dict[str, object] = {}
+
+    def fake_run_cmd(self, args, timeout=30):  # noqa: ANN001, ANN202
+        captured["args"] = args
+        captured["timeout"] = timeout
+        return {"exit_code": 0, "stdout": "ok", "stderr": "", "cmd": " ".join(args)}
+
+    monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json(
+            "POST",
+            base_url + "/api/action",
+            payload={"action": "remove_item:sample-item"},
+            headers={
+                "Origin": base_url,
+                "Referer": base_url + "/",
+                "Content-Type": "application/json",
+                "X-Superharness-Token": module.Handler.auth_token,
+            },
+        )
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    assert payload["stdout"] == "ok"
+    args = captured["args"]
+    assert isinstance(args, list)
+    assert "remove" in args
+    assert "--id" in args
+    assert "sample-item" in args
+
+
+def test_monitor_action_watcher_start_installs_and_kickstarts(repo_root, tmp_path, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    calls: list[list[str]] = []
+
+    def fake_run_cmd(self, args, timeout=30):  # noqa: ANN001, ANN202
+        calls.append(args)
+        return {"exit_code": 0, "stdout": "ok", "stderr": "", "cmd": " ".join(args)}
+
+    monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json(
+            "POST",
+            base_url + "/api/action",
+            payload={"action": "watcher_start"},
+            headers={
+                "Origin": base_url,
+                "Referer": base_url + "/",
+                "Content-Type": "application/json",
+                "X-Superharness-Token": module.Handler.auth_token,
+            },
+        )
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    assert payload["exit_code"] == 0
+    assert len(calls) == 2
+    install_call = calls[0]
+    kickstart_call = calls[1]
+    assert "install-launchd-inbox-watcher.sh" in " ".join(install_call)
+    assert "--interval" in install_call
+    assert "15" in install_call
+    assert "--confirm-non-interactive" in install_call
+    assert "--confirm-skip-permissions" in install_call
+    assert "--launcher-timeout" in install_call
+    assert "180" in install_call
+    assert kickstart_call[:3] == ["launchctl", "kickstart", "-k"]
 
 
 def test_monitor_main_rejects_non_loopback_host(repo_root, tmp_path) -> None:
