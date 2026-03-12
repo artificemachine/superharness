@@ -72,6 +72,7 @@ HTML = """<!doctype html>
     <div class=\"card\" style=\"margin-top:10px;\">
       <h2>watcher control</h2>
       <div class=\"watcher-health\" id=\"watcherHealth\">-</div>
+      <div class=\"watcher-health\" id=\"heartbeat\">-</div>
       <div class=\"actions\">
         <button onclick=\"act('watcher_start')\">Start watcher</button>
         <button onclick=\"act('watcher_restart')\">Restart watcher</button>
@@ -140,6 +141,10 @@ async function refresh() {
     const whEl = document.getElementById('watcherHealth');
     whEl.textContent = wh.message || 'watcher health unavailable';
     whEl.className = 'watcher-health ' + (wh.level === 'ok' ? 'ok' : (wh.level === 'warn' ? 'warn' : 'bad'));
+    const hb = d.heartbeat || {};
+    const hbEl = document.getElementById('heartbeat');
+    hbEl.textContent = hb.message || 'no data';
+    hbEl.className = 'v ' + (hb.level === 'ok' ? 'ok' : (hb.level === 'warn' ? 'warn' : 'bad'));
     document.getElementById('contract').textContent = d.contract_id || '-';
     document.getElementById('ts').textContent = d.now_utc;
     const pa = d.pending_approvals || [];
@@ -488,6 +493,44 @@ def watcher_health(runtime: dict, items: list[dict], now_utc: str) -> dict:
     }
 
 
+def heartbeat_health(project_dir: Path, stale_seconds: int = 120) -> dict:
+    hb_file = project_dir / ".superharness" / "watcher.heartbeat"
+    if not hb_file.exists():
+        return {
+            "level": "warn",
+            "message": "No heartbeat file — watcher may not be running.",
+            "age_seconds": -1,
+        }
+    raw = hb_file.read_text(encoding="utf-8", errors="replace").strip()
+    if not raw:
+        return {
+            "level": "warn",
+            "message": "Heartbeat file is empty — watcher may not be running.",
+            "age_seconds": -1,
+        }
+    hb_dt = parse_utc_timestamp(raw.splitlines()[0])
+    if hb_dt is None:
+        return {
+            "level": "warn",
+            "message": f"Heartbeat timestamp unparseable: {raw[:40]}",
+            "age_seconds": -1,
+        }
+    now_dt = dt.datetime.now(tz=dt.timezone.utc)
+    age = int((now_dt - hb_dt).total_seconds())
+    if age >= stale_seconds:
+        mins = age // 60
+        return {
+            "level": "warn",
+            "message": f"Heartbeat stale ({mins}m ago) — watcher may have crashed.",
+            "age_seconds": age,
+        }
+    return {
+        "level": "ok",
+        "message": f"Heartbeat OK ({age}s ago).",
+        "age_seconds": age,
+    }
+
+
 def contract_id(contract_file: Path) -> str:
     helper = Path(__file__).resolve().parent.parent / "engine" / "contract.rb"
     if not contract_file.exists() or not helper.exists() or shutil.which("ruby") is None:
@@ -824,6 +867,7 @@ class Handler(BaseHTTPRequestHandler):
                     "label": self.label,
                     "launchctl_state": state or ("loaded" if runtime.get("loaded") else ""),
                     "watcher_health": watcher_health(runtime, items, now_utc),
+                    "heartbeat": heartbeat_health(self.project_dir),
                     "watcher_runtime": runtime,
                     "watcher_project": str(wcfg.get("watcher_project", str(self.project_dir))),
                     "watcher_config": wcfg,
