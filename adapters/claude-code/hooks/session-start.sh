@@ -50,6 +50,30 @@ if [ -d "$PROJECT_DIR/.superharness" ] && [ -x "$ENSURE_WATCHER" ]; then
   fi
 fi
 
+# Check watcher heartbeat health
+HEARTBEAT_FILE="$PROJECT_DIR/.superharness/watcher.heartbeat"
+HEARTBEAT_STALE_SECONDS=120  # 2x default 60s interval
+if [ -d "$PROJECT_DIR/.superharness" ]; then
+  if [ ! -f "$HEARTBEAT_FILE" ]; then
+    WATCHER_STATUS="WARNING: Watcher may not be running — no heartbeat file found. Run: superharness watch --project $PROJECT_DIR"
+  else
+    HB_TS="$(cat "$HEARTBEAT_FILE" 2>/dev/null | head -n1 | tr -d '[:space:]')"
+    if [ -n "$HB_TS" ]; then
+      HB_EPOCH="$(date -juf "%Y-%m-%dT%H:%M:%SZ" "$HB_TS" +%s 2>/dev/null || date -d "$HB_TS" +%s 2>/dev/null || echo 0)"
+      NOW_EPOCH="$(date +%s)"
+      if [ "$HB_EPOCH" -gt 0 ] 2>/dev/null; then
+        AGE=$(( NOW_EPOCH - HB_EPOCH ))
+        if [ "$AGE" -ge "$HEARTBEAT_STALE_SECONDS" ]; then
+          AGE_MIN=$(( AGE / 60 ))
+          WATCHER_STATUS="WARNING: Watcher heartbeat is stale (${AGE_MIN}m ago). Watcher may have crashed. Run: superharness watch --project $PROJECT_DIR"
+        else
+          WATCHER_STATUS="Watcher healthy (heartbeat ${AGE}s ago)."
+        fi
+      fi
+    fi
+  fi
+fi
+
 # Build the context injection
 CONTEXT="$(cat <<EOF
 <superharness>

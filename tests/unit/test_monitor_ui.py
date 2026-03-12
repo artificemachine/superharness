@@ -482,3 +482,384 @@ def test_monitor_action_retry_and_stop_paths(repo_root, tmp_path, monkeypatch) -
     assert status_unsup == 400
     assert "unsupported action" in unsupported["error"]
     assert any("set_status" in " ".join(cmd) for cmd in captured)
+
+
+def test_monitor_watcher_runtime_nonzero_exit(repo_root, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+
+    class _RunResult:
+        def __init__(self, returncode: int, stdout: str) -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *args, **kwargs: _RunResult(1, ""),
+    )
+    runtime = module.watcher_runtime("com.example.test")
+    assert runtime["loaded"] is False
+
+
+def test_monitor_watcher_runtime_unparseable_interval(repo_root, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+
+    class _RunResult:
+        def __init__(self, returncode: int, stdout: str) -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *args, **kwargs: _RunResult(0, "state = running\nrun interval = notanumber seconds\n"),
+    )
+    runtime = module.watcher_runtime("com.example.test")
+    assert runtime["loaded"] is True
+    assert runtime["run_interval_seconds"] == 0
+
+
+def test_monitor_watcher_runtime_exception(repo_root, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+
+    def _raise(*args, **kwargs):
+        raise OSError("subprocess failed")
+
+    monkeypatch.setattr(module.subprocess, "run", _raise)
+    runtime = module.watcher_runtime("com.example.test")
+    assert runtime["loaded"] is False
+
+
+def test_monitor_watcher_health_stale_and_failed_backlog(repo_root) -> None:
+    module = _load_monitor_module(repo_root)
+    now = "2026-03-12T00:10:00Z"
+
+    result = module.watcher_health(
+        {"loaded": True, "state": "running", "last_exit_code": "0", "run_interval_seconds": 15},
+        [{"status": "stale"}, {"status": "failed"}, {"status": "pending"}],
+        now,
+    )
+    assert result["level"] == "warn"
+    assert result["stale_count"] == 1
+    assert result["failed_count"] == 1
+
+
+def test_monitor_watcher_health_running_healthy(repo_root) -> None:
+    module = _load_monitor_module(repo_root)
+    now = "2026-03-12T00:10:00Z"
+
+    result = module.watcher_health(
+        {"loaded": True, "state": "running", "last_exit_code": "0", "run_interval_seconds": 15},
+        [{"status": "pending"}],
+        now,
+    )
+    assert result["level"] == "ok"
+    assert "active" in result["message"]
+
+
+def test_monitor_contract_id_with_ruby(repo_root, tmp_path, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+
+    class _RunResult:
+        def __init__(self, returncode: int, stdout: str) -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+
+    monkeypatch.setattr(module.shutil, "which", lambda name: "/usr/bin/ruby")
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *args, **kwargs: _RunResult(0, '"monitor-contract"\n'),
+    )
+    cid = module.contract_id(project / ".superharness" / "contract.yaml")
+    assert cid == "monitor-contract"
+
+
+def test_monitor_contract_id_ruby_fails(repo_root, tmp_path, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+
+    class _RunResult:
+        def __init__(self, returncode: int, stdout: str) -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+
+    monkeypatch.setattr(module.shutil, "which", lambda name: "/usr/bin/ruby")
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *args, **kwargs: _RunResult(1, ""),
+    )
+    cid = module.contract_id(project / ".superharness" / "contract.yaml")
+    assert cid == ""
+
+
+def test_monitor_html_endpoint(repo_root, tmp_path, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    monkeypatch.setattr(
+        module,
+        "watcher_runtime",
+        lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0},
+    )
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        req = urllib.request.Request(base_url + "/")
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            body = resp.read().decode("utf-8")
+            assert resp.status == 200
+            assert "superharness monitor" in body
+    finally:
+        _stop_server(server, thread)
+
+
+def test_monitor_handoff_md_endpoint(repo_root, tmp_path, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    monkeypatch.setattr(
+        module,
+        "watcher_runtime",
+        lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0},
+    )
+
+    report = project / ".superharness" / "handoffs" / "test-report.md"
+    report.write_text("# Test Report\nSome content.\n")
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        req = urllib.request.Request(base_url + "/.superharness/handoffs/test-report.md")
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            body = resp.read().decode("utf-8")
+            assert resp.status == 200
+            assert "Test Report" in body
+    finally:
+        _stop_server(server, thread)
+
+
+def test_monitor_handoff_md_not_found(repo_root, tmp_path, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    monkeypatch.setattr(
+        module,
+        "watcher_runtime",
+        lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0},
+    )
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        req = urllib.request.Request(base_url + "/.superharness/handoffs/nonexistent.md")
+        try:
+            urllib.request.urlopen(req, timeout=2)
+            assert False, "Expected 404"
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 404
+    finally:
+        _stop_server(server, thread)
+
+
+def test_monitor_handoff_md_path_traversal(repo_root, tmp_path, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    monkeypatch.setattr(
+        module,
+        "watcher_runtime",
+        lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0},
+    )
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        req = urllib.request.Request(base_url + "/.superharness/handoffs/../../contract.yaml")
+        try:
+            urllib.request.urlopen(req, timeout=2)
+        except urllib.error.HTTPError as exc:
+            assert exc.code in (403, 404)
+    finally:
+        _stop_server(server, thread)
+
+
+def test_monitor_action_approve_task(repo_root, tmp_path, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    captured: list[list[str]] = []
+
+    def fake_run_cmd(self, args, timeout=30):
+        captured.append(args)
+        return {"exit_code": 0, "stdout": "approved", "stderr": "", "cmd": " ".join(args)}
+
+    monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
+
+    module.Handler.project_dir = project
+    module.Handler.scripts_dir = repo_root / "scripts"
+
+    h = module.Handler.__new__(module.Handler)
+    result, status = h._action("approve_task:my-task")
+    assert status == 200
+    assert result["stdout"] == "approved"
+    args = captured[0]
+    assert "approve" in args
+    assert "--task" in args
+    assert "my-task" in args
+
+
+def test_monitor_action_approve_task_empty_id(repo_root, tmp_path, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+
+    module.Handler.project_dir = project
+    module.Handler.scripts_dir = repo_root / "scripts"
+
+    h = module.Handler.__new__(module.Handler)
+    result, status = h._action("approve_task:")
+    assert status == 400
+    assert "missing task id" in result["error"]
+
+
+def test_monitor_action_pause_and_resume_item(repo_root, tmp_path, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    captured: list[list[str]] = []
+
+    def fake_run_cmd(self, args, timeout=30):
+        captured.append(args)
+        return {"exit_code": 0, "stdout": "ok", "stderr": "", "cmd": " ".join(args)}
+
+    monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
+
+    module.Handler.project_dir = project
+    module.Handler.scripts_dir = repo_root / "scripts"
+
+    h = module.Handler.__new__(module.Handler)
+
+    result, status = h._action("pause_item:item-1")
+    assert status == 200
+    pause_args = captured[0]
+    assert "set_status" in pause_args
+    assert "--to" in pause_args
+    idx = pause_args.index("--to")
+    assert pause_args[idx + 1] == "paused"
+
+    result, status = h._action("resume_item:item-1")
+    assert status == 200
+    resume_args = captured[1]
+    assert "set_status" in resume_args
+    idx = resume_args.index("--to")
+    assert resume_args[idx + 1] == "pending"
+
+
+def test_monitor_action_dispatch_and_recover(repo_root, tmp_path, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    captured: list[list[str]] = []
+
+    def fake_run_cmd(self, args, timeout=30):
+        captured.append(args)
+        return {"exit_code": 0, "stdout": "done", "stderr": "", "cmd": " ".join(args)}
+
+    monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
+
+    module.Handler.project_dir = project
+    module.Handler.scripts_dir = repo_root / "scripts"
+
+    h = module.Handler.__new__(module.Handler)
+
+    result, status = h._action("dispatch_print_codex")
+    assert status == 200
+    assert "inbox-dispatch.sh" in " ".join(captured[-1])
+    assert "--to" in captured[-1]
+    assert "codex-cli" in captured[-1]
+
+    result, status = h._action("dispatch_print_claude")
+    assert status == 200
+    assert "claude-code" in captured[-1]
+
+    result, status = h._action("recover_retry")
+    assert status == 200
+    assert "inbox-recover-stale.sh" in " ".join(captured[-1])
+
+    result, status = h._action("normalize_stale")
+    assert status == 200
+    assert "inbox-normalize.sh" in " ".join(captured[-1])
+
+
+def test_monitor_heartbeat_health_missing(repo_root, tmp_path) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+
+    result = module.heartbeat_health(project)
+    assert result["level"] == "warn"
+    assert "missing" in result["message"].lower() or "no heartbeat" in result["message"].lower()
+
+
+def test_monitor_heartbeat_health_stale(repo_root, tmp_path) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    heartbeat = project / ".superharness" / "watcher.heartbeat"
+
+    import time as _time
+    from datetime import datetime, timezone
+
+    stale_time = _time.time() - 600
+    stale_ts = datetime.fromtimestamp(stale_time, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    heartbeat.write_text(stale_ts + "\n")
+
+    result = module.heartbeat_health(project)
+    assert result["level"] == "warn"
+    assert "stale" in result["message"].lower()
+    assert result["age_seconds"] >= 590
+
+
+def test_monitor_heartbeat_health_ok(repo_root, tmp_path) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    heartbeat = project / ".superharness" / "watcher.heartbeat"
+
+    from datetime import datetime, timezone
+
+    fresh_ts = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    heartbeat.write_text(fresh_ts + "\n")
+
+    result = module.heartbeat_health(project)
+    assert result["level"] == "ok"
+    assert result["age_seconds"] < 10
+
+
+def test_monitor_status_includes_heartbeat(repo_root, tmp_path, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    monkeypatch.setattr(
+        module,
+        "watcher_runtime",
+        lambda label: {
+            "loaded": True,
+            "state": "running",
+            "last_exit_code": "0",
+            "run_interval_seconds": 15,
+        },
+    )
+    monkeypatch.setattr(module, "contract_id", lambda path: "demo")
+    monkeypatch.setattr(module.shutil, "which", lambda name: None)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json("GET", base_url + "/api/status")
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    assert "heartbeat" in payload
+    assert payload["heartbeat"]["level"] in ("ok", "warn")
+
+
+def test_monitor_action_stop_item_not_found(repo_root, tmp_path, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+
+    module.Handler.project_dir = project
+    module.Handler.scripts_dir = repo_root / "scripts"
+
+    h = module.Handler.__new__(module.Handler)
+    result, status = h._action("stop_item:nonexistent")
+    assert status == 404
+    assert "item not found" in result["error"]
