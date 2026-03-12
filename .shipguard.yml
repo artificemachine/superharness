@@ -1,0 +1,17 @@
+# ShipGuard configuration
+# See: https://github.com/DevOpsCelstn/shipguard
+
+severity_threshold: medium
+
+exclude_paths:
+  - ".venv/**"
+  - ".pytest_cache/**"
+  - ".ruff_cache/**"
+  - "htmlcov/**"
+  - "archive/**"
+
+disable_rules: []
+
+custom_rules_dirs: []
+
+use_rust_secrets: false
