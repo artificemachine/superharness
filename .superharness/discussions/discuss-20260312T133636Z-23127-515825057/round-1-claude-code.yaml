@@ -1,0 +1,52 @@
+---
+discussion_id: discuss-20260312T133636Z-23127-515825057
+round: 1
+agent: claude-code
+verdict: agree
+position: |
+  Yes — auto-archive for closed discussions is a clear win. The discussions/
+  directory currently retains all closed discussions (failed_participant,
+  consensus, cancelled) alongside active ones, adding noise for both human
+  operators and tooling (monitor-ui, hygiene checks, watcher dispatch).
+
+  The inbox already has a proven archive pattern (inbox-normalize.sh --archive
+  moves completed items to inbox.archive.yaml). Discussions should follow the
+  same model: move closed discussion directories to a discussions/archive/
+  subdirectory, preserving all artifacts intact.
+
+  Implementation notes:
+  1) Archive trigger: run after discussion-dispatch.sh finalizes a discussion
+     (status in {consensus, no_consensus, cancelled, failed_participant}).
+  2) Target: mv discussions/<id>/ → discussions/archive/<id>/ — simple
+     filesystem move, no data transformation.
+  3) Index: write a compact discussions/archive/index.yaml with id, topic,
+     status, closed_at for each archived discussion — keeps triage fast
+     without reading every archived state.yaml.
+  4) Guard: never auto-delete; archive is append-only. A future --purge flag
+     could add TTL-based cleanup, but that's separate scope.
+  5) Hygiene integration: contract-hygiene checks should scan archive/ too,
+     so historical references remain valid.
+points:
+  - id: archive-value
+    verdict: agree
+    rationale: >
+      Two of three current discussions are closed but still in the active path.
+      This is exactly the noise auto-archive would eliminate.
+  - id: safety-guardrails
+    verdict: agree
+    rationale: >
+      Agree with codex-cli's guardrails. Additionally, the archive should be a
+      simple directory move (not deletion), and hygiene/contract checks must
+      resolve references into archive/ transparently.
+  - id: implementation-shape
+    verdict: agree
+    rationale: >
+      Follows the existing inbox-normalize archive pattern. A compact index.yaml
+      in archive/ avoids needing to traverse all archived state.yaml files for
+      monitor-ui or triage. Minimal new code surface.
+  - id: inbox-pattern-reuse
+    verdict: agree
+    rationale: >
+      inbox-normalize.sh already proves the archive pattern works in this repo.
+      Discussion archiving should mirror that approach for consistency.
+submitted_at: '2026-03-12T13:50:00Z'

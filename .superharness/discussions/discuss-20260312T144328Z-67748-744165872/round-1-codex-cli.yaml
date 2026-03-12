@@ -1,0 +1,42 @@
+---
+discussion_id: discuss-20260312T144328Z-67748-744165872
+round: 1
+agent: codex-cli
+verdict: partial
+position: |
+  I partially agree: round execution should be tracked with per-agent contract tasks,
+  but a shared round-level task should still exist as the aggregation record.
+
+  Why per-agent tasks help:
+  - Clear ownership and status semantics. A shared task with one owner but multiple participants
+    creates ambiguity about what "done" means and who is accountable for retries.
+  - Better failure isolation. One agent can fail/retry without blocking or misreporting the
+    other agent's progress.
+  - Cleaner audit trail. Contract, inbox, and ledger entries become one-to-one with each agent's
+    submission artifact.
+
+  Why keep a shared record too:
+  - Consensus/finalization is a round-level outcome, not an agent-level outcome.
+  - The coordinator still needs a single place to represent aggregate state
+    (waiting_for_votes, consensus, no_consensus, finalized).
+
+  Recommended model: use two layers.
+  1) Shared parent task: discuss-.../round-N (aggregation only).
+  2) Per-agent child tasks: discuss-.../round-N/<agent> (execution + submission).
+
+  Completion rule: parent can transition to done only when all required child tasks are done
+  (or explicitly failed/timeout per policy), then finalizer writes the round outcome.
+points:
+  - id: ownership-and-status
+    verdict: agree
+    rationale: Per-agent tasks remove ambiguity caused by a single shared task representing multiple independent submissions.
+  - id: failure-retry-behavior
+    verdict: agree
+    rationale: Retries and failures are naturally scoped to the affected agent, avoiding incorrect shared status transitions.
+  - id: auditability
+    verdict: agree
+    rationale: One task per agent produces deterministic traceability between contract task, inbox item, and round artifact.
+  - id: shared-round-record
+    verdict: disagree
+    rationale: Replacing shared round tracking entirely would lose aggregate consensus state; keep a parent aggregator task.
+submitted_at: '2026-03-12T15:01:20Z'

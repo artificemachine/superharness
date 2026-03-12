@@ -109,5 +109,20 @@ tasks:
     tests passed (`21 passed`), plus local git/rsync repros matched. Non-blocking
     follow-up: `sync_worker_copy` still suppresses rsync failures via `|| true`, which
     belongs in `structured-error-logging`.'
+- id: discuss-20260312T144328Z-67748-744165872/round-2
+  title: 'Discussion round 2: per-agent tasks vs shared round task aggregation model'
+  owner: codex-cli
+  status: done
+  project_path: "/Users/airm2max/.superharness-workers/superharness"
+  summary: 'Executed at 2026-03-12T15:22:50Z. Submitted codex-cli round-2 response
+    with verdict `agree`: use per-agent contract tasks for execution ownership, and
+    keep discussion-level aggregation in `.superharness/discussions/.../state.yaml`
+    (no contract parent aggregator task).'
+- id: discuss-20260312T160141Z-18147-458055308/round-1
+  title: 'Discussion round 1: Should monitor-ui render task reports as markdown instead
+    of plain text'
+  owner: claude-code
+  status: in_progress
+  project_path: "/Users/airm2max/DevOpsSec/superharness"
 decisions: []
 failures: []

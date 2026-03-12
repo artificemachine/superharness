@@ -1,0 +1,14 @@
+---
+id: discuss-20260312T144328Z-67748-744165872
+topic: Should discussion rounds create per-agent contract tasks instead of a shared
+  one
+participants:
+- claude-code
+- codex-cli
+max_rounds: 2
+current_round: 2
+status: active
+created_at: '2026-03-12T14:43:28Z'
+created_by: owner
+project: "/Users/airm2max/DevOpsSec/superharness"
+task_id: 
