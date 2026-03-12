@@ -165,8 +165,17 @@ if [ "$SUBCMD" = "create" ]; then
     read -r TITLE
   fi
   if [ -z "$OWNER" ]; then
-    printf "Owner (claude-code/codex-cli): "
-    read -r OWNER
+    # Try profile.yaml first
+    if [ -f "$PROJECT_DIR/.superharness/profile.yaml" ]; then
+      _PROFILE_ENGINE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/engine/profile.rb"
+      PROFILE_AGENT="$(ruby "$_PROFILE_ENGINE" --project "$PROJECT_DIR" primary_agent 2>/dev/null || echo '')"
+      [ -n "$PROFILE_AGENT" ] && OWNER="$PROFILE_AGENT"
+    fi
+    # Still empty — prompt
+    if [ -z "$OWNER" ]; then
+      printf "Owner (claude-code/codex-cli): "
+      read -r OWNER
+    fi
   fi
   if [ -z "$DEPENDENCY" ] && [ -t 0 ]; then
     printf "Dependency task id (optional): "

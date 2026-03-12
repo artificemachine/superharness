@@ -49,7 +49,7 @@ usage() {
   cat << 'EOF'
 Usage:
   init-project.sh [--dry-run] [--with-watcher] [--from-profile FILE] [--detect]
-                  [PROJECT_NAME] [TECH_STACK] [STATUS]
+                  [--interactive] [PROJECT_NAME] [TECH_STACK] [STATUS]
 
 Options:
   -h, --help              Show this help message and exit
@@ -59,6 +59,8 @@ Options:
                           (written by an AI agent — see docs/INSTALL-AGENT.md)
   --detect                Run engine/detect.rb and use its output for project name,
                           stack, and status (skips positional args)
+  --interactive           Run a guided questionnaire to configure and initialize
+                          the project (reads answers from stdin, supports piped input)
 EOF
 }
 
@@ -66,6 +68,7 @@ DRY_RUN=0
 WITH_WATCHER=0
 FROM_PROFILE=""
 DETECT_MODE=0
+INTERACTIVE_MODE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help)
@@ -89,6 +92,10 @@ while [ $# -gt 0 ]; do
       DETECT_MODE=1
       shift
       ;;
+    --interactive)
+      INTERACTIVE_MODE=1
+      shift
+      ;;
     --)
       shift
       break
@@ -108,6 +115,114 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(pwd)"
 DATE="$(date +%Y-%m-%d)"
 TEMPLATE_DIR="$SCRIPT_DIR/protocol/templates"
+
+# --- Interactive mode: questionnaire ---
+if [ "$INTERACTIVE_MODE" -eq 1 ]; then
+  # Check if stdin is a terminal; if not, read from pipe (enables testing)
+  _is_tty=0
+  [ -t 0 ] && _is_tty=1
+
+  # Run detect.rb to learn about this project
+  DETECT_SCRIPT="$SCRIPT_DIR/engine/detect.rb"
+  _detected_name="$(basename "$PROJECT_DIR")"
+  _detected_stack="TBD"
+  _detected_status="greenfield"
+  _detected_repo="none"
+  _detected_team="solo"
+  if [ -f "$DETECT_SCRIPT" ]; then
+    _det_out="$(ruby "$DETECT_SCRIPT" --project "$PROJECT_DIR" 2>/dev/null || true)"
+    if [ -n "$_det_out" ]; then
+      _det_parsed="$(printf '%s\n' "$_det_out" | ruby -ryaml -e "
+        d = YAML.safe_load(STDIN.read) rescue {}
+        d ||= {}
+        puts d['project_name'] || ''
+        puts d['stack']        || 'TBD'
+        puts d['status']       || 'greenfield'
+        puts d['repo']         || 'none'
+        puts d['team_size']    || 'solo'
+      " 2>/dev/null || true)"
+      if [ -n "$_det_parsed" ]; then
+        _n="$(printf '%s\n' "$_det_parsed" | sed -n '1p')"
+        _s="$(printf '%s\n' "$_det_parsed" | sed -n '2p')"
+        _st="$(printf '%s\n' "$_det_parsed" | sed -n '3p')"
+        _r="$(printf '%s\n' "$_det_parsed" | sed -n '4p')"
+        _t="$(printf '%s\n' "$_det_parsed" | sed -n '5p')"
+        [ -n "$_n" ]  && _detected_name="$_n"
+        [ -n "$_s" ]  && _detected_stack="$_s"
+        [ -n "$_st" ] && _detected_status="$_st"
+        [ -n "$_r" ]  && _detected_repo="$_r"
+        [ -n "$_t" ]  && _detected_team="$_t"
+      fi
+    fi
+  fi
+
+  echo "superharness — interactive setup"
+  echo "================================"
+  echo ""
+  echo "Detected: ${_detected_stack} project, ${_detected_repo} remote, ${_detected_team} developer"
+  echo ""
+
+  # Question 1: Autonomy level
+  if [ "$_is_tty" -eq 1 ]; then
+    printf '? Autonomy level:\n  1. autonomous  — agents act without asking\n  2. supervised  — agents explain, then proceed\n  3. approval-gated — agents wait for explicit approval\n> '
+  else
+    printf '? Autonomy level (1=autonomous 2=supervised 3=approval-gated): '
+  fi
+  read -r _autonomy_choice
+  case "${_autonomy_choice:-2}" in
+    1) _autonomy="autonomous" ;;
+    3) _autonomy="approval-gated" ;;
+    *) _autonomy="supervised" ;;
+  esac
+
+  # Question 2: Project goal
+  if [ "$_is_tty" -eq 1 ]; then
+    printf '\n? What are you working on right now? (one sentence)\n> '
+  else
+    printf '? Project goal: '
+  fi
+  read -r _goal_input
+  _goal="${_goal_input:-TBD — describe the current objective}"
+
+  # Question 3: Watcher (macOS only)
+  _install_watcher=0
+  if [ "$(uname -s)" = "Darwin" ]; then
+    if [ "$_is_tty" -eq 1 ]; then
+      printf '\n? Enable background watcher? [y/N]\n> '
+    else
+      printf '? Enable background watcher? [y/N]: '
+    fi
+    read -r _watcher_choice
+    case "${_watcher_choice:-n}" in
+      y|Y|yes|YES) _install_watcher=1 ;;
+    esac
+  fi
+
+  echo ""
+  echo "Initializing..."
+
+  # Write profile.yaml to a temp file and delegate to --from-profile logic
+  _tmp_profile="/tmp/superharness-profile-$$.yaml"
+  cat > "$_tmp_profile" << PYAML
+project_name: "${_detected_name}"
+created: "${DATE}"
+autonomy: ${_autonomy}
+primary_agent: claude-code
+stack: "${_detected_stack}"
+repo: ${_detected_repo}
+ci: none
+team_size: ${_detected_team}
+status: ${_detected_status}
+existing_harness: []
+PYAML
+
+  FROM_PROFILE="$_tmp_profile"
+  _INTERACTIVE_GOAL="$_goal"
+  [ "$_install_watcher" -eq 1 ] && WITH_WATCHER=1
+  unset _autonomy_choice _goal_input _watcher_choice _is_tty _install_watcher
+  unset _detected_name _detected_stack _detected_status _detected_repo _detected_team
+  unset _n _s _st _r _t _det_out _det_parsed _det_parsed
+fi
 
 # --- Resolve project metadata from profile, detect, or positional args ---
 if [ -n "$FROM_PROFILE" ]; then
@@ -242,6 +357,11 @@ Append-only activity log. Never edit previous entries.
 EOF
 fi
 
+# Create heartbeat config
+if [ -f "$TEMPLATE_DIR/heartbeat.yaml" ]; then
+  cp "$TEMPLATE_DIR/heartbeat.yaml" "$PROJECT_DIR/.superharness/heartbeat.yaml"
+fi
+
 # Create starter contract
 if [ -f "$TEMPLATE_DIR/contract.yaml" ]; then
   render_template "$TEMPLATE_DIR/contract.yaml" "$PROJECT_DIR/.superharness/contract.yaml"
@@ -336,10 +456,53 @@ else
   echo "Skipped: AGENTS.md (already exists)"
 fi
 
+# Generate SOUL.md from template
+if [ ! -f "$PROJECT_DIR/SOUL.md" ]; then
+  if [ -f "$TEMPLATE_DIR/SOUL.md.template" ]; then
+    render_template "$TEMPLATE_DIR/SOUL.md.template" "$PROJECT_DIR/SOUL.md"
+  else
+    cat > "$PROJECT_DIR/SOUL.md" << EOF
+# Soul — $(printf '%s' "$PROJECT_NAME")
+
+## Operating Constraints
+- Ship > plan. One focused task per session.
+- Keep changes within the current contract scope.
+
+## Guardrails
+- Never edit .env, credentials, or secrets.
+- Never push directly to main without human review.
+- Run required checks before handoff or commit.
+EOF
+  fi
+  echo "Created: SOUL.md"
+else
+  echo "Skipped: SOUL.md (already exists)"
+fi
+
 # Copy profile.yaml into .superharness/ if provided via --from-profile
 if [ -n "$FROM_PROFILE" ] && [ -f "$FROM_PROFILE" ]; then
   cp "$FROM_PROFILE" "$PROJECT_DIR/.superharness/profile.yaml"
   echo "Created: .superharness/profile.yaml (from $FROM_PROFILE)"
+fi
+
+# Patch contract goal when coming from interactive mode
+if [ "$INTERACTIVE_MODE" -eq 1 ] && [ -n "${_INTERACTIVE_GOAL:-}" ]; then
+  _contract_file="$PROJECT_DIR/.superharness/contract.yaml"
+  if [ -f "$_contract_file" ]; then
+    python3 - "$_contract_file" "$_INTERACTIVE_GOAL" <<'PY'
+import pathlib, sys, re
+path = pathlib.Path(sys.argv[1])
+goal = sys.argv[2]
+text = path.read_text()
+text = re.sub(r'^goal:.*$', f'goal: "{goal}"', text, flags=re.MULTILINE)
+path.write_text(text)
+PY
+  fi
+fi
+
+# Clean up interactive temp profile
+if [ "$INTERACTIVE_MODE" -eq 1 ] && [ -n "${_tmp_profile:-}" ] && [ -f "${_tmp_profile:-}" ]; then
+  rm -f "$_tmp_profile"
 fi
 
 # Install launchd watcher only when explicitly requested.

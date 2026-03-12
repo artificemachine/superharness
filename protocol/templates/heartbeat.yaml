@@ -1,0 +1,17 @@
+# Proactive checks — evaluated by the watcher after each dispatch pass
+# Security: 'id' maps to hardcoded commands in scripts/heartbeat.sh — 'command' field is documentation only
+checks:
+  - id: stale-recovery
+    description: Recover tasks stuck longer than the timeout
+    interval_minutes: 60
+    enabled: true
+
+  - id: idle-warning
+    description: Warn if no ledger activity in 48 hours
+    interval_minutes: 1440
+    enabled: true
+
+  - id: hygiene-check
+    description: Run protocol hygiene validation
+    interval_minutes: 720
+    enabled: false

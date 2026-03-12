@@ -157,6 +157,7 @@ DISPATCH="${DISPATCH:-$SCRIPT_DIR/inbox-dispatch.sh}"
 RECOVER="${RECOVER:-$SCRIPT_DIR/inbox-recover-stale.sh}"
 DEADLINE_CHECK="${DEADLINE_CHECK:-$SCRIPT_DIR/inbox-deadline-check.sh}"
 DISCUSSION_DISPATCH="${DISCUSSION_DISPATCH:-$SCRIPT_DIR/discussion-dispatch.sh}"
+HEARTBEAT="${HEARTBEAT:-$SCRIPT_DIR/heartbeat.sh}"
 
 if [ ! -x "$DISPATCH" ]; then
   echo "Missing executable dispatcher: $DISPATCH" >&2
@@ -269,6 +270,11 @@ run_cycle() {
   if [ -x "$DISCUSSION_DISPATCH" ]; then
     bash "$DISCUSSION_DISPATCH" --project "$PROJECT_DIR" >/dev/null 2>&1 &
     disown
+  fi
+
+  # Run proactive heartbeat checks after each dispatch pass
+  if [ -x "$HEARTBEAT" ]; then
+    bash "$HEARTBEAT" --project "$PROJECT_DIR" >/dev/null 2>&1 || true
   fi
 
   write_heartbeat

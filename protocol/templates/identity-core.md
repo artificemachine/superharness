@@ -11,3 +11,6 @@ Project owner context. Keep personal/company details out of committed files.
 - Never edit `.env`, credentials, or secrets.
 - Never push directly to `main`.
 - Run required checks before handoff/commit.
+
+---
+See also: `SOUL.md.template` for the separate soul file approach (preferred for new projects).
