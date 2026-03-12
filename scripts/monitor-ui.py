@@ -629,7 +629,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def log_message(self, fmt: str, *args) -> None:
+    def log_message(self, _fmt: str, *args) -> None:
         return
 
     def _run_cmd(self, args: list[str], timeout: int = 30) -> dict:
