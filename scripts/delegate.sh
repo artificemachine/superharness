@@ -341,9 +341,18 @@ if [ "$NON_INTERACTIVE" -eq 1 ]; then
   confirm_non_interactive_risk
 fi
 
-# Discussion round launch (both agents use the same flow)
-if [ -n "$DISCUSSION_ID" ]; then
-  if [ "$TARGET" = "claude-code" ]; then
+# ---------------------------------------------------------------------------
+# launch_agent TARGET LABEL
+#   Launches $TARGET (claude-code or codex-cli) with $PROMPT.
+#   LABEL is appended to the "Launching …" message (pass "" for the plain case).
+# ---------------------------------------------------------------------------
+launch_agent() {
+  local target="$1"
+  local label="${2:-}"
+  local display_label=""
+  [ -n "$label" ] && display_label=" $label"
+
+  if [ "$target" = "claude-code" ]; then
     if ! command -v claude >/dev/null 2>&1; then
       echo "claude CLI is not installed or not on PATH" >&2
       exit 1
@@ -353,11 +362,11 @@ if [ -n "$DISCUSSION_ID" ]; then
       confirm_dangerous_flag_risk \
         "SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS" \
         "Risk: Claude --dangerously-skip-permissions disables permission prompts. Continue?"
-      echo "Launching Claude for discussion round $DISCUSSION_ROUND..."
+      echo "Launching Claude${display_label}..."
       cd "$PROJECT_DIR"
       exec claude -p --dangerously-skip-permissions "$PROMPT"
     fi
-    echo "Launching Claude for discussion round $DISCUSSION_ROUND..."
+    echo "Launching Claude${display_label}..."
     cd "$PROJECT_DIR"
     exec claude "$PROMPT"
   else
@@ -367,7 +376,7 @@ if [ -n "$DISCUSSION_ID" ]; then
     fi
     echo ""
     if [ "$NON_INTERACTIVE" -eq 1 ]; then
-      echo "Launching Codex for discussion round $DISCUSSION_ROUND..."
+      echo "Launching Codex${display_label}..."
       CODEX_COMMON_ARGS=(exec --skip-git-repo-check -C "$PROJECT_DIR")
       if [ "$CODEX_BYPASS" -eq 1 ]; then
         confirm_dangerous_flag_risk \
@@ -377,45 +386,13 @@ if [ -n "$DISCUSSION_ID" ]; then
       fi
       exec codex "${CODEX_COMMON_ARGS[@]}" --full-auto "$PROMPT"
     fi
-    echo "Launching Codex for discussion round $DISCUSSION_ROUND..."
+    echo "Launching Codex${display_label}..."
     exec codex -C "$PROJECT_DIR" "$PROMPT"
   fi
+}
+
+if [ -n "$DISCUSSION_ID" ]; then
+  launch_agent "$TARGET" "for discussion round $DISCUSSION_ROUND"
 fi
 
-if [ "$TARGET" = "claude-code" ] && [ -z "$DISCUSSION_ID" ]; then
-  if ! command -v claude >/dev/null 2>&1; then
-    echo "claude CLI is not installed or not on PATH" >&2
-    exit 1
-  fi
-  echo ""
-  if [ "$NON_INTERACTIVE" -eq 1 ]; then
-    confirm_dangerous_flag_risk \
-      "SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS" \
-      "Risk: Claude --dangerously-skip-permissions disables permission prompts. Continue?"
-    echo "Launching Claude (non-interactive)..."
-    cd "$PROJECT_DIR"
-    exec claude -p --dangerously-skip-permissions "$PROMPT"
-  fi
-  echo "Launching Claude..."
-  cd "$PROJECT_DIR"
-  exec claude "$PROMPT"
-else
-  if ! command -v codex >/dev/null 2>&1; then
-    echo "codex CLI is not installed or not on PATH" >&2
-    exit 1
-  fi
-  echo ""
-  if [ "$NON_INTERACTIVE" -eq 1 ]; then
-    echo "Launching Codex (non-interactive)..."
-    CODEX_COMMON_ARGS=(exec --skip-git-repo-check -C "$PROJECT_DIR")
-    if [ "$CODEX_BYPASS" -eq 1 ]; then
-      confirm_dangerous_flag_risk \
-        "SUPERHARNESS_CONFIRM_CODEX_BYPASS" \
-        "Risk: Codex bypass disables sandbox and approval prompts. Continue?"
-      exec codex "${CODEX_COMMON_ARGS[@]}" --dangerously-bypass-approvals-and-sandbox "$PROMPT"
-    fi
-    exec codex "${CODEX_COMMON_ARGS[@]}" --full-auto "$PROMPT"
-  fi
-  echo "Launching Codex..."
-  exec codex -C "$PROJECT_DIR" "$PROMPT"
-fi
+launch_agent "$TARGET" ""

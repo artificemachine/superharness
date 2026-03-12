@@ -24,8 +24,17 @@ jobs:
           shipguard scan . --format terminal > shipguard.txt
           sed -n '1,260p' shipguard.txt
 
+      - name: Install pip-audit
+        run: python3 -m pip install "pip-audit==2.7.3"
+
+      - name: Run pip-audit
+        run: pip-audit -r requirements.txt --format json --output pip-audit.json
+        continue-on-error: true
+
       - name: Upload report artifact
         uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: shipguard-report
-          path: shipguard.txt
+          path: |
+            shipguard.txt
+            pip-audit.json

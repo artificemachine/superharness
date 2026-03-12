@@ -25,6 +25,7 @@ pytest tests/
 
 ## Superharness Session Lifecycle (Required)
 - Start of task: read `.superharness/contract.yaml`, `.superharness/failures.yaml`, `.superharness/decisions.yaml`, and relevant handoffs in `.superharness/handoffs/`.
+- **Plan gate (all tasks):** Before implementing anything, check if the contract task has `plan_confirmed_at` set. If not, write a plan handoff (`status: plan_proposed`, `plan_gate: {required: true, confirmed_by_user: false}`) summarising what you intend to do, set the contract task status to `plan_proposed`, append the ledger, and **stop**. Do not implement until the user confirms the plan in the monitor-ui or via CLI.
 - During task: keep work inside assigned contract scope; record important tradeoffs/choices in contract decisions.
 - End of task: update contract task status, append one line to `.superharness/ledger.md`, and create/update a handoff YAML in `.superharness/handoffs/`.
 - If blocked/failure: log failure details in contract failures (and promote to `failures.yaml` when reusable).

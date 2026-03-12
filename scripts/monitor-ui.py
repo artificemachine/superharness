@@ -59,6 +59,9 @@ HTML = """<!doctype html>
     .approval-list a:hover { text-decoration:underline; }
     .banner { display:none; margin:0 0 10px; padding:10px 12px; border-radius:10px; border:1px solid #7f1d1d; background:#2b1212; color:#fecaca; font-size:13px; line-height:1.4; }
     .banner b { color:#fff; }
+    .plan-banner { display:none; margin:0 0 10px; padding:10px 12px; border-radius:10px; border:1px solid #78350f; background:#1c1408; color:#fde68a; font-size:13px; line-height:1.4; }
+    .plan-banner b { color:#fff; }
+    .plan-list { margin-top:6px; font-size:12px; line-height:1.8; }
     .watcher-health { margin-top:6px; font-size:12px; line-height:1.4; }
   </style>
 </head>
@@ -67,6 +70,7 @@ HTML = """<!doctype html>
     <h1>superharness monitor</h1>
     <div class=\"meta\" id=\"meta\">loading...</div>
     <div class=\"banner\" id=\"approvalBanner\">User approval required.</div>
+    <div class=\"plan-banner\" id=\"planBanner\">Plan confirmation required.</div>
 
     <div class=\"grid\">
       <div class=\"card\"><div class=\"k\">watcher label</div><div class=\"v\" id=\"label\">-</div></div>
@@ -82,6 +86,17 @@ HTML = """<!doctype html>
         <button onclick=\"act('watcher_start')\">Start watcher</button>
         <button onclick=\"act('watcher_restart')\">Restart watcher</button>
       </div>
+    </div>
+
+    <div class=\"card\" style=\"margin-top:10px;\">
+      <h2>plans to confirm</h2>
+      <div class=\"v\" id=\"planCount\">-</div>
+      <div class=\"plan-list\" id=\"planList\">-</div>
+    </div>
+    <div class=\"card report-scroll\" style=\"margin-top:10px; display:none;\" id=\"planReportCard\">
+      <h2 style=\"position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;\">plan preview <button onclick=\"document.getElementById('planReportCard').style.display='none'\" style=\"font-size:11px;padding:2px 8px;float:right\">close</button></h2>
+      <div class=\"small\" id=\"planReportMeta\" style=\"position:sticky;top:28px;background:var(--panel);padding-bottom:4px;z-index:1;\">-</div>
+      <pre id=\"planReportBody\">-</pre>
     </div>
 
     <div class=\"card\" style=\"margin-top:10px;\">
@@ -172,6 +187,36 @@ async function refresh() {
     document.getElementById('contract').textContent = d.contract_id || '-';
     document.getElementById('ts').textContent = d.now_utc;
     renderOwnersList(d.contract_owners || []);
+    // Plan proposals
+    const pp = d.plan_proposals || [];
+    const planBanner = document.getElementById('planBanner');
+    if (pp.length) {
+      const tasks = pp.map(x => x.task).filter(Boolean).join(', ');
+      planBanner.style.display = 'block';
+      planBanner.innerHTML = `<b>Plan confirmation required</b> for task(s): ${tasks}. Review the plan and click Confirm to allow implementation.`;
+    } else {
+      planBanner.style.display = 'none';
+    }
+    document.getElementById('planCount').textContent = pp.length ? `${pp.length} pending` : 'none';
+    const planList = document.getElementById('planList');
+    if (!pp.length) {
+      planList.textContent = 'No plans awaiting confirmation.';
+    } else {
+      planList.innerHTML = '';
+      for (const p of pp) {
+        const row = document.createElement('div');
+        const task = p.task || '';
+        const summary = p.summary || '';
+        const from = p.from || 'agent';
+        const taskEsc = task.replace(/'/g, "\\'");
+        const summaryEsc = summary.replace(/'/g, "\\'");
+        const viewBtn = `<button onclick="viewPlanReport('${taskEsc}','${summaryEsc}')" style="font-size:11px;padding:2px 6px">View Plan</button>`;
+        const confirmBtn = `<button onclick="confirmPlan('${taskEsc}')" style="font-size:11px;padding:2px 6px;color:var(--warn)">Confirm</button>`;
+        row.innerHTML = `task=<b>${task}</b> from=${from}<br/>${viewBtn} ${confirmBtn}<br/><span class="small">cli: superharness plan confirm --task ${task}</span>`;
+        planList.appendChild(row);
+      }
+    }
+
     const pa = d.pending_approvals || [];
     const banner = document.getElementById('approvalBanner');
     if (pa.length) {
@@ -380,6 +425,27 @@ async function approveTask(task) {
   const ok = window.confirm(`Approve consensus for task ${task}?`);
   if (!ok) return;
   await act('approve_task:' + task);
+}
+
+const viewedPlanTasks = new Set();
+function viewPlanReport(task, summary) {
+  const card = document.getElementById('planReportCard');
+  const meta = document.getElementById('planReportMeta');
+  const body = document.getElementById('planReportBody');
+  meta.textContent = `task=${task}`;
+  body.textContent = summary || '(no plan content)';
+  card.style.display = 'block';
+  viewedPlanTasks.add(task);
+}
+
+async function confirmPlan(task) {
+  if (!viewedPlanTasks.has(task)) {
+    document.getElementById('actionStatus').textContent = `error: read the plan first for task ${task}`;
+    return;
+  }
+  const ok = window.confirm(`Confirm plan for task ${task}? The agent will proceed to implement.`);
+  if (!ok) return;
+  await act('confirm_plan:' + task);
 }
 
 async function viewTaskReport(taskId, agent) {
@@ -896,6 +962,103 @@ def pending_approvals(handoff_dir: Path) -> list[dict]:
     return rows
 
 
+def plan_proposals(harness_dir: Path) -> list[dict]:
+    """Return contract tasks with status=plan_proposed that await user confirmation."""
+    rows: list[dict] = []
+    contract_file = harness_dir / "contract.yaml"
+    handoff_dir = harness_dir / "handoffs"
+    if not contract_file.exists():
+        return rows
+    try:
+        import yaml  # noqa: F811
+        doc = yaml.safe_load(contract_file.read_text()) or {}
+    except Exception:
+        return rows
+    tasks = doc.get("tasks", []) or []
+    for t in tasks:
+        if not isinstance(t, dict):
+            continue
+        if t.get("status") != "plan_proposed":
+            continue
+        task_id = t.get("id", "")
+        owner = t.get("owner", "")
+        title = t.get("title", task_id)
+        # Find matching handoff for the plan content
+        summary = t.get("summary", "")
+        handoff_summary = ""
+        if handoff_dir.exists():
+            for hf in sorted(handoff_dir.glob("*.yaml"), reverse=True):
+                try:
+                    raw = hf.read_text(encoding="utf-8", errors="replace")
+                    hdata = yaml.safe_load(raw) or {}
+                    if hdata.get("task") == task_id and hdata.get("status") == "plan_proposed":
+                        handoff_summary = hdata.get("summary", "") or hdata.get("scope", "")
+                        if isinstance(handoff_summary, list):
+                            handoff_summary = "\n".join(str(x) for x in handoff_summary)
+                        break
+                except Exception:
+                    continue
+        rows.append({
+            "task": task_id,
+            "title": title,
+            "from": owner,
+            "summary": handoff_summary or summary or title,
+        })
+    return rows
+
+
+def _confirm_plan(harness_dir: Path, task_id: str) -> dict:
+    """Confirm a plan_proposed task: set contract task to todo, update handoff."""
+    import yaml  # noqa: F811
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    contract_file = harness_dir / "contract.yaml"
+    handoff_dir = harness_dir / "handoffs"
+    errors = []
+
+    # Update contract task status plan_proposed -> todo
+    if contract_file.exists():
+        try:
+            doc = yaml.safe_load(contract_file.read_text()) or {}
+            tasks = doc.get("tasks", []) or []
+            found = False
+            for t in tasks:
+                if isinstance(t, dict) and t.get("id") == task_id and t.get("status") == "plan_proposed":
+                    t["status"] = "todo"
+                    t["plan_confirmed_at"] = now
+                    t["plan_confirmed_by"] = "owner"
+                    found = True
+                    break
+            if found:
+                contract_file.write_text(yaml.dump(doc, default_flow_style=False, allow_unicode=True))
+            else:
+                errors.append(f"task {task_id} not found in plan_proposed status")
+        except Exception as e:
+            errors.append(f"contract update error: {e}")
+
+    # Update matching handoff: add plan_gate confirmation
+    if handoff_dir.exists():
+        for hf in sorted(handoff_dir.glob("*.yaml"), reverse=True):
+            try:
+                raw = hf.read_text(encoding="utf-8", errors="replace")
+                hdata = yaml.safe_load(raw) or {}
+                if hdata.get("task") == task_id and hdata.get("status") == "plan_proposed":
+                    hdata["status"] = "plan_confirmed"
+                    gate = hdata.get("plan_gate", {}) or {}
+                    gate["confirmed_by_user"] = True
+                    gate["confirmed_at"] = now
+                    gate["confirmed_by"] = "owner"
+                    hdata["plan_gate"] = gate
+                    hf.write_text(yaml.dump(hdata, default_flow_style=False, allow_unicode=True))
+                    break
+            except Exception as e:
+                errors.append(f"handoff update error: {e}")
+
+    result = {"ok": not errors, "task": task_id, "confirmed_at": now}
+    if errors:
+        result["errors"] = errors
+    return result
+
+
 def watcher_config(project_dir: Path) -> dict:
     cfg_map = {
         "watcher_project": str(project_dir),
@@ -1073,6 +1236,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._run_cmd(["bash", recover, "--project", str(self.project_dir), "--action", "retry", "--timeout-minutes", "20"]), 200
         if action == "normalize_stale":
             return self._run_cmd(["bash", normalize, "--project", str(self.project_dir), "--archive", "--drop-status", "stale"]), 200
+        if action.startswith("confirm_plan:"):
+            task_id = action.split(":", 1)[1]
+            if not task_id:
+                return ({"error": "missing task id"}, 400)
+            result = _confirm_plan(self.project_dir / ".superharness", task_id)
+            return result, (200 if result.get("ok") else 500)
+
         if action.startswith("approve_task:"):
             task_id = action.split(":", 1)[1]
             if not task_id:
@@ -1180,6 +1350,7 @@ class Handler(BaseHTTPRequestHandler):
                     "watcher_config": wcfg,
                     "contract_id": contract_id(contract),
                     "pending_approvals": pending_approvals(self.project_dir / ".superharness" / "handoffs"),
+                    "plan_proposals": plan_proposals(self.project_dir / ".superharness"),
                     "contract_owners": contract_owners(contract),
                     "inbox_counts": inbox_counts(inbox),
                     "inbox_owners": inbox_owner_counts(inbox),
