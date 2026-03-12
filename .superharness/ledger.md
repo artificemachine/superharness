@@ -413,3 +413,4 @@ Append-only activity log. Never edit previous entries.
 - 2026-03-12T16:06:31Z — claude-code — modified: monitor-ui.py
 - 2026-03-12T16:06:36Z — claude-code — modified: monitor-ui.py
 - 2026-03-12T16:12:24Z — claude-code — modified: check-shell-entrypoints.sh
+- 2026-03-12T16:15:19Z — claude-code — modified: check-shell-entrypoints.sh
