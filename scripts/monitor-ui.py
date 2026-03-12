@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import ipaddress
 import json
 import os
@@ -48,18 +49,44 @@ HTML = """<!doctype html>
     button:hover { background:var(--btn2); }
     .small { font-size:11px; color:var(--muted); }
     .status { margin-top:8px; font-size:12px; color:var(--muted); }
+    .approval-list { margin-top:6px; font-size:12px; line-height:1.4; }
+    .approval-list a { color:#93c5fd; text-decoration:none; }
+    .approval-list a:hover { text-decoration:underline; }
+    .banner { display:none; margin:0 0 10px; padding:10px 12px; border-radius:10px; border:1px solid #7f1d1d; background:#2b1212; color:#fecaca; font-size:13px; line-height:1.4; }
+    .banner b { color:#fff; }
+    .watcher-health { margin-top:6px; font-size:12px; line-height:1.4; }
   </style>
 </head>
 <body>
   <div class=\"wrap\">
     <h1>superharness monitor</h1>
     <div class=\"meta\" id=\"meta\">loading...</div>
+    <div class=\"banner\" id=\"approvalBanner\">User approval required.</div>
 
     <div class=\"grid\">
       <div class=\"card\"><div class=\"k\">watcher label</div><div class=\"v\" id=\"label\">-</div></div>
       <div class=\"card\"><div class=\"k\">watcher state</div><div class=\"v\" id=\"state\">-</div></div>
       <div class=\"card\"><div class=\"k\">contract id</div><div class=\"v\" id=\"contract\">-</div></div>
       <div class=\"card\"><div class=\"k\">last refresh (UTC)</div><div class=\"v\" id=\"ts\">-</div></div>
+    </div>
+    <div class=\"card\" style=\"margin-top:10px;\">
+      <h2>watcher control</h2>
+      <div class=\"watcher-health\" id=\"watcherHealth\">-</div>
+      <div class=\"actions\">
+        <button onclick=\"act('watcher_start')\">Start watcher</button>
+        <button onclick=\"act('watcher_restart')\">Restart watcher</button>
+      </div>
+    </div>
+
+    <div class=\"card\" style=\"margin-top:10px;\">
+      <h2>user approval alerts</h2>
+      <div class=\"v\" id=\"approvalCount\">-</div>
+      <div class=\"approval-list\" id=\"approvalList\">-</div>
+    </div>
+    <div class=\"card\" style=\"margin-top:10px; display:none\" id=\"approvalReportCard\">
+      <h2>approval report preview</h2>
+      <div class=\"small\" id=\"approvalReportMeta\">-</div>
+      <pre id=\"approvalReportBody\">-</pre>
     </div>
 
     <div class=\"card\" style=\"margin-top:10px;\">
@@ -91,6 +118,7 @@ HTML = """<!doctype html>
 <script>
 let lastActionText = '-';
 let selectedStatus = null;
+let viewedApprovalTasks = new Set();
 const AUTH_TOKEN = __AUTH_TOKEN__;
 
 async function api(path, init) {
@@ -108,8 +136,41 @@ async function refresh() {
     const s = document.getElementById('state');
     s.textContent = d.launchctl_state || 'not-loaded';
     s.className = 'v ' + (d.launchctl_state === 'running' ? 'ok' : (d.launchctl_state ? 'warn' : 'bad'));
+    const wh = d.watcher_health || {};
+    const whEl = document.getElementById('watcherHealth');
+    whEl.textContent = wh.message || 'watcher health unavailable';
+    whEl.className = 'watcher-health ' + (wh.level === 'ok' ? 'ok' : (wh.level === 'warn' ? 'warn' : 'bad'));
     document.getElementById('contract').textContent = d.contract_id || '-';
     document.getElementById('ts').textContent = d.now_utc;
+    const pa = d.pending_approvals || [];
+    const banner = document.getElementById('approvalBanner');
+    if (pa.length) {
+      const tasks = pa.map(x => x.task).filter(Boolean).join(', ');
+      banner.style.display = 'block';
+      banner.innerHTML = `<b>User approval required</b> for task(s): ${tasks}. Run <code>superharness discuss approve --task &lt;task-id&gt; --by owner --note \"Approved\"</code>.`;
+    } else {
+      banner.style.display = 'none';
+      banner.textContent = 'User approval required.';
+    }
+    document.getElementById('approvalCount').textContent = pa.length ? `${pa.length} pending` : 'none';
+    const approvalList = document.getElementById('approvalList');
+    if (!pa.length) {
+      approvalList.textContent = 'No user approvals required.';
+    } else {
+      approvalList.innerHTML = '';
+      for (const a of pa) {
+        const row = document.createElement('div');
+        const report = a.markdown_report || '';
+        const task = a.task || '';
+        const viewed = viewedApprovalTasks.has(task);
+        const reportBtn = report
+          ? `<button onclick="viewApprovalReport('${report.replace(/'/g, \"\\\\'\")}', '${task.replace(/'/g, \"\\\\'\")}')" style="font-size:11px;padding:2px 6px">View report</button>`
+          : `<span class="small">(no markdown report)</span>`;
+        const approveBtn = `<button onclick="approveTask('${task.replace(/'/g, \"\\\\'\")}')" style="font-size:11px;padding:2px 6px;color:var(--ok)">Approve</button>`;
+        row.innerHTML = `task=<b>${task}</b> status=${a.status || ''} ${viewed ? '✅ report viewed' : ''}<br/>${reportBtn} ${approveBtn}<br/><span class=\"small\">approve cli: superharness discuss approve --task ${task} --by owner --note \"Approved\"</span>`;
+        approvalList.appendChild(row);
+      }
+    }
     document.getElementById('ledger').textContent = (d.ledger_tail || []).join('\\n');
     document.getElementById('out').textContent = (d.out_tail || []).join('\\n');
     document.getElementById('err').textContent = (d.err_tail || []).join('\\n');
@@ -174,8 +235,10 @@ async function loadInboxDetail(status) {
       else if (st === 'paused') btn = `<button onclick="act('resume_item:${eid}')" style="font-size:11px;padding:2px 6px">Resume</button>`;
       else if (st === 'launched' || st === 'running') btn = `<button onclick="act('stop_item:${eid}')" style="font-size:11px;padding:2px 6px;color:var(--bad)">Stop</button>`;
       else if (st === 'stale' || st === 'failed' || st === 'stopped') btn = `<button onclick="act('retry_item:${eid}')" style="font-size:11px;padding:2px 6px;color:var(--warn)">Retry</button>`;
+      const removeBtn = `<button onclick="removeItem('${eid}')" style="font-size:11px;padding:2px 6px;color:var(--bad)">Remove</button>`;
+      const actionCell = btn ? `${btn} ${removeBtn}` : removeBtn;
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${item.id||''}</td><td>${item.task||''}</td><td>${item.to||''}</td><td>${item.priority||''}</td><td>${la}</td><td>${timer}</td><td>${btn}</td>`;
+      tr.innerHTML = `<td>${item.id||''}</td><td>${item.task||''}</td><td>${item.to||''}</td><td>${item.priority||''}</td><td>${la}</td><td>${timer}</td><td>${actionCell}</td>`;
       tbody.appendChild(tr);
     }
     document.getElementById('inboxDetail').style.display = 'block';
@@ -199,6 +262,38 @@ async function act(action) {
   await refresh();
 }
 
+async function viewApprovalReport(path, task) {
+  try {
+    const sanitized = '/.superharness/handoffs/' + path.split('/').pop();  // restrict to handoffs dir
+    const r = await fetch(sanitized);
+    if (!r.ok) throw new Error('failed to load report: http ' + r.status);
+    const text = await r.text();
+    document.getElementById('approvalReportCard').style.display = 'block';
+    document.getElementById('approvalReportMeta').textContent = `task=${task} report=${path}`;
+    document.getElementById('approvalReportBody').textContent = text;
+    viewedApprovalTasks.add(task);
+    await refresh();
+  } catch (e) {
+    document.getElementById('actionStatus').textContent = 'error: ' + e;
+  }
+}
+
+async function approveTask(task) {
+  if (!viewedApprovalTasks.has(task)) {
+    document.getElementById('actionStatus').textContent = `error: read the markdown report first for task ${task}`;
+    return;
+  }
+  const ok = window.confirm(`Approve consensus for task ${task}?`);
+  if (!ok) return;
+  await act('approve_task:' + task);
+}
+
+async function removeItem(itemId) {
+  const ok = window.confirm(`Remove task item ${itemId} from inbox?`);
+  if (!ok) return;
+  await act('remove_item:' + itemId);
+}
+
 
 refresh();
 setInterval(refresh, 3000);
@@ -216,7 +311,13 @@ def tail_lines(path: Path, n: int) -> list[str]:
     return [ln.rstrip("\n") for ln in lines[-n:]]
 
 
-def watcher_state(label: str) -> str:
+def watcher_runtime(label: str) -> dict:
+    info = {
+        "loaded": False,
+        "state": "",
+        "last_exit_code": "",
+        "run_interval_seconds": 0,
+    }
     try:
         out = subprocess.run(
             ["launchctl", "print", f"gui/{os.getuid()}/{label}"],
@@ -226,13 +327,22 @@ def watcher_state(label: str) -> str:
             timeout=3,
         )
         if out.returncode != 0:
-            return ""
+            return info
+        info["loaded"] = True
         for ln in out.stdout.splitlines():
-            if "state =" in ln:
-                return ln.split("=", 1)[1].strip()
+            if "state =" in ln and not info["state"]:
+                info["state"] = ln.split("=", 1)[1].strip()
+            elif "last exit code =" in ln:
+                info["last_exit_code"] = ln.split("=", 1)[1].strip()
+            elif "run interval =" in ln and "seconds" in ln:
+                raw = ln.split("=", 1)[1].strip().split(" ", 1)[0]
+                try:
+                    info["run_interval_seconds"] = int(raw)
+                except ValueError:
+                    info["run_interval_seconds"] = 0
     except Exception:
-        return ""
-    return ""
+        return info
+    return info
 
 
 def inbox_items(inbox_file: Path) -> list[dict]:
@@ -269,6 +379,115 @@ def inbox_counts(inbox_file: Path) -> dict[str, int]:
     return dict(counts)
 
 
+def parse_utc_timestamp(raw: str) -> dt.datetime | None:
+    value = raw.strip().strip("'\"")
+    if not value:
+        return None
+    try:
+        return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def watcher_health(runtime: dict, items: list[dict], now_utc: str) -> dict:
+    now_dt = parse_utc_timestamp(now_utc)
+    state = runtime.get("state", "")
+    loaded = bool(runtime.get("loaded", False))
+    last_exit_code = str(runtime.get("last_exit_code", "")).strip()
+    run_interval_seconds = int(runtime.get("run_interval_seconds", 0) or 0)
+    pending_items = [x for x in items if x.get("status", "") == "pending"]
+    pending_count = len(pending_items)
+    stale_count = sum(1 for x in items if x.get("status", "") == "stale")
+    failed_count = sum(1 for x in items if x.get("status", "") == "failed")
+
+    if not loaded:
+        return {
+            "level": "bad",
+            "message": "Watcher is not running. Use Start watcher (15s) to install/start it.",
+            "pending_count": pending_count,
+            "stale_count": stale_count,
+            "failed_count": failed_count,
+        }
+    if state == "not running" and run_interval_seconds > 0 and last_exit_code in {"0", "(never exited)"}:
+        if stale_count > 0 or failed_count > 0:
+            return {
+                "level": "warn",
+                "message": f"Watcher loaded and idle between runs ({run_interval_seconds}s), but backlog issues exist (stale={stale_count}, failed={failed_count}).",
+                "pending_count": pending_count,
+                "stale_count": stale_count,
+                "failed_count": failed_count,
+            }
+        return {
+            "level": "ok",
+            "message": f"Watcher loaded and idle between runs (every {run_interval_seconds}s).",
+            "pending_count": pending_count,
+            "stale_count": stale_count,
+            "failed_count": failed_count,
+        }
+    if state in {"running", "active"} and run_interval_seconds > 0 and last_exit_code in {"0", "(never exited)"}:
+        if stale_count > 0 or failed_count > 0:
+            return {
+                "level": "warn",
+                "message": f"Watcher loaded and active (every {run_interval_seconds}s), but backlog issues exist (stale={stale_count}, failed={failed_count}).",
+                "pending_count": pending_count,
+                "stale_count": stale_count,
+                "failed_count": failed_count,
+            }
+        return {
+            "level": "ok",
+            "message": f"Watcher loaded and active (every {run_interval_seconds}s).",
+            "pending_count": pending_count,
+            "stale_count": stale_count,
+            "failed_count": failed_count,
+        }
+    if state != "running" and state != "not running":
+        return {
+            "level": "warn",
+            "message": f"Watcher loaded but in state '{state}' (last exit={last_exit_code or 'unknown'}).",
+            "pending_count": pending_count,
+            "stale_count": stale_count,
+            "failed_count": failed_count,
+        }
+
+    oldest_pending_age = None
+    if now_dt:
+        ages = []
+        for item in pending_items:
+            created = parse_utc_timestamp(item.get("created_at", ""))
+            if created is not None:
+                ages.append(int((now_dt - created).total_seconds()))
+        if ages:
+            oldest_pending_age = max(ages)
+
+    if oldest_pending_age is not None and oldest_pending_age > 300:
+        mins = oldest_pending_age // 60
+        return {
+            "level": "warn",
+            "message": f"Watcher running but pending queue is aging ({mins}m oldest). Consider Restart watcher.",
+            "pending_count": pending_count,
+            "stale_count": stale_count,
+            "failed_count": failed_count,
+            "oldest_pending_age_seconds": oldest_pending_age,
+        }
+
+    if stale_count > 0 or failed_count > 0:
+        return {
+            "level": "warn",
+            "message": f"Watcher running with backlog issues (stale={stale_count}, failed={failed_count}).",
+            "pending_count": pending_count,
+            "stale_count": stale_count,
+            "failed_count": failed_count,
+        }
+
+    return {
+        "level": "ok",
+        "message": f"Watcher running and healthy. pending={pending_count}, stale={stale_count}, failed={failed_count}.",
+        "pending_count": pending_count,
+        "stale_count": stale_count,
+        "failed_count": failed_count,
+    }
+
+
 def contract_id(contract_file: Path) -> str:
     helper = Path(__file__).resolve().parent.parent / "engine" / "contract.rb"
     if not contract_file.exists() or not helper.exists() or shutil.which("ruby") is None:
@@ -283,6 +502,94 @@ def contract_id(contract_file: Path) -> str:
     if run.returncode != 0:
         return ""
     return run.stdout.strip().strip('"')
+
+
+def pending_approvals(handoff_dir: Path) -> list[dict]:
+    rows: list[dict] = []
+    if not handoff_dir.exists():
+        return rows
+    for file in sorted(handoff_dir.glob("*.yaml")):
+        task = ""
+        status = ""
+        markdown_report = ""
+        required = False
+        approved = False
+        in_gate = False
+        for raw in file.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw.rstrip()
+            stripped = line.strip()
+            if stripped.startswith("task:"):
+                task = stripped.split(":", 1)[1].strip().strip("'\"")
+            elif stripped.startswith("status:"):
+                status = stripped.split(":", 1)[1].strip().strip("'\"")
+            elif stripped.startswith("markdown_report:"):
+                markdown_report = stripped.split(":", 1)[1].strip().strip("'\"")
+            elif stripped == "approval_gate:":
+                in_gate = True
+            elif in_gate and not line.startswith("  "):
+                in_gate = False
+            elif in_gate and stripped.startswith("required:"):
+                required = stripped.split(":", 1)[1].strip().lower() == "true"
+            elif in_gate and stripped.startswith("approved_by_user:"):
+                approved = stripped.split(":", 1)[1].strip().lower() == "true"
+        pending = status == "pending_user_approval" or (required and not approved)
+        if pending:
+            rows.append(
+                {
+                    "task": task,
+                    "status": status,
+                    "required": required,
+                    "approved_by_user": approved,
+                    "markdown_report": markdown_report,
+                }
+            )
+    return rows
+
+
+def watcher_config(project_dir: Path) -> dict:
+    cfg_map = {
+        "watcher_project": str(project_dir),
+        "interval_seconds": 15,
+        "recover_timeout_minutes": 3,
+        "recover_action": "retry",
+        "launcher_timeout_seconds": 180,
+        "target": "both",
+        "codex_bypass": False,
+    }
+    cfg = project_dir / ".superharness" / "watcher.yaml"
+    if not cfg.exists():
+        return cfg_map
+    for raw in cfg.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw.strip()
+        if line.startswith("watcher_project:"):
+            val = line.split(":", 1)[1].strip().strip("'\"")
+            if val:
+                candidate = Path(val).expanduser().resolve()
+                if (candidate / ".superharness").exists():
+                    cfg_map["watcher_project"] = str(candidate)
+        elif line.startswith("interval_seconds:"):
+            raw_val = line.split(":", 1)[1].strip()
+            if raw_val.isdigit() and int(raw_val) > 0:
+                cfg_map["interval_seconds"] = int(raw_val)
+        elif line.startswith("recover_timeout_minutes:"):
+            raw_val = line.split(":", 1)[1].strip()
+            if raw_val.isdigit():
+                cfg_map["recover_timeout_minutes"] = int(raw_val)
+        elif line.startswith("recover_action:"):
+            val = line.split(":", 1)[1].strip().strip("'\"")
+            if val in {"stale", "retry"}:
+                cfg_map["recover_action"] = val
+        elif line.startswith("launcher_timeout_seconds:"):
+            raw_val = line.split(":", 1)[1].strip()
+            if raw_val.isdigit():
+                cfg_map["launcher_timeout_seconds"] = int(raw_val)
+        elif line.startswith("target:"):
+            val = line.split(":", 1)[1].strip().strip("'\"")
+            if val in {"both", "claude-code", "codex-cli"}:
+                cfg_map["target"] = val
+        elif line.startswith("codex_bypass:"):
+            cfg_map["codex_bypass"] = line.split(":", 1)[1].strip().lower() == "true"
+    return cfg_map
 
 
 def project_label(project_dir: Path) -> str:
@@ -354,9 +661,59 @@ class Handler(BaseHTTPRequestHandler):
         return None
 
     def _action(self, action: str) -> tuple[dict, int]:
+        wcfg = watcher_config(self.project_dir)
+        watcher_project = Path(str(wcfg.get("watcher_project", str(self.project_dir))))
         dispatch = str(self.scripts_dir / "inbox-dispatch.sh")
         recover = str(self.scripts_dir / "inbox-recover-stale.sh")
         normalize = str(self.scripts_dir / "inbox-normalize.sh")
+        discuss = str(self.scripts_dir / "discuss.sh")
+        install_watcher = str(self.scripts_dir / "install-launchd-inbox-watcher.sh")
+
+        if action in {"watcher_start", "watcher_restart"}:
+            install_args = [
+                "bash",
+                install_watcher,
+                "--project",
+                str(watcher_project),
+                "--interval",
+                str(int(wcfg.get("interval_seconds", 15))),
+                "--recover-timeout-minutes",
+                str(int(wcfg.get("recover_timeout_minutes", 3))),
+                "--recover-action",
+                str(wcfg.get("recover_action", "retry")),
+                "--launcher-timeout",
+                str(int(wcfg.get("launcher_timeout_seconds", 180))),
+                "--to",
+                str(wcfg.get("target", "both")),
+                "--confirm-non-interactive",
+                "yes",
+                "--confirm-skip-permissions",
+                "yes",
+            ]
+            if bool(wcfg.get("codex_bypass", False)):
+                install_args.extend(["--codex-bypass", "--confirm-codex-bypass", "yes"])
+            install_result = self._run_cmd(install_args, timeout=120)
+            if install_result["exit_code"] != 0:
+                return install_result, 200
+            kickstart_result = self._run_cmd(
+                [
+                    "launchctl",
+                    "kickstart",
+                    "-k",
+                    f"gui/{os.getuid()}/{self.label}",
+                ]
+            )
+            merged = {
+                "exit_code": kickstart_result["exit_code"],
+                "stdout": "\n".join(
+                    x for x in [install_result.get("stdout", ""), kickstart_result.get("stdout", "")] if x
+                ),
+                "stderr": "\n".join(
+                    x for x in [install_result.get("stderr", ""), kickstart_result.get("stderr", "")] if x
+                ),
+                "cmd": f"{install_result.get('cmd', '')} && {kickstart_result.get('cmd', '')}".strip(),
+            }
+            return merged, 200
 
         if action == "dispatch_print_codex":
             return self._run_cmd(["bash", dispatch, "--project", str(self.project_dir), "--to", "codex-cli", "--print-only"]), 200
@@ -366,6 +723,25 @@ class Handler(BaseHTTPRequestHandler):
             return self._run_cmd(["bash", recover, "--project", str(self.project_dir), "--action", "retry", "--timeout-minutes", "20"]), 200
         if action == "normalize_stale":
             return self._run_cmd(["bash", normalize, "--project", str(self.project_dir), "--archive", "--drop-status", "stale"]), 200
+        if action.startswith("approve_task:"):
+            task_id = action.split(":", 1)[1]
+            if not task_id:
+                return ({"error": "missing task id"}, 400)
+            return self._run_cmd(
+                [
+                    "bash",
+                    discuss,
+                    "approve",
+                    "--project",
+                    str(self.project_dir),
+                    "--task",
+                    task_id,
+                    "--by",
+                    "owner",
+                    "--note",
+                    "Approved from monitor-ui",
+                ]
+            ), 200
 
         inbox_rb = str(Path(__file__).resolve().parent.parent / "engine" / "inbox.rb")
         inbox_file = str(self.project_dir / ".superharness" / "inbox.yaml")
@@ -402,6 +778,9 @@ class Handler(BaseHTTPRequestHandler):
             from_status = target.get("status", "launched")
             result = self._run_cmd(["ruby", inbox_rb, "set_status", "--file", inbox_file, "--id", item_id, "--from", from_status, "--to", "stopped", "--now", now, "--stamp-key", "stopped_at"])
             return result, 200
+        if action.startswith("remove_item:"):
+            item_id = action.split(":", 1)[1]
+            return self._run_cmd(["ruby", inbox_rb, "remove", "--file", inbox_file, "--id", item_id]), 200
 
         return ({"error": f"unsupported action: {action}"}, 400)
 
@@ -412,23 +791,49 @@ class Handler(BaseHTTPRequestHandler):
             self._html(HTML)
             return
 
+        if p.startswith("/.superharness/handoffs/") and p.endswith(".md"):
+            report_path = (self.project_dir / p.lstrip("/")).resolve()
+            handoff_root = (self.project_dir / ".superharness" / "handoffs").resolve()
+            if not report_path.is_relative_to(handoff_root):
+                self._json({"error": "forbidden"}, 403)
+                return
+            if not report_path.exists():
+                self._json({"error": "not found"}, 404)
+                return
+            body = report_path.read_bytes()
+            self.send_response(200)
+            self._set_common_headers("text/markdown; charset=utf-8", len(body))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if p == "/api/status":
             inbox = self.project_dir / ".superharness" / "inbox.yaml"
             ledger = self.project_dir / ".superharness" / "ledger.md"
             contract = self.project_dir / ".superharness" / "contract.yaml"
             outlog = Path.home() / "Library/Logs/superharness" / f"{self.label}.out.log"
             errlog = Path.home() / "Library/Logs/superharness" / f"{self.label}.err.log"
+            now_utc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            runtime = watcher_runtime(self.label)
+            state = str(runtime.get("state", ""))
+            items = inbox_items(inbox)
+            wcfg = watcher_config(self.project_dir)
             self._json(
                 {
                     "project": str(self.project_dir),
                     "label": self.label,
-                    "launchctl_state": watcher_state(self.label),
+                    "launchctl_state": state or ("loaded" if runtime.get("loaded") else ""),
+                    "watcher_health": watcher_health(runtime, items, now_utc),
+                    "watcher_runtime": runtime,
+                    "watcher_project": str(wcfg.get("watcher_project", str(self.project_dir))),
+                    "watcher_config": wcfg,
                     "contract_id": contract_id(contract),
+                    "pending_approvals": pending_approvals(self.project_dir / ".superharness" / "handoffs"),
                     "inbox_counts": inbox_counts(inbox),
                     "ledger_tail": tail_lines(ledger, 18),
                     "out_tail": tail_lines(outlog, 16),
                     "err_tail": tail_lines(errlog, 16),
-                    "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "now_utc": now_utc,
                     "refresh_seconds": self.refresh_seconds,
                 }
             )

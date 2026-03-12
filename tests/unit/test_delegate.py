@@ -106,3 +106,27 @@ def test_delegate_surfaces_malformed_handoff_error(repo_root, tmp_path) -> None:
 
     assert result.returncode != 0
     assert "Failed to parse handoff" in result.stderr
+
+
+def test_delegate_codex_non_interactive_adds_skip_git_repo_check(repo_root, tmp_path) -> None:
+    project = _setup_project(tmp_path)
+    script = repo_root / "scripts" / "delegate.sh"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    codex = bin_dir / "codex"
+    codex.write_text("#!/bin/bash\nprintf '%s\\n' \"$@\"\n")
+    codex.chmod(0o755)
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=["--to", "codex-cli", "--project", str(project), "--task", "mcp-docs", "--non-interactive"],
+        env={
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "--skip-git-repo-check" in result.stdout
+    assert "--full-auto" in result.stdout

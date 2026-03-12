@@ -7,7 +7,13 @@
 # Output: JSON with decision (allow/warn/block) and optional message
 
 INPUT=$(cat)
-COMMAND=$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tool_input',{}).get('command',''))" 2>/dev/null)
+COMMAND=$(printf '%s' "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('tool_input',{}).get('command',''))" 2>/dev/null)
+
+# Fail-closed: if JSON parsing failed, warn rather than silently allowing
+if [ -z "$COMMAND" ] && [ -n "$INPUT" ]; then
+  echo '{"decision": "warn", "reason": "superharness: branch-guard could not parse tool input. Proceeding with caution."}'
+  exit 0
+fi
 
 # Block push to main/master
 if echo "$COMMAND" | grep -qE 'git\s+push.*\b(main|master)\b'; then
