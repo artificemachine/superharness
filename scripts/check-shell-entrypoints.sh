@@ -39,6 +39,7 @@ ENTRYPOINT_FILES=(
   "cli/discuss.sh"
   "scripts/discussion-dispatch.sh"
   "scripts/status.sh"
+  "scripts/notify.sh"
 )
 
 HOOK_FILES=(
