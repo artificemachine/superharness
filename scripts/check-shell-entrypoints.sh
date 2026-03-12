@@ -14,6 +14,7 @@ ENTRYPOINT_FILES=(
   "scripts/contract-today.sh"
   "scripts/delegate.sh"
   "scripts/delegate-task.sh"
+  "scripts/discuss.sh"
   "scripts/doctor.sh"
   "scripts/delegate-to-claude.sh"
   "scripts/delegate-to-codex.sh"
@@ -29,11 +30,14 @@ ENTRYPOINT_FILES=(
   "scripts/install-launchd-inbox-watcher.sh"
   "scripts/install-git-hooks.sh"
   "scripts/task.sh"
+  "scripts/setup-watcher-worker.sh"
   "scripts/uninstall-launchd-inbox-watcher.sh"
   "scripts/uninstall.sh"
   "scripts/check-changelog-append-only.sh"
   "scripts/reset-watcher-and-test.sh"
   "cli/monitor-ui.sh"
+  "cli/discuss.sh"
+  "scripts/discussion-dispatch.sh"
 )
 
 HOOK_FILES=(

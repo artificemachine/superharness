@@ -11,7 +11,7 @@ Create options:
   --id TASK_ID       Task id
   --title TEXT       Task title
   --owner OWNER      claude-code|codex-cli
-  --status STATUS    todo|in_progress|done|failed|stopped (default: todo)
+  --status STATUS    todo|in_progress|pending_user_approval|done|failed|stopped (default: todo)
   --dependency ID    Optional task id this task depends on
 
 Delete options:
@@ -179,8 +179,8 @@ if [ "$SUBCMD" = "create" ]; then
     *) echo "owner must be claude-code or codex-cli" >&2; exit 2 ;;
   esac
   case "$STATUS" in
-    todo|in_progress|done) ;;
-    *) echo "status must be todo, in_progress, or done" >&2; exit 2 ;;
+    todo|in_progress|pending_user_approval|done) ;;
+    *) echo "status must be todo, in_progress, pending_user_approval, or done" >&2; exit 2 ;;
   esac
 
   ruby - "$CONTRACT_FILE" "$TASK_ID" "$TITLE" "$OWNER" "$STATUS" "$PROJECT_DIR" "$DEPENDENCY" <<'RUBY'
@@ -282,14 +282,14 @@ else
   fi
 
   case "$STATUS" in
-    todo|in_progress|done|failed|stopped) ;;
-    *) echo "status must be todo, in_progress, done, failed, or stopped" >&2; exit 2 ;;
+    todo|in_progress|pending_user_approval|done|failed|stopped) ;;
+    *) echo "status must be todo, in_progress, pending_user_approval, done, failed, or stopped" >&2; exit 2 ;;
   esac
   if [[ "$STATUS" == "failed" || "$STATUS" == "stopped" ]] && [ -z "$REASON" ]; then
     echo "error: --reason is required when status=$STATUS" >&2
     exit 2
   fi
-  if [[ "$STATUS" == "todo" || "$STATUS" == "in_progress" || "$STATUS" == "done" ]] && [ -z "$SUMMARY" ]; then
+  if [[ "$STATUS" == "todo" || "$STATUS" == "in_progress" || "$STATUS" == "pending_user_approval" || "$STATUS" == "done" ]] && [ -z "$SUMMARY" ]; then
     echo "error: --summary is required when status=$STATUS" >&2
     exit 2
   fi

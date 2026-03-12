@@ -29,7 +29,13 @@ def write_items(path, items)
   begin
     tmp.write(HEADER + YAML.dump(items))
     tmp.flush
-    tmp.fsync
+    begin
+      tmp.fsync
+    rescue IOError, Errno::EIO => e
+      tmp.close unless tmp.closed?
+      File.unlink(tmp.path) if File.exist?(tmp.path)
+      raise "Failed to fsync inbox #{path}: #{e.message}"
+    end
     tmp.close
     File.rename(tmp.path, path)
   ensure
@@ -62,6 +68,26 @@ def append_archive(path, items, now:)
     f.write("# normalized_at: #{now}\n")
     f.write(YAML.dump(items))
   end
+end
+
+def process_alive?(pid_str)
+  pid = Integer(pid_str.to_s, exception: false)
+  return false if pid.nil? || pid <= 0
+
+  begin
+    Process.kill(0, pid)
+    true
+  rescue Errno::ESRCH
+    false
+  rescue Errno::EPERM
+    true
+  end
+end
+
+def strict_int(v, name)
+  n = Integer(v.to_s, exception: false)
+  abort("#{name} must be an integer, got: #{v}") if n.nil?
+  n
 end
 
 def norm_priority(v)
@@ -189,6 +215,20 @@ def set_field(file:, id:, key:, value:)
   0
 end
 
+def remove_item(file:, id:)
+  items = load_items(file)
+  idx = items.index { |x| x.is_a?(Hash) && x["id"].to_s == id.to_s }
+  if idx.nil?
+    puts "result=not_found id=#{id}"
+    return 2
+  end
+  item = items[idx]
+  items.delete_at(idx)
+  write_items(file, items)
+  puts "result=removed id=#{id} status=#{item["status"]} task=#{item["task"]} to=#{item["to"]}"
+  0
+end
+
 def normalize(file:, drop_statuses:, drop_prefixes:, archive_file: nil, now: nil)
   items = load_items(file)
   statuses = drop_statuses.map(&:to_s)
@@ -218,7 +258,11 @@ end
 
 def recover_launched(file:, now:, timeout_minutes:, action:)
   items = load_items(file)
-  now_time = Time.parse(now)
+  begin
+    now_time = Time.parse(now)
+  rescue ArgumentError
+    abort("recover_launched: invalid --now timestamp: #{now}")
+  end
   timeout_seconds = timeout_minutes.to_i * 60
   updated = false
   stale_count = 0
@@ -228,6 +272,7 @@ def recover_launched(file:, now:, timeout_minutes:, action:)
   items.each_with_index do |item, idx|
     next unless item.is_a?(Hash)
     next unless item["status"].to_s == "launched"
+    next if process_alive?(item["pid"])
 
     launched_at = item["launched_at"].to_s
     next if launched_at.empty?
@@ -238,6 +283,8 @@ def recover_launched(file:, now:, timeout_minutes:, action:)
       item["status"] = "stale"
       item["stale_at"] = now
       item["stale_reason"] = "invalid_launched_at"
+      item.delete("pid")
+      item.delete("launched_at")
       items[idx] = item
       stale_count += 1
       updated = true
@@ -266,6 +313,7 @@ def recover_launched(file:, now:, timeout_minutes:, action:)
       stale_count += 1
     end
     item.delete("launched_at")
+    item.delete("pid")
     items[idx] = item
     updated = true
   end
@@ -368,10 +416,10 @@ when "enqueue"
     o.on("--to TARGET") { |v| opts[:to] = v }
     o.on("--task TASK_ID") { |v| opts[:task] = v }
     o.on("--project DIR") { |v| opts[:project] = v }
-    o.on("--priority N") { |v| opts[:priority] = v.to_i }
+    o.on("--priority N") { |v| opts[:priority] = strict_int(v, "--priority") }
     o.on("--created-at TS") { |v| opts[:created_at] = v }
-    o.on("--retry-count N") { |v| opts[:retry_count] = v.to_i }
-    o.on("--max-retries N") { |v| opts[:max_retries] = v.to_i }
+    o.on("--retry-count N") { |v| opts[:retry_count] = strict_int(v, "--retry-count") }
+    o.on("--max-retries N") { |v| opts[:max_retries] = strict_int(v, "--max-retries") }
   end.parse!(ARGV)
   required = %i[file id to task project priority created_at]
   abort("--file, --id, --to, --task, --project, --priority, --created-at are required") unless required.all? { |k| opts.key?(k) }
@@ -410,6 +458,14 @@ when "set_field"
   end.parse!(ARGV)
   abort("--file, --id, --key are required") unless opts[:file] && opts[:id] && opts[:key]
   with_inbox_lock(opts[:file]) { exit set_field(file: opts[:file], id: opts[:id], key: opts[:key], value: opts[:value]) }
+when "remove"
+  opts = {}
+  OptionParser.new do |o|
+    o.on("--file FILE") { |v| opts[:file] = v }
+    o.on("--id ID") { |v| opts[:id] = v }
+  end.parse!(ARGV)
+  abort("--file and --id are required") unless opts[:file] && opts[:id]
+  with_inbox_lock(opts[:file]) { exit remove_item(file: opts[:file], id: opts[:id]) }
 when "normalize"
   opts = { drop_statuses: [], drop_prefixes: [] }
   OptionParser.new do |o|
@@ -435,7 +491,7 @@ when "recover_launched"
   OptionParser.new do |o|
     o.on("--file FILE") { |v| opts[:file] = v }
     o.on("--now TS") { |v| opts[:now] = v }
-    o.on("--timeout-minutes N") { |v| opts[:timeout_minutes] = v.to_i }
+    o.on("--timeout-minutes N") { |v| opts[:timeout_minutes] = strict_int(v, "--timeout-minutes") }
     o.on("--action MODE") { |v| opts[:action] = v }
   end.parse!(ARGV)
   abort("--file and --now are required") unless opts[:file] && opts[:now]
@@ -475,6 +531,22 @@ when "sync_task_status"
   end.parse!(ARGV)
   abort("--file, --task, --to, --now are required") unless opts[:file] && opts[:task] && opts[:to] && opts[:now]
   with_inbox_lock(opts[:file]) { exit sync_task_status(file: opts[:file], task: opts[:task], to: opts[:to], now: opts[:now]) }
+when "has_active"
+  opts = {}
+  OptionParser.new do |o|
+    o.on("--file FILE") { |v| opts[:file] = v }
+    o.on("--to TARGET") { |v| opts[:to] = v }
+    o.on("--task TASK_ID") { |v| opts[:task] = v }
+  end.parse!(ARGV)
+  abort("--file, --to, --task are required") unless opts[:file] && opts[:to] && opts[:task]
+  items = load_items(opts[:file])
+  active = items.any? do |item|
+    next false unless item.is_a?(Hash)
+    item["task"].to_s == opts[:task] &&
+      item["to"].to_s == opts[:to] &&
+      %w[pending paused launched running].include?(item["status"].to_s)
+  end
+  puts active ? "true" : "false"
 else
-  abort("Usage: inbox.rb <next_pending|launch|enqueue|set_status|sync_task_status|normalize|recover_launched|list_launched|deadline_fail> [options]")
+  abort("Usage: inbox.rb <next_pending|launch|enqueue|set_status|set_field|remove|sync_task_status|normalize|recover_launched|list_launched|deadline_fail|has_active> [options]")
 end
