@@ -12,7 +12,8 @@ while [ -L "$SCRIPT_SOURCE" ]; do
   fi
 done
 ROOT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
-VERSION="0.7.0"
+VERSION="$(cat "$ROOT_DIR/VERSION" 2>/dev/null | tr -d '[:space:]')"
+VERSION="${VERSION:-0.7.0}"
 
 usage() {
   cat << 'USAGE'
@@ -20,6 +21,7 @@ Usage:
   superharness <command> [args]
 
 Commands:
+  demo        Zero-config task lifecycle walkthrough (no agent CLIs needed)
   init        Initialize project protocol files
   contract    Show active contract summary and delegate suggestion
   delegate    Delegate task (explicit --to ... or shorthand delegate <task-id>)
@@ -86,6 +88,7 @@ exec_with_optional_project() {
 }
 
 case "$cmd" in
+  demo) exec bash "$ROOT_DIR/scripts/demo.sh" "$@" ;;
   init) exec bash "$ROOT_DIR/init-project.sh" "$@" ;;
   contract)
     sub="${1:-today}"

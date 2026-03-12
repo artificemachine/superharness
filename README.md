@@ -4,6 +4,8 @@
 
 superharness lets AI coding assistants work on the same project without stepping on each other. It provides a shared contract, queue-based delegation, and handoff/ledger state so tasks survive across sessions.
 
+> **AI agent installing this?** Read [`docs/INSTALL-AGENT.md`](docs/INSTALL-AGENT.md) — it tells you exactly what to detect, what to ask the user (just two questions), and how to set everything up without human terminal interaction.
+
 ---
 
 ## Quick Links
@@ -11,6 +13,7 @@ superharness lets AI coding assistants work on the same project without stepping
 📘 **[User Guide](docs/GUIDE.md)** — How to use superharness (installation, commands, troubleshooting)
 🏗️ **[Architecture](docs/ARCHITECTURE.md)** — Why it exists, how it works, design philosophy
 ⚡ **[Quickstart](docs/QUICKSTART.md)** — Shortest path to first delegation
+👥 **[Teams](docs/TEAMS.md)** — Multi-person setups, shared state, CI integration
 🔒 **[Security](SECURITY.md)** — Operational safety notes
 🗺️ **[Roadmap](docs/ROADMAP.md)** — Current maturity target and next milestones
 
@@ -18,14 +21,40 @@ superharness lets AI coding assistants work on the same project without stepping
 
 ## What You Get
 
+- **`superharness demo`** — Zero-config walkthrough: see the full lifecycle in 30 seconds, no agent CLI needed
 - **`superharness init`** — Bootstrap protocol files (`.superharness/`)
 - **`superharness delegate`** — Launch agent with contract context
 - **`superharness enqueue|dispatch|watch`** — Queue-based task routing
 - **`superharness hygiene`** — Protocol compliance checks
 - **`superharness watch --foreground`** — Cross-platform continuous watcher
+- **`superharness monitor-ui`** — Browser dashboard: inbox, tasks, watcher state, plan approvals
 - **`superharness doctor`** — Prerequisite and setup health check
 - **`superharness uninstall`** — Clean removal of system artifacts
 - **Background watcher** — Unattended execution via macOS launchd or Linux systemd (opt-in)
+
+---
+
+## Is this for me?
+
+superharness is for you if **any** of these are true:
+- You use Claude Code or Codex CLI and find yourself re-explaining project context at the start of every session
+- You want to hand off a task to one agent while you work with another
+- You need an append-only audit trail of what each agent did and decided
+- You run agents unattended in the background (e.g. via launchd/systemd)
+
+You probably **don't need** superharness if you only ever run a single agent interactively and don't switch between sessions.
+
+### What you need to use it
+
+| Feature | Requirements |
+|---------|-------------|
+| Core protocol (contracts, handoffs, ledger) | `bash`, `ruby`, `python3` |
+| Delegation + dispatch preview | + any text editor |
+| Live delegation to an agent | + `claude` or `codex` CLI |
+| Background auto-dispatch | + launchd (macOS) or systemd (Linux) |
+| Browser dashboard | + `python3 -m http.server` (built-in) |
+
+**You can start with just the core** and add agent CLIs and background services later. `--print-only` mode lets you preview every dispatch without launching anything.
 
 ---
 
@@ -33,11 +62,20 @@ superharness lets AI coding assistants work on the same project without stepping
 
 > **Requires:** `bash`, `ruby`, `python3`. See [Prerequisites](#prerequisites) for install commands.
 
+### Try it first (no install needed)
+```bash
+bash scripts/demo.sh
+# Runs a full task lifecycle in a temp dir — nothing installed, no agent CLI required
+```
+
 ### 0. Install the CLI
 ```bash
 bash scripts/install-wrapper.sh
 # Creates a symlink at ~/.local/bin/superharness
 # If ~/.local/bin is not in PATH: export PATH="$HOME/.local/bin:$PATH"
+
+# Verify it worked:
+superharness version
 ```
 
 ### 1. Initialize your project
@@ -45,6 +83,10 @@ bash scripts/install-wrapper.sh
 cd /path/to/project
 superharness init "Project Name" "Tech/Stack" "active"
 # Creates .superharness/, CLAUDE.md, and AGENTS.md in your project root
+
+# Decide: commit state files or ignore them
+echo '.superharness/' >> .gitignore   # option A: ignore (recommended for personal projects)
+# — OR — git add .superharness/       # option B: commit (recommended for team projects)
 ```
 
 ### 2. Verify setup

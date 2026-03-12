@@ -24,3 +24,7 @@ logdy-core/
 *.key
 *.p12
 *.pfx
+secrets.json
+credentials.json
+
+archive/

@@ -14,6 +14,27 @@ Symlinks the wrapper to `~/.local/bin/superharness`. Add `~/.local/bin` to your 
 
 ---
 
+## Init
+
+Bootstrap protocol files in a project directory:
+
+```bash
+# Explicit (recommended for humans):
+superharness init "My Project" "Python/Docker" "active"
+
+# Auto-detect stack and status from project files (no args needed):
+superharness init --detect
+
+# From an agent-written profile.yaml (recommended for AI-driven installs):
+superharness init --from-profile .superharness/profile.yaml
+```
+
+All three modes create `.superharness/`, `CLAUDE.md`, and `AGENTS.md`. `--detect`
+and `--from-profile` skip the positional arguments. See [docs/INSTALL-AGENT.md](INSTALL-AGENT.md)
+for the full agent-driven install flow.
+
+---
+
 ## Core Commands
 
 ### Delegation
@@ -246,6 +267,52 @@ superharness hygiene --project .
 - Missing handoff for done task → create handoff YAML in `.superharness/handoffs/`
 - Missing ledger entry → append one line to `.superharness/ledger.md`
 - Contract decisions not promoted → move reusable decisions to `.superharness/decisions.yaml`
+
+### Ruby not found
+
+```
+/usr/bin/env: ruby: No such file or directory
+```
+
+Install Ruby:
+- macOS: `brew install ruby` then add to PATH: `export PATH="$(brew --prefix ruby)/bin:$PATH"`
+- Linux: `sudo apt install ruby-full` or `sudo dnf install ruby`
+- Version manager: `rbenv install $(cat .ruby-version)` from the superharness repo root
+
+### Claude or Codex CLI not found
+
+```
+claude: command not found
+codex: command not found
+```
+
+Install:
+- Claude CLI: `npm install -g @anthropic-ai/claude-code`
+- Codex CLI: `npm install -g @openai/codex`
+
+These are optional — only required if you use `delegate --to claude-code` or `delegate --to codex-cli`. `dispatch --print-only` works without them.
+
+### launchd watcher not loading (macOS)
+
+Check whether the plist loaded:
+```bash
+launchctl list | grep superharness
+```
+
+If missing, reload manually:
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.superharness.inbox.<project-name>-.plist
+```
+
+**Common causes:**
+- Project path is in `~/Documents`, `~/Desktop`, or `~/Downloads` — macOS sandbox blocks launchd there. Move the project or use `superharness watch --foreground` instead.
+- Missing `SUPERHARNESS_CONFIRM_NON_INTERACTIVE=YES` in the plist `EnvironmentVariables` block — re-run install with `--confirm-non-interactive yes`.
+- Plist has wrong path after repo move — re-run `scripts/install-launchd-inbox-watcher.sh`.
+
+View launchd error logs:
+```bash
+log show --predicate 'process == "launchd"' --last 5m | grep superharness
+```
 
 ---
 
