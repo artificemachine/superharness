@@ -248,16 +248,20 @@ items:
 
 ```text
 pending → launched → running → done
-                           ↘ failed
-                           ↘ stale
+        ↘ paused              ↘ failed
+                              ↘ stale
 ```
 
 **Transitions:**
 - `pending` → `launched` — dispatch claims item; retry count increments
+- `pending` → `paused` — dispatch skipped this cycle (dirty worktree or plan gate not yet confirmed); item stays in queue and will be retried next cycle
 - `launched` → `running` — agent begins work (session-start hook)
 - `running` → `done` — agent completes task successfully
 - `running` → `failed` — agent errors or aborts
 - `launched` → `stale` — no status update within timeout (default 20 minutes)
+
+**`paused` note:**
+A `paused` item is not abandoned — it remains visible in the inbox and will be reconsidered on the next watcher cycle. Common causes: the target project has uncommitted changes (`codex-cli` requires a clean worktree by default) or a contract task requires user confirmation of a plan before the agent is launched.
 
 **Stale recovery:**
 - Items stuck in `launched` (never transitioned to `running`) are marked `stale`
@@ -479,9 +483,114 @@ Inbox items | 50-100 | Normalized regularly to archive
 
 ---
 
+## Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph User["User / Operator"]
+        CLI["superharness CLI wrapper"]
+        MonitorBrowser["Browser :8787"]
+    end
+
+    subgraph Scripts["scripts/ implementations"]
+        delegate_sh["delegate.sh"]
+        inbox_dispatch["inbox-dispatch.sh"]
+        inbox_watch["inbox-watch.sh"]
+        inbox_enqueue["inbox-enqueue.sh"]
+        inbox_recover["inbox-recover-stale.sh"]
+        task_sh["task.sh"]
+        monitor_ui["monitor-ui.py"]
+        install_launchd["install-launchd-inbox-watcher.sh"]
+    end
+
+    subgraph Engine["engine/ Ruby core"]
+        inbox_rb["inbox.rb"]
+        contract_rb["contract.rb"]
+        validate_rb["validate.rb"]
+    end
+
+    subgraph State[".superharness/ project state"]
+        contract_yaml["contract.yaml"]
+        inbox_yaml["inbox.yaml"]
+        ledger_md["ledger.md"]
+        handoffs["handoffs/*.yaml"]
+        failures["failures.yaml"]
+        decisions["decisions.yaml"]
+    end
+
+    subgraph Agents["Agent Runtimes"]
+        claude["Claude Code"]
+        codex["Codex CLI"]
+    end
+
+    subgraph System["macOS System"]
+        launchd["launchd<br/>com.superharness.inbox.*"]
+        logs["~/Library/Logs/superharness/"]
+    end
+
+    subgraph Hooks["adapters/claude-code/hooks/"]
+        session_start["session-start.sh"]
+        scope_guard["scope-guard.sh"]
+        branch_guard["branch-guard.sh"]
+    end
+
+    CLI --> Scripts
+    MonitorBrowser -->|HTTP GET/POST| monitor_ui
+
+    launchd -->|every 30s| inbox_watch
+    inbox_watch --> inbox_recover
+    inbox_watch --> inbox_dispatch
+    inbox_dispatch -->|next_pending| inbox_rb
+    inbox_dispatch -->|launch| delegate_sh
+    delegate_sh --> claude
+    delegate_sh --> codex
+    inbox_enqueue --> inbox_rb
+
+    inbox_rb --> inbox_yaml
+    contract_rb --> contract_yaml
+    task_sh --> contract_rb
+
+    monitor_ui -->|tail| logs
+    monitor_ui -->|read| inbox_yaml
+    monitor_ui -->|read| ledger_md
+    monitor_ui -->|read| contract_yaml
+    monitor_ui -->|pause/resume/stop/retry| inbox_rb
+    monitor_ui -->|launchctl| launchd
+
+    claude -->|on session start| session_start
+    claude -->|on tool call| scope_guard
+    claude -->|on tool call| branch_guard
+
+    claude -->|update| contract_yaml
+    claude -->|append| ledger_md
+    claude -->|write| handoffs
+    codex -->|update| contract_yaml
+    codex -->|append| ledger_md
+    codex -->|write| handoffs
+
+    install_launchd --> launchd
+    inbox_watch -->|stdout/stderr| logs
+
+    classDef ruby fill:#cc342d,color:#fff,stroke:#8b0000
+    classDef python fill:#3776ab,color:#fff,stroke:#2b5ea1
+    classDef shell fill:#4eaa25,color:#fff,stroke:#2d6a13
+    classDef state fill:#f5a623,color:#000,stroke:#d48b06
+    classDef agent fill:#7b68ee,color:#fff,stroke:#5b48ce
+    classDef system fill:#708090,color:#fff,stroke:#4a5568
+
+    class inbox_rb,contract_rb,validate_rb ruby
+    class monitor_ui python
+    class inbox_dispatch,inbox_watch,inbox_enqueue,inbox_recover,task_sh,delegate_sh,install_launchd,session_start,scope_guard,branch_guard shell
+    class contract_yaml,inbox_yaml,ledger_md,handoffs,failures,decisions state
+    class claude,codex agent
+    class launchd,logs system
+```
+
+---
+
 ## Next Steps
 
 - **User Guide:** [docs/GUIDE.md](GUIDE.md) — how to use superharness
 - **Security:** [SECURITY.md](../SECURITY.md) — operational safety notes
-- **Roadmap:** [ROADMAP.md](../ROADMAP.md) — current maturity target and next milestones
+- **Roadmap:** [ROADMAP.md](ROADMAP.md) — current maturity target and next milestones
 - **Changelog:** [CHANGELOG.md](../CHANGELOG.md) — version history

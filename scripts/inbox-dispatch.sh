@@ -268,7 +268,7 @@ case "$ITEM_TO" in
     ;;
 esac
 
-if [ "$NON_INTERACTIVE" -eq 1 ] && [ "$PRINT_ONLY" -eq 0 ] && [ "$ITEM_TO" = "codex-cli" ] && project_has_dirty_worktree "$EXEC_PROJECT"; then
+if [ "$NON_INTERACTIVE" -eq 1 ] && [ "$PRINT_ONLY" -eq 0 ] && [ "$CODEX_BYPASS" -eq 0 ] && [ "$ITEM_TO" = "codex-cli" ] && project_has_dirty_worktree "$EXEC_PROJECT"; then
   PAUSE_NOW="$(date -u +%FT%TZ)"
   if mark_item_paused_dirty_worktree "$ITEM_ID" "$PAUSE_NOW"; then
     release_lock
