@@ -236,7 +236,13 @@ sync_worker_copy() {
   fi
 }
 
+write_heartbeat() {
+  local hb_file="$PROJECT_DIR/.superharness/watcher.heartbeat"
+  date -u +"%Y-%m-%dT%H:%M:%SZ" > "$hb_file"
+}
+
 run_cycle() {
+  write_heartbeat
   sync_worker_copy
 
   if [ -x "$DEADLINE_CHECK" ]; then
