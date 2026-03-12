@@ -151,9 +151,15 @@ puts "retry_high=#{retry_high_ids.length}"
 puts "retry_ids=#{retry_high_ids.first(10).join(",")}"
 RUBY
 )"
-eval "$stats"
-retry_high="${retry_high:-0}"
-retry_ids="${retry_ids:-}"
+retry_high=0
+retry_ids=""
+while IFS= read -r _line; do
+  _key="${_line%%=*}"
+  _val="${_line#*=}"
+  case "$_key" in
+    retry_high|retry_ids) declare "$_key=$_val" ;;
+  esac
+done <<< "$stats"
 
 mkdir -p "$(dirname "$STATE_FILE")"
 prev_watcher_streak=0

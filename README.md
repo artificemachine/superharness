@@ -12,7 +12,7 @@ superharness lets AI coding assistants work on the same project without stepping
 🏗️ **[Architecture](docs/ARCHITECTURE.md)** — Why it exists, how it works, design philosophy
 ⚡ **[Quickstart](docs/QUICKSTART.md)** — Shortest path to first delegation
 🔒 **[Security](SECURITY.md)** — Operational safety notes
-🗺️ **[Roadmap](ROADMAP.md)** — Current maturity target and next milestones
+🗺️ **[Roadmap](docs/ROADMAP.md)** — Current maturity target and next milestones
 
 ---
 
@@ -92,29 +92,31 @@ pip install -r requirements.txt
 pytest tests/ -q
 ```
 
-| **Smoke**       |
-| --------------- |
-| **Unit**        |
-| **Integration** |
-| **E2E**         |
+| Layer | Description |
+| ------------- | ------------------------------------------ |
+| **Smoke** | Entrypoint `--help` and import checks |
+| **Unit** | Isolated function/script tests |
+| **Integration** | Cross-script workflow tests |
+| **E2E** | Full contract lifecycle tests |
 
 ### Readiness Audits
 
 Use this command for a generic cross-repo quality audit:
 
-```bash
-$production-ready
+In Claude Code, run:
+```
+/production-ready
 ```
 
 Use this command for superharness-specific release quality policy:
 
-```bash
-$superharness-production-ready
+```
+/superharness-production-ready
 ```
 
 Rule of thumb:
-- Use `$production-ready` when working in any repository.
-- Use `$superharness-production-ready` when working in this repository and you want local mandatory checks (contract protocol, regression guard, watcher/doctor posture).
+- Use `/production-ready` when working in any repository.
+- Use `/superharness-production-ready` when working in this repository and you want local mandatory checks (contract protocol, regression guard, watcher/doctor posture).
 
 ---
 
@@ -191,4 +193,4 @@ TODO (repo governance):
 
 Current execution maturity target: **v0.7** (reliability and adoption milestone)
 
-See [ROADMAP.md](ROADMAP.md) for details, [RELEASES.md](RELEASES.md) for release notes, and [CHANGELOG.md](CHANGELOG.md) for the full iteration log.
+See [ROADMAP.md](docs/ROADMAP.md) for details, [RELEASES.md](docs/RELEASES.md) for release notes, and [CHANGELOG.md](CHANGELOG.md) for the full iteration log.

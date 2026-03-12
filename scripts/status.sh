@@ -203,17 +203,22 @@ discussion_counts.each { |k, v| puts "discussion_#{k}=#{v}" unless k.to_s.empty?
 RUBY
 )"
 
-eval "$stats"
-
-failed="${failed:-0}"
-stale="${stale:-0}"
-retry_high="${retry_high:-0}"
-approvals_pending="${approvals_pending:-0}"
-discussion_active="${discussion_active:-0}"
-discussion_consensus="${discussion_consensus:-0}"
-discussion_failed_participant="${discussion_failed_participant:-0}"
-discussion_deadlock="${discussion_deadlock:-0}"
-discussion_closed="${discussion_closed:-0}"
+pending=0; launched=0; running=0; paused=0; done=0; failed=0; stale=0; stopped=0
+retry_high=0; retry_high_ids=""
+approvals_pending=0
+discussion_active=0; discussion_consensus=0; discussion_failed_participant=0
+discussion_deadlock=0; discussion_closed=0
+while IFS= read -r _line; do
+  _key="${_line%%=*}"
+  _val="${_line#*=}"
+  case "$_key" in
+    pending|launched|running|paused|done|failed|stale|stopped|\
+    retry_high|retry_high_ids|approvals_pending)
+      declare "$_key=$_val" ;;
+    discussion_*)
+      [[ "$_key" =~ ^discussion_[a-z_]+$ ]] && declare "$_key=$_val" ;;
+  esac
+done <<< "$stats"
 
 echo "superharness status"
 echo "project: $PROJECT_DIR"
