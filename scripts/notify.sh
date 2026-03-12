@@ -227,7 +227,7 @@ else
   echo "$message"
   if [ -n "$WEBHOOK_URL" ] && command -v curl >/dev/null 2>&1; then
     payload="$(printf '{"project":"%s","timestamp":"%s","alerts":["%s"]}' \
-      "$PROJECT_DIR" \
+      "$(printf '%s' "$PROJECT_DIR" | sed 's/"/\\"/g')" \
       "$(date -u +%FT%TZ)" \
       "$(printf '%s' "${alerts[*]}" | sed 's/"/\\"/g')")"
     curl -fsS -X POST -H "Content-Type: application/json" -d "$payload" "$WEBHOOK_URL" >/dev/null 2>&1 || true
