@@ -35,6 +35,8 @@ Commands:
   normalize   Normalize/archive inbox rows
   hygiene     Check contract hygiene
   discuss     Approval-gated consensus helpers
+  status      Show watcher and inbox health summary
+  notify      Send notifications for pending approvals and stale items
   watcher-worker  Build clean watcher worker and install watcher there
   version     Show version
   help        Show this help message
@@ -118,6 +120,8 @@ case "$cmd" in
   normalize) exec_with_optional_project "$ROOT_DIR/scripts/inbox-normalize.sh" "$@" ;;
   hygiene) exec_with_optional_project "$ROOT_DIR/scripts/check-contract-hygiene.sh" "$@" ;;
   discuss) exec_with_optional_project "$ROOT_DIR/scripts/discuss.sh" "$@" ;;
+  status) exec_with_optional_project "$ROOT_DIR/scripts/status.sh" "$@" ;;
+  notify) exec_with_optional_project "$ROOT_DIR/scripts/notify.sh" "$@" ;;
   watcher-worker) exec_with_optional_project "$ROOT_DIR/scripts/setup-watcher-worker.sh" "$@" ;;
   uninstall) exec bash "$ROOT_DIR/scripts/uninstall.sh" "$@" ;;
   help|-h|--help) usage ;;

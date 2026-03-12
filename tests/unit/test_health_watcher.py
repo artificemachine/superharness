@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import time
 from pathlib import Path
@@ -177,7 +176,7 @@ def test_watcher_cycle_completes_while_dispatch_runs(repo_root: Path, tmp_path: 
     env["RECOVER"] = str(fake_recover)
 
     start = time.monotonic()
-    result = subprocess.run(
+    subprocess.run(
         ["bash", str(repo_root / "scripts" / "inbox-watch.sh"),
          "--project", str(project)],
         cwd=repo_root, capture_output=True, text=True, timeout=10, env=env,

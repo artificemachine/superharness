@@ -293,6 +293,141 @@ def test_monitor_main_rejects_non_loopback_host(repo_root, tmp_path) -> None:
             sys.argv = argv
 
 
+# ---------------------------------------------------------------------------
+# plan_proposals() and _confirm_plan() — direct import coverage
+# ---------------------------------------------------------------------------
+
+
+def _setup_plan_project(tmp_path: Path) -> Path:
+    """Project with one plan_proposed task and a matching handoff."""
+    project = tmp_path / "plan_proj"
+    project.mkdir()
+    harness = project / ".superharness"
+    (harness / "handoffs").mkdir(parents=True, exist_ok=True)
+    (harness / "contract.yaml").write_text(
+        "id: plan-contract\n"
+        "goal: test plan gate\n"
+        "tasks:\n"
+        "  - id: feature-x\n"
+        "    title: Implement feature X\n"
+        "    status: plan_proposed\n"
+        "    owner: claude-code\n"
+        "    summary: Will add feature X to the engine\n"
+    )
+    (harness / "handoffs" / "feature-x.yaml").write_text(
+        "task: feature-x\n"
+        "status: plan_proposed\n"
+        "summary: Plan to implement feature X by modifying engine/contract.rb\n"
+        "plan_gate:\n"
+        "  required: true\n"
+        "  confirmed_by_user: false\n"
+    )
+    return project
+
+
+def test_plan_proposals_returns_plan_proposed_tasks(repo_root, tmp_path) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_plan_project(tmp_path)
+    harness = project / ".superharness"
+
+    proposals = module.plan_proposals(harness)
+
+    assert len(proposals) == 1
+    p = proposals[0]
+    assert p["task"] == "feature-x"
+    assert p["title"] == "Implement feature X"
+    assert p["from"] == "claude-code"
+    assert "feature X" in p["summary"]
+
+
+def test_plan_proposals_returns_empty_when_no_plan_proposed(repo_root, tmp_path) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)  # has no plan_proposed tasks
+    harness = project / ".superharness"
+
+    proposals = module.plan_proposals(harness)
+
+    assert proposals == []
+
+
+def test_plan_proposals_returns_empty_when_no_contract(repo_root, tmp_path) -> None:
+    module = _load_monitor_module(repo_root)
+    harness = tmp_path / ".superharness"
+    harness.mkdir()
+
+    proposals = module.plan_proposals(harness)
+
+    assert proposals == []
+
+
+def test_confirm_plan_updates_contract_and_handoff(repo_root, tmp_path) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_plan_project(tmp_path)
+    harness = project / ".superharness"
+
+    result = module._confirm_plan(harness, "feature-x")
+
+    assert result["ok"] is True
+    assert result["task"] == "feature-x"
+    assert "confirmed_at" in result
+
+    # Contract task must now be todo
+    import yaml
+    doc = yaml.safe_load((harness / "contract.yaml").read_text())
+    task = next(t for t in doc["tasks"] if t["id"] == "feature-x")
+    assert task["status"] == "todo"
+    assert "plan_confirmed_at" in task
+
+    # Handoff must be updated
+    hf = harness / "handoffs" / "feature-x.yaml"
+    hdata = yaml.safe_load(hf.read_text())
+    assert hdata["status"] == "plan_confirmed"
+    assert hdata["plan_gate"]["confirmed_by_user"] is True
+
+
+def test_confirm_plan_returns_error_for_unknown_task(repo_root, tmp_path) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_plan_project(tmp_path)
+    harness = project / ".superharness"
+
+    result = module._confirm_plan(harness, "nonexistent-task")
+
+    assert result["ok"] is False
+    assert any("not found" in e for e in result.get("errors", []))
+
+
+def test_confirm_plan_action_via_api(repo_root, tmp_path, monkeypatch) -> None:
+    """confirm_plan:<task_id> action via HTTP API updates contract and handoff."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_plan_project(tmp_path)
+    monkeypatch.setattr(
+        module,
+        "watcher_runtime",
+        lambda label: {"loaded": True, "state": "running", "last_exit_code": "0", "run_interval_seconds": 15},
+    )
+    monkeypatch.setattr(module, "contract_id", lambda path: "plan-contract")
+    monkeypatch.setattr(module.shutil, "which", lambda name: None)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json(
+            "POST",
+            base_url + "/api/action",
+            payload={"action": "confirm_plan:feature-x"},
+            headers={
+                "Origin": base_url,
+                "Referer": base_url + "/",
+                "Content-Type": "application/json",
+                "X-Superharness-Token": module.Handler.auth_token,
+            },
+        )
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    assert payload.get("ok") is True
+
+
 def test_monitor_helpers_parse_runtime_and_inbox(repo_root, tmp_path, monkeypatch) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
