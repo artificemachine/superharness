@@ -18,20 +18,54 @@
 
 set -euo pipefail
 
+# --- Preflight: dependency check (skip on --help) ---
+_preflight_deps() {
+  local missing=()
+  if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+    missing+=("bash 4+  (installed: $BASH_VERSION)  →  brew install bash")
+  fi
+  if ! command -v ruby >/dev/null 2>&1; then
+    missing+=("ruby  →  brew install ruby   OR   https://www.ruby-lang.org/en/downloads/")
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    missing+=("python3  →  brew install python3   OR   https://www.python.org/downloads/")
+  fi
+  if [ ${#missing[@]} -gt 0 ]; then
+    echo "superharness: missing required dependencies:" >&2
+    for dep in "${missing[@]}"; do
+      printf '  ✗ %s\n' "$dep" >&2
+    done
+    echo "" >&2
+    echo "Fix the above, then re-run: superharness init" >&2
+    exit 1
+  fi
+}
+_skip_preflight=0
+for _a in "$@"; do case "$_a" in -h|--help) _skip_preflight=1; break ;; esac; done
+[ "$_skip_preflight" -eq 0 ] && _preflight_deps
+unset _a _skip_preflight
+
 usage() {
   cat << 'EOF'
 Usage:
-  init-project.sh [--dry-run] [--with-watcher] [PROJECT_NAME] [TECH_STACK] [STATUS]
+  init-project.sh [--dry-run] [--with-watcher] [--from-profile FILE] [--detect]
+                  [PROJECT_NAME] [TECH_STACK] [STATUS]
 
 Options:
-  -h, --help          Show this help message and exit
-  -n, --dry-run       Print planned actions without writing files
-  --with-watcher      Also install macOS launchd background watcher (default: off)
+  -h, --help              Show this help message and exit
+  -n, --dry-run           Print planned actions without writing files
+  --with-watcher          Also install macOS launchd background watcher (default: off)
+  --from-profile FILE     Read project name, stack, and status from a profile.yaml
+                          (written by an AI agent — see docs/INSTALL-AGENT.md)
+  --detect                Run engine/detect.rb and use its output for project name,
+                          stack, and status (skips positional args)
 EOF
 }
 
 DRY_RUN=0
 WITH_WATCHER=0
+FROM_PROFILE=""
+DETECT_MODE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help)
@@ -44,6 +78,15 @@ while [ $# -gt 0 ]; do
       ;;
     --with-watcher)
       WITH_WATCHER=1
+      shift
+      ;;
+    --from-profile)
+      [ $# -ge 2 ] || { echo "Missing value for $1" >&2; exit 2; }
+      FROM_PROFILE="$2"
+      shift 2
+      ;;
+    --detect)
+      DETECT_MODE=1
       shift
       ;;
     --)
@@ -63,11 +106,46 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(pwd)"
-PROJECT_NAME="${1:-$(basename "$PROJECT_DIR")}"
-TECH_STACK="${2:-TBD}"
-STATUS="${3:-greenfield}"
 DATE="$(date +%Y-%m-%d)"
 TEMPLATE_DIR="$SCRIPT_DIR/protocol/templates"
+
+# --- Resolve project metadata from profile, detect, or positional args ---
+if [ -n "$FROM_PROFILE" ]; then
+  # Read from agent-written profile.yaml
+  if [ ! -f "$FROM_PROFILE" ]; then
+    echo "Profile file not found: $FROM_PROFILE" >&2
+    exit 1
+  fi
+  PROJECT_NAME="$(ruby -ryaml -rdate -e "d=YAML.safe_load(File.read(ARGV[0]),permitted_classes:[Date]); puts d['project_name'] || ''" "$FROM_PROFILE" 2>/dev/null)"
+  TECH_STACK="$(ruby -ryaml -rdate -e "d=YAML.safe_load(File.read(ARGV[0]),permitted_classes:[Date]); puts d['stack'] || 'TBD'" "$FROM_PROFILE" 2>/dev/null)"
+  STATUS="$(ruby -ryaml -rdate -e "d=YAML.safe_load(File.read(ARGV[0]),permitted_classes:[Date]); puts d['status'] || 'greenfield'" "$FROM_PROFILE" 2>/dev/null)"
+  [ -z "$PROJECT_NAME" ] && PROJECT_NAME="$(basename "$PROJECT_DIR")"
+  echo "Using profile: $FROM_PROFILE"
+elif [ "$DETECT_MODE" -eq 1 ]; then
+  # Run detect.rb and parse its output
+  DETECT_SCRIPT="$SCRIPT_DIR/engine/detect.rb"
+  if [ ! -f "$DETECT_SCRIPT" ]; then
+    echo "engine/detect.rb not found. Cannot auto-detect." >&2
+    exit 1
+  fi
+  DETECTED="$(ruby "$DETECT_SCRIPT" --project "$PROJECT_DIR")"
+  _parsed="$(echo "$DETECTED" | ruby -ryaml -e "
+    d = YAML.safe_load(STDIN.read)
+    puts d['project_name'] || ''
+    puts d['stack']        || 'TBD'
+    puts d['status']       || 'greenfield'
+  ")"
+  PROJECT_NAME="$(echo "$_parsed" | sed -n '1p')"
+  TECH_STACK="$(echo "$_parsed"  | sed -n '2p')"
+  STATUS="$(echo "$_parsed"      | sed -n '3p')"
+  unset _parsed
+  [ -z "$PROJECT_NAME" ] && PROJECT_NAME="$(basename "$PROJECT_DIR")"
+  echo "Auto-detected: name=$PROJECT_NAME stack=$TECH_STACK status=$STATUS"
+else
+  PROJECT_NAME="${1:-$(basename "$PROJECT_DIR")}"
+  TECH_STACK="${2:-TBD}"
+  STATUS="${3:-greenfield}"
+fi
 
 render_template() {
   local src="$1"
@@ -256,6 +334,12 @@ EOF
   echo "Created: AGENTS.md"
 else
   echo "Skipped: AGENTS.md (already exists)"
+fi
+
+# Copy profile.yaml into .superharness/ if provided via --from-profile
+if [ -n "$FROM_PROFILE" ] && [ -f "$FROM_PROFILE" ]; then
+  cp "$FROM_PROFILE" "$PROJECT_DIR/.superharness/profile.yaml"
+  echo "Created: .superharness/profile.yaml (from $FROM_PROFILE)"
 fi
 
 # Install launchd watcher only when explicitly requested.
