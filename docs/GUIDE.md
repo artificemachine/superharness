@@ -298,6 +298,24 @@ The monitor UI includes:
 
 ## CI and Local Guardrails
 
+### Readiness Audit Commands
+
+Use the generic cross-repo audit when you want portable quality checks:
+
+```bash
+$production-ready
+```
+
+Use the superharness-specific overlay when you want this repo's mandatory local policy:
+
+```bash
+$superharness-production-ready
+```
+
+Rule of thumb:
+- Use `$production-ready` for any repository.
+- Use `$superharness-production-ready` for `superharness` when you need local checks like contract protocol hygiene, regression guard policy, and watcher/doctor posture.
+
 **Run shell entrypoint guard:**
 ```bash
 bash scripts/check-shell-entrypoints.sh
