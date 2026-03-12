@@ -192,3 +192,44 @@ def test_discuss_approve_auto_enqueues_when_no_paused_items(repo_root, tmp_path)
     assert "task: approval-task" in inbox_text
     assert "to: codex-cli" in inbox_text
     assert "status: pending" in inbox_text
+
+
+def test_discuss_start_requires_topic(repo_root, tmp_path) -> None:
+    project = _setup_project(tmp_path)
+    script = repo_root / "scripts" / "discuss.sh"
+
+    result = run_bash(script, cwd=repo_root, args=["start", "--project", str(project)])
+
+    assert result.returncode == 2
+    assert "--topic is required for start" in result.stderr
+
+
+def test_discuss_start_enqueues_round_one_for_both_agents(repo_root, tmp_path) -> None:
+    project = _setup_project(tmp_path)
+    script = repo_root / "scripts" / "discuss.sh"
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "start",
+            "--project",
+            str(project),
+            "--topic",
+            "Review monitor retry behavior",
+            "--max-rounds",
+            "2",
+        ],
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Discussion started:" in result.stdout
+    assert "Enqueued round 1 for claude-code:" in result.stdout
+    assert "Enqueued round 1 for codex-cli:" in result.stdout
+
+    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
+    assert "task: discuss-" in inbox_text
+    assert "/round-1" in inbox_text
+    assert "to: claude-code" in inbox_text
+    assert "to: codex-cli" in inbox_text
+    assert "status: pending" in inbox_text
