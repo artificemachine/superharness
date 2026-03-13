@@ -37,6 +37,8 @@ shux hygiene           # validate protocol compliance (contract, handoffs, ledge
 shux monitor           # open browser dashboard
 shux watch             # start continuous watcher in foreground
 shux update            # pull latest superharness + refresh CLAUDE.md, AGENTS.md, templates
+shux discuss           # start or manage a cross-agent discussion (topic, owners, optional ID)
+shux help              # show all shux shortcuts in the terminal
 ```
 
 **That's it.** Steps 1 and 2 are one-time. From then on, `shux contract` starts every session.
