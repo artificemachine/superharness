@@ -49,7 +49,7 @@ usage() {
   cat << 'EOF'
 Usage:
   init-project.sh [--dry-run] [--with-watcher] [--from-profile FILE] [--detect]
-                  [--interactive] [PROJECT_NAME] [TECH_STACK] [STATUS]
+                  [--interactive] [--refresh] [PROJECT_NAME] [TECH_STACK] [STATUS]
 
 Options:
   -h, --help              Show this help message and exit
@@ -61,6 +61,8 @@ Options:
                           stack, and status (skips positional args)
   --interactive           Run a guided questionnaire to configure and initialize
                           the project (reads answers from stdin, supports piped input)
+  --refresh               Re-generate CLAUDE.md, AGENTS.md, SOUL.md from templates
+                          without re-creating .superharness/ (for use with shux update)
 EOF
 }
 
@@ -69,6 +71,7 @@ WITH_WATCHER=0
 FROM_PROFILE=""
 DETECT_MODE=0
 INTERACTIVE_MODE=0
+REFRESH_MODE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help)
@@ -94,6 +97,10 @@ while [ $# -gt 0 ]; do
       ;;
     --interactive)
       INTERACTIVE_MODE=1
+      shift
+      ;;
+    --refresh)
+      REFRESH_MODE=1
       shift
       ;;
     --)
@@ -232,9 +239,16 @@ if [ -n "$FROM_PROFILE" ]; then
     echo "Profile file not found: $FROM_PROFILE" >&2
     exit 1
   fi
-  PROJECT_NAME="$(ruby -ryaml -rdate -e "d=YAML.safe_load(File.read(ARGV[0]),permitted_classes:[Date]); puts d['project_name'] || ''" "$FROM_PROFILE" 2>/dev/null)"
-  TECH_STACK="$(ruby -ryaml -rdate -e "d=YAML.safe_load(File.read(ARGV[0]),permitted_classes:[Date]); puts d['stack'] || 'TBD'" "$FROM_PROFILE" 2>/dev/null)"
-  STATUS="$(ruby -ryaml -rdate -e "d=YAML.safe_load(File.read(ARGV[0]),permitted_classes:[Date]); puts d['status'] || 'greenfield'" "$FROM_PROFILE" 2>/dev/null)"
+  _parsed="$(ruby -ryaml -rdate -e "
+    d = YAML.safe_load(File.read(ARGV[0]), permitted_classes: [Date])
+    puts d['project_name'] || ''
+    puts d['stack']        || 'TBD'
+    puts d['status']       || 'greenfield'
+  " "$FROM_PROFILE" 2>/dev/null)"
+  PROJECT_NAME="$(echo "$_parsed" | sed -n '1p')"
+  TECH_STACK="$(echo "$_parsed"  | sed -n '2p')"
+  STATUS="$(echo "$_parsed"      | sed -n '3p')"
+  unset _parsed
   [ -z "$PROJECT_NAME" ] && PROJECT_NAME="$(basename "$PROJECT_DIR")"
   echo "Using profile: $FROM_PROFILE"
 elif [ "$DETECT_MODE" -eq 1 ]; then
@@ -306,12 +320,28 @@ if [ "$DRY_RUN" -eq 1 ]; then
   exit 0
 fi
 
-# Abort if already initialized
-if [ -d "$PROJECT_DIR/.superharness" ]; then
+# Abort if already initialized (unless --refresh)
+if [ -d "$PROJECT_DIR/.superharness" ] && [ "$REFRESH_MODE" -eq 0 ]; then
   echo ".superharness/ already exists. Aborting."
   echo "To re-initialize, remove it first: rm -rf .superharness"
+  echo "To refresh templates only, use: superharness init --refresh"
   exit 1
 fi
+
+if [ "$REFRESH_MODE" -eq 1 ] && [ ! -d "$PROJECT_DIR/.superharness" ]; then
+  echo "--refresh requires an existing .superharness/ directory. Run init first." >&2
+  exit 1
+fi
+
+# In refresh mode, skip directory and protocol file creation — jump to template regeneration
+if [ "$REFRESH_MODE" -eq 1 ]; then
+  echo "superharness — refresh templates"
+  echo "================================"
+  echo "  Project:  $PROJECT_NAME"
+  echo "  Dir:      $PROJECT_DIR"
+  echo ""
+  # Fall through to CLAUDE.md / AGENTS.md / SOUL.md generation below
+else
 
 # Create directory structure
 mkdir -p "$PROJECT_DIR/.superharness/handoffs"
@@ -395,6 +425,9 @@ cat >> "$PROJECT_DIR/.superharness/contract.yaml" << EOF
 #     project_path: "$PROJECT_DIR"
 EOF
 
+# Close the "not refresh" block — protocol files created above are skipped in refresh mode
+fi  # end of: if [ "$REFRESH_MODE" -eq 1 ] ... else ...
+
 # Generate CLAUDE.md from template
 IDENTITY_SOURCE="$TEMPLATE_DIR/identity-core.md"
 if [ ! -f "$IDENTITY_SOURCE" ]; then
@@ -403,7 +436,7 @@ if [ ! -f "$IDENTITY_SOURCE" ]; then
 fi
 IDENTITY_CONTENT=$(cat "$IDENTITY_SOURCE")
 
-if [ ! -f "$PROJECT_DIR/CLAUDE.md" ]; then
+if [ ! -f "$PROJECT_DIR/CLAUDE.md" ] || [ "$REFRESH_MODE" -eq 1 ]; then
   if [ -f "$TEMPLATE_DIR/CLAUDE.md.template" ]; then
     render_template "$TEMPLATE_DIR/CLAUDE.md.template" "$PROJECT_DIR/CLAUDE.md" "$(printf '%s' "$IDENTITY_CONTENT")"
   else
@@ -423,13 +456,17 @@ $(printf '%s\n' "$IDENTITY_CONTENT")
 - Keep task status, ledger, and handoff updated before stopping.
 EOF
   fi
-  echo "Created: CLAUDE.md"
+  if [ "$REFRESH_MODE" -eq 1 ]; then
+    echo "Refreshed: CLAUDE.md"
+  else
+    echo "Created: CLAUDE.md"
+  fi
 else
   echo "Skipped: CLAUDE.md (already exists)"
 fi
 
 # Generate AGENTS.md from template
-if [ ! -f "$PROJECT_DIR/AGENTS.md" ]; then
+if [ ! -f "$PROJECT_DIR/AGENTS.md" ] || [ "$REFRESH_MODE" -eq 1 ]; then
   if [ -f "$TEMPLATE_DIR/AGENTS.md.template" ]; then
     render_template "$TEMPLATE_DIR/AGENTS.md.template" "$PROJECT_DIR/AGENTS.md"
   else
@@ -452,13 +489,17 @@ EOF
 - Keep task status, ledger, and handoff updated before stopping.
 EOF
   fi
-  echo "Created: AGENTS.md"
+  if [ "$REFRESH_MODE" -eq 1 ]; then
+    echo "Refreshed: AGENTS.md"
+  else
+    echo "Created: AGENTS.md"
+  fi
 else
   echo "Skipped: AGENTS.md (already exists)"
 fi
 
 # Generate SOUL.md from template
-if [ ! -f "$PROJECT_DIR/SOUL.md" ]; then
+if [ ! -f "$PROJECT_DIR/SOUL.md" ] || [ "$REFRESH_MODE" -eq 1 ]; then
   if [ -f "$TEMPLATE_DIR/SOUL.md.template" ]; then
     render_template "$TEMPLATE_DIR/SOUL.md.template" "$PROJECT_DIR/SOUL.md"
   else
@@ -475,9 +516,20 @@ if [ ! -f "$PROJECT_DIR/SOUL.md" ]; then
 - Run required checks before handoff or commit.
 EOF
   fi
-  echo "Created: SOUL.md"
+  if [ "$REFRESH_MODE" -eq 1 ]; then
+    echo "Refreshed: SOUL.md"
+  else
+    echo "Created: SOUL.md"
+  fi
 else
   echo "Skipped: SOUL.md (already exists)"
+fi
+
+# In refresh mode, we're done after regenerating templates
+if [ "$REFRESH_MODE" -eq 1 ]; then
+  echo ""
+  echo "Done. Templates refreshed."
+  exit 0
 fi
 
 # Copy profile.yaml into .superharness/ if provided via --from-profile

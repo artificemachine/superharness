@@ -864,3 +864,7 @@ If you're an agent picking this up:
 
 > **Note:** For release-oriented changelogs with semver tags, see [RELEASES.md](RELEASES.md).
 > This file continues as the full iteration log.
+
+---
+
+> **Errata:** Earlier entries reference `DevOpsCelstn` — this was a local development workspace name used during early iterations. It has no significance to the project and has been removed from all source code.
