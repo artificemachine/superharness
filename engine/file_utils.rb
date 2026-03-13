@@ -27,16 +27,22 @@ module FileUtils_SH
     end
   end
 
-  # Acquire multiple locks in a fixed order (prevents deadlocks).
+  # Acquire multiple locks sorted by canonical path (prevents deadlocks).
   def self.with_multi_lock(paths, timeout: 5, &block)
-    if paths.empty?
+    sorted = paths.map { |p| File.expand_path(p) }.sort.uniq
+    _lock_in_order(sorted, timeout: timeout, &block)
+  end
+
+  def self._lock_in_order(sorted_paths, timeout: 5, &block)
+    if sorted_paths.empty?
       yield
     else
-      with_file_lock(paths.first, timeout: timeout) do
-        with_multi_lock(paths[1..], timeout: timeout, &block)
+      with_file_lock(sorted_paths.first, timeout: timeout) do
+        _lock_in_order(sorted_paths[1..], timeout: timeout, &block)
       end
     end
   end
+  private_class_method :_lock_in_order
 
   # Load YAML via YamlHelpers (convenience wrapper).
   def self.load_yaml(path, expected_class)
@@ -51,7 +57,11 @@ module FileUtils_SH
     begin
       tmp.write(content)
       tmp.flush
-      tmp.fsync rescue nil
+      begin
+        tmp.fsync
+      rescue Errno::ENOTSUP, NotImplementedError
+        nil # fsync not supported on this filesystem — safe to skip
+      end
       tmp.close
       File.rename(tmp.path, path)
     ensure
@@ -60,7 +70,11 @@ module FileUtils_SH
       rescue IOError
         nil
       end
-      File.unlink(tmp.path) if File.exist?(tmp.path)
+      begin
+        File.unlink(tmp.path)
+      rescue Errno::ENOENT
+        nil # already cleaned up
+      end
     end
   end
 end
