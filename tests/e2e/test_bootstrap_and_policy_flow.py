@@ -9,7 +9,7 @@ def test_bootstrap_and_hook_install_flow(repo_root, tmp_path) -> None:
     project = tmp_path / "project"
     project.mkdir()
 
-    init_script = repo_root / "init-project.sh"
+    init_script = repo_root / "scripts/init-project.sh"
     init_res = run_bash(init_script, cwd=project, args=["Demo", "Python", "active"])
     assert init_res.returncode == 0, init_res.stderr
 
@@ -72,7 +72,7 @@ def test_bootstrap_discuss_start_enqueues_round_one_for_both_agents(repo_root, t
     project = tmp_path / "project_discuss"
     project.mkdir()
 
-    init_script = repo_root / "init-project.sh"
+    init_script = repo_root / "scripts/init-project.sh"
     init_res = run_bash(init_script, cwd=project, args=["Demo", "Python", "active"])
     assert init_res.returncode == 0, init_res.stderr
 

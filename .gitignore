@@ -4,7 +4,8 @@
 .venv/
 .coverage
 .claude/
-.superharness/**/*.flock
+.superharness/
+htmlcov/
 shipguard.txt
 __pycache__/
 *.py[cod]
@@ -20,11 +21,10 @@ __pycache__/
 !.env.example
 # codex-pii-guard:end
 logdy-core/
+archive/
 *.pem
 *.key
 *.p12
 *.pfx
 secrets.json
 credentials.json
-
-archive/

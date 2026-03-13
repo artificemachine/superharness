@@ -2,11 +2,9 @@ from __future__ import annotations
 
 """TDD tests for `superharness init --interactive` (Phase 4a)."""
 
-import stat
 
-import pytest
 
-from tests.helpers import run_bash, run_cmd
+from tests.helpers import run_bash
 
 
 # ---------------------------------------------------------------------------
@@ -15,7 +13,7 @@ from tests.helpers import run_bash, run_cmd
 
 def test_interactive_init_flag_exists(repo_root) -> None:
     """--help output must mention --interactive."""
-    result = run_bash(repo_root / "init-project.sh", cwd=repo_root, args=["--help"])
+    result = run_bash(repo_root / "scripts/init-project.sh", cwd=repo_root, args=["--help"])
     assert result.returncode == 0, result.stderr
     assert "--interactive" in result.stdout
 
@@ -35,7 +33,7 @@ def test_interactive_init_creates_files(repo_root, tmp_path) -> None:
     project.mkdir()
 
     result = run_bash(
-        repo_root / "init-project.sh",
+        repo_root / "scripts/init-project.sh",
         cwd=project,
         args=["--interactive"],
         stdin=_pipe_answers(),
@@ -59,7 +57,7 @@ def test_interactive_init_autonomy_autonomous(repo_root, tmp_path) -> None:
     project.mkdir()
 
     result = run_bash(
-        repo_root / "init-project.sh",
+        repo_root / "scripts/init-project.sh",
         cwd=project,
         args=["--interactive"],
         stdin=_pipe_answers(autonomy="1"),
@@ -74,7 +72,7 @@ def test_interactive_init_autonomy_supervised(repo_root, tmp_path) -> None:
     project.mkdir()
 
     result = run_bash(
-        repo_root / "init-project.sh",
+        repo_root / "scripts/init-project.sh",
         cwd=project,
         args=["--interactive"],
         stdin=_pipe_answers(autonomy="2"),
@@ -89,7 +87,7 @@ def test_interactive_init_autonomy_approval_gated(repo_root, tmp_path) -> None:
     project.mkdir()
 
     result = run_bash(
-        repo_root / "init-project.sh",
+        repo_root / "scripts/init-project.sh",
         cwd=project,
         args=["--interactive"],
         stdin=_pipe_answers(autonomy="3"),
@@ -111,7 +109,7 @@ def test_interactive_init_uses_detect_for_stack(repo_root, tmp_path) -> None:
     )
 
     result = run_bash(
-        repo_root / "init-project.sh",
+        repo_root / "scripts/init-project.sh",
         cwd=project,
         args=["--interactive"],
         stdin=_pipe_answers(),

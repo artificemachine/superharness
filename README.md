@@ -14,7 +14,7 @@ superharness lets AI coding assistants work on the same project without stepping
 
 **Step 1 — Install superharness once (terminal):**
 ```bash
-git clone <superharness-repo-url>
+git clone https://github.com/celstnblacc/superharness.git
 cd superharness
 bash scripts/install-wrapper.sh
 # export PATH="$HOME/.local/bin:$PATH"  # add to ~/.zshrc or ~/.bashrc if needed
@@ -80,7 +80,7 @@ superharness monitor-ui --project .
 
 **Run tests:**
 ```bash
-pip install -r requirements.txt
+uv sync --dev
 pytest tests/ -q
 ```
 
@@ -138,7 +138,7 @@ You probably **don't need** superharness if you only ever run a single agent int
 
 - `bash` (scripts are Bash-based)
 - `ruby` (required by inbox YAML helpers and hygiene checks) — see `.ruby-version`
-- `python3` + `pytest` (tests and hook JSON escaping) — `pip install -r requirements.txt`
+- `python3` + `pytest` (tests and hook JSON escaping) — `uv sync --dev` (or `pip install pytest pytest-cov pyyaml`)
 - `claude` CLI (for Claude delegation commands): `npm install -g @anthropic-ai/claude-code`
 - `codex` CLI (for Codex delegation commands): `npm install -g @openai/codex`
 - macOS `launchd` or Linux `systemd` for background watcher (see `scripts/superharness-watcher@.service`); `--foreground` mode works everywhere

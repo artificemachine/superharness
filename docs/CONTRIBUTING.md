@@ -6,7 +6,7 @@
 pytest tests/ -q
 ```
 
-Requires Python 3.9+, Bash 4+, Ruby, and `shellcheck`. Install Python deps with `pip install -r requirements.txt`.
+Requires Python 3.11+, Bash 4+, Ruby, and `shellcheck`. Install Python deps with `uv sync --dev`.
 
 ## Commit conventions
 

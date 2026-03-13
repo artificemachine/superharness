@@ -59,8 +59,8 @@ echo "Temp project: $DEMO_DIR"
 # ── Step 1: init ──────────────────────────────────────────────────────────────
 _step "1 / 5  init"
 cd "$DEMO_DIR"
-_run bash "$ROOT_DIR/init-project.sh" --dry-run "Demo Project" "Bash" "greenfield"
-_run bash "$ROOT_DIR/init-project.sh" "Demo Project" "Bash" "greenfield"
+_run bash "$ROOT_DIR/scripts/init-project.sh" --dry-run "Demo Project" "Bash" "greenfield"
+_run bash "$ROOT_DIR/scripts/init-project.sh" "Demo Project" "Bash" "greenfield"
 
 # ── Step 2: task create ───────────────────────────────────────────────────────
 _step "2 / 5  task create"

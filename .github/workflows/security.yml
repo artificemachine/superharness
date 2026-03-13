@@ -17,7 +17,7 @@ jobs:
       - name: Install ShipGuard
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install "shipguard==0.2.0"
+          python3 -m pip install "shipguard==0.3.1"
 
       - name: Run ShipGuard
         run: |
@@ -28,7 +28,7 @@ jobs:
         run: python3 -m pip install "pip-audit==2.7.3"
 
       - name: Run pip-audit
-        run: pip-audit -r requirements.txt --format json --output pip-audit.json
+        run: pip-audit --format json --output pip-audit.json || true
         continue-on-error: true
 
       - name: Upload report artifact

@@ -8,7 +8,7 @@ Usage:
 
 Options:
   -p, --project DIR   Project directory containing .superharness/ (required)
-  -i, --interval SEC  Poll interval in seconds (default: 30)
+  -i, --interval SEC  Poll interval in seconds (default: 15)
       --to TARGET     Dispatch target filter (default: both)
       --print-only    Prepare prompts only; do not launch CLIs
       --codex-bypass  For codex-cli only: use dangerous bypass in non-interactive mode
@@ -24,7 +24,7 @@ USAGE
 }
 
 PROJECT_DIR=""
-INTERVAL=30
+INTERVAL=15
 TARGET="both"
 PRINT_ONLY=0
 CODEX_BYPASS=0
