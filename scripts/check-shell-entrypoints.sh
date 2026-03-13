@@ -26,6 +26,7 @@ ENTRYPOINT_FILES=(
   "scripts/inbox-recover-stale.sh"
   "scripts/inbox-watch.sh"
   "scripts/install-wrapper.sh"
+  "scripts/install-remote.sh"
   "scripts/monitor-ui.sh"
   "scripts/install-launchd-inbox-watcher.sh"
   "scripts/install-git-hooks.sh"
