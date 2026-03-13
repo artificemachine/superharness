@@ -30,11 +30,24 @@ pytest tests/
 - End of task: update contract task status, append one line to `.superharness/ledger.md`, and create/update a handoff YAML in `.superharness/handoffs/`.
 - If blocked/failure: log failure details in contract failures (and promote to `failures.yaml` when reusable).
 
-## Operator Shortcuts
-- `contract today`: read `.superharness/contract.yaml` and list all tasks with id, status, owner, and suggest the next task to work on.
-- `continue contract`: resume the active contract and execute the full lifecycle above automatically.
-- `close task <task_id>`: mark task status, append ledger, and write handoff before stopping.
-- `delegate <task_id>`: create contract task (if not exists) and enqueue it immediately for the watcher to dispatch. Always create + enqueue in one step — never create without enqueueing.
+## Operator Shortcuts (`shux` prefix)
+All shortcuts use the `shux` prefix. Old long-form phrases still work but `shux` is canonical.
+
+| Phrase | Action |
+|--------|--------|
+| `shux contract` | Read `contract.yaml`, render task table, suggest next task, offer to delegate cross-agent tasks |
+| `shux continue` | Resume active contract and run the full session lifecycle automatically |
+| `shux close <task_id>` | Mark task done, append ledger line, write handoff YAML, stop |
+| `shux delegate <task_id>` | Create task (if missing) + enqueue in one step; never create without enqueueing |
+| `shux init` | Run `superharness init --interactive --project .`; report current state if already initialized |
+| `shux status` | Run `superharness status --project .` — dashboard: contract, tasks, watcher, profile |
+| `shux doctor` | Run `superharness doctor --project .` — prereq + protocol health check |
+| `shux recall <keywords>` | Run `superharness recall --project . --query "<keywords>"` — search past handoffs + ledger |
+| `shux uninstall` | Run `superharness uninstall --project .` — remove watcher and system artifacts for this project |
+| `shux hygiene` | Run `superharness hygiene --project .` — validate protocol compliance (contract, handoffs, ledger) |
+| `shux monitor` | Run `superharness monitor-ui --project .` — open browser dashboard |
+| `shux watch` | Run `superharness watch --foreground --project .` — start continuous watcher in foreground |
+| `shux update` | 1) `git pull` in the superharness repo to get latest, 2) re-run `superharness init` on current project to refresh `CLAUDE.md`, `AGENTS.md`, and templates |
 
 ## CHANGELOG Policy (Strict)
 - `CHANGELOG.md` is append-only.
