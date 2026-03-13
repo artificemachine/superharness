@@ -138,7 +138,11 @@ case "$cmd" in
     git -C "$ROOT_DIR" pull --ff-only || { echo "git pull failed" >&2; exit 1; }
     echo ""
     echo "Step 2: refreshing templates..."
-    exec bash "$ROOT_DIR/scripts/init-project.sh" --refresh "$@"
+    if [ -f ".superharness/profile.yaml" ]; then
+      exec bash "$ROOT_DIR/scripts/init-project.sh" --refresh --from-profile ".superharness/profile.yaml" "$@"
+    else
+      exec bash "$ROOT_DIR/scripts/init-project.sh" --refresh --detect "$@"
+    fi
     ;;
   shux|shux-help)
     cat << 'SHUX'
