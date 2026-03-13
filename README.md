@@ -8,6 +8,86 @@ superharness lets AI coding assistants work on the same project without stepping
 
 ---
 
+## Using superharness
+
+### Via Claude Code or Codex CLI (recommended)
+
+**Step 1 — Install superharness once (terminal):**
+```bash
+git clone <superharness-repo-url>
+cd superharness
+bash scripts/install-wrapper.sh
+# export PATH="$HOME/.local/bin:$PATH"  # add to ~/.zshrc or ~/.bashrc if needed
+```
+
+**Step 2 — Go to your project and open Claude Code or Codex CLI.**
+
+**Step 3 — Type these phrases directly to the agent:**
+```
+shux init              # bootstrap .superharness/ for this project
+shux doctor            # check prerequisites and protocol health
+shux contract          # show all tasks with status and next-task suggestion
+shux continue          # resume active contract automatically
+shux delegate <id>     # create task + enqueue in one step
+shux close <id>        # mark done, append ledger, write handoff
+shux status            # dashboard: tasks, watcher, profile
+shux recall <keywords> # search past handoffs and ledger
+shux uninstall         # remove watcher and system artifacts for this project
+shux hygiene           # validate protocol compliance (contract, handoffs, ledger)
+shux monitor           # open browser dashboard
+shux watch             # start continuous watcher in foreground
+shux update            # pull latest superharness + refresh CLAUDE.md, AGENTS.md, templates
+```
+
+**That's it.** Steps 1 and 2 are one-time. From then on, `shux contract` starts every session.
+
+---
+
+### Via Terminal (alternative)
+
+For scripting, CI, or users who prefer direct shell access.
+
+> **Requires:** `bash`, `ruby`, `python3`. See [Prerequisites](#prerequisites).
+
+```bash
+# Try first — no install needed
+bash scripts/demo.sh
+
+# Install CLI
+bash scripts/install-wrapper.sh && superharness version
+
+# Initialize project
+cd /path/to/project
+superharness init --interactive   # or: superharness init "Name" "Stack" "active"
+
+# Verify
+superharness doctor --project .
+
+# Contract snapshot
+superharness contract today --project .
+
+# Delegate to agent
+superharness delegate --to codex-cli --project .
+
+# Queue management
+superharness enqueue --project . --to codex-cli --task my-task --priority 1
+superharness dispatch --project . --to codex-cli
+
+# Protocol hygiene + browser monitor
+superharness hygiene --project .
+superharness monitor-ui --project .
+```
+
+**Run tests:**
+```bash
+pip install -r requirements.txt
+pytest tests/ -q
+```
+
+**Full terminal reference:** [docs/GUIDE.md](docs/GUIDE.md)
+
+---
+
 ## Quick Links
 
 📘 **[User Guide](docs/GUIDE.md)** — Commands, background watcher, troubleshooting
@@ -18,7 +98,7 @@ superharness lets AI coding assistants work on the same project without stepping
 
 ## What You Get
 
-- **`superharness demo`** — Zero-config walkthrough: see the full lifecycle in 30 seconds, no agent CLI needed
+- **`shux` shortcuts** — Control superharness from inside Claude Code or Codex CLI
 - **`superharness init`** — Bootstrap protocol files (`.superharness/`)
 - **`superharness delegate`** — Launch agent with contract context
 - **`superharness enqueue|dispatch|watch`** — Queue-based task routing
@@ -46,114 +126,11 @@ You probably **don't need** superharness if you only ever run a single agent int
 | Feature | Requirements |
 |---------|-------------|
 | Core protocol (contracts, handoffs, ledger) | `bash`, `ruby`, `python3` |
-| Delegation + dispatch preview | + any text editor |
-| Live delegation to an agent | + `claude` or `codex` CLI |
+| Agent shortcuts (`shux`) | + `claude` or `codex` CLI |
 | Background auto-dispatch | + launchd (macOS) or systemd (Linux) |
 | Browser dashboard | + `python3 -m http.server` (built-in) |
 
 **You can start with just the core** and add agent CLIs and background services later. `--print-only` mode lets you preview every dispatch without launching anything.
-
----
-
-## Quick Start
-
-> **Requires:** `bash`, `ruby`, `python3`. See [Prerequisites](#prerequisites) for install commands.
-
-### Try it first (no install needed)
-```bash
-bash scripts/demo.sh
-# Runs a full task lifecycle in a temp dir — nothing installed, no agent CLI required
-```
-
-### 0. Install the CLI
-```bash
-bash scripts/install-wrapper.sh
-# Creates a symlink at ~/.local/bin/superharness
-# If ~/.local/bin is not in PATH: export PATH="$HOME/.local/bin:$PATH"
-
-# Verify it worked:
-superharness version
-```
-
-### 1. Initialize your project
-```bash
-cd /path/to/project
-superharness init "Project Name" "Tech/Stack" "active"
-# Creates .superharness/, CLAUDE.md, and AGENTS.md in your project root
-
-# Decide: commit state files or ignore them
-echo '.superharness/' >> .gitignore   # option A: ignore (recommended for personal projects)
-# — OR — git add .superharness/       # option B: commit (recommended for team projects)
-```
-
-### 2. Verify setup
-```bash
-superharness doctor --project .
-```
-
-### 3. Create a task and dispatch it
-```bash
-superharness task create --project . --id my-task --title "First task" --owner codex-cli
-superharness enqueue --project . --to codex-cli --task my-task --priority 1
-superharness dispatch --project . --to codex-cli --print-only
-```
-
----
-
-## Core Commands
-
-```bash
-# Contract snapshot
-superharness contract today --project /path/to/project
-
-# Delegate to agent
-superharness delegate --to codex-cli --project /path/to/project
-
-# Queue management
-superharness enqueue --project . --to codex-cli --task task-id --priority 1
-superharness dispatch --project . --to codex-cli
-
-# Protocol hygiene
-superharness hygiene --project /path/to/project
-
-# Browser monitor
-superharness monitor-ui --project /path/to/project
-```
-
-**Full command reference:** [docs/GUIDE.md](docs/GUIDE.md)
-
-### Run Tests
-
-```bash
-pip install -r requirements.txt
-pytest tests/ -q
-```
-
-| Layer | Description |
-| ------------- | ------------------------------------------ |
-| **Smoke** | Entrypoint `--help` and import checks |
-| **Unit** | Isolated function/script tests |
-| **Integration** | Cross-script workflow tests |
-| **E2E** | Full contract lifecycle tests |
-
-### Readiness Audits
-
-Use this command for a generic cross-repo quality audit:
-
-In Claude Code, run:
-```
-/production-ready
-```
-
-Use this command for superharness-specific release quality policy:
-
-```
-/superharness-production-ready
-```
-
-Rule of thumb:
-- Use `/production-ready` when working in any repository.
-- Use `/superharness-production-ready` when working in this repository and you want local mandatory checks (contract protocol, regression guard, watcher/doctor posture).
 
 ---
 
