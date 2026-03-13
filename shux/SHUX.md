@@ -18,11 +18,11 @@ All shortcuts use the `shux` prefix. Old long-form phrases (`contract today`, `c
 | `shux monitor` | Run `superharness monitor-ui --project .` — open browser dashboard |
 | `shux delegate <task_id>` | Create task (if missing) + enqueue in one step; never create without enqueueing |
 | `shux close <task_id>` | Mark task done, append ledger line, write handoff YAML, stop |
-| `shux recall <keywords>` | Run `superharness recall --project . --query "<keywords>"` — search past handoffs + ledger |
+| `shux recall <keywords>` | Run `superharness recall --project . <keywords>` — search past handoffs + ledger |
 | `shux hygiene` | Run `superharness hygiene --project .` — validate protocol compliance (contract, handoffs, ledger) |
 | `shux watch` | Run `superharness watch --foreground --project .` — start continuous watcher in foreground |
 | `shux uninstall` | Run `superharness uninstall --project .` — remove watcher and system artifacts for this project |
-| `shux update` | 1) `git pull` in the superharness repo to get latest, 2) re-run `superharness init` to refresh `CLAUDE.md`, `AGENTS.md`, and templates |
+| `shux update` | 1) `git pull` in the superharness repo to get latest, 2) run `superharness init --refresh` to regenerate `CLAUDE.md`, `AGENTS.md`, `SOUL.md` from updated templates |
 | `shux discuss` | If no subcommand given, ask: Topic (what to discuss), Owners (e.g. claude-code, codex-cli), optional ID — then run `superharness discuss start --project .`. Subcommands: `status`, `approve`, `start`, `rounds`, `consensus`, `list` |
 | `shux help` | Run `superharness shux` — show all shux shortcuts in the terminal |
 

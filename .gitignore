@@ -1,6 +1,5 @@
 .DS_Store
 *.swp
-.env
 .venv/
 .coverage
 .claude/
@@ -28,3 +27,4 @@ archive/
 *.pfx
 secrets.json
 credentials.json
+*.flock
