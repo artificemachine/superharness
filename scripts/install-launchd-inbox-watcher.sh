@@ -246,7 +246,7 @@ if [ "$(uname -s)" = "Darwin" ] && [ "$ALLOW_PROTECTED_PATH" -ne 1 ]; then
       echo "Refusing launchd install for protected macOS folder: $PROJECT_DIR" >&2
       echo "Reason: launchd may fail with 'Operation not permitted' under TCC-protected paths." >&2
       echo "Fixes:" >&2
-      echo "  1) Move project to non-protected path (e.g. ~/DevOpsCelstn/...)" >&2
+      echo "  1) Move project to non-protected path (e.g. ~/Projects/...)" >&2
       echo "  2) Re-run install-launchd-inbox-watcher.sh" >&2
       echo "  3) Or bypass with --allow-protected-path (not recommended)" >&2
       exit 1
