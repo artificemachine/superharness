@@ -48,7 +48,7 @@ def fresh_project(tmp_path: Path) -> Path:
 
 
 def _run_init(project: Path, project_name: str = "SoulTest") -> subprocess.CompletedProcess[str]:
-    script = REPO_ROOT / "init-project.sh"
+    script = REPO_ROOT / "scripts/init-project.sh"
     return run_bash(script, cwd=project, args=[project_name, "Python", "greenfield"])
 
 

@@ -4,7 +4,7 @@ from tests.helpers import run_bash
 
 
 def test_init_project_help_and_dry_run(repo_root, tmp_path) -> None:
-    script = repo_root / "init-project.sh"
+    script = repo_root / "scripts/init-project.sh"
 
     help_result = run_bash(script, cwd=tmp_path, args=["--help"])
     assert help_result.returncode == 0
@@ -20,7 +20,7 @@ def test_init_project_help_and_dry_run(repo_root, tmp_path) -> None:
 
 
 def test_init_project_creates_expected_files(repo_root, tmp_path) -> None:
-    script = repo_root / "init-project.sh"
+    script = repo_root / "scripts/init-project.sh"
     project = tmp_path / "demo"
     project.mkdir()
 
@@ -38,7 +38,7 @@ def test_init_project_creates_expected_files(repo_root, tmp_path) -> None:
 def test_init_project_no_watcher_by_default(repo_root, tmp_path) -> None:
     """Without --with-watcher, init must NOT install a launchd plist."""
 
-    script = repo_root / "init-project.sh"
+    script = repo_root / "scripts/init-project.sh"
     project = tmp_path / "no-watcher"
     project.mkdir()
 
@@ -50,7 +50,7 @@ def test_init_project_no_watcher_by_default(repo_root, tmp_path) -> None:
 
 def test_init_project_with_watcher_flag_accepted(repo_root, tmp_path) -> None:
     """--with-watcher flag should be accepted (even if launchd script is missing)."""
-    script = repo_root / "init-project.sh"
+    script = repo_root / "scripts/init-project.sh"
     project = tmp_path / "with-watcher"
     project.mkdir()
 
@@ -62,7 +62,7 @@ def test_init_project_with_watcher_flag_accepted(repo_root, tmp_path) -> None:
 
 def test_init_project_doctor_hint_in_output(repo_root, tmp_path) -> None:
     """Init output should mention doctor and task create."""
-    script = repo_root / "init-project.sh"
+    script = repo_root / "scripts/init-project.sh"
     project = tmp_path / "hints"
     project.mkdir()
 
@@ -73,7 +73,7 @@ def test_init_project_doctor_hint_in_output(repo_root, tmp_path) -> None:
 
 
 def test_init_project_is_not_reentrant(repo_root, tmp_path) -> None:
-    script = repo_root / "init-project.sh"
+    script = repo_root / "scripts/init-project.sh"
     project = tmp_path / "demo2"
     project.mkdir()
 

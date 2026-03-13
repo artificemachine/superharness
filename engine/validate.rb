@@ -117,7 +117,11 @@ end
 if issues.positive?
   puts
   puts "Contract hygiene check failed with #{issues} issue(s)."
+  puts ""
+  puts "→ Fix the issues above, then re-run 'shux hygiene'."
   exit 1
 end
 
 puts "Contract hygiene check passed."
+puts ""
+puts "→ Next: run 'shux contract' to review tasks, or 'shux continue' to resume work."

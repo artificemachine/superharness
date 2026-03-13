@@ -156,8 +156,8 @@ if [ "$PLATFORM" = "Darwin" ]; then
     echo "PASS watcher:$label loaded"
   else
     echo "WARN watcher:$label not loaded"
-    echo "       Use --foreground mode: superharness watch --foreground --project ."
-    echo "       Or install launchd: bash scripts/install-launchd-inbox-watcher.sh --project ."
+    echo "       The background watcher is required — would you like to install it? (run: bash scripts/install-launchd-inbox-watcher.sh --project .)"
+    echo "       Or use foreground mode instead: superharness watch --foreground --project ."
     warns=$((warns + 1))
   fi
 else
@@ -167,8 +167,12 @@ fi
 
 echo "summary: failures=$failures warnings=$warns"
 if [ "$failures" -gt 0 ]; then
+  echo ""
+  echo "→ Fix the failures above, then re-run 'shux doctor'."
   exit 1
 fi
 if [ "$CHECK_MODE" -eq 1 ] && [ "$warns" -gt 0 ]; then
   exit 1
 fi
+echo ""
+echo "→ Next: run 'shux contract' to see your tasks, or 'shux monitor' to open the dashboard."
