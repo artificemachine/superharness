@@ -179,20 +179,7 @@ run_check_by_id() {
 # ---------------------------------------------------------------------------
 # Main: read checks from heartbeat.yaml and run eligible ones
 # ---------------------------------------------------------------------------
-python3 - "$HB_CONFIG" << 'PY'
-import sys, pathlib, yaml
-cfg = yaml.safe_load(pathlib.Path(sys.argv[1]).read_text()) or {}
-checks = cfg.get("checks", [])
-for c in checks:
-    parts = [
-        str(c.get("id", "")),
-        str(c.get("enabled", False)),
-        str(c.get("interval_minutes", 0)),
-    ]
-    print("|".join(parts))
-PY
-
-# We need to process checks in bash; re-read via python to avoid subshell issues
+# Process checks in bash; read via python in process substitution to avoid subshell issues
 while IFS='|' read -r check_id enabled interval_minutes; do
   [ -n "$check_id" ] || continue
 
