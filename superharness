@@ -91,7 +91,7 @@ exec_with_optional_project() {
 
 case "$cmd" in
   demo) exec bash "$ROOT_DIR/scripts/demo.sh" "$@" ;;
-  init) exec bash "$ROOT_DIR/init-project.sh" "$@" ;;
+  init) exec bash "$ROOT_DIR/scripts/init-project.sh" "$@" ;;
   contract)
     sub="${1:-today}"
     case "$sub" in
@@ -131,6 +131,34 @@ case "$cmd" in
   heartbeat) exec_with_optional_project "$ROOT_DIR/scripts/heartbeat.sh" "$@" ;;
   recall) exec bash "$ROOT_DIR/cli/recall.sh" "$@" ;;
   uninstall) exec bash "$ROOT_DIR/scripts/uninstall.sh" "$@" ;;
+  shux|shux-help)
+    cat << 'SHUX'
+superharness — shux shortcuts
+==============================
+
+Type these directly into Claude Code or Codex CLI:
+
+  shux init                ← bootstrap .superharness/ for this project (interactive)
+  shux doctor              ← check prerequisites and protocol health
+  shux contract            ← show all tasks with status, owner, next-task suggestion
+  shux continue            ← resume active contract and run full session lifecycle
+  shux status              ← dashboard: contract, tasks, watcher, profile
+  shux monitor             ← open browser dashboard
+  shux delegate <task-id>  ← create task + enqueue in one step for watcher dispatch
+  shux close <task-id>     ← mark task done, append ledger, write handoff
+  shux recall <keywords>   ← search past handoffs and ledger entries
+  shux hygiene             ← validate protocol compliance (contract, handoffs, ledger)
+  shux watch               ← start continuous watcher in foreground
+  shux uninstall           ← remove watcher and system artifacts
+  shux update              ← git pull + re-run init to refresh CLAUDE.md, AGENTS.md, templates
+  shux discuss <sub>       ← manage discussions and approval gates (status, approve, start, rounds, consensus, list)
+  shux help                ← show this message
+
+Full session flow:
+  shux init → shux doctor → shux contract → shux continue → shux close <id>
+
+SHUX
+    ;;
   help|-h|--help) usage ;;
   version|--version|-v) echo "superharness $VERSION" ;;
   *)

@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
-from tests.helpers import run_bash, run_cmd, REPO_ROOT
+from tests.helpers import run_bash
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

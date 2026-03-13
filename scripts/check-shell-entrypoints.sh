@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Keep this list explicit to avoid forcing execute bits on non-entrypoint helpers.
 ENTRYPOINT_FILES=(
-  "init-project.sh"
+  "scripts/init-project.sh"
   "adapters/claude-code/install.sh"
   "adapters/claude-code/hooks/branch-guard.sh"
   "adapters/claude-code/hooks/ledger-append.sh"

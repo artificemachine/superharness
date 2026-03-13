@@ -21,7 +21,7 @@ def test_claude_watcher_dispatch_smoke(repo_root: Path, tmp_path: Path) -> None:
     project.mkdir()
 
     # Bootstrap project
-    init_script = repo_root / "init-project.sh"
+    init_script = repo_root / "scripts/init-project.sh"
     init_res = run_bash(init_script, cwd=project, args=["WatcherTest", "Shell", "active"])
     assert init_res.returncode == 0, f"init failed: {init_res.stderr}"
 

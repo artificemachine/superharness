@@ -44,7 +44,7 @@ jobs:
             bash "$entrypoint" --help
           done < <(bash scripts/check-shell-entrypoints.sh --list-entrypoints)
           HOME="$(mktemp -d)" bash adapters/claude-code/install.sh --dry-run
-          bash init-project.sh --dry-run "CI Smoke" "Bash" "active"
+          bash scripts/init-project.sh --dry-run "CI Smoke" "Bash" "active"
 
   smoke-tests:
     name: Smoke Tests
@@ -56,7 +56,7 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install -r requirements.txt
+          python3 -m pip install pytest pytest-cov pyyaml
 
       - name: Run smoke tests
         run: PYTHONPATH=. python3 -m pytest tests/test_smoke.py -q
@@ -71,7 +71,7 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install -r requirements.txt
+          python3 -m pip install pytest pytest-cov pyyaml
 
       - name: Run unit tests
         run: PYTHONPATH=. python3 -m pytest tests/unit -q
@@ -86,7 +86,7 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install -r requirements.txt
+          python3 -m pip install pytest pytest-cov pyyaml
 
       - name: Run integration tests
         run: PYTHONPATH=. python3 -m pytest tests/integration -q
@@ -101,7 +101,7 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install -r requirements.txt
+          python3 -m pip install pytest pytest-cov pyyaml
 
       - name: Run e2e tests
         run: PYTHONPATH=. python3 -m pytest tests/e2e -q

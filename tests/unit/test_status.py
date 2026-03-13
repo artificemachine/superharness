@@ -5,11 +5,9 @@ from __future__ import annotations
 import os
 import stat
 import time
-import textwrap
 
-import pytest
 
-from tests.helpers import run_bash, run_cmd
+from tests.helpers import run_bash
 
 
 # ---------------------------------------------------------------------------
