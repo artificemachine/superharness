@@ -131,6 +131,15 @@ case "$cmd" in
   heartbeat) exec_with_optional_project "$ROOT_DIR/scripts/heartbeat.sh" "$@" ;;
   recall) exec bash "$ROOT_DIR/cli/recall.sh" "$@" ;;
   uninstall) exec bash "$ROOT_DIR/scripts/uninstall.sh" "$@" ;;
+  update)
+    echo "superharness — update"
+    echo "====================="
+    echo "Step 1: git pull (updating superharness repo)..."
+    git -C "$ROOT_DIR" pull --ff-only || { echo "git pull failed" >&2; exit 1; }
+    echo ""
+    echo "Step 2: refreshing templates..."
+    exec bash "$ROOT_DIR/scripts/init-project.sh" --refresh "$@"
+    ;;
   shux|shux-help)
     cat << 'SHUX'
 superharness — shux shortcuts

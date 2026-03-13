@@ -15,3 +15,11 @@ disable_rules: []
 custom_rules_dirs: []
 
 use_rust_secrets: false
+
+# Personal identifiers and workspace names that must never appear in source code.
+# Used by /security-pipeline (step 6) and /ship (step 9) to catch PII leaks.
+# Add project-specific terms here — standard patterns (/Users/<name>/, /home/<name>/)
+# are checked automatically.
+sanitize_blocklist:
+  - "airm2max"
+  - "DevOpsCelstn"
