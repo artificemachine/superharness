@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import stat
 
-import pytest
 
 from tests.helpers import run_cmd, REPO_ROOT
 

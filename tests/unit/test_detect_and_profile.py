@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import stat
-import textwrap
 
-import pytest
 
 from tests.helpers import run_bash, run_cmd
 
@@ -144,7 +142,7 @@ def test_init_from_profile_creates_files(repo_root, tmp_path) -> None:
     _write_profile(profile)
 
     result = run_bash(
-        repo_root / "init-project.sh",
+        repo_root / "scripts/init-project.sh",
         cwd=project,
         args=["--from-profile", str(profile)],
     )
@@ -160,7 +158,7 @@ def test_init_from_profile_uses_project_name(repo_root, tmp_path) -> None:
     _write_profile(profile, project_name="AwesomeApp")
 
     result = run_bash(
-        repo_root / "init-project.sh",
+        repo_root / "scripts/init-project.sh",
         cwd=project,
         args=["--from-profile", str(profile)],
     )
@@ -175,7 +173,7 @@ def test_init_from_profile_copies_profile_into_superharness(repo_root, tmp_path)
     profile = tmp_path / "profile.yaml"
     _write_profile(profile)
 
-    run_bash(repo_root / "init-project.sh", cwd=project, args=["--from-profile", str(profile)])
+    run_bash(repo_root / "scripts/init-project.sh", cwd=project, args=["--from-profile", str(profile)])
     copied = project / ".superharness/profile.yaml"
     assert copied.exists(), "profile.yaml was not copied into .superharness/"
 
@@ -184,7 +182,7 @@ def test_init_from_profile_missing_file_errors(repo_root, tmp_path) -> None:
     project = tmp_path / "proj"
     project.mkdir()
     result = run_bash(
-        repo_root / "init-project.sh",
+        repo_root / "scripts/init-project.sh",
         cwd=project,
         args=["--from-profile", "/nonexistent/profile.yaml"],
     )
@@ -200,7 +198,7 @@ def test_init_from_profile_source_outside_superharness_dir(repo_root, tmp_path) 
     _write_profile(profile)
 
     result = run_bash(
-        repo_root / "init-project.sh",
+        repo_root / "scripts/init-project.sh",
         cwd=project,
         args=["--from-profile", str(profile)],
     )
@@ -217,7 +215,7 @@ def test_init_detect_creates_files(repo_root, tmp_path) -> None:
     (project / "pyproject.toml").write_text('[project]\nname = "detect-test"\nversion = "0.1"\n')
 
     result = run_bash(
-        repo_root / "init-project.sh",
+        repo_root / "scripts/init-project.sh",
         cwd=project,
         args=["--detect"],
     )
@@ -230,7 +228,7 @@ def test_init_detect_uses_detected_name(repo_root, tmp_path) -> None:
     project.mkdir()
 
     result = run_bash(
-        repo_root / "init-project.sh",
+        repo_root / "scripts/init-project.sh",
         cwd=project,
         args=["--detect"],
     )

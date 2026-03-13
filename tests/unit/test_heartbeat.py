@@ -12,14 +12,13 @@ import time
 import textwrap
 from pathlib import Path
 
-import pytest
 import yaml
 
 from tests.helpers import REPO_ROOT, run_bash
 
 
 HEARTBEAT_SH = REPO_ROOT / "scripts/heartbeat.sh"
-INIT_SH = REPO_ROOT / "init-project.sh"
+INIT_SH = REPO_ROOT / "scripts/init-project.sh"
 SUPERHARNESS = REPO_ROOT / "superharness"
 
 
@@ -134,8 +133,7 @@ def test_heartbeat_runs_enabled_check_when_interval_elapsed(tmp_path: Path) -> N
           last_run: 1
     """)
     # Write a recent ledger entry so idle-warning does NOT warn (we just want to verify it ran)
-    now_epoch = int(time.time())
-    ledger_lines = [f"- 2026-01-01T00:00:00Z | claude-code | some task"]
+    ledger_lines = ["- 2026-01-01T00:00:00Z | claude-code | some task"]
     project = _make_project(tmp_path, heartbeat_yaml=heartbeat_cfg,
                             state_yaml=state_yaml, ledger_lines=ledger_lines)
     result = _run_heartbeat(tmp_path, project_dir=project)

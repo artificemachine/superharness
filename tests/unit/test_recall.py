@@ -10,7 +10,6 @@ import stat
 import textwrap
 from datetime import date, timedelta
 
-import pytest
 
 from tests.helpers import run_cmd, REPO_ROOT
 

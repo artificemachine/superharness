@@ -112,9 +112,10 @@ while [ $# -gt 0 ]; do
 done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT_DIR="$(pwd)"
 DATE="$(date +%Y-%m-%d)"
-TEMPLATE_DIR="$SCRIPT_DIR/protocol/templates"
+TEMPLATE_DIR="$ROOT_DIR/protocol/templates"
 
 # --- Interactive mode: questionnaire ---
 if [ "$INTERACTIVE_MODE" -eq 1 ]; then
@@ -123,7 +124,7 @@ if [ "$INTERACTIVE_MODE" -eq 1 ]; then
   [ -t 0 ] && _is_tty=1
 
   # Run detect.rb to learn about this project
-  DETECT_SCRIPT="$SCRIPT_DIR/engine/detect.rb"
+  DETECT_SCRIPT="$ROOT_DIR/engine/detect.rb"
   _detected_name="$(basename "$PROJECT_DIR")"
   _detected_stack="TBD"
   _detected_status="greenfield"
@@ -238,7 +239,7 @@ if [ -n "$FROM_PROFILE" ]; then
   echo "Using profile: $FROM_PROFILE"
 elif [ "$DETECT_MODE" -eq 1 ]; then
   # Run detect.rb and parse its output
-  DETECT_SCRIPT="$SCRIPT_DIR/engine/detect.rb"
+  DETECT_SCRIPT="$ROOT_DIR/engine/detect.rb"
   if [ ! -f "$DETECT_SCRIPT" ]; then
     echo "engine/detect.rb not found. Cannot auto-detect." >&2
     exit 1
@@ -507,7 +508,7 @@ fi
 
 # Install launchd watcher only when explicitly requested.
 if [ "$WITH_WATCHER" -eq 1 ]; then
-  ENSURE_WATCHER="$SCRIPT_DIR/scripts/ensure-launchd-inbox-watcher.sh"
+  ENSURE_WATCHER="$ROOT_DIR/scripts/ensure-launchd-inbox-watcher.sh"
   if [ -x "$ENSURE_WATCHER" ]; then
     if bash "$ENSURE_WATCHER" --project "$PROJECT_DIR" >/dev/null 2>&1; then
       echo "Watcher: launchd inbox watcher is configured."
@@ -538,6 +539,7 @@ echo "  shux delegate <id>     ← hand off a task"
 echo "  shux close <id>        ← mark task done"
 echo "  shux status            ← dashboard"
 echo "  shux recall <keywords> ← search past work"
+echo "  shux monitor           ← open browser dashboard"
 echo ""
 echo "Next steps (terminal):"
 echo "  superharness doctor --project .   ← verify setup"
@@ -546,3 +548,5 @@ echo "  Add .superharness/ to .gitignore OR commit it (your choice)"
 echo ""
 echo "Tip: To enable a background watcher (macOS only), re-run with --with-watcher"
 echo "     or use: superharness watch --foreground --project . --interval 30"
+echo ""
+echo "→ Next: run 'shux doctor' to verify your setup, then 'shux monitor' to open the dashboard."

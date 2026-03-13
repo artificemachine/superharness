@@ -28,6 +28,63 @@ Old long-form phrases (`contract today`, `continue contract`, etc.) still work.
 
 ---
 
+## Workflow Diagrams
+
+### Onboarding & Command Flow
+
+```mermaid
+graph TD
+    A([shux init]) --> B([shux doctor])
+    B -->|pass| C([shux contract])
+    B -->|fail| B2[fix issues] --> B
+    C --> D([shux continue])
+    C --> E([shux monitor])
+    D --> F{task done?}
+    F -->|yes| G([shux close task-id])
+    F -->|blocked| H([shux delegate task-id])
+    G --> C
+    H --> C
+    D --> I([shux status])
+    I --> D
+    I --> E
+```
+
+### Multi-Agent Handoff Loop
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant CC as Claude Code
+    participant SH as superharness
+    participant W as Watcher
+    participant CX as Codex CLI
+
+    U->>CC: shux init
+    CC->>SH: superharness init --interactive
+    SH-->>CC: .superharness/ created
+
+    U->>CC: shux doctor
+    CC->>SH: superharness doctor
+    SH-->>CC: ✓ all checks pass
+
+    U->>CC: shux continue
+    CC->>SH: read contract.yaml + handoffs
+    SH-->>CC: active task context injected
+    CC->>CC: work on task
+    CC->>SH: shux close task-id (write handoff YAML + ledger)
+
+    U->>CC: shux delegate next-task
+    CC->>SH: superharness enqueue → inbox.yaml
+    SH-->>W: inbox updated
+    W->>CX: dispatch next-task prompt
+    CX->>SH: read handoff from previous session
+    CX->>CX: work on task
+    CX->>SH: write handoff YAML + update contract
+    SH-->>CC: next session picks up from here
+```
+
+---
+
 ## Terminal Reference — Alternative Interface
 
 For scripting, CI, or users who prefer direct shell access.

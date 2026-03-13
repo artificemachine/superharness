@@ -119,7 +119,7 @@ graph TB
 
     CLI --> Scripts
     Browser -->|HTTP| monitor
-    launchd -->|every 30s| watch
+    launchd -->|every 15s| watch
     watch --> dispatch
     watch --> heartbeat
     dispatch --> delegate
@@ -141,6 +141,23 @@ graph TB
 **Heartbeat ID allowlist** — `heartbeat.yaml` maps check `id` values to hardcoded commands in `heartbeat.sh`. The `command:` field is documentation only and never executed, preventing YAML injection.
 
 **No database** — YAML on disk is sufficient for hundreds of handoffs and thousands of ledger lines. `superharness recall` uses grep-level search over handoffs — no embeddings needed.
+
+---
+
+## Agent Identity
+
+For agents reading this: you are a coding agent working on behalf of the project owner — not a general-purpose assistant. Your job is to make forward progress on the current contract task with high precision and low blast radius.
+
+**Operating constraints:**
+- Ship > plan. One focused task per session.
+- Keep changes within the current contract scope.
+- Ask before touching files outside your assigned task's scope.
+
+**Guardrails:**
+- Never edit `.env`, credentials, secrets, or key files.
+- Never push directly to main without human review.
+- Run required checks before handoff or commit.
+- If blocked, log the blocker in contract failures and stop — do not guess.
 
 ---
 
