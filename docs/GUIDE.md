@@ -1,41 +1,67 @@
 # superharness Command Reference
 
-Full command reference for superharness. For first-time setup, see the [Quick Start](../README.md#quick-start) section in the README.
+---
+
+## Agent Shortcuts (`shux`) — Primary Interface
+
+Type these directly into Claude Code or Codex CLI — no terminal needed after first install.
+
+| Phrase | What happens |
+|--------|-------------|
+| `shux init` | Bootstrap `.superharness/` for this project (interactive) |
+| `shux doctor` | Check prerequisites and protocol health |
+| `shux contract` | Show all tasks with status, owner, and next-task suggestion |
+| `shux continue` | Resume active contract and run full session lifecycle |
+| `shux delegate <task-id>` | Create task + enqueue in one step for watcher dispatch |
+| `shux close <task-id>` | Mark task done, append ledger, write handoff |
+| `shux status` | Dashboard: contract, tasks, watcher state, profile |
+| `shux recall <keywords>` | Search past handoffs and ledger entries |
+| `shux uninstall` | Remove watcher and system artifacts for this project |
+| `shux hygiene` | Validate protocol compliance (contract, handoffs, ledger) |
+| `shux monitor` | Open browser dashboard |
+| `shux watch` | Start continuous watcher in foreground |
+| `shux update` | Pull latest superharness (`git pull` in repo) + re-run init to refresh `CLAUDE.md`, `AGENTS.md`, templates |
+
+**Full session flow:** `shux init` → `shux doctor` → `shux contract` → `shux continue`
+
+Old long-form phrases (`contract today`, `continue contract`, etc.) still work.
 
 ---
 
-## Install Wrapper into PATH
+## Terminal Reference — Alternative Interface
+
+For scripting, CI, or users who prefer direct shell access.
+
+### Install Wrapper into PATH
 
 ```bash
+git clone <superharness-repo-url>
+cd superharness
 bash scripts/install-wrapper.sh
+# export PATH="$HOME/.local/bin:$PATH"  # add to ~/.zshrc or ~/.bashrc if needed
 ```
 
-Symlinks the wrapper to `~/.local/bin/superharness`. Add `~/.local/bin` to your PATH if not already present. After that, use `superharness <command>` from anywhere.
+Symlinks the wrapper to `~/.local/bin/superharness`. After that, use `superharness <command>` from anywhere. This is done once per machine.
 
----
-
-## Init
+### Init
 
 Bootstrap protocol files in a project directory:
 
 ```bash
-# Explicit (recommended for humans):
+# Interactive (recommended):
+superharness init --interactive
+
+# Explicit:
 superharness init "My Project" "Python/Docker" "active"
 
-# Auto-detect stack and status from project files (no args needed):
+# Auto-detect stack and status from project files:
 superharness init --detect
 
-# From an agent-written profile.yaml (recommended for AI-driven installs):
+# From an agent-written profile.yaml:
 superharness init --from-profile .superharness/profile.yaml
 ```
 
-All three modes create `.superharness/`, `CLAUDE.md`, and `AGENTS.md`. `--detect`
-and `--from-profile` skip the positional arguments. See [docs/INSTALL-AGENT.md](INSTALL-AGENT.md)
-for the full agent-driven install flow.
-
----
-
-## Core Commands
+All modes create `.superharness/`, `CLAUDE.md`, and `AGENTS.md`. See [docs/INSTALL-AGENT.md](INSTALL-AGENT.md) for the agent-driven install flow.
 
 ### Delegation
 
@@ -122,9 +148,7 @@ superharness normalize --project . --archive
 
 Archives `done` and `failed` items to `.superharness/inbox-archive.yaml`.
 
----
-
-## Project Auto-Detection
+### Project Auto-Detection
 
 Most commands require `--project DIR`. To avoid repeating it:
 
@@ -132,9 +156,44 @@ Most commands require `--project DIR`. To avoid repeating it:
 2. **Environment variable:** Set `SUPERHARNESS_PROJECT=/path/to/project` to use a fixed project directory.
 3. **Explicit flag:** `--project DIR` always takes precedence.
 
----
+### Protocol Hygiene
 
-## Background Watcher
+```bash
+superharness hygiene --project .
+superharness hygiene --project . --strict   # requires promotion alignment
+```
+
+**What hygiene checks validate:**
+- Contract YAML structure and required fields
+- Task status transitions (no invalid states)
+- Handoff files match done tasks
+- Ledger entries exist for completed work
+- Decisions/failures promotion alignment (strict mode only)
+
+**Failure-memory promotion workflow:**
+1. Record task-local incidents in `.superharness/contract.yaml` under `failures`.
+2. Promote reusable incidents to `.superharness/failures.yaml`.
+3. Keep strict hygiene green by ensuring promoted failures are not left only in the contract.
+
+### Doctor Checks
+
+```bash
+superharness doctor --project .
+```
+
+Checks for: required executables (`bash`, `ruby`, `python3`, `claude`, `codex`), protocol directory structure, YAML syntax validity, file permissions.
+
+### Monitor UI
+
+```bash
+superharness monitor-ui --project .
+```
+
+Includes: watcher state, inbox counters, one-click queue actions, plan confirmation buttons, optional Logdy log view.
+
+**Security:** binds to loopback only (127.0.0.1), mutating actions require per-session token printed to terminal on startup.
+
+### Background Watcher
 
 **macOS (launchd):**
 ```bash
@@ -164,52 +223,7 @@ superharness uninstall --project /path/to/project
 - `SUPERHARNESS_CONFIRM_NON_INTERACTIVE=YES`
 - `SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS=YES`
 
----
-
-## Protocol Hygiene
-
-```bash
-superharness hygiene --project .
-superharness hygiene --project . --strict   # requires promotion alignment
-```
-
-**What hygiene checks validate:**
-- Contract YAML structure and required fields
-- Task status transitions (no invalid states)
-- Handoff files match done tasks
-- Ledger entries exist for completed work
-- Decisions/failures promotion alignment (strict mode only)
-
-**Failure-memory promotion workflow:**
-1. Record task-local incidents in `.superharness/contract.yaml` under `failures`.
-2. Promote reusable incidents to `.superharness/failures.yaml`.
-3. Keep strict hygiene green by ensuring promoted failures are not left only in the contract.
-
----
-
-## Doctor Checks
-
-```bash
-superharness doctor --project .
-```
-
-Checks for: required executables (`bash`, `ruby`, `python3`, `claude`, `codex`), protocol directory structure, YAML syntax validity, file permissions.
-
----
-
-## Monitor UI
-
-```bash
-superharness monitor-ui --project .
-```
-
-Includes: watcher state, inbox counters, one-click queue actions, plan confirmation buttons, optional Logdy log view.
-
-**Security:** binds to loopback only (127.0.0.1), mutating actions require per-session token printed to terminal on startup.
-
----
-
-## Readiness Audits
+### Readiness Audits
 
 Use this for a generic cross-repo quality audit (in Claude Code):
 ```
@@ -316,8 +330,6 @@ log show --predicate 'process == "launchd"' --last 5m | grep superharness
 
 ---
 
----
-
 ## Teams
 
 ### Commit `.superharness/` or ignore it?
@@ -346,11 +358,13 @@ superharness watch --foreground --project . --interval 60 --launcher-timeout 300
 ### Onboarding a new team member
 
 ```bash
-# Pull (if .superharness/ is committed)
+# Terminal: install CLI (one-time)
 git pull
 bash /path/to/superharness/scripts/install-wrapper.sh
-superharness doctor --project .
-superharness contract today --project .   # pick up where the last session left off
+
+# Then in Claude Code or Codex CLI:
+# shux doctor      ← verify setup
+# shux contract    ← pick up where the last session left off
 ```
 
 ---

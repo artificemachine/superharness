@@ -34,8 +34,25 @@ When the user asks to read the contract (or equivalent), do this:
    - append one line to `.superharness/ledger.md`,
    - return the exact Codex kickoff prompt.
 
-## Trigger Phrase: contract today
-When the user says `contract today`, treat it as an explicit request to run the full Delegation Prompting Rule above.
+## Trigger Phrases (`shux` prefix)
+When the user says any of the following, execute the described action immediately without asking for confirmation.
+All shortcuts use the `shux` prefix. Old long-form phrases (`contract today`, `continue contract`, etc.) still work.
+
+| Phrase | Action |
+|--------|--------|
+| `shux contract` | Run the full Delegation Prompting Rule above |
+| `shux continue` | Resume the active contract and execute the full session lifecycle automatically |
+| `shux close <task_id>` | Mark task done, append one ledger line, write handoff YAML, stop |
+| `shux delegate <task_id>` | Create contract task (if missing) + enqueue in one step; never create without enqueueing |
+| `shux init` | Run `superharness init --interactive --project .`; if `.superharness/` already exists, report current state |
+| `shux status` | Run `superharness status --project .` and display the dashboard |
+| `shux doctor` | Run `superharness doctor --project .` and report findings |
+| `shux recall <keywords>` | Run `superharness recall --project . --query "<keywords>"` and show matching results |
+| `shux uninstall` | Run `superharness uninstall --project .` — remove watcher and system artifacts for this project |
+| `shux hygiene` | Run `superharness hygiene --project .` — validate protocol compliance (contract, handoffs, ledger) |
+| `shux monitor` | Run `superharness monitor-ui --project .` — open browser dashboard |
+| `shux watch` | Run `superharness watch --foreground --project .` — start continuous watcher in foreground |
+| `shux update` | 1) `git pull` in the superharness repo to get latest, 2) re-run `superharness init` on current project to refresh `CLAUDE.md`, `AGENTS.md`, and templates |
 
 ## Canonical contract today Output (Highest Priority)
 This section overrides any conflicting `contract today` formatting guidance above.
