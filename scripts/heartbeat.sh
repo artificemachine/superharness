@@ -63,9 +63,9 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 NOW_EPOCH="$(date +%s)"
 
 # ---------------------------------------------------------------------------
-# read_yaml_field FILE KEY
-# Returns the scalar value for a simple "key: value" line in a YAML file.
-# Used for flat state file reads. Returns empty string if not found.
+# read_state_field FILE CHECK_ID FIELD
+# Returns a nested field value from the heartbeat state YAML.
+# Looks up state[CHECK_ID][FIELD]. Returns empty string if not found.
 # ---------------------------------------------------------------------------
 read_state_field() {
   local file="$1"

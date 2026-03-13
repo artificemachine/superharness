@@ -34,4 +34,4 @@ jobs:
       - name: Script dry-run smoke
         run: |
           HOME="$(mktemp -d)" bash adapters/claude-code/install.sh --dry-run
-          bash init-project.sh --dry-run "CI Smoke" "Bash" "active"
+          bash scripts/init-project.sh --dry-run "CI Smoke" "Bash" "active"
