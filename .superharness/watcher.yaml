@@ -1,8 +1,0 @@
-watcher_project: "/Users/airm2max/.superharness-workers/superharness"
-updated_at: "2026-03-12T00:21:00Z"
-interval_seconds: 15
-recover_timeout_minutes: 3
-recover_action: retry
-launcher_timeout_seconds: 180
-target: both
-codex_bypass: true
