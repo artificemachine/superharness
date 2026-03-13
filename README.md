@@ -127,21 +127,29 @@ You probably **don't need** superharness if you only ever run a single agent int
 |---------|-------------|
 | Core protocol (contracts, handoffs, ledger) | `bash`, `ruby`, `python3` |
 | Agent shortcuts (`shux`) | + `claude` or `codex` CLI |
-| Background auto-dispatch | + launchd (macOS) or systemd (Linux) |
+| Background auto-dispatch | + launchd (macOS); systemd unit provided but untested |
 | Browser dashboard | + `python3 -m http.server` (built-in) |
 
 **You can start with just the core** and add agent CLIs and background services later. `--print-only` mode lets you preview every dispatch without launching anything.
 
 ---
 
+## Platform Support
+
+**Developed and tested on macOS.** The core protocol (contracts, handoffs, ledger, engine commands, `shux` shortcuts) uses portable bash/ruby/python and should work on Linux. However:
+
+- **Background watcher installer** is macOS-only (`launchd`). A systemd unit file is provided (`scripts/superharness-watcher@.service`) but has no automated installer yet. `--foreground` mode works everywhere.
+- **`stat` calls** include both macOS and Linux fallbacks.
+- Linux contributions welcome — see [CONTRIBUTING.md](docs/CONTRIBUTING.md).
+
 ## Prerequisites
 
-- `bash` (scripts are Bash-based)
+- `bash` 4+ (scripts are Bash-based)
 - `ruby` (required by inbox YAML helpers and hygiene checks) — see `.ruby-version`
 - `python3` + `pytest` (tests and hook JSON escaping) — `uv sync --dev` (or `pip install pytest pytest-cov pyyaml`)
 - `claude` CLI (for Claude delegation commands): `npm install -g @anthropic-ai/claude-code`
 - `codex` CLI (for Codex delegation commands): `npm install -g @openai/codex`
-- macOS `launchd` or Linux `systemd` for background watcher (see `scripts/superharness-watcher@.service`); `--foreground` mode works everywhere
+- macOS `launchd` for background watcher (see Platform Support above); `--foreground` mode works everywhere
 
 ---
 
