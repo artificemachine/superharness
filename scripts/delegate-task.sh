@@ -18,6 +18,7 @@ PROJECT_DIR="$(pwd)"
 TASK_ID=""
 PRINT_ONLY=0
 NON_INTERACTIVE=0
+PYTHON3="${SUPERHARNESS_PYTHON:-python3}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -68,12 +69,10 @@ if [ ! -d "$PROJECT_DIR" ]; then
 fi
 PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd -P)"
 CONTRACT_FILE="$PROJECT_DIR/.superharness/contract.yaml"
-ENGINE_CONTRACT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/engine/contract.rb"
 
 [ -f "$CONTRACT_FILE" ] || { echo "Missing contract file: $CONTRACT_FILE" >&2; exit 1; }
-[ -f "$ENGINE_CONTRACT" ] || { echo "Missing contract engine: $ENGINE_CONTRACT" >&2; exit 1; }
 
-OWNER="$(ruby "$ENGINE_CONTRACT" task_owner --file "$CONTRACT_FILE" --task "$TASK_ID")"
+OWNER="$("$PYTHON3" -m superharness.engine.contract task_owner --file "$CONTRACT_FILE" --task "$TASK_ID")"
 case "$OWNER" in
   claude-code|codex-cli) ;;
   "")
@@ -94,4 +93,4 @@ if [ "$NON_INTERACTIVE" -eq 1 ]; then
   ARGS+=(--non-interactive)
 fi
 
-exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/delegate.sh" "${ARGS[@]}"
+exec "$PYTHON3" -m superharness.commands.delegate "${ARGS[@]}"

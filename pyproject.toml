@@ -1,8 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "superharness"
 version = "0.8.0"
+description = "Multi-agent session handoff framework for Claude Code"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "click>=8.1",
+    "ruamel.yaml>=0.18",
+]
+
+[project.scripts]
+superharness = "superharness.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [dependency-groups]
 dev = [

@@ -1,0 +1,18 @@
+id: sample-contract-001
+tasks:
+  - id: task-done
+    owner: claude-code
+    status: done
+    project_path: /projects/alpha
+    deadline_minutes: 30
+  - id: task-todo
+    owner: codex-cli
+    status: todo
+    project_path: /projects/beta
+    deadline_minutes: 60
+  - id: task-wip
+    owner: claude-code
+    status: in_progress
+    project_path: /projects/gamma
+decisions: []
+failures: []

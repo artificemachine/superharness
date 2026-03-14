@@ -38,6 +38,58 @@ if [ -d "$PROJECT_DIR/.superharness/handoffs" ]; then
   done
 fi
 
+# Auto-search obsidian-semantic vault using the active contract task title (if available)
+VAULT_CONTEXT=""
+OBSIDIAN_DASH="${OBSIDIAN_DASH_URL:-http://localhost:8484}"
+if command -v curl >/dev/null 2>&1; then
+  # Extract active task title from contract.yaml for the search query
+  TASK_QUERY=""
+  if [ -f "$PROJECT_DIR/.superharness/contract.yaml" ]; then
+    TASK_QUERY=$(python3 -c "
+import sys, re
+try:
+    text = open('$PROJECT_DIR/.superharness/contract.yaml').read()
+    # Find first in-progress or plan_proposed task title
+    m = re.search(r'title:\s*[\"\'']?([^\n\"\']+)[\"\'']?', text)
+    if m: print(m.group(1).strip()[:80])
+except: pass
+" 2>/dev/null || true)
+  fi
+
+  if [ -n "$TASK_QUERY" ]; then
+    ENCODED=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$TASK_QUERY" 2>/dev/null || echo "")
+    if [ -n "$ENCODED" ]; then
+      SEARCH_RESULT=$(curl -sf --max-time 3 "$OBSIDIAN_DASH/api/search?q=$ENCODED&limit=3" 2>/dev/null || echo "")
+      if [ -n "$SEARCH_RESULT" ]; then
+        VAULT_CONTEXT=$(echo "$SEARCH_RESULT" | python3 -c "
+import sys, json
+try:
+    d = json.loads(sys.stdin.read())
+    results = d.get('results', [])
+    if not results:
+        print('Vault search: no relevant notes found for this task.')
+        sys.exit(0)
+    lines = ['Vault notes relevant to task (auto-searched via obsidian-semantic):']
+    for r in results:
+        lines.append(f\"  - {r['path']} (similarity: {r['similarity']})\")
+        preview = r.get('preview','')[:120].replace('\n',' ')
+        lines.append(f\"    {preview}\")
+    print('\n'.join(lines))
+except Exception as e:
+    print(f'Vault search unavailable: {e}')
+" 2>/dev/null || true)
+      fi
+    fi
+  fi
+
+  # Fallback: just note that vault search is available if no contract task found
+  if [ -z "$VAULT_CONTEXT" ]; then
+    if curl -sf --max-time 2 "$OBSIDIAN_DASH/api/stats" >/dev/null 2>&1; then
+      VAULT_CONTEXT="obsidian-semantic vault search is available at $OBSIDIAN_DASH. Call search_vault <topic> to retrieve relevant notes."
+    fi
+  fi
+fi
+
 # Ensure launchd watcher exists for this project (macOS). Non-fatal.
 WATCHER_STATUS=""
 ENSURE_WATCHER="$SUPERHARNESS_ROOT/scripts/ensure-launchd-inbox-watcher.sh"
@@ -104,6 +156,7 @@ Protocol files live in .superharness/ (contract.yaml, handoffs/, ledger.md, fail
 - branch-guard: blocks push to main/master, warns on force push and destructive git ops
 - ledger-append: auto-logs file changes to .superharness/ledger.md
 
+$(printf '%s\n' "$VAULT_CONTEXT")
 $(printf '%s\n' "$CONTRACT_STATUS")
 $(printf '%s\n' "$PENDING_HANDOFFS")
 $(printf '%s\n' "$WATCHER_STATUS")

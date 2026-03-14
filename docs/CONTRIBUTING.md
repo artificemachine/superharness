@@ -6,7 +6,7 @@
 pytest tests/ -q
 ```
 
-Requires Python 3.11+, Bash 4+, Ruby, and `shellcheck`. Install Python deps with `uv sync --dev`.
+Requires Python 3.9+, Bash 4+, and `shellcheck`. Install Python deps with `uv sync --dev`.
 
 ## Commit conventions
 
@@ -38,7 +38,7 @@ Use [Conventional Commits](https://www.conventionalcommits.org/):
 
 ## Dependencies
 
-Core runtime: Bash 4+, Ruby, Python 3.9+. Do not introduce new runtime dependencies without opening an issue for discussion first.
+Core runtime: Bash 4+, Python 3.9+. Do not introduce new runtime dependencies without opening an issue for discussion first.
 
 ## Reporting issues
 

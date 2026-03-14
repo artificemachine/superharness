@@ -24,8 +24,9 @@ def _contract_file(tmp_path: Path) -> Path:
 
 
 def _run_contract(repo_root: Path, cmd: str, args: list[str]) -> object:
+    import sys
     return run_cmd(
-        ["ruby", str(repo_root / "engine" / "contract.rb"), cmd] + args,
+        [sys.executable, "-m", "superharness.engine.contract", cmd] + args,
         cwd=repo_root,
     )
 

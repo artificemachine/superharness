@@ -1,9 +1,26 @@
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 import yaml
 from pathlib import Path
 
-from tests.helpers import run_bash, run_cmd
+from tests.helpers import REPO_ROOT, run_bash, run_cmd
+
+
+def _run_delegate_py(cwd, args: list[str] | None = None, env: dict | None = None):
+    """Run delegate Python module."""
+    merged = os.environ.copy()
+    merged["PYTHONPATH"] = str(REPO_ROOT / "src")
+    if env:
+        for k, v in env.items():
+            if v is None:
+                merged.pop(k, None)
+            else:
+                merged[k] = v
+    cmd = [sys.executable, "-m", "superharness.commands.delegate"] + (args or [])
+    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=merged, check=False)
 
 
 def _setup_project(tmp_path: Path) -> Path:
@@ -75,7 +92,7 @@ def test_task_create_without_criteria_omits_field(repo_root, tmp_path) -> None:
     assert "acceptance_criteria" not in task
 
 
-# ── engine/contract.rb task_acceptance_criteria ──
+# ── engine/contract.py task_acceptance_criteria ──
 
 
 def test_engine_reads_acceptance_criteria(repo_root, tmp_path) -> None:
@@ -85,9 +102,10 @@ def test_engine_reads_acceptance_criteria(repo_root, tmp_path) -> None:
     doc["tasks"][0]["acceptance_criteria"] = ["Criterion A", "Criterion B"]
     contract_file.write_text(yaml.dump(doc))
 
-    engine = repo_root / "engine" / "contract.rb"
+    import sys
     result = run_cmd(
-        ["ruby", str(engine), "task_acceptance_criteria", "--file", str(contract_file), "--task", "existing-task"],
+        [sys.executable, "-m", "superharness.engine.contract",
+         "task_acceptance_criteria", "--file", str(contract_file), "--task", "existing-task"],
         cwd=repo_root,
     )
     assert result.returncode == 0
@@ -99,9 +117,10 @@ def test_engine_returns_empty_when_no_criteria(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
     contract_file = project / ".superharness" / "contract.yaml"
 
-    engine = repo_root / "engine" / "contract.rb"
+    import sys
     result = run_cmd(
-        ["ruby", str(engine), "task_acceptance_criteria", "--file", str(contract_file), "--task", "existing-task"],
+        [sys.executable, "-m", "superharness.engine.contract",
+         "task_acceptance_criteria", "--file", str(contract_file), "--task", "existing-task"],
         cwd=repo_root,
     )
     assert result.returncode == 0
@@ -118,10 +137,8 @@ def test_delegate_prompt_includes_criteria(repo_root, tmp_path) -> None:
     doc["tasks"][0]["acceptance_criteria"] = ["Tests green", "Coverage > 60%"]
     contract_file.write_text(yaml.dump(doc))
 
-    script = repo_root / "scripts" / "delegate.sh"
-    result = run_bash(
-        script,
-        cwd=repo_root,
+    result = _run_delegate_py(
+        repo_root,
         args=["--to", "codex-cli", "--project", str(project), "--task", "existing-task", "--print-only"],
         env={"PATH": "/usr/bin:/bin"},
     )
@@ -133,10 +150,8 @@ def test_delegate_prompt_includes_criteria(repo_root, tmp_path) -> None:
 
 def test_delegate_prompt_omits_criteria_when_none(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
-    script = repo_root / "scripts" / "delegate.sh"
-    result = run_bash(
-        script,
-        cwd=repo_root,
+    result = _run_delegate_py(
+        repo_root,
         args=["--to", "codex-cli", "--project", str(project), "--task", "existing-task", "--print-only"],
         env={"PATH": "/usr/bin:/bin"},
     )

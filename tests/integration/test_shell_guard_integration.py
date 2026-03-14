@@ -20,12 +20,6 @@ def _copy_guard_tree(tmp_path: Path) -> Path:
         + shell_guard_list(REPO_ROOT, "--list-hooks")
         + [
             "protocol/templates/identity-core.md",
-            "scripts/inbox-yaml.rb",
-            "cli/contract-today.sh",
-            "cli/doctor.sh",
-            "cli/install-wrapper.sh",
-            "cli/delegate-task.sh",
-            "cli/task.sh",
             "superharness",
         ]
     )

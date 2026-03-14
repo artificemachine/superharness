@@ -1,0 +1,7 @@
+Metadata-Version: 2.4
+Name: superharness
+Version: 0.7.0
+Summary: Multi-agent session handoff framework for Claude Code
+Requires-Python: >=3.10
+Requires-Dist: click>=8.1
+Requires-Dist: ruamel.yaml>=0.18

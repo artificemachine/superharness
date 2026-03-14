@@ -1,16 +1,25 @@
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
-from tests.helpers import REPO_ROOT, run_bash
+from tests.helpers import REPO_ROOT
 
 TEMPLATE_DIR = REPO_ROOT / "protocol" / "templates"
 SOUL_TEMPLATE = TEMPLATE_DIR / "SOUL.md.template"
 CLAUDE_TEMPLATE = TEMPLATE_DIR / "CLAUDE.md.template"
 AGENTS_TEMPLATE = TEMPLATE_DIR / "AGENTS.md.template"
+
+
+def _run_init(project: Path, project_name: str = "SoulTest") -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    cmd = [sys.executable, "-m", "superharness.commands.init_project", project_name, "Python", "greenfield"]
+    return subprocess.run(cmd, cwd=str(project), text=True, capture_output=True, env=env, check=False)
 
 
 # ---------------------------------------------------------------------------
@@ -35,7 +44,7 @@ def test_soul_template_has_identity() -> None:
 
 
 # ---------------------------------------------------------------------------
-# init-project.sh integration
+# init_project.py integration
 # ---------------------------------------------------------------------------
 
 
@@ -47,16 +56,11 @@ def fresh_project(tmp_path: Path) -> Path:
     return project
 
 
-def _run_init(project: Path, project_name: str = "SoulTest") -> subprocess.CompletedProcess[str]:
-    script = REPO_ROOT / "scripts/init-project.sh"
-    return run_bash(script, cwd=project, args=[project_name, "Python", "greenfield"])
-
-
 def test_init_creates_soul_md(fresh_project: Path) -> None:
     result = _run_init(fresh_project)
     assert result.returncode == 0, result.stderr
     soul = fresh_project / "SOUL.md"
-    assert soul.exists(), "init-project.sh should create SOUL.md"
+    assert soul.exists(), "init_project.py should create SOUL.md"
 
 
 def test_init_soul_md_has_project_name(fresh_project: Path) -> None:
@@ -75,7 +79,7 @@ def test_init_skips_soul_md_if_exists(fresh_project: Path) -> None:
 
     result = _run_init(fresh_project)
     assert result.returncode == 0, result.stderr
-    assert soul.read_text() == sentinel, "init-project.sh must not overwrite an existing SOUL.md"
+    assert soul.read_text() == sentinel, "init_project.py must not overwrite an existing SOUL.md"
     assert "Skipped: SOUL.md" in result.stdout, "init should report 'Skipped: SOUL.md'"
 
 

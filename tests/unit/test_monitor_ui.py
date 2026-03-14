@@ -549,8 +549,7 @@ def test_monitor_config_and_pending_approvals(repo_root, tmp_path, monkeypatch) 
     assert parsed["target"] == "codex-cli"
     assert parsed["codex_bypass"] is True
 
-    monkeypatch.setattr(module.shutil, "which", lambda _: None)
-    assert module.contract_id(project / ".superharness" / "contract.yaml") == ""
+    assert module.contract_id(project / ".superharness" / "contract.yaml") == "monitor-contract"
 
 
 def test_monitor_action_retry_and_stop_paths(repo_root, tmp_path, monkeypatch) -> None:
@@ -692,41 +691,16 @@ def test_monitor_watcher_health_running_healthy(repo_root) -> None:
     assert "active" in result["message"]
 
 
-def test_monitor_contract_id_with_ruby(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_contract_id_reads_yaml(repo_root, tmp_path) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
-
-    class _RunResult:
-        def __init__(self, returncode: int, stdout: str) -> None:
-            self.returncode = returncode
-            self.stdout = stdout
-
-    monkeypatch.setattr(module.shutil, "which", lambda name: "/usr/bin/ruby")
-    monkeypatch.setattr(
-        module.subprocess,
-        "run",
-        lambda *args, **kwargs: _RunResult(0, '"monitor-contract"\n'),
-    )
     cid = module.contract_id(project / ".superharness" / "contract.yaml")
     assert cid == "monitor-contract"
 
 
-def test_monitor_contract_id_ruby_fails(repo_root, tmp_path, monkeypatch) -> None:
+def test_monitor_contract_id_missing_file(repo_root, tmp_path) -> None:
     module = _load_monitor_module(repo_root)
-    project = _setup_project(tmp_path)
-
-    class _RunResult:
-        def __init__(self, returncode: int, stdout: str) -> None:
-            self.returncode = returncode
-            self.stdout = stdout
-
-    monkeypatch.setattr(module.shutil, "which", lambda name: "/usr/bin/ruby")
-    monkeypatch.setattr(
-        module.subprocess,
-        "run",
-        lambda *args, **kwargs: _RunResult(1, ""),
-    )
-    cid = module.contract_id(project / ".superharness" / "contract.yaml")
+    cid = module.contract_id(tmp_path / "nonexistent" / "contract.yaml")
     assert cid == ""
 
 

@@ -14,6 +14,7 @@ Options:
 USAGE
 }
 
+PYTHON3="${SUPERHARNESS_PYTHON:-python3}"
 PROJECT_DIR="$(pwd)"
 RETRY_THRESHOLD=3
 CHECK_MODE=0
@@ -140,67 +141,79 @@ if [ -f "$HEARTBEAT_FILE" ]; then
 fi
 
 stats="$(
-  ruby - "$INBOX_FILE" "$HANDOFF_DIR" "$DISCUSSIONS_DIR" "$RETRY_THRESHOLD" <<'RUBY'
-require "yaml"
-require "date"
-inbox_file, handoff_dir, discussions_dir, retry_threshold = ARGV
-threshold = retry_threshold.to_i
-threshold = 3 if threshold <= 0
+  "$PYTHON3" - "$INBOX_FILE" "$HANDOFF_DIR" "$DISCUSSIONS_DIR" "$RETRY_THRESHOLD" <<'PY'
+import sys, yaml, os, glob as glob_mod
+inbox_file, handoff_dir, discussions_dir, retry_threshold = sys.argv[1:5]
+threshold = int(retry_threshold) if retry_threshold.isdigit() and int(retry_threshold) > 0 else 3
 
-active_statuses = %w[pending launched running stale failed paused stopped]
-counts = Hash.new(0)
+active_statuses = {"pending", "launched", "running", "stale", "failed", "paused", "stopped"}
+counts = {}
 retry_high = 0
 retry_high_ids = []
-items = []
-if File.exist?(inbox_file)
-  loaded = YAML.safe_load(File.read(inbox_file), permitted_classes: [Time, Date], aliases: false)
-  items = loaded.is_a?(Array) ? loaded : []
-end
-items.each do |item|
-  next unless item.is_a?(Hash)
-  st = item["status"].to_s
-  counts[st] += 1 unless st.empty?
-  next unless active_statuses.include?(st)
-  rc = (item["retry_count"] || 0).to_i
-  if rc >= threshold
-    retry_high += 1
-    retry_high_ids << item["id"].to_s unless item["id"].to_s.empty?
-  end
-end
+
+try:
+    if os.path.exists(inbox_file):
+        loaded = yaml.safe_load(open(inbox_file).read()) or []
+        items = loaded if isinstance(loaded, list) else []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            st = str(item.get("status", ""))
+            if st:
+                counts[st] = counts.get(st, 0) + 1
+            if st in active_statuses:
+                rc = int(item.get("retry_count") or 0)
+                if rc >= threshold:
+                    retry_high += 1
+                    item_id = str(item.get("id", ""))
+                    if item_id:
+                        retry_high_ids.append(item_id)
+except Exception:
+    pass
 
 approvals_pending = 0
-if Dir.exist?(handoff_dir)
-  Dir.glob(File.join(handoff_dir, "*.yaml")).sort.each do |path|
-    y = YAML.safe_load(File.read(path), permitted_classes: [Time, Date], aliases: false)
-    next unless y.is_a?(Hash)
-    status = y["status"].to_s
-    gate = y["approval_gate"]
-    required = gate.is_a?(Hash) && gate["required"] == true
-    approved = gate.is_a?(Hash) && gate["approved_by_user"] == true
-    approvals_pending += 1 if status == "pending_user_approval" || (required && !approved)
-  rescue StandardError
-    next
-  end
-end
+try:
+    if os.path.isdir(handoff_dir):
+        for path in sorted(glob_mod.glob(os.path.join(handoff_dir, "*.yaml"))):
+            try:
+                y = yaml.safe_load(open(path).read()) or {}
+                if not isinstance(y, dict):
+                    continue
+                status = str(y.get("status", ""))
+                gate = y.get("approval_gate")
+                required = isinstance(gate, dict) and gate.get("required") is True
+                approved = isinstance(gate, dict) and gate.get("approved_by_user") is True
+                if status == "pending_user_approval" or (required and not approved):
+                    approvals_pending += 1
+            except Exception:
+                continue
+except Exception:
+    pass
 
-discussion_counts = Hash.new(0)
-if Dir.exist?(discussions_dir)
-  Dir.glob(File.join(discussions_dir, "*/state.yaml")).sort.each do |path|
-    y = YAML.safe_load(File.read(path), permitted_classes: [Time, Date], aliases: false)
-    next unless y.is_a?(Hash)
-    discussion_counts[y["status"].to_s] += 1
-  rescue StandardError
-    next
-  end
-end
+discussion_counts = {}
+try:
+    if os.path.isdir(discussions_dir):
+        for path in sorted(glob_mod.glob(os.path.join(discussions_dir, "*/state.yaml"))):
+            try:
+                y = yaml.safe_load(open(path).read()) or {}
+                if isinstance(y, dict):
+                    st = str(y.get("status", ""))
+                    if st:
+                        discussion_counts[st] = discussion_counts.get(st, 0) + 1
+            except Exception:
+                continue
+except Exception:
+    pass
 
-keys = %w[pending launched running paused done failed stale stopped]
-keys.each { |k| puts "#{k}=#{counts[k] || 0}" }
-puts "retry_high=#{retry_high}"
-puts "retry_high_ids=#{retry_high_ids.first(5).join(",")}"
-puts "approvals_pending=#{approvals_pending}"
-discussion_counts.each { |k, v| puts "discussion_#{k}=#{v}" unless k.to_s.empty? }
-RUBY
+for k in ["pending", "launched", "running", "paused", "done", "failed", "stale", "stopped"]:
+    print(f"{k}={counts.get(k, 0)}")
+print(f"retry_high={retry_high}")
+print(f"retry_high_ids={','.join(retry_high_ids[:5])}")
+print(f"approvals_pending={approvals_pending}")
+for k, v in discussion_counts.items():
+    if k:
+        print(f"discussion_{k}={v}")
+PY
 )"
 
 pending=0; launched=0; running=0; paused=0; done=0; failed=0; stale=0; stopped=0

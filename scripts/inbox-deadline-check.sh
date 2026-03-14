@@ -55,47 +55,47 @@ HANDOFFS_DIR="$PROJECT_DIR/.superharness/handoffs"
 [ -f "$CONTRACT_FILE" ] || { echo "result=ok exceeded=0 (no contract)"; exit 0; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INBOX_YAML="$SCRIPT_DIR/../engine/inbox.rb"
-CONTRACT_RB="$SCRIPT_DIR/../engine/contract.rb"
-ENQUEUE="$SCRIPT_DIR/inbox-enqueue.sh"
-
-[ -f "$INBOX_YAML" ] || { echo "Missing helper: $INBOX_YAML" >&2; exit 1; }
-[ -f "$CONTRACT_RB" ] || { echo "Missing helper: $CONTRACT_RB" >&2; exit 1; }
-[ -x "$ENQUEUE" ]    || { echo "Missing helper: $ENQUEUE" >&2; exit 1; }
+PYTHON3="${SUPERHARNESS_PYTHON:-python3}"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# Set PYTHONPATH so Python modules can be found
+export PYTHONPATH="${ROOT_DIR}/src${PYTHONPATH:+:${PYTHONPATH}}"
 
 NOW="$(date -u +%FT%TZ)"
 NOW_EPOCH="$(date -u +%s)"
 
-RUBY_HELPER="$(mktemp "${TMPDIR:-/tmp}/superharness-deadline-XXXXXX")"
-trap 'rm -f "$RUBY_HELPER"' EXIT
+PY_HELPER="$(mktemp "${TMPDIR:-/tmp}/superharness-deadline-XXXXXX.py")"
+trap 'rm -f "$PY_HELPER"' EXIT
 
-cat > "$RUBY_HELPER" << 'RUBY'
-require "json"
-require "time"
+cat > "$PY_HELPER" << 'PYTHON'
+import json, sys
+from datetime import datetime, timezone
 
-json_file  = ARGV[0]
-now_epoch  = ARGV[1].to_i
+json_file  = sys.argv[1]
+now_epoch  = int(sys.argv[2])
 
-items = JSON.parse(File.read(json_file))
-items.each do |item|
-  launched_at = item["launched_at"].to_s
-  next if launched_at.empty?
-  begin
-    elapsed = (now_epoch - Time.parse(launched_at).to_i) / 60
-  rescue ArgumentError
-    next
-  end
-  puts [item["id"], item["task"], item["to"], item["project"],
-        item["priority"], elapsed, launched_at].join("\t")
-end
-RUBY
+with open(json_file) as f:
+    items = json.load(f)
+for item in items:
+    launched_at = str(item.get("launched_at") or "")
+    if not launched_at:
+        continue
+    try:
+        ts = datetime.fromisoformat(launched_at.replace("Z", "+00:00"))
+        elapsed = (now_epoch - int(ts.timestamp())) // 60
+    except (ValueError, OSError):
+        continue
+    print("\t".join([
+        item["id"], item["task"], item["to"], item["project"],
+        str(item.get("priority", "")), str(elapsed), launched_at
+    ]))
+PYTHON
 
 JSON_TMP="$(mktemp "${TMPDIR:-/tmp}/superharness-launched-XXXXXX")"
-trap 'rm -f "$RUBY_HELPER" "$JSON_TMP"' EXIT
+trap 'rm -f "$PY_HELPER" "$JSON_TMP"' EXIT
 
-ruby "$INBOX_YAML" list_launched --file "$INBOX_FILE" > "$JSON_TMP"
+"$PYTHON3" -m superharness.engine.inbox list_launched --file "$INBOX_FILE" > "$JSON_TMP"
 
-LAUNCHED_LINES="$(ruby "$RUBY_HELPER" "$JSON_TMP" "$NOW_EPOCH")"
+LAUNCHED_LINES="$("$PYTHON3" "$PY_HELPER" "$JSON_TMP" "$NOW_EPOCH")"
 
 exceeded_count=0
 
@@ -103,7 +103,7 @@ while IFS=$'\t' read -r item_id task_id owner project priority elapsed_minutes l
   [ -n "$item_id" ] || continue
 
   # Look up deadline_minutes from contract.
-  deadline_minutes="$(ruby "$CONTRACT_RB" task_deadline_minutes \
+  deadline_minutes="$("$PYTHON3" -m superharness.engine.contract task_deadline_minutes \
     --file "$CONTRACT_FILE" --task "$task_id" 2>/dev/null || true)"
 
   [ -n "$deadline_minutes" ] || continue
@@ -125,7 +125,7 @@ while IFS=$'\t' read -r item_id task_id owner project priority elapsed_minutes l
 
   echo "Deadline exceeded: task=$task_id owner=$owner elapsed=${elapsed_minutes}m deadline=${deadline_minutes}m -> reassigning to $new_owner"
 
-  ruby "$INBOX_YAML" deadline_fail \
+  "$PYTHON3" -m superharness.engine.inbox deadline_fail \
     --file "$INBOX_FILE" \
     --id "$item_id" \
     --now "$NOW" \
@@ -138,7 +138,7 @@ while IFS=$'\t' read -r item_id task_id owner project priority elapsed_minutes l
     --actor "$owner" \
     --reason "deadline_exceeded_after_${elapsed_minutes}m" 2>/dev/null || true
 
-  contract_id="$(ruby "$CONTRACT_RB" contract_id --file "$CONTRACT_FILE" 2>/dev/null || echo "unknown")"
+  contract_id="$("$PYTHON3" -m superharness.engine.contract contract_id --file "$CONTRACT_FILE" 2>/dev/null || echo "unknown")"
 
   mkdir -p "$HANDOFFS_DIR"
   HANDOFF_FILE="$HANDOFFS_DIR/${NOW:0:10}-deadline-${task_id}.yaml"
@@ -169,7 +169,7 @@ deadline_context:
 HANDOFF
 
   # Re-enqueue for the other owner.
-  bash "$ENQUEUE" \
+  "$PYTHON3" -m superharness.commands.inbox_enqueue \
     --project "$project" \
     --to "$new_owner" \
     --task "$task_id" \

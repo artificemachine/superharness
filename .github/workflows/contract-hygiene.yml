@@ -38,7 +38,7 @@ jobs:
           for handoff in .superharness/handoffs/*.yaml; do
             if [ -f "$handoff" ]; then
               echo "Checking $handoff"
-              ruby -e "require 'psych'; require 'date'; Psych.safe_load(File.read('$handoff'), permitted_classes: [Time, Date], aliases: false)"
+              python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1]).read())" "$handoff"
             fi
           done
           echo "✓ All handoff files are valid YAML"
@@ -47,6 +47,6 @@ jobs:
         if: steps.check_harness.outputs.has_harness == 'true'
         run: |
           echo "Validating decisions.yaml and failures.yaml..."
-          ruby -e "require 'psych'; require 'date'; Psych.safe_load(File.read('.superharness/decisions.yaml'), permitted_classes: [Time, Date], aliases: false)"
-          ruby -e "require 'psych'; require 'date'; Psych.safe_load(File.read('.superharness/failures.yaml'), permitted_classes: [Time, Date], aliases: false)"
+          python3 -c "import yaml; yaml.safe_load(open('.superharness/decisions.yaml').read())"
+          python3 -c "import yaml; yaml.safe_load(open('.superharness/failures.yaml').read())"
           echo "✓ decisions.yaml and failures.yaml are valid"

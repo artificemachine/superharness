@@ -1,26 +1,40 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
-from tests.helpers import run_bash
+from tests.helpers import REPO_ROOT
+
+
+def _run_python(args: list[str], *, stdin: str | None = None) -> "subprocess.CompletedProcess[str]":
+    import os
+    import subprocess
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    return subprocess.run(
+        [sys.executable, "-m", "superharness.commands.uninstall"] + args,
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        env=env,
+        input=stdin,
+        check=False,
+    )
 
 
 def test_uninstall_help(repo_root) -> None:
-    script = repo_root / "scripts" / "uninstall.sh"
-    result = run_bash(script, cwd=repo_root, args=["--help"])
+    result = _run_python(["--help"])
     assert result.returncode == 0
-    assert "Usage:" in result.stdout
     assert "--dry-run" in result.stdout
     assert "--all" in result.stdout
 
 
 def test_uninstall_dry_run_shows_would_remove(repo_root, tmp_path) -> None:
-    script = repo_root / "scripts" / "uninstall.sh"
     # Create a fake lock dir to be discovered
     lock_dir = tmp_path / "superharness-inbox-watch-abc123.lock"
     lock_dir.mkdir()
 
-    result = run_bash(script, cwd=repo_root, args=["--dry-run"])
+    result = _run_python(["--dry-run"])
     assert result.returncode == 0
     assert "superharness uninstall" in result.stdout
     # Dry run should not actually delete anything
@@ -28,9 +42,8 @@ def test_uninstall_dry_run_shows_would_remove(repo_root, tmp_path) -> None:
 
 
 def test_uninstall_non_interactive_skips_without_all(repo_root) -> None:
-    script = repo_root / "scripts" / "uninstall.sh"
-    # Pipe /dev/null as stdin to simulate non-interactive
-    result = run_bash(script, cwd=repo_root, args=[], stdin="")
+    # Pipe empty stdin to simulate non-interactive
+    result = _run_python([], stdin="")
     assert result.returncode == 0
     # In non-interactive without --all, items should be skipped
     output = result.stdout
@@ -38,10 +51,10 @@ def test_uninstall_non_interactive_skips_without_all(repo_root) -> None:
 
 
 def test_uninstall_unknown_option(repo_root) -> None:
-    script = repo_root / "scripts" / "uninstall.sh"
-    result = run_bash(script, cwd=repo_root, args=["--bogus"])
+    result = _run_python(["--bogus"])
     assert result.returncode == 2
-    assert "Unknown option" in result.stderr
+    # argparse prints error to stderr for unknown options
+    assert "bogus" in result.stderr or "error" in result.stderr
 
 
 def test_uninstall_all_removes_lock_dirs(repo_root, tmp_path) -> None:
@@ -52,8 +65,7 @@ def test_uninstall_all_removes_lock_dirs(repo_root, tmp_path) -> None:
     lock_dir.mkdir(exist_ok=True)
 
     try:
-        script = repo_root / "scripts" / "uninstall.sh"
-        result = run_bash(script, cwd=repo_root, args=["--all"])
+        result = _run_python(["--all"])
         assert result.returncode == 0
         # Lock dir should be removed
         if not lock_dir.exists():
