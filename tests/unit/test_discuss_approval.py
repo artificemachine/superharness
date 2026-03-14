@@ -1,8 +1,19 @@
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
-from tests.helpers import run_bash
+from tests.helpers import REPO_ROOT, run_bash
+
+
+def _run_discuss_py(cwd, args: list[str] | None = None):
+    """Run discuss Python module."""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    cmd = [sys.executable, "-m", "superharness.commands.discuss"] + (args or [])
+    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
 
 
 def _setup_project(tmp_path: Path) -> Path:
@@ -115,9 +126,7 @@ def _setup_project_without_paused_item(tmp_path: Path) -> Path:
 
 def test_discuss_status_lists_pending_approvals(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
-    script = repo_root / "scripts" / "discuss.sh"
-
-    result = run_bash(script, cwd=repo_root, args=["status", "--project", str(project)])
+    result = _run_discuss_py(repo_root, args=["status", "--project", str(project)])
 
     assert result.returncode == 0, result.stderr
     assert "Pending user approvals:" in result.stdout
@@ -127,21 +136,15 @@ def test_discuss_status_lists_pending_approvals(repo_root, tmp_path) -> None:
 
 def test_discuss_approve_updates_handoff_contract_and_inbox(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
-    script = repo_root / "scripts" / "discuss.sh"
 
-    result = run_bash(
-        script,
-        cwd=repo_root,
+    result = _run_discuss_py(
+        repo_root,
         args=[
             "approve",
-            "--project",
-            str(project),
-            "--task",
-            "approval-task",
-            "--by",
-            "owner",
-            "--note",
-            "Approved",
+            "--project", str(project),
+            "--task", "approval-task",
+            "--by", "owner",
+            "--note", "Approved",
         ],
     )
 
@@ -173,21 +176,15 @@ def test_contract_today_shows_user_approval_required(repo_root, tmp_path) -> Non
 
 def test_discuss_approve_auto_enqueues_when_no_paused_items(repo_root, tmp_path) -> None:
     project = _setup_project_without_paused_item(tmp_path)
-    script = repo_root / "scripts" / "discuss.sh"
 
-    result = run_bash(
-        script,
-        cwd=repo_root,
+    result = _run_discuss_py(
+        repo_root,
         args=[
             "approve",
-            "--project",
-            str(project),
-            "--task",
-            "approval-task",
-            "--by",
-            "owner",
-            "--note",
-            "Approved",
+            "--project", str(project),
+            "--task", "approval-task",
+            "--by", "owner",
+            "--note", "Approved",
         ],
     )
 
@@ -201,29 +198,24 @@ def test_discuss_approve_auto_enqueues_when_no_paused_items(repo_root, tmp_path)
 
 def test_discuss_start_requires_topic(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
-    script = repo_root / "scripts" / "discuss.sh"
 
-    result = run_bash(script, cwd=repo_root, args=["start", "--project", str(project)])
+    result = _run_discuss_py(repo_root, args=["start", "--project", str(project)])
 
     assert result.returncode == 2
-    assert "--topic is required for start" in result.stderr
+    # argparse: "the following arguments are required: --topic"
+    assert "--topic" in result.stderr and ("required" in result.stderr or "is required" in result.stderr)
 
 
 def test_discuss_start_enqueues_round_one_for_both_agents(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
-    script = repo_root / "scripts" / "discuss.sh"
 
-    result = run_bash(
-        script,
-        cwd=repo_root,
+    result = _run_discuss_py(
+        repo_root,
         args=[
             "start",
-            "--project",
-            str(project),
-            "--topic",
-            "Review monitor retry behavior",
-            "--max-rounds",
-            "2",
+            "--project", str(project),
+            "--topic", "Review monitor retry behavior",
+            "--max-rounds", "2",
         ],
     )
 
@@ -238,3 +230,18 @@ def test_discuss_start_enqueues_round_one_for_both_agents(repo_root, tmp_path) -
     assert "to: claude-code" in inbox_text
     assert "to: codex-cli" in inbox_text
     assert "status: pending" in inbox_text
+
+
+def test_discuss_importable_without_fcntl():
+    """Regression: discuss.py must be importable even when fcntl is unavailable (Windows)."""
+    import unittest.mock
+    blocked = {"fcntl": None}
+    # Remove cached module so the fresh import is attempted with blocked fcntl
+    modules_to_remove = [k for k in sys.modules if "superharness.engine.discuss" in k]
+    for m in modules_to_remove:
+        del sys.modules[m]
+    with unittest.mock.patch.dict(sys.modules, blocked):
+        import importlib
+        mod = importlib.import_module("superharness.engine.discuss")
+        assert hasattr(mod, "cmd_status")
+        assert hasattr(mod, "cmd_approve")

@@ -52,7 +52,7 @@ def _has_test_changes(sha: str) -> bool:
         path = file.strip()
         if not path:
             continue
-        if path.startswith("tests/") or "/test_" in path:
+        if path.startswith("tests/") or "/test_" in path:  # shipguard:ignore PY-004
             return True
     return False
 

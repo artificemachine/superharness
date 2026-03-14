@@ -7,7 +7,8 @@ from tests.helpers import run_cmd
 
 
 def _run_engine(repo_root: Path, args: list[str]):
-    return run_cmd(["ruby", str(repo_root / "engine" / "discussion.rb")] + args, cwd=repo_root)
+    import sys
+    return run_cmd([sys.executable, "-m", "superharness.engine.discussion"] + args, cwd=repo_root)
 
 
 def _start_discussion(repo_root: Path, tmp_path: Path, *, max_rounds: int = 2):

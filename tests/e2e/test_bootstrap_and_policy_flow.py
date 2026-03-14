@@ -1,16 +1,34 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 
 from tests.helpers import REPO_ROOT, copy_from_repo, parse_json_output, run_bash, run_cmd, shell_guard_list
+
+
+def _run_init_py(cwd, args: list[str] | None = None):
+    """Run init_project Python module."""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    cmd = [sys.executable, "-m", "superharness.commands.init_project"] + (args or [])
+    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
+
+
+def _run_discuss_py(cwd, args: list[str] | None = None):
+    """Run discuss Python module."""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    cmd = [sys.executable, "-m", "superharness.commands.discuss"] + (args or [])
+    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
 
 
 def test_bootstrap_and_hook_install_flow(repo_root, tmp_path) -> None:
     project = tmp_path / "project"
     project.mkdir()
 
-    init_script = repo_root / "scripts/init-project.sh"
-    init_res = run_bash(init_script, cwd=project, args=["Demo", "Python", "active"])
+    init_res = _run_init_py(project, args=["Demo", "Python", "active"])
     assert init_res.returncode == 0, init_res.stderr
 
     assert (project / ".superharness/contract.yaml").exists()
@@ -23,12 +41,6 @@ def test_bootstrap_and_hook_install_flow(repo_root, tmp_path) -> None:
         + shell_guard_list(REPO_ROOT, "--list-hooks")
         + [
             "protocol/templates/identity-core.md",
-            "scripts/inbox-yaml.rb",
-            "cli/contract-today.sh",
-            "cli/doctor.sh",
-            "cli/install-wrapper.sh",
-            "cli/delegate-task.sh",
-            "cli/task.sh",
             "superharness",
         ]
     )
@@ -72,8 +84,7 @@ def test_bootstrap_discuss_start_enqueues_round_one_for_both_agents(repo_root, t
     project = tmp_path / "project_discuss"
     project.mkdir()
 
-    init_script = repo_root / "scripts/init-project.sh"
-    init_res = run_bash(init_script, cwd=project, args=["Demo", "Python", "active"])
+    init_res = _run_init_py(project, args=["Demo", "Python", "active"])
     assert init_res.returncode == 0, init_res.stderr
 
     # Add tasks for both owners (required for discussion start)
@@ -86,18 +97,13 @@ def test_bootstrap_discuss_start_enqueues_round_one_for_both_agents(repo_root, t
         ])
         assert t.returncode == 0, t.stderr
 
-    discuss_script = repo_root / "scripts" / "discuss.sh"
-    start_res = run_bash(
-        discuss_script,
-        cwd=repo_root,
+    start_res = _run_discuss_py(
+        repo_root,
         args=[
             "start",
-            "--project",
-            str(project),
-            "--topic",
-            "E2E test: dual-agent round enqueue",
-            "--max-rounds",
-            "2",
+            "--project", str(project),
+            "--topic", "E2E test: dual-agent round enqueue",
+            "--max-rounds", "2",
         ],
     )
     assert start_res.returncode == 0, start_res.stderr

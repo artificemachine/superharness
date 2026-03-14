@@ -32,14 +32,14 @@ AI coding assistants are powerful within a session but lose context when you swi
 ## Layers
 
 ```
-cli/          → user-facing shell commands (delegate, enqueue, dispatch, hygiene…)
-engine/       → Ruby core: YAML ops, queue transitions, contract queries, validation
-scripts/      → watcher install, launchd/systemd, guard scripts, monitor-ui
-protocol/     → spec, templates, schema
-adapters/     → Claude Code hooks, Codex CLI templates
+cli/                    → user-facing shell commands (delegate, enqueue, dispatch, hygiene…)
+src/superharness/engine/→ Python core: YAML ops, queue transitions, contract queries, validation
+scripts/                → watcher install, launchd/systemd, guard scripts, monitor-ui
+protocol/               → spec, templates, schema
+adapters/               → Claude Code hooks, Codex CLI templates
 ```
 
-**Why Ruby for `engine/`:** structured YAML support, preserves comments, fast startup. Bash handles orchestration; Ruby handles YAML.
+**Python for `engine/`:** structured YAML support via PyYAML, fast startup. Bash handles orchestration; Python handles YAML and business logic.
 
 ---
 
@@ -93,11 +93,11 @@ graph TB
         monitor["monitor-ui.py"]
     end
 
-    subgraph Engine["engine/ (Ruby)"]
-        inbox_rb["inbox.rb"]
-        contract_rb["contract.rb"]
-        profile_rb["profile.rb"]
-        recall_rb["recall.rb"]
+    subgraph Engine["src/superharness/engine/ (Python)"]
+        inbox_py["inbox.py"]
+        contract_py["contract.py"]
+        profile_py["profile.py"]
+        recall_py["recall.py"]
     end
 
     subgraph State[".superharness/"]

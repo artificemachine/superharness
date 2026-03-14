@@ -307,7 +307,7 @@ WATCHER="$SCRIPT_DIR/inbox-watch.sh"
 # launchd does not always inherit interactive shell PATH (nvm/homebrew/local bins).
 BASE_PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin"
 EXTRA_PATHS=""
-for bin in codex claude ruby python3; do
+for bin in codex claude python3; do
   if command -v "$bin" >/dev/null 2>&1; then
     dir="$(dirname "$(command -v "$bin")")"
     case ":$BASE_PATH:$EXTRA_PATHS:" in

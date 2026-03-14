@@ -2,9 +2,24 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
-from tests.helpers import run_bash, run_cmd
+from tests.helpers import REPO_ROOT, run_bash, run_cmd
+
+
+def _run_watcher_worker_py(cwd, args: list[str] | None = None, env: dict | None = None):
+    """Run watcher_worker Python module."""
+    merged = os.environ.copy()
+    merged["PYTHONPATH"] = str(REPO_ROOT / "src")
+    if env:
+        for k, v in env.items():
+            if v is None:
+                merged.pop(k, None)
+            else:
+                merged[k] = v
+    cmd = [sys.executable, "-m", "superharness.commands.watcher_worker"] + (args or [])
+    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=merged, check=False)
 
 
 def _setup_launchd_project(tmp_path: Path) -> Path:
@@ -52,13 +67,22 @@ def test_claude_install_symlink_lifecycle(repo_root, tmp_path) -> None:
 
 
 def test_install_wrapper_symlink_executes_scripts_from_outside_repo(repo_root, tmp_path) -> None:
-    script = repo_root / "scripts" / "install-wrapper.sh"
+    import sys
     home = tmp_path / "home"
     home.mkdir()
     work = tmp_path / "work"
     work.mkdir()
 
-    install = run_bash(script, cwd=repo_root, env={"HOME": str(home)})
+    env = {**os.environ, "HOME": str(home), "PYTHONPATH": str(repo_root / "src")}
+    install = subprocess.run(
+        [sys.executable, "-m", "superharness.commands.install_wrapper",
+         "--target-dir", str(home / ".local" / "bin")],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
     assert install.returncode == 0, install.stderr
 
     wrapper = home / ".local" / "bin" / "superharness"
@@ -73,7 +97,7 @@ def test_install_wrapper_symlink_executes_scripts_from_outside_repo(repo_root, t
         check=False,
     )
     assert doctor_help.returncode == 0, doctor_help.stderr
-    assert "Usage:" in doctor_help.stdout
+    assert "usage:" in doctor_help.stdout.lower()
 
     contract_help = subprocess.run(
         [str(wrapper), "contract", "--help"],
@@ -84,7 +108,7 @@ def test_install_wrapper_symlink_executes_scripts_from_outside_repo(repo_root, t
         check=False,
     )
     assert contract_help.returncode == 0, contract_help.stderr
-    assert "Usage:" in contract_help.stdout
+    assert "usage:" in contract_help.stdout.lower()
 
 
 def test_install_git_hooks_force_behavior(repo_root, tmp_path) -> None:
@@ -423,44 +447,24 @@ sync_worker_copy
 
 
 def test_setup_watcher_worker_creates_clean_worker_and_watcher_config(repo_root, tmp_path) -> None:
-    script = repo_root / "scripts" / "setup-watcher-worker.sh"
     project = tmp_path / "source-proj"
     (project / ".superharness").mkdir(parents=True, exist_ok=True)
-    (project / "scripts").mkdir(parents=True, exist_ok=True)
-    # Minimal script set required by setup script + installer checks.
-    (project / "scripts" / "install-launchd-inbox-watcher.sh").write_text(
-        (repo_root / "scripts" / "install-launchd-inbox-watcher.sh").read_text()
-    )
-    (project / "scripts" / "inbox-watch.sh").write_text(
-        (repo_root / "scripts" / "inbox-watch.sh").read_text()
-    )
-    (project / "scripts" / "install-launchd-inbox-watcher.sh").chmod(0o755)
-    (project / "scripts" / "inbox-watch.sh").chmod(0o755)
     (project / "README.md").write_text("source\n")
     (project / ".superharness" / "contract.yaml").write_text("id: demo\n")
 
     home = tmp_path / "home"
     home.mkdir()
-    fake_bin = _fake_launchd_bin(tmp_path)
     worker = tmp_path / "worker-proj"
 
-    result = run_bash(
-        script,
-        cwd=repo_root,
+    result = _run_watcher_worker_py(
+        repo_root,
         args=[
-            "--project",
-            str(project),
-            "--worker",
-            str(worker),
-            "--interval",
-            "15",
-            "--to",
-            "both",
+            "--project", str(project),
+            "--worker", str(worker),
+            "--interval", "15",
+            "--to", "both",
         ],
-        env={
-            "HOME": str(home),
-            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
-        },
+        env={"HOME": str(home)},
     )
 
     assert result.returncode == 0, result.stderr
@@ -658,28 +662,16 @@ def test_install_launchd_missing_superharness_dir_fails(repo_root, tmp_path) -> 
 
 
 def test_setup_watcher_worker_persists_custom_recover_values(repo_root, tmp_path) -> None:
-    script = repo_root / "scripts" / "setup-watcher-worker.sh"
     project = tmp_path / "source-proj-custom"
     (project / ".superharness").mkdir(parents=True, exist_ok=True)
-    (project / "scripts").mkdir(parents=True, exist_ok=True)
-    (project / "scripts" / "install-launchd-inbox-watcher.sh").write_text(
-        (repo_root / "scripts" / "install-launchd-inbox-watcher.sh").read_text()
-    )
-    (project / "scripts" / "inbox-watch.sh").write_text(
-        (repo_root / "scripts" / "inbox-watch.sh").read_text()
-    )
-    (project / "scripts" / "install-launchd-inbox-watcher.sh").chmod(0o755)
-    (project / "scripts" / "inbox-watch.sh").chmod(0o755)
     (project / ".superharness" / "contract.yaml").write_text("id: demo\n")
 
     home = tmp_path / "home-custom"
     home.mkdir()
-    fake_bin = _fake_launchd_bin(tmp_path)
     worker = tmp_path / "worker-proj-custom"
 
-    result = run_bash(
-        script,
-        cwd=repo_root,
+    result = _run_watcher_worker_py(
+        repo_root,
         args=[
             "--project", str(project),
             "--worker", str(worker),
@@ -689,10 +681,7 @@ def test_setup_watcher_worker_persists_custom_recover_values(repo_root, tmp_path
             "--launcher-timeout", "45",
             "--to", "both",
         ],
-        env={
-            "HOME": str(home),
-            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
-        },
+        env={"HOME": str(home)},
     )
 
     assert result.returncode == 0, result.stderr

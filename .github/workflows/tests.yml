@@ -35,7 +35,13 @@ jobs:
       - name: Syntax checks
         run: |
           # Shell syntax for entrypoints/hooks is enforced by scripts/check-shell-entrypoints.sh.
-          ruby -c scripts/inbox-yaml.rb
+          python3 -m py_compile \
+            src/superharness/engine/inbox.py \
+            src/superharness/engine/contract.py \
+            src/superharness/commands/init_project.py \
+            src/superharness/commands/heartbeat.py \
+            src/superharness/commands/demo.py \
+            src/superharness/commands/watcher_worker.py
 
       - name: Script smoke tests
         run: |
@@ -44,11 +50,14 @@ jobs:
             bash "$entrypoint" --help
           done < <(bash scripts/check-shell-entrypoints.sh --list-entrypoints)
           HOME="$(mktemp -d)" bash adapters/claude-code/install.sh --dry-run
-          bash scripts/init-project.sh --dry-run "CI Smoke" "Bash" "active"
+          PYTHONPATH=. python3 -m superharness.commands.init_project --dry-run "CI Smoke" "Bash" "active"
 
   smoke-tests:
-    name: Smoke Tests
-    runs-on: ubuntu-latest
+    name: Smoke Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
@@ -56,14 +65,17 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install pytest pytest-cov pyyaml
+          python3 -m pip install pytest pytest-cov pyyaml click ruamel.yaml
 
       - name: Run smoke tests
         run: PYTHONPATH=. python3 -m pytest tests/test_smoke.py -q
 
   unit-tests:
-    name: Unit Tests
-    runs-on: ubuntu-latest
+    name: Unit Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
@@ -71,14 +83,17 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install pytest pytest-cov pyyaml
+          python3 -m pip install pytest pytest-cov pyyaml click ruamel.yaml
 
       - name: Run unit tests
         run: PYTHONPATH=. python3 -m pytest tests/unit -q
 
   integration-tests:
-    name: Integration Tests
-    runs-on: ubuntu-latest
+    name: Integration Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
@@ -86,14 +101,17 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install pytest pytest-cov pyyaml
+          python3 -m pip install pytest pytest-cov pyyaml click ruamel.yaml
 
       - name: Run integration tests
         run: PYTHONPATH=. python3 -m pytest tests/integration -q
 
   e2e-tests:
-    name: E2E Tests
-    runs-on: ubuntu-latest
+    name: E2E Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
@@ -101,7 +119,7 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install pytest pytest-cov pyyaml
+          python3 -m pip install pytest pytest-cov pyyaml click ruamel.yaml
 
       - name: Run e2e tests
         run: PYTHONPATH=. python3 -m pytest tests/e2e -q

@@ -1,11 +1,27 @@
 from __future__ import annotations
 
-"""Tests for profile.yaml wiring into delegate.sh, task.sh, and contract-today.sh — Phase 1c"""
+"""Tests for profile.yaml wiring into delegate.py, task.sh, and contract-today.sh — Phase 1c"""
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
+from tests.helpers import REPO_ROOT, run_bash
 
-from tests.helpers import run_bash
+
+def _run_delegate_py(cwd, args: list[str] | None = None, env: dict | None = None):
+    """Run delegate Python module."""
+    merged = os.environ.copy()
+    merged["PYTHONPATH"] = str(REPO_ROOT / "src")
+    if env:
+        for k, v in env.items():
+            if v is None:
+                merged.pop(k, None)
+            else:
+                merged[k] = v
+    cmd = [sys.executable, "-m", "superharness.commands.delegate"] + (args or [])
+    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=merged, check=False)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -60,9 +76,8 @@ def test_delegate_autonomous_sets_both_env_vars(repo_root, tmp_path) -> None:
     _write_profile(project / ".superharness", autonomy="autonomous")
     bin_dir = _fake_bin(tmp_path, "codex")
 
-    result = run_bash(
-        repo_root / "scripts" / "delegate.sh",
-        cwd=repo_root,
+    result = _run_delegate_py(
+        repo_root,
         args=["--to", "codex-cli", "--project", str(project), "--task", "task-1", "--non-interactive"],
         env={
             "PATH": f"{bin_dir}:/usr/bin:/bin",
@@ -82,9 +97,8 @@ def test_delegate_supervised_sets_non_interactive_only(repo_root, tmp_path) -> N
     _write_profile(project / ".superharness", autonomy="supervised")
     bin_dir = _fake_bin(tmp_path, "claude")
 
-    result = run_bash(
-        repo_root / "scripts" / "delegate.sh",
-        cwd=repo_root,
+    result = _run_delegate_py(
+        repo_root,
         args=["--to", "claude-code", "--project", str(project), "--task", "task-1", "--non-interactive"],
         env={
             "PATH": f"{bin_dir}:/usr/bin:/bin",
@@ -104,9 +118,8 @@ def test_delegate_approval_gated_sets_no_env_vars(repo_root, tmp_path) -> None:
     _write_profile(project / ".superharness", autonomy="approval-gated")
     bin_dir = _fake_bin(tmp_path, "codex")
 
-    result = run_bash(
-        repo_root / "scripts" / "delegate.sh",
-        cwd=repo_root,
+    result = _run_delegate_py(
+        repo_root,
         args=["--to", "codex-cli", "--project", str(project), "--task", "task-1", "--non-interactive"],
         env={
             "PATH": f"{bin_dir}:/usr/bin:/bin",
@@ -125,9 +138,8 @@ def test_delegate_existing_env_not_overridden_by_profile(repo_root, tmp_path) ->
     _write_profile(project / ".superharness", autonomy="approval-gated")
     bin_dir = _fake_bin(tmp_path, "codex")
 
-    result = run_bash(
-        repo_root / "scripts" / "delegate.sh",
-        cwd=repo_root,
+    result = _run_delegate_py(
+        repo_root,
         args=["--to", "codex-cli", "--project", str(project), "--task", "task-1", "--non-interactive"],
         env={
             "PATH": f"{bin_dir}:/usr/bin:/bin",
@@ -141,12 +153,11 @@ def test_delegate_existing_env_not_overridden_by_profile(repo_root, tmp_path) ->
 
 
 def test_delegate_no_profile_no_crash(repo_root, tmp_path) -> None:
-    """If no profile.yaml exists, delegate.sh still runs without crashing."""
+    """If no profile.yaml exists, delegate.py still runs without crashing."""
     project = _setup_project(tmp_path)
     # No profile.yaml written
-    result = run_bash(
-        repo_root / "scripts" / "delegate.sh",
-        cwd=repo_root,
+    result = _run_delegate_py(
+        repo_root,
         args=["--to", "codex-cli", "--project", str(project), "--task", "task-1", "--print-only"],
         env={"PATH": "/usr/bin:/bin"},
     )
@@ -174,7 +185,7 @@ def test_task_create_uses_profile_primary_agent_when_no_owner(repo_root, tmp_pat
         stdin="",
     )
     # Should succeed with owner=claude-code from profile
-    assert result.returncode == 0, f"task create failed:\n{result.stderr}\n{result.stdout}"
+    assert result.returncode == 0, f"task create failed:\n{result.stderr}\n{result.stdout}"  # shipguard:ignore PY-007
     contract = (harness / "contract.yaml").read_text()
     assert "claude-code" in contract
 
@@ -200,7 +211,7 @@ def test_task_create_explicit_owner_ignores_profile(repo_root, tmp_path) -> None
         ],
         stdin="",
     )
-    assert result.returncode == 0, f"task create failed:\n{result.stderr}"
+    assert result.returncode == 0, f"task create failed:\n{result.stderr}"  # shipguard:ignore PY-007
     contract = (harness / "contract.yaml").read_text()
     assert "codex-cli" in contract
 
@@ -223,7 +234,7 @@ def test_task_create_no_owner_no_profile_prompts_user(repo_root, tmp_path) -> No
         # Pipe owner answer via stdin
         stdin="codex-cli\n",
     )
-    assert result.returncode == 0, f"task create with stdin prompt failed:\n{result.stderr}"
+    assert result.returncode == 0, f"task create with stdin prompt failed:\n{result.stderr}"  # shipguard:ignore PY-007
     contract = (harness / "contract.yaml").read_text()
     assert "codex-cli" in contract
 
