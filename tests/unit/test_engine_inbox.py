@@ -19,8 +19,9 @@ def _inbox_file(tmp_path: Path, items_yaml: str = "") -> Path:
 
 
 def _run_inbox(repo_root: Path, cmd: str, args: list[str]) -> object:
+    import sys
     return run_cmd(
-        ["ruby", str(repo_root / "engine" / "inbox.rb"), cmd] + args,
+        [sys.executable, "-m", "superharness.engine.inbox", cmd] + args,
         cwd=repo_root,
     )
 

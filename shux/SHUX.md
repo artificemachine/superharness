@@ -18,7 +18,8 @@ All shortcuts use the `shux` prefix. Old long-form phrases (`contract today`, `c
 | `shux monitor` | Run `superharness monitor-ui --project .` — open browser dashboard |
 | `shux delegate <task_id>` | Create task (if missing) + enqueue in one step; never create without enqueueing |
 | `shux close <task_id>` | Mark task done, append ledger line, write handoff YAML, stop |
-| `shux recall <keywords>` | Run `superharness recall --project . <keywords>` — search past handoffs + ledger |
+| `shux recall <keywords>` | Run `superharness recall --project . <keywords>` — search past handoffs + ledger; also call `search_vault <keywords>` (obsidian-semantic MCP) and surface any relevant vault notes alongside the handoff results |
+| `shux vault <query>` | Call `search_vault <query>` via obsidian-semantic MCP — semantic search across the Obsidian vault. Use when looking for architecture notes, past decisions, or domain knowledge not captured in the contract |
 | `shux hygiene` | Run `superharness hygiene --project .` — validate protocol compliance (contract, handoffs, ledger) |
 | `shux watch` | Run `superharness watch --foreground --project .` — start continuous watcher in foreground |
 | `shux uninstall` | Run `superharness uninstall --project .` — remove watcher and system artifacts for this project |

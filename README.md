@@ -53,11 +53,11 @@ shux help              # show all shux shortcuts in the terminal
 
 For scripting, CI, or users who prefer direct shell access.
 
-> **Requires:** `bash`, `ruby`, `python3`. See [Prerequisites](#prerequisites).
+> **Requires:** `bash`, `python3`. See [Prerequisites](#prerequisites).
 
 ```bash
 # Try first — no install needed
-bash scripts/demo.sh
+PYTHONPATH=src python3 -m superharness demo
 
 # Install CLI
 bash scripts/install-wrapper.sh && superharness version
@@ -131,7 +131,7 @@ You probably **don't need** superharness if you only ever run a single agent int
 
 | Feature | Requirements |
 |---------|-------------|
-| Core protocol (contracts, handoffs, ledger) | `bash`, `ruby`, `python3` |
+| Core protocol (contracts, handoffs, ledger) | `bash`, `python3` |
 | Agent shortcuts (`shux`) | + `claude` or `codex` CLI |
 | Background auto-dispatch | + launchd (macOS); systemd unit provided but untested |
 | Browser dashboard | + `python3 -m http.server` (built-in) |
@@ -142,17 +142,15 @@ You probably **don't need** superharness if you only ever run a single agent int
 
 ## Platform Support
 
-**Developed and tested on macOS.** The core protocol (contracts, handoffs, ledger, engine commands, `shux` shortcuts) uses portable bash/ruby/python and should work on Linux. However:
+**Cross-platform: macOS, Linux, Windows.** All user-facing commands are Python and work everywhere `python3` is available. CI runs on all three platforms.
 
-- **Background watcher installer** is macOS-only (`launchd`). A systemd unit file is provided (`scripts/superharness-watcher@.service`) but has no automated installer yet. `--foreground` mode works everywhere.
-- **`stat` calls** include both macOS and Linux fallbacks.
-- Linux contributions welcome — see [CONTRIBUTING.md](docs/CONTRIBUTING.md).
+- **Background watcher installer** is macOS-only (`launchd`). A systemd unit file is provided (`scripts/superharness-watcher@.service`) but has no automated installer yet. `superharness watch --foreground` works everywhere.
+- Linux and Windows contributions welcome — see [CONTRIBUTING.md](docs/CONTRIBUTING.md).
 
 ## Prerequisites
 
-- `bash` 4+ (scripts are Bash-based)
-- `ruby` (required by inbox YAML helpers and hygiene checks) — see `.ruby-version`
-- `python3` + `pytest` (tests and hook JSON escaping) — `uv sync --dev` (or `pip install pytest pytest-cov pyyaml`)
+- `python3` 3.9+ + `pyyaml` — `uv sync --dev` (or `pip install pyyaml click ruamel.yaml`)
+- `bash` (only needed for background watcher installer on macOS; not required for core commands)
 - `claude` CLI (for Claude delegation commands): `npm install -g @anthropic-ai/claude-code`
 - `codex` CLI (for Codex delegation commands): `npm install -g @openai/codex`
 - macOS `launchd` for background watcher (see Platform Support above); `--foreground` mode works everywhere
@@ -181,12 +179,11 @@ Per-project state lives in `.superharness/`:
 
 ```text
 superharness/
-├── superharness            # thin command dispatcher
+├── superharness            # thin Bash shim → delegates to Python
+├── src/superharness/       # Python CLI + engine + command modules
 ├── protocol/              # protocol spec + templates
-├── engine/                # ruby runtime helpers
-├── cli/                   # primary shell commands
 ├── adapters/              # Claude/Codex adapter assets
-├── scripts/               # launchd + guard scripts
+├── scripts/               # launchd installer + CI guard scripts
 ├── docs/                  # architecture and user guide
 ├── tests/                 # unit/integration/e2e tests
 └── CHANGELOG.md

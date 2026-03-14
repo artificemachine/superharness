@@ -1,15 +1,14 @@
 """
-Tests for engine/recall.rb — keyword search over handoffs and ledger.
+Tests for engine/recall.py — keyword search over handoffs and ledger.
 
 Multi-keyword logic: OR — any term matching in a file produces a result.
 This is documented here as the canonical choice.
 """
 from __future__ import annotations
 
-import stat
+import sys
 import textwrap
 from datetime import date, timedelta
-
 
 from tests.helpers import run_cmd, REPO_ROOT
 
@@ -18,16 +17,17 @@ from tests.helpers import run_cmd, REPO_ROOT
 # Helpers
 # ---------------------------------------------------------------------------
 
-RECALL_RB = str(REPO_ROOT / "engine/recall.rb")
 SUPERHARNESS = str(REPO_ROOT / "superharness")
 
 
+def _run_recall(tmp_path, *args):
+    return run_cmd(
+        [sys.executable, "-m", "superharness.engine.recall"] + list(args),
+        cwd=tmp_path,
+    )
+
+
 def _make_project(tmp_path, handoffs: list[dict], ledger_lines: list[str] | None = None):
-    """
-    Create a minimal .superharness layout in tmp_path.
-    handoffs: list of dicts with keys: filename, content (yaml string)
-    ledger_lines: list of lines to write to ledger.md
-    """
     sh = tmp_path / ".superharness"
     sh.mkdir()
     hdir = sh / "handoffs"
@@ -44,13 +44,11 @@ def _make_project(tmp_path, handoffs: list[dict], ledger_lines: list[str] | None
 
 
 # ---------------------------------------------------------------------------
-# 1. recall.rb is executable
+# 1. recall.py exists
 # ---------------------------------------------------------------------------
 
-def test_recall_script_is_executable(repo_root) -> None:
-    script = repo_root / "engine/recall.rb"
-    assert script.exists(), "engine/recall.rb not found"
-    assert script.stat().st_mode & stat.S_IXUSR, "engine/recall.rb is not executable"
+def test_recall_script_exists(repo_root) -> None:
+    assert (REPO_ROOT / "src/superharness/engine/recall.py").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -58,7 +56,7 @@ def test_recall_script_is_executable(repo_root) -> None:
 # ---------------------------------------------------------------------------
 
 def test_recall_help(repo_root, tmp_path) -> None:
-    result = run_cmd(["ruby", RECALL_RB, "--help"], cwd=tmp_path)
+    result = _run_recall(tmp_path, "--help")
     assert result.returncode == 0, result.stderr
     assert "Usage" in result.stdout or "usage" in result.stdout.lower()
 
@@ -81,10 +79,7 @@ def test_recall_matches_handoff_yaml(repo_root, tmp_path) -> None:
             """),
         }
     ])
-    result = run_cmd(
-        ["ruby", RECALL_RB, "--project", str(project), "authentication"],
-        cwd=tmp_path,
-    )
+    result = _run_recall(tmp_path, "--project", str(project), "authentication")
     assert result.returncode == 0, result.stderr
     assert "authentication" in result.stdout.lower()
     assert "auth-fix" in result.stdout or "2026-03-10" in result.stdout
@@ -103,10 +98,7 @@ def test_recall_matches_ledger(repo_root, tmp_path) -> None:
             "- 2026-03-11T11:00:00Z — codex-cli — reviewed pull request",
         ],
     )
-    result = run_cmd(
-        ["ruby", RECALL_RB, "--project", str(project), "migration"],
-        cwd=tmp_path,
-    )
+    result = _run_recall(tmp_path, "--project", str(project), "migration")
     assert result.returncode == 0, result.stderr
     assert "migration" in result.stdout.lower()
 
@@ -139,14 +131,9 @@ def test_recall_multiple_keywords_or_logic(repo_root, tmp_path) -> None:
             """),
         },
     ])
-    result = run_cmd(
-        ["ruby", RECALL_RB, "--project", str(project), "deploy", "auth"],
-        cwd=tmp_path,
-    )
+    result = _run_recall(tmp_path, "--project", str(project), "deploy", "auth")
     assert result.returncode == 0, result.stderr
-    # Both files should appear since OR means each term can match different files
     assert "deploy" in result.stdout.lower() or "auth" in result.stdout.lower()
-    # At least 2 result blocks (both files match one of the terms)
     lines = result.stdout.strip().splitlines()
     assert len(lines) >= 2, f"Expected at least 2 output lines, got: {result.stdout!r}"
 
@@ -182,12 +169,8 @@ def test_recall_since_excludes_old_files(repo_root, tmp_path) -> None:
             """),
         },
     ])
-    result = run_cmd(
-        ["ruby", RECALL_RB, "--project", str(project), "--since", "7d", "caching"],
-        cwd=tmp_path,
-    )
+    result = _run_recall(tmp_path, "--project", str(project), "--since", "7d", "caching")
     assert result.returncode == 0, result.stderr
-    # Only recent file should appear
     assert "new-feature" in result.stdout
     assert "old-feature" not in result.stdout
 
@@ -209,10 +192,7 @@ def test_recall_no_results_exits_0(repo_root, tmp_path) -> None:
             """),
         }
     ])
-    result = run_cmd(
-        ["ruby", RECALL_RB, "--project", str(project), "xyzzy_nonexistent_keyword"],
-        cwd=tmp_path,
-    )
+    result = _run_recall(tmp_path, "--project", str(project), "xyzzy_nonexistent_keyword")
     assert result.returncode == 0, f"Expected exit 0 for no results, got {result.returncode}"
     assert "(no results" in result.stdout.lower()
 
@@ -254,13 +234,9 @@ def test_recall_sorted_by_recency(repo_root, tmp_path) -> None:
             """),
         },
     ])
-    result = run_cmd(
-        ["ruby", RECALL_RB, "--project", str(project), "deploy"],
-        cwd=tmp_path,
-    )
+    result = _run_recall(tmp_path, "--project", str(project), "deploy")
     assert result.returncode == 0, result.stderr
     stdout = result.stdout
-    # newest (2026-03-10) should appear before oldest (2026-01-01)
     pos_new = stdout.find("2026-03-10")
     pos_mid = stdout.find("2026-02-15")
     pos_old = stdout.find("2026-01-01")

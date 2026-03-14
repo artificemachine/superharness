@@ -1,13 +1,33 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
-from tests.helpers import run_bash, run_cmd
+from tests.helpers import REPO_ROOT, run_bash, run_cmd
+
+
+def _run_discuss_py(cwd, args: list[str] | None = None):
+    """Run discuss Python module."""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    cmd = [sys.executable, "-m", "superharness.commands.discuss"] + (args or [])
+    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
+
+
+def _run_dispatch_py(cwd, args: list[str] | None = None):
+    """Run discussion_dispatch Python module."""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    cmd = [sys.executable, "-m", "superharness.commands.discussion_dispatch"] + (args or [])
+    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
 
 
 def _run_engine(repo_root: Path, args: list[str]):
-    return run_cmd(["ruby", str(repo_root / "engine" / "discussion.rb")] + args, cwd=repo_root)
+    import sys
+    return run_cmd([sys.executable, "-m", "superharness.engine.discussion"] + args, cwd=repo_root)
 
 
 def _setup_project(tmp_path: Path) -> Path:
@@ -90,7 +110,7 @@ def test_discussion_dispatch_advances_and_enqueues_next_round(repo_root, tmp_pat
     )
     assert s2.returncode == 0, s2.stderr
 
-    dispatch = run_bash(repo_root / "scripts" / "discussion-dispatch.sh", cwd=repo_root, args=["--project", str(project)])
+    dispatch = _run_dispatch_py(repo_root, args=["--project", str(project)])
     assert dispatch.returncode == 0, dispatch.stderr
     assert "advanced to round 2" in dispatch.stdout
     assert "Enqueued round 2 for claude-code" in dispatch.stdout
@@ -132,7 +152,7 @@ def test_discussion_dispatch_reenqueues_only_missing_pending_agents(repo_root, t
         + "\n"
     )
 
-    dispatch = run_bash(repo_root / "scripts" / "discussion-dispatch.sh", cwd=repo_root, args=["--project", str(project)])
+    dispatch = _run_dispatch_py(repo_root, args=["--project", str(project)])
     assert dispatch.returncode == 0, dispatch.stderr
     assert "Enqueued round 1 for codex-cli" in dispatch.stdout
     assert "Enqueued round 1 for claude-code" not in dispatch.stdout
@@ -184,7 +204,7 @@ def test_discussion_dispatch_closes_max_rounds_without_enqueuing_next_round(repo
     )
     assert s2.returncode == 0, s2.stderr
 
-    dispatch = run_bash(repo_root / "scripts" / "discussion-dispatch.sh", cwd=repo_root, args=["--project", str(project)])
+    dispatch = _run_dispatch_py(repo_root, args=["--project", str(project)])
     assert dispatch.returncode == 0, dispatch.stderr
     assert "closed (reason=max_rounds_reached, round=1)" in dispatch.stdout
 
@@ -214,13 +234,11 @@ def _setup_project_with_contract(tmp_path: Path, owners: list[str] | None = None
 
 
 def test_discuss_start_creates_contract_task_and_enqueues(repo_root, tmp_path) -> None:
-    """discuss.sh start creates a contract task for round-1 and enqueues both agents."""
+    """discuss start creates a contract task for round-1 and enqueues both agents."""
     project = _setup_project_with_contract(tmp_path)
-    script = repo_root / "scripts" / "discuss.sh"
 
-    result = run_bash(
-        script,
-        cwd=repo_root,
+    result = _run_discuss_py(
+        repo_root,
         args=["start", "--project", str(project), "--topic", "Test topic", "--max-rounds", "2"],
     )
     assert result.returncode == 0, result.stderr
@@ -240,13 +258,11 @@ def test_discuss_start_creates_contract_task_and_enqueues(repo_root, tmp_path) -
 
 
 def test_discuss_start_rejects_single_owner(repo_root, tmp_path) -> None:
-    """discuss.sh start requires at least 2 distinct owners in the contract."""
+    """discuss start requires at least 2 distinct owners in the contract."""
     project = _setup_project_with_contract(tmp_path, owners=["codex-cli"])
-    script = repo_root / "scripts" / "discuss.sh"
 
-    result = run_bash(
-        script,
-        cwd=repo_root,
+    result = _run_discuss_py(
+        repo_root,
         args=["start", "--project", str(project), "--topic", "Should fail"],
     )
     assert result.returncode == 2
@@ -254,13 +270,11 @@ def test_discuss_start_rejects_single_owner(repo_root, tmp_path) -> None:
 
 
 def test_discuss_start_rejects_no_owners(repo_root, tmp_path) -> None:
-    """discuss.sh start fails when contract has no tasks."""
+    """discuss start fails when contract has no tasks."""
     project = _setup_project_with_contract(tmp_path, owners=[])
-    script = repo_root / "scripts" / "discuss.sh"
 
-    result = run_bash(
-        script,
-        cwd=repo_root,
+    result = _run_discuss_py(
+        repo_root,
         args=["start", "--project", str(project), "--topic", "Should fail"],
     )
     assert result.returncode == 2
@@ -268,13 +282,11 @@ def test_discuss_start_rejects_no_owners(repo_root, tmp_path) -> None:
 
 
 def test_discuss_start_exclude_owner(repo_root, tmp_path) -> None:
-    """discuss.sh start --exclude removes an owner from participants."""
+    """discuss start --exclude removes an owner from participants."""
     project = _setup_project_with_contract(tmp_path, owners=["claude-code", "codex-cli", "gemini-cli"])
-    script = repo_root / "scripts" / "discuss.sh"
 
-    result = run_bash(
-        script,
-        cwd=repo_root,
+    result = _run_discuss_py(
+        repo_root,
         args=[
             "start", "--project", str(project), "--topic", "Exclude test",
             "--exclude", "codex-cli", "--max-rounds", "2",
@@ -294,13 +306,11 @@ def test_discuss_start_exclude_owner(repo_root, tmp_path) -> None:
 
 
 def test_discuss_start_exclude_too_many_rejects(repo_root, tmp_path) -> None:
-    """discuss.sh start --exclude fails if fewer than 2 owners remain."""
+    """discuss start --exclude fails if fewer than 2 owners remain."""
     project = _setup_project_with_contract(tmp_path, owners=["claude-code", "codex-cli"])
-    script = repo_root / "scripts" / "discuss.sh"
 
-    result = run_bash(
-        script,
-        cwd=repo_root,
+    result = _run_discuss_py(
+        repo_root,
         args=[
             "start", "--project", str(project), "--topic", "Should fail",
             "--exclude", "codex-cli",

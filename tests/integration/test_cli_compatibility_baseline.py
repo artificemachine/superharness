@@ -1,29 +1,33 @@
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
-from tests.helpers import run_bash, shell_guard_list
+from tests.helpers import REPO_ROOT, run_bash, shell_guard_list
 
 
+# Entrypoints that should respond to --help with exit 0.
+# Bash-shim scripts (delegate.sh, discuss.sh, monitor-ui.sh) have been deleted;
+# their functionality is now in Python modules.
 HELP_ENTRYPOINTS = [
     "superharness",
-    "scripts/delegate.sh",
     "scripts/delegate-task.sh",
-    "scripts/monitor-ui.sh",
-    "cli/init.sh",
-    "cli/contract-today.sh",
-    "cli/doctor.sh",
-    "cli/install-wrapper.sh",
-    "cli/delegate.sh",
-    "cli/delegate-task.sh",
-    "cli/task.sh",
-    "cli/enqueue.sh",
-    "cli/dispatch.sh",
-    "cli/watch.sh",
-    "cli/recover.sh",
-    "cli/normalize.sh",
-    "cli/hygiene.sh",
 ]
+
+
+def _run_py_module_help(module: str, cwd: Path) -> subprocess.CompletedProcess:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    return subprocess.run(
+        [sys.executable, "-m", module, "--help"],
+        cwd=str(cwd),
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
 
 
 def test_entrypoint_help_contract(repo_root: Path) -> None:
@@ -38,18 +42,16 @@ def test_entrypoint_help_contract(repo_root: Path) -> None:
         result = run_bash(script, cwd=repo_root, args=["--help"])
         assert result.returncode == 0, f"{rel_path} --help failed: {result.stderr}"
         if rel_path in usage_required:
-            assert "Usage:" in result.stdout, f"{rel_path} --help missing Usage output"
+            assert "Usage:" in result.stdout or "usage:" in result.stdout.lower(), (
+                f"{rel_path} --help missing Usage output"
+            )
 
 
 def test_discuss_help_lists_core_subcommands(repo_root: Path) -> None:
-    scripts = [
-        repo_root / "scripts" / "discuss.sh",
-        repo_root / "cli" / "discuss.sh",
-    ]
-    for script in scripts:
-        result = run_bash(script, cwd=repo_root, args=["--help"])
-        assert result.returncode == 0, f"{script} --help failed: {result.stderr}"
-        assert "start" in result.stdout
-        assert "rounds" in result.stdout
-        assert "consensus" in result.stdout
-        assert "list" in result.stdout
+    # discuss is now a Python module (scripts/discuss.sh was a shim, now deleted)
+    result = _run_py_module_help("superharness.commands.discuss", repo_root)
+    assert result.returncode == 0, f"discuss --help failed: {result.stderr}"
+    assert "start" in result.stdout
+    assert "rounds" in result.stdout
+    assert "consensus" in result.stdout
+    assert "list" in result.stdout

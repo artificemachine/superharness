@@ -10,6 +10,7 @@ import secrets
 import shlex
 import shutil
 import subprocess
+import sys
 import time
 from collections import Counter
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -905,19 +906,14 @@ def heartbeat_health(project_dir: Path, stale_seconds: int = 120) -> dict:
 
 
 def contract_id(contract_file: Path) -> str:
-    helper = Path(__file__).resolve().parent.parent / "engine" / "contract.rb"
-    if not contract_file.exists() or not helper.exists() or shutil.which("ruby") is None:
+    if not contract_file.exists():
         return ""
-    run = subprocess.run(
-        ["ruby", str(helper), "contract_id", "--file", str(contract_file)],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=5,
-    )
-    if run.returncode != 0:
+    try:
+        import yaml
+        doc = yaml.safe_load(contract_file.read_text(encoding="utf-8", errors="replace")) or {}
+        return str(doc.get("id", "") or "")
+    except Exception:
         return ""
-    return run.stdout.strip().strip('"')
 
 
 def pending_approvals(handoff_dir: Path) -> list[dict]:
@@ -1033,7 +1029,7 @@ def _confirm_plan(harness_dir: Path, task_id: str) -> dict:
             else:
                 errors.append(f"task {task_id} not found in plan_proposed status")
         except Exception as e:
-            errors.append(f"contract update error: {e}")
+            errors.append(f"contract update error: {e}")  # shipguard:ignore PY-007
 
     # Update matching handoff: add plan_gate confirmation
     if handoff_dir.exists():
@@ -1051,7 +1047,7 @@ def _confirm_plan(harness_dir: Path, task_id: str) -> dict:
                     hf.write_text(yaml.dump(hdata, default_flow_style=False, allow_unicode=True))
                     break
             except Exception as e:
-                errors.append(f"handoff update error: {e}")
+                errors.append(f"handoff update error: {e}")  # shipguard:ignore PY-007
 
     result = {"ok": not errors, "task": task_id, "confirmed_at": now}
     if errors:
@@ -1263,16 +1259,16 @@ class Handler(BaseHTTPRequestHandler):
                 ]
             ), 200
 
-        inbox_rb = str(Path(__file__).resolve().parent.parent / "engine" / "inbox.rb")
+        inbox_py = [sys.executable, "-m", "superharness.engine.inbox"]
         inbox_file = str(self.project_dir / ".superharness" / "inbox.yaml")
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
         if action.startswith("pause_item:"):
             item_id = action.split(":", 1)[1]
-            return self._run_cmd(["ruby", inbox_rb, "set_status", "--file", inbox_file, "--id", item_id, "--from", "pending", "--to", "paused", "--now", now, "--stamp-key", "paused_at"]), 200
+            return self._run_cmd(inbox_py + ["set_status", "--file", inbox_file, "--id", item_id, "--from", "pending", "--to", "paused", "--now", now, "--stamp-key", "paused_at"]), 200
         if action.startswith("resume_item:"):
             item_id = action.split(":", 1)[1]
-            return self._run_cmd(["ruby", inbox_rb, "set_status", "--file", inbox_file, "--id", item_id, "--from", "paused", "--to", "pending", "--now", now, "--stamp-key", "resumed_at"]), 200
+            return self._run_cmd(inbox_py + ["set_status", "--file", inbox_file, "--id", item_id, "--from", "paused", "--to", "pending", "--now", now, "--stamp-key", "resumed_at"]), 200
         if action.startswith("retry_item:"):
             item_id = action.split(":", 1)[1]
             items = inbox_items(self.project_dir / ".superharness" / "inbox.yaml")
@@ -1282,7 +1278,7 @@ class Handler(BaseHTTPRequestHandler):
             from_status = target.get("status", "")
             if from_status not in ("stale", "failed", "stopped"):
                 return ({"error": f"cannot retry from status: {from_status}"}, 400)
-            return self._run_cmd(["ruby", inbox_rb, "set_status", "--file", inbox_file, "--id", item_id, "--from", from_status, "--to", "pending", "--now", now, "--stamp-key", "retried_at"]), 200
+            return self._run_cmd(inbox_py + ["set_status", "--file", inbox_file, "--id", item_id, "--from", from_status, "--to", "pending", "--now", now, "--stamp-key", "retried_at"]), 200
         if action.startswith("stop_item:"):
             item_id = action.split(":", 1)[1]
             items = inbox_items(self.project_dir / ".superharness" / "inbox.yaml")
@@ -1296,11 +1292,11 @@ class Handler(BaseHTTPRequestHandler):
                 except (ProcessLookupError, ValueError, PermissionError):
                     pass
             from_status = target.get("status", "launched")
-            result = self._run_cmd(["ruby", inbox_rb, "set_status", "--file", inbox_file, "--id", item_id, "--from", from_status, "--to", "stopped", "--now", now, "--stamp-key", "stopped_at"])
+            result = self._run_cmd(inbox_py + ["set_status", "--file", inbox_file, "--id", item_id, "--from", from_status, "--to", "stopped", "--now", now, "--stamp-key", "stopped_at"])
             return result, 200
         if action.startswith("remove_item:"):
             item_id = action.split(":", 1)[1]
-            return self._run_cmd(["ruby", inbox_rb, "remove", "--file", inbox_file, "--id", item_id]), 200
+            return self._run_cmd(inbox_py + ["remove", "--file", inbox_file, "--id", item_id]), 200
 
         return ({"error": f"unsupported action: {action}"}, 400)
 

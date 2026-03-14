@@ -238,7 +238,7 @@ superharness hygiene --project . --strict   # requires promotion alignment
 superharness doctor --project .
 ```
 
-Checks for: required executables (`bash`, `ruby`, `python3`, `claude`, `codex`), protocol directory structure, YAML syntax validity, file permissions.
+Checks for: required executables (`bash`, `python3`, `claude`, `codex`), protocol directory structure, YAML syntax validity, file permissions.
 
 ### Monitor UI
 
@@ -338,17 +338,6 @@ superharness hygiene --project .
 - Missing handoff for done task → create handoff YAML in `.superharness/handoffs/`
 - Missing ledger entry → append one line to `.superharness/ledger.md`
 - Contract decisions not promoted → move reusable decisions to `.superharness/decisions.yaml`
-
-### Ruby not found
-
-```
-/usr/bin/env: ruby: No such file or directory
-```
-
-Install Ruby:
-- macOS: `brew install ruby` then add to PATH: `export PATH="$(brew --prefix ruby)/bin:$PATH"`
-- Linux: `sudo apt install ruby-full` or `sudo dnf install ruby`
-- Version manager: `rbenv install $(cat .ruby-version)` from the superharness repo root
 
 ### Claude or Codex CLI not found
 

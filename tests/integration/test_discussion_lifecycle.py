@@ -1,13 +1,32 @@
 from __future__ import annotations
 
+import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 
-from tests.helpers import run_bash, run_cmd
+from tests.helpers import REPO_ROOT, run_bash, run_cmd
 
 
 def _run_engine(repo_root: Path, args: list[str]):
-    return run_cmd(["ruby", str(repo_root / "engine" / "discussion.rb")] + args, cwd=repo_root)
+    return run_cmd([sys.executable, "-m", "superharness.engine.discussion"] + args, cwd=repo_root)
+
+
+def _run_discuss_py(cwd, args: list[str] | None = None):
+    """Run discuss Python module."""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    cmd = [sys.executable, "-m", "superharness.commands.discuss"] + (args or [])
+    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
+
+
+def _run_dispatch_py(cwd, args: list[str] | None = None):
+    """Run discussion_dispatch Python module."""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    cmd = [sys.executable, "-m", "superharness.commands.discussion_dispatch"] + (args or [])
+    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
 
 
 def _extract_discussion_id(stdout: str) -> str:
@@ -39,17 +58,13 @@ def test_discussion_cli_lifecycle_to_consensus(repo_root, tmp_path) -> None:
         f'    project_path: "{project}"\n'
     )
 
-    started = run_bash(
-        repo_root / "scripts" / "discuss.sh",
-        cwd=repo_root,
+    started = _run_discuss_py(
+        repo_root,
         args=[
             "start",
-            "--project",
-            str(project),
-            "--topic",
-            "Integration lifecycle check",
-            "--max-rounds",
-            "2",
+            "--project", str(project),
+            "--topic", "Integration lifecycle check",
+            "--max-rounds", "2",
         ],
     )
     assert started.returncode == 0, started.stderr
@@ -61,16 +76,11 @@ def test_discussion_cli_lifecycle_to_consensus(repo_root, tmp_path) -> None:
         repo_root,
         [
             "submit_round",
-            "--discussion-dir",
-            str(discussion_dir),
-            "--round",
-            "1",
-            "--agent",
-            "claude-code",
-            "--verdict",
-            "agree",
-            "--position",
-            "Approved.",
+            "--discussion-dir", str(discussion_dir),
+            "--round", "1",
+            "--agent", "claude-code",
+            "--verdict", "agree",
+            "--position", "Approved.",
         ],
     )
     assert sub1.returncode == 0, sub1.stderr
@@ -79,35 +89,28 @@ def test_discussion_cli_lifecycle_to_consensus(repo_root, tmp_path) -> None:
         repo_root,
         [
             "submit_round",
-            "--discussion-dir",
-            str(discussion_dir),
-            "--round",
-            "1",
-            "--agent",
-            "codex-cli",
-            "--verdict",
-            "agree",
-            "--position",
-            "Approved as well.",
+            "--discussion-dir", str(discussion_dir),
+            "--round", "1",
+            "--agent", "codex-cli",
+            "--verdict", "agree",
+            "--position", "Approved as well.",
         ],
     )
     assert sub2.returncode == 0, sub2.stderr
 
-    dispatch = run_bash(repo_root / "scripts" / "discussion-dispatch.sh", cwd=repo_root, args=["--project", str(project)])
+    dispatch = _run_dispatch_py(repo_root, args=["--project", str(project)])
     assert dispatch.returncode == 0, dispatch.stderr
     assert f"Discussion {discussion_id}: closed (reason=consensus, round=1)" in dispatch.stdout
 
-    rounds = run_bash(
-        repo_root / "scripts" / "discuss.sh",
-        cwd=repo_root,
+    rounds = _run_discuss_py(
+        repo_root,
         args=["rounds", "--project", str(project), "--id", discussion_id],
     )
     assert rounds.returncode == 0, rounds.stderr
     assert "Status: consensus" in rounds.stdout
 
-    listing = run_bash(
-        repo_root / "scripts" / "discuss.sh",
-        cwd=repo_root,
+    listing = _run_discuss_py(
+        repo_root,
         args=["list", "--project", str(project)],
     )
     assert listing.returncode == 0, listing.stderr

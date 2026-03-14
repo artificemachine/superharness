@@ -1,0 +1,186 @@
+"""Python port of engine/recall.rb.
+
+Search .superharness/handoffs/ and ledger.md by keyword.
+
+Usage:
+    python3 -m superharness.engine.recall --project DIR "term" ["term2" ...]
+    python3 -m superharness.engine.recall --project . --since 7d "deploy"
+
+Multi-keyword logic: OR — any term matching in a file produces a result.
+"""
+from __future__ import annotations
+
+import os
+import re
+import sys
+from datetime import date, timedelta
+from pathlib import Path
+
+
+def _try_date(val: object) -> date | None:
+    if val is None:
+        return None
+    try:
+        if isinstance(val, date):
+            return val
+        return date.fromisoformat(str(val)[:10])
+    except (ValueError, TypeError):
+        return None
+
+
+def _file_date(path: Path, data: object) -> date | None:
+    if isinstance(data, dict):
+        for k in ("date", "created", "completed_at"):
+            d = _try_date(data.get(k))
+            if d:
+                return d
+    m = re.match(r"^(\d{4}-\d{2}-\d{2})", path.name)
+    if m:
+        return _try_date(m.group(1))
+    return None
+
+
+def _file_meta(path: Path, data: object) -> tuple[str, str]:
+    agent = "unknown"
+    task_id = path.stem.lstrip("0123456789-")
+    if isinstance(data, dict):
+        agent = str(data.get("agent") or data.get("completed_by") or data.get("owner") or "unknown")
+        task_id = str(data.get("task_id") or data.get("task") or data.get("id") or task_id)
+    return agent, task_id
+
+
+def _ctx(lines: list[str], idx: int) -> str:
+    start = max(idx - 1, 0)
+    end = min(idx + 1, len(lines) - 1)
+    snippets = [l.strip() for l in lines[start:end + 1] if l.strip()]
+    return " / ".join(snippets[:3])
+
+
+def search(project_dir: Path, terms: list[str], since_days: int | None = None) -> list[dict]:
+    since_date = date.today() - timedelta(days=since_days) if since_days is not None else None
+    sh_dir = project_dir / ".superharness"
+
+    results: list[dict] = []
+
+    # --- Scan handoff files ---
+    handoffs_dir = sh_dir / "handoffs"
+    if handoffs_dir.is_dir():
+        for path in sorted(handoffs_dir.glob("*.yaml")) + sorted(handoffs_dir.glob("*.yml")) + sorted(handoffs_dir.glob("*.md")):
+            try:
+                raw = path.read_text(errors="replace")
+            except OSError:
+                continue
+            data = None
+            if path.suffix in (".yaml", ".yml"):
+                try:
+                    import yaml
+                    data = yaml.safe_load(raw)
+                except Exception:
+                    data = None
+            fdate = _file_date(path, data)
+            if since_date and fdate and fdate < since_date:
+                continue
+            agent, task_id = _file_meta(path, data)
+            lines = raw.splitlines()
+            snippets: list[str] = []
+            count = 0
+            for term in terms:
+                for i, line in enumerate(lines):
+                    if term in line.lower():
+                        count += 1
+                        s = _ctx(lines, i)
+                        if s and s not in snippets:
+                            snippets.append(s)
+            if count == 0:
+                continue
+            results.append({
+                "date": fdate,
+                "agent": agent,
+                "task_id": task_id,
+                "count": count,
+                "snippets": snippets[:3],
+            })
+
+    # --- Scan ledger.md ---
+    ledger = sh_dir / "ledger.md"
+    if ledger.exists():
+        for line in ledger.read_text(errors="replace").splitlines():
+            line = line.rstrip()
+            if not line.strip() or line.strip().startswith("#"):
+                continue
+            m = re.search(r"(\d{4}-\d{2}-\d{2})", line)
+            ldate = _try_date(m.group(1)) if m else None
+            if since_date and ldate and ldate < since_date:
+                continue
+            m2 = re.search(r"— ([\w\-]+) —", line)
+            agent = m2.group(1) if m2 else "unknown"
+            count = sum(1 for t in terms if t in line.lower())
+            if count == 0:
+                continue
+            results.append({
+                "date": ldate,
+                "agent": agent,
+                "task_id": "ledger",
+                "count": count,
+                "snippets": [line.strip()[:120]],
+            })
+
+    # Sort: newest first, then by match count descending
+    results.sort(key=lambda r: (
+        -(r["date"].toordinal() if r["date"] else 0),
+        -r["count"],
+    ))
+    return results
+
+
+def main(argv: list[str] | None = None) -> None:
+    import argparse
+
+    if argv is None:
+        argv = sys.argv[1:]
+
+    p = argparse.ArgumentParser(
+        prog="recall",
+        description="Search .superharness/handoffs/ and ledger.md by keyword.",
+    )
+    p.add_argument("-p", "--project", default=os.getcwd(), help="Project directory (default: cwd)")
+    p.add_argument("--since", metavar="Nd", default=None, help="Limit to last N days (e.g. 7d)")
+    p.add_argument("terms", nargs="*", help="Search terms (OR logic)")
+    opts = p.parse_args(argv)
+
+    terms = [t.lower() for t in opts.terms]
+    if not terms:
+        print("Error: at least one search term required", file=sys.stderr)
+        sys.exit(1)
+
+    project_dir = Path(opts.project).resolve()
+    sh_dir = project_dir / ".superharness"
+    if not sh_dir.is_dir():
+        print(f"Not a superharness project (no .superharness/): {project_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    since_days: int | None = None
+    if opts.since:
+        m = re.fullmatch(r"(\d+)d", opts.since)
+        if not m:
+            print(f"Invalid --since format (expected Nd, e.g. 7d): {opts.since}", file=sys.stderr)
+            sys.exit(1)
+        since_days = int(m.group(1))
+
+    results = search(project_dir, terms, since_days)
+
+    if not results:
+        quoted = ", ".join(f'"{t}"' for t in terms)
+        print(f"(no results for: {quoted})")
+        sys.exit(0)
+
+    for r in results:
+        date_str = r["date"].strftime("%Y-%m-%d") if r["date"] else "unknown"
+        print(f"{date_str}  {r['agent']}  {r['task_id']}")
+        for s in r["snippets"]:
+            print(f'  "{s}"')
+        print()
+
+
+if __name__ == "__main__":
+    main()
