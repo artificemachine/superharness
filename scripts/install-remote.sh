@@ -63,7 +63,6 @@ need() {
 }
 need git
 need bash
-need ruby
 need python3
 
 echo "superharness — remote install"

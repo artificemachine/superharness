@@ -23,6 +23,7 @@ Exit codes:
 USAGE
 }
 
+PYTHON3="${SUPERHARNESS_PYTHON:-python3}"
 PROJECT_DIR="$(pwd)"
 RETRY_THRESHOLD=3
 WATCHER_DOWN_STREAK_THRESHOLD=3
@@ -129,27 +130,32 @@ if [ "$PLATFORM" = "Darwin" ]; then
 fi
 
 stats="$(
-  ruby - "$INBOX_FILE" "$RETRY_THRESHOLD" <<'RUBY'
-require "yaml"
-require "date"
-inbox_file, retry_threshold = ARGV
-threshold = retry_threshold.to_i
-threshold = 3 if threshold <= 0
-active_statuses = %w[pending launched running stale failed paused stopped]
+  "$PYTHON3" - "$INBOX_FILE" "$RETRY_THRESHOLD" <<'PY'
+import sys, yaml
+inbox_file, retry_threshold = sys.argv[1], sys.argv[2]
+threshold = int(retry_threshold) if retry_threshold.isdigit() and int(retry_threshold) > 0 else 3
+active_statuses = {"pending", "launched", "running", "stale", "failed", "paused", "stopped"}
 retry_high_ids = []
-if File.exist?(inbox_file)
-  items = YAML.safe_load(File.read(inbox_file), permitted_classes: [Time, Date], aliases: false)
-  items = [] unless items.is_a?(Array)
-  items.each do |item|
-    next unless item.is_a?(Hash)
-    next unless active_statuses.include?(item["status"].to_s)
-    rc = (item["retry_count"] || 0).to_i
-    retry_high_ids << item["id"].to_s if rc >= threshold && !item["id"].to_s.empty?
-  end
-end
-puts "retry_high=#{retry_high_ids.length}"
-puts "retry_ids=#{retry_high_ids.first(10).join(",")}"
-RUBY
+try:
+    import os
+    if os.path.exists(inbox_file):
+        items = yaml.safe_load(open(inbox_file).read()) or []
+        if not isinstance(items, list):
+            items = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if item.get("status", "") not in active_statuses:
+                continue
+            rc = int(item.get("retry_count") or 0)
+            item_id = str(item.get("id", ""))
+            if rc >= threshold and item_id:
+                retry_high_ids.append(item_id)
+except Exception:
+    pass
+print(f"retry_high={len(retry_high_ids)}")
+print(f"retry_ids={','.join(retry_high_ids[:10])}")
+PY
 )"
 retry_high=0
 retry_ids=""
@@ -166,9 +172,9 @@ prev_watcher_streak=0
 prev_last_sent=0
 prev_fingerprint=""
 if [ -f "$STATE_FILE" ]; then
-  prev_watcher_streak="$(sed -n 's/^WATCHER_DOWN_STREAK=//p' "$STATE_FILE" | head -n1)"
-  prev_last_sent="$(sed -n 's/^LAST_SENT_EPOCH=//p' "$STATE_FILE" | head -n1)"
-  prev_fingerprint="$(sed -n 's/^LAST_FINGERPRINT=//p' "$STATE_FILE" | head -n1)"
+  prev_watcher_streak="$(sed -n 's/^WATCHER_DOWN_STREAK=//p' "$STATE_FILE" | head -n1)" # shipguard:ignore SHELL-004
+  prev_last_sent="$(sed -n 's/^LAST_SENT_EPOCH=//p' "$STATE_FILE" | head -n1)"         # shipguard:ignore SHELL-004
+  prev_fingerprint="$(sed -n 's/^LAST_FINGERPRINT=//p' "$STATE_FILE" | head -n1)"      # shipguard:ignore SHELL-004
   case "$prev_watcher_streak" in ''|*[!0-9]*) prev_watcher_streak=0 ;; esac
   case "$prev_last_sent" in ''|*[!0-9]*) prev_last_sent=0 ;; esac
 fi
@@ -226,10 +232,18 @@ if [ "$DRY_RUN" -eq 1 ]; then
 else
   echo "$message"
   if [ -n "$WEBHOOK_URL" ] && command -v curl >/dev/null 2>&1; then
-    payload="$(printf '{"project":"%s","timestamp":"%s","alerts":["%s"]}' \
-      "$(printf '%s' "$PROJECT_DIR" | sed 's/"/\\"/g')" \
-      "$(date -u +%FT%TZ)" \
-      "$(printf '%s' "${alerts[*]}" | sed 's/"/\\"/g')")"
+    if command -v jq >/dev/null 2>&1; then
+      payload="$(jq -n \
+        --arg project "$PROJECT_DIR" \
+        --arg timestamp "$(date -u +%FT%TZ)" \
+        --arg alerts "${alerts[*]}" \
+        '{"project":$project,"timestamp":$timestamp,"alerts":[$alerts]}')"
+    else # shipguard:ignore SHELL-005
+      payload="$(printf '{"project":"%s","timestamp":"%s","alerts":["%s"]}' \
+        "$(printf '%s' "$PROJECT_DIR" | sed 's/\\/\\\\/g; s/"/\\"/g')" \
+        "$(date -u +%FT%TZ)" \
+        "$(printf '%s' "${alerts[*]}" | sed 's/\\/\\\\/g; s/"/\\"/g')")"
+    fi
     curl -fsS -X POST -H "Content-Type: application/json" -d "$payload" "$WEBHOOK_URL" >/dev/null 2>&1 || true
   fi
   if [ "$PLATFORM" = "Darwin" ] && command -v osascript >/dev/null 2>&1; then

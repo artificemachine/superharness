@@ -1,8 +1,23 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 
-from tests.helpers import run_bash
+from tests.helpers import REPO_ROOT
+
+
+def _run_python(args: list[str]) -> subprocess.CompletedProcess:
+    import os
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    return subprocess.run(
+        [sys.executable, "-m", "superharness.commands.inbox_recover"] + args,
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
 
 
 def test_recover_marks_old_launched_items_stale(repo_root, tmp_path) -> None:
@@ -30,12 +45,7 @@ def test_recover_marks_old_launched_items_stale(repo_root, tmp_path) -> None:
         + "\n"
     )
 
-    script = repo_root / "scripts" / "inbox-recover-stale.sh"
-    result = run_bash(
-        script,
-        cwd=repo_root,
-        args=["--project", str(project), "--timeout-minutes", "20", "--action", "stale"],
-    )
+    result = _run_python(["--project", str(project), "--timeout-minutes", "20", "--action", "stale"])
 
     assert result.returncode == 0, result.stderr
     inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
@@ -70,12 +80,7 @@ def test_recover_retries_old_launched_items_when_budget_available(repo_root, tmp
         + "\n"
     )
 
-    script = repo_root / "scripts" / "inbox-recover-stale.sh"
-    result = run_bash(
-        script,
-        cwd=repo_root,
-        args=["--project", str(project), "--timeout-minutes", "20", "--action", "retry"],
-    )
+    result = _run_python(["--project", str(project), "--timeout-minutes", "20", "--action", "retry"])
 
     assert result.returncode == 0, result.stderr
     inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
@@ -110,12 +115,7 @@ def test_recover_fails_old_launched_items_when_retry_exhausted(repo_root, tmp_pa
         + "\n"
     )
 
-    script = repo_root / "scripts" / "inbox-recover-stale.sh"
-    result = run_bash(
-        script,
-        cwd=repo_root,
-        args=["--project", str(project), "--timeout-minutes", "20", "--action", "retry"],
-    )
+    result = _run_python(["--project", str(project), "--timeout-minutes", "20", "--action", "retry"])
 
     assert result.returncode == 0, result.stderr
     inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
@@ -154,12 +154,7 @@ def test_recover_keeps_launched_item_when_pid_is_still_alive(repo_root, tmp_path
             + "\n"
         )
 
-        script = repo_root / "scripts" / "inbox-recover-stale.sh"
-        result = run_bash(
-            script,
-            cwd=repo_root,
-            args=["--project", str(project), "--timeout-minutes", "1", "--action", "retry"],
-        )
+        result = _run_python(["--project", str(project), "--timeout-minutes", "1", "--action", "retry"])
 
         assert result.returncode == 0, result.stderr
         inbox_text = (project / ".superharness" / "inbox.yaml").read_text()

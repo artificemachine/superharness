@@ -1,5 +1,5 @@
 # Proactive checks — evaluated by the watcher after each dispatch pass
-# Security: 'id' maps to hardcoded commands in scripts/heartbeat.sh — 'command' field is documentation only
+# Security: 'id' maps to hardcoded Python function calls in superharness.commands.heartbeat — 'command' field is documentation only
 checks:
   - id: stale-recovery
     description: Recover tasks stuck longer than the timeout

@@ -1,9 +1,25 @@
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 import yaml
 from pathlib import Path
 
 from tests.helpers import REPO_ROOT, copy_from_repo, run_bash, shell_guard_list
+
+
+def _run_enqueue(args: list[str]) -> subprocess.CompletedProcess:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    return subprocess.run(
+        [sys.executable, "-m", "superharness.commands.inbox_enqueue"] + args,
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
 
 
 def test_claude_watcher_dispatch_smoke(repo_root: Path, tmp_path: Path) -> None:
@@ -21,8 +37,12 @@ def test_claude_watcher_dispatch_smoke(repo_root: Path, tmp_path: Path) -> None:
     project.mkdir()
 
     # Bootstrap project
-    init_script = repo_root / "scripts/init-project.sh"
-    init_res = run_bash(init_script, cwd=project, args=["WatcherTest", "Shell", "active"])
+    init_env = os.environ.copy()
+    init_env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    init_res = subprocess.run(
+        [sys.executable, "-m", "superharness.commands.init_project", "WatcherTest", "Shell", "active"],
+        cwd=str(project), text=True, capture_output=True, env=init_env, check=False
+    )
     assert init_res.returncode == 0, f"init failed: {init_res.stderr}"
 
     # Copy required scripts
@@ -31,15 +51,6 @@ def test_claude_watcher_dispatch_smoke(repo_root: Path, tmp_path: Path) -> None:
         + shell_guard_list(REPO_ROOT, "--list-hooks")
         + [
             "protocol/templates/identity-core.md",
-            "scripts/inbox-yaml.rb",
-            "cli/contract-today.sh",
-            "cli/doctor.sh",
-            "cli/install-wrapper.sh",
-            "cli/delegate-task.sh",
-            "cli/task.sh",
-            "engine/contract.rb",
-            "engine/inbox.rb",
-            "engine/yaml_helpers.rb",
             "superharness",
         ]
     )
@@ -67,17 +78,12 @@ def test_claude_watcher_dispatch_smoke(repo_root: Path, tmp_path: Path) -> None:
         yaml.dump(contract_doc, f, default_flow_style=False, sort_keys=False)
 
     # Enqueue the task
-    enqueue_script = repo_root / "scripts/inbox-enqueue.sh"
-    enqueue_res = run_bash(
-        enqueue_script,
-        cwd=project,
-        args=[
-            "--project", str(project),
-            "--to", "claude-code",
-            "--task", "smoke-test-task",
-            "--priority", "1",
-        ],
-    )
+    enqueue_res = _run_enqueue([
+        "--project", str(project),
+        "--to", "claude-code",
+        "--task", "smoke-test-task",
+        "--priority", "1",
+    ])
     assert enqueue_res.returncode == 0, f"enqueue failed: {enqueue_res.stderr}"
     assert "Enqueued inbox item" in enqueue_res.stdout
 
@@ -85,6 +91,7 @@ def test_claude_watcher_dispatch_smoke(repo_root: Path, tmp_path: Path) -> None:
     mock_launcher = project / "scripts/delegate-to-claude.sh"
     mock_launcher.write_text("""#!/bin/bash
 set -euo pipefail
+PYTHON3="${SUPERHARNESS_PYTHON:-python3}"
 
 PROJECT_DIR=""
 TASK_ID=""
@@ -114,32 +121,28 @@ if [ "$PRINT_ONLY" -eq 1 ]; then
   exit 0
 fi
 
-ruby - "$PROJECT_DIR" "$TASK_ID" <<'RB'
-require "psych"
-require "time"
-require "date"
+"$PYTHON3" - "$PROJECT_DIR" "$TASK_ID" <<'PY'
+import sys, yaml
+from datetime import datetime, timezone
 
-project_dir = ARGV[0]
-task_id = ARGV[1]
+project_dir = sys.argv[1]
+task_id = sys.argv[2]
 
-contract_file = File.join(project_dir, ".superharness", "contract.yaml")
-contract_doc = Psych.safe_load(File.read(contract_file), permitted_classes: [Time, Date], aliases: false) || {}
-tasks = contract_doc["tasks"]
-tasks = [] unless tasks.is_a?(Array)
-tasks.each do |task|
-  next unless task.is_a?(Hash)
-  if task["id"].to_s == task_id.to_s
-    task["status"] = "done"
-    break
-  end
-end
-contract_doc["tasks"] = tasks
-File.write(contract_file, Psych.dump(contract_doc))
+contract_file = f"{project_dir}/.superharness/contract.yaml"
+with open(contract_file) as f:
+    doc = yaml.safe_load(f) or {}
+for task in (doc.get("tasks") or []):
+    if str(task.get("id", "")) == str(task_id):
+        task["status"] = "done"
+        break
+with open(contract_file, "w") as f:
+    yaml.dump(doc, f, default_flow_style=False, sort_keys=False)
 
-ledger_file = File.join(project_dir, ".superharness", "ledger.md")
-today = Time.now.utc.strftime("%Y-%m-%d")
-File.open(ledger_file, "a") { |f| f.puts("#{today} | #{task_id} | claude-code | Mock smoke test execution") }
-RB
+ledger_file = f"{project_dir}/.superharness/ledger.md"
+today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+with open(ledger_file, "a") as f:
+    f.write(f"{today} | {task_id} | claude-code | Mock smoke test execution\\n")
+PY
 """)
     mock_launcher.chmod(0o755)
 

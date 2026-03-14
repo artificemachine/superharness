@@ -2,9 +2,23 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
-from tests.helpers import run_bash
+from tests.helpers import run_bash, REPO_ROOT
+
+
+def _run_normalize(args: list[str]) -> subprocess.CompletedProcess:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    return subprocess.run(
+        [sys.executable, "-m", "superharness.commands.inbox_normalize"] + args,
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
 
 
 def _write_contract(project: Path) -> None:
@@ -162,12 +176,7 @@ def test_normalize_archives_only_dropped_rows(repo_root, tmp_path) -> None:
         ],
     )
 
-    script = repo_root / "scripts" / "inbox-normalize.sh"
-    result = run_bash(
-        script,
-        cwd=repo_root,
-        args=["--project", str(project), "--archive", "--drop-status", "prepared"],
-    )
+    result = _run_normalize(["--project", str(project), "--archive", "--drop-status", "prepared"])
     assert result.returncode == 0, result.stderr
 
     inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
@@ -209,12 +218,7 @@ def test_normalize_drops_rows_by_id_prefix(repo_root, tmp_path) -> None:
         ],
     )
 
-    script = repo_root / "scripts" / "inbox-normalize.sh"
-    result = run_bash(
-        script,
-        cwd=repo_root,
-        args=["--project", str(project), "--drop-id-prefix", "20260312T"],
-    )
+    result = _run_normalize(["--project", str(project), "--drop-id-prefix", "20260312T"])
     assert result.returncode == 0, result.stderr
 
     inbox_text = (project / ".superharness" / "inbox.yaml").read_text()

@@ -34,4 +34,4 @@ jobs:
       - name: Script dry-run smoke
         run: |
           HOME="$(mktemp -d)" bash adapters/claude-code/install.sh --dry-run
-          bash scripts/init-project.sh --dry-run "CI Smoke" "Bash" "active"
+          PYTHONPATH=. python3 -m superharness.commands.init_project --dry-run "CI Smoke" "Bash" "active"

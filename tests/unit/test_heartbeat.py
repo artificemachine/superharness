@@ -1,30 +1,40 @@
 """
-Tests for scripts/heartbeat.sh — proactive watcher check runner.
+Tests for superharness.commands.heartbeat — proactive watcher check runner.
 
-Security: check IDs map to hardcoded commands in heartbeat.sh.
+Security: check IDs map to hardcoded Python function calls in heartbeat.py.
 The 'command:' field in heartbeat.yaml is documentation only and NEVER executed.
 """
 from __future__ import annotations
 
-import stat
 import subprocess
+import sys
 import time
 import textwrap
 from pathlib import Path
 
 import yaml
 
-from tests.helpers import REPO_ROOT, run_bash
+from tests.helpers import REPO_ROOT
 
 
-HEARTBEAT_SH = REPO_ROOT / "scripts/heartbeat.sh"
-INIT_SH = REPO_ROOT / "scripts/init-project.sh"
-SUPERHARNESS = REPO_ROOT / "superharness"
+def _run_init_py(cwd, args: list[str] | None = None):
+    """Run init_project Python module."""
+    import os
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    cmd = [sys.executable, "-m", "superharness.commands.init_project"] + (args or [])
+    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
 
 
-# ---------------------------------------------------------------------------
-# Fixtures / helpers
-# ---------------------------------------------------------------------------
+def _run_heartbeat_py(project_dir: Path, cwd: Path | None = None) -> subprocess.CompletedProcess:
+    """Run heartbeat Python module with --project PROJECT_DIR."""
+    import os
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    cmd = [sys.executable, "-m", "superharness.commands.heartbeat",
+           "--project", str(project_dir)]
+    return subprocess.run(cmd, cwd=str(cwd or project_dir), text=True, capture_output=True, env=env, check=False)
+
 
 def _make_project(tmp_path: Path, heartbeat_yaml: str | None = None,
                   state_yaml: str | None = None, ledger_lines: list[str] | None = None) -> Path:
@@ -47,19 +57,13 @@ def _make_project(tmp_path: Path, heartbeat_yaml: str | None = None,
     return tmp_path
 
 
-def _run_heartbeat(tmp_path: Path, project_dir: Path | None = None, **kwargs) -> subprocess.CompletedProcess:
-    """Run heartbeat.sh with --project PROJECT_DIR."""
-    target = project_dir or tmp_path
-    return run_bash(HEARTBEAT_SH, cwd=tmp_path, args=["--project", str(target)], **kwargs)
-
-
 # ---------------------------------------------------------------------------
-# 1. Executable bit
+# 1. Module exists
 # ---------------------------------------------------------------------------
 
-def test_heartbeat_script_is_executable() -> None:
-    assert HEARTBEAT_SH.exists(), f"scripts/heartbeat.sh not found at {HEARTBEAT_SH}"
-    assert HEARTBEAT_SH.stat().st_mode & stat.S_IXUSR, "scripts/heartbeat.sh is not executable"
+def test_heartbeat_module_exists() -> None:
+    module = REPO_ROOT / "src/superharness/commands/heartbeat.py"
+    assert module.exists(), f"src/superharness/commands/heartbeat.py not found at {module}"
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +74,7 @@ def test_heartbeat_no_config_exits_0(tmp_path: Path) -> None:
     """When .superharness/heartbeat.yaml is absent, exits 0 with no error."""
     project = _make_project(tmp_path)
     # No heartbeat.yaml created
-    result = _run_heartbeat(tmp_path, project_dir=project)
+    result = _run_heartbeat_py(project)
     assert result.returncode == 0, f"Expected exit 0 when no heartbeat.yaml:\n{result.stderr}"
 
 
@@ -88,7 +92,7 @@ def test_heartbeat_skips_disabled_check(tmp_path: Path) -> None:
             enabled: false
     """)
     project = _make_project(tmp_path, heartbeat_yaml=heartbeat_cfg)
-    result = _run_heartbeat(tmp_path, project_dir=project)
+    result = _run_heartbeat_py(project)
     assert result.returncode == 0, result.stderr
     # Should not print "running check"
     assert "running check" not in result.stdout.lower()
@@ -108,7 +112,7 @@ def test_heartbeat_unknown_id_skipped(tmp_path: Path) -> None:
             enabled: true
     """)
     project = _make_project(tmp_path, heartbeat_yaml=heartbeat_cfg)
-    result = _run_heartbeat(tmp_path, project_dir=project)
+    result = _run_heartbeat_py(project)
     assert result.returncode == 0, f"Should not error-exit on unknown id:\n{result.stderr}"
     assert "unknown check id" in result.stdout.lower() or "unknown check id" in result.stderr.lower(), \
         f"Expected 'unknown check id' in output:\nstdout={result.stdout!r}\nstderr={result.stderr!r}"
@@ -136,7 +140,7 @@ def test_heartbeat_runs_enabled_check_when_interval_elapsed(tmp_path: Path) -> N
     ledger_lines = ["- 2026-01-01T00:00:00Z | claude-code | some task"]
     project = _make_project(tmp_path, heartbeat_yaml=heartbeat_cfg,
                             state_yaml=state_yaml, ledger_lines=ledger_lines)
-    result = _run_heartbeat(tmp_path, project_dir=project)
+    result = _run_heartbeat_py(project)
     assert result.returncode == 0, result.stderr
     assert "running check 'idle-warning'" in result.stdout or \
            "running check \"idle-warning\"" in result.stdout, \
@@ -160,7 +164,7 @@ def test_heartbeat_skips_check_before_interval(tmp_path: Path) -> None:
     now_epoch = int(time.time())
     state_yaml = f"idle-warning:\n  last_run: {now_epoch}\n"
     project = _make_project(tmp_path, heartbeat_yaml=heartbeat_cfg, state_yaml=state_yaml)
-    result = _run_heartbeat(tmp_path, project_dir=project)
+    result = _run_heartbeat_py(project)
     assert result.returncode == 0, result.stderr
     assert "running check" not in result.stdout.lower(), \
         f"Check should NOT run before interval:\n{result.stdout}"
@@ -182,7 +186,7 @@ def test_heartbeat_updates_state_after_run(tmp_path: Path) -> None:
     state_yaml = "idle-warning:\n  last_run: 1\n"
     project = _make_project(tmp_path, heartbeat_yaml=heartbeat_cfg, state_yaml=state_yaml)
     before_run = int(time.time())
-    result = _run_heartbeat(tmp_path, project_dir=project)
+    result = _run_heartbeat_py(project)
     assert result.returncode == 0, result.stderr
 
     state_file = project / ".superharness" / "heartbeat-state.yaml"
@@ -210,7 +214,7 @@ def test_heartbeat_never_runs_when_interval_not_elapsed(tmp_path: Path) -> None:
     original_last_run = now_epoch - 60  # 1 minute ago, interval is 1440 min
     state_yaml = f"idle-warning:\n  last_run: {original_last_run}\n"
     project = _make_project(tmp_path, heartbeat_yaml=heartbeat_cfg, state_yaml=state_yaml)
-    result = _run_heartbeat(tmp_path, project_dir=project)
+    result = _run_heartbeat_py(project)
     assert result.returncode == 0, result.stderr
 
     state_file = project / ".superharness" / "heartbeat-state.yaml"
@@ -245,19 +249,13 @@ def test_default_heartbeat_has_stale_recovery_enabled() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 11. init-project.sh creates .superharness/heartbeat.yaml
+# 11. init_project.py creates .superharness/heartbeat.yaml
 # ---------------------------------------------------------------------------
 
 def test_init_creates_heartbeat_yaml(tmp_path: Path) -> None:
-    """init-project.sh should copy heartbeat.yaml template into .superharness/."""
-    result = subprocess.run(
-        ["bash", str(INIT_SH), "TestProject", "Shell", "active"],
-        cwd=tmp_path,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    assert result.returncode == 0, f"init-project.sh failed:\n{result.stderr}"
+    """init_project.py should copy heartbeat.yaml template into .superharness/."""
+    result = _run_init_py(tmp_path, args=["TestProject", "Shell", "active"])
+    assert result.returncode == 0, f"init_project.py failed:\n{result.stderr}"
     hb_file = tmp_path / ".superharness" / "heartbeat.yaml"
     assert hb_file.exists(), \
-        f".superharness/heartbeat.yaml not created by init-project.sh:\n{result.stdout}"
+        f".superharness/heartbeat.yaml not created by init_project.py:\n{result.stdout}"

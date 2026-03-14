@@ -23,8 +23,9 @@ def _write_project(tmp_path: Path, *, tasks: str = "", decisions: str = "[]", fa
 
 
 def _run_validate(repo_root: Path, args: list[str]) -> object:
+    import sys
     return run_cmd(
-        ["ruby", str(repo_root / "engine" / "validate.rb")] + args,
+        [sys.executable, "-m", "superharness.engine.validate"] + args,
         cwd=repo_root,
     )
 
