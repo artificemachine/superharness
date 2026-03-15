@@ -35,7 +35,7 @@ def test_watcher_writes_heartbeat_file(repo_root: Path, tmp_path: Path) -> None:
     # No inbox file → watcher runs cycle but skips dispatch (normal).
     # Single-cycle mode (no --foreground).
     result = run_bash(
-        repo_root / "scripts" / "inbox-watch.sh",
+        repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh",
         cwd=repo_root,
         args=["--project", str(project)],
     )
@@ -53,7 +53,7 @@ def test_watcher_heartbeat_updates_each_cycle(repo_root: Path, tmp_path: Path) -
     heartbeat = project / ".superharness" / "watcher.heartbeat"
 
     run_bash(
-        repo_root / "scripts" / "inbox-watch.sh",
+        repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh",
         cwd=repo_root,
         args=["--project", str(project)],
     )
@@ -62,7 +62,7 @@ def test_watcher_heartbeat_updates_each_cycle(repo_root: Path, tmp_path: Path) -
     time.sleep(1)
 
     run_bash(
-        repo_root / "scripts" / "inbox-watch.sh",
+        repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh",
         cwd=repo_root,
         args=["--project", str(project)],
     )
@@ -177,7 +177,7 @@ def test_watcher_cycle_completes_while_dispatch_runs(repo_root: Path, tmp_path: 
 
     start = time.monotonic()
     subprocess.run(
-        ["bash", str(repo_root / "scripts" / "inbox-watch.sh"),
+        ["bash", str(repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"),
          "--project", str(project)],
         cwd=repo_root, capture_output=True, text=True, timeout=10, env=env,
     )
@@ -230,13 +230,13 @@ def test_watcher_lock_released_during_dispatch(repo_root: Path, tmp_path: Path) 
     env["RECOVER"] = str(fake_recover)
 
     subprocess.run(
-        ["bash", str(repo_root / "scripts" / "inbox-watch.sh"),
+        ["bash", str(repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"),
          "--project", str(project)],
         cwd=repo_root, capture_output=True, text=True, timeout=10, env=env,
     )
 
     result2 = subprocess.run(
-        ["bash", str(repo_root / "scripts" / "inbox-watch.sh"),
+        ["bash", str(repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"),
          "--project", str(project)],
         cwd=repo_root, capture_output=True, text=True, timeout=10, env=env,
     )

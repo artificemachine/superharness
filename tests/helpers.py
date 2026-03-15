@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS_DIR = REPO_ROOT / "src" / "superharness" / "scripts"
 
 
 def run_bash(script: Path, *, cwd: Path, stdin: str | None = None, env: dict[str, str] | None = None, args: list[str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -46,7 +47,7 @@ def copy_from_repo(rel_path: str, dest_root: Path) -> Path:
 
 def shell_guard_list(repo_root: Path, flag: str) -> list[str]:
     result = run_bash(
-        repo_root / "scripts/check-shell-entrypoints.sh",
+        SCRIPTS_DIR / "check-shell-entrypoints.sh",
         cwd=repo_root,
         args=[flag],
     )

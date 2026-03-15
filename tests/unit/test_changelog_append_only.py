@@ -28,7 +28,7 @@ def test_append_only_passes(repo_root, tmp_path) -> None:
         f.write("\nNew entry appended.\n")
     subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, capture_output=True, check=True)
 
-    script = repo_root / "scripts" / "check-changelog-append-only.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "check-changelog-append-only.sh"
     result = run_bash(script, cwd=repo, args=["--staged"])
     assert result.returncode == 0
 
@@ -40,7 +40,7 @@ def test_append_only_fails_on_edit(repo_root, tmp_path) -> None:
     changelog.write_text("# Changelog\n\nModified entry.\n")
     subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, capture_output=True, check=True)
 
-    script = repo_root / "scripts" / "check-changelog-append-only.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "check-changelog-append-only.sh"
     result = run_bash(script, cwd=repo, args=["--staged"])
     assert result.returncode == 1
     assert "changed existing content" in result.stderr
@@ -53,7 +53,7 @@ def test_append_only_fails_on_shrink(repo_root, tmp_path) -> None:
     changelog.write_text("# Changelog\n")
     subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, capture_output=True, check=True)
 
-    script = repo_root / "scripts" / "check-changelog-append-only.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "check-changelog-append-only.sh"
     result = run_bash(script, cwd=repo, args=["--staged"])
     assert result.returncode == 1
     assert "not append-only" in result.stderr
@@ -62,13 +62,13 @@ def test_append_only_fails_on_shrink(repo_root, tmp_path) -> None:
 def test_append_only_skips_unstaged(repo_root, tmp_path) -> None:
     repo = _init_repo(tmp_path)
     # Don't stage anything
-    script = repo_root / "scripts" / "check-changelog-append-only.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "check-changelog-append-only.sh"
     result = run_bash(script, cwd=repo, args=["--staged"])
     assert result.returncode == 0  # nothing staged, passes
 
 
 def test_append_only_help(repo_root) -> None:
-    script = repo_root / "scripts" / "check-changelog-append-only.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "check-changelog-append-only.sh"
     result = run_bash(script, cwd=repo_root, args=["--help"])
     assert result.returncode == 0
     assert "Usage:" in result.stdout
@@ -89,7 +89,7 @@ def test_append_only_base_ref_mode(repo_root, tmp_path) -> None:
         cwd=repo, capture_output=True, text=True, check=True,
     ).stdout.strip()
 
-    script = repo_root / "scripts" / "check-changelog-append-only.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "check-changelog-append-only.sh"
     result = run_bash(script, cwd=repo, args=["--base-ref", first_commit])
     assert result.returncode == 0
 
@@ -111,7 +111,7 @@ def test_append_only_base_ref_with_head_ref(repo_root, tmp_path) -> None:
         cwd=repo, capture_output=True, text=True, check=True,
     ).stdout.strip()
 
-    script = repo_root / "scripts" / "check-changelog-append-only.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "check-changelog-append-only.sh"
     result = run_bash(
         script,
         cwd=repo,
@@ -121,7 +121,7 @@ def test_append_only_base_ref_with_head_ref(repo_root, tmp_path) -> None:
 
 
 def test_append_only_requires_mode(repo_root) -> None:
-    script = repo_root / "scripts" / "check-changelog-append-only.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "check-changelog-append-only.sh"
     result = run_bash(script, cwd=repo_root, args=[])
     assert result.returncode == 2
     assert "required" in result.stderr.lower()

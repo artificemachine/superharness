@@ -55,7 +55,7 @@ def test_bootstrap_and_hook_install_flow(repo_root, tmp_path) -> None:
     isolated_home = project / "home"
     isolated_home.mkdir()
     install_hooks = run_bash(
-        project / "scripts/install-git-hooks.sh",
+        project / "src/superharness/scripts/install-git-hooks.sh",
         cwd=project,
         env={"HOME": str(isolated_home)},
     )
@@ -88,7 +88,7 @@ def test_bootstrap_discuss_start_enqueues_round_one_for_both_agents(repo_root, t
     assert init_res.returncode == 0, init_res.stderr
 
     # Add tasks for both owners (required for discussion start)
-    task_script = repo_root / "scripts" / "task.sh"
+    task_script = repo_root / "src" / "superharness" / "scripts" / "task.sh"
     for agent in ("claude-code", "codex-cli"):
         t = run_bash(task_script, cwd=repo_root, args=[
             "create", "--project", str(project),

@@ -4,6 +4,7 @@ Cross-platform: macOS, Linux, Windows.
 """
 from __future__ import annotations
 
+import importlib.resources as _importlib_resources
 import os
 import subprocess
 import sys
@@ -12,8 +13,9 @@ import click
 
 from superharness import __version__
 
-_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_SCRIPTS = os.path.join(_ROOT, "scripts")
+_PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
+_SCRIPTS = str(_importlib_resources.files("superharness").joinpath("scripts"))
+_ROOT = os.path.dirname(os.path.dirname(_PACKAGE_DIR))  # repo root (editable installs / shux update)
 
 
 def _run_script(script: str, args: tuple) -> None:

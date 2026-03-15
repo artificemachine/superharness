@@ -49,7 +49,7 @@ def _setup_project(tmp_path: Path) -> Path:
 
 def test_task_create_with_criteria(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
-    script = repo_root / "scripts" / "task.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "task.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -73,7 +73,7 @@ def test_task_create_with_criteria(repo_root, tmp_path) -> None:
 
 def test_task_create_without_criteria_omits_field(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
-    script = repo_root / "scripts" / "task.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "task.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -169,7 +169,7 @@ def test_task_status_done_warns_about_criteria(repo_root, tmp_path) -> None:
     doc["tasks"][0]["acceptance_criteria"] = ["All tests pass"]
     contract_file.write_text(yaml.dump(doc))
 
-    script = repo_root / "scripts" / "task.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "task.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -189,7 +189,7 @@ def test_task_status_done_warns_about_criteria(repo_root, tmp_path) -> None:
 
 def test_task_status_done_no_warning_without_criteria(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
-    script = repo_root / "scripts" / "task.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "task.sh"
     result = run_bash(
         script,
         cwd=repo_root,

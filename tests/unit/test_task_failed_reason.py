@@ -29,7 +29,7 @@ def _make_project(tmp_path: Path, task_id: str, owner: str, status: str = "in_pr
 
 def _task_sh(repo_root: Path, project: Path, *args: str) -> subprocess.CompletedProcess:
     return run_bash(
-        repo_root / "scripts" / "task.sh",
+        repo_root / "src" / "superharness" / "scripts" / "task.sh",
         cwd=repo_root,
         args=["status", "--project", str(project)] + list(args),
     )
@@ -286,7 +286,7 @@ def test_deadline_check_sets_contract_failed_reason(repo_root, tmp_path) -> None
         f"  max_retries: 3\n"
     )
 
-    script = repo_root / "scripts" / "inbox-deadline-check.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-deadline-check.sh"
     result = run_bash(script, cwd=repo_root, args=["--project", str(project)])
     assert result.returncode == 0, result.stderr
     assert "exceeded=1" in result.stdout

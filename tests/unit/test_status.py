@@ -39,11 +39,11 @@ def _write_harness(project_dir, *, inbox_yaml: str | None = None):
 
 
 def test_status_script_is_executable(repo_root) -> None:
-    """scripts/status.sh should still be executable (Bash wrapper kept)."""
-    script = repo_root / "scripts" / "status.sh"
-    assert script.exists(), "scripts/status.sh not found"
+    """src/superharness/scripts/status.sh should still be executable (Bash wrapper kept)."""
+    script = repo_root / "src" / "superharness" / "scripts" / "status.sh"
+    assert script.exists(), "src/superharness/scripts/status.sh not found"
     import stat
-    assert script.stat().st_mode & stat.S_IXUSR, "scripts/status.sh is not executable"
+    assert script.stat().st_mode & stat.S_IXUSR, "src/superharness/scripts/status.sh is not executable"
 
 
 def test_status_no_contract(repo_root, tmp_path) -> None:

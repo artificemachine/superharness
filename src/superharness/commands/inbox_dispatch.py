@@ -4,6 +4,7 @@ Dispatches the next pending inbox item to its target launcher.
 """
 from __future__ import annotations
 
+import importlib.resources as _importlib_resources
 import json
 import os
 import signal
@@ -190,14 +191,10 @@ def dispatch(
         print(f"Inbox file not found: {inbox_file}", file=sys.stderr)
         return 1
 
-    # Locate launcher scripts
-    script_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.dirname(os.path.abspath(__file__))))), "scripts")
-    # Fall back to searching from known location
-    if not os.path.isdir(script_dir):
-        script_dir = os.path.join(os.path.dirname(sys.executable), "..", "..", "scripts")
-    if not os.path.isdir(script_dir):
-        script_dir = os.path.join(os.getcwd(), "scripts")
+    # Locate launcher scripts — env var allows tests/CI to inject a different dir
+    script_dir = os.environ.get("SUPERHARNESS_SCRIPTS_DIR") or str(
+        _importlib_resources.files("superharness").joinpath("scripts")
+    )
 
     launch_claude = os.path.join(script_dir, "delegate-to-claude.sh")
     launch_codex = os.path.join(script_dir, "delegate-to-codex.sh")
