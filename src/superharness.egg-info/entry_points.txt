@@ -1,2 +1,3 @@
 [console_scripts]
-superharness-py = superharness.cli:main
+shux = superharness.cli:main
+superharness = superharness.cli:main
