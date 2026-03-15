@@ -81,6 +81,7 @@ _cmd("init",            "Initialize project protocol files.",        module="sup
 _cmd("watcher-worker",  "Build watcher worker and install watcher.", module="superharness.commands.watcher_worker")
 _cmd("heartbeat",       "Run proactive watcher checks.",             module="superharness.commands.heartbeat")
 _cmd("demo",            "Zero-config task lifecycle walkthrough.",   module="superharness.commands.demo")
+_cmd("test-type",       "Set mandatory test types on a task.",       module="superharness.commands.test_type")
 
 
 @main.command(name="monitor-ui", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
@@ -88,7 +89,10 @@ _cmd("demo",            "Zero-config task lifecycle walkthrough.",   module="sup
 def cmd_monitor_ui(args):
     """Launch local watcher dashboard."""
     path = os.path.join(_SCRIPTS, "monitor-ui.py")
-    result = subprocess.run([sys.executable, path] + list(args))
+    args_list = list(args)
+    if "--project" not in args_list and "-p" not in args_list:
+        args_list = ["--project", os.getcwd()] + args_list
+    result = subprocess.run([sys.executable, path] + args_list)
     sys.exit(result.returncode)
 
 
@@ -163,7 +167,8 @@ def cmd_shux():
   shux contract            ← show all tasks with status, owner, next-task suggestion
   shux continue            ← resume active contract and run full session lifecycle
   shux status              ← dashboard: contract, tasks, watcher, profile
-  shux monitor             ← open browser dashboard
+  shux monitor             ← open browser dashboard (auto-detects project, opens browser)
+  shux test-type <id>      ← set mandatory test types for a task (interactive prompt)
   shux delegate <task-id>  ← create task + enqueue in one step for watcher dispatch
   shux close <task-id>     ← mark task done, append ledger, write handoff
   shux recall <keywords>   ← search past handoffs and ledger entries
