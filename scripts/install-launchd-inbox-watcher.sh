@@ -321,6 +321,22 @@ if [ -n "$EXTRA_PATHS" ]; then
   LAUNCHD_PATH="$LAUNCHD_PATH:$EXTRA_PATHS"
 fi
 
+# Resolve absolute python3 path to avoid pyenv shim resolution failure under launchd.
+# launchd does not run pyenv init, so shims cannot resolve the active version without
+# PYENV_ROOT/PYENV_VERSION being set. Pinning the real binary sidesteps this entirely.
+PYTHON3_RESOLVED=""
+if command -v python3 >/dev/null 2>&1; then
+  _py_bin="$(command -v python3)"
+  case "$_py_bin" in
+    */.pyenv/shims/*)
+      PYTHON3_RESOLVED="$(python3 -c 'import sys; print(sys.executable)')"
+      ;;
+    *)
+      PYTHON3_RESOLVED="$_py_bin"
+      ;;
+  esac
+fi
+
 PROJECT_SLUG="$(basename "$PROJECT_DIR" | tr -cs 'A-Za-z0-9' '-')"
 LABEL="com.superharness.inbox.${PROJECT_SLUG}"
 PLIST_DIR="$HOME/Library/LaunchAgents"
@@ -385,6 +401,10 @@ fi
     plist_string "YES"
   else
     plist_string "NO"
+  fi
+  if [ -n "$PYTHON3_RESOLVED" ]; then
+    plist_key "SUPERHARNESS_PYTHON"
+    plist_string "$PYTHON3_RESOLVED"
   fi
   echo "    </dict>"
   echo "    <key>StandardOutPath</key>"
