@@ -1538,6 +1538,11 @@ def main() -> int:
     print(f"monitor ui: {url}")
     print(f"project: {project_dir}")
     print(f"watcher label: {Handler.label}")
+    url_file = os.environ.get("SUPERHARNESS_MONITOR_URL_FILE")
+    if url_file:
+        with open(url_file, "w") as _f:
+            _f.write(f"monitor ui: {url}\n")
+            _f.write(f"project: {project_dir}\n")
     if not args.no_open:
         webbrowser.open(url)
     try:
