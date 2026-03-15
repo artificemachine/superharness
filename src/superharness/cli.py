@@ -181,16 +181,35 @@ def cmd_delegate(args):
         _run_module("superharness.commands.delegate", args)
 
 
+def _is_git_repo(path: str) -> bool:
+    r = subprocess.run(["git", "-C", path, "rev-parse", "--git-dir"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return r.returncode == 0
+
+
 @main.command(name="update", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def cmd_update(args):
     """Pull latest superharness and refresh project templates."""
     print("superharness — update")
     print("=====================")
-    print("Step 1: git pull (updating superharness repo)...")
-    r = subprocess.run(["git", "-C", _ROOT, "pull", "--ff-only"])
-    if r.returncode != 0:
-        sys.exit("git pull failed")
+    if _is_git_repo(_ROOT):
+        print("Step 1: git pull (updating superharness repo)...")
+        r = subprocess.run(["git", "-C", _ROOT, "pull", "--ff-only"])
+        if r.returncode != 0:
+            sys.exit("git pull failed")
+    else:
+        # pipx / pip install — upgrade via package manager
+        print("Step 1: upgrading superharness package...")
+        # Try pipx first, fall back to pip
+        pipx_r = subprocess.run(["pipx", "upgrade", "superharness"],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if pipx_r.returncode != 0:
+            r = subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "superharness"])
+            if r.returncode != 0:
+                sys.exit("upgrade failed")
+        else:
+            print("pipx upgrade superharness — done")
     print()
     print("Step 2: refreshing templates...")
     profile = os.path.join(".superharness", "profile.yaml")

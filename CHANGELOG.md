@@ -933,3 +933,9 @@ If you're an agent picking this up:
 - `shux monitor` / `shux monitor-ui` run the HTTP server in the background by default — prints URL + pid and returns to the shell immediately
 - Use `--foreground` flag to keep the monitor attached to the terminal (old behavior)
 - `SUPERHARNESS_MONITOR_URL_FILE` env var: monitor-ui writes its URL to this file on startup (used by CLI for non-blocking handoff)
+
+## [0.9.9] - 2026-03-15
+
+### Fixed
+- `shux update` now works correctly from pipx/pip installs: detects whether the package root is a git repo; if not, runs `pipx upgrade superharness` (falls back to `pip install --upgrade superharness`)
+- Previously `shux update` would fail silently or error when run from a pipx-installed superharness
