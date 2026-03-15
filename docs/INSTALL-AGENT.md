@@ -10,28 +10,37 @@ and write handoffs when you stop.
 
 ---
 
-## Step 1 — Clone superharness (if not already present)
+## Step 1 — Install superharness
 
 ```bash
-# Standard location. Adjust if the user specifies a different path.
-git clone https://github.com/celstnblacc/superharness.git ~/.superharness-tools
+pipx install superharness
 ```
 
-If already cloned, pull latest:
+If `pipx` is not available:
 ```bash
-cd ~/.superharness-tools && git pull --ff-only
+# macOS
+brew install pipx && pipx install superharness
+
+# Linux
+python3 -m pip install --user pipx && pipx install superharness
 ```
 
-## Step 2 — Install the CLI wrapper
-
+If already installed, upgrade to latest:
 ```bash
-bash ~/.superharness-tools/scripts/install-wrapper.sh
+pipx upgrade superharness
 ```
 
-This creates a symlink at `~/.local/bin/superharness`. Ensure `~/.local/bin` is
-in PATH. If not:
+Verify:
 ```bash
-export PATH="$HOME/.local/bin:$PATH"
+superharness --version
+```
+
+## Step 2 — Ensure PATH
+
+`pipx` installs entry points to `~/.local/bin`. If `superharness` is not found:
+```bash
+pipx ensurepath
+# then open a new shell
 ```
 
 ## Step 3 — Detect the environment
