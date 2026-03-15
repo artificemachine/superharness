@@ -160,6 +160,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--detect", action="store_true")
     p.add_argument("--interactive", action="store_true")
     p.add_argument("--refresh", action="store_true")
+    p.add_argument("--force", action="store_true",
+                   help="With --refresh: overwrite CLAUDE.md, AGENTS.md, SOUL.md even if they exist")
     opts = p.parse_args(argv)
 
     project_dir = str(Path.cwd().resolve())
@@ -318,7 +320,8 @@ def main(argv: list[str] | None = None) -> None:
 
     # CLAUDE.md
     claude_dst = Path(project_dir) / "CLAUDE.md"
-    if not claude_dst.exists() or opts.refresh:
+    _overwrite_user_file = not opts.refresh or opts.force
+    if not claude_dst.exists() or _overwrite_user_file:
         claude_tmpl = template_dir / "CLAUDE.md.template"
         if claude_tmpl.is_file():
             _render_template(claude_tmpl, claude_dst, project_name, tech_stack, status, project_dir, today, identity_block)
@@ -337,11 +340,11 @@ def main(argv: list[str] | None = None) -> None:
             )
         print("Refreshed: CLAUDE.md" if opts.refresh else "Created: CLAUDE.md")
     else:
-        print("Skipped: CLAUDE.md (already exists)")
+        print("Skipped: CLAUDE.md (user-owned — use --force to overwrite)")
 
     # AGENTS.md
     agents_dst = Path(project_dir) / "AGENTS.md"
-    if not agents_dst.exists() or opts.refresh:
+    if not agents_dst.exists() or _overwrite_user_file:
         agents_tmpl = template_dir / "AGENTS.md.template"
         if agents_tmpl.is_file():
             _render_template(agents_tmpl, agents_dst, project_name, tech_stack, status, project_dir, today)
@@ -360,11 +363,11 @@ def main(argv: list[str] | None = None) -> None:
             )
         print("Refreshed: AGENTS.md" if opts.refresh else "Created: AGENTS.md")
     else:
-        print("Skipped: AGENTS.md (already exists)")
+        print("Skipped: AGENTS.md (user-owned — use --force to overwrite)")
 
     # SOUL.md
     soul_dst = Path(project_dir) / "SOUL.md"
-    if not soul_dst.exists() or opts.refresh:
+    if not soul_dst.exists() or _overwrite_user_file:
         soul_tmpl = template_dir / "SOUL.md.template"
         if soul_tmpl.is_file():
             _render_template(soul_tmpl, soul_dst, project_name, tech_stack, status, project_dir, today)
@@ -382,7 +385,7 @@ def main(argv: list[str] | None = None) -> None:
             )
         print("Refreshed: SOUL.md" if opts.refresh else "Created: SOUL.md")
     else:
-        print("Skipped: SOUL.md (already exists)")
+        print("Skipped: SOUL.md (user-owned — use --force to overwrite)")
 
     if opts.refresh:
         print()
