@@ -16,8 +16,8 @@ jobs:
 
       - name: Install ShipGuard
         run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install "shipguard==0.3.1"
+          python3 -m pip install --upgrade pip --break-system-packages
+          python3 -m pip install "shipguard==0.3.1" --break-system-packages
 
       - name: Run ShipGuard
         run: |
@@ -25,7 +25,7 @@ jobs:
           sed -n '1,260p' shipguard.txt
 
       - name: Install pip-audit
-        run: python3 -m pip install "pip-audit==2.7.3"
+        run: python3 -m pip install "pip-audit==2.7.3" --break-system-packages
 
       - name: Run pip-audit
         run: pip-audit --format json --output pip-audit.json || true
