@@ -925,3 +925,11 @@ If you're an agent picking this up:
 - `.githooks/pre-commit`, `check-shell-entrypoints.sh`: updated paths
 - All tests updated to reflect new script paths
 - `check-contract-hygiene` test fixture: added `verified: true` to done task (pre-existing failure)
+
+## [0.9.8] - 2026-03-15
+
+### Added
+- `shux monitor` command alias for `shux monitor-ui` — both names now work
+- `shux monitor` / `shux monitor-ui` run the HTTP server in the background by default — prints URL + pid and returns to the shell immediately
+- Use `--foreground` flag to keep the monitor attached to the terminal (old behavior)
+- `SUPERHARNESS_MONITOR_URL_FILE` env var: monitor-ui writes its URL to this file on startup (used by CLI for non-blocking handoff)

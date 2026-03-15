@@ -88,16 +88,56 @@ _cmd("verify",          "Record verification result for a task.",   module="supe
 _cmd("close",           "Close a verified task (done + ledger).",   module="superharness.commands.close")
 
 
-@main.command(name="monitor-ui", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def cmd_monitor_ui(args):
-    """Launch local watcher dashboard."""
+def _run_monitor(args):
     path = os.path.join(_SCRIPTS, "monitor-ui.py")
     args_list = list(args)
     if "--project" not in args_list and "-p" not in args_list:
         args_list = ["--project", os.getcwd()] + args_list
-    result = subprocess.run([sys.executable, path] + args_list)
-    sys.exit(result.returncode)
+    foreground = "--foreground" in args_list
+    if foreground:
+        args_list.remove("--foreground")
+        result = subprocess.run([sys.executable, path] + args_list)
+        sys.exit(result.returncode)
+    # Default: background — detach from terminal, return immediately
+    import tempfile, time as _time
+    url_file = tempfile.mktemp(suffix=".monitor-url")
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    env["SUPERHARNESS_MONITOR_URL_FILE"] = url_file
+    proc = subprocess.Popen(
+        [sys.executable, "-u", path] + args_list,
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=env,
+    )
+    # Wait briefly for the server to write its URL to the temp file
+    deadline = _time.monotonic() + 5.0
+    while _time.monotonic() < deadline:
+        if os.path.exists(url_file):
+            with open(url_file) as f:
+                for line in f:
+                    print(line.rstrip())
+            os.unlink(url_file)
+            break
+        _time.sleep(0.1)
+    else:
+        print(f"monitor starting in background...")
+    print(f"pid: {proc.pid}  (stop with: kill {proc.pid})")
+
+
+@main.command(name="monitor", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def cmd_monitor(args):
+    """Launch local watcher dashboard (alias: monitor-ui)."""
+    _run_monitor(args)
+
+
+@main.command(name="monitor-ui", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def cmd_monitor_ui(args):
+    """Launch local watcher dashboard."""
+    _run_monitor(args)
 
 
 @main.command(name="delegate", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
