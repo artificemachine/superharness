@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "superharness features.json",
+  "description": "Project feature tracking. Only 'passes' may change false→true. Never edit or delete entries.",
+  "type": "object",
+  "required": ["features"],
+  "properties": {
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "category", "description", "steps", "passes"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique feature identifier (kebab-case)"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["core", "cli", "integration", "infra", "docs"],
+            "description": "Feature category"
+          },
+          "description": {
+            "type": "string",
+            "description": "What this feature does"
+          },
+          "steps": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Verification steps to confirm the feature works"
+          },
+          "passes": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether this feature has been verified as working. Only change false→true."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
