@@ -337,7 +337,7 @@ if command -v python3 >/dev/null 2>&1; then
   esac
 fi
 
-PROJECT_SLUG="$(basename "$PROJECT_DIR" | tr -cs 'A-Za-z0-9' '-')"
+PROJECT_SLUG="$(basename "$PROJECT_DIR" | tr -cs 'A-Za-z0-9' '-' | sed 's/-$//')"
 LABEL="com.superharness.inbox.${PROJECT_SLUG}"
 PLIST_DIR="$HOME/Library/LaunchAgents"
 PLIST_PATH="$PLIST_DIR/${LABEL}.plist"
