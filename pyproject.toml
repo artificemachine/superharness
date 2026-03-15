@@ -5,12 +5,31 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "superharness"
 version = "0.8.0"
-description = "Multi-agent session handoff framework for Claude Code"
+description = "Multi-agent session handoff framework for Claude Code and Codex CLI"
+readme = "README.md"
+license = "Apache-2.0"
 requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Quality Assurance",
+]
 dependencies = [
     "click>=8.1",
+    "pyyaml>=6.0",
     "ruamel.yaml>=0.18",
 ]
+
+[project.urls]
+Homepage = "https://github.com/celstnblacc/superharness"
+Repository = "https://github.com/celstnblacc/superharness"
+Issues = "https://github.com/celstnblacc/superharness/issues"
 
 [project.scripts]
 superharness = "superharness.cli:main"
@@ -22,7 +41,6 @@ where = ["src"]
 dev = [
     "pytest>=9.0,<10",
     "pytest-cov>=7.0.0",
-    "pyyaml>=6.0.3",
 ]
 
 [tool.pytest.ini_options]

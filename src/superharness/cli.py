@@ -82,6 +82,8 @@ _cmd("watcher-worker",  "Build watcher worker and install watcher.", module="sup
 _cmd("heartbeat",       "Run proactive watcher checks.",             module="superharness.commands.heartbeat")
 _cmd("demo",            "Zero-config task lifecycle walkthrough.",   module="superharness.commands.demo")
 _cmd("test-type",       "Set mandatory test types on a task.",       module="superharness.commands.test_type")
+_cmd("verify",          "Record verification result for a task.",   module="superharness.commands.verify")
+_cmd("close",           "Close a verified task (done + ledger).",   module="superharness.commands.close")
 
 
 @main.command(name="monitor-ui", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
@@ -170,7 +172,8 @@ def cmd_shux():
   shux monitor             ← open browser dashboard (auto-detects project, opens browser)
   shux test-type <id>      ← set mandatory test types for a task (interactive prompt)
   shux delegate <task-id>  ← create task + enqueue in one step for watcher dispatch
-  shux close <task-id>     ← mark task done, append ledger, write handoff
+  shux verify <task-id>    ← record verification result (pass/fail) before close
+  shux close <task-id>     ← mark task done, append ledger, write handoff (requires verify)
   shux recall <keywords>   ← search past handoffs and ledger entries
   shux hygiene             ← validate protocol compliance (contract, handoffs, ledger)
   shux watch               ← start continuous watcher in foreground

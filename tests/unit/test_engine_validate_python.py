@@ -87,7 +87,7 @@ def test_validate_fails_missing_ledger_for_done_task(tmp_path: Path) -> None:
 def test_validate_passes_done_task_with_handoff_and_ledger(tmp_path: Path) -> None:
     project = _write_project(
         tmp_path,
-        tasks="  - id: complete-task\n    status: done\n    owner: claude-code\n",
+        tasks="  - id: complete-task\n    status: done\n    owner: claude-code\n    verified: true\n",
     )
     (project / ".superharness" / "handoffs" / "h.yaml").write_text("task: complete-task\nto: claude-code\n")
     (project / ".superharness" / "ledger.md").write_text("# Ledger\ncomplete-task done\n")

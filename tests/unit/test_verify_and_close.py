@@ -1,0 +1,249 @@
+"""Tests for superharness verify and close commands."""
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+from tests.helpers import REPO_ROOT
+
+
+def _run_cmd(module: str, cwd, args: list[str], env: dict | None = None):
+    merged = os.environ.copy()
+    merged["PYTHONPATH"] = str(REPO_ROOT / "src")
+    if env:
+        merged.update(env)
+    cmd = [sys.executable, "-m", module] + args
+    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=merged, check=False)
+
+
+def _setup_project(tmp_path: Path, task_status: str = "in_progress", verified: bool = False) -> Path:
+    project = tmp_path / "proj"
+    project.mkdir()
+    harness = project / ".superharness"
+    (harness / "handoffs").mkdir(parents=True, exist_ok=True)
+    (harness / "decisions.yaml").write_text("decisions: []\n")
+    (harness / "failures.yaml").write_text("failures: []\n")
+
+    task_yaml = (
+        f"id: test-contract\n"
+        f"tasks:\n"
+        f"  - id: feat-001\n"
+        f"    title: Build feature one\n"
+        f"    owner: claude-code\n"
+        f"    status: {task_status}\n"
+        f'    project_path: "{project}"\n'
+    )
+    if verified:
+        task_yaml += (
+            f"    verified: true\n"
+            f"    verified_at: '2026-03-15T00:00:00Z'\n"
+            f"    verified_by: claude-code\n"
+        )
+
+    (harness / "contract.yaml").write_text(task_yaml)
+    (harness / "ledger.md").write_text("# Ledger\n\n")
+    return project
+
+
+# ---------------------------------------------------------------------------
+# Verify command tests
+# ---------------------------------------------------------------------------
+
+
+class TestVerify:
+    def test_verify_pass_sets_verified_true(self, tmp_path):
+        project = _setup_project(tmp_path)
+        result = _run_cmd(
+            "superharness.commands.verify", REPO_ROOT,
+            ["--project", str(project), "--id", "feat-001",
+             "--method", "pytest all green", "--result", "pass", "--actor", "claude-code"],
+        )
+        assert result.returncode == 0, result.stderr
+        assert "PASS" in result.stdout
+
+        # Check contract was updated
+        import yaml
+        with open(project / ".superharness" / "contract.yaml") as f:
+            doc = yaml.safe_load(f)
+        task = doc["tasks"][0]
+        assert task["verified"] is True
+        assert task["verified_by"] == "claude-code"
+        assert task["verified_at"]
+
+    def test_verify_fail_sets_verified_false(self, tmp_path):
+        project = _setup_project(tmp_path)
+        result = _run_cmd(
+            "superharness.commands.verify", REPO_ROOT,
+            ["--project", str(project), "--id", "feat-001",
+             "--method", "e2e test failed", "--result", "fail", "--actor", "claude-code"],
+        )
+        assert result.returncode == 0, result.stderr
+        assert "FAIL" in result.stdout
+
+        import yaml
+        with open(project / ".superharness" / "contract.yaml") as f:
+            doc = yaml.safe_load(f)
+        assert doc["tasks"][0]["verified"] is False
+
+    def test_verify_appends_ledger_entry(self, tmp_path):
+        project = _setup_project(tmp_path)
+        _run_cmd(
+            "superharness.commands.verify", REPO_ROOT,
+            ["--project", str(project), "--id", "feat-001",
+             "--method", "smoke test", "--result", "pass", "--actor", "claude-code"],
+        )
+        ledger = (project / ".superharness" / "ledger.md").read_text()
+        assert "VERIFY PASS" in ledger
+        assert "feat-001" in ledger
+        assert "smoke test" in ledger
+
+    def test_verify_invalid_result_rejected(self, tmp_path):
+        project = _setup_project(tmp_path)
+        result = _run_cmd(
+            "superharness.commands.verify", REPO_ROOT,
+            ["--project", str(project), "--id", "feat-001",
+             "--method", "test", "--result", "maybe", "--actor", "claude-code"],
+        )
+        assert result.returncode != 0
+
+    def test_verify_unknown_task_fails(self, tmp_path):
+        project = _setup_project(tmp_path)
+        result = _run_cmd(
+            "superharness.commands.verify", REPO_ROOT,
+            ["--project", str(project), "--id", "nonexistent",
+             "--method", "test", "--result", "pass", "--actor", "claude-code"],
+        )
+        assert result.returncode != 0
+        assert "not found" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# Close command tests
+# ---------------------------------------------------------------------------
+
+
+class TestClose:
+    def test_close_verified_task_succeeds(self, tmp_path):
+        project = _setup_project(tmp_path, task_status="in_progress", verified=True)
+        result = _run_cmd(
+            "superharness.commands.close", REPO_ROOT,
+            ["--project", str(project), "--id", "feat-001",
+             "--actor", "claude-code", "--summary", "All done"],
+        )
+        assert result.returncode == 0, result.stderr
+        assert "Closed task 'feat-001'" in result.stdout
+
+        import yaml
+        with open(project / ".superharness" / "contract.yaml") as f:
+            doc = yaml.safe_load(f)
+        assert doc["tasks"][0]["status"] == "done"
+
+    def test_close_unverified_task_fails(self, tmp_path):
+        project = _setup_project(tmp_path, task_status="in_progress", verified=False)
+        result = _run_cmd(
+            "superharness.commands.close", REPO_ROOT,
+            ["--project", str(project), "--id", "feat-001",
+             "--actor", "claude-code", "--summary", "Done"],
+        )
+        assert result.returncode == 1
+        assert "not verified" in result.stderr
+        assert "superharness verify" in result.stderr
+
+    def test_close_skip_verify_bypasses_gate(self, tmp_path):
+        project = _setup_project(tmp_path, task_status="in_progress", verified=False)
+        result = _run_cmd(
+            "superharness.commands.close", REPO_ROOT,
+            ["--project", str(project), "--id", "feat-001",
+             "--actor", "claude-code", "--summary", "Emergency close",
+             "--skip-verify"],
+        )
+        assert result.returncode == 0, result.stderr
+        assert "Closed task" in result.stdout
+
+    def test_close_appends_ledger_entry(self, tmp_path):
+        project = _setup_project(tmp_path, task_status="in_progress", verified=True)
+        _run_cmd(
+            "superharness.commands.close", REPO_ROOT,
+            ["--project", str(project), "--id", "feat-001",
+             "--actor", "claude-code", "--summary", "Feature complete"],
+        )
+        ledger = (project / ".superharness" / "ledger.md").read_text()
+        assert "CLOSE" in ledger
+        assert "feat-001" in ledger
+
+    def test_close_writes_handoff_yaml(self, tmp_path):
+        project = _setup_project(tmp_path, task_status="in_progress", verified=True)
+        _run_cmd(
+            "superharness.commands.close", REPO_ROOT,
+            ["--project", str(project), "--id", "feat-001",
+             "--actor", "claude-code", "--summary", "Shipped"],
+        )
+        handoff = project / ".superharness" / "handoffs" / "feat-001-to-owner.yaml"
+        assert handoff.exists()
+        import yaml
+        with open(handoff) as f:
+            data = yaml.safe_load(f)
+        assert data["task"] == "feat-001"
+        assert data["status"] == "done"
+
+    def test_close_wrong_actor_fails(self, tmp_path):
+        project = _setup_project(tmp_path, task_status="in_progress", verified=True)
+        result = _run_cmd(
+            "superharness.commands.close", REPO_ROOT,
+            ["--project", str(project), "--id", "feat-001",
+             "--actor", "codex-cli", "--summary", "Done"],
+        )
+        assert result.returncode != 0
+        assert "forbidden" in result.stderr
+
+    def test_close_unknown_task_fails(self, tmp_path):
+        project = _setup_project(tmp_path)
+        result = _run_cmd(
+            "superharness.commands.close", REPO_ROOT,
+            ["--project", str(project), "--id", "nonexistent",
+             "--actor", "claude-code", "--summary", "Done"],
+        )
+        assert result.returncode != 0
+        assert "not found" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# Verify → Close integration
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyThenClose:
+    def test_verify_then_close_full_flow(self, tmp_path):
+        project = _setup_project(tmp_path, task_status="in_progress")
+
+        # Close fails before verify
+        r1 = _run_cmd(
+            "superharness.commands.close", REPO_ROOT,
+            ["--project", str(project), "--id", "feat-001",
+             "--actor", "claude-code", "--summary", "Done"],
+        )
+        assert r1.returncode == 1
+
+        # Verify pass
+        r2 = _run_cmd(
+            "superharness.commands.verify", REPO_ROOT,
+            ["--project", str(project), "--id", "feat-001",
+             "--method", "e2e test pass", "--result", "pass", "--actor", "claude-code"],
+        )
+        assert r2.returncode == 0
+
+        # Close succeeds after verify
+        r3 = _run_cmd(
+            "superharness.commands.close", REPO_ROOT,
+            ["--project", str(project), "--id", "feat-001",
+             "--actor", "claude-code", "--summary", "Feature shipped"],
+        )
+        assert r3.returncode == 0
+
+        import yaml
+        with open(project / ".superharness" / "contract.yaml") as f:
+            doc = yaml.safe_load(f)
+        assert doc["tasks"][0]["status"] == "done"
+        assert doc["tasks"][0]["verified"] is True
