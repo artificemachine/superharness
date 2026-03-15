@@ -50,7 +50,7 @@ jobs:
             bash "$entrypoint" --help
           done < <(bash scripts/check-shell-entrypoints.sh --list-entrypoints)
           HOME="$(mktemp -d)" bash adapters/claude-code/install.sh --dry-run
-          PYTHONPATH=. python3 -m superharness.commands.init_project --dry-run "CI Smoke" "Bash" "active"
+          PYTHONPATH=src python3 -m superharness.commands.init_project --dry-run "CI Smoke" "Bash" "active"
 
   smoke-tests:
     name: Smoke Tests (${{ matrix.os }})
@@ -64,11 +64,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install pytest pytest-cov pyyaml click ruamel.yaml
+          python3 -m pip install --upgrade pip --break-system-packages
+          python3 -m pip install pytest pytest-cov pyyaml click ruamel.yaml --break-system-packages
 
       - name: Run smoke tests
-        run: PYTHONPATH=. python3 -m pytest tests/test_smoke.py -q
+        run: PYTHONPATH=src python3 -m pytest tests/test_smoke.py -q
 
   unit-tests:
     name: Unit Tests (${{ matrix.os }})
@@ -82,11 +82,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install pytest pytest-cov pyyaml click ruamel.yaml
+          python3 -m pip install --upgrade pip --break-system-packages
+          python3 -m pip install pytest pytest-cov pyyaml click ruamel.yaml --break-system-packages
 
       - name: Run unit tests
-        run: PYTHONPATH=. python3 -m pytest tests/unit -q
+        run: PYTHONPATH=src python3 -m pytest tests/unit -q
 
   integration-tests:
     name: Integration Tests (${{ matrix.os }})
@@ -100,11 +100,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install pytest pytest-cov pyyaml click ruamel.yaml
+          python3 -m pip install --upgrade pip --break-system-packages
+          python3 -m pip install pytest pytest-cov pyyaml click ruamel.yaml --break-system-packages
 
       - name: Run integration tests
-        run: PYTHONPATH=. python3 -m pytest tests/integration -q
+        run: PYTHONPATH=src python3 -m pytest tests/integration -q
 
   e2e-tests:
     name: E2E Tests (${{ matrix.os }})
@@ -118,11 +118,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install pytest pytest-cov pyyaml click ruamel.yaml
+          python3 -m pip install --upgrade pip --break-system-packages
+          python3 -m pip install pytest pytest-cov pyyaml click ruamel.yaml --break-system-packages
 
       - name: Run e2e tests
-        run: PYTHONPATH=. python3 -m pytest tests/e2e -q
+        run: PYTHONPATH=src python3 -m pytest tests/e2e -q
 
   qa-gate:
     name: QA Gate
