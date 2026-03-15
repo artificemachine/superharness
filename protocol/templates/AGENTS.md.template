@@ -27,6 +27,13 @@ Constraints: limited bandwidth. Ship > plan.
 - Run `shux recall "KEYWORDS"` with terms related to your task
 - Check for prior decisions, failures, or context from earlier sessions
 
+## After Showing Contract Status
+When you display the contract summary (task list, owners, counts):
+- Do **not** offer to run tests or start work directly.
+- Instead, ask: "Want me to enqueue `<task-id>` for dispatch? (`shux delegate <task-id>`)"
+- If multiple tasks are pending, list them and ask which to enqueue first.
+- Only proceed with implementation after the operator confirms which task to dispatch.
+
 ## Cross-Agent Protocol
 - Read `.superharness/contract.yaml` before starting work.
 - Read `.superharness/failures.yaml` and `.superharness/decisions.yaml`.
