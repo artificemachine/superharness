@@ -80,7 +80,7 @@ def test_deadline_enforcement_full_integration(repo_root, tmp_path) -> None:
     project = _create_test_project(tmp_path, task_id, owner, deadline_minutes, launched_at)
 
     # Run inbox-deadline-check.
-    script = repo_root / "scripts" / "inbox-deadline-check.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-deadline-check.sh"
     result = run_bash(script, cwd=repo_root, args=["--project", str(project)])
 
     # Should exit cleanly with exceeded=1.
@@ -132,7 +132,7 @@ def test_deadline_not_yet_exceeded_no_action(repo_root, tmp_path) -> None:
 
     project = _create_test_project(tmp_path, task_id, owner, deadline_minutes, launched_at)
 
-    script = repo_root / "scripts" / "inbox-deadline-check.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-deadline-check.sh"
     result = run_bash(script, cwd=repo_root, args=["--project", str(project)])
 
     assert result.returncode == 0, f"Script failed: {result.stderr}"

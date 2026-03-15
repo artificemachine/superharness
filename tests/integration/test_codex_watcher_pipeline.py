@@ -84,7 +84,9 @@ def test_codex_watcher_dispatch_smoke(repo_root: Path, tmp_path: Path) -> None:
     assert enqueue_res.returncode == 0, f"enqueue failed: {enqueue_res.stderr}"
     assert "Enqueued inbox item" in enqueue_res.stdout
 
-    mock_launcher = project / "scripts/delegate-to-codex.sh"
+    mock_scripts_dir = project / "scripts"
+    mock_scripts_dir.mkdir(parents=True, exist_ok=True)
+    mock_launcher = mock_scripts_dir / "delegate-to-codex.sh"
     mock_launcher.write_text(
         """#!/bin/bash
 set -euo pipefail
@@ -144,9 +146,10 @@ PY
     )
     mock_launcher.chmod(0o755)
 
-    dispatch_script = project / "scripts/inbox-dispatch.sh"
+    dispatch_script = REPO_ROOT / "src/superharness/scripts/inbox-dispatch.sh"
     dispatch_env = {
         "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
+        "SUPERHARNESS_SCRIPTS_DIR": str(mock_scripts_dir),
     }
     dispatch_res = run_bash(
         dispatch_script,

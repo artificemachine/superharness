@@ -87,7 +87,7 @@ def test_dispatch_picks_highest_priority_and_sets_launched_in_print_only_mode(re
     )
 
     bin_dir = _fake_bin(tmp_path)
-    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-dispatch.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -130,7 +130,7 @@ def test_dispatch_marks_failed_when_retry_limit_reached(repo_root, tmp_path) -> 
     )
 
     bin_dir = _fake_bin(tmp_path)
-    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-dispatch.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -234,7 +234,7 @@ def test_dispatch_fails_on_malformed_inbox_yaml(repo_root, tmp_path) -> None:
     inbox.write_text(":\n  - invalid\n")
 
     bin_dir = _fake_bin(tmp_path)
-    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-dispatch.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -269,7 +269,7 @@ def test_dispatch_non_interactive_reconciles_stuck_launched_to_failed(repo_root,
     )
 
     bin_dir = _fake_bin(tmp_path)
-    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-dispatch.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -321,7 +321,7 @@ def test_dispatch_non_interactive_codex_pauses_when_worktree_dirty(repo_root, tm
     tracked.write_text("changed\n")
 
     bin_dir = _fake_bin(tmp_path)
-    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-dispatch.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -389,7 +389,7 @@ def test_dispatch_non_interactive_reconciles_to_done_from_contract(repo_root, tm
     )
     codex_path.chmod(0o755)
 
-    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-dispatch.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -456,7 +456,7 @@ def test_dispatch_non_interactive_pauses_when_contract_waits_user_approval(repo_
     )
     codex_path.chmod(0o755)
 
-    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-dispatch.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -529,7 +529,7 @@ def test_dispatch_worker_mode_uses_dispatch_project_for_execution(repo_root, tmp
     )
     codex_path.chmod(0o755)
 
-    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-dispatch.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -570,7 +570,7 @@ def test_dispatch_handles_pipe_character_in_item_id(repo_root, tmp_path) -> None
     )
 
     bin_dir = _fake_bin(tmp_path)
-    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-dispatch.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -633,7 +633,7 @@ def test_dispatch_marks_failed_after_transient_lock_contention(repo_root, tmp_pa
     locker.chmod(0o755)
     locker_proc = subprocess.Popen(["bash", str(locker)], cwd=repo_root)
 
-    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-dispatch.sh"
     try:
         result = run_bash(
             script,
@@ -682,7 +682,7 @@ def test_dispatch_launcher_timeout_kills_hung_process(repo_root, tmp_path) -> No
     codex_path.write_text("#!/bin/bash\nsleep 300\n")
     codex_path.chmod(0o755)
 
-    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-dispatch.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -729,7 +729,7 @@ def test_dispatch_launcher_timeout_zero_means_no_timeout(repo_root, tmp_path) ->
     )
 
     bin_dir = _fake_bin(tmp_path)
-    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-dispatch.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -752,7 +752,7 @@ def test_dispatch_rejects_invalid_launcher_timeout(repo_root, tmp_path) -> None:
     (project / ".superharness").mkdir(parents=True)
     (project / ".superharness" / "inbox.yaml").write_text("- id: x\n  status: pending\n")
 
-    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-dispatch.sh"
     result = run_bash(
         script,
         cwd=repo_root,

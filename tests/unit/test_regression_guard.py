@@ -18,7 +18,7 @@ def _load_guard():
         return sys.modules[name]
     spec = importlib.util.spec_from_file_location(
         name,
-        REPO_ROOT / "scripts" / "regression-guard.py",
+        REPO_ROOT / "src" / "superharness" / "scripts" / "regression-guard.py",
     )
     mod = importlib.util.module_from_spec(spec)
     sys.modules[name] = mod
@@ -51,7 +51,7 @@ def _commit(repo: Path, msg: str, file_path: str, content: str) -> None:
 
 
 def _run_guard(repo_root: Path, repo: Path, *args: str) -> dict:
-    script = repo_root / "scripts" / "regression-guard.py"
+    script = repo_root / "src" / "superharness" / "scripts" / "regression-guard.py"
     proc = _run(["python3", str(script), "--json", *args], repo)
     assert proc.returncode == 0, proc.stderr
     return json.loads(proc.stdout)

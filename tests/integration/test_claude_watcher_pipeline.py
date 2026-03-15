@@ -88,7 +88,9 @@ def test_claude_watcher_dispatch_smoke(repo_root: Path, tmp_path: Path) -> None:
     assert "Enqueued inbox item" in enqueue_res.stdout
 
     # Create mock delegate-to-claude.sh that marks task done without launching Claude
-    mock_launcher = project / "scripts/delegate-to-claude.sh"
+    mock_scripts_dir = project / "scripts"
+    mock_scripts_dir.mkdir(parents=True, exist_ok=True)
+    mock_launcher = mock_scripts_dir / "delegate-to-claude.sh"
     mock_launcher.write_text("""#!/bin/bash
 set -euo pipefail
 PYTHON3="${SUPERHARNESS_PYTHON:-python3}"
@@ -147,10 +149,11 @@ PY
     mock_launcher.chmod(0o755)
 
     # Run inbox-dispatch in non-interactive mode
-    dispatch_script = project / "scripts/inbox-dispatch.sh"
+    dispatch_script = REPO_ROOT / "src/superharness/scripts/inbox-dispatch.sh"
     dispatch_env = {
         "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
         "SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS": "YES",
+        "SUPERHARNESS_SCRIPTS_DIR": str(mock_scripts_dir),
         # Unset to allow claude to launch in nested test environments
         "CLAUDECODE": None,
     }

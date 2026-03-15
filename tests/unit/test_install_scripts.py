@@ -112,7 +112,7 @@ def test_install_wrapper_symlink_executes_scripts_from_outside_repo(repo_root, t
 
 
 def test_install_git_hooks_force_behavior(repo_root, tmp_path) -> None:
-    script = repo_root / "scripts/install-git-hooks.sh"
+    script = repo_root / "src/superharness/scripts/install-git-hooks.sh"
 
     run_cmd(["git", "init"], cwd=tmp_path)
     run_cmd(["git", "config", "user.email", "test@example.com"], cwd=tmp_path)
@@ -135,7 +135,7 @@ def test_install_git_hooks_force_behavior(repo_root, tmp_path) -> None:
 
 
 def test_install_launchd_requires_explicit_noninteractive_confirmation(repo_root, tmp_path) -> None:
-    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home"
     home.mkdir()
@@ -156,7 +156,7 @@ def test_install_launchd_requires_explicit_noninteractive_confirmation(repo_root
 
 
 def test_install_launchd_requires_explicit_claude_skip_permissions_confirmation(repo_root, tmp_path) -> None:
-    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home"
     home.mkdir()
@@ -177,7 +177,7 @@ def test_install_launchd_requires_explicit_claude_skip_permissions_confirmation(
 
 
 def test_install_launchd_rejects_invalid_confirm_codex_bypass(repo_root, tmp_path) -> None:
-    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home-invalid-codex"
     home.mkdir()
@@ -205,7 +205,7 @@ def test_install_launchd_rejects_invalid_confirm_codex_bypass(repo_root, tmp_pat
 
 
 def test_install_launchd_escapes_plist_values_and_writes_confirmation_envs(repo_root, tmp_path) -> None:
-    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home"
     home.mkdir()
@@ -235,7 +235,7 @@ def test_install_launchd_escapes_plist_values_and_writes_confirmation_envs(repo_
 def test_install_launchd_plist_keepalive_only_restarts_on_crash(repo_root, tmp_path) -> None:
     """KeepAlive must use SuccessfulExit=false so launchd only restarts on crash,
     not after a normal single-cycle exit."""
-    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home"
     home.mkdir()
@@ -266,7 +266,7 @@ def test_install_launchd_plist_keepalive_only_restarts_on_crash(repo_root, tmp_p
 
 
 def test_install_launchd_protected_path_requires_allow_flag(repo_root, tmp_path) -> None:
-    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
     home = tmp_path / "home-protected"
     project = home / "Documents" / "proj"
     (project / ".superharness").mkdir(parents=True, exist_ok=True)
@@ -307,7 +307,7 @@ def test_install_launchd_protected_path_requires_allow_flag(repo_root, tmp_path)
 
 
 def test_install_launchd_writes_recover_arguments_to_plist(repo_root, tmp_path) -> None:
-    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home"
     home.mkdir()
@@ -340,7 +340,7 @@ def test_install_launchd_writes_recover_arguments_to_plist(repo_root, tmp_path) 
 
 
 def test_ensure_launchd_rejects_invalid_confirm_codex_bypass(repo_root, tmp_path) -> None:
-    script = repo_root / "scripts" / "ensure-launchd-inbox-watcher.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "ensure-launchd-inbox-watcher.sh"
     project = _setup_launchd_project(tmp_path)
 
     result = run_bash(
@@ -358,7 +358,7 @@ def test_ensure_launchd_rejects_invalid_confirm_codex_bypass(repo_root, tmp_path
 
 
 def test_reset_watcher_rejects_invalid_confirm_codex_bypass(repo_root, tmp_path) -> None:
-    script = repo_root / "scripts" / "reset-watcher-and-test.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "reset-watcher-and-test.sh"
     project = _setup_launchd_project(tmp_path)
 
     result = run_bash(
@@ -378,7 +378,7 @@ def test_reset_watcher_rejects_invalid_confirm_codex_bypass(repo_root, tmp_path)
 def test_sync_worker_copy_preserves_superharness_symlink(repo_root, tmp_path) -> None:
     """sync_worker_copy must not replace the worker .superharness symlink with
     a real directory copy. It should exclude .superharness entirely."""
-    script = repo_root / "scripts" / "inbox-watch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"
     source = tmp_path / "source-proj"
     source.mkdir()
     (source / ".git").mkdir()
@@ -482,7 +482,7 @@ def test_setup_watcher_worker_creates_clean_worker_and_watcher_config(repo_root,
 
 def test_install_launchd_creates_plist_from_scratch(repo_root, tmp_path) -> None:
     """When no plist exists, install creates it with correct label and loads it."""
-    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home-fresh"
     home.mkdir()
@@ -519,7 +519,7 @@ def test_install_launchd_creates_plist_from_scratch(repo_root, tmp_path) -> None
 
 def test_install_launchd_reinstall_overwrites_existing_plist(repo_root, tmp_path) -> None:
     """Reinstalling overwrites the plist with updated settings."""
-    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home-reinstall"
     home.mkdir()
@@ -571,7 +571,7 @@ def test_install_launchd_reinstall_overwrites_existing_plist(repo_root, tmp_path
 
 def test_install_launchd_plist_contains_project_and_target(repo_root, tmp_path) -> None:
     """Plist must contain the project path and target agent arguments."""
-    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home-target"
     home.mkdir()
@@ -603,7 +603,7 @@ def test_install_launchd_plist_contains_project_and_target(repo_root, tmp_path) 
 
 def test_install_launchd_output_reports_all_settings(repo_root, tmp_path) -> None:
     """Install output must report interval, recover settings, target, and mode."""
-    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home-output"
     home.mkdir()
@@ -636,7 +636,7 @@ def test_install_launchd_output_reports_all_settings(repo_root, tmp_path) -> Non
 
 def test_install_launchd_missing_superharness_dir_fails(repo_root, tmp_path) -> None:
     """Install fails if project has no .superharness directory."""
-    script = repo_root / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
     project = tmp_path / "no-harness"
     project.mkdir()
     home = tmp_path / "home-no-harness"
