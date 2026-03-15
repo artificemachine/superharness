@@ -1,7 +1,258 @@
 Metadata-Version: 2.4
 Name: superharness
-Version: 0.7.0
-Summary: Multi-agent session handoff framework for Claude Code
-Requires-Python: >=3.10
+Version: 0.9.6
+Summary: Multi-agent session handoff framework for Claude Code and Codex CLI
+License-Expression: Apache-2.0
+Project-URL: Homepage, https://github.com/celstnblacc/superharness
+Project-URL: Repository, https://github.com/celstnblacc/superharness
+Project-URL: Issues, https://github.com/celstnblacc/superharness/issues
+Classifier: Development Status :: 4 - Beta
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Software Development :: Build Tools
+Classifier: Topic :: Software Development :: Quality Assurance
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
 Requires-Dist: click>=8.1
+Requires-Dist: pyyaml>=6.0
 Requires-Dist: ruamel.yaml>=0.18
+Dynamic: license-file
+
+# superharness
+
+**Multi-agent task coordination for Claude Code and Codex CLI**
+
+superharness lets AI coding assistants work on the same project without stepping on each other. It provides a shared contract, queue-based delegation, and handoff/ledger state so tasks survive across sessions.
+
+> **AI agent installing this?** Read [`docs/INSTALL-AGENT.md`](docs/INSTALL-AGENT.md) — it tells you exactly what to detect, what to ask the user (just two questions), and how to set everything up without human terminal interaction.
+
+---
+
+## Using superharness
+
+### Via Claude Code or Codex CLI (recommended)
+
+**Step 1 — Install superharness once (terminal):**
+```bash
+pipx install superharness
+```
+
+<details>
+<summary>Alternative: install from source</summary>
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/celstnblacc/superharness/main/scripts/install-remote.sh | bash
+# export PATH="$HOME/.local/bin:$PATH"  # add to ~/.zshrc or ~/.bashrc if needed
+```
+
+Or clone manually:
+```bash
+git clone https://github.com/celstnblacc/superharness.git ~/.local/share/superharness
+bash ~/.local/share/superharness/scripts/install-wrapper.sh
+```
+</details>
+
+**Step 2 — Go to your project and open Claude Code or Codex CLI.**
+
+**Step 3 — Type these phrases directly to the agent:**
+```
+shux init              # bootstrap .superharness/ for this project
+shux doctor            # check prerequisites and protocol health
+shux contract          # show all tasks with status and next-task suggestion
+shux continue          # resume active contract automatically
+shux delegate <id>     # create task + enqueue in one step
+shux test-type <id>    # set mandatory test types for a task
+shux verify <id>       # record verification result (pass/fail)
+shux close <id>        # mark done (requires verify), append ledger, write handoff
+shux status            # dashboard: tasks, watcher, profile
+shux recall <keywords> # search past handoffs and ledger
+shux uninstall         # remove watcher and system artifacts for this project
+shux hygiene           # validate protocol compliance (contract, handoffs, ledger)
+shux monitor           # open browser dashboard
+shux watch             # start continuous watcher in foreground
+shux update            # pull latest superharness + refresh CLAUDE.md, AGENTS.md, templates
+shux discuss           # start or manage a cross-agent discussion (topic, owners, optional ID)
+shux help              # show all shux shortcuts in the terminal
+```
+
+**That's it.** Steps 1 and 2 are one-time. From then on, `shux contract` starts every session.
+
+---
+
+### Via Terminal (alternative)
+
+For scripting, CI, or users who prefer direct shell access.
+
+> **Requires:** `bash`, `python3`. See [Prerequisites](#prerequisites).
+
+```bash
+# Try first — no install needed
+PYTHONPATH=src python3 -m superharness demo
+
+# Install CLI
+pipx install superharness && superharness --version
+
+# Initialize project
+cd /path/to/project
+superharness init --interactive   # or: superharness init "Name" "Stack" "active"
+
+# Verify
+superharness doctor --project .
+
+# Contract snapshot
+superharness contract today --project .
+
+# Delegate to agent
+superharness delegate --to codex-cli --project .
+
+# Queue management
+superharness enqueue --project . --to codex-cli --task my-task --priority 1
+superharness dispatch --project . --to codex-cli
+
+# Protocol hygiene + browser monitor
+superharness hygiene --project .
+superharness monitor-ui --project .
+```
+
+**Run tests:**
+```bash
+uv sync --dev
+pytest tests/ -q
+```
+
+**Full terminal reference:** [docs/GUIDE.md](docs/GUIDE.md)
+
+---
+
+## Quick Links
+
+📘 **[User Guide](docs/GUIDE.md)** — Commands, background watcher, troubleshooting
+🏗️ **[Architecture](docs/ARCHITECTURE.md)** — Why it exists, how it works, design decisions
+🔒 **[Security](SECURITY.md)** — Threat model and operational safety notes
+
+---
+
+## What You Get
+
+- **`shux` shortcuts** — Control superharness from inside Claude Code or Codex CLI
+- **`superharness init`** — Bootstrap protocol files (`.superharness/`)
+- **`superharness delegate`** — Launch agent with contract context (auto model routing)
+- **`superharness verify`** — Record verification result before closing a task
+- **`superharness close`** — Close a verified task (done + ledger + handoff)
+- **`superharness enqueue|dispatch|watch`** — Queue-based task routing
+- **`superharness hygiene`** — Protocol compliance checks
+- **`superharness watch --foreground`** — Cross-platform continuous watcher
+- **`superharness monitor-ui`** — Browser dashboard: inbox, tasks, watcher state, plan approvals
+- **`superharness doctor`** — Prerequisite and setup health check
+- **`superharness uninstall`** — Clean removal of system artifacts
+- **Background watcher** — Unattended execution via macOS launchd or Linux systemd (opt-in)
+
+---
+
+## Is this for me?
+
+superharness is for you if **any** of these are true:
+- You use Claude Code or Codex CLI and find yourself re-explaining project context at the start of every session
+- You want to hand off a task to one agent while you work with another
+- You need an append-only audit trail of what each agent did and decided
+- You run agents unattended in the background (e.g. via launchd/systemd)
+
+You probably **don't need** superharness if you only ever run a single agent interactively and don't switch between sessions.
+
+### What you need to use it
+
+| Feature | Requirements |
+|---------|-------------|
+| Core protocol (contracts, handoffs, ledger) | `bash`, `python3` |
+| Agent shortcuts (`shux`) | + `claude` or `codex` CLI |
+| Background auto-dispatch | + launchd (macOS) or systemd (Linux) |
+| Browser dashboard | + `python3 -m http.server` (built-in) |
+
+**You can start with just the core** and add agent CLIs and background services later. `--print-only` mode lets you preview every dispatch without launching anything.
+
+---
+
+## Platform Support
+
+**Cross-platform: macOS, Linux, Windows.** All user-facing commands are Python and work everywhere `python3` is available. CI runs on all three platforms.
+
+- **Background watcher** has automated installers for both macOS (`launchd`) and Linux (`systemd`). `superharness watch --foreground` works everywhere including Windows.
+
+## Prerequisites
+
+- `python3` 3.9+ + `pyyaml` — `uv sync --dev` (or `pip install pyyaml click ruamel.yaml`)
+- `bash` (only needed for background watcher installer on macOS; not required for core commands)
+- `claude` CLI (for Claude delegation commands): `npm install -g @anthropic-ai/claude-code`
+- `codex` CLI (for Codex delegation commands): `npm install -g @openai/codex`
+- macOS `launchd` or Linux `systemd` for background watcher (see Platform Support); `--foreground` mode works everywhere
+
+---
+
+## Project Runtime State
+
+Per-project state lives in `.superharness/`:
+
+```text
+.superharness/
+├── contract.yaml          # tasks, decisions, failures
+├── handoffs/              # session handoff state
+├── ledger.md              # append-only event log
+├── decisions.yaml         # cross-agent ADRs
+├── failures.yaml          # failure memory
+└── inbox.yaml             # dispatch queue
+```
+
+**Architecture details:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+
+---
+
+## Repository Layout
+
+```text
+superharness/
+├── superharness            # thin Bash shim → delegates to Python
+├── src/superharness/       # Python CLI + engine + command modules
+├── protocol/              # protocol spec + templates
+├── adapters/              # Claude/Codex adapter assets
+├── scripts/               # launchd installer + CI guard scripts
+├── docs/                  # architecture and user guide
+├── tests/                 # unit/integration/e2e tests
+└── CHANGELOG.md
+```
+
+---
+
+## Security Note
+
+The background watcher enables **unattended execution** (agents run without human supervision). This is powerful but requires explicit confirmation:
+
+**macOS (launchd):**
+```bash
+bash scripts/install-launchd-inbox-watcher.sh \
+  --project /path/to/project \
+  --interval 30 \
+  --confirm-non-interactive yes \
+  --confirm-skip-permissions yes
+```
+
+**Linux (systemd):**
+```bash
+CONFIRM_NON_INTERACTIVE=yes bash scripts/install-systemd-inbox-watcher.sh \
+  --project /path/to/project \
+  --interval 30
+```
+
+**Read the full threat model:** [SECURITY.md](SECURITY.md)
+
+---
+
+## Current Version
+
+Current version: **v0.8.0**
+
+See [CHANGELOG.md](CHANGELOG.md) for the full iteration log.
