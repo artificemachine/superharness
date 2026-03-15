@@ -30,4 +30,5 @@ __pycache__/
 secrets.json
 credentials.json
 docs/PYPI_SETUP.md
+docs/PUBLISH_PLAN.md
 *.flock
