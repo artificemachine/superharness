@@ -1511,8 +1511,30 @@ def main() -> int:
     Handler.scripts_dir = scripts_dir
     Handler.auth_token = secrets.token_urlsafe(24)
 
-    server = ThreadingHTTPServer((args.host, args.port), Handler)
-    url = f"http://{args.host}:{args.port}"
+    port = args.port
+    user_specified_port = "--port" in sys.argv
+    if not user_specified_port:
+        for candidate in range(port, port + 20):
+            try:
+                server = ThreadingHTTPServer((args.host, candidate), Handler)
+                if candidate != port:
+                    print(f"port {port} in use, using {candidate}")
+                port = candidate
+                break
+            except OSError as exc:
+                if exc.errno in (48, 98) or "address already in use" in str(exc).lower():
+                    continue
+                raise
+        else:
+            raise SystemExit(f"No free port found in range {args.port}–{args.port + 19}")
+    else:
+        try:
+            server = ThreadingHTTPServer((args.host, port), Handler)
+        except OSError as exc:
+            if exc.errno in (48, 98) or "address already in use" in str(exc).lower():
+                raise SystemExit(f"Port {port} is already in use") from None
+            raise
+    url = f"http://{args.host}:{port}"
     print(f"monitor ui: {url}")
     print(f"project: {project_dir}")
     print(f"watcher label: {Handler.label}")
