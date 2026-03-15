@@ -13,7 +13,9 @@ Type these directly into Claude Code or Codex CLI — no terminal needed after f
 | `shux contract` | Show all tasks with status, owner, and next-task suggestion |
 | `shux continue` | Resume active contract and run full session lifecycle |
 | `shux delegate <task-id>` | Create task + enqueue in one step for watcher dispatch |
-| `shux close <task-id>` | Mark task done, append ledger, write handoff |
+| `shux test-type <task-id>` | Set mandatory test types for a task (interactive prompt) |
+| `shux verify <task-id>` | Record verification result (pass/fail) before close |
+| `shux close <task-id>` | Mark task done (requires verify), append ledger, write handoff |
 | `shux status` | Dashboard: contract, tasks, watcher state, profile |
 | `shux recall <keywords>` | Search past handoffs and ledger entries |
 | `shux uninstall` | Remove watcher and system artifacts for this project |
@@ -22,7 +24,7 @@ Type these directly into Claude Code or Codex CLI — no terminal needed after f
 | `shux watch` | Start continuous watcher in foreground |
 | `shux update` | Pull latest superharness (`git pull` in repo) + re-run init to refresh `CLAUDE.md`, `AGENTS.md`, templates |
 
-**Full session flow:** `shux init` → `shux doctor` → `shux contract` → `shux continue`
+**Full session flow:** `shux init` → `shux doctor` → `shux contract` → `shux continue` → `shux verify <id>` → `shux close <id>`
 
 Old long-form phrases (`contract today`, `continue contract`, etc.) still work.
 
@@ -40,7 +42,8 @@ graph TD
     C --> D([shux continue])
     C --> E([shux monitor])
     D --> F{task done?}
-    F -->|yes| G([shux close task-id])
+    F -->|yes| F2([shux verify task-id])
+    F2 --> G([shux close task-id])
     F -->|blocked| H([shux delegate task-id])
     G --> C
     H --> C
@@ -132,7 +135,9 @@ superharness delegate --to claude-code --project /path/to/project
 **Options:**
 - `--task <TASK_ID>` — force a specific task (bypasses next-task logic)
 - `--print-only` — generate prompt text without launching the CLI
-- `--directive "extra instructions"` — append custom directive to prompt
+- `--model <tier|name>` — override model (mini/standard/max or sonnet/opus/haiku/gpt-5.3-codex)
+- `--effort <low|medium|high>` — override thinking effort
+- `--no-auto-model` — skip Haiku auto-classification, use profile defaults
 
 **Shorthand by task id (auto-routes to task owner):**
 ```bash
@@ -263,8 +268,9 @@ bash scripts/install-launchd-inbox-watcher.sh \
 
 **Linux (systemd):**
 ```bash
-cp scripts/superharness-watcher@.service ~/.config/systemd/user/
-systemctl --user enable --now superharness-watcher@myproject.service
+CONFIRM_NON_INTERACTIVE=yes bash scripts/install-systemd-inbox-watcher.sh \
+  --project /path/to/project \
+  --interval 30
 ```
 
 **Uninstall watcher:**
