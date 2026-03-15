@@ -868,3 +868,21 @@ If you're an agent picking this up:
 ---
 
 > **Errata:** Earlier entries reference `DevOpsCelstn` — this was a local development workspace name used during early iterations. It has no significance to the project and has been removed from all source code.
+
+---
+
+## 2026-03-15 — shux monitor + shux test-type
+
+### `shux monitor` — auto project detection + browser open
+
+- `scripts/monitor-ui.py`: `--project` is now optional (defaults to cwd); added `--no-open` flag; browser opens automatically via `webbrowser.open()` on server start
+- `src/superharness/cli.py`: `cmd_monitor_ui` auto-injects `--project <cwd>` when not supplied; shux help text updated
+
+### `shux test-type` — mandatory test types on tasks
+
+- New command `src/superharness/commands/test_type.py`: attaches a `test_types` list to a contract task
+- Interactive numbered menu when called bare (proposes: unit, integration, e2e, manual, smoke)
+- Non-interactive flags: `--set`, `--add`, `--remove`, `--show`
+- Writes `test_types: [...]` atomically to `contract.yaml` via ruamel round-trip
+- Registered in `cli.py` as `superharness test-type`; listed in `shux` help shortcuts
+- `src/superharness/engine/validate.py`: `shux hygiene` warns on `done` tasks that have `test_types` without verified evidence
