@@ -50,7 +50,7 @@ jobs:
             bash "$entrypoint" --help
           done < <(bash scripts/check-shell-entrypoints.sh --list-entrypoints)
           HOME="$(mktemp -d)" bash adapters/claude-code/install.sh --dry-run
-          PYTHONPATH=. python3 -m superharness.commands.init_project --dry-run "CI Smoke" "Bash" "active"
+          PYTHONPATH=src python3 -m superharness.commands.init_project --dry-run "CI Smoke" "Bash" "active"
 
   smoke-tests:
     name: Smoke Tests (${{ matrix.os }})
@@ -62,13 +62,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3 # v5.2.0
+        with:
+          python-version: "3.11"
+
       - name: Install dependencies
-        run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install pytest pytest-cov pyyaml click ruamel.yaml
+        run: pip install pytest pytest-cov pyyaml click ruamel.yaml
 
       - name: Run smoke tests
-        run: PYTHONPATH=. python3 -m pytest tests/test_smoke.py -q
+        run: python3 -m pytest tests/test_smoke.py -q
+        env:
+          PYTHONPATH: src
 
   unit-tests:
     name: Unit Tests (${{ matrix.os }})
@@ -80,13 +84,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3 # v5.2.0
+        with:
+          python-version: "3.11"
+
       - name: Install dependencies
-        run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install pytest pytest-cov pyyaml click ruamel.yaml
+        run: pip install pytest pytest-cov pyyaml click ruamel.yaml
 
       - name: Run unit tests
-        run: PYTHONPATH=. python3 -m pytest tests/unit -q
+        run: python3 -m pytest tests/unit -q
+        env:
+          PYTHONPATH: src
 
   integration-tests:
     name: Integration Tests (${{ matrix.os }})
@@ -98,13 +106,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3 # v5.2.0
+        with:
+          python-version: "3.11"
+
       - name: Install dependencies
-        run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install pytest pytest-cov pyyaml click ruamel.yaml
+        run: pip install pytest pytest-cov pyyaml click ruamel.yaml
 
       - name: Run integration tests
-        run: PYTHONPATH=. python3 -m pytest tests/integration -q
+        run: python3 -m pytest tests/integration -q
+        env:
+          PYTHONPATH: src
 
   e2e-tests:
     name: E2E Tests (${{ matrix.os }})
@@ -116,13 +128,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3 # v5.2.0
+        with:
+          python-version: "3.11"
+
       - name: Install dependencies
-        run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install pytest pytest-cov pyyaml click ruamel.yaml
+        run: pip install pytest pytest-cov pyyaml click ruamel.yaml
 
       - name: Run e2e tests
-        run: PYTHONPATH=. python3 -m pytest tests/e2e -q
+        run: python3 -m pytest tests/e2e -q
+        env:
+          PYTHONPATH: src
 
   qa-gate:
     name: QA Gate
