@@ -70,7 +70,7 @@ For scripting, CI, or users who prefer direct shell access.
 PYTHONPATH=src python3 -m superharness demo
 
 # Install CLI
-bash scripts/install-wrapper.sh && superharness version
+pipx install superharness && superharness --version
 
 # Initialize project
 cd /path/to/project
