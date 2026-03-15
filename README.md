@@ -41,7 +41,9 @@ shux doctor            # check prerequisites and protocol health
 shux contract          # show all tasks with status and next-task suggestion
 shux continue          # resume active contract automatically
 shux delegate <id>     # create task + enqueue in one step
-shux close <id>        # mark done, append ledger, write handoff
+shux test-type <id>    # set mandatory test types for a task
+shux verify <id>       # record verification result (pass/fail)
+shux close <id>        # mark done (requires verify), append ledger, write handoff
 shux status            # dashboard: tasks, watcher, profile
 shux recall <keywords> # search past handoffs and ledger
 shux uninstall         # remove watcher and system artifacts for this project
@@ -114,7 +116,9 @@ pytest tests/ -q
 
 - **`shux` shortcuts** — Control superharness from inside Claude Code or Codex CLI
 - **`superharness init`** — Bootstrap protocol files (`.superharness/`)
-- **`superharness delegate`** — Launch agent with contract context
+- **`superharness delegate`** — Launch agent with contract context (auto model routing)
+- **`superharness verify`** — Record verification result before closing a task
+- **`superharness close`** — Close a verified task (done + ledger + handoff)
 - **`superharness enqueue|dispatch|watch`** — Queue-based task routing
 - **`superharness hygiene`** — Protocol compliance checks
 - **`superharness watch --foreground`** — Cross-platform continuous watcher
