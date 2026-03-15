@@ -594,10 +594,16 @@ def inbox_items(inbox_file: Path) -> list[dict]:
     current: dict = {}
     for raw in inbox_file.read_text(encoding="utf-8", errors="replace").splitlines():
         line = raw.strip()
-        if line.startswith("- id:"):
+        if line.startswith("#"):
+            continue
+        if raw.startswith("- "):
             if current:
                 items.append(current)
-            current = {"id": line[5:].strip()}
+            current = {}
+            kv = line[2:]
+            if ":" in kv:
+                k, _, v = kv.partition(":")
+                current[k.strip()] = v.strip()
         elif ":" in line and current:
             k, _, v = line.partition(":")
             k = k.strip()
@@ -1105,9 +1111,9 @@ def watcher_config(project_dir: Path) -> dict:
 def project_label(project_dir: Path) -> str:
     # Match install-launchd-inbox-watcher.sh: basename | tr -cs 'A-Za-z0-9' '-'
     import re
-    slug = re.sub(r"[^A-Za-z0-9]+", "-", project_dir.name + " ")
-    if not slug.strip("-"):
-        slug = "project-"
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", project_dir.name).strip("-")
+    if not slug:
+        slug = "project"
     return f"com.superharness.inbox.{slug}"
 
 
