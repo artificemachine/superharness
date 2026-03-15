@@ -903,3 +903,13 @@ If you're an agent picking this up:
 - `--interactive` mode user answer still overrides the default
 - Watcher tip message suppressed on macOS (no longer needed)
 - Monitor UI URL (`http://127.0.0.1:8787`) printed at end of init output
+
+---
+
+## 2026-03-15 — v0.9.6 — feat: monitor auto-finds free port
+
+- `scripts/monitor-ui.py`: `shux monitor` now scans ports 8787–8806 and binds the first free one when the default is occupied
+- Prints `port 8787 in use, using 8788` when falling back
+- Explicit `--port N` still errors clearly with no fallback
+- Handles `EADDRINUSE` on macOS (errno 48) and Linux (errno 98)
+- `tests/unit/test_monitor_ui.py`: 5 new unit tests covering skip-one, skip-many, all-busy, explicit-port error, and Linux errno path
