@@ -913,3 +913,15 @@ If you're an agent picking this up:
 - Explicit `--port N` still errors clearly with no fallback
 - Handles `EADDRINUSE` on macOS (errno 48) and Linux (errno 98)
 - `tests/unit/test_monitor_ui.py`: 5 new unit tests covering skip-one, skip-many, all-busy, explicit-port error, and Linux errno path
+
+---
+
+## 2026-03-15 — v0.9.7 — fix: scripts included in pip/pipx installs
+
+- `scripts/` moved to `src/superharness/scripts/` so it is included in built packages
+- `pyproject.toml`: added `[tool.setuptools.package-data] superharness = ["scripts/*"]`
+- `cli.py`, `inbox_dispatch.py`, `inbox_watch.py`: use `importlib.resources` to locate scripts — works correctly for both editable and pip/pipx installs
+- `inbox_dispatch.py`, `inbox_watch.py`: respect `SUPERHARNESS_SCRIPTS_DIR` env var for test/CI overrides
+- `.githooks/pre-commit`, `check-shell-entrypoints.sh`: updated paths
+- All tests updated to reflect new script paths
+- `check-contract-hygiene` test fixture: added `verified: true` to done task (pre-existing failure)
