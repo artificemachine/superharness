@@ -78,7 +78,7 @@ def test_enqueue_fails_on_readonly_harness_dir(repo_root, tmp_path) -> None:
     harness = project / ".superharness"
     harness.chmod(stat.S_IRUSR | stat.S_IXUSR)  # read + execute only, no write
 
-    script = repo_root / "scripts" / "inbox-enqueue.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-enqueue.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -112,7 +112,7 @@ def test_dispatch_fails_on_readonly_harness_dir(repo_root, tmp_path) -> None:
     harness = project / ".superharness"
     harness.chmod(stat.S_IRUSR | stat.S_IXUSR)  # read + execute only, no write
 
-    script = repo_root / "scripts" / "inbox-dispatch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-dispatch.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -134,7 +134,7 @@ def test_delegate_fails_on_readonly_contract(repo_root, tmp_path) -> None:
     contract = project / ".superharness" / "contract.yaml"
     contract.chmod(0)  # no access
 
-    script = repo_root / "scripts" / "delegate.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "delegate.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -154,7 +154,7 @@ def test_contract_hygiene_fails_on_unreadable_contract(repo_root, tmp_path) -> N
     contract = project / ".superharness" / "contract.yaml"
     contract.chmod(0)
 
-    script = repo_root / "scripts" / "check-contract-hygiene.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "check-contract-hygiene.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -172,7 +172,7 @@ def test_doctor_reports_missing_superharness_directory(repo_root, tmp_path) -> N
     project = tmp_path / "empty-proj"
     project.mkdir()
 
-    script = repo_root / "scripts" / "doctor.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "doctor.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -190,7 +190,7 @@ def test_watch_fails_on_readonly_project_dir(repo_root, tmp_path) -> None:
     harness = project / ".superharness"
     harness.chmod(stat.S_IRUSR | stat.S_IXUSR)  # read + execute only
 
-    script = repo_root / "scripts" / "inbox-watch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"
     result = run_bash(
         script,
         cwd=repo_root,

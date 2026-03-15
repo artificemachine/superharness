@@ -40,21 +40,21 @@ def _fake_bin(tmp_path: Path, *names: str) -> Path:
 
 
 def test_delegate_task_requires_task_id(repo_root, tmp_path) -> None:
-    script = repo_root / "scripts" / "delegate-task.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "delegate-task.sh"
     result = run_bash(script, cwd=repo_root, args=["--project", str(tmp_path)])
     assert result.returncode == 2
     assert "task-id is required" in result.stderr
 
 
 def test_delegate_task_rejects_unknown_option(repo_root, tmp_path) -> None:
-    script = repo_root / "scripts" / "delegate-task.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "delegate-task.sh"
     result = run_bash(script, cwd=repo_root, args=["--bogus"])
     assert result.returncode == 2
     assert "Unknown option" in result.stderr
 
 
 def test_delegate_task_rejects_extra_positional(repo_root, tmp_path) -> None:
-    script = repo_root / "scripts" / "delegate-task.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "delegate-task.sh"
     result = run_bash(script, cwd=repo_root, args=["task1", "task2"])
     assert result.returncode == 2
     assert "Unexpected argument" in result.stderr
@@ -64,7 +64,7 @@ def test_delegate_task_rejects_extra_positional(repo_root, tmp_path) -> None:
 
 
 def test_delegate_task_fails_missing_project_dir(repo_root, tmp_path) -> None:
-    script = repo_root / "scripts" / "delegate-task.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "delegate-task.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -78,7 +78,7 @@ def test_delegate_task_fails_missing_contract(repo_root, tmp_path) -> None:
     project = tmp_path / "proj"
     project.mkdir()
     (project / ".superharness").mkdir()
-    script = repo_root / "scripts" / "delegate-task.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "delegate-task.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -90,7 +90,7 @@ def test_delegate_task_fails_missing_contract(repo_root, tmp_path) -> None:
 
 def test_delegate_task_fails_unknown_task_id(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
-    script = repo_root / "scripts" / "delegate-task.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "delegate-task.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -102,7 +102,7 @@ def test_delegate_task_fails_unknown_task_id(repo_root, tmp_path) -> None:
 
 def test_delegate_task_fails_unsupported_owner(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path, owner="human")
-    script = repo_root / "scripts" / "delegate-task.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "delegate-task.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -117,7 +117,7 @@ def test_delegate_task_fails_unsupported_owner(repo_root, tmp_path) -> None:
 
 def test_delegate_task_print_only_succeeds(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
-    script = repo_root / "scripts" / "delegate-task.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "delegate-task.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -132,7 +132,7 @@ def test_delegate_task_print_only_succeeds(repo_root, tmp_path) -> None:
 def test_delegate_task_non_interactive_passes_flag(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
     bin_dir = _fake_bin(tmp_path, "codex")
-    script = repo_root / "scripts" / "delegate-task.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "delegate-task.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -147,7 +147,7 @@ def test_delegate_task_non_interactive_passes_flag(repo_root, tmp_path) -> None:
 
 
 def test_delegate_task_help_exits_zero(repo_root, tmp_path) -> None:
-    script = repo_root / "scripts" / "delegate-task.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "delegate-task.sh"
     result = run_bash(script, cwd=repo_root, args=["--help"])
     assert result.returncode == 0
     assert "delegate-task.sh" in result.stdout
@@ -155,7 +155,7 @@ def test_delegate_task_help_exits_zero(repo_root, tmp_path) -> None:
 
 def test_delegate_task_claude_owner_routes_correctly(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path, owner="claude-code")
-    script = repo_root / "scripts" / "delegate-task.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "delegate-task.sh"
     result = run_bash(
         script,
         cwd=repo_root,

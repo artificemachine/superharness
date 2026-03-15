@@ -165,7 +165,7 @@ def test_discuss_approve_updates_handoff_contract_and_inbox(repo_root, tmp_path)
 
 def test_contract_today_shows_user_approval_required(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
-    script = repo_root / "scripts" / "contract-today.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "contract-today.sh"
 
     result = run_bash(script, cwd=repo_root, args=["--project", str(project)])
 

@@ -6,6 +6,7 @@ Watches the inbox and dispatches pending items. Supports single-cycle
 from __future__ import annotations
 
 import hashlib
+import importlib.resources as _importlib_resources
 import os
 import signal
 import subprocess
@@ -216,16 +217,10 @@ def _run_scripts(
 
 
 def _find_scripts_dir() -> str:
-    """Locate the scripts/ directory relative to this module."""
-    here = os.path.abspath(__file__)
-    # src/superharness/commands/inbox_watch.py
-    # -> src/superharness/commands -> src/superharness -> src -> root
-    candidate = os.path.join(os.path.dirname(here), "..", "..", "..", "scripts")
-    candidate = os.path.normpath(candidate)
-    if os.path.isdir(candidate):
-        return candidate
-    # Fallback: relative to cwd
-    return os.path.join(os.getcwd(), "scripts")
+    """Locate the scripts/ directory via package data, or env var override."""
+    return os.environ.get("SUPERHARNESS_SCRIPTS_DIR") or str(
+        _importlib_resources.files("superharness").joinpath("scripts")
+    )
 
 
 # ---------------------------------------------------------------------------

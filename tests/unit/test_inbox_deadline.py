@@ -54,7 +54,7 @@ def test_deadline_exceeded_marks_failed_and_reenqueues(repo_root, tmp_path) -> N
         launched_at="2026-01-01T00:00:00Z",   # far in the past
     )
 
-    script = repo_root / "scripts" / "inbox-deadline-check.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-deadline-check.sh"
     result = run_bash(script, cwd=repo_root, args=["--project", str(project)])
 
     assert result.returncode == 0, result.stderr
@@ -98,7 +98,7 @@ def test_deadline_not_exceeded_does_nothing(repo_root, tmp_path) -> None:
         launched_at=now_utc,   # just launched
     )
 
-    script = repo_root / "scripts" / "inbox-deadline-check.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-deadline-check.sh"
     result = run_bash(script, cwd=repo_root, args=["--project", str(project)])
 
     assert result.returncode == 0, result.stderr
@@ -117,7 +117,7 @@ def test_no_deadline_set_does_nothing(repo_root, tmp_path) -> None:
         launched_at="2026-01-01T00:00:00Z",
     )
 
-    script = repo_root / "scripts" / "inbox-deadline-check.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-deadline-check.sh"
     result = run_bash(script, cwd=repo_root, args=["--project", str(project)])
 
     assert result.returncode == 0, result.stderr
@@ -136,7 +136,7 @@ def test_deadline_reassigns_codex_to_claude(repo_root, tmp_path) -> None:
         launched_at="2026-01-01T00:00:00Z",
     )
 
-    script = repo_root / "scripts" / "inbox-deadline-check.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-deadline-check.sh"
     result = run_bash(script, cwd=repo_root, args=["--project", str(project)])
 
     assert result.returncode == 0, result.stderr
@@ -152,7 +152,7 @@ def test_missing_inbox_exits_cleanly(repo_root, tmp_path) -> None:
     project.mkdir()
     (project / ".superharness").mkdir()
 
-    script = repo_root / "scripts" / "inbox-deadline-check.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-deadline-check.sh"
     result = run_bash(script, cwd=repo_root, args=["--project", str(project)])
 
     assert result.returncode == 0, result.stderr

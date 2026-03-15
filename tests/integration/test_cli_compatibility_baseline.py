@@ -13,7 +13,7 @@ from tests.helpers import REPO_ROOT, run_bash, shell_guard_list
 # their functionality is now in Python modules.
 HELP_ENTRYPOINTS = [
     "superharness",
-    "scripts/delegate-task.sh",
+    "src/superharness/scripts/delegate-task.sh",
 ]
 
 

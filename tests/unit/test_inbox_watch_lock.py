@@ -42,7 +42,7 @@ def test_watch_auto_breaks_stale_lock(repo_root, tmp_path) -> None:
     os.utime(str(lock_dir), (stale_time, stale_time))
 
     try:
-        script = repo_root / "scripts" / "inbox-watch.sh"
+        script = repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"
         result = run_bash(
             script,
             cwd=repo_root,
@@ -71,7 +71,7 @@ def test_watch_respects_fresh_lock(repo_root, tmp_path) -> None:
     lock_dir.mkdir(exist_ok=True)
 
     try:
-        script = repo_root / "scripts" / "inbox-watch.sh"
+        script = repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"
         result = run_bash(
             script,
             cwd=repo_root,
@@ -102,7 +102,7 @@ def test_watch_lock_stale_disabled_with_zero(repo_root, tmp_path) -> None:
     os.utime(str(lock_dir), (stale_time, stale_time))
 
     try:
-        script = repo_root / "scripts" / "inbox-watch.sh"
+        script = repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"
         result = run_bash(
             script,
             cwd=repo_root,
@@ -126,7 +126,7 @@ def test_watch_lock_stale_disabled_with_zero(repo_root, tmp_path) -> None:
 def test_watch_passes_launcher_timeout_to_dispatch(repo_root, tmp_path) -> None:
     project = _write_project(tmp_path)
 
-    script = repo_root / "scripts" / "inbox-watch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -145,7 +145,7 @@ def test_watch_passes_launcher_timeout_to_dispatch(repo_root, tmp_path) -> None:
 def test_watch_accepts_recover_options(repo_root, tmp_path) -> None:
     project = _write_project(tmp_path)
 
-    script = repo_root / "scripts" / "inbox-watch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -164,7 +164,7 @@ def test_watch_accepts_recover_options(repo_root, tmp_path) -> None:
 def test_watch_rejects_invalid_recover_action(repo_root, tmp_path) -> None:
     project = _write_project(tmp_path)
 
-    script = repo_root / "scripts" / "inbox-watch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -181,7 +181,7 @@ def test_watch_rejects_invalid_recover_action(repo_root, tmp_path) -> None:
 def test_watch_rejects_invalid_recover_timeout_minutes(repo_root, tmp_path) -> None:
     project = _write_project(tmp_path)
 
-    script = repo_root / "scripts" / "inbox-watch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -200,7 +200,7 @@ def test_watch_foreground_exits_on_sigterm(repo_root, tmp_path) -> None:
     import signal
 
     project = _write_project(tmp_path)
-    script = repo_root / "scripts" / "inbox-watch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"
 
     import subprocess as sp
 
@@ -231,7 +231,7 @@ def test_watch_foreground_exits_on_sigterm(repo_root, tmp_path) -> None:
 
 def test_watch_foreground_rejects_zero_interval(repo_root, tmp_path) -> None:
     project = _write_project(tmp_path)
-    script = repo_root / "scripts" / "inbox-watch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -246,7 +246,7 @@ def test_watch_foreground_rejects_zero_interval(repo_root, tmp_path) -> None:
 
 
 def test_watch_validates_project_dir(repo_root, tmp_path) -> None:
-    script = repo_root / "scripts" / "inbox-watch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -259,7 +259,7 @@ def test_watch_validates_project_dir(repo_root, tmp_path) -> None:
 def test_watch_validates_superharness_dir(repo_root, tmp_path) -> None:
     project = tmp_path / "no-harness"
     project.mkdir()
-    script = repo_root / "scripts" / "inbox-watch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"
     result = run_bash(
         script,
         cwd=repo_root,
@@ -272,7 +272,7 @@ def test_watch_validates_superharness_dir(repo_root, tmp_path) -> None:
 def test_watch_rejects_invalid_lock_stale_minutes(repo_root, tmp_path) -> None:
     project = _write_project(tmp_path)
 
-    script = repo_root / "scripts" / "inbox-watch.sh"
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"
     result = run_bash(
         script,
         cwd=repo_root,
