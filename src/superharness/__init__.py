@@ -1,3 +1,8 @@
 """superharness — multi-agent session handoff framework."""
 
-__version__ = "0.9.2"
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("superharness")
+except PackageNotFoundError:
+    __version__ = "unknown"
