@@ -14,10 +14,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Install ShipGuard
-        run: |
-          python3 -m pip install --upgrade pip --break-system-packages
-          python3 -m pip install "shipguard==0.3.1" --break-system-packages
+        run: pip install "shipguard==0.3.1"
 
       - name: Run ShipGuard
         run: |
@@ -25,7 +27,7 @@ jobs:
           sed -n '1,260p' shipguard.txt
 
       - name: Install pip-audit
-        run: python3 -m pip install "pip-audit==2.7.3" --break-system-packages
+        run: pip install "pip-audit==2.7.3"
 
       - name: Run pip-audit
         run: pip-audit --format json --output pip-audit.json || true

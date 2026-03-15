@@ -62,10 +62,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Install dependencies
-        run: |
-          python3 -m pip install --upgrade pip --break-system-packages
-          python3 -m pip install pytest pytest-cov pyyaml click ruamel.yaml --break-system-packages
+        run: pip install pytest pytest-cov pyyaml click ruamel.yaml
 
       - name: Run smoke tests
         run: PYTHONPATH=src python3 -m pytest tests/test_smoke.py -q
@@ -80,10 +82,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Install dependencies
-        run: |
-          python3 -m pip install --upgrade pip --break-system-packages
-          python3 -m pip install pytest pytest-cov pyyaml click ruamel.yaml --break-system-packages
+        run: pip install pytest pytest-cov pyyaml click ruamel.yaml
 
       - name: Run unit tests
         run: PYTHONPATH=src python3 -m pytest tests/unit -q
@@ -98,10 +102,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Install dependencies
-        run: |
-          python3 -m pip install --upgrade pip --break-system-packages
-          python3 -m pip install pytest pytest-cov pyyaml click ruamel.yaml --break-system-packages
+        run: pip install pytest pytest-cov pyyaml click ruamel.yaml
 
       - name: Run integration tests
         run: PYTHONPATH=src python3 -m pytest tests/integration -q
@@ -116,10 +122,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Install dependencies
-        run: |
-          python3 -m pip install --upgrade pip --break-system-packages
-          python3 -m pip install pytest pytest-cov pyyaml click ruamel.yaml --break-system-packages
+        run: pip install pytest pytest-cov pyyaml click ruamel.yaml
 
       - name: Run e2e tests
         run: PYTHONPATH=src python3 -m pytest tests/e2e -q
