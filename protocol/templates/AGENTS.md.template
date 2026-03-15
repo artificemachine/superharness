@@ -11,8 +11,20 @@ Constraints: limited bandwidth. Ship > plan.
 - Stack: {{TECH_STACK}}
 - Status: {{STATUS}}
 
+## Commands
+`superharness` (alias: `shux`) is a CLI tool installed globally. Run these directly:
+
+- `shux doctor` — check prerequisites and protocol health
+- `shux contract` — show all tasks with status and owner
+- `shux delegate <id>` — create task + enqueue for agent dispatch
+- `shux status` — dashboard: contract, watcher, inbox
+- `shux verify <id>` — record verification before closing
+- `shux close <id>` — mark task done + write handoff
+- `shux recall <keywords>` — search past handoffs and ledger
+- `shux hygiene` — validate protocol compliance
+
 ## Before Starting Work
-- Run `superharness recall --project . "KEYWORDS"` with terms related to your task
+- Run `shux recall "KEYWORDS"` with terms related to your task
 - Check for prior decisions, failures, or context from earlier sessions
 
 ## Cross-Agent Protocol

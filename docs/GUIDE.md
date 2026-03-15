@@ -92,16 +92,13 @@ sequenceDiagram
 
 For scripting, CI, or users who prefer direct shell access.
 
-### Install Wrapper into PATH
+### Install
 
 ```bash
-git clone <superharness-repo-url>
-cd superharness
-bash scripts/install-wrapper.sh
-# export PATH="$HOME/.local/bin:$PATH"  # add to ~/.zshrc or ~/.bashrc if needed
+pipx install superharness
 ```
 
-Symlinks the wrapper to `~/.local/bin/superharness`. After that, use `superharness <command>` from anywhere. This is done once per machine.
+After install, `superharness` (and the `shux` alias) are available from anywhere. This is done once per machine. Upgrade anytime with `pipx upgrade superharness`.
 
 ### Init
 
@@ -411,8 +408,7 @@ superharness watch --foreground --project . --interval 60 --launcher-timeout 300
 
 ```bash
 # Terminal: install CLI (one-time)
-git pull
-bash /path/to/superharness/scripts/install-wrapper.sh
+pipx install superharness   # or: pipx upgrade superharness
 
 # Then in Claude Code or Codex CLI:
 # shux doctor      ← verify setup
