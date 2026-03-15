@@ -33,6 +33,7 @@ Issues = "https://github.com/celstnblacc/superharness/issues"
 
 [project.scripts]
 superharness = "superharness.cli:main"
+shux = "superharness.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
