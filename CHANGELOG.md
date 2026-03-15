@@ -894,3 +894,12 @@ If you're an agent picking this up:
 - `pyproject.toml`: added `shux = "superharness.cli:main"` to `[project.scripts]`
 - `shux` was documented and referenced throughout the codebase but never registered as a binary entry point — users who installed via pip/pipx had no `shux` command
 - Both `superharness` and `shux` now resolve to the same CLI entrypoint on install
+
+---
+
+## 2026-03-15 — v0.9.5 — feat: auto-install watcher on macOS and show monitor URL at init
+
+- `src/superharness/commands/init_project.py`: `shux init` now auto-installs the background watcher on macOS without requiring `--with-watcher`
+- `--interactive` mode user answer still overrides the default
+- Watcher tip message suppressed on macOS (no longer needed)
+- Monitor UI URL (`http://127.0.0.1:8787`) printed at end of init output

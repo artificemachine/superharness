@@ -168,13 +168,12 @@ def main(argv: list[str] | None = None) -> None:
 
     interactive_goal = ""
     tmp_profile = ""
-    install_watcher = opts.with_watcher
+    install_watcher = opts.with_watcher or platform.system() == "Darwin"
 
     if opts.interactive:
         result = _interactive(project_dir)
         project_name, tech_stack, status, interactive_goal, install_watcher_q, tmp_profile = result
-        if install_watcher_q:
-            install_watcher = True
+        install_watcher = install_watcher_q  # user's explicit choice overrides default
         opts.from_profile = tmp_profile
 
     if opts.from_profile:
@@ -447,10 +446,13 @@ def main(argv: list[str] | None = None) -> None:
     print('  superharness task create --project . --id my-task --title "..." --owner codex-cli')
     print("  Add .superharness/ to .gitignore OR commit it (your choice)")
     print()
-    print("Tip: To enable a background watcher (macOS only), re-run with --with-watcher")
-    print("     or use: superharness watch --foreground --project . --interval 30")
+    if platform.system() != "Darwin":
+        print("Tip: To enable a background watcher (macOS only), re-run with --with-watcher")
+        print("     or use: superharness watch --foreground --project . --interval 30")
     print()
     print("→ Next: run 'shux doctor' to verify your setup, then 'shux monitor' to open the dashboard.")
+    print()
+    print("Monitor UI: http://127.0.0.1:8787  (start with: shux monitor)")
 
 
 if __name__ == "__main__":
