@@ -178,7 +178,7 @@ def test_task_create_uses_profile_primary_agent_when_no_owner(repo_root, tmp_pat
     _write_profile(harness, primary_agent="claude-code")
 
     result = run_bash(
-        repo_root / "scripts" / "task.sh",
+        repo_root / "src" / "superharness" / "scripts" / "task.sh",
         cwd=repo_root,
         args=["create", "--project", str(project), "--id", "t-profile-1", "--title", "Test task"],
         # No --owner flag; stdin empty so prompt read gets empty → but profile should fill it
@@ -202,7 +202,7 @@ def test_task_create_explicit_owner_ignores_profile(repo_root, tmp_path) -> None
     _write_profile(harness, primary_agent="claude-code")
 
     result = run_bash(
-        repo_root / "scripts" / "task.sh",
+        repo_root / "src" / "superharness" / "scripts" / "task.sh",
         cwd=repo_root,
         args=[
             "create", "--project", str(project),
@@ -228,7 +228,7 @@ def test_task_create_no_owner_no_profile_prompts_user(repo_root, tmp_path) -> No
     # No profile written
 
     result = run_bash(
-        repo_root / "scripts" / "task.sh",
+        repo_root / "src" / "superharness" / "scripts" / "task.sh",
         cwd=repo_root,
         args=["create", "--project", str(project), "--id", "t-prompt-1", "--title", "Prompted task"],
         # Pipe owner answer via stdin
@@ -266,7 +266,7 @@ def test_contract_today_solo_no_delegation_suggestion(repo_root, tmp_path) -> No
     _write_profile(project / ".superharness", team_size="solo")
 
     result = run_bash(
-        repo_root / "scripts" / "contract-today.sh",
+        repo_root / "src" / "superharness" / "scripts" / "contract-today.sh",
         cwd=repo_root,
         args=["--project", str(project)],
     )
@@ -280,7 +280,7 @@ def test_contract_today_small_shows_delegation_suggestion(repo_root, tmp_path) -
     _write_profile(project / ".superharness", team_size="small")
 
     result = run_bash(
-        repo_root / "scripts" / "contract-today.sh",
+        repo_root / "src" / "superharness" / "scripts" / "contract-today.sh",
         cwd=repo_root,
         args=["--project", str(project)],
     )
@@ -294,7 +294,7 @@ def test_contract_today_no_profile_shows_delegation(repo_root, tmp_path) -> None
     # No profile written — old behavior: delegation suggestion is always shown
 
     result = run_bash(
-        repo_root / "scripts" / "contract-today.sh",
+        repo_root / "src" / "superharness" / "scripts" / "contract-today.sh",
         cwd=repo_root,
         args=["--project", str(project)],
     )

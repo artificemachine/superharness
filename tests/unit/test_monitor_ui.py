@@ -12,7 +12,7 @@ import pytest
 
 
 def _load_monitor_module(repo_root: Path):
-    script = repo_root / "scripts" / "monitor-ui.py"
+    script = repo_root / "src" / "superharness" / "scripts" / "monitor-ui.py"
     spec = importlib.util.spec_from_file_location("monitor_ui_module", script)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -62,7 +62,7 @@ def _start_server(module, repo_root: Path, project: Path):
     module.Handler.project_dir = project
     module.Handler.label = module.project_label(project)
     module.Handler.refresh_seconds = 3
-    module.Handler.scripts_dir = repo_root / "scripts"
+    module.Handler.scripts_dir = repo_root / "src" / "superharness" / "scripts"
     module.Handler.logdy_port = 8797
     module.Handler.auth_token = f"unit-{uuid.uuid4().hex}"
     module.Handler.logdy_process = None
@@ -593,7 +593,7 @@ def test_monitor_action_retry_and_stop_paths(repo_root, tmp_path, monkeypatch) -
     monkeypatch.setattr(module.os, "kill", lambda *args, **kwargs: None)
 
     module.Handler.project_dir = project
-    module.Handler.scripts_dir = repo_root / "scripts"
+    module.Handler.scripts_dir = repo_root / "src" / "superharness" / "scripts"
 
     h = module.Handler.__new__(module.Handler)
     retry_ok, status_ok = h._action("retry_item:retry-me")
@@ -800,7 +800,7 @@ def test_monitor_action_approve_task(repo_root, tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
 
     module.Handler.project_dir = project
-    module.Handler.scripts_dir = repo_root / "scripts"
+    module.Handler.scripts_dir = repo_root / "src" / "superharness" / "scripts"
 
     h = module.Handler.__new__(module.Handler)
     result, status = h._action("approve_task:my-task")
@@ -817,7 +817,7 @@ def test_monitor_action_approve_task_empty_id(repo_root, tmp_path, monkeypatch) 
     project = _setup_project(tmp_path)
 
     module.Handler.project_dir = project
-    module.Handler.scripts_dir = repo_root / "scripts"
+    module.Handler.scripts_dir = repo_root / "src" / "superharness" / "scripts"
 
     h = module.Handler.__new__(module.Handler)
     result, status = h._action("approve_task:")
@@ -837,7 +837,7 @@ def test_monitor_action_pause_and_resume_item(repo_root, tmp_path, monkeypatch) 
     monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
 
     module.Handler.project_dir = project
-    module.Handler.scripts_dir = repo_root / "scripts"
+    module.Handler.scripts_dir = repo_root / "src" / "superharness" / "scripts"
 
     h = module.Handler.__new__(module.Handler)
 
@@ -869,7 +869,7 @@ def test_monitor_action_dispatch_and_recover(repo_root, tmp_path, monkeypatch) -
     monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
 
     module.Handler.project_dir = project
-    module.Handler.scripts_dir = repo_root / "scripts"
+    module.Handler.scripts_dir = repo_root / "src" / "superharness" / "scripts"
 
     h = module.Handler.__new__(module.Handler)
 
@@ -966,7 +966,7 @@ def test_monitor_action_stop_item_not_found(repo_root, tmp_path, monkeypatch) ->
     project = _setup_project(tmp_path)
 
     module.Handler.project_dir = project
-    module.Handler.scripts_dir = repo_root / "scripts"
+    module.Handler.scripts_dir = repo_root / "src" / "superharness" / "scripts"
 
     h = module.Handler.__new__(module.Handler)
     result, status = h._action("stop_item:nonexistent")

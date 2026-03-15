@@ -2,6 +2,8 @@
 import subprocess
 import yaml
 
+from tests.helpers import SCRIPTS_DIR
+
 
 def test_hygiene_check_passes_with_valid_contract(tmp_path):
     """Verify hygiene check passes when done tasks have handoffs and ledger entries."""
@@ -13,7 +15,7 @@ def test_hygiene_check_passes_with_valid_contract(tmp_path):
         "id": "test-contract",
         "status": "active",
         "tasks": [
-            {"id": "task-one", "status": "done", "title": "Test task"}
+            {"id": "task-one", "status": "done", "title": "Test task", "verified": True}
         ],
         "decisions": [],
         "failures": []
@@ -39,7 +41,7 @@ def test_hygiene_check_passes_with_valid_contract(tmp_path):
 
     # Run check
     result = subprocess.run(
-        ["scripts/check-contract-hygiene.sh", "--project", str(tmp_path)],
+        [str(SCRIPTS_DIR / "check-contract-hygiene.sh"), "--project", str(tmp_path)],
         capture_output=True,
         text=True
     )
@@ -73,7 +75,7 @@ def test_hygiene_check_fails_without_handoff(tmp_path):
     (harness / "failures.yaml").write_text("failures: []\n")
 
     result = subprocess.run(
-        ["scripts/check-contract-hygiene.sh", "--project", str(tmp_path)],
+        [str(SCRIPTS_DIR / "check-contract-hygiene.sh"), "--project", str(tmp_path)],
         capture_output=True,
         text=True
     )
@@ -112,7 +114,7 @@ def test_hygiene_check_fails_without_ledger_entry(tmp_path):
     (harness / "failures.yaml").write_text("failures: []\n")
 
     result = subprocess.run(
-        ["scripts/check-contract-hygiene.sh", "--project", str(tmp_path)],
+        [str(SCRIPTS_DIR / "check-contract-hygiene.sh"), "--project", str(tmp_path)],
         capture_output=True,
         text=True
     )
@@ -146,7 +148,7 @@ def test_hygiene_check_skips_non_done_tasks(tmp_path):
     (harness / "failures.yaml").write_text("failures: []\n")
 
     result = subprocess.run(
-        ["scripts/check-contract-hygiene.sh", "--project", str(tmp_path)],
+        [str(SCRIPTS_DIR / "check-contract-hygiene.sh"), "--project", str(tmp_path)],
         capture_output=True,
         text=True
     )
