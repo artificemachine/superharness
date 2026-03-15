@@ -102,6 +102,51 @@ def _interactive(project_dir: str) -> tuple[str, str, str, str, bool, str]:
     return name, stack, status, goal, install_watcher, tmp.name
 
 
+def _generate_features(tech_stack: str) -> list[dict]:
+    """Generate default features based on detected tech stack."""
+    features: list[dict] = [
+        {
+            "id": "project-builds",
+            "category": "core",
+            "description": "Project builds without errors",
+            "steps": ["Run the build command", "Verify no errors in output"],
+            "passes": False,
+        },
+        {
+            "id": "tests-pass",
+            "category": "core",
+            "description": "All tests pass",
+            "steps": ["Run the test suite", "Verify all tests green"],
+            "passes": False,
+        },
+        {
+            "id": "cli-entry-point",
+            "category": "cli",
+            "description": "CLI entry point works",
+            "steps": ["Run the CLI with --help or --version", "Verify output"],
+            "passes": False,
+        },
+    ]
+    stack_lower = tech_stack.lower()
+    if "docker" in stack_lower:
+        features.append({
+            "id": "docker-build",
+            "category": "infra",
+            "description": "Docker image builds successfully",
+            "steps": ["Run docker build", "Verify image created"],
+            "passes": False,
+        })
+    if "python" in stack_lower:
+        features.append({
+            "id": "pip-install",
+            "category": "integration",
+            "description": "Package installs via pip",
+            "steps": ["Run pip install -e .", "Verify import works"],
+            "passes": False,
+        })
+    return features
+
+
 def main(argv: list[str] | None = None) -> None:
     import argparse
 
@@ -248,6 +293,17 @@ def main(argv: list[str] | None = None) -> None:
                 encoding="utf-8"
             )
 
+        # features.json — project feature definition of done
+        features_dst = harness / "features.json"
+        if not features_dst.exists():
+            import json
+            features = _generate_features(tech_stack)
+            features_dst.write_text(
+                json.dumps({"features": features}, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            print(f"Created: .superharness/features.json ({len(features)} features)")
+
     else:  # refresh mode
         if not harness.is_dir():
             sys.exit("--refresh requires an existing .superharness/ directory. Run init first.")
@@ -371,6 +427,7 @@ def main(argv: list[str] | None = None) -> None:
     print("  ├── contracts/           ← completed contracts archive")
     print("  ├── handoffs/            ← agent handoff files")
     print("  ├── review-lenses/       ← project-specific lenses (optional)")
+    print("  ├── features.json        ← project feature tracking (passes: false→true only)")
     print("  ├── failures.yaml        ← cross-agent failure memory")
     print("  ├── decisions.yaml       ← cross-agent decision records")
     print("  └── ledger.md            ← append-only activity log")
