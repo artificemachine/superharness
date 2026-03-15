@@ -222,7 +222,7 @@ def test_install_launchd_escapes_plist_values_and_writes_confirmation_envs(repo_
     )
 
     assert result.returncode == 0, result.stderr
-    label = "com.superharness.inbox.proj-demo-"
+    label = "com.superharness.inbox.proj-demo"
     plist = home / "Library" / "LaunchAgents" / f"{label}.plist"
     plist_text = plist.read_text()
     assert "&amp;" in plist_text
@@ -252,7 +252,7 @@ def test_install_launchd_plist_keepalive_only_restarts_on_crash(repo_root, tmp_p
     )
 
     assert result.returncode == 0, result.stderr
-    label = "com.superharness.inbox.proj-demo-"
+    label = "com.superharness.inbox.proj-demo"
     plist = home / "Library" / "LaunchAgents" / f"{label}.plist"
     plist_text = plist.read_text()
     # Must NOT use unconditional <true/> for KeepAlive
@@ -330,7 +330,7 @@ def test_install_launchd_writes_recover_arguments_to_plist(repo_root, tmp_path) 
     )
 
     assert result.returncode == 0, result.stderr
-    label = "com.superharness.inbox.proj-demo-"
+    label = "com.superharness.inbox.proj-demo"
     plist = home / "Library" / "LaunchAgents" / f"{label}.plist"
     plist_text = plist.read_text()
     assert "<string>--recover-timeout-minutes</string>" in plist_text
@@ -508,7 +508,7 @@ def test_install_launchd_creates_plist_from_scratch(repo_root, tmp_path) -> None
 
     assert result.returncode == 0, result.stderr
     assert "Installed launchd inbox watcher:" in result.stdout
-    label = "com.superharness.inbox.proj-demo-"
+    label = "com.superharness.inbox.proj-demo"
     assert f"Label: {label}" in result.stdout
     plist = plist_dir / f"{label}.plist"
     assert plist.exists(), "Plist should be created from scratch"
@@ -541,7 +541,7 @@ def test_install_launchd_reinstall_overwrites_existing_plist(repo_root, tmp_path
         },
     )
 
-    label = "com.superharness.inbox.proj-demo-"
+    label = "com.superharness.inbox.proj-demo"
     plist = home / "Library" / "LaunchAgents" / f"{label}.plist"
     first_text = plist.read_text()
     assert "<integer>30</integer>" in first_text
@@ -593,7 +593,7 @@ def test_install_launchd_plist_contains_project_and_target(repo_root, tmp_path) 
     )
 
     assert result.returncode == 0, result.stderr
-    label = "com.superharness.inbox.proj-demo-"
+    label = "com.superharness.inbox.proj-demo"
     plist = home / "Library" / "LaunchAgents" / f"{label}.plist"
     plist_text = plist.read_text()
     assert "<string>--project</string>" in plist_text
