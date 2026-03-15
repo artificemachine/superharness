@@ -89,6 +89,9 @@ def run_validate(project: str, strict: bool = False) -> int:
         test_types = task.get("test_types")
         if test_types and isinstance(test_types, list):
             print(f"Warning: task '{id_}' requires test types [{', '.join(str(t) for t in test_types)}] — verify evidence before close")
+        if not task.get("verified"):
+            print(f"Warning: task '{id_}' closed without verification record")
+            issues += 1
 
     contract_decision_count = len(contract.get("decisions") or []) if isinstance(contract.get("decisions"), list) else 0
     contract_failure_count = len(contract.get("failures") or []) if isinstance(contract.get("failures"), list) else 0
