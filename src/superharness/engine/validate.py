@@ -93,6 +93,32 @@ def run_validate(project: str, strict: bool = False) -> int:
             print(f"Warning: task '{id_}' closed without verification record")
             issues += 1
 
+    # Features.json validation
+    features_file = os.path.join(harness_dir, "features.json")
+    if os.path.isfile(features_file):
+        try:
+            import json
+            with open(features_file) as f:
+                features_doc = json.load(f)
+            features = features_doc.get("features", [])
+            if not isinstance(features, list):
+                print("features.json: 'features' must be an array")
+                issues += 1
+            else:
+                seen_ids: set[str] = set()
+                for feat in features:
+                    fid = feat.get("id", "")
+                    if fid in seen_ids:
+                        print(f"features.json: duplicate feature id '{fid}'")
+                        issues += 1
+                    seen_ids.add(fid)
+                    if not isinstance(feat.get("passes"), bool):
+                        print(f"features.json: feature '{fid}' missing boolean 'passes' field")
+                        issues += 1
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"features.json: invalid JSON: {e}")
+            issues += 1
+
     contract_decision_count = len(contract.get("decisions") or []) if isinstance(contract.get("decisions"), list) else 0
     contract_failure_count = len(contract.get("failures") or []) if isinstance(contract.get("failures"), list) else 0
 
