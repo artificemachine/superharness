@@ -64,6 +64,31 @@ def _get_task_acceptance_criteria(contract_file: str, task_id: str) -> list[str]
     return []
 
 
+def _get_task_title(contract_file: str, task_id: str) -> str:
+    doc = _load_contract(contract_file)
+    tasks = doc.get("tasks") or []
+    for t in tasks:
+        if isinstance(t, dict) and str(t.get("id", "")) == task_id:
+            return str(t.get("title", ""))
+    return ""
+
+
+def _get_task_field(contract_file: str, task_id: str, field: str) -> str | None:
+    """Return a string field from a task, or None if absent."""
+    doc = _load_contract(contract_file)
+    tasks = doc.get("tasks") or []
+    for t in tasks:
+        if isinstance(t, dict) and str(t.get("id", "")) == task_id:
+            val = t.get(field)
+            return str(val) if val is not None else None
+    return None
+
+
+def _get_task_previously_failed(contract_file: str, task_id: str) -> bool:
+    status = _get_task_field(contract_file, task_id, "status")
+    return status == "failed"
+
+
 def _get_latest_handoff_task(handoff_dir: str, to: str) -> tuple[str, str]:
     """Returns (task_id, handoff_file) or ("", "")."""
     import glob as _glob
@@ -184,6 +209,8 @@ def _launch_agent(
     non_interactive: bool,
     codex_bypass: bool,
     label: str = "",
+    model: str = "",
+    effort: str = "",
 ) -> None:
     display_label = f" {label}" if label else ""
 
@@ -191,6 +218,13 @@ def _launch_agent(
         if not _cmd_exists("claude"):
             _abort("claude CLI is not installed or not on PATH")
         print()
+
+        model_args: list[str] = []
+        if model:
+            model_args += ["--model", model]
+        if effort:
+            model_args += ["--effort", effort]
+
         if non_interactive:
             _confirm_dangerous_flag_risk(
                 "SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS",
@@ -198,15 +232,20 @@ def _launch_agent(
             )
             print(f"Launching Claude{display_label}...")
             os.chdir(project_dir)
-            os.execvp("claude", ["claude", "-p", "--dangerously-skip-permissions", prompt])
+            os.execvp("claude", ["claude", "-p", "--dangerously-skip-permissions"] + model_args + [prompt])
         print(f"Launching Claude{display_label}...")
         os.chdir(project_dir)
-        os.execvp("claude", ["claude", prompt])
+        os.execvp("claude", ["claude"] + model_args + [prompt])
 
     else:  # codex-cli
         if not _cmd_exists("codex"):
             _abort("codex CLI is not installed or not on PATH")
         print()
+
+        codex_model_args: list[str] = []
+        if model:
+            codex_model_args += ["--model", model]
+
         if non_interactive:
             print(f"Launching Codex{display_label}...")
             common = ["exec", "--skip-git-repo-check", "-C", project_dir]
@@ -215,10 +254,10 @@ def _launch_agent(
                     "SUPERHARNESS_CONFIRM_CODEX_BYPASS",
                     "Risk: Codex bypass disables sandbox and approval prompts. Continue?",
                 )
-                os.execvp("codex", ["codex"] + common + ["--dangerously-bypass-approvals-and-sandbox", prompt])
-            os.execvp("codex", ["codex"] + common + ["--full-auto", prompt])
+                os.execvp("codex", ["codex"] + common + codex_model_args + ["--dangerously-bypass-approvals-and-sandbox", prompt])
+            os.execvp("codex", ["codex"] + common + codex_model_args + ["--full-auto", prompt])
         print(f"Launching Codex{display_label}...")
-        os.execvp("codex", ["codex", "-C", project_dir, prompt])
+        os.execvp("codex", ["codex", "-C", project_dir] + codex_model_args + [prompt])
 
 
 def _cmd_exists(name: str) -> bool:
@@ -237,6 +276,9 @@ def delegate(
     print_only: bool,
     non_interactive: bool,
     codex_bypass: bool,
+    model_override: str = "",
+    effort_override: str = "",
+    no_auto_model: bool = False,
 ) -> int:
     project_dir = os.path.realpath(project_dir)
 
@@ -261,6 +303,96 @@ def delegate(
                 file=sys.stderr,
             )
             return 1
+
+    # -----------------------------------------------------------------------
+    # Model / effort resolution
+    # Order: CLI flag > task field > classifier > profile default > standard/medium
+    # -----------------------------------------------------------------------
+    resolved_model = ""
+    resolved_effort = ""
+    model_source = "fallback"
+
+    # 1. CLI flag
+    if model_override:
+        resolved_model = model_override
+        model_source = "manual"
+    if effort_override:
+        resolved_effort = effort_override
+
+    # 2. Task field (if not already set by CLI)
+    if not resolved_model:
+        task_model = _get_task_field(contract_file, task_id, "model")
+        if task_model:
+            resolved_model = task_model
+            model_source = "task"
+    if not resolved_effort:
+        task_effort = _get_task_field(contract_file, task_id, "effort")
+        if task_effort:
+            resolved_effort = task_effort
+
+    # 3. Auto-classification (if not fully resolved and not disabled)
+    if not no_auto_model and (not resolved_model or not resolved_effort):
+        try:
+            from superharness.engine.model_router import (
+                classify_task,
+                resolve_model as _resolve_model,
+                resolve_tier,
+            )
+            task_title = _get_task_title(contract_file, task_id)
+            ac_for_classify = _get_task_acceptance_criteria(contract_file, task_id)
+            previously_failed = _get_task_previously_failed(contract_file, task_id)
+
+            classified_tier, classified_effort = classify_task(
+                title=task_title or task_id,
+                criteria=ac_for_classify or None,
+                previously_failed=previously_failed,
+            )
+            if not resolved_model:
+                resolved_model = _resolve_model(target, classified_tier)
+                model_source = "auto-classified"
+            if not resolved_effort:
+                resolved_effort = classified_effort
+        except Exception:
+            pass  # classification failure is non-fatal
+
+    # 4. Profile defaults
+    if not resolved_model:
+        profile_model = _read_profile_field(project_dir, "default_model", "")
+        if profile_model:
+            try:
+                from superharness.engine.model_router import resolve_model as _resolve_model, resolve_tier
+                tier = resolve_tier(profile_model)
+                if tier:
+                    resolved_model = _resolve_model(target, tier)
+                else:
+                    resolved_model = profile_model
+            except Exception:
+                resolved_model = profile_model
+            model_source = "profile"
+    if not resolved_effort:
+        profile_effort = _read_profile_field(project_dir, "default_effort", "")
+        if profile_effort:
+            resolved_effort = profile_effort
+
+    # 5. Hardcoded fallback
+    if not resolved_model:
+        try:
+            from superharness.engine.model_router import resolve_model as _resolve_model
+            resolved_model = _resolve_model(target, "standard")
+        except Exception:
+            resolved_model = "sonnet"
+        model_source = "fallback"
+    if not resolved_effort:
+        resolved_effort = "medium"
+
+    # If model_override was a tier name, resolve to agent-specific model
+    try:
+        from superharness.engine.model_router import resolve_tier, resolve_model as _resolve_model
+        tier = resolve_tier(resolved_model)
+        if tier:
+            resolved_model = _resolve_model(target, tier)
+    except Exception:
+        pass
 
     # Acceptance criteria
     ac_lines = _get_task_acceptance_criteria(contract_file, task_id)
@@ -399,11 +531,28 @@ def delegate(
                     f"{acceptance_criteria}"
                 )
 
+        # Enrich prompt with vault context
+        task_title = _get_task_title(contract_file, task_id)
+        try:
+            from superharness.engine.osm import vault_search
+            vault_results = vault_search(task_title or task_id)
+            if vault_results:
+                vault_block = "\n\nVault notes relevant to this task (via obsidian-semantic):\n"
+                for r in vault_results:
+                    preview = r.get("preview", "")[:120].replace("\n", " ")
+                    vault_block += f"  - {r['path']} (similarity: {r['similarity']})\n    {preview}\n"
+                prompt += vault_block
+        except Exception:
+            pass
+
         print(f"Project: {project_dir}")
         print(f"Contract: {contract_id}")
         print(f"Task: {task_id}")
         if latest_handoff:
             print(f"Handoff: {latest_handoff}")
+
+    print(f"Model: {resolved_model} ({model_source})")
+    print(f"Effort: {resolved_effort}")
 
     if print_only:
         print()
@@ -416,7 +565,10 @@ def delegate(
         _confirm_non_interactive_risk(target, codex_bypass)
 
     label = f"for discussion round {discussion_round}" if discussion_id else ""
-    _launch_agent(target, prompt, project_dir, non_interactive, codex_bypass, label=label)
+    _launch_agent(
+        target, prompt, project_dir, non_interactive, codex_bypass,
+        label=label, model=resolved_model, effort=resolved_effort,
+    )
     return 0  # unreachable after exec, but satisfies type checker
 
 
@@ -446,6 +598,19 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--print-only", action="store_true", default=False)
     parser.add_argument("--non-interactive", action="store_true", default=False)
     parser.add_argument("--codex-bypass", action="store_true", default=False)
+    parser.add_argument(
+        "--model", default=None,
+        help="Override model. Accepts tier (mini/standard/max) or model name (sonnet, gpt-5.3-codex, etc.)",
+    )
+    parser.add_argument(
+        "--effort", default=None,
+        choices=["low", "medium", "high"],
+        help="Override thinking effort (low/medium/high)",
+    )
+    parser.add_argument(
+        "--no-auto-model", action="store_true", default=False,
+        help="Skip auto-classification, use profile defaults or standard/medium",
+    )
 
     opts = parser.parse_args(argv)
 
@@ -473,6 +638,9 @@ def main(argv: list[str] | None = None) -> None:
         print_only=opts.print_only,
         non_interactive=opts.non_interactive,
         codex_bypass=opts.codex_bypass,
+        model_override=opts.model or "",
+        effort_override=opts.effort or "",
+        no_auto_model=opts.no_auto_model,
     )
     sys.exit(rc)
 
