@@ -47,8 +47,11 @@ def _fake_bin(tmp_path: Path) -> Path:
     return bin_dir
 
 
-# Skip if running as root — chmod won't restrict root.
-_skip_if_root = pytest.mark.skipif(os.getuid() == 0, reason="root bypasses permissions")
+# Skip if running as root (Unix only) — chmod won't restrict root. Skip entirely on Windows.
+_skip_if_root = pytest.mark.skipif(
+    not hasattr(os, "getuid") or os.getuid() == 0,
+    reason="root bypasses permissions or Windows does not support Unix chmod",
+)
 
 
 # ── Read-only contract ──
