@@ -15,6 +15,7 @@ KNOWN_SUBCOMMANDS = [
     "dispatch",
     "watch",
     "uninstall",
+    "monitor",
     "monitor-ui",
     "doctor",
     "install-wrapper",
