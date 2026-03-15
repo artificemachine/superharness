@@ -141,7 +141,7 @@ You probably **don't need** superharness if you only ever run a single agent int
 |---------|-------------|
 | Core protocol (contracts, handoffs, ledger) | `bash`, `python3` |
 | Agent shortcuts (`shux`) | + `claude` or `codex` CLI |
-| Background auto-dispatch | + launchd (macOS); systemd unit provided but untested |
+| Background auto-dispatch | + launchd (macOS) or systemd (Linux) |
 | Browser dashboard | + `python3 -m http.server` (built-in) |
 
 **You can start with just the core** and add agent CLIs and background services later. `--print-only` mode lets you preview every dispatch without launching anything.
@@ -152,8 +152,7 @@ You probably **don't need** superharness if you only ever run a single agent int
 
 **Cross-platform: macOS, Linux, Windows.** All user-facing commands are Python and work everywhere `python3` is available. CI runs on all three platforms.
 
-- **Background watcher installer** is macOS-only (`launchd`). A systemd unit file is provided (`scripts/superharness-watcher@.service`) but has no automated installer yet. `superharness watch --foreground` works everywhere.
-- Linux and Windows contributions welcome — see [CONTRIBUTING.md](docs/CONTRIBUTING.md).
+- **Background watcher** has automated installers for both macOS (`launchd`) and Linux (`systemd`). `superharness watch --foreground` works everywhere including Windows.
 
 ## Prerequisites
 
@@ -161,7 +160,7 @@ You probably **don't need** superharness if you only ever run a single agent int
 - `bash` (only needed for background watcher installer on macOS; not required for core commands)
 - `claude` CLI (for Claude delegation commands): `npm install -g @anthropic-ai/claude-code`
 - `codex` CLI (for Codex delegation commands): `npm install -g @openai/codex`
-- macOS `launchd` for background watcher (see Platform Support above); `--foreground` mode works everywhere
+- macOS `launchd` or Linux `systemd` for background watcher (see Platform Support); `--foreground` mode works everywhere
 
 ---
 
@@ -203,12 +202,20 @@ superharness/
 
 The background watcher enables **unattended execution** (agents run without human supervision). This is powerful but requires explicit confirmation:
 
+**macOS (launchd):**
 ```bash
 bash scripts/install-launchd-inbox-watcher.sh \
   --project /path/to/project \
   --interval 30 \
   --confirm-non-interactive yes \
   --confirm-skip-permissions yes
+```
+
+**Linux (systemd):**
+```bash
+CONFIRM_NON_INTERACTIVE=yes bash scripts/install-systemd-inbox-watcher.sh \
+  --project /path/to/project \
+  --interval 30
 ```
 
 **Read the full threat model:** [SECURITY.md](SECURITY.md)
