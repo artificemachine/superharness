@@ -939,3 +939,12 @@ If you're an agent picking this up:
 ### Fixed
 - `shux update` now works correctly from pipx/pip installs: detects whether the package root is a git repo; if not, runs `pipx upgrade superharness` (falls back to `pip install --upgrade superharness`)
 - Previously `shux update` would fail silently or error when run from a pipx-installed superharness
+
+## [0.9.10] - 2026-03-15
+
+### Fixed
+- `shux update` (and `shux init --refresh`) no longer overwrites `CLAUDE.md`, `AGENTS.md`, or `SOUL.md` when they already exist — these are user-owned files
+- Skipped files now print: `Skipped: CLAUDE.md (user-owned — use --force to overwrite)`
+
+### Added
+- `--force` flag for `shux init --refresh` and `shux update` to explicitly overwrite user-owned files when desired

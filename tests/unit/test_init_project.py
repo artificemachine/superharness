@@ -90,3 +90,57 @@ def test_init_project_is_not_reentrant(repo_root, tmp_path) -> None:
     assert first.returncode == 0
     assert second.returncode == 1
     assert "already exists" in second.stdout
+
+
+# ── refresh: user-owned file preservation ─────────────────────────────────
+
+def test_refresh_skips_existing_user_files(repo_root, tmp_path) -> None:
+    """shux update (--refresh) must not overwrite CLAUDE.md, AGENTS.md, SOUL.md."""
+    _run_init_py(tmp_path, args=["Demo", "Python", "active"])
+
+    sentinel = "# USER CUSTOMISATION — DO NOT OVERWRITE"
+    for fname in ("CLAUDE.md", "AGENTS.md", "SOUL.md"):
+        f = tmp_path / fname
+        f.write_text(sentinel + "\n" + f.read_text())
+
+    result = _run_init_py(tmp_path, args=["--refresh", "--detect"])
+    assert result.returncode == 0
+
+    for fname in ("CLAUDE.md", "AGENTS.md", "SOUL.md"):
+        content = (tmp_path / fname).read_text()
+        assert sentinel in content, f"{fname} was overwritten by --refresh"
+        assert "user-owned" in result.stdout, f"Expected skip message for {fname}"
+
+
+def test_refresh_force_overwrites_user_files(repo_root, tmp_path) -> None:
+    """--refresh --force must overwrite CLAUDE.md, AGENTS.md, SOUL.md."""
+    _run_init_py(tmp_path, args=["Demo", "Python", "active"])
+
+    sentinel = "# USER CUSTOMISATION — DO NOT OVERWRITE"
+    for fname in ("CLAUDE.md", "AGENTS.md", "SOUL.md"):
+        f = tmp_path / fname
+        f.write_text(sentinel + "\n" + f.read_text())
+
+    result = _run_init_py(tmp_path, args=["--refresh", "--force", "--detect"])
+    assert result.returncode == 0
+
+    for fname in ("CLAUDE.md", "AGENTS.md", "SOUL.md"):
+        content = (tmp_path / fname).read_text()
+        assert sentinel not in content, f"{fname} was NOT overwritten despite --force"
+        assert "Refreshed" in result.stdout
+
+
+def test_refresh_skip_message_mentions_force(repo_root, tmp_path) -> None:
+    """Skip message must tell the user how to force an overwrite."""
+    _run_init_py(tmp_path, args=["Demo", "Python", "active"])
+    result = _run_init_py(tmp_path, args=["--refresh", "--detect"])
+    assert result.returncode == 0
+    assert "--force" in result.stdout
+
+
+def test_init_creates_user_files_when_missing(repo_root, tmp_path) -> None:
+    """Fresh init (no --refresh) always creates the files."""
+    result = _run_init_py(tmp_path, args=["Demo", "Python", "active"])
+    assert result.returncode == 0
+    for fname in ("CLAUDE.md", "AGENTS.md"):
+        assert (tmp_path / fname).exists(), f"{fname} not created by init"
