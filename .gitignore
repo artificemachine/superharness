@@ -29,4 +29,5 @@ __pycache__/
 *.pyc
 secrets.json
 credentials.json
+docs/PYPI_SETUP.md
 *.flock
