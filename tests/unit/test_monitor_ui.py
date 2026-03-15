@@ -1078,3 +1078,169 @@ def test_task_report_missing_data(repo_root, tmp_path) -> None:
     assert result["agent"] == "claude-code"
     assert "contract_summary" not in result
     assert "markdown_report" not in result
+
+
+# ---------------------------------------------------------------------------
+# Port auto-find tests
+# ---------------------------------------------------------------------------
+
+
+def _make_eaddrinuse(errno_code: int = 48) -> OSError:
+    import errno as _errno
+    exc = OSError(_errno.EADDRINUSE, "Address already in use")
+    exc.errno = errno_code
+    return exc
+
+
+def test_monitor_main_auto_finds_free_port(repo_root, tmp_path, monkeypatch) -> None:
+    """main() skips occupied ports and starts on the first free one."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+
+    call_log: list[int] = []
+
+    class FakeServer:
+        def __init__(self, addr, handler):
+            call_log.append(addr[1])
+            if addr[1] == 8787:
+                raise _make_eaddrinuse()
+            self.server_address = addr
+
+        def serve_forever(self):
+            raise KeyboardInterrupt
+
+        def server_close(self):
+            pass
+
+    monkeypatch.setattr(module, "ThreadingHTTPServer", FakeServer)
+    monkeypatch.setattr(module.webbrowser, "open", lambda url: None)
+
+    import sys
+    orig = sys.argv
+    sys.argv = ["monitor-ui.py", "--project", str(project), "--no-open"]
+    try:
+        module.main()
+    except SystemExit as exc:
+        assert exc.code == 0 or exc.code is None
+    finally:
+        sys.argv = orig
+
+    assert 8787 in call_log
+    assert 8788 in call_log
+    assert call_log.index(8788) == call_log.index(8787) + 1
+
+
+def test_monitor_main_skips_multiple_occupied_ports(repo_root, tmp_path, monkeypatch) -> None:
+    """main() skips several occupied ports before finding a free one."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+
+    busy_ports = {8787, 8788, 8789}
+    call_log: list[int] = []
+
+    class FakeServer:
+        def __init__(self, addr, handler):
+            call_log.append(addr[1])
+            if addr[1] in busy_ports:
+                raise _make_eaddrinuse()
+            self.server_address = addr
+
+        def serve_forever(self):
+            raise KeyboardInterrupt
+
+        def server_close(self):
+            pass
+
+    monkeypatch.setattr(module, "ThreadingHTTPServer", FakeServer)
+    monkeypatch.setattr(module.webbrowser, "open", lambda url: None)
+
+    import sys
+    orig = sys.argv
+    sys.argv = ["monitor-ui.py", "--project", str(project), "--no-open"]
+    try:
+        module.main()
+    except SystemExit as exc:
+        assert exc.code == 0 or exc.code is None
+    finally:
+        sys.argv = orig
+
+    assert call_log[-1] == 8790
+    assert set(call_log[:-1]) == busy_ports
+
+
+def test_monitor_main_exits_when_all_ports_busy(repo_root, tmp_path, monkeypatch) -> None:
+    """main() raises SystemExit when no port in the scan range is free."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+
+    class FakeServer:
+        def __init__(self, addr, handler):
+            raise _make_eaddrinuse()
+
+    monkeypatch.setattr(module, "ThreadingHTTPServer", FakeServer)
+
+    import sys
+    orig = sys.argv
+    sys.argv = ["monitor-ui.py", "--project", str(project), "--no-open"]
+    try:
+        with pytest.raises(SystemExit, match="No free port"):
+            module.main()
+    finally:
+        sys.argv = orig
+
+
+def test_monitor_main_explicit_port_fails_clearly(repo_root, tmp_path, monkeypatch) -> None:
+    """Explicit --port does not fall back; exits with a clear error."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+
+    class FakeServer:
+        def __init__(self, addr, handler):
+            raise _make_eaddrinuse()
+
+    monkeypatch.setattr(module, "ThreadingHTTPServer", FakeServer)
+
+    import sys
+    orig = sys.argv
+    sys.argv = ["monitor-ui.py", "--project", str(project), "--port", "9000", "--no-open"]
+    try:
+        with pytest.raises(SystemExit, match="9000"):
+            module.main()
+    finally:
+        sys.argv = orig
+
+
+def test_monitor_main_linux_eaddrinuse(repo_root, tmp_path, monkeypatch) -> None:
+    """errno 98 (Linux EADDRINUSE) is also handled by the auto-find logic."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+
+    call_log: list[int] = []
+
+    class FakeServer:
+        def __init__(self, addr, handler):
+            call_log.append(addr[1])
+            if addr[1] == 8787:
+                raise _make_eaddrinuse(errno_code=98)
+            self.server_address = addr
+
+        def serve_forever(self):
+            raise KeyboardInterrupt
+
+        def server_close(self):
+            pass
+
+    monkeypatch.setattr(module, "ThreadingHTTPServer", FakeServer)
+    monkeypatch.setattr(module.webbrowser, "open", lambda url: None)
+
+    import sys
+    orig = sys.argv
+    sys.argv = ["monitor-ui.py", "--project", str(project), "--no-open"]
+    try:
+        module.main()
+    except SystemExit as exc:
+        assert exc.code == 0 or exc.code is None
+    finally:
+        sys.argv = orig
+
+    assert 8788 in call_log
