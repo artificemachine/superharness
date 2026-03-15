@@ -70,7 +70,9 @@ jobs:
         run: pip install pytest pytest-cov pyyaml click ruamel.yaml
 
       - name: Run smoke tests
-        run: PYTHONPATH=src python3 -m pytest tests/test_smoke.py -q
+        run: python3 -m pytest tests/test_smoke.py -q
+        env:
+          PYTHONPATH: src
 
   unit-tests:
     name: Unit Tests (${{ matrix.os }})
@@ -90,7 +92,9 @@ jobs:
         run: pip install pytest pytest-cov pyyaml click ruamel.yaml
 
       - name: Run unit tests
-        run: PYTHONPATH=src python3 -m pytest tests/unit -q
+        run: python3 -m pytest tests/unit -q
+        env:
+          PYTHONPATH: src
 
   integration-tests:
     name: Integration Tests (${{ matrix.os }})
@@ -110,7 +114,9 @@ jobs:
         run: pip install pytest pytest-cov pyyaml click ruamel.yaml
 
       - name: Run integration tests
-        run: PYTHONPATH=src python3 -m pytest tests/integration -q
+        run: python3 -m pytest tests/integration -q
+        env:
+          PYTHONPATH: src
 
   e2e-tests:
     name: E2E Tests (${{ matrix.os }})
@@ -130,7 +136,9 @@ jobs:
         run: pip install pytest pytest-cov pyyaml click ruamel.yaml
 
       - name: Run e2e tests
-        run: PYTHONPATH=src python3 -m pytest tests/e2e -q
+        run: python3 -m pytest tests/e2e -q
+        env:
+          PYTHONPATH: src
 
   qa-gate:
     name: QA Gate
