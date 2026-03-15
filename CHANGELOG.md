@@ -886,3 +886,11 @@ If you're an agent picking this up:
 - Writes `test_types: [...]` atomically to `contract.yaml` via ruamel round-trip
 - Registered in `cli.py` as `superharness test-type`; listed in `shux` help shortcuts
 - `src/superharness/engine/validate.py`: `shux hygiene` warns on `done` tasks that have `test_types` without verified evidence
+
+---
+
+## 2026-03-15 — v0.9.4 — fix: shux installed as console script
+
+- `pyproject.toml`: added `shux = "superharness.cli:main"` to `[project.scripts]`
+- `shux` was documented and referenced throughout the codebase but never registered as a binary entry point — users who installed via pip/pipx had no `shux` command
+- Both `superharness` and `shux` now resolve to the same CLI entrypoint on install
