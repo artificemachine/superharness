@@ -324,17 +324,42 @@ fi
 # Resolve absolute python3 path to avoid pyenv shim resolution failure under launchd.
 # launchd does not run pyenv init, so shims cannot resolve the active version without
 # PYENV_ROOT/PYENV_VERSION being set. Pinning the real binary sidesteps this entirely.
-PYTHON3_RESOLVED=""
-if command -v python3 >/dev/null 2>&1; then
-  _py_bin="$(command -v python3)"
-  case "$_py_bin" in
+_resolve_python_bin() {
+  local bin="$1"
+  case "$bin" in
     */.pyenv/shims/*)
-      PYTHON3_RESOLVED="$(python3 -c 'import sys; print(sys.executable)')"
+      "$bin" -c 'import sys; print(sys.executable)' 2>/dev/null
       ;;
     *)
-      PYTHON3_RESOLVED="$_py_bin"
+      echo "$bin"
       ;;
   esac
+}
+
+PYTHON3_RESOLVED=""
+if command -v python3 >/dev/null 2>&1; then
+  _candidate="$(_resolve_python_bin "$(command -v python3)")"
+  if [ -n "$_candidate" ] && "$_candidate" -c "import superharness" 2>/dev/null; then
+    PYTHON3_RESOLVED="$_candidate"
+  fi
+fi
+
+# If the default python3 does not have superharness, search common candidates.
+if [ -z "$PYTHON3_RESOLVED" ]; then
+  for _try in python3.13 python3.12 python3.11 python3.10 python3.9; do
+    if command -v "$_try" >/dev/null 2>&1; then
+      _candidate="$(_resolve_python_bin "$(command -v "$_try")")"
+      if [ -n "$_candidate" ] && "$_candidate" -c "import superharness" 2>/dev/null; then
+        PYTHON3_RESOLVED="$_candidate"
+        echo "note: pinning $PYTHON3_RESOLVED (default python3 does not have superharness)"
+        break
+      fi
+    fi
+  done
+fi
+
+if [ -z "$PYTHON3_RESOLVED" ]; then
+  echo "warning: could not find a python3 with superharness installed — watcher may fail" >&2
 fi
 
 PROJECT_SLUG="$(basename "$PROJECT_DIR" | tr -cs 'A-Za-z0-9' '-' | sed 's/-$//')"

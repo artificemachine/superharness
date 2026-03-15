@@ -86,6 +86,9 @@ def run_validate(project: str, strict: bool = False) -> int:
         if not re.search(r"\b" + re.escape(id_) + r"\b", ledger_text):
             print(f"Missing ledger mention for done task: {id_}")
             issues += 1
+        test_types = task.get("test_types")
+        if test_types and isinstance(test_types, list):
+            print(f"Warning: task '{id_}' requires test types [{', '.join(str(t) for t in test_types)}] — verify evidence before close")
 
     contract_decision_count = len(contract.get("decisions") or []) if isinstance(contract.get("decisions"), list) else 0
     contract_failure_count = len(contract.get("failures") or []) if isinstance(contract.get("failures"), list) else 0

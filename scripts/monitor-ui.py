@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import time
+import webbrowser
 from collections import Counter
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -1480,13 +1481,14 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="superharness watcher browser monitor")
-    ap.add_argument("--project", required=True, help="project directory containing .superharness")
+    ap.add_argument("--project", default=None, help="project directory containing .superharness (default: cwd)")
     ap.add_argument("--port", type=int, default=8787, help="HTTP port (default: 8787)")
     ap.add_argument("--host", default="127.0.0.1", help="bind host (default: 127.0.0.1)")
     ap.add_argument("--refresh-seconds", type=int, default=3, help="ui refresh seconds (default: 3)")
+    ap.add_argument("--no-open", action="store_true", help="do not open browser automatically")
     args = ap.parse_args()
 
-    project_dir = Path(args.project).expanduser().resolve()
+    project_dir = Path(args.project).expanduser().resolve() if args.project else Path.cwd()
     if not (project_dir / ".superharness").is_dir():
         raise SystemExit(f"Missing .superharness in project: {project_dir}")
     try:
@@ -1504,9 +1506,12 @@ def main() -> int:
     Handler.auth_token = secrets.token_urlsafe(24)
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"monitor ui: http://{args.host}:{args.port}")
+    url = f"http://{args.host}:{args.port}"
+    print(f"monitor ui: {url}")
     print(f"project: {project_dir}")
     print(f"watcher label: {Handler.label}")
+    if not args.no_open:
+        webbrowser.open(url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
