@@ -14,15 +14,23 @@ superharness lets AI coding assistants work on the same project without stepping
 
 **Step 1 — Install superharness once (terminal):**
 ```bash
+pipx install superharness
+```
+
+<details>
+<summary>Alternative: install from source</summary>
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/celstnblacc/superharness/main/scripts/install-remote.sh | bash
 # export PATH="$HOME/.local/bin:$PATH"  # add to ~/.zshrc or ~/.bashrc if needed
 ```
 
-Or clone manually if you prefer:
+Or clone manually:
 ```bash
 git clone https://github.com/celstnblacc/superharness.git ~/.local/share/superharness
 bash ~/.local/share/superharness/scripts/install-wrapper.sh
 ```
+</details>
 
 **Step 2 — Go to your project and open Claude Code or Codex CLI.**
 
