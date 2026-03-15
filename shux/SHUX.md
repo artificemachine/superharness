@@ -17,7 +17,9 @@ All shortcuts use the `shux` prefix. Old long-form phrases (`contract today`, `c
 | `shux status` | Run `superharness status --project .` — dashboard: contract, tasks, watcher, profile |
 | `shux monitor` | Run `superharness monitor-ui --project .` — open browser dashboard |
 | `shux delegate <task_id>` | Create task (if missing) + enqueue in one step; never create without enqueueing |
-| `shux close <task_id>` | Mark task done, append ledger line, write handoff YAML, stop |
+| `shux test-type <task_id>` | Run `superharness test-type --project . --id <task_id>` — set mandatory test types for a task (interactive prompt) |
+| `shux verify <task_id>` | Run `superharness verify --project . --id <task_id> --method "<how>" --result pass\|fail` — record verification result before close |
+| `shux close <task_id>` | Run `superharness close --project . --id <task_id>` — mark task done, append ledger, write handoff. **Requires verified: true** (use `--skip-verify` only for trivial tasks) |
 | `shux recall <keywords>` | Run `superharness recall --project . <keywords>` — search past handoffs + ledger; also call `search_vault <keywords>` (obsidian-semantic MCP) and surface any relevant vault notes alongside the handoff results |
 | `shux vault <query>` | Call `search_vault <query>` via obsidian-semantic MCP — semantic search across the Obsidian vault. Use when looking for architecture notes, past decisions, or domain knowledge not captured in the contract |
 | `shux hygiene` | Run `superharness hygiene --project .` — validate protocol compliance (contract, handoffs, ledger) |
@@ -30,7 +32,7 @@ All shortcuts use the `shux` prefix. Old long-form phrases (`contract today`, `c
 ## Full Session Flow
 
 ```
-shux init → shux doctor → shux contract → shux continue → shux close <id>
+shux init → shux doctor → shux contract → shux continue → shux verify <id> → shux close <id>
 ```
 
 ## Notes
