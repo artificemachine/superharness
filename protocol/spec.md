@@ -79,9 +79,12 @@ The new owner's dispatch prompt will reference the deadline handoff and is expec
 ## Owner-Aware Delegation
 
 When showing contract status (`contract today` behavior):
-- if a remaining task owner is the other agent, ask for delegation:
+- After summarising the task list, do **not** offer to run tests or start implementation.
+- Ask to enqueue the next task: `"Want me to enqueue <task_id>? (shux delegate <task_id>)"`
+- If a task owner is the other agent, ask for delegation:
   - `I detected owner is codex-cli. Do you want to delegate <task_id> now?`
   - `I detected owner is claude-code. Do you want to delegate <task_id> now?`
+- Wait for operator confirmation before dispatching or executing any task.
 
 ## Path Guard
 
