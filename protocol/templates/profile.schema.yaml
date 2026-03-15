@@ -97,6 +97,33 @@ fields:
       Whether a background watcher was configured during install.
       true = launchd (macOS) or systemd (Linux) watcher is active.
 
+  vault_path:
+    type: string
+    required: false
+    description: >
+      Absolute path to your Obsidian vault (same value as OBSIDIAN_VAULT env var).
+      When set, task completions are written to the vault and appended to changelog.md.
+      Falls back to the OBSIDIAN_VAULT environment variable if not set.
+    example: /Users/yourname/Documents/Obsidian/MyVault
+
+  default_model:
+    type: enum
+    required: false
+    values: [mini, standard, max]
+    default: standard
+    description: >
+      Default model tier when no task-level model is set and auto-classification
+      is disabled. Mapped to agent-specific model name at delegation time.
+
+  default_effort:
+    type: enum
+    required: false
+    values: [low, medium, high]
+    default: medium
+    description: >
+      Default thinking effort when no task-level effort is set and
+      auto-classification is disabled.
+
 # --- Behavioral mappings ---
 #
 # How profile.yaml values affect superharness runtime:
