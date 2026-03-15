@@ -14,15 +14,23 @@ superharness lets AI coding assistants work on the same project without stepping
 
 **Step 1 — Install superharness once (terminal):**
 ```bash
+pipx install superharness
+```
+
+<details>
+<summary>Alternative: install from source</summary>
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/celstnblacc/superharness/main/scripts/install-remote.sh | bash
 # export PATH="$HOME/.local/bin:$PATH"  # add to ~/.zshrc or ~/.bashrc if needed
 ```
 
-Or clone manually if you prefer:
+Or clone manually:
 ```bash
 git clone https://github.com/celstnblacc/superharness.git ~/.local/share/superharness
 bash ~/.local/share/superharness/scripts/install-wrapper.sh
 ```
+</details>
 
 **Step 2 — Go to your project and open Claude Code or Codex CLI.**
 
@@ -33,7 +41,9 @@ shux doctor            # check prerequisites and protocol health
 shux contract          # show all tasks with status and next-task suggestion
 shux continue          # resume active contract automatically
 shux delegate <id>     # create task + enqueue in one step
-shux close <id>        # mark done, append ledger, write handoff
+shux test-type <id>    # set mandatory test types for a task
+shux verify <id>       # record verification result (pass/fail)
+shux close <id>        # mark done (requires verify), append ledger, write handoff
 shux status            # dashboard: tasks, watcher, profile
 shux recall <keywords> # search past handoffs and ledger
 shux uninstall         # remove watcher and system artifacts for this project
@@ -106,7 +116,9 @@ pytest tests/ -q
 
 - **`shux` shortcuts** — Control superharness from inside Claude Code or Codex CLI
 - **`superharness init`** — Bootstrap protocol files (`.superharness/`)
-- **`superharness delegate`** — Launch agent with contract context
+- **`superharness delegate`** — Launch agent with contract context (auto model routing)
+- **`superharness verify`** — Record verification result before closing a task
+- **`superharness close`** — Close a verified task (done + ledger + handoff)
 - **`superharness enqueue|dispatch|watch`** — Queue-based task routing
 - **`superharness hygiene`** — Protocol compliance checks
 - **`superharness watch --foreground`** — Cross-platform continuous watcher
@@ -133,7 +145,7 @@ You probably **don't need** superharness if you only ever run a single agent int
 |---------|-------------|
 | Core protocol (contracts, handoffs, ledger) | `bash`, `python3` |
 | Agent shortcuts (`shux`) | + `claude` or `codex` CLI |
-| Background auto-dispatch | + launchd (macOS); systemd unit provided but untested |
+| Background auto-dispatch | + launchd (macOS) or systemd (Linux) |
 | Browser dashboard | + `python3 -m http.server` (built-in) |
 
 **You can start with just the core** and add agent CLIs and background services later. `--print-only` mode lets you preview every dispatch without launching anything.
@@ -144,8 +156,7 @@ You probably **don't need** superharness if you only ever run a single agent int
 
 **Cross-platform: macOS, Linux, Windows.** All user-facing commands are Python and work everywhere `python3` is available. CI runs on all three platforms.
 
-- **Background watcher installer** is macOS-only (`launchd`). A systemd unit file is provided (`scripts/superharness-watcher@.service`) but has no automated installer yet. `superharness watch --foreground` works everywhere.
-- Linux and Windows contributions welcome — see [CONTRIBUTING.md](docs/CONTRIBUTING.md).
+- **Background watcher** has automated installers for both macOS (`launchd`) and Linux (`systemd`). `superharness watch --foreground` works everywhere including Windows.
 
 ## Prerequisites
 
@@ -153,7 +164,7 @@ You probably **don't need** superharness if you only ever run a single agent int
 - `bash` (only needed for background watcher installer on macOS; not required for core commands)
 - `claude` CLI (for Claude delegation commands): `npm install -g @anthropic-ai/claude-code`
 - `codex` CLI (for Codex delegation commands): `npm install -g @openai/codex`
-- macOS `launchd` for background watcher (see Platform Support above); `--foreground` mode works everywhere
+- macOS `launchd` or Linux `systemd` for background watcher (see Platform Support); `--foreground` mode works everywhere
 
 ---
 
@@ -195,12 +206,20 @@ superharness/
 
 The background watcher enables **unattended execution** (agents run without human supervision). This is powerful but requires explicit confirmation:
 
+**macOS (launchd):**
 ```bash
 bash scripts/install-launchd-inbox-watcher.sh \
   --project /path/to/project \
   --interval 30 \
   --confirm-non-interactive yes \
   --confirm-skip-permissions yes
+```
+
+**Linux (systemd):**
+```bash
+CONFIRM_NON_INTERACTIVE=yes bash scripts/install-systemd-inbox-watcher.sh \
+  --project /path/to/project \
+  --interval 30
 ```
 
 **Read the full threat model:** [SECURITY.md](SECURITY.md)
