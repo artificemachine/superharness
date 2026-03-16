@@ -948,3 +948,9 @@ If you're an agent picking this up:
 
 ### Added
 - `--force` flag for `shux init --refresh` and `shux update` to explicitly overwrite user-owned files when desired
+
+## [0.9.11] - 2026-03-16
+
+### Fixed
+- `shux hygiene` no longer requires `--project` — defaults to current working directory
+- `shux delegate` / watcher dispatch no longer fails instantly on launchd-managed installs: PATH is augmented with `~/.local/bin`, `/usr/local/bin`, `/opt/homebrew/bin` before checking for `claude` or `codex` binaries

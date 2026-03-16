@@ -260,8 +260,25 @@ def _launch_agent(
         os.execvp("codex", ["codex", "-C", project_dir] + codex_model_args + [prompt])
 
 
+def _expand_path() -> None:
+    """Augment PATH with common user-local bin dirs — launchd starts with a minimal PATH."""
+    import shutil
+    extra = [
+        os.path.expanduser("~/.local/bin"),
+        "/usr/local/bin",
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/sbin",
+    ]
+    current = os.environ.get("PATH", "")
+    additions = [p for p in extra if p not in current.split(os.pathsep) and os.path.isdir(p)]
+    if additions:
+        os.environ["PATH"] = os.pathsep.join(additions) + os.pathsep + current
+
+
 def _cmd_exists(name: str) -> bool:
     import shutil
+    _expand_path()
     return shutil.which(name) is not None
 
 
