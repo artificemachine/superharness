@@ -7,6 +7,9 @@ import yaml
 from pathlib import Path
 
 from tests.helpers import REPO_ROOT, copy_from_repo, run_bash, shell_guard_list
+import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
 def _run_enqueue(args: list[str]) -> subprocess.CompletedProcess:
@@ -121,11 +124,8 @@ if [ "$PRINT_ONLY" -eq 1 ]; then
 fi
 
 "$PYTHON3" - "$PROJECT_DIR" "$TASK_ID" <<'PY'
-import sys, yaml
 from datetime import datetime, timezone
-import pytest
 
-pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 project_dir = sys.argv[1]
 task_id = sys.argv[2]
