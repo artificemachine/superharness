@@ -7,7 +7,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from tests.helpers import REPO_ROOT, run_bash
+
+_skip_win = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
 def _run_delegate_py(cwd, args: list[str] | None = None, env: dict | None = None):
@@ -166,6 +170,7 @@ def test_delegate_no_profile_no_crash(repo_root, tmp_path) -> None:
 
 # ── task.sh: owner from profile ───────────────────────────────────────────────
 
+@_skip_win
 def test_task_create_uses_profile_primary_agent_when_no_owner(repo_root, tmp_path) -> None:
     """task create with no --owner picks up primary_agent from profile.yaml."""
     project = tmp_path / "proj"
@@ -190,6 +195,7 @@ def test_task_create_uses_profile_primary_agent_when_no_owner(repo_root, tmp_pat
     assert "claude-code" in contract
 
 
+@_skip_win
 def test_task_create_explicit_owner_ignores_profile(repo_root, tmp_path) -> None:
     """Explicit --owner overrides any profile primary_agent."""
     project = tmp_path / "proj"
@@ -216,6 +222,7 @@ def test_task_create_explicit_owner_ignores_profile(repo_root, tmp_path) -> None
     assert "codex-cli" in contract
 
 
+@_skip_win
 def test_task_create_no_owner_no_profile_prompts_user(repo_root, tmp_path) -> None:
     """No --owner and no profile.yaml → user is prompted; piping an answer works."""
     project = tmp_path / "proj"
@@ -260,6 +267,7 @@ def _setup_contract_today_project(tmp_path: Path) -> Path:
     return project
 
 
+@_skip_win
 def test_contract_today_solo_no_delegation_suggestion(repo_root, tmp_path) -> None:
     """team_size=solo suppresses the delegation suggestion."""
     project = _setup_contract_today_project(tmp_path)
@@ -274,6 +282,7 @@ def test_contract_today_solo_no_delegation_suggestion(repo_root, tmp_path) -> No
     assert "Do you want to delegate" not in result.stdout
 
 
+@_skip_win
 def test_contract_today_small_shows_delegation_suggestion(repo_root, tmp_path) -> None:
     """team_size=small shows the delegation suggestion."""
     project = _setup_contract_today_project(tmp_path)
@@ -288,6 +297,7 @@ def test_contract_today_small_shows_delegation_suggestion(repo_root, tmp_path) -
     assert "Do you want to delegate" in result.stdout
 
 
+@_skip_win
 def test_contract_today_no_profile_shows_delegation(repo_root, tmp_path) -> None:
     """No profile.yaml → defaults to non-solo → delegation suggestion still shown (backward compat)."""
     project = _setup_contract_today_project(tmp_path)

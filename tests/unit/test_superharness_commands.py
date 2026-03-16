@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from tests.helpers import run_bash
+import sys
+import pytest
 
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 def _setup_project(tmp_path):
     project = tmp_path / "proj"

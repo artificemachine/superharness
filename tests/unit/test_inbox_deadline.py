@@ -88,7 +88,11 @@ def test_deadline_exceeded_marks_failed_and_reenqueues(repo_root, tmp_path) -> N
 
 def test_deadline_not_exceeded_does_nothing(repo_root, tmp_path) -> None:
     from datetime import datetime, timezone
+import sys
+import pytest
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
     project = _make_project(
         tmp_path,

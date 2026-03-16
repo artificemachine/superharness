@@ -5,6 +5,9 @@ import json
 import pytest
 
 from tests.helpers import parse_json_output, run_bash
+import sys
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
 @pytest.mark.parametrize(
