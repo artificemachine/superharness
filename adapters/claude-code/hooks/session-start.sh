@@ -151,6 +151,13 @@ if [ -f "$PROGRESS_FILE" ]; then
   SESSION_PROGRESS=$(cat "$PROGRESS_FILE" 2>/dev/null || true)
 fi
 
+# Pre-compute optional sections (avoids single-quote issues in heredoc on bash 3.2)
+PROGRESS_SECTION=""
+if [ -n "$SESSION_PROGRESS" ]; then
+  PROGRESS_SECTION="## Previous Session Snapshot
+$SESSION_PROGRESS"
+fi
+
 # Build the context injection
 CONTEXT="$(cat <<EOF
 <superharness>
@@ -186,7 +193,7 @@ $(printf '%s\n' "$CONTRACT_STATUS")
 $(printf '%s\n' "$PENDING_HANDOFFS")
 $(printf '%s\n' "$WATCHER_STATUS")
 
-$(if [ -n "$SESSION_PROGRESS" ]; then printf '## Previous Session Snapshot\n%s\n' "$SESSION_PROGRESS"; fi)
+$PROGRESS_SECTION
 
 ## Session Start Instruction
 When starting a new session (not a /continue), display a brief status summary BEFORE the user's first message. Format:
