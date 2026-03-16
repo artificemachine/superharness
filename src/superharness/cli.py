@@ -86,6 +86,7 @@ _cmd("demo",            "Zero-config task lifecycle walkthrough.",   module="sup
 _cmd("test-type",       "Set mandatory test types on a task.",       module="superharness.commands.test_type")
 _cmd("verify",          "Record verification result for a task.",   module="superharness.commands.verify")
 _cmd("close",           "Close a verified task (done + ledger).",   module="superharness.commands.close")
+_cmd("context",         "Show full context for a task (handoff, decisions, failures, ledger, git).", module="superharness.commands.context")
 
 
 def _run_monitor(args):

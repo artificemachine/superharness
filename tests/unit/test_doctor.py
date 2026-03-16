@@ -104,3 +104,28 @@ def test_doctor_unknown_option(repo_root) -> None:
     assert result.returncode == 2
     # argparse outputs to stderr for unknown options
     assert "bogus" in result.stderr or "error" in result.stderr
+
+
+def test_doctor_warns_when_plugin_not_installed(repo_root, tmp_path) -> None:
+    """Doctor must warn when ~/.claude/plugins/superharness is not installed."""
+    project = _write_project(tmp_path)
+    fake_home = tmp_path / "fakehome"
+    fake_home.mkdir()
+    result = _run_python(
+        ["--project", str(project)],
+        env={"HOME": str(fake_home)},
+    )
+    assert "WARN plugin:claude-code superharness not installed" in result.stdout
+
+
+def test_doctor_ok_when_plugin_installed(repo_root, tmp_path) -> None:
+    """Doctor must show PASS when ~/.claude/plugins/superharness exists."""
+    project = _write_project(tmp_path)
+    fake_home = tmp_path / "fakehome2"
+    plugin_dir = fake_home / ".claude" / "plugins" / "superharness"
+    plugin_dir.mkdir(parents=True)
+    result = _run_python(
+        ["--project", str(project)],
+        env={"HOME": str(fake_home)},
+    )
+    assert "PASS plugin:claude-code superharness installed" in result.stdout

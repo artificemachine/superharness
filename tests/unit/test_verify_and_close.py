@@ -208,6 +208,41 @@ class TestClose:
         assert result.returncode != 0
         assert "not found" in result.stderr
 
+    def test_close_writes_context_to_handoff(self, tmp_path):
+        """--context value must appear in handoff YAML."""
+        project = _setup_project(tmp_path, task_status="in_progress", verified=True)
+        ctx_msg = "Next session must know: use advisory lock, not flock."
+        result = _run_cmd(
+            "superharness.commands.close", REPO_ROOT,
+            ["--project", str(project), "--id", "feat-001",
+             "--actor", "claude-code", "--summary", "Done",
+             "--context", ctx_msg],
+        )
+        assert result.returncode == 0, result.stderr
+        handoff = project / ".superharness" / "handoffs" / "feat-001-to-owner.yaml"
+        assert handoff.exists()
+        import yaml
+        with open(handoff) as f:
+            data = yaml.safe_load(f)
+        assert "context" in data
+        assert ctx_msg in data["context"]
+
+    def test_close_without_context_still_works(self, tmp_path):
+        """Closing without --context must succeed and omit context field from handoff."""
+        project = _setup_project(tmp_path, task_status="in_progress", verified=True)
+        result = _run_cmd(
+            "superharness.commands.close", REPO_ROOT,
+            ["--project", str(project), "--id", "feat-001",
+             "--actor", "claude-code", "--summary", "Done"],
+        )
+        assert result.returncode == 0, result.stderr
+        handoff = project / ".superharness" / "handoffs" / "feat-001-to-owner.yaml"
+        assert handoff.exists()
+        import yaml
+        with open(handoff) as f:
+            data = yaml.safe_load(f)
+        assert "context" not in data or not data["context"]
+
 
 # ---------------------------------------------------------------------------
 # Verify → Close integration

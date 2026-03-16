@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import os
+import pathlib
 import platform
 import shutil
 import subprocess
 import sys
+
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 
 
 def _install_hint(dep: str) -> str:
@@ -107,6 +110,19 @@ def main(argv: list[str] | None = None) -> None:
             warns += 1
     except FileNotFoundError:
         print("WARN git:not found")
+        warns += 1
+
+    # Claude Code plugin check
+    plugin_path = pathlib.Path.home() / ".claude" / "plugins" / "superharness"
+    if plugin_path.exists():
+        print("PASS plugin:claude-code superharness installed")
+    else:
+        print("WARN plugin:claude-code superharness not installed")
+        adapter_install = _REPO_ROOT / "adapters" / "claude-code" / "install.sh"
+        if adapter_install.exists():
+            print(f"       Run: bash {adapter_install}")
+        else:
+            print("       Run: bash adapters/claude-code/install.sh  (from superharness repo)")
         warns += 1
 
     # watcher check

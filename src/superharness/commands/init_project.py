@@ -452,6 +452,16 @@ def main(argv: list[str] | None = None) -> None:
     if platform.system() != "Darwin":
         print("Tip: To enable a background watcher (macOS only), re-run with --with-watcher")
         print("     or use: superharness watch --foreground --project . --interval 30")
+
+    # Plugin install hint: auto-context in Claude Code requires the plugin
+    plugin_path = Path.home() / ".claude" / "plugins" / "superharness"
+    if not plugin_path.exists():
+        adapter_install = _ROOT / "adapters" / "claude-code" / "install.sh"
+        if adapter_install.exists():
+            print()
+            print("⚡ To enable auto-context in Claude Code, install the plugin once:")
+            print(f"   bash {adapter_install}")
+            print("   This makes Claude see your task context automatically on every session start.")
     print()
     print("→ Next: run 'shux doctor' to verify your setup, then 'shux monitor' to open the dashboard.")
     print()
