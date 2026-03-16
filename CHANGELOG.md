@@ -954,3 +954,34 @@ If you're an agent picking this up:
 ### Fixed
 - `shux hygiene` no longer requires `--project` — defaults to current working directory
 - `shux delegate` / watcher dispatch no longer fails instantly on launchd-managed installs: PATH is augmented with `~/.local/bin`, `/usr/local/bin`, `/opt/homebrew/bin` before checking for `claude` or `codex` binaries
+
+## [0.9.14] - 2026-03-16
+
+### Added
+- Canonical task lifecycle: `todo → plan_proposed → plan_approved → in_progress → report_ready → [review_requested →] done`
+- Agents must propose a plan and wait for approval before implementing; must write a report and wait before closing
+- `review_requested` / `review_passed` / `review_failed` phases — failed review loops back to `plan_proposed`
+- `spec.md`: full lifecycle diagram, phase definitions, agent rules, handoff schema
+- `CLAUDE.md.template` / `AGENTS.md.template`: mandatory lifecycle rules for agents
+- Monitor UI: **tasks** card with phase badge and action buttons per phase
+  - `plan_proposed` → Approve Plan button
+  - `report_ready` → Request Opus Review / Accept & Close buttons
+  - `review_failed` → loop-back indicator
+  - `review_passed` / `done` → Close button
+- Backend: `_set_task_status`, `approve_plan`, `request_review`, `approve_report`, `close_task` actions
+- `/api/status` now includes `contract_tasks` array
+
+## [0.9.15] - 2026-03-16
+
+### Added
+- `shux context [task-id]` — one command to surface all relevant context for a task: last handoff (outcome + context fields), relevant decisions, relevant failures, recent ledger entries, and changed files from git log
+- `context` field in report handoff schema (spec.md + CLAUDE.md.template + AGENTS.md.template) — agents must write "what the next session needs to know" when reporting
+- `--context` flag for `shux close` — writes context field to the close handoff YAML
+- `session-start.sh` auto-injection — detects active contract task and injects full `shux context` output into Claude Code's `additionalContext` on every session start
+- `shux init` now prints plugin install hint when `~/.claude/plugins/superharness` is absent
+- `shux doctor` now checks for Claude Code plugin install and warns if missing
+
+## [0.9.16] - 2026-03-16
+
+### Fixed
+- `branch-guard.sh` PreToolUse hook output format — was using `{"decision": "..."}` which Claude Code does not recognize (triggered "hook error" on every session). Updated to correct `{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "...", "permissionDecisionReason": "..."}}` schema. Behavior unchanged: push to main/master → deny; force push → deny; `reset --hard`/`clean -f`/`rm -rf /` → ask; everything else → allow.

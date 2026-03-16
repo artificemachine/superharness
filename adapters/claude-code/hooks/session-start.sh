@@ -19,12 +19,30 @@ if [ -f "$SUPERHARNESS_ROOT/protocol/templates/identity-core.md" ]; then
   IDENTITY=$(cat "$SUPERHARNESS_ROOT/protocol/templates/identity-core.md")
 fi
 
-# Detect if this project has an active superharness contract
-CONTRACT_STATUS=""
+# Detect if this project has an active superharness contract; inject full context
+TASK_CONTEXT=""
 PROJECT_DIR="$(pwd)"
 if [ -f "$PROJECT_DIR/.superharness/contract.yaml" ]; then
-  CONTRACT_STATUS="Active contract found at .superharness/contract.yaml — read it before starting work."
+  ACTIVE_TASK=$(python3 -c "
+import sys
+try:
+    import yaml
+    doc = yaml.safe_load(open('$PROJECT_DIR/.superharness/contract.yaml'))
+    tasks = doc.get('tasks') or []
+    for t in tasks:
+        if t.get('status') in ('in_progress','plan_proposed','plan_approved','report_ready'):
+            print(t.get('id',''))
+            break
+except: pass
+" 2>/dev/null || true)
+  if [ -n "$ACTIVE_TASK" ]; then
+    TASK_CONTEXT=$(superharness context --project "$PROJECT_DIR" "$ACTIVE_TASK" 2>/dev/null || true)
+  fi
+  if [ -z "$TASK_CONTEXT" ]; then
+    TASK_CONTEXT="Active contract found at .superharness/contract.yaml — run: shux context"
+  fi
 fi
+CONTRACT_STATUS="$TASK_CONTEXT"
 
 # Check for pending handoffs addressed to claude-code
 PENDING_HANDOFFS=""

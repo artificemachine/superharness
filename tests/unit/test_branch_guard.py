@@ -10,12 +10,12 @@ from tests.helpers import parse_json_output, run_bash
 @pytest.mark.parametrize(
     ("command", "decision"),
     [
-        ("git push origin main", "block"),
-        ("git push origin master", "block"),
-        ("git push --force origin feature", "block"),
-        ("git reset --hard HEAD~1", "warn"),
-        ("git clean -f", "warn"),
-        ("rm -rf /tmp/demo", "warn"),
+        ("git push origin main", "deny"),
+        ("git push origin master", "deny"),
+        ("git push --force origin feature", "deny"),
+        ("git reset --hard HEAD~1", "ask"),
+        ("git clean -f", "ask"),
+        ("rm -rf /tmp/demo", "ask"),
         ("git status", "allow"),
     ],
 )
@@ -27,4 +27,5 @@ def test_branch_guard_decisions(repo_root, tmp_path, command: str, decision: str
 
     assert result.returncode == 0, result.stderr
     output = parse_json_output(result.stdout)
-    assert output["decision"] == decision
+    # New Claude Code PreToolUse schema: hookSpecificOutput.permissionDecision
+    assert output["hookSpecificOutput"]["permissionDecision"] == decision

@@ -144,3 +144,33 @@ def test_init_creates_user_files_when_missing(repo_root, tmp_path) -> None:
     assert result.returncode == 0
     for fname in ("CLAUDE.md", "AGENTS.md"):
         assert (tmp_path / fname).exists(), f"{fname} not created by init"
+
+
+def test_init_prints_plugin_install_hint_when_plugin_missing(repo_root, tmp_path) -> None:
+    """Init must print plugin install hint when ~/.claude/plugins/superharness is absent."""
+    import os
+    project = tmp_path / "plugtest"
+    project.mkdir()
+    # Point HOME to a temp dir that has no plugin installed
+    fake_home = tmp_path / "fakehome"
+    fake_home.mkdir()
+    result = _run_init_py(project, args=["Demo", "Python", "active"], env={"HOME": str(fake_home)})
+    assert result.returncode == 0, result.stderr
+    # Hint should mention the install command
+    combined = result.stdout + result.stderr
+    assert "install" in combined.lower() and ("plugin" in combined.lower() or "adapt" in combined.lower())
+
+
+def test_init_no_hint_when_plugin_already_installed(repo_root, tmp_path) -> None:
+    """Init must NOT print plugin hint when ~/.claude/plugins/superharness already exists."""
+    import os
+    project = tmp_path / "plugtest2"
+    project.mkdir()
+    # Create fake plugin directory in a fake HOME
+    fake_home = tmp_path / "fakehome2"
+    plugin_dir = fake_home / ".claude" / "plugins" / "superharness"
+    plugin_dir.mkdir(parents=True)
+    result = _run_init_py(project, args=["Demo", "Python", "active"], env={"HOME": str(fake_home)})
+    assert result.returncode == 0, result.stderr
+    # The plugin hint line should not appear
+    assert "install the plugin" not in result.stdout
