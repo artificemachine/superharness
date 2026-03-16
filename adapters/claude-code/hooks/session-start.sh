@@ -144,6 +144,13 @@ if [ -d "$PROJECT_DIR/.superharness" ]; then
   fi
 fi
 
+# Read session progress snapshot from previous session's stop hook
+SESSION_PROGRESS=""
+PROGRESS_FILE="$PROJECT_DIR/.superharness/session-progress.md"
+if [ -f "$PROGRESS_FILE" ]; then
+  SESSION_PROGRESS=$(cat "$PROGRESS_FILE" 2>/dev/null || true)
+fi
+
 # Build the context injection
 CONTEXT="$(cat <<EOF
 <superharness>
@@ -178,6 +185,21 @@ $(printf '%s\n' "$VAULT_CONTEXT")
 $(printf '%s\n' "$CONTRACT_STATUS")
 $(printf '%s\n' "$PENDING_HANDOFFS")
 $(printf '%s\n' "$WATCHER_STATUS")
+
+$(if [ -n "$SESSION_PROGRESS" ]; then printf '## Previous Session Snapshot\n%s\n' "$SESSION_PROGRESS"; fi)
+
+## Session Start Instruction
+When starting a new session (not a /continue), display a brief status summary BEFORE the user's first message. Format:
+
+---
+**superharness** | branch: <branch> | task: <task-id> (<status>)
+<one-line task title>
+<if previous session snapshot exists: "Restored from previous session snapshot">
+<if pending handoff: "Pending handoff — read before starting">
+<if uncommitted changes: "N uncommitted files">
+---
+
+Keep it to 3-5 lines max. Do not dump the full context. If no task or contract is active, just show the branch.
 </superharness>
 EOF
 )"
