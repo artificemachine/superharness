@@ -5,7 +5,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from tests.helpers import REPO_ROOT, run_bash
+
+_skip_win = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
 def _run_discuss_py(cwd, args: list[str] | None = None):
@@ -163,6 +167,7 @@ def test_discuss_approve_updates_handoff_contract_and_inbox(repo_root, tmp_path)
     assert "resumed_at:" in inbox_text
 
 
+@_skip_win
 def test_contract_today_shows_user_approval_required(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
     script = repo_root / "src" / "superharness" / "scripts" / "contract-today.sh"

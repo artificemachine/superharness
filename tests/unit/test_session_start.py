@@ -5,7 +5,11 @@ import re
 from pathlib import Path
 
 from tests.helpers import run_bash
+import sys
+import pytest
 
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 def test_session_start_outputs_json_with_context(repo_root, tmp_path) -> None:
     project = tmp_path / "proj"

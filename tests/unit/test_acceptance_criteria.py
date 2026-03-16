@@ -6,7 +6,11 @@ import sys
 import yaml
 from pathlib import Path
 
+import pytest
+
 from tests.helpers import REPO_ROOT, run_bash, run_cmd
+
+_skip_win = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
 def _run_delegate_py(cwd, args: list[str] | None = None, env: dict | None = None):
@@ -36,7 +40,7 @@ def _setup_project(tmp_path: Path) -> Path:
                 "  - id: existing-task",
                 "    owner: codex-cli",
                 "    status: todo",
-                f'    project_path: "{project}"',
+                f"    project_path: '{project.as_posix()}'",
             ]
         )
         + "\n"
@@ -47,6 +51,7 @@ def _setup_project(tmp_path: Path) -> Path:
 # ── task.sh create --criteria ──
 
 
+@_skip_win
 def test_task_create_with_criteria(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
     script = repo_root / "src" / "superharness" / "scripts" / "task.sh"
@@ -71,6 +76,7 @@ def test_task_create_with_criteria(repo_root, tmp_path) -> None:
     assert task["acceptance_criteria"] == ["All tests pass", "No lint errors"]
 
 
+@_skip_win
 def test_task_create_without_criteria_omits_field(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
     script = repo_root / "src" / "superharness" / "scripts" / "task.sh"
@@ -162,6 +168,7 @@ def test_delegate_prompt_omits_criteria_when_none(repo_root, tmp_path) -> None:
 # ── task.sh status=done warns about criteria ──
 
 
+@_skip_win
 def test_task_status_done_warns_about_criteria(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
     contract_file = project / ".superharness" / "contract.yaml"
@@ -187,6 +194,7 @@ def test_task_status_done_warns_about_criteria(repo_root, tmp_path) -> None:
     assert "All tests pass" in result.stderr
 
 
+@_skip_win
 def test_task_status_done_no_warning_without_criteria(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
     script = repo_root / "src" / "superharness" / "scripts" / "task.sh"

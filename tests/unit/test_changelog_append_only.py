@@ -4,7 +4,11 @@ import subprocess
 from pathlib import Path
 
 from tests.helpers import run_bash
+import sys
+import pytest
 
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 def _init_repo(tmp_path: Path) -> Path:
     """Create a git repo with an initial CHANGELOG.md commit."""

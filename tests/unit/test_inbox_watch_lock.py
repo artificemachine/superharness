@@ -216,7 +216,11 @@ def test_watch_foreground_exits_on_sigterm(repo_root, tmp_path) -> None:
 
     # Wait for watcher startup message
     import select
+import sys
+import pytest
     ready, _, _ = select.select([proc.stdout], [], [], 5)
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
     assert ready, "Foreground watcher did not produce output within 5s"
 
     # Read the startup lines

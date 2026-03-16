@@ -6,6 +6,9 @@ from pathlib import Path
 import pytest
 
 from tests.helpers import run_bash
+import sys
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
 def _make_project(tmp_path: Path, task_id: str, owner: str, status: str = "in_progress") -> Path:
