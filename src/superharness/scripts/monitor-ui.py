@@ -475,6 +475,10 @@ async function viewTaskReport(taskId, agent) {
     }
     if (d.contract_status) report += '## Contract Task\\nStatus: ' + d.contract_status + '\\n';
     if (d.contract_summary) report += d.contract_summary + '\\n\\n';
+    if (d.handoff_outcome) {
+      report += '## Outcome' + (d.handoff_date ? ' (' + d.handoff_date + ')' : '') + '\\n' + d.handoff_outcome + '\\n\\n';
+    }
+    if (d.handoff_context) report += '## Context (for next session)\\n' + d.handoff_context + '\\n\\n';
     if (d.discussion_position) report += '## Discussion Position (' + (d.discussion_agent||agent) + ')\\n' + d.discussion_position + '\\n\\n';
     if (d.discussion_verdict) report += 'Verdict: ' + d.discussion_verdict + '\\n\\n';
     if (d.handoff_summary) report += '## Handoff Summary\\n' + d.handoff_summary + '\\n\\n';
@@ -522,6 +526,9 @@ function renderContractTasks(tasks) {
 
     let actions = '';
     const tid = t.id.replace(/'/g, "\\\\'");
+    const ownerEsc = (t.owner || '').replace(/'/g, "\\\\'");
+    // View Report button for any task with a handoff or in report_ready/done status
+    const viewReportBtn = `<button onclick="viewTaskReport('${tid}','${ownerEsc}')" style="font-size:11px;padding:2px 8px">View Report</button>`;
     if (st === 'plan_proposed') {
       actions = `<button onclick="approvePlan('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Approve Plan</button>`;
     } else if (st === 'report_ready') {
@@ -532,7 +539,7 @@ function renderContractTasks(tasks) {
     } else if (st === 'review_passed' || (st === 'done' && t.verified)) {
       actions = `<button onclick="runClose('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Close</button>`;
     }
-    row.innerHTML = badge + title + owner + (actions ? `<span style="display:flex;gap:4px;flex-wrap:wrap">${actions}</span>` : '');
+    row.innerHTML = viewReportBtn + ' ' + badge + title + owner + (actions ? `<span style="display:flex;gap:4px;flex-wrap:wrap">${actions}</span>` : '');
     el.appendChild(row);
   }
 }
@@ -731,14 +738,20 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
         for f in sorted(handoff_dir.glob("*.yaml"), reverse=True):
             try:
                 content = f.read_text()
-                if f"task: {task_id}" not in content and f"task: '{task_id}'" not in content:
+                # Match both task: and task_id: fields
+                has_task = (f"task: {task_id}" in content or f"task: '{task_id}'" in content
+                            or f"task_id: {task_id}" in content or f"task_id: '{task_id}'" in content)
+                if not has_task:
                     continue
                 import yaml
                 hd = yaml.safe_load(content) or {}
-                if agent and hd.get("to") and hd["to"] != agent:
+                if agent and hd.get("to") and hd["to"] != agent and hd.get("from") != agent:
                     continue
                 result["handoff_status"] = hd.get("status", "")
                 result["handoff_summary"] = hd.get("summary", "")
+                result["handoff_outcome"] = hd.get("outcome", "")
+                result["handoff_context"] = hd.get("context", "")
+                result["handoff_date"] = str(hd.get("date", ""))
                 md_path = hd.get("markdown_report", "")
                 if md_path:
                     md_file = project_dir / md_path if not Path(md_path).is_absolute() else Path(md_path)
