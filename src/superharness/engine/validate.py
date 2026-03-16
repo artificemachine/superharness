@@ -15,7 +15,7 @@ Usage:
 Validates contract protocol hygiene for a superharness project.
 
 Options:
-  -p, --project DIR   Project directory containing .superharness/ (required)
+  -p, --project DIR   Project directory containing .superharness/ (default: cwd)
   --strict            Warn on empty decision/failure stores
   -h, --help          Show this help message and exit
 
@@ -159,12 +159,8 @@ def main(argv: list[str] | None = None) -> None:
         print(HELP_TEXT, end="")
         sys.exit(0)
 
-    if not opts.project:
-        print("--project is required", file=sys.stderr)
-        sys.exit(1)
-
     try:
-        project = os.path.realpath(opts.project)
+        project = os.path.realpath(opts.project or os.getcwd())
     except OSError as e:
         print(str(e), file=sys.stderr)
         sys.exit(1)
