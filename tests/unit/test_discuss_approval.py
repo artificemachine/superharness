@@ -34,12 +34,12 @@ def _setup_project(tmp_path: Path) -> Path:
                 "    title: Needs approval",
                 "    owner: codex-cli",
                 "    status: pending_user_approval",
-                f'    project_path: "{project}"',
+                f"    project_path: '{project.as_posix()}'" ,
                 "  - id: claude-task",
                 "    title: Claude task",
                 "    owner: claude-code",
                 "    status: todo",
-                f'    project_path: "{project}"',
+                f"    project_path: '{project.as_posix()}'" ,
             ]
         )
         + "\n"
@@ -95,7 +95,7 @@ def _setup_project_without_paused_item(tmp_path: Path) -> Path:
                 "    title: Needs approval",
                 "    owner: codex-cli",
                 "    status: pending_user_approval",
-                f'    project_path: "{project}"',
+                f"    project_path: '{project.as_posix()}'" ,
             ]
         )
         + "\n"

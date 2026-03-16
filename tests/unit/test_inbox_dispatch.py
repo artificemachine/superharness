@@ -35,7 +35,7 @@ def _write_contract(project: Path) -> None:
                 "  - id: mcp-docs",
                 "    owner: codex-cli",
                 "    status: todo",
-                f'    project_path: "{project}"',
+                f"    project_path: '{project.as_posix()}'" ,
             ]
         )
         + "\n"

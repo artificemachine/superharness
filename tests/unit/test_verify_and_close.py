@@ -33,7 +33,7 @@ def _setup_project(tmp_path: Path, task_status: str = "in_progress", verified: b
         f"    title: Build feature one\n"
         f"    owner: claude-code\n"
         f"    status: {task_status}\n"
-        f'    project_path: "{project}"\n'
+        f"    project_path: '{project.as_posix()}'\n"
     )
     if verified:
         task_yaml += (

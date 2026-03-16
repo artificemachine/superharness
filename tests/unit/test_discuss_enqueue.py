@@ -32,9 +32,9 @@ def _make_project(tmp_path: Path) -> Path:
     (harness / "contract.yaml").write_text(
         "id: test-contract\ntasks:\n"
         "  - id: discuss-task\n    owner: claude-code\n    status: todo\n"
-        f'    project_path: "{project}"\n'
+        f"    project_path: '{project.as_posix()}'\n"
         "  - id: discuss-task-b\n    owner: codex-cli\n    status: todo\n"
-        f'    project_path: "{project}"\n'
+        f"    project_path: '{project.as_posix()}'\n"
     )
     (harness / "inbox.yaml").write_text(INBOX_HEADER)
     return project
@@ -93,7 +93,7 @@ def test_discuss_approve_approves_handoff(tmp_path: Path) -> None:
     (harness / "contract.yaml").write_text(
         "id: test-contract\ntasks:\n"
         "  - id: approval-task\n    owner: codex-cli\n    status: pending_user_approval\n"
-        f'    project_path: "{project}"\n'
+        f"    project_path: '{project.as_posix()}'\n"
     )
     (harness / "inbox.yaml").write_text(
         INBOX_HEADER + "\n"

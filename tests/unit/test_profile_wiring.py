@@ -43,7 +43,7 @@ def _setup_project(tmp_path: Path, *, owner: str = "codex-cli") -> Path:
                 f"  - id: task-1",
                 f"    owner: {owner}",
                 "    status: todo",
-                f'    project_path: "{project}"',
+                f"    project_path: '{project.as_posix()}'" ,
             ]
         )
         + "\n"
