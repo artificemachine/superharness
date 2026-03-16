@@ -5,6 +5,9 @@ import subprocess
 import sys
 
 from tests.helpers import REPO_ROOT, run_cmd
+import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
 # ── detect.py ────────────────────────────────────────────────────────────────

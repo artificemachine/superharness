@@ -7,6 +7,8 @@ import sys
 import os
 import pytest
 
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SHELL_WRAPPER = os.path.join(REPO_ROOT, "superharness")
 PYTHON_CLI = [sys.executable, "-m", "superharness"]
