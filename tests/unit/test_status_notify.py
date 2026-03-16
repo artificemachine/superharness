@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import platform
 from pathlib import Path
+
+import pytest
 
 from tests.helpers import run_bash
 
@@ -64,6 +67,7 @@ def _fake_bin(tmp_path: Path, *, darwin: bool, launchctl_ok: bool) -> Path:
     return bin_dir
 
 
+@pytest.mark.skipif(platform.system() != "Darwin", reason="launchctl-based watcher check is Darwin-only")
 def test_status_reports_retry_alert_and_watcher_problem(repo_root: Path, tmp_path: Path) -> None:
     project = _setup_project(tmp_path)
     fake_bin = _fake_bin(tmp_path, darwin=True, launchctl_ok=False)

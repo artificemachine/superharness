@@ -320,7 +320,7 @@ def main(argv: list[str] | None = None) -> None:
 
     # CLAUDE.md
     claude_dst = Path(project_dir) / "CLAUDE.md"
-    _overwrite_user_file = not opts.refresh or opts.force
+    _overwrite_user_file = opts.force
     if not claude_dst.exists() or _overwrite_user_file:
         claude_tmpl = template_dir / "CLAUDE.md.template"
         if claude_tmpl.is_file():

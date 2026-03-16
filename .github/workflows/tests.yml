@@ -27,14 +27,14 @@ jobs:
             echo "No usable base ref for append-only check; skipping."
             exit 0
           fi
-          bash scripts/check-changelog-append-only.sh --base-ref "$BASE_REF" --head-ref HEAD
+          bash src/superharness/scripts/check-changelog-append-only.sh --base-ref "$BASE_REF" --head-ref HEAD
 
       - name: Entrypoint guard
-        run: scripts/check-shell-entrypoints.sh
+        run: src/superharness/scripts/check-shell-entrypoints.sh
 
       - name: Syntax checks
         run: |
-          # Shell syntax for entrypoints/hooks is enforced by scripts/check-shell-entrypoints.sh.
+          # Shell syntax for entrypoints/hooks is enforced by src/superharness/scripts/check-shell-entrypoints.sh.
           python3 -m py_compile \
             src/superharness/engine/inbox.py \
             src/superharness/engine/contract.py \
@@ -48,7 +48,7 @@ jobs:
           while IFS= read -r entrypoint; do
             [ -n "$entrypoint" ] || continue
             bash "$entrypoint" --help
-          done < <(bash scripts/check-shell-entrypoints.sh --list-entrypoints)
+          done < <(bash src/superharness/scripts/check-shell-entrypoints.sh --list-entrypoints)
           HOME="$(mktemp -d)" bash adapters/claude-code/install.sh --dry-run
           PYTHONPATH=src python3 -m superharness.commands.init_project --dry-run "CI Smoke" "Bash" "active"
 
