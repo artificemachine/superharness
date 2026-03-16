@@ -1009,3 +1009,10 @@ If you're an agent picking this up:
 - `docs/MCP-MEMORY.md` — guide for optionally adding an MCP memory server (claude-mem, memory-mcp, etc.) for richer cross-session search. Complements the file-based approach.
 - `shux doctor` now shows INFO line for MCP memory server presence (optional, non-blocking).
 - 9 new tests: 7 for session-stop.sh behavior, 2 for session-start.sh reading the progress file.
+
+## [0.9.20] - 2026-03-16
+
+### Fixed
+- Monitor UI: "View Report" button added to every task in the tasks card (was missing entirely); positioned on the left side of each row for quick access
+- Monitor UI: task report API now matches both `task:` and `task_id:` fields in handoff YAML files, and matches on `from:` agent (not just `to:`), so reports written by an agent are found correctly
+- Monitor UI: task report card now displays `outcome` and `context` fields from handoff YAML, with date header
