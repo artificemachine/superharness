@@ -999,3 +999,13 @@ If you're an agent picking this up:
 
 ### Fixed
 - `session-start.sh`: JSON output broken on macOS (bash 3.2) — `${ESCAPED:1:-1}` negative-length substring is unsupported in bash 3.2 (macOS default). Replaced with a single Python call that builds the full JSON structure, eliminating the bash substring entirely.
+
+## [0.9.19] - 2026-03-16
+
+### Added
+- `session-stop.sh` Stop hook — fires automatically when a Claude Code session ends; writes `.superharness/session-progress.md` with current task context, git branch, uncommitted changes, and recent commits. Zero agent cooperation needed.
+- `session-start.sh` reads session-progress.md — the "Previous Session Snapshot" section is injected into `additionalContext` on every new session start, restoring context automatically.
+- Stop hook registered in `hooks.json` alongside existing SessionStart/PreToolUse/PostToolUse hooks.
+- `docs/MCP-MEMORY.md` — guide for optionally adding an MCP memory server (claude-mem, memory-mcp, etc.) for richer cross-session search. Complements the file-based approach.
+- `shux doctor` now shows INFO line for MCP memory server presence (optional, non-blocking).
+- 9 new tests: 7 for session-stop.sh behavior, 2 for session-start.sh reading the progress file.

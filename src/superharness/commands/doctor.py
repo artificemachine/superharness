@@ -145,6 +145,24 @@ def main(argv: list[str] | None = None) -> None:
     else:
         print(f"INFO watcher:platform {sys_platform} — use foreground mode: superharness watch --foreground --project .")
 
+    # Optional: MCP memory server check (informational only)
+    mcp_config = pathlib.Path.home() / ".claude" / "settings.json"
+    if mcp_config.exists():
+        import json as _json
+        try:
+            settings = _json.loads(mcp_config.read_text(encoding="utf-8"))
+            mcp_servers = settings.get("mcpServers", {})
+            has_memory = any(
+                "mem" in name.lower() or "memory" in name.lower()
+                for name in mcp_servers
+            )
+            if has_memory:
+                print("INFO mcp:memory server configured (optional enhancement)")
+            else:
+                print("INFO mcp:no memory server detected (optional — see docs/MCP-MEMORY.md)")
+        except Exception:
+            pass
+
     print(f"summary: failures={failures} warnings={warns}")
     if failures > 0:
         print()

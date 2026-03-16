@@ -8,6 +8,7 @@ ENTRYPOINT_FILES=(
   "adapters/claude-code/hooks/ledger-append.sh"
   "adapters/claude-code/hooks/scope-guard.sh"
   "adapters/claude-code/hooks/session-start.sh"
+  "adapters/claude-code/hooks/session-stop.sh"
   "src/superharness/scripts/check-shell-entrypoints.sh"
   "src/superharness/scripts/check-contract-hygiene.sh"
   "src/superharness/scripts/contract-today.sh"
