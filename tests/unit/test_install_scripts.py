@@ -6,6 +6,9 @@ import sys
 from pathlib import Path
 
 from tests.helpers import REPO_ROOT, run_bash, run_cmd
+import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
 def _run_watcher_worker_py(cwd, args: list[str] | None = None, env: dict | None = None):
@@ -261,9 +264,6 @@ def test_install_launchd_plist_keepalive_only_restarts_on_crash(repo_root, tmp_p
     assert "<false/>" in plist_text
     # Verify we don't have the old pattern: KeepAlive followed immediately by <true/>
     import re
-import pytest
-
-pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
     assert not re.search(r"<key>KeepAlive</key>\s*<true/>", plist_text), \
         "KeepAlive must not use unconditional <true/>"
 
