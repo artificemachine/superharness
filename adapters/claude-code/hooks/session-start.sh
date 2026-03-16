@@ -159,10 +159,11 @@ $SESSION_PROGRESS"
 fi
 
 # Build the context injection
-CONTEXT="$(cat <<EOF
-<superharness>
+# All variables are pre-computed above — no $(cmd) inside the heredoc to avoid
+# bash 3.2 single-quote parsing bugs in heredoc command substitutions.
+CONTEXT="<superharness>
 ## Identity
-$(printf '%s\n' "$IDENTITY")
+$IDENTITY
 
 ## Cross-Agent Protocol
 You are one of two senior devs. The other is Codex CLI.
@@ -179,8 +180,8 @@ Protocol files live in .superharness/ (contract.yaml, handoffs/, ledger.md, fail
 - Before starting: read contract.yaml, failures.yaml, decisions.yaml, and any handoffs addressed to you.
 - Before implementing: search failures.yaml for past failures with this technology/approach.
 - When done with a task: write a handoff for the next agent + append to ledger.md.
-- When you make a decision between alternatives: log it in the contract's decisions section.
-- When something fails: log it in the contract's failures section.
+- When you make a decision between alternatives: log it in the contract decisions section.
+- When something fails: log it in the contract failures section.
 - When reviewing: use the review lenses assigned in the contract (security, architecture, performance, tests, error-handling, devops, api-contract). Read the diff, challenge decisions, log findings. Never rubber-stamp.
 
 ## Enforcement hooks active:
@@ -188,28 +189,26 @@ Protocol files live in .superharness/ (contract.yaml, handoffs/, ledger.md, fail
 - branch-guard: blocks push to main/master, warns on force push and destructive git ops
 - ledger-append: auto-logs file changes to .superharness/ledger.md
 
-$(printf '%s\n' "$VAULT_CONTEXT")
-$(printf '%s\n' "$CONTRACT_STATUS")
-$(printf '%s\n' "$PENDING_HANDOFFS")
-$(printf '%s\n' "$WATCHER_STATUS")
+$VAULT_CONTEXT
+$CONTRACT_STATUS
+$PENDING_HANDOFFS
+$WATCHER_STATUS
 
 $PROGRESS_SECTION
 
 ## Session Start Instruction
-When starting a new session (not a /continue), display a brief status summary BEFORE the user's first message. Format:
+When starting a new session (not a /continue), display a brief status summary BEFORE the first message. Format:
 
 ---
-**superharness** | branch: <branch> | task: <task-id> (<status>)
-<one-line task title>
-<if previous session snapshot exists: "Restored from previous session snapshot">
-<if pending handoff: "Pending handoff — read before starting">
-<if uncommitted changes: "N uncommitted files">
+superharness | branch: BRANCH | task: TASK-ID (STATUS)
+One-line task title
+Restored from previous session snapshot (if applicable)
+Pending handoff - read before starting (if applicable)
+N uncommitted files (if applicable)
 ---
 
 Keep it to 3-5 lines max. Do not dump the full context. If no task or contract is active, just show the branch.
-</superharness>
-EOF
-)"
+</superharness>"
 
 # Output in Claude Code SessionStart format
 # Use Python to build the full JSON — avoids bash ${var:1:-1} which is unsupported on bash 3.2 (macOS default)
