@@ -994,3 +994,8 @@ If you're an agent picking this up:
 - `init_project.py`: fresh `init` no longer overwrites existing `CLAUDE.md`, `AGENTS.md`, or `SOUL.md`; `_overwrite_user_file` was `not opts.refresh or opts.force` (always True on fresh init) — fixed to `opts.force` only
 - `test_status_reports_retry_alert_and_watcher_problem`: marked `skipif` non-Darwin — `platform.system()` ignores PATH-faked `uname` binary, so the launchctl-based watcher check is macOS-only
 - `pyproject.toml`: version bumped `0.9.11 → 0.9.16` to match CHANGELOG
+
+## [0.9.18] - 2026-03-16
+
+### Fixed
+- `session-start.sh`: JSON output broken on macOS (bash 3.2) — `${ESCAPED:1:-1}` negative-length substring is unsupported in bash 3.2 (macOS default). Replaced with a single Python call that builds the full JSON structure, eliminating the bash substring entirely.
