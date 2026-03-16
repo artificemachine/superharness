@@ -182,14 +182,6 @@ $(printf '%s\n' "$WATCHER_STATUS")
 EOF
 )"
 
-# Escape for JSON output
-ESCAPED=$(echo "$CONTEXT" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))")
-# Remove surrounding quotes from json.dumps
-ESCAPED=${ESCAPED:1:-1}
-
 # Output in Claude Code SessionStart format
-cat <<EOF
-{
-  "additionalContext": "$ESCAPED"
-}
-EOF
+# Use Python to build the full JSON — avoids bash ${var:1:-1} which is unsupported on bash 3.2 (macOS default)
+echo "$CONTEXT" | python3 -c "import sys,json; print(json.dumps({'additionalContext': sys.stdin.read()}))"
