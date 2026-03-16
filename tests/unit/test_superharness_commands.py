@@ -23,7 +23,7 @@ def _setup_project(tmp_path):
                 "    title: \"Write docs\"",
                 "    owner: codex-cli",
                 "    status: todo",
-                f'    project_path: "{project}"',
+                f"    project_path: '{project.as_posix()}'" ,
             ]
         )
         + "\n"

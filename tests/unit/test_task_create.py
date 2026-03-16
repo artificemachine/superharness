@@ -34,7 +34,7 @@ def _make_contract(tmp_path: Path, tasks: list[dict] | None = None) -> tuple[Pat
         lines.append(f"    title: {t.get('title', 'Test')}")
         lines.append(f"    owner: {t.get('owner', 'claude-code')}")
         lines.append(f"    status: {t.get('status', 'todo')}")
-        lines.append(f'    project_path: "{project}"')
+        lines.append(f"    project_path: '{project.as_posix()}'" )
         if "dependency" in t:
             lines.append(f"    dependency: {t['dependency']}")
 

@@ -36,7 +36,7 @@ def _make_project(tmp_path: Path, *, inbox_items: list[dict] | None = None) -> P
     (harness / "contract.yaml").write_text(
         "id: test-contract\ntasks:\n"
         "  - id: test-task\n    owner: codex-cli\n    status: todo\n"
-        f'    project_path: "{project}"\n'
+        f"    project_path: '{project.as_posix()}'\n"
     )
 
     if inbox_items is not None:
@@ -152,7 +152,7 @@ def test_dispatch_state_reconcile_done(tmp_path: Path) -> None:
     contract.write_text(
         "id: test-contract\ntasks:\n"
         "  - id: test-task\n    owner: codex-cli\n    status: done\n"
-        f'    project_path: "{project}"\n'
+        f"    project_path: '{project.as_posix()}'\n"
     )
 
     bin_dir = tmp_path / "bin"
