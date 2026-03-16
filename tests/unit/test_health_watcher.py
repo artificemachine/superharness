@@ -7,6 +7,10 @@ import time
 from pathlib import Path
 
 from tests.helpers import run_bash, parse_json_output
+import sys
+import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
 def _setup_project(tmp_path: Path) -> Path:
@@ -224,11 +228,7 @@ def test_watcher_lock_released_during_dispatch(repo_root: Path, tmp_path: Path) 
     fake_recover.chmod(0o755)
 
     import subprocess
-import sys
-import pytest
 
-
-pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
     env = os.environ.copy()
     env["DISPATCH"] = str(fake_dispatch)
     env["RECOVER"] = str(fake_recover)
