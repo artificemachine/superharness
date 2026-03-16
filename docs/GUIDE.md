@@ -149,6 +149,34 @@ superharness contract today --project /path/to/project
 
 Prints all tasks with id, status, owner, and suggests the next task to work on.
 
+### Task lifecycle
+
+Every task follows this mandatory sequence:
+
+```
+todo → plan_proposed → plan_approved → in_progress → report_ready → done
+                                                          │
+                                                   (optional Opus review)
+                                               review_requested
+                                                      │
+                                           review_failed → plan_proposed  (loop)
+                                           review_passed → done
+```
+
+| Phase | Who sets it | What happens |
+|-------|-------------|--------------|
+| `todo` | operator | task created |
+| `plan_proposed` | agent | agent writes plan handoff, stops and waits |
+| `plan_approved` | operator | operator approves via monitor UI or `shux task status` |
+| `in_progress` | agent | agent begins implementation |
+| `report_ready` | agent | agent writes report handoff, stops and waits |
+| `review_requested` | operator | operator requests Opus quality review |
+| `review_passed` | Opus | review approved → ready to close |
+| `review_failed` | Opus | review failed → agent loops back to `plan_proposed` |
+| `done` | operator | operator runs `shux close <id>` |
+
+The monitor UI (`shux monitor`) shows each task's current phase and presents the appropriate action button automatically.
+
 ### Task management
 
 ```bash

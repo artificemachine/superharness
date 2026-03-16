@@ -136,6 +136,11 @@ HTML = """<!doctype html>
     </div>
 
     <div class=\"card\" style=\"margin-top:10px;\">
+      <h2>tasks</h2>
+      <div id=\"contractTaskList\">-</div>
+    </div>
+
+    <div class=\"card\" style=\"margin-top:10px;\">
       <h2>contract owners</h2>
       <div id=\"ownersList\" style=\"margin-bottom:8px;\"></div>
       <div style=\"display:flex;gap:6px;align-items:center;\">
@@ -189,6 +194,7 @@ async function refresh() {
     document.getElementById('contract').textContent = d.contract_id || '-';
     document.getElementById('ts').textContent = d.now_utc;
     renderOwnersList(d.contract_owners || []);
+    renderContractTasks(d.contract_tasks || []);
     // Plan proposals
     const pp = d.plan_proposals || [];
     const planBanner = document.getElementById('planBanner');
@@ -484,6 +490,71 @@ async function removeItem(itemId) {
   const ok = window.confirm(`Remove task item ${itemId} from inbox?`);
   if (!ok) return;
   await act('remove_item:' + itemId);
+}
+
+const PHASE_LABEL = {
+  todo:             ['⬜', 'todo',             'muted'],
+  plan_proposed:    ['📋', 'plan proposed',    'warn'],
+  plan_approved:    ['✅', 'plan approved',    'ok'],
+  in_progress:      ['🔄', 'in progress',      'warn'],
+  report_ready:     ['📝', 'report ready',     'warn'],
+  review_requested: ['🔍', 'review requested', 'warn'],
+  review_passed:    ['✅', 'review passed',    'ok'],
+  review_failed:    ['❌', 'review failed',    'bad'],
+  done:             ['✅', 'done',             'ok'],
+  failed:           ['❌', 'failed',           'bad'],
+  stopped:          ['⏹',  'stopped',          'muted'],
+};
+
+function renderContractTasks(tasks) {
+  const el = document.getElementById('contractTaskList');
+  if (!tasks.length) { el.textContent = '(no tasks)'; return; }
+  el.innerHTML = '';
+  for (const t of tasks) {
+    const st = t.status || 'todo';
+    const [icon, label, cls] = PHASE_LABEL[st] || ['?', st, 'muted'];
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--line);flex-wrap:wrap';
+
+    const badge = `<span class="pill ${cls}" style="font-size:11px">${icon} ${label}</span>`;
+    const title = `<span style="flex:1;min-width:120px">${t.id} <span class="small" style="color:var(--muted)">${t.title}</span></span>`;
+    const owner = `<span class="small" style="color:var(--muted)">${t.owner}</span>`;
+
+    let actions = '';
+    const tid = t.id.replace(/'/g, "\\\\'");
+    if (st === 'plan_proposed') {
+      actions = `<button onclick="approvePlan('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Approve Plan</button>`;
+    } else if (st === 'report_ready') {
+      actions = `<button onclick="requestReview('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Request Opus Review</button>
+                 <button onclick="approveReport('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Accept & Close</button>`;
+    } else if (st === 'review_failed') {
+      actions = `<span class="small" style="color:var(--bad)">↩ loop back — agent must revise plan</span>`;
+    } else if (st === 'review_passed' || (st === 'done' && t.verified)) {
+      actions = `<button onclick="runClose('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Close</button>`;
+    }
+    row.innerHTML = badge + title + owner + (actions ? `<span style="display:flex;gap:4px;flex-wrap:wrap">${actions}</span>` : '');
+    el.appendChild(row);
+  }
+}
+
+async function approvePlan(taskId) {
+  if (!window.confirm(`Approve plan for task "${taskId}"? The agent will proceed to implement.`)) return;
+  await act('approve_plan:' + taskId);
+}
+
+async function requestReview(taskId) {
+  if (!window.confirm(`Request Opus review for task "${taskId}"?`)) return;
+  await act('request_review:' + taskId);
+}
+
+async function approveReport(taskId) {
+  if (!window.confirm(`Accept report and mark task "${taskId}" ready to close?`)) return;
+  await act('approve_report:' + taskId);
+}
+
+async function runClose(taskId) {
+  if (!window.confirm(`Close task "${taskId}"? This will run shux close.`)) return;
+  await act('close_task:' + taskId);
 }
 
 function renderOwnersList(owners) {
@@ -923,6 +994,29 @@ def contract_id(contract_file: Path) -> str:
         return ""
 
 
+def contract_tasks(contract_file: Path) -> list[dict]:
+    """Return all contract tasks with id, title, status, owner."""
+    if not contract_file.exists():
+        return []
+    try:
+        import yaml
+        doc = yaml.safe_load(contract_file.read_text(encoding="utf-8", errors="replace")) or {}
+        tasks = []
+        for t in doc.get("tasks") or []:
+            if not isinstance(t, dict):
+                continue
+            tasks.append({
+                "id": str(t.get("id", "")),
+                "title": str(t.get("title", "")),
+                "status": str(t.get("status", "todo")),
+                "owner": str(t.get("owner", "")),
+                "verified": bool(t.get("verified", False)),
+            })
+        return tasks
+    except Exception:
+        return []
+
+
 def pending_approvals(handoff_dir: Path) -> list[dict]:
     rows: list[dict] = []
     if not handoff_dir.exists():
@@ -1008,6 +1102,30 @@ def plan_proposals(harness_dir: Path) -> list[dict]:
             "summary": handoff_summary or summary or title,
         })
     return rows
+
+
+def _set_task_status(harness_dir: Path, task_id: str, to_status: str, from_status: str | None = None) -> dict:
+    """Set a contract task status, optionally requiring it to be in from_status first."""
+    import yaml  # noqa: F811
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    contract_file = harness_dir / "contract.yaml"
+    try:
+        doc = yaml.safe_load(contract_file.read_text()) or {}
+        found = False
+        for t in doc.get("tasks") or []:
+            if isinstance(t, dict) and t.get("id") == task_id:
+                if from_status and t.get("status") != from_status:
+                    return {"ok": False, "error": f"task {task_id} is {t.get('status')!r}, expected {from_status!r}"}
+                t["status"] = to_status
+                t[f"{to_status}_at"] = now
+                found = True
+                break
+        if not found:
+            return {"ok": False, "error": f"task {task_id} not found"}
+        contract_file.write_text(yaml.dump(doc, default_flow_style=False, sort_keys=False))
+        return {"ok": True, "task": task_id, "status": to_status}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 def _confirm_plan(harness_dir: Path, task_id: str) -> dict:
@@ -1246,6 +1364,36 @@ class Handler(BaseHTTPRequestHandler):
             result = _confirm_plan(self.project_dir / ".superharness", task_id)
             return result, (200 if result.get("ok") else 500)
 
+        if action.startswith("approve_plan:"):
+            task_id = action.split(":", 1)[1]
+            if not task_id:
+                return ({"error": "missing task id"}, 400)
+            result = _set_task_status(self.project_dir / ".superharness", task_id, "plan_approved", from_status="plan_proposed")
+            return result, (200 if result.get("ok") else 500)
+
+        if action.startswith("request_review:"):
+            task_id = action.split(":", 1)[1]
+            if not task_id:
+                return ({"error": "missing task id"}, 400)
+            result = _set_task_status(self.project_dir / ".superharness", task_id, "review_requested", from_status="report_ready")
+            return result, (200 if result.get("ok") else 500)
+
+        if action.startswith("approve_report:"):
+            task_id = action.split(":", 1)[1]
+            if not task_id:
+                return ({"error": "missing task id"}, 400)
+            result = _set_task_status(self.project_dir / ".superharness", task_id, "done", from_status="report_ready")
+            return result, (200 if result.get("ok") else 500)
+
+        if action.startswith("close_task:"):
+            task_id = action.split(":", 1)[1]
+            if not task_id:
+                return ({"error": "missing task id"}, 400)
+            return self._run_cmd(
+                [sys.executable, "-m", "superharness.commands.close",
+                 "--project", str(self.project_dir), task_id]
+            ), 200
+
         if action.startswith("approve_task:"):
             task_id = action.split(":", 1)[1]
             if not task_id:
@@ -1352,6 +1500,7 @@ class Handler(BaseHTTPRequestHandler):
                     "watcher_project": str(wcfg.get("watcher_project", str(self.project_dir))),
                     "watcher_config": wcfg,
                     "contract_id": contract_id(contract),
+                    "contract_tasks": contract_tasks(contract),
                     "pending_approvals": pending_approvals(self.project_dir / ".superharness" / "handoffs"),
                     "plan_proposals": plan_proposals(self.project_dir / ".superharness"),
                     "contract_owners": contract_owners(contract),

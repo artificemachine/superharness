@@ -68,6 +68,7 @@ def close_task(
     actor: str,
     summary: str,
     skip_verify: bool = False,
+    context: str = "",
 ) -> int:
     doc = _load_contract(contract_file)
     tasks = doc.get("tasks")
@@ -124,6 +125,8 @@ def close_task(
         "summary": summary,
         "closed_at": now,
     }
+    if context:
+        handoff_data["context"] = context
     try:
         with open(handoff_file, "w") as f:
             yaml.dump(handoff_data, f, default_flow_style=False, allow_unicode=True)
@@ -166,6 +169,10 @@ def main(argv: list[str] | None = None) -> None:
         "--skip-verify", action="store_true", default=False,
         help="Bypass verification gate (not recommended)",
     )
+    parser.add_argument(
+        "--context", default="",
+        help="What the next session needs to know (written to handoff YAML)",
+    )
 
     opts = parser.parse_args(argv)
 
@@ -177,6 +184,7 @@ def main(argv: list[str] | None = None) -> None:
     rc = close_task(
         contract_file, opts.task_id, opts.actor, opts.summary,
         skip_verify=opts.skip_verify,
+        context=opts.context,
     )
     sys.exit(rc)
 

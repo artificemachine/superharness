@@ -14,12 +14,85 @@ All runtime state lives in `PROJECT/.superharness/`:
 
 ## Task Lifecycle
 
+Every task follows this mandatory phase sequence:
+
+```
+todo → plan_proposed → plan_approved → in_progress → report_ready
+                                                          │
+                                              ┌───────────┴──────────┐
+                                         (optional)              (skip review)
+                                       review_requested               │
+                                              │                       │
+                                    ┌─────────┴─────────┐            │
+                               review_failed        review_passed     │
+                                    │                    └────────────┘
+                                    │                         ↓
+                              (loop back)                    done
+                           plan_proposed
+```
+
+### Phase Definitions
+
 Contract task statuses:
-- `todo`
-- `in_progress`
-- `done`
+- `todo` — task created, not yet started
+- `plan_proposed` — agent has written a plan handoff; **awaits operator approval before any implementation**
+- `plan_approved` — operator approved the plan; agent may proceed to implement
+- `in_progress` — implementation underway
+- `report_ready` — implementation complete; agent has written a report handoff; **awaits operator review**
+- `review_requested` — operator has asked for an Opus quality review before closing
+- `review_passed` — Opus review passed; task is ready to close
+- `review_failed` — Opus review identified issues; task loops back to `plan_proposed`
+- `done` — task closed (after `shux close`)
 - `failed` — task ran but did not complete (error, deadline exceeded); always accompanied by `stopped_reason` and `stopped_at`
-- `stopped` — operator manually halted the task mid-execution; always accompanied by `stopped_reason` and `stopped_at`
+- `stopped` — operator manually halted the task; always accompanied by `stopped_reason` and `stopped_at`
+
+### Agent Rules
+
+1. **Plan first (TDD required).** Before any implementation, write a plan handoff that includes a `tdd` block (red/green/refactor). Set status to `plan_proposed`. Stop and wait.
+2. **Never implement without approval.** Only proceed when status is `plan_approved`.
+3. **Report always.** After implementation, write a report handoff and set status to `report_ready`. Stop and wait.
+4. **Loop on review failure.** If `review_failed`, treat it as a new `plan_proposed` cycle — read the review findings, revise the plan, set status back to `plan_proposed`.
+5. **Never self-close.** Only the operator runs `shux close` to move a task to `done`.
+
+### Handoff Schema for Each Phase
+
+```yaml
+# plan handoff
+task: <task-id>
+phase: plan
+status: plan_proposed
+from: claude-code
+to: owner
+date: <ISO timestamp>
+plan: |
+  <what will be done, scope, approach>
+tdd:
+  red: |
+    <tests to write first — what failing tests define "done" for this task>
+  green: |
+    <minimal implementation to make those tests pass>
+  refactor: |
+    <cleanup and quality improvements after green — no new behaviour>
+risks: |
+  <known risks or open questions>
+
+# report handoff
+task: <task-id>
+phase: report
+status: report_ready
+from: claude-code
+to: owner
+date: <ISO timestamp>
+outcome: |
+  <what was done, results>
+context: |
+  <what the next session needs to know to continue or verify this work>
+  Include: key constraints discovered, why decisions were made, what to watch for.
+outcomes:
+  - <bullet 1>
+  - <bullet 2>
+tests_passed: true   # or false
+```
 
 Inbox item statuses:
 - `pending`
