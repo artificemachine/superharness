@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
+
 PYTHON = sys.executable
 
 INBOX_HEADER = (

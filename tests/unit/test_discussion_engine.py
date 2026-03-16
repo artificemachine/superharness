@@ -4,6 +4,10 @@ import json
 from pathlib import Path
 
 from tests.helpers import run_cmd
+import sys
+import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
 def _run_engine(repo_root: Path, args: list[str]):

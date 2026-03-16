@@ -7,6 +7,9 @@ import sys
 from pathlib import Path
 
 from tests.helpers import REPO_ROOT, run_bash, run_cmd
+import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
 def _run_discuss_py(cwd, args: list[str] | None = None):

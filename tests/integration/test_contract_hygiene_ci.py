@@ -3,6 +3,10 @@ import subprocess
 import yaml
 
 from tests.helpers import SCRIPTS_DIR
+import sys
+import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
 def test_hygiene_check_passes_with_valid_contract(tmp_path):
