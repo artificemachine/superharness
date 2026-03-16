@@ -1,7 +1,6 @@
 """Python port of engine/discussion.rb — multi-round discussion engine."""
 from __future__ import annotations
 
-import fcntl
 import glob
 import json
 import os
@@ -41,18 +40,40 @@ def _file_lock(path: str, timeout: float = 5.0) -> Iterator[None]:
     lock_path = f"{path}.flock"
     with open(lock_path, "a+") as lock_file:
         deadline = time.monotonic() + timeout
-        while True:
+        if sys.platform == "win32":
+            # Windows: use msvcrt file locking
+            import msvcrt
+            while True:
+                try:
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except (IOError, OSError):
+                    if time.monotonic() >= deadline:
+                        sys.exit(f"E_LOCK_TIMEOUT: could not acquire lock on {path} within {timeout}s")
+                    time.sleep(0.1)
             try:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except BlockingIOError:
-                if time.monotonic() >= deadline:
-                    sys.exit(f"E_LOCK_TIMEOUT: could not acquire lock on {path} within {timeout}s")
-                time.sleep(0.1)
-        try:
-            yield
-        finally:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                yield
+            finally:
+                try:
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                except (IOError, OSError):
+                    pass
+        else:
+            # Unix: use fcntl file locking
+            import fcntl
+            while True:
+                try:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        sys.exit(f"E_LOCK_TIMEOUT: could not acquire lock on {path} within {timeout}s")
+                    time.sleep(0.1)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def _generate_id() -> str:

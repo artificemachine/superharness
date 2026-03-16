@@ -124,8 +124,9 @@ if [ "$PRINT_ONLY" -eq 1 ]; then
 fi
 
 "$PYTHON3" - "$PROJECT_DIR" "$TASK_ID" <<'PY'
+import sys
+import yaml
 from datetime import datetime, timezone
-
 
 project_dir = sys.argv[1]
 task_id = sys.argv[2]
