@@ -8,7 +8,6 @@ Output format is byte-for-byte identical to the Ruby version for parity.
 """
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import sys
@@ -56,11 +55,24 @@ def _write_items(path: str, items: list) -> None:
 def _inbox_lock(path: str) -> Iterator[None]:
     lock_path = f"{path}.flock"
     with open(lock_path, "a+") as lock_file:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        if sys.platform == "win32":
+            import msvcrt
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                try:
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                except (IOError, OSError):
+                    pass
+        else:
+            import fcntl
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def _append_archive(archive_path: str, items: list, now: str) -> None:
