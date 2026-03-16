@@ -113,7 +113,7 @@ def test_doctor_warns_when_plugin_not_installed(repo_root, tmp_path) -> None:
     fake_home.mkdir()
     result = _run_python(
         ["--project", str(project)],
-        env={"HOME": str(fake_home)},
+        env={"HOME": str(fake_home), "USERPROFILE": str(fake_home)},
     )
     assert "WARN plugin:claude-code superharness not installed" in result.stdout
 
@@ -126,6 +126,6 @@ def test_doctor_ok_when_plugin_installed(repo_root, tmp_path) -> None:
     plugin_dir.mkdir(parents=True)
     result = _run_python(
         ["--project", str(project)],
-        env={"HOME": str(fake_home)},
+        env={"HOME": str(fake_home), "USERPROFILE": str(fake_home)},
     )
     assert "PASS plugin:claude-code superharness installed" in result.stdout
