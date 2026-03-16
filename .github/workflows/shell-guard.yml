@@ -15,7 +15,7 @@ jobs:
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
 
       - name: Validate shell entrypoints
-        run: scripts/check-shell-entrypoints.sh
+        run: src/superharness/scripts/check-shell-entrypoints.sh
 
   shell-smoke:
     name: Script Smoke Tests
@@ -29,7 +29,7 @@ jobs:
           while IFS= read -r entrypoint; do
             [ -n "$entrypoint" ] || continue
             bash "$entrypoint" --help
-          done < <(bash scripts/check-shell-entrypoints.sh --list-entrypoints)
+          done < <(bash src/superharness/scripts/check-shell-entrypoints.sh --list-entrypoints)
 
       - name: Script dry-run smoke
         run: |

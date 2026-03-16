@@ -985,3 +985,12 @@ If you're an agent picking this up:
 
 ### Fixed
 - `branch-guard.sh` PreToolUse hook output format — was using `{"decision": "..."}` which Claude Code does not recognize (triggered "hook error" on every session). Updated to correct `{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "...", "permissionDecisionReason": "..."}}` schema. Behavior unchanged: push to main/master → deny; force push → deny; `reset --hard`/`clean -f`/`rm -rf /` → ask; everything else → allow.
+
+## [0.9.17] - 2026-03-16
+
+### Fixed
+- CI: `security.yml` shipguard pin updated `0.3.1 → 0.3.2` (0.3.1 was yanked from PyPI)
+- CI: `tests.yml`, `shell-guard.yml`, `contract-hygiene.yml` — script paths corrected from `scripts/` to `src/superharness/scripts/` (scripts were never at repo root)
+- `init_project.py`: fresh `init` no longer overwrites existing `CLAUDE.md`, `AGENTS.md`, or `SOUL.md`; `_overwrite_user_file` was `not opts.refresh or opts.force` (always True on fresh init) — fixed to `opts.force` only
+- `test_status_reports_retry_alert_and_watcher_problem`: marked `skipif` non-Darwin — `platform.system()` ignores PATH-faked `uname` binary, so the launchctl-based watcher check is macOS-only
+- `pyproject.toml`: version bumped `0.9.11 → 0.9.16` to match CHANGELOG
