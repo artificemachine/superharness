@@ -6,6 +6,9 @@ from pathlib import Path
 import pytest
 
 from tests.helpers import run_bash
+import sys
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
 def _setup_project(tmp_path: Path) -> Path:
@@ -194,9 +197,6 @@ def test_status_shows_heartbeat_ok(repo_root: Path, tmp_path: Path) -> None:
     heartbeat = project / ".superharness" / "watcher.heartbeat"
 
     from datetime import datetime, timezone
-import sys
-
-pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
     fresh_ts = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     heartbeat.write_text(fresh_ts + "\n")
