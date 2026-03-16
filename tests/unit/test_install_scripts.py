@@ -261,6 +261,9 @@ def test_install_launchd_plist_keepalive_only_restarts_on_crash(repo_root, tmp_p
     assert "<false/>" in plist_text
     # Verify we don't have the old pattern: KeepAlive followed immediately by <true/>
     import re
+import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
     assert not re.search(r"<key>KeepAlive</key>\s*<true/>", plist_text), \
         "KeepAlive must not use unconditional <true/>"
 

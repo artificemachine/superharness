@@ -6,6 +6,9 @@ import sys
 from pathlib import Path
 
 from tests.helpers import run_bash, REPO_ROOT
+import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
 def _run_normalize(args: list[str]) -> subprocess.CompletedProcess:

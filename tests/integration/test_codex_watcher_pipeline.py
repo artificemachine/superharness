@@ -123,6 +123,9 @@ fi
 "$PYTHON3" - "$PROJECT_DIR" "$TASK_ID" <<'PY'
 import sys, yaml
 from datetime import datetime, timezone
+import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 project_dir = sys.argv[1]
 task_id = sys.argv[2]

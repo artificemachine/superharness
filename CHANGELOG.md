@@ -1016,3 +1016,11 @@ If you're an agent picking this up:
 - Monitor UI: "View Report" button added to every task in the tasks card (was missing entirely); positioned on the left side of each row for quick access
 - Monitor UI: task report API now matches both `task:` and `task_id:` fields in handoff YAML files, and matches on `from:` agent (not just `to:`), so reports written by an agent are found correctly
 - Monitor UI: task report card now displays `outcome` and `context` fields from handoff YAML, with date header
+
+## [0.9.21] - 2026-03-16
+
+### Fixed
+- Windows CI: 22 fully shell-dependent test files marked with `pytestmark = pytest.mark.skipif(sys.platform == "win32")` — these require bash which is unavailable on Windows CI runners
+- Windows CI: 3 partially shell-dependent test files (`test_profile_wiring`, `test_discuss_approval`, `test_acceptance_criteria`) have individual `@_skip_win` marks on bash-calling tests only
+- Windows CI: `test_acceptance_criteria.py` YAML scanner error — backslash paths on Windows (`C:\Users\...`) broke YAML double-quoted scalar parsing; fixed with `project.as_posix()` (forward slashes)
+- `pyproject.toml` version bumped `0.9.16 → 0.9.21` to match CHANGELOG

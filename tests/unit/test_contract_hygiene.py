@@ -3,7 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from tests.helpers import run_bash
+import sys
+import pytest
 
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 def _write_project(project: Path) -> None:
     harness = project / ".superharness"

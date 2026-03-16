@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "superharness"
-version = "0.9.16"
+version = "0.9.21"
 description = "Multi-agent session handoff framework for Claude Code and Codex CLI"
 readme = "README.md"
 license = "Apache-2.0"
@@ -49,3 +49,6 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "requires_bash: test requires bash shell (skipped on Windows)",
+]
