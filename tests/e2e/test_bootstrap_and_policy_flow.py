@@ -72,7 +72,8 @@ def test_policy_enforcement_block_and_warn(repo_root, tmp_path) -> None:
     block_payload = json.dumps({"tool_input": {"command": "git push origin main"}})
     block_res = run_bash(branch_guard, cwd=tmp_path, stdin=block_payload)
     block = parse_json_output(block_res.stdout)
-    assert block["decision"] == "block"
+    # branch-guard uses new Claude Code PreToolUse schema
+    assert block["hookSpecificOutput"]["permissionDecision"] == "deny"
 
     warn_payload = json.dumps({"tool_input": {"file_path": "/etc/passwd"}})
     warn_res = run_bash(scope_guard, cwd=tmp_path, stdin=warn_payload)

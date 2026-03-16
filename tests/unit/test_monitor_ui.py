@@ -1244,3 +1244,103 @@ def test_monitor_main_linux_eaddrinuse(repo_root, tmp_path, monkeypatch) -> None
         sys.argv = orig
 
     assert 8788 in call_log
+
+
+# ── task lifecycle: _set_task_status ──────────────────────────────────────
+
+def _make_contract(harness: Path, tasks: list[dict]) -> None:
+    import yaml
+    harness.mkdir(parents=True, exist_ok=True)
+    doc = {"id": "test", "status": "active", "tasks": tasks, "decisions": [], "failures": []}
+    (harness / "contract.yaml").write_text(yaml.dump(doc))
+
+
+def test_set_task_status_transitions_correctly(repo_root, tmp_path):
+    m = _load_monitor_module(repo_root)
+    harness = tmp_path / ".superharness"
+    _make_contract(harness, [{"id": "t1", "status": "plan_proposed", "title": "T1", "owner": "claude-code"}])
+    result = m._set_task_status(harness, "t1", "plan_approved", from_status="plan_proposed")
+    assert result["ok"] is True
+    import yaml
+    doc = yaml.safe_load((harness / "contract.yaml").read_text())
+    task = next(t for t in doc["tasks"] if t["id"] == "t1")
+    assert task["status"] == "plan_approved"
+    assert "plan_approved_at" in task
+
+
+def test_set_task_status_rejects_wrong_from_status(repo_root, tmp_path):
+    m = _load_monitor_module(repo_root)
+    harness = tmp_path / ".superharness"
+    _make_contract(harness, [{"id": "t1", "status": "in_progress", "title": "T1", "owner": "claude-code"}])
+    result = m._set_task_status(harness, "t1", "plan_approved", from_status="plan_proposed")
+    assert result["ok"] is False
+    assert "in_progress" in result["error"]
+
+
+def test_set_task_status_missing_task_returns_error(repo_root, tmp_path):
+    m = _load_monitor_module(repo_root)
+    harness = tmp_path / ".superharness"
+    _make_contract(harness, [])
+    result = m._set_task_status(harness, "no-such-task", "done")
+    assert result["ok"] is False
+
+
+def test_set_task_status_no_from_status_always_transitions(repo_root, tmp_path):
+    m = _load_monitor_module(repo_root)
+    harness = tmp_path / ".superharness"
+    _make_contract(harness, [{"id": "t1", "status": "in_progress", "title": "T1", "owner": "claude-code"}])
+    result = m._set_task_status(harness, "t1", "report_ready")
+    assert result["ok"] is True
+
+
+# ── contract_tasks ────────────────────────────────────────────────────────
+
+def test_contract_tasks_returns_all_tasks(repo_root, tmp_path):
+    m = _load_monitor_module(repo_root)
+    harness = tmp_path / ".superharness"
+    _make_contract(harness, [
+        {"id": "a", "status": "todo", "title": "A", "owner": "claude-code"},
+        {"id": "b", "status": "plan_proposed", "title": "B", "owner": "codex-cli"},
+        {"id": "c", "status": "done", "title": "C", "owner": "claude-code", "verified": True},
+    ])
+    tasks = m.contract_tasks(harness / "contract.yaml")
+    assert len(tasks) == 3
+    assert tasks[0] == {"id": "a", "title": "A", "status": "todo", "owner": "claude-code", "verified": False}
+    assert tasks[1]["status"] == "plan_proposed"
+    assert tasks[2]["verified"] is True
+
+
+def test_contract_tasks_returns_empty_for_missing_file(repo_root, tmp_path):
+    m = _load_monitor_module(repo_root)
+    assert m.contract_tasks(tmp_path / "nonexistent.yaml") == []
+
+
+# ── lifecycle phase coverage ──────────────────────────────────────────────
+
+def test_full_lifecycle_status_transitions(repo_root, tmp_path):
+    """Walk through all lifecycle phases using _set_task_status."""
+    m = _load_monitor_module(repo_root)
+    harness = tmp_path / ".superharness"
+    _make_contract(harness, [{"id": "task1", "status": "todo", "title": "Full lifecycle", "owner": "claude-code"}])
+
+    transitions = [
+        ("todo",          "plan_proposed",    None),
+        ("plan_proposed", "plan_approved",    "plan_proposed"),
+        ("plan_approved", "in_progress",      "plan_approved"),
+        ("in_progress",   "report_ready",     "in_progress"),
+        ("report_ready",  "review_requested", "report_ready"),
+        ("review_requested", "review_passed", "review_requested"),
+        ("review_passed", "done",             None),
+    ]
+    for from_st, to_st, required_from in transitions:
+        r = m._set_task_status(harness, "task1", to_st, from_status=required_from)
+        assert r["ok"] is True, f"transition {from_st}→{to_st} failed: {r}"
+
+
+def test_review_failed_loops_back(repo_root, tmp_path):
+    """review_failed → plan_proposed is a valid transition."""
+    m = _load_monitor_module(repo_root)
+    harness = tmp_path / ".superharness"
+    _make_contract(harness, [{"id": "loop-task", "status": "review_failed", "title": "Loop", "owner": "claude-code"}])
+    r = m._set_task_status(harness, "loop-task", "plan_proposed", from_status="review_failed")
+    assert r["ok"] is True

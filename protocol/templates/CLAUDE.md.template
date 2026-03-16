@@ -26,6 +26,61 @@ Read `SOUL.md` for operating constraints, guardrails, and identity context.
 - Run `shux recall "KEYWORDS"` with terms related to your task
 - Check for prior decisions, failures, or context from earlier sessions
 
+## Task Lifecycle (Mandatory)
+
+Every task must follow this exact sequence — **never skip a phase**:
+
+```
+todo → plan_proposed → plan_approved → in_progress → report_ready → [review] → done
+```
+
+### Phase Rules
+
+1. **Plan first (TDD required)** — Before any implementation, write a plan handoff that includes a `tdd` block describing the Red → Green → Refactor cycle. Set task status to `plan_proposed`. Stop and wait for operator approval.
+   ```yaml
+   task: <id>
+   phase: plan
+   status: plan_proposed
+   from: claude-code
+   to: owner
+   date: <ISO>
+   plan: |
+     <scope and approach>
+   tdd:
+     red: |
+       <tests to write first — failing tests that define "done">
+     green: |
+       <minimal implementation to make tests pass>
+     refactor: |
+       <cleanup after green — no new behaviour>
+   risks: |
+     <open questions>
+   ```
+
+2. **Only implement after approval** — Only proceed when the operator sets status to `plan_approved` (or confirms via monitor UI).
+
+3. **Report always** — After implementation, write a report handoff and set status to `report_ready`. Stop and wait.
+   ```yaml
+   task: <id>
+   phase: report
+   status: report_ready
+   from: claude-code
+   to: owner
+   date: <ISO>
+   outcome: |
+     <summary of what was done>
+   context: |
+     <what the next session needs to know to continue or verify this work>
+     Include: key constraints discovered, why decisions were made, what to watch for.
+   outcomes:
+     - <bullet 1>
+   tests_passed: true
+   ```
+
+4. **Loop on review failure** — If status becomes `review_failed`, read the review findings, revise the plan, and set status back to `plan_proposed`.
+
+5. **Never self-close** — Only the operator runs `shux close <id>`.
+
 ## After Showing Contract Status
 When you display the contract summary (task list, owners, counts):
 - Do **not** offer to run tests or start work directly.
