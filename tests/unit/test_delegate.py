@@ -6,6 +6,9 @@ import sys
 from pathlib import Path
 
 from tests.helpers import REPO_ROOT, run_bash
+import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
 def _run_delegate_py(cwd, args: list[str] | None = None, env: dict | None = None):
