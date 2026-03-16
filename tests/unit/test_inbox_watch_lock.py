@@ -20,7 +20,7 @@ def _write_project(tmp_path: Path) -> Path:
     (harness / "contract.yaml").write_text(
         "id: test-contract\ntasks:\n"
         "  - id: t1\n    owner: codex-cli\n    status: todo\n"
-        f'    project_path: "{project}"\n'
+        f"    project_path: '{project.as_posix()}'\n"
     )
     (harness / "inbox.yaml").write_text(
         "# Delegation inbox\n"

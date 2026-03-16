@@ -45,7 +45,7 @@ def _create_test_project(tmp_path, task_id: str, owner: str, deadline_minutes: i
         f"    status: in_progress\n"
         f"    owner: {owner}\n"
         f"    deadline_minutes: {deadline_minutes}\n"
-        f'    project_path: "{project}"\n'
+        f"    project_path: '{project.as_posix()}'\n"
         f"decisions: []\n"
         f"failures: []\n"
     )

@@ -135,7 +135,7 @@ def test_enqueue_validates_contract_project_path(tmp_path: Path) -> None:
         "    title: Test",
         "    owner: claude-code",
         "    status: todo",
-        f'    project_path: "{other}"',
+        f"    project_path: '{other.as_posix()}'",
     ]) + "\n")
     r = _run_enqueue([
         "--project", str(project),
