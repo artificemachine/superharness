@@ -22,7 +22,7 @@ def _setup_project(tmp_path: Path, owner: str = "codex-cli") -> Path:
                 "  - id: mcp-docs",
                 f"    owner: {owner}",
                 "    status: todo",
-                f'    project_path: "{project}"',
+                f"    project_path: '{project.as_posix()}'" ,
             ]
         )
         + "\n"

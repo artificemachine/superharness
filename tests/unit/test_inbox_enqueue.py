@@ -61,7 +61,7 @@ def test_enqueue_fails_when_task_project_path_mismatch(repo_root, tmp_path) -> N
             "id: test-contract",
             "tasks:",
             "  - id: mcp-docs",
-            f'    project_path: "{other}"',
+            f"    project_path: '{other.as_posix()}'",
         ],
     )
 
