@@ -16,6 +16,10 @@ This test validates the complete deadline enforcement flow:
 from __future__ import annotations
 
 from tests.helpers import run_bash
+import sys
+import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
 def _create_test_project(tmp_path, task_id: str, owner: str, deadline_minutes: int, launched_at: str):
@@ -124,11 +128,7 @@ def test_deadline_not_yet_exceeded_no_action(repo_root, tmp_path) -> None:
     Negative test: verify no action when deadline hasn't been exceeded yet.
     """
     from datetime import datetime, timezone
-import sys
-import pytest
 
-
-pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
     task_id = "fresh-task"
     owner = "codex-cli"
     deadline_minutes = 60
