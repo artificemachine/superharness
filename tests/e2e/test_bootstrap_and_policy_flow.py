@@ -6,6 +6,9 @@ import subprocess
 import sys
 
 from tests.helpers import REPO_ROOT, copy_from_repo, parse_json_output, run_bash, run_cmd, shell_guard_list
+import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
 def _run_init_py(cwd, args: list[str] | None = None):

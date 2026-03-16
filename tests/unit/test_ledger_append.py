@@ -4,7 +4,11 @@ import json
 import re
 
 from tests.helpers import run_bash
+import sys
+import pytest
 
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 def test_ledger_append_writes_line(repo_root, tmp_path) -> None:
     script = repo_root / "adapters/claude-code/hooks/ledger-append.sh"

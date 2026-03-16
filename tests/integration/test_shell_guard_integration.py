@@ -3,7 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from tests.helpers import REPO_ROOT, copy_from_repo, run_bash, run_cmd, shell_guard_list
+import sys
+import pytest
 
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 def _init_git_repo(path: Path) -> None:
     run_cmd(["git", "init"], cwd=path)

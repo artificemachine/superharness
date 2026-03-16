@@ -6,6 +6,9 @@ import sys
 from pathlib import Path
 
 from tests.helpers import REPO_ROOT, run_bash, shell_guard_list
+import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
 # Entrypoints that should respond to --help with exit 0.

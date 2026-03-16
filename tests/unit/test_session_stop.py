@@ -6,7 +6,11 @@ import subprocess
 from pathlib import Path
 
 from tests.helpers import run_bash, parse_json_output
+import sys
+import pytest
 
+
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 def _setup_project(tmp_path: Path, *, task_status: str = "in_progress") -> Path:
     project = tmp_path / "proj"
