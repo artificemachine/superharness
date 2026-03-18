@@ -137,7 +137,15 @@ LABEL="com.superharness.inbox.${PROJECT_SLUG}"
 PLIST_PATH="$HOME/Library/LaunchAgents/${LABEL}.plist"
 
 if [ -f "$PLIST_PATH" ]; then
-  echo "Watcher already configured: $LABEL"
+  if launchctl list "$LABEL" >/dev/null 2>&1; then
+    echo "Watcher already configured and running: $LABEL"
+  else
+    if launchctl load "$PLIST_PATH" >/dev/null 2>&1; then
+      echo "Watcher reloaded: $LABEL"
+    else
+      echo "Watcher reload failed: $LABEL — run: launchctl load $PLIST_PATH"
+    fi
+  fi
   exit 0
 fi
 

@@ -228,6 +228,6 @@ CONFIRM_NON_INTERACTIVE=yes bash scripts/install-systemd-inbox-watcher.sh \
 
 ## Current Version
 
-Current version: **v0.8.0**
+Current version: **v0.9.23**
 
 See [CHANGELOG.md](CHANGELOG.md) for the full iteration log.

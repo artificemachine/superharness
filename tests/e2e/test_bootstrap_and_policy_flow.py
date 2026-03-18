@@ -81,7 +81,7 @@ def test_policy_enforcement_block_and_warn(repo_root, tmp_path) -> None:
     warn_payload = json.dumps({"tool_input": {"file_path": "/etc/passwd"}})
     warn_res = run_bash(scope_guard, cwd=tmp_path, stdin=warn_payload)
     warn = parse_json_output(warn_res.stdout)
-    assert warn["decision"] == "warn"
+    assert warn["hookSpecificOutput"]["permissionDecision"] == "ask"
 
 
 def test_bootstrap_discuss_start_enqueues_round_one_for_both_agents(repo_root, tmp_path) -> None:

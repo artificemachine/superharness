@@ -5,7 +5,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from tests.helpers import run_bash, parse_json_output
+from tests.helpers import run_bash
 import sys
 import pytest
 
@@ -106,6 +106,47 @@ class TestSessionStop:
         content = (project / ".superharness" / "session-progress.md").read_text()
         # Only one "Last updated" header — file was overwritten, not appended
         assert content.count("Last updated:") == 1
+
+    def test_monitor_kill_respects_env_var_port(self, repo_root: Path, tmp_path: Path) -> None:
+        """SUPERHARNESS_MONITOR_PORT env var is used instead of hardcoded 8787."""
+        project = _setup_project(tmp_path)
+        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
+        # Use a port extremely unlikely to be in use; script must not crash
+        result = run_bash(script, cwd=project, env={"SUPERHARNESS_MONITOR_PORT": "19876"})
+        assert result.returncode == 0, result.stderr
+
+    def test_no_listener_on_port_is_noop(self, repo_root: Path, tmp_path: Path) -> None:
+        """When lsof finds no listener on the monitor port, session-stop does nothing."""
+        project = _setup_project(tmp_path)
+        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
+
+        # Start a background sleep process (unrelated, no superharness cmdline)
+        proc = subprocess.Popen(["sleep", "60"])
+        try:
+            result = run_bash(
+                script, cwd=project,
+                env={"SUPERHARNESS_MONITOR_PORT": "19877"},
+            )
+            assert result.returncode == 0, result.stderr
+            assert proc.poll() is None, "session-stop.sh must not kill unrelated processes"
+        finally:
+            proc.terminate()
+            proc.wait()
+
+    def test_monitor_kill_guard_checks_process_name(self, repo_root: Path) -> None:
+        """Regression: session-stop.sh must verify process name before killing.
+
+        The guard 'grep -q superharness' prevents killing unrelated services that
+        happen to use the same port. This test pins the pattern so it can't be
+        silently removed.
+        """
+        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
+        src = script.read_text()
+        assert 'grep -q "superharness"' in src, (
+            "session-stop.sh must check process cmdline for 'superharness' before "
+            "killing the monitor process — removing this guard would allow killing "
+            "unrelated services on the same port"
+        )
 
 
 class TestSessionStartReadsProgress:
