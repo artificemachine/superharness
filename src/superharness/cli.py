@@ -87,6 +87,7 @@ _cmd("test-type",       "Set mandatory test types on a task.",       module="sup
 _cmd("verify",          "Record verification result for a task.",   module="superharness.commands.verify")
 _cmd("close",           "Close a verified task (done + ledger).",   module="superharness.commands.close")
 _cmd("context",         "Show full context for a task (handoff, decisions, failures, ledger, git).", module="superharness.commands.context")
+_cmd("install-hooks",   "Merge adapter hooks into ~/.claude/settings.json (portable, no hardcoded paths).", module="superharness.commands.install_hooks")
 
 
 def _run_monitor(args):

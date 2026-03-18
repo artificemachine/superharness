@@ -5,6 +5,8 @@ import json
 import subprocess
 from pathlib import Path
 
+import yaml
+
 from tests.helpers import run_bash
 import sys
 import pytest
@@ -189,3 +191,111 @@ class TestSessionStartReadsProgress:
         payload = json.loads(result.stdout)
         # No crash, valid JSON, no "Previous Session" section
         assert "additionalContext" in payload
+
+
+_INBOX_HEADER = "# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n"
+
+
+class TestSessionStopPausesTasks:
+    """session-stop.sh must pause active inbox items and revert in-progress contract tasks."""
+
+    def _make_inbox(self, harness: Path, items: list[dict]) -> Path:
+        inbox = harness / "inbox.json"
+        inbox.write_text(
+            _INBOX_HEADER + yaml.dump(items, default_flow_style=False, allow_unicode=True)
+        )
+        return inbox
+
+    def test_pauses_pending_inbox_items(self, repo_root: Path, tmp_path: Path) -> None:
+        project = _setup_project(tmp_path)
+        harness = project / ".superharness"
+        inbox = self._make_inbox(harness, [
+            {"id": "item-001", "to": "claude-code", "task": "t1", "status": "pending",
+             "priority": 1, "retry_count": 0, "max_retries": 3, "created_at": "2026-01-01T00:00:00Z"},
+        ])
+        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
+        result = run_bash(script, cwd=project)
+        assert result.returncode == 0, result.stderr
+        loaded = yaml.safe_load(inbox.read_text())
+        assert loaded[0]["status"] == "paused", f"Expected paused, got {loaded[0]['status']}"
+        assert "paused_at" in loaded[0]
+
+    def test_pauses_launched_inbox_items(self, repo_root: Path, tmp_path: Path) -> None:
+        project = _setup_project(tmp_path)
+        harness = project / ".superharness"
+        inbox = self._make_inbox(harness, [
+            {"id": "item-002", "to": "codex-cli", "task": "t2", "status": "launched",
+             "priority": 1, "retry_count": 0, "max_retries": 3, "created_at": "2026-01-01T00:00:00Z"},
+        ])
+        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
+        result = run_bash(script, cwd=project)
+        assert result.returncode == 0, result.stderr
+        loaded = yaml.safe_load(inbox.read_text())
+        assert loaded[0]["status"] == "paused"
+
+    def test_pauses_running_inbox_items(self, repo_root: Path, tmp_path: Path) -> None:
+        project = _setup_project(tmp_path)
+        harness = project / ".superharness"
+        inbox = self._make_inbox(harness, [
+            {"id": "item-003", "to": "codex-cli", "task": "t3", "status": "running",
+             "priority": 1, "retry_count": 0, "max_retries": 3, "created_at": "2026-01-01T00:00:00Z"},
+        ])
+        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
+        result = run_bash(script, cwd=project)
+        assert result.returncode == 0, result.stderr
+        loaded = yaml.safe_load(inbox.read_text())
+        assert loaded[0]["status"] == "paused"
+
+    def test_skips_done_and_stopped_items(self, repo_root: Path, tmp_path: Path) -> None:
+        project = _setup_project(tmp_path)
+        harness = project / ".superharness"
+        inbox = self._make_inbox(harness, [
+            {"id": "item-done", "status": "done"},
+            {"id": "item-stopped", "status": "stopped"},
+        ])
+        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
+        run_bash(script, cwd=project)
+        loaded = yaml.safe_load(inbox.read_text())
+        assert loaded[0]["status"] == "done"
+        assert loaded[1]["status"] == "stopped"
+
+    def test_no_inbox_file_no_crash(self, repo_root: Path, tmp_path: Path) -> None:
+        project = _setup_project(tmp_path)
+        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
+        result = run_bash(script, cwd=project)
+        assert result.returncode == 0, result.stderr
+
+    def test_in_progress_contract_tasks_set_to_todo(self, repo_root: Path, tmp_path: Path) -> None:
+        project = _setup_project(tmp_path, task_status="in_progress")
+        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
+        result = run_bash(script, cwd=project)
+        assert result.returncode == 0, result.stderr
+        contract = yaml.safe_load((project / ".superharness" / "contract.yaml").read_text())
+        task = next(t for t in contract["tasks"] if t["id"] == "feat-001")
+        assert task["status"] == "todo", f"Expected todo, got {task['status']}"
+
+    def test_todo_contract_tasks_not_touched(self, repo_root: Path, tmp_path: Path) -> None:
+        project = _setup_project(tmp_path, task_status="todo")
+        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
+        run_bash(script, cwd=project)
+        contract = yaml.safe_load((project / ".superharness" / "contract.yaml").read_text())
+        task = next(t for t in contract["tasks"] if t["id"] == "feat-001")
+        assert task["status"] == "todo"
+
+    def test_ledger_records_paused_items(self, repo_root: Path, tmp_path: Path) -> None:
+        project = _setup_project(tmp_path)
+        harness = project / ".superharness"
+        self._make_inbox(harness, [{"id": "item-xyz", "status": "pending"}])
+        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
+        run_bash(script, cwd=project)
+        ledger = (harness / "ledger.md").read_text()
+        assert "item-xyz" in ledger
+
+    def test_kills_monitor_by_project_path(self, repo_root: Path) -> None:
+        """Regression: session-stop.sh must kill monitors by project path (any port)."""
+        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
+        src = script.read_text()
+        assert "pkill" in src and "monitor-ui.py" in src, (
+            "session-stop.sh must use pkill to kill monitor instances by project path, "
+            "not only by port — removes stale monitors on non-default ports"
+        )
