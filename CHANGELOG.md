@@ -1072,3 +1072,26 @@ If you're an agent picking this up:
 - `session-stop.sh`: extracted `_ledger()` helper, removing repeated conditional
   ledger-append pattern
 - `docs/GUIDE.md`: documented watcher auto-lifecycle and `SUPERHARNESS_MONITOR_PORT`
+
+## [0.9.24] - 2026-03-18
+
+### Added
+- `shux install-hooks` — new command that merges adapter hooks into
+  `~/.claude/settings.json` using `hooks.json` as the source of truth;
+  resolves `${CLAUDE_PLUGIN_ROOT}` to the actual install path on each machine;
+  idempotent, updates stale paths, preserves unrelated hooks
+- `shux init` now auto-runs `install-hooks` — Claude Code hooks are configured
+  automatically on first project init, no manual step needed on each machine
+- `TestNoHardcodedPathsInRepo` regression test — scans all git-tracked files for
+  hardcoded `/Users/<name>/` or `/home/<name>/` paths; blocks future regressions
+
+### Changed
+- `session-stop.sh`: pauses active inbox items (`pending`/`launched`/`running` →
+  `paused`, with `pause_reason: session_closed`) before shutdown; reverts
+  `in_progress` contract tasks to `todo`; kills monitor by project path via
+  `pkill -f` in addition to port-based kill — removes all orphaned instances
+
+### Fixed
+- `protocol/templates/profile.schema.yaml`: example vault path changed from
+  `/Users/yourname/...` to `$HOME/...` — no hardcoded user paths in source
+- `README.md`: added `shux install-hooks` to command reference

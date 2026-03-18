@@ -52,6 +52,7 @@ shux monitor           # open browser dashboard
 shux watch             # start continuous watcher in foreground
 shux update            # pull latest superharness + refresh CLAUDE.md, AGENTS.md, templates
 shux discuss           # start or manage a cross-agent discussion (topic, owners, optional ID)
+shux install-hooks     # merge adapter hooks into ~/.claude/settings.json (portable, run once per machine)
 shux help              # show all shux shortcuts in the terminal
 ```
 

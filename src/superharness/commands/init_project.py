@@ -462,6 +462,14 @@ def main(argv: list[str] | None = None) -> None:
         print("Tip: To enable a background watcher (macOS only), re-run with --with-watcher")
         print("     or use: superharness watch --foreground --project . --interval 30")
 
+    # Install Claude Code hooks into ~/.claude/settings.json
+    try:
+        from superharness.commands.install_hooks import install_hooks
+        install_hooks()
+        print("Hooks: ~/.claude/settings.json updated with superharness hooks.")
+    except Exception:
+        pass  # non-fatal — user can run shux install-hooks manually
+
     # Plugin install hint: auto-context in Claude Code requires the plugin
     plugin_path = Path.home() / ".claude" / "plugins" / "superharness"
     if not plugin_path.exists():

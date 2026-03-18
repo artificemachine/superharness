@@ -174,3 +174,41 @@ def test_init_no_hint_when_plugin_already_installed(repo_root, tmp_path) -> None
     assert result.returncode == 0, result.stderr
     # The plugin hint line should not appear
     assert "install the plugin" not in result.stdout
+
+
+def test_init_runs_install_hooks(repo_root, tmp_path) -> None:
+    """shux init must run install-hooks and write hook entries to ~/.claude/settings.json."""
+    import json, os
+    project = tmp_path / "inithooks"
+    project.mkdir()
+    fake_home = tmp_path / "fakehome-hooks"
+    fake_home.mkdir()
+    (fake_home / ".claude").mkdir()
+
+    result = _run_init_py(project, args=["Demo", "Python", "active"], env={"HOME": str(fake_home)})
+    assert result.returncode == 0, result.stderr
+
+    settings_file = fake_home / ".claude" / "settings.json"
+    assert settings_file.exists(), "install-hooks must create ~/.claude/settings.json"
+    data = json.loads(settings_file.read_text())
+    assert "hooks" in data, "settings.json must contain hooks key"
+    stop_cmds = [
+        h["command"]
+        for entry in data["hooks"].get("Stop", [])
+        for h in entry.get("hooks", [])
+    ]
+    assert any("session-stop.sh" in cmd for cmd in stop_cmds), \
+        f"session-stop.sh not found in Stop hooks: {stop_cmds}"
+
+
+def test_init_install_hooks_does_not_fail_init(repo_root, tmp_path) -> None:
+    """Even if install-hooks fails (e.g. hooks.json missing), init must still succeed."""
+    import os
+    project = tmp_path / "inithooks-fail"
+    project.mkdir()
+    # HOME with no .claude/ — install-hooks should create it or skip gracefully
+    fake_home = tmp_path / "fakehome-missing"
+    fake_home.mkdir()
+
+    result = _run_init_py(project, args=["Demo", "Python", "active"], env={"HOME": str(fake_home)})
+    assert result.returncode == 0, f"init must not fail when install-hooks runs: {result.stderr}"
