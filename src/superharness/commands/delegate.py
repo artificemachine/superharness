@@ -262,7 +262,6 @@ def _launch_agent(
 
 def _expand_path() -> None:
     """Augment PATH with common user-local bin dirs — launchd starts with a minimal PATH."""
-    import shutil
     extra = [
         os.path.expanduser("~/.local/bin"),
         "/usr/local/bin",
@@ -273,7 +272,7 @@ def _expand_path() -> None:
     current = os.environ.get("PATH", "")
     additions = [p for p in extra if p not in current.split(os.pathsep) and os.path.isdir(p)]
     if additions:
-        os.environ["PATH"] = os.pathsep.join(additions) + os.pathsep + current
+        os.environ["PATH"] = current + os.pathsep + os.pathsep.join(additions)
 
 
 def _cmd_exists(name: str) -> bool:
@@ -609,12 +608,18 @@ def main(argv: list[str] | None = None) -> None:
         formatter_class=_CapUsage,
         add_help=True,
     )
-    parser.add_argument("--to", required=True, dest="target")
-    parser.add_argument("--project", "-p", default=None)
-    parser.add_argument("--task", "-t", default="")
-    parser.add_argument("--print-only", action="store_true", default=False)
-    parser.add_argument("--non-interactive", action="store_true", default=False)
-    parser.add_argument("--codex-bypass", action="store_true", default=False)
+    parser.add_argument("--to", required=True, dest="target",
+                        help="Target agent: claude-code or codex-cli")
+    parser.add_argument("--project", "-p", default=None,
+                        help="Project directory (default: current directory)")
+    parser.add_argument("--task", "-t", default="",
+                        help="Task ID from contract.yaml (default: latest handoff for target)")
+    parser.add_argument("--print-only", action="store_true", default=False,
+                        help="Print the generated prompt without launching the agent")
+    parser.add_argument("--non-interactive", action="store_true", default=False,
+                        help="Launch agent without live supervision (requires confirmation or env var)")
+    parser.add_argument("--codex-bypass", action="store_true", default=False,
+                        help="Codex only: use --dangerously-bypass-approvals-and-sandbox")
     parser.add_argument(
         "--model", default=None,
         help="Override model. Accepts tier (mini/standard/max) or model name (sonnet, gpt-5.3-codex, etc.)",

@@ -151,15 +151,24 @@ def main(argv: list[str] | None = None) -> None:
     import argparse
 
     p = argparse.ArgumentParser(prog="init", description="Initialize superharness in a project directory.")
-    p.add_argument("project_name", nargs="?", default="")
-    p.add_argument("tech_stack", nargs="?", default="")
-    p.add_argument("status_arg", nargs="?", default="", metavar="STATUS")
-    p.add_argument("-n", "--dry-run", action="store_true")
-    p.add_argument("--with-watcher", action="store_true")
-    p.add_argument("--from-profile", dest="from_profile", default="")
-    p.add_argument("--detect", action="store_true")
-    p.add_argument("--interactive", action="store_true")
-    p.add_argument("--refresh", action="store_true")
+    p.add_argument("project_name", nargs="?", default="",
+                   help="Human-readable project name (default: current directory name)")
+    p.add_argument("tech_stack", nargs="?", default="",
+                   help="Tech stack label, e.g. Python, TypeScript, Go (default: TBD)")
+    p.add_argument("status_arg", nargs="?", default="", metavar="STATUS",
+                   help="Project status: active, paused, or done (default: active)")
+    p.add_argument("-n", "--dry-run", action="store_true",
+                   help="Preview what would be created without writing any files")
+    p.add_argument("--with-watcher", action="store_true",
+                   help="Install background watcher (launchd/systemd) after init")
+    p.add_argument("--from-profile", dest="from_profile", default="",
+                   help="Bootstrap from a saved profile YAML file")
+    p.add_argument("--detect", action="store_true",
+                   help="Auto-detect project name and stack from existing files")
+    p.add_argument("--interactive", action="store_true",
+                   help="Prompt for project name, stack, goal, and watcher install")
+    p.add_argument("--refresh", action="store_true",
+                   help="Re-run init on an existing project to update templates")
     p.add_argument("--force", action="store_true",
                    help="With --refresh: overwrite CLAUDE.md, AGENTS.md, SOUL.md even if they exist")
     opts = p.parse_args(argv)
