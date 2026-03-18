@@ -23,20 +23,14 @@ jobs:
 
       - name: Run ShipGuard
         run: |
-          shipguard scan . --format terminal > shipguard.txt || true
+          shipguard scan . --format terminal | tee shipguard.txt
           sed -n '1,260p' shipguard.txt
-          # Fail only on HIGH/CRITICAL findings
-          if grep -qE '(HIGH|CRITICAL)' shipguard.txt; then
-            echo "ShipGuard found HIGH/CRITICAL findings"
-            exit 1
-          fi
 
       - name: Install pip-audit
         run: pip install "pip-audit==2.7.3"
 
       - name: Run pip-audit
-        run: pip-audit --format json --output pip-audit.json || true
-        continue-on-error: true
+        run: pip-audit --format json --output pip-audit.json
 
       - name: Upload report artifact
         uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
