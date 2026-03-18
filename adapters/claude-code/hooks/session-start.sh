@@ -110,7 +110,7 @@ fi
 
 # Ensure launchd watcher exists for this project (macOS). Non-fatal.
 WATCHER_STATUS=""
-ENSURE_WATCHER="$SUPERHARNESS_ROOT/scripts/ensure-launchd-inbox-watcher.sh"
+ENSURE_WATCHER="$SUPERHARNESS_ROOT/src/superharness/scripts/ensure-launchd-inbox-watcher.sh"
 if [ -d "$PROJECT_DIR/.superharness" ] && [ -x "$ENSURE_WATCHER" ]; then
   ENSURE_OUT=$(bash "$ENSURE_WATCHER" --project "$PROJECT_DIR" 2>/dev/null || true)
   if [ -n "$ENSURE_OUT" ]; then
@@ -127,7 +127,7 @@ if [ -d "$PROJECT_DIR/.superharness" ]; then
   if [ ! -f "$HEARTBEAT_FILE" ]; then
     WATCHER_STATUS="WARNING: Watcher may not be running — no heartbeat file found. Run: superharness watch --project $PROJECT_DIR"
   else
-    HB_TS="$(cat "$HEARTBEAT_FILE" 2>/dev/null | head -n1 | tr -d '[:space:]')"
+    HB_TS="$(head -n1 "$HEARTBEAT_FILE" 2>/dev/null | tr -d '[:space:]')"
     if [ -n "$HB_TS" ]; then
       HB_EPOCH="$(date -juf "%Y-%m-%dT%H:%M:%SZ" "$HB_TS" +%s 2>/dev/null || date -d "$HB_TS" +%s 2>/dev/null || echo 0)"
       NOW_EPOCH="$(date +%s)"
@@ -155,7 +155,7 @@ fi
 PROGRESS_SECTION=""
 if [ -n "$SESSION_PROGRESS" ]; then
   PROGRESS_SECTION="## Previous Session Snapshot
-$SESSION_PROGRESS"
+${SESSION_PROGRESS}"
 fi
 
 # Build the context injection
@@ -163,7 +163,7 @@ fi
 # bash 3.2 single-quote parsing bugs in heredoc command substitutions.
 CONTEXT="<superharness>
 ## Identity
-$IDENTITY
+${IDENTITY}
 
 ## Cross-Agent Protocol
 You are one of two senior devs. The other is Codex CLI.
@@ -189,12 +189,12 @@ Protocol files live in .superharness/ (contract.yaml, handoffs/, ledger.md, fail
 - branch-guard: blocks push to main/master, warns on force push and destructive git ops
 - ledger-append: auto-logs file changes to .superharness/ledger.md
 
-$VAULT_CONTEXT
-$CONTRACT_STATUS
-$PENDING_HANDOFFS
-$WATCHER_STATUS
+${VAULT_CONTEXT}
+${CONTRACT_STATUS}
+${PENDING_HANDOFFS}
+${WATCHER_STATUS}
 
-$PROGRESS_SECTION
+${PROGRESS_SECTION}
 
 ## Session Start Instruction
 When starting a new session (not a /continue), display a brief status summary BEFORE the first message. Format:

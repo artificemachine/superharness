@@ -306,10 +306,14 @@ superharness uninstall --project /path/to/project
 **Notes:**
 - Avoid `~/Documents`, `~/Desktop`, `~/Downloads` for watcher-managed projects on macOS — launchd can fail with `Operation not permitted`.
 - Watcher logs: `~/Library/Logs/superharness/com.superharness.inbox.<project-name>-.out.log`
+- **Auto-lifecycle (macOS):** The watcher is automatically unloaded when a Claude Code session ends (`session-stop` hook) and reloaded when a new session starts (`session-start` hook). You do not need to manually start/stop it between sessions. If the watcher appears absent mid-session, run `shux status` to check and `shux watch` to restart if needed.
 
 **Required env vars for unattended dispatch:**
 - `SUPERHARNESS_CONFIRM_NON_INTERACTIVE=YES`
 - `SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS=YES`
+
+**Optional env vars:**
+- `SUPERHARNESS_MONITOR_PORT` — override the monitor dashboard port (default: `8787`). Set this if port 8787 is in use. The session-stop hook uses this value when killing the monitor on session end.
 
 ### Readiness Audits
 
