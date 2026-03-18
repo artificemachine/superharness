@@ -1024,3 +1024,24 @@ If you're an agent picking this up:
 - Windows CI: 3 partially shell-dependent test files (`test_profile_wiring`, `test_discuss_approval`, `test_acceptance_criteria`) have individual `@_skip_win` marks on bash-calling tests only
 - Windows CI: `test_acceptance_criteria.py` YAML scanner error — backslash paths on Windows (`C:\Users\...`) broke YAML double-quoted scalar parsing; fixed with `project.as_posix()` (forward slashes)
 - `pyproject.toml` version bumped `0.9.16 → 0.9.21` to match CHANGELOG
+
+## [0.9.22] - 2026-03-18
+
+### Added
+- `shux test-type` command for managing mandatory test types on contract tasks — supports `--set`, `--add`, `--remove`, `--show` for individual tasks (`--id`) or all tasks (`--all`)
+- Monitor UI: task cards now display `test_types` per task
+
+### Fixed
+- `scope-guard.sh` PreToolUse hook: all 5 JSON output statements updated from bare `{"decision": "..."}` to the required `{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "..."}}` format, matching `branch-guard.sh`
+- Monitor UI: watcher label slug trailing dash fixed
+- Monitor UI: inbox_items parser fixed
+- `test_scope_guard.py`: updated 26 test expectations to match new hook output format (`deny`/`ask`/`allow` in `hookSpecificOutput` instead of `block`/`warn`/`allow` in `decision`)
+
+### Verified
+- `feat.monitor-browser-open`: all 4 acceptance criteria confirmed already implemented — `--project` defaults to cwd, `webbrowser.open()` on start, `--no-open` flag, auto-inject `--project` in CLI
+
+## [0.9.22a] - 2026-03-18
+
+### Fixed
+- `security.yml`: removed `|| true` from ShipGuard scan and `|| true` + `continue-on-error: true` from pip-audit — security CI jobs now fail-closed
+- `pyproject.toml` version bumped `0.9.21 → 0.9.22` to match CHANGELOG
