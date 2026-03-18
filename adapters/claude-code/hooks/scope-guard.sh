@@ -16,7 +16,7 @@ FILE_PATH=$(printf '%s' "$INPUT" | python3 -c "import sys,json; d=json.load(sys.
 
 # Fail-closed: if JSON parsing failed, warn rather than silently allowing
 if [ -z "$FILE_PATH" ] && [ -n "$INPUT" ]; then
-  echo '{"decision": "warn", "reason": "superharness: scope-guard could not parse tool input. Proceeding with caution."}'
+  echo '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "ask", "permissionDecisionReason": "superharness: scope-guard could not parse tool input. Proceeding with caution."}}'
   exit 0
 fi
 
@@ -25,8 +25,11 @@ case "$FILE_PATH" in
   *.env|*.env.*|*credentials*|*secrets.json|*secrets.yaml|*secrets.yml|*secrets.toml|*.pem|*.key|*/.ssh/*|*/.kube/config|*terraform.tfvars|*.tfvars|*.tfvars.json)
     cat <<EOF
 {
-  "decision": "block",
-  "reason": "superharness: BLOCKED — writing to sensitive file ($FILE_PATH). Never edit credentials, tokens, or keys."
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "superharness: BLOCKED — writing to sensitive file ($FILE_PATH). Never edit credentials, tokens, or keys."
+  }
 }
 EOF
     exit 0
@@ -38,8 +41,11 @@ case "$FILE_PATH" in
   /etc/*|/usr/*|/var/*|/tmp/*)
     cat <<EOF
 {
-  "decision": "warn",
-  "reason": "superharness: WARNING — modifying system file ($FILE_PATH). Is this in the contract scope?"
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "ask",
+    "permissionDecisionReason": "superharness: WARNING — modifying system file ($FILE_PATH). Is this in the contract scope?"
+  }
 }
 EOF
     exit 0
@@ -48,9 +54,9 @@ esac
 
 # If no contract exists, skip scope check (superharness not active for this project)
 if [ ! -f "$CONTRACT" ]; then
-  echo '{"decision": "allow"}'
+  echo '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}'
   exit 0
 fi
 
 # Allow everything else within scope
-echo '{"decision": "allow"}'
+echo '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}'
