@@ -104,7 +104,7 @@ fields:
       Absolute path to your Obsidian vault (same value as OBSIDIAN_VAULT env var).
       When set, task completions are written to the vault and appended to changelog.md.
       Falls back to the OBSIDIAN_VAULT environment variable if not set.
-    example: /Users/yourname/Documents/Obsidian/MyVault
+    example: $HOME/Documents/Obsidian/MyVault
 
   default_model:
     type: enum
