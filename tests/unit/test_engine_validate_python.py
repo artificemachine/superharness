@@ -57,10 +57,11 @@ def test_validate_passes_clean_project(tmp_path: Path) -> None:
     assert "passed" in r.stdout.lower()
 
 
-def test_validate_requires_project() -> None:
+def test_validate_defaults_to_cwd() -> None:
+    # --project is optional; when omitted, validate uses cwd.
+    # Must not fail with a "required" error.
     r = _run_validate([])
-    assert r.returncode != 0
-    assert "required" in r.stderr.lower()
+    assert "required" not in r.stderr.lower()
 
 
 def test_validate_fails_missing_handoff_for_done_task(tmp_path: Path) -> None:

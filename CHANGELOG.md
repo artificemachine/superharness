@@ -1045,3 +1045,30 @@ If you're an agent picking this up:
 ### Fixed
 - `security.yml`: removed `|| true` from ShipGuard scan and `|| true` + `continue-on-error: true` from pip-audit — security CI jobs now fail-closed
 - `pyproject.toml` version bumped `0.9.21 → 0.9.22` to match CHANGELOG
+
+## [0.9.23] - 2026-03-18
+
+### Added
+- `session-stop.sh`: automatically kills monitor dashboard and unloads launchd
+  watcher on Claude Code session end — no manual cleanup needed between sessions
+- `session-start.sh`: automatically reloads launchd watcher on session start so
+  watcher survives session boundaries transparently
+- `SUPERHARNESS_MONITOR_PORT` env var to override monitor port (default: 8787)
+- `--help` text for `init`, `doctor`, and `delegate` now fully self-documenting
+
+### Fixed
+- `session-start.sh`: wrong path to `ensure-launchd-inbox-watcher.sh` — pointed
+  to non-existent `scripts/` dir instead of `src/superharness/scripts/`; watcher
+  was silently never reloaded on session start (critical regression)
+- `ensure-launchd-inbox-watcher.sh`: reload failure now routes to stdout so
+  session-start context window shows the error (was stderr, silenced by caller)
+- `delegate.py`: PATH augmentation now appends extra dirs instead of prepending —
+  user PATH entries correctly take precedence over launchd defaults
+- `ensure-launchd-inbox-watcher.sh`: now reloads plist if not currently loaded
+  (was silently skipping if plist existed but watcher was stopped)
+- Stale test assertions updated: `test_engine_validate`, `test_bootstrap_and_policy_flow`
+
+### Changed
+- `session-stop.sh`: extracted `_ledger()` helper, removing repeated conditional
+  ledger-append pattern
+- `docs/GUIDE.md`: documented watcher auto-lifecycle and `SUPERHARNESS_MONITOR_PORT`

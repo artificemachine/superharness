@@ -24,9 +24,14 @@ def _install_hint(dep: str) -> str:
 def main(argv: list[str] | None = None) -> None:
     import argparse
 
-    p = argparse.ArgumentParser(prog="doctor")
-    p.add_argument("-p", "--project", default=os.getcwd())
-    p.add_argument("--check", action="store_true")
+    p = argparse.ArgumentParser(
+        prog="doctor",
+        description="Check local setup and project health (prerequisites, watcher, protocol files).",
+    )
+    p.add_argument("-p", "--project", default=os.getcwd(),
+                   help="Project directory to check (default: current directory)")
+    p.add_argument("--check", action="store_true",
+                   help="Exit with non-zero status if any check fails (useful in CI)")
     opts = p.parse_args(argv)
 
     project_dir = os.path.realpath(opts.project)
