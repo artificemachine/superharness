@@ -87,6 +87,74 @@ PROGRESS_EOF
 # Append a ledger entry recording the session end
 _ledger "$TIMESTAMP session-stop: snapshot written to session-progress.md (branch: ${GIT_BRANCH:-unknown})"
 
+# --- Pause active inbox items (pending / launched / running) ---
+INBOX_FILE="$SH_DIR/inbox.json"
+if [ -f "$INBOX_FILE" ] && command -v python3 >/dev/null 2>&1; then
+  NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%SZ")"
+  PAUSABLE_IDS="$(python3 -c "
+import yaml, sys
+try:
+    items = yaml.safe_load(open('$INBOX_FILE').read()) or []
+    for item in (items if isinstance(items, list) else []):
+        if isinstance(item, dict) and item.get('status') in ('pending', 'launched', 'running'):
+            print(item.get('id', ''))
+except Exception as e:
+    print('warn:', e, file=sys.stderr)
+" 2>/dev/null || true)"
+  for ITEM_ID in $PAUSABLE_IDS; do
+    [ -z "$ITEM_ID" ] && continue
+    python3 -m superharness.engine.inbox set_status \
+      --file "$INBOX_FILE" --id "$ITEM_ID" \
+      --from pending --to paused --now "$NOW" --stamp-key paused_at 2>/dev/null || \
+    python3 -m superharness.engine.inbox set_status \
+      --file "$INBOX_FILE" --id "$ITEM_ID" \
+      --from launched --to paused --now "$NOW" --stamp-key paused_at 2>/dev/null || \
+    python3 -m superharness.engine.inbox set_status \
+      --file "$INBOX_FILE" --id "$ITEM_ID" \
+      --from running --to paused --now "$NOW" --stamp-key paused_at 2>/dev/null || true
+    _ledger "$TIMESTAMP session-stop: inbox item paused ($ITEM_ID)"
+  done
+fi
+
+# --- Revert in_progress contract tasks to todo ---
+if [ -f "$SH_DIR/contract.yaml" ] && command -v python3 >/dev/null 2>&1; then
+  python3 -c "
+import sys
+try:
+    try:
+        import ruamel.yaml as _ry
+        _yaml = _ry.YAML()
+        _yaml.preserve_quotes = True
+        import io as _io
+        with open('$SH_DIR/contract.yaml') as _f:
+            _doc = _yaml.load(_f)
+        _changed = False
+        for _t in (_doc.get('tasks') or []):
+            if isinstance(_t, dict) and _t.get('status') == 'in_progress':
+                _t['status'] = 'todo'
+                _changed = True
+        if _changed:
+            _buf = _io.StringIO()
+            _yaml.dump(_doc, _buf)
+            with open('$SH_DIR/contract.yaml', 'w') as _f:
+                _f.write(_buf.getvalue())
+    except ImportError:
+        import yaml as _pyyaml
+        with open('$SH_DIR/contract.yaml') as _f:
+            _doc = _pyyaml.safe_load(_f)
+        _changed = False
+        for _t in (_doc.get('tasks') or []):
+            if isinstance(_t, dict) and _t.get('status') == 'in_progress':
+                _t['status'] = 'todo'
+                _changed = True
+        if _changed:
+            with open('$SH_DIR/contract.yaml', 'w') as _f:
+                _pyyaml.dump(_doc, _f, default_flow_style=False)
+except Exception as _e:
+    print(f'warn: could not revert contract tasks: {_e}', file=sys.stderr)
+" 2>/dev/null || true
+fi
+
 # --- Kill monitor dashboard if running for this project ---
 MONITOR_PORT="${SUPERHARNESS_MONITOR_PORT:-8787}"
 MONITOR_PID="$(lsof -ti :"${MONITOR_PORT}" 2>/dev/null || true)"
@@ -98,6 +166,8 @@ if [ -n "$MONITOR_PID" ]; then
     _ledger "${TIMESTAMP} session-stop: monitor killed (pid ${MONITOR_PID})"
   fi
 fi
+# Also kill any monitor instance bound to this project path (catches non-default ports)
+pkill -f "monitor-ui.py --project ${PROJECT_DIR}" 2>/dev/null || true
 
 # --- Unload launchd watcher for this project (macOS only) ---
 if [ "$(uname -s)" = "Darwin" ]; then
