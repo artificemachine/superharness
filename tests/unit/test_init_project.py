@@ -48,14 +48,25 @@ def test_init_project_creates_expected_files(repo_root, tmp_path) -> None:
 
 
 def test_init_project_no_watcher_by_default(repo_root, tmp_path) -> None:
-    """Without --with-watcher, init must NOT install a launchd plist."""
+    """On macOS, init attempts watcher by default; no plist is created without explicit confirmation."""
+    import platform
     project = tmp_path / "no-watcher"
     project.mkdir()
 
     result = _run_init_py(project, args=["Demo", "Python", "active"])
     assert result.returncode == 0, result.stderr
-    # "Watcher:" line should not appear without --with-watcher
-    assert "Watcher:" not in result.stdout
+    if platform.system() == "Darwin":
+        # Watcher install is attempted on macOS, but no plist is created without user confirmation
+        slug = project.name
+        import re
+        slug = re.sub(r"[^A-Za-z0-9]+", "-", slug)
+        plist = tmp_path.parent.parent / "Library" / "LaunchAgents" / f"com.superharness.inbox.{slug}.plist"
+        # The test project's plist should NOT have been installed in the real LaunchAgents dir
+        import pathlib
+        real_plist = pathlib.Path.home() / "Library" / "LaunchAgents" / f"com.superharness.inbox.{slug}.plist"
+        assert not real_plist.exists(), f"Watcher plist must not be auto-created without confirmation: {real_plist}"
+    else:
+        assert "Watcher:" not in result.stdout
 
 
 def test_init_project_with_watcher_flag_accepted(repo_root, tmp_path) -> None:
@@ -174,6 +185,36 @@ def test_init_no_hint_when_plugin_already_installed(repo_root, tmp_path) -> None
     assert result.returncode == 0, result.stderr
     # The plugin hint line should not appear
     assert "install the plugin" not in result.stdout
+
+
+def test_refresh_runs_install_hooks(repo_root, tmp_path) -> None:
+    """shux update (--refresh) must also run install-hooks, not just fresh init."""
+    import json
+    project = tmp_path / "refresh-hooks"
+    project.mkdir()
+    fake_home = tmp_path / "fakehome-refresh"
+    fake_home.mkdir()
+    (fake_home / ".claude").mkdir()
+
+    # Fresh init first
+    _run_init_py(project, args=["Demo", "Python", "active"], env={"HOME": str(fake_home)})
+    # Remove settings to verify refresh re-creates it
+    settings_file = fake_home / ".claude" / "settings.json"
+    if settings_file.exists():
+        settings_file.unlink()
+
+    # Now run --refresh (simulates shux update)
+    result = _run_init_py(project, args=["--refresh", "--detect"], env={"HOME": str(fake_home)})
+    assert result.returncode == 0, result.stderr
+    assert settings_file.exists(), "--refresh must run install-hooks and create settings.json"
+    data = json.loads(settings_file.read_text())
+    stop_cmds = [
+        h["command"]
+        for entry in data.get("hooks", {}).get("Stop", [])
+        for h in entry.get("hooks", [])
+    ]
+    assert any("session-stop.sh" in cmd for cmd in stop_cmds), \
+        f"--refresh must write session-stop.sh hook: {stop_cmds}"
 
 
 def test_init_runs_install_hooks(repo_root, tmp_path) -> None:

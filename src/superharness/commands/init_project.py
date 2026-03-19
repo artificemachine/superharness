@@ -396,6 +396,25 @@ def main(argv: list[str] | None = None) -> None:
     else:
         print("Skipped: SOUL.md (user-owned — use --force to overwrite)")
 
+    # Install watcher (macOS only) — runs for both fresh init and --refresh
+    _SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
+    if install_watcher and platform.system() == "Darwin":
+        ensure_script = str(_SCRIPTS / "ensure-launchd-inbox-watcher.sh")
+        if os.path.isfile(ensure_script):
+            r = subprocess.run(["bash", ensure_script, "--project", project_dir], capture_output=True)
+            if r.returncode == 0:
+                print("Watcher: launchd inbox watcher is configured.")
+            else:
+                print("Watcher: unable to auto-configure launchd watcher (continuing).")
+
+    # Install Claude Code hooks into ~/.claude/settings.json — runs for both fresh init and --refresh
+    try:
+        from superharness.commands.install_hooks import install_hooks
+        install_hooks()
+        print("Hooks: ~/.claude/settings.json updated with superharness hooks.")
+    except Exception:
+        pass  # non-fatal — user can run shux install-hooks manually
+
     if opts.refresh:
         print()
         print("Done. Templates refreshed.")
@@ -418,16 +437,6 @@ def main(argv: list[str] | None = None) -> None:
     # Clean up interactive temp profile
     if tmp_profile and os.path.isfile(tmp_profile):
         os.unlink(tmp_profile)
-
-    # Install watcher (macOS only)
-    if install_watcher and platform.system() == "Darwin":
-        ensure_script = str(_ROOT / "scripts" / "ensure-launchd-inbox-watcher.sh")
-        if os.path.isfile(ensure_script):
-            r = subprocess.run(["bash", ensure_script, "--project", project_dir], capture_output=True)
-            if r.returncode == 0:
-                print("Watcher: launchd inbox watcher is configured.")
-            else:
-                print("Watcher: unable to auto-configure launchd watcher (continuing).")
 
     print()
     print("Done. Project initialized with superharness.")
@@ -461,14 +470,6 @@ def main(argv: list[str] | None = None) -> None:
     if platform.system() != "Darwin":
         print("Tip: To enable a background watcher (macOS only), re-run with --with-watcher")
         print("     or use: superharness watch --foreground --project . --interval 30")
-
-    # Install Claude Code hooks into ~/.claude/settings.json
-    try:
-        from superharness.commands.install_hooks import install_hooks
-        install_hooks()
-        print("Hooks: ~/.claude/settings.json updated with superharness hooks.")
-    except Exception:
-        pass  # non-fatal — user can run shux install-hooks manually
 
     # Plugin install hint: auto-context in Claude Code requires the plugin
     plugin_path = Path.home() / ".claude" / "plugins" / "superharness"
