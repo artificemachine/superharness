@@ -104,8 +104,15 @@ def main(argv: list[str] | None = None) -> None:
             if hooks_path == ".githooks":
                 print("PASS git:core.hooksPath=.githooks")
             elif hooks_path:
-                print(f"WARN git:core.hooksPath={hooks_path}")
-                warns += 1
+                # Accept any path that resolves to an existing directory (e.g. ~/.githooks)
+                resolved = pathlib.Path(hooks_path).expanduser()
+                if not resolved.is_absolute():
+                    resolved = pathlib.Path(project_dir) / resolved
+                if resolved.is_dir():
+                    print(f"PASS git:core.hooksPath={hooks_path}")
+                else:
+                    print(f"WARN git:core.hooksPath={hooks_path} (directory not found)")
+                    warns += 1
             else:
                 print("WARN git:core.hooksPath not set")
                 print("       Run: git config core.hooksPath .githooks")

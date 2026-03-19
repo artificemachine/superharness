@@ -129,3 +129,31 @@ def test_doctor_ok_when_plugin_installed(repo_root, tmp_path) -> None:
         env={"HOME": str(fake_home), "USERPROFILE": str(fake_home)},
     )
     assert "PASS plugin:claude-code superharness installed" in result.stdout
+
+
+def test_doctor_passes_global_hooks_path(repo_root, tmp_path) -> None:
+    """Doctor must PASS when core.hooksPath points to an existing directory (e.g. ~/.githooks)."""
+    import subprocess as sp
+    project = _write_project(tmp_path)
+    # Create a real hooks directory
+    hooks_dir = tmp_path / "myglobalhooks"
+    hooks_dir.mkdir()
+    # Set core.hooksPath to this directory in the test project's git config
+    sp.run(["git", "-C", str(project), "init"], capture_output=True, check=False)
+    sp.run(["git", "-C", str(project), "config", "core.hooksPath", str(hooks_dir)],
+           capture_output=True, check=True)
+    result = _run_python(["--project", str(project)])
+    assert f"PASS git:core.hooksPath={hooks_dir}" in result.stdout, \
+        f"Expected PASS for valid hooks dir, got:\n{result.stdout}"
+    assert "WARN git:core.hooksPath" not in result.stdout
+
+
+def test_doctor_warns_nonexistent_hooks_path(repo_root, tmp_path) -> None:
+    """Doctor must WARN when core.hooksPath points to a directory that doesn't exist."""
+    import subprocess as sp
+    project = _write_project(tmp_path)
+    sp.run(["git", "-C", str(project), "init"], capture_output=True, check=False)
+    sp.run(["git", "-C", str(project), "config", "core.hooksPath", "/nonexistent/hooks/dir"],
+           capture_output=True, check=True)
+    result = _run_python(["--project", str(project)])
+    assert "WARN git:core.hooksPath=/nonexistent/hooks/dir" in result.stdout

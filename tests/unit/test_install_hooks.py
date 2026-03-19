@@ -138,7 +138,7 @@ class TestNoHardcodedPathsInRepo:
     """
 
     # Placeholder names used in test fixtures / docs — not real usernames
-    _FIXTURE_NAMES = frozenset({"test", "user", "username", "example", "admin", "root"})
+    _FIXTURE_NAMES = frozenset({"test", "user", "username", "example", "admin", "root", "yourname", "otheruser"})
 
     def _git_tracked_files(self, repo_root: Path):
         import subprocess

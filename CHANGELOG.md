@@ -1095,3 +1095,12 @@ If you're an agent picking this up:
 - `protocol/templates/profile.schema.yaml`: example vault path changed from
   `/Users/yourname/...` to `$HOME/...` — no hardcoded user paths in source
 - `README.md`: added `shux install-hooks` to command reference
+
+## [0.9.25] - 2026-03-19
+
+### Fixed
+- `shux init` / `shux update`: watcher and hooks install were silently skipped — scripts path
+  resolved to `<repo>/scripts/` (nonexistent) instead of `src/superharness/scripts/`
+- `shux update` (`--refresh`): watcher ensure and `install-hooks` now run on every refresh,
+  not just fresh init
+- `shux doctor`: global hooks paths (e.g. `~/.githooks`) now pass instead of warning
