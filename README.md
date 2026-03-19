@@ -50,7 +50,7 @@ shux uninstall         # remove watcher and system artifacts for this project
 shux hygiene           # validate protocol compliance (contract, handoffs, ledger)
 shux monitor           # open browser dashboard
 shux watch             # start continuous watcher in foreground
-shux update            # pull latest superharness + refresh CLAUDE.md, AGENTS.md, templates
+shux update            # pull latest superharness + refresh templates, hooks, and watcher
 shux discuss           # start or manage a cross-agent discussion (topic, owners, optional ID)
 shux install-hooks     # merge adapter hooks into ~/.claude/settings.json (portable, run once per machine)
 shux help              # show all shux shortcuts in the terminal
@@ -116,7 +116,7 @@ pytest tests/ -q
 ## What You Get
 
 - **`shux` shortcuts** — Control superharness from inside Claude Code or Codex CLI
-- **`superharness init`** — Bootstrap protocol files (`.superharness/`)
+- **`superharness init`** — Bootstrap protocol files (`.superharness/`); auto-installs Claude Code hooks and background watcher (macOS)
 - **`superharness delegate`** — Launch agent with contract context (auto model routing)
 - **`superharness verify`** — Record verification result before closing a task
 - **`superharness close`** — Close a verified task (done + ledger + handoff)
