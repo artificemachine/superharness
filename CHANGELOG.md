@@ -1104,3 +1104,19 @@ If you're an agent picking this up:
 - `shux update` (`--refresh`): watcher ensure and `install-hooks` now run on every refresh,
   not just fresh init
 - `shux doctor`: global hooks paths (e.g. `~/.githooks`) now pass instead of warning
+
+## [1.0.0] - 2026-03-19
+
+### Added
+- `--skip-hooks` flag for `shux init` — skip auto-installing Claude Code hooks
+  into `~/.claude/settings.json` (for CI or conservative setups)
+- Actionable error messages when watcher or hooks auto-install fails
+  (shows manual command + stderr detail)
+
+### Changed
+- All 6 improvement plan iterations verified complete — ready for 1.0
+- Updated IMPROVEMENT_PLAN.md with evidence and shipped dates
+
+### Fixed
+- Watcher error output now includes stderr detail for diagnosis
+- Hooks auto-install no longer swallows exceptions silently
