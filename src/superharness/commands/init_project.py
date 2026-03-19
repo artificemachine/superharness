@@ -171,6 +171,8 @@ def main(argv: list[str] | None = None) -> None:
                    help="Re-run init on an existing project to update templates")
     p.add_argument("--force", action="store_true",
                    help="With --refresh: overwrite CLAUDE.md, AGENTS.md, SOUL.md even if they exist")
+    p.add_argument("--skip-hooks", action="store_true",
+                   help="Skip auto-installing Claude Code hooks into ~/.claude/settings.json")
     opts = p.parse_args(argv)
 
     project_dir = str(Path.cwd().resolve())
@@ -401,19 +403,26 @@ def main(argv: list[str] | None = None) -> None:
     if install_watcher and platform.system() == "Darwin":
         ensure_script = str(_SCRIPTS / "ensure-launchd-inbox-watcher.sh")
         if os.path.isfile(ensure_script):
-            r = subprocess.run(["bash", ensure_script, "--project", project_dir], capture_output=True)
+            r = subprocess.run(["bash", ensure_script, "--project", project_dir],
+                               capture_output=True, text=True)
             if r.returncode == 0:
                 print("Watcher: launchd inbox watcher is configured.")
             else:
-                print("Watcher: unable to auto-configure launchd watcher (continuing).")
+                print("Watcher: unable to auto-configure (non-fatal).")
+                print("  Run manually: bash scripts/ensure-launchd-inbox-watcher.sh --project .")
+                if r.stderr.strip():
+                    print(f"  Detail: {r.stderr.strip()[:200]}")
 
     # Install Claude Code hooks into ~/.claude/settings.json — runs for both fresh init and --refresh
-    try:
-        from superharness.commands.install_hooks import install_hooks
-        install_hooks()
-        print("Hooks: ~/.claude/settings.json updated with superharness hooks.")
-    except Exception:
-        pass  # non-fatal — user can run shux install-hooks manually
+    if not opts.skip_hooks:
+        try:
+            from superharness.commands.install_hooks import install_hooks
+            install_hooks()
+            print("Hooks: ~/.claude/settings.json updated with superharness hooks.")
+        except Exception as exc:
+            print(f"Hooks: auto-install failed ({exc}). Run manually: shux install-hooks")
+    else:
+        print("Hooks: skipped (--skip-hooks)")
 
     if opts.refresh:
         print()

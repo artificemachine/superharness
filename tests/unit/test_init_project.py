@@ -57,12 +57,8 @@ def test_init_project_no_watcher_by_default(repo_root, tmp_path) -> None:
     assert result.returncode == 0, result.stderr
     if platform.system() == "Darwin":
         # Watcher install is attempted on macOS, but no plist is created without user confirmation
-        slug = project.name
-        import re
-        slug = re.sub(r"[^A-Za-z0-9]+", "-", slug)
-        plist = tmp_path.parent.parent / "Library" / "LaunchAgents" / f"com.superharness.inbox.{slug}.plist"
-        # The test project's plist should NOT have been installed in the real LaunchAgents dir
-        import pathlib
+        import re, pathlib
+        slug = re.sub(r"[^A-Za-z0-9]+", "-", project.name)
         real_plist = pathlib.Path.home() / "Library" / "LaunchAgents" / f"com.superharness.inbox.{slug}.plist"
         assert not real_plist.exists(), f"Watcher plist must not be auto-created without confirmation: {real_plist}"
     else:
@@ -215,6 +211,22 @@ def test_refresh_runs_install_hooks(repo_root, tmp_path) -> None:
     ]
     assert any("session-stop.sh" in cmd for cmd in stop_cmds), \
         f"--refresh must write session-stop.sh hook: {stop_cmds}"
+
+
+def test_init_skip_hooks_flag(repo_root, tmp_path) -> None:
+    """--skip-hooks must prevent install-hooks from running."""
+    project = tmp_path / "skip-hooks"
+    project.mkdir()
+    fake_home = tmp_path / "fakehome-skip"
+    fake_home.mkdir()
+    (fake_home / ".claude").mkdir()
+
+    result = _run_init_py(project, args=["--skip-hooks", "Demo", "Python", "active"],
+                          env={"HOME": str(fake_home)})
+    assert result.returncode == 0, result.stderr
+    assert "Hooks: skipped (--skip-hooks)" in result.stdout
+    settings_file = fake_home / ".claude" / "settings.json"
+    assert not settings_file.exists(), "--skip-hooks must not create settings.json"
 
 
 def test_init_runs_install_hooks(repo_root, tmp_path) -> None:
