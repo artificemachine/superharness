@@ -53,6 +53,7 @@ shux watch             # start continuous watcher in foreground
 shux update            # pull latest superharness + refresh templates, hooks, and watcher
 shux discuss           # start or manage a cross-agent discussion (topic, owners, optional ID)
 shux install-hooks     # merge adapter hooks into ~/.claude/settings.json (portable, run once per machine)
+shux init --skip-hooks # init without modifying ~/.claude/settings.json (for CI or conservative setups)
 shux help              # show all shux shortcuts in the terminal
 ```
 
