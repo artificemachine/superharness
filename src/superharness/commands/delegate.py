@@ -695,7 +695,7 @@ def delegate(
             result = runner.run(prompt, log_file=log_file)
             print()
             print("SDK execution completed:")
-            print(result.get("content", str(result)))
+            print(result.get("output", ""))
             print(f"\nLauncher log: {log_file}")
             return 0
         except Exception as e:
