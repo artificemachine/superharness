@@ -14,6 +14,11 @@ from datetime import datetime, timezone
 
 DIRTY_WORKTREE_REASON = "dirty_worktree_requires_user_confirmation"
 
+# Effort → timeout mapping (in seconds)
+TIMEOUT_LOW_EFFORT = 900       # 15 minutes
+TIMEOUT_MEDIUM_EFFORT = 1800   # 30 minutes
+TIMEOUT_HIGH_EFFORT = 3600     # 60 minutes
+
 
 def _now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -98,6 +103,63 @@ def _contract_cmd(args: list[str]) -> subprocess.CompletedProcess:
         [sys.executable, "-m", "superharness.engine.contract"] + args,
         capture_output=True, text=True, check=False,
     )
+
+
+# ---------------------------------------------------------------------------
+# Task effort → timeout calculation
+# ---------------------------------------------------------------------------
+
+def _get_task_effort_timeout(contract_file: str, task_id: str) -> int:
+    """Calculate launcher timeout based on task effort estimate.
+
+    Returns timeout in seconds. Precedence:
+    1. estimated_minutes field (if present)
+    2. effort field mapped to standard timeouts (low=15min, medium=30min, high=60min)
+    3. 0 (no timeout) if neither is set
+
+    Args:
+        contract_file: Path to contract.yaml
+        task_id: Task ID to look up
+
+    Returns:
+        Timeout in seconds, or 0 if no estimate available
+    """
+    try:
+        import yaml
+        with open(contract_file) as f:
+            doc = yaml.safe_load(f) or {}
+    except Exception:
+        return 0
+
+    tasks = doc.get("tasks") or []
+    for t in tasks:
+        if not isinstance(t, dict):
+            continue
+        if str(t.get("id", "")) != task_id:
+            continue
+
+        # Priority 1: explicit estimated_minutes
+        estimated_minutes = t.get("estimated_minutes")
+        if estimated_minutes is not None:
+            try:
+                return int(estimated_minutes) * 60
+            except (ValueError, TypeError):
+                pass
+
+        # Priority 2: effort mapping
+        effort = t.get("effort")
+        if effort == "low":
+            return TIMEOUT_LOW_EFFORT
+        elif effort == "medium":
+            return TIMEOUT_MEDIUM_EFFORT
+        elif effort == "high":
+            return TIMEOUT_HIGH_EFFORT
+
+        # No estimate found
+        return 0
+
+    # Task not found
+    return 0
 
 
 def _set_inbox_field(inbox_file: str, item_id: str, key: str, value: str) -> None:
@@ -296,6 +358,11 @@ def _do_dispatch(
         print(f"Unsupported target '{item_to}' for inbox item '{item_id}'", file=sys.stderr)
         return 1
 
+    # Auto-calculate timeout from task effort if not explicitly set
+    effective_timeout = launcher_timeout
+    if launcher_timeout == 0 and os.path.exists(contract_file):
+        effective_timeout = _get_task_effort_timeout(contract_file, item_task)
+
     # Dirty worktree pre-check
     if non_interactive and not print_only and item_to == "codex-cli" and _has_dirty_worktree(exec_project):
         pause_now = _now_utc()
@@ -336,11 +403,29 @@ def _do_dispatch(
     if codex_bypass:
         launch_args.append("--codex-bypass")
 
-    # Spawn launcher
-    if launcher_timeout > 0:
-        launcher_rc = _run_with_timeout(launcher_timeout, launch_args)
+    # Per-task log file for live monitoring in launcher-logs/
+    launcher_log_dir = os.path.join(project_dir, ".superharness", "launcher-logs")
+    os.makedirs(launcher_log_dir, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    task_log = os.path.join(launcher_log_dir, f"{item_task}-{item_to}-{timestamp}.log")
+
+    # Rotate old logs (keep last 5 per task+agent)
+    from pathlib import Path
+    from superharness.commands.delegate import _rotate_launcher_logs
+    _rotate_launcher_logs(Path(launcher_log_dir), item_task, item_to, keep=5)
+
+    # Wrap in `script` to capture all PTY output (claude CLI writes to terminal, not stdout)
+    import platform
+    if platform.system() == "Darwin":
+        wrapped_args = ["script", "-q", task_log] + launch_args
     else:
-        proc = subprocess.Popen(launch_args, preexec_fn=os.setsid)
+        wrapped_args = ["script", "-q", "-c", " ".join(launch_args), task_log]
+
+    # Spawn launcher
+    if effective_timeout > 0:
+        launcher_rc = _run_with_timeout(effective_timeout, wrapped_args)
+    else:
+        proc = subprocess.Popen(wrapped_args, preexec_fn=os.setsid)
         _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", str(proc.pid)])
         launcher_rc = proc.wait()
         _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", ""])
@@ -348,7 +433,7 @@ def _do_dispatch(
     if launcher_rc != 0:
         fail_now = _now_utc()
         if launcher_rc == 124:
-            print(f"Launcher timed out after {launcher_timeout}s for {item_id}", file=sys.stderr)
+            print(f"Launcher timed out after {effective_timeout}s for {item_id}", file=sys.stderr)
         new_lock = _MkdirLock(inbox_file + ".lock.d")
         _mark_item_failed(inbox_file, item_id, fail_now, new_lock)
         return 1

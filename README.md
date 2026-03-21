@@ -124,7 +124,7 @@ pytest tests/ -q
 - **`superharness enqueue|dispatch|watch`** — Queue-based task routing
 - **`superharness hygiene`** — Protocol compliance checks
 - **`superharness watch --foreground`** — Cross-platform continuous watcher
-- **`superharness monitor-ui`** — Browser dashboard: inbox, tasks, watcher state, plan approvals
+- **`superharness monitor-ui`** — Browser dashboard: inbox, tasks, watcher state, enqueue with TDD instructions
 - **`superharness doctor`** — Prerequisite and setup health check
 - **`superharness uninstall`** — Clean removal of system artifacts
 - **Background watcher** — Unattended execution via macOS launchd or Linux systemd (opt-in)

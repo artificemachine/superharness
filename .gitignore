@@ -28,6 +28,10 @@ dist/
 __pycache__/
 *.pyc
 secrets.json
+docs/ROADMAP.md
+docs/comparison-*.md
+docs/blog-*-draft.md
+docs/IMPROVEMENT_PLAN.md
 credentials.json
 docs/PYPI_SETUP.md
 docs/PUBLISH_PLAN.md

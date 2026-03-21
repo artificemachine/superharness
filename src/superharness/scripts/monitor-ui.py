@@ -71,8 +71,8 @@ HTML = """<!doctype html>
   <div class=\"wrap\">
     <h1>superharness monitor</h1>
     <div class=\"meta\" id=\"meta\">loading...</div>
-    <div class=\"banner\" id=\"approvalBanner\">User approval required.</div>
-    <div class=\"plan-banner\" id=\"planBanner\">Plan confirmation required.</div>
+    <div class=\"banner\" id=\"approvalBanner\" style=\"display:none\">User approval required.</div>
+    <div class=\"plan-banner\" id=\"planBanner\" style=\"display:none\">Plan confirmation required.</div>
 
     <div class=\"grid\">
       <div class=\"card\"><div class=\"k\">watcher label</div><div class=\"v\" id=\"label\">-</div></div>
@@ -90,7 +90,7 @@ HTML = """<!doctype html>
       </div>
     </div>
 
-    <div class=\"card\" style=\"margin-top:10px;\">
+    <div class=\"card\" style=\"margin-top:10px;display:none;\">
       <h2>plans to confirm</h2>
       <div class=\"v\" id=\"planCount\">-</div>
       <div class=\"plan-list\" id=\"planList\">-</div>
@@ -101,7 +101,7 @@ HTML = """<!doctype html>
       <pre id=\"planReportBody\">-</pre>
     </div>
 
-    <div class=\"card\" style=\"margin-top:10px;\">
+    <div class=\"card\" style=\"margin-top:10px;display:none;\">
       <h2>user approval alerts</h2>
       <div class=\"v\" id=\"approvalCount\">-</div>
       <div class=\"approval-list\" id=\"approvalList\">-</div>
@@ -165,7 +165,6 @@ let lastActionText = '-';
 let selectedStatus = null;
 let selectedOwners = new Set();
 let knownOwners = [];
-let viewedApprovalTasks = new Set();
 const AUTH_TOKEN = __AUTH_TOKEN__;
 
 async function api(path, init) {
@@ -181,79 +180,33 @@ async function refresh() {
     document.getElementById('meta').textContent = `project: ${d.project} | refresh: ${d.refresh_seconds}s`;
     document.getElementById('label').textContent = d.label;
     const s = document.getElementById('state');
-    s.textContent = d.launchctl_state || 'not-loaded';
-    s.className = 'v ' + (d.launchctl_state === 'running' ? 'ok' : (d.launchctl_state ? 'warn' : 'bad'));
-    const wh = d.watcher_health || {};
-    const whEl = document.getElementById('watcherHealth');
-    whEl.textContent = wh.message || 'watcher health unavailable';
-    whEl.className = 'watcher-health ' + (wh.level === 'ok' ? 'ok' : (wh.level === 'warn' ? 'warn' : 'bad'));
     const hb = d.heartbeat || {};
+    const wh = d.watcher_health || {};
+    // Reconcile: if heartbeat is OK but launchd says not-loaded, watcher is in foreground mode
+    const heartbeatOk = hb.level === 'ok';
+    const launchdLoaded = d.launchctl_state === 'running' || d.launchctl_state === 'loaded';
+    if (heartbeatOk && !launchdLoaded) {
+      s.textContent = 'foreground';
+      s.className = 'v ok';
+    } else {
+      s.textContent = d.launchctl_state || 'not-loaded';
+      s.className = 'v ' + (launchdLoaded ? 'ok' : (d.launchctl_state ? 'warn' : 'bad'));
+    }
+    const whEl = document.getElementById('watcherHealth');
+    if (heartbeatOk && wh.level === 'bad') {
+      whEl.textContent = 'Watcher running in foreground mode (heartbeat active).';
+      whEl.className = 'watcher-health ok';
+    } else {
+      whEl.textContent = wh.message || 'watcher health unavailable';
+      whEl.className = 'watcher-health ' + (wh.level === 'ok' ? 'ok' : (wh.level === 'warn' ? 'warn' : 'bad'));
+    }
     const hbEl = document.getElementById('heartbeat');
     hbEl.textContent = hb.message || 'no data';
     hbEl.className = 'v ' + (hb.level === 'ok' ? 'ok' : (hb.level === 'warn' ? 'warn' : 'bad'));
     document.getElementById('contract').textContent = d.contract_id || '-';
     document.getElementById('ts').textContent = d.now_utc;
     renderOwnersList(d.contract_owners || []);
-    renderContractTasks(d.contract_tasks || []);
-    // Plan proposals
-    const pp = d.plan_proposals || [];
-    const planBanner = document.getElementById('planBanner');
-    if (pp.length) {
-      const tasks = pp.map(x => x.task).filter(Boolean).join(', ');
-      planBanner.style.display = 'block';
-      planBanner.innerHTML = `<b>Plan confirmation required</b> for task(s): ${tasks}. Review the plan and click Confirm to allow implementation.`;
-    } else {
-      planBanner.style.display = 'none';
-    }
-    document.getElementById('planCount').textContent = pp.length ? `${pp.length} pending` : 'none';
-    const planList = document.getElementById('planList');
-    if (!pp.length) {
-      planList.textContent = 'No plans awaiting confirmation.';
-    } else {
-      planList.innerHTML = '';
-      for (const p of pp) {
-        const row = document.createElement('div');
-        const task = p.task || '';
-        const summary = p.summary || '';
-        const from = p.from || 'agent';
-        const taskEsc = task.replace(/'/g, "\\'");
-        const summaryEsc = summary.replace(/'/g, "\\'");
-        const viewBtn = `<button onclick="viewPlanReport('${taskEsc}','${summaryEsc}')" style="font-size:11px;padding:2px 6px">View Plan</button>`;
-        const confirmBtn = `<button onclick="confirmPlan('${taskEsc}')" style="font-size:11px;padding:2px 6px;color:var(--warn)">Confirm</button>`;
-        row.innerHTML = `task=<b>${task}</b> from=${from}<br/>${viewBtn} ${confirmBtn}<br/><span class="small">cli: superharness plan confirm --task ${task}</span>`;
-        planList.appendChild(row);
-      }
-    }
-
-    const pa = d.pending_approvals || [];
-    const banner = document.getElementById('approvalBanner');
-    if (pa.length) {
-      const tasks = pa.map(x => x.task).filter(Boolean).join(', ');
-      banner.style.display = 'block';
-      banner.innerHTML = `<b>User approval required</b> for task(s): ${tasks}. Run <code>superharness discuss approve --task &lt;task-id&gt; --by owner --note \"Approved\"</code>.`;
-    } else {
-      banner.style.display = 'none';
-      banner.textContent = 'User approval required.';
-    }
-    document.getElementById('approvalCount').textContent = pa.length ? `${pa.length} pending` : 'none';
-    const approvalList = document.getElementById('approvalList');
-    if (!pa.length) {
-      approvalList.textContent = 'No user approvals required.';
-    } else {
-      approvalList.innerHTML = '';
-      for (const a of pa) {
-        const row = document.createElement('div');
-        const report = a.markdown_report || '';
-        const task = a.task || '';
-        const viewed = viewedApprovalTasks.has(task);
-        const reportBtn = report
-          ? `<button onclick="viewApprovalReport('${report.replace(/'/g, \"\\\\'\")}', '${task.replace(/'/g, \"\\\\'\")}')" style="font-size:11px;padding:2px 6px">View report</button>`
-          : `<span class="small">(no markdown report)</span>`;
-        const approveBtn = `<button onclick="approveTask('${task.replace(/'/g, \"\\\\'\")}')" style="font-size:11px;padding:2px 6px;color:var(--ok)">Approve</button>`;
-        row.innerHTML = `task=<b>${task}</b> status=${a.status || ''} ${viewed ? '✅ report viewed' : ''}<br/>${reportBtn} ${approveBtn}<br/><span class=\"small\">approve cli: superharness discuss approve --task ${task} --by owner --note \"Approved\"</span>`;
-        approvalList.appendChild(row);
-      }
-    }
+    renderContractTasks(d.contract_tasks || [], new Set(d.active_inbox_tasks || []), new Set(d.done_inbox_tasks || []));
     document.getElementById('ledger').textContent = (d.ledger_tail || []).join('\\n');
     document.getElementById('out').textContent = (d.out_tail || []).join('\\n');
     document.getElementById('err').textContent = (d.err_tail || []).join('\\n');
@@ -409,52 +362,7 @@ async function act(action) {
   await refresh();
 }
 
-async function viewApprovalReport(path, task) {
-  try {
-    const sanitized = '/.superharness/handoffs/' + path.split('/').pop();  // restrict to handoffs dir
-    const r = await fetch(sanitized);
-    if (!r.ok) throw new Error('failed to load report: http ' + r.status);
-    const text = await r.text();
-    document.getElementById('approvalReportCard').style.display = 'block';
-    document.getElementById('approvalReportMeta').textContent = `task=${task} report=${path}`;
-    document.getElementById('approvalReportBody').textContent = text;
-    viewedApprovalTasks.add(task);
-    await refresh();
-  } catch (e) {
-    document.getElementById('actionStatus').textContent = 'error: ' + e;
-  }
-}
-
-async function approveTask(task) {
-  if (!viewedApprovalTasks.has(task)) {
-    document.getElementById('actionStatus').textContent = `error: read the markdown report first for task ${task}`;
-    return;
-  }
-  const ok = window.confirm(`Approve consensus for task ${task}?`);
-  if (!ok) return;
-  await act('approve_task:' + task);
-}
-
-const viewedPlanTasks = new Set();
-function viewPlanReport(task, summary) {
-  const card = document.getElementById('planReportCard');
-  const meta = document.getElementById('planReportMeta');
-  const body = document.getElementById('planReportBody');
-  meta.textContent = `task=${task}`;
-  body.textContent = summary || '(no plan content)';
-  card.style.display = 'block';
-  viewedPlanTasks.add(task);
-}
-
-async function confirmPlan(task) {
-  if (!viewedPlanTasks.has(task)) {
-    document.getElementById('actionStatus').textContent = `error: read the plan first for task ${task}`;
-    return;
-  }
-  const ok = window.confirm(`Confirm plan for task ${task}? The agent will proceed to implement.`);
-  if (!ok) return;
-  await act('confirm_plan:' + task);
-}
+let _liveLogInterval = null;
 
 async function viewTaskReport(taskId, agent) {
   const card = document.getElementById('taskReportCard');
@@ -463,8 +371,27 @@ async function viewTaskReport(taskId, agent) {
   meta.textContent = `Loading report for task=${taskId} agent=${agent}...`;
   body.textContent = '...';
   card.style.display = 'block';
+  if (_liveLogInterval) { clearInterval(_liveLogInterval); _liveLogInterval = null; }
   try {
     const d = await api('/api/task-report?task=' + encodeURIComponent(taskId) + '&agent=' + encodeURIComponent(agent));
+    const isActive = d.contract_status === 'in_progress' || d.contract_status === 'todo';
+    if (isActive) {
+      try {
+        const logData = await api('/api/task-log?task=' + encodeURIComponent(taskId) + '&lines=100');
+        if (logData.log && !logData.log.startsWith('(no log')) {
+          meta.textContent = `task=${taskId}  agent=${agent}  LIVE LOG (auto-refreshing)`;
+          body.textContent = logData.log;
+          body.scrollTop = body.scrollHeight;
+          _liveLogInterval = setInterval(async () => {
+            try {
+              const fresh = await api('/api/task-log?task=' + encodeURIComponent(taskId) + '&lines=100');
+              if (fresh.log) { body.textContent = fresh.log; body.scrollTop = body.scrollHeight; }
+            } catch(e) {}
+          }, 3000);
+          return;
+        }
+      } catch(e) {}
+    }
     meta.textContent = `task=${taskId}  agent=${agent}  status=${d.contract_status || '-'}`;
     let report = '';
     if (d.discussion_topic) {
@@ -510,7 +437,7 @@ const PHASE_LABEL = {
   stopped:          ['⏹',  'stopped',          'muted'],
 };
 
-function renderContractTasks(tasks) {
+function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
   const el = document.getElementById('contractTaskList');
   if (!tasks.length) { el.textContent = '(no tasks)'; return; }
   el.innerHTML = '';
@@ -521,7 +448,10 @@ function renderContractTasks(tasks) {
     row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--line);flex-wrap:wrap';
 
     const badge = `<span class="pill ${cls}" style="font-size:11px">${icon} ${label}</span>`;
-    const title = `<span style="flex:1;min-width:120px">${t.id} <span class="small" style="color:var(--muted)">${t.title}</span></span>`;
+    const schedInfo = t.scheduled_after ? ` <span class="small" style="color:var(--warn)">⏳ after ${t.scheduled_after}</span>` : '';
+    const dueInfo = t.due_by ? ` <span class="small" style="color:${new Date(t.due_by) < new Date() ? 'var(--bad)' : 'var(--muted)'}">📅 due ${t.due_by}</span>` : '';
+    const depsInfo = (t.depends_on && t.depends_on.length) ? ` <span class="small" style="color:var(--muted)">🔗 ${t.depends_on.join(', ')}</span>` : '';
+    const title = `<span style="flex:1;min-width:120px">${t.id} <span class="small" style="color:var(--muted)">${t.title}</span>${schedInfo}${dueInfo}${depsInfo}</span>`;
     const owner = `<span class="small" style="color:var(--muted)">${t.owner}</span>`;
 
     let actions = '';
@@ -529,17 +459,28 @@ function renderContractTasks(tasks) {
     const ownerEsc = (t.owner || '').replace(/'/g, "\\\\'");
     // View Report button for any task with a handoff or in report_ready/done status
     const viewReportBtn = `<button onclick="viewTaskReport('${tid}','${ownerEsc}')" style="font-size:11px;padding:2px 8px">View Report</button>`;
+    const isEnqueued = activeInboxTasks.has(t.id);
+    const isDoneInbox = doneInboxTasks.has(t.id);
+    const canEnqueue = ['todo', 'failed', 'stopped'].includes(st);
+    let enqueueBtn = '';
+    if (canEnqueue && isDoneInbox && !isEnqueued) {
+      enqueueBtn = ` <button onclick="markTaskDone('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Done</button>`;
+    } else if (canEnqueue && isEnqueued) {
+      enqueueBtn = ` <button disabled style="font-size:11px;padding:2px 8px;opacity:0.4;cursor:not-allowed" title="Already in inbox">Enqueued</button>`;
+    } else if (canEnqueue && !isEnqueued) {
+      enqueueBtn = ` <button onclick="enqueueTask('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Enqueue</button>`;
+    }
     if (st === 'plan_proposed') {
       actions = `<button onclick="approvePlan('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Approve Plan</button>`;
     } else if (st === 'report_ready') {
       actions = `<button onclick="requestReview('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Request Opus Review</button>
                  <button onclick="approveReport('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Accept & Close</button>`;
     } else if (st === 'review_failed') {
-      actions = `<span class="small" style="color:var(--bad)">↩ loop back — agent must revise plan</span>`;
+      actions = `<span class="small" style="color:var(--bad)">↩ review failed</span> <button onclick="enqueueTask('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Re-enqueue</button>`;
     } else if (st === 'review_passed' || (st === 'done' && t.verified)) {
       actions = `<button onclick="runClose('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Close</button>`;
     }
-    row.innerHTML = viewReportBtn + ' ' + badge + title + owner + (actions ? `<span style="display:flex;gap:4px;flex-wrap:wrap">${actions}</span>` : '');
+    row.innerHTML = viewReportBtn + enqueueBtn + ' ' + badge + title + owner + (actions ? `<span style="display:flex;gap:4px;flex-wrap:wrap">${actions}</span>` : '');
     el.appendChild(row);
   }
 }
@@ -562,6 +503,66 @@ async function approveReport(taskId) {
 async function runClose(taskId) {
   if (!window.confirm(`Close task "${taskId}"? This will run shux close.`)) return;
   await act('close_task:' + taskId);
+}
+
+async function enqueueTask(taskId) {
+  const modal = document.getElementById('enqueueModal');
+  const titleEl = document.getElementById('enqueueModalTitle');
+  const targetEl = document.getElementById('enqueueTarget');
+  const instrEl = document.getElementById('enqueueInstructions');
+  titleEl.textContent = `Enqueue: ${taskId}`;
+  targetEl.value = 'claude-code';
+  instrEl.value = 'Loading task instructions...';
+  modal.dataset.taskId = taskId;
+  modal.style.display = 'block';
+  try {
+    const d = await api('/api/task-instructions?task=' + encodeURIComponent(taskId));
+    instrEl.value = d.instructions || '(no plan found for this task)';
+  } catch (e) {
+    instrEl.value = `Task: ${taskId}\n\n` +
+      `1. Read the task details from the contract and handoffs\n` +
+      `2. Propose a TDD plan (RED → GREEN → REFACTOR) and wait for user confirmation\n` +
+      `3. Implement only after user approves the plan\n` +
+      `4. Run tests after each phase — all tests must pass before marking done`;
+  }
+}
+
+async function submitEnqueue() {
+  const modal = document.getElementById('enqueueModal');
+  const taskId = modal.dataset.taskId;
+  const target = document.getElementById('enqueueTarget').value;
+  const instructions = document.getElementById('enqueueInstructions').value.trim();
+  modal.style.display = 'none';
+  if (!target || (target !== 'claude-code' && target !== 'codex-cli')) {
+    alert('Invalid target. Must be claude-code or codex-cli.');
+    return;
+  }
+  const st = document.getElementById('actionStatus');
+  st.textContent = 'enqueueing ' + taskId + ' ...';
+  try {
+    const d = await api('/api/action', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-Superharness-Token': AUTH_TOKEN},
+      body: JSON.stringify({action: 'enqueue_task:' + taskId + ':' + target, instructions})
+    });
+    st.textContent = `enqueued ${taskId} → ${target}`;
+  } catch (e) {
+    const msg = String(e);
+    if (msg.includes('already enqueued')) {
+      alert(`Task "${taskId}" is already in the inbox.`);
+    }
+    st.textContent = 'error: ' + msg;
+  }
+  await refresh();
+}
+
+function cancelEnqueue() {
+  document.getElementById('enqueueModal').style.display = 'none';
+}
+
+async function markTaskDone(taskId) {
+  if (!window.confirm(`Mark task "${taskId}" as done?`)) return;
+  await act('mark_done:' + taskId);
 }
 
 function renderOwnersList(owners) {
@@ -618,6 +619,24 @@ async function removeOwner(name) {
 refresh();
 setInterval(refresh, 3000);
 </script>
+
+<div id="enqueueModal" onclick="if(event.target===this)cancelEnqueue()" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:999">
+  <div style="background:var(--panel);border:1px solid var(--line);border-radius:8px;max-width:600px;margin:80px auto;padding:20px;color:var(--text)">
+    <h3 id="enqueueModalTitle" style="margin:0 0 12px 0">Enqueue Task</h3>
+    <label style="font-size:12px;color:var(--muted)">Target agent:</label>
+    <select id="enqueueTarget" style="width:100%;padding:6px;margin:4px 0 12px 0;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:4px">
+      <option value="claude-code">claude-code</option>
+      <option value="codex-cli">codex-cli</option>
+    </select>
+    <label style="font-size:12px;color:var(--muted)">Instructions (TDD plan — edit or replace):</label>
+    <textarea id="enqueueInstructions" rows="12" style="width:100%;padding:8px;margin:4px 0 12px 0;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:4px;font-family:monospace;font-size:12px;resize:vertical"></textarea>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="cancelEnqueue()" style="padding:6px 16px;background:var(--bg);color:var(--muted);border:1px solid var(--line);border-radius:4px;cursor:pointer">Cancel</button>
+      <button onclick="submitEnqueue()" style="padding:6px 16px;background:var(--ok);color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold">Accept &amp; Enqueue</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
 """
@@ -625,7 +644,7 @@ setInterval(refresh, 3000);
 
 def tail_lines(path: Path, n: int) -> list[str]:
     if not path.exists():
-        return [f"(missing) {path}"]
+        return [f"No log file yet (created when watcher runs as launchd service). Foreground mode logs to stdout."]
     with path.open("r", encoding="utf-8", errors="replace") as f:
         lines = f.readlines()
     return [ln.rstrip("\n") for ln in lines[-n:]]
@@ -713,6 +732,120 @@ def inbox_owner_counts(inbox_file: Path) -> dict[str, int]:
     return dict(counts)
 
 
+def task_instructions(project_dir: Path, task_id: str) -> str:
+    """Build personalized TDD instructions for a task by reading plan docs and contract."""
+    import re as _re
+
+    # Get task title and criteria from contract
+    contract_file = project_dir / ".superharness" / "contract.yaml"
+    task_title = task_id
+    criteria = []
+    if contract_file.exists():
+        try:
+            import yaml
+            doc = yaml.safe_load(contract_file.read_text()) or {}
+            for t in doc.get("tasks") or []:
+                if isinstance(t, dict) and t.get("id") == task_id:
+                    task_title = t.get("title", task_id)
+                    criteria = t.get("acceptance_criteria") or t.get("criteria") or []
+                    if isinstance(criteria, str):
+                        criteria = [criteria]
+                    break
+        except Exception:
+            pass
+
+    # Try to find matching iteration section in plan docs
+    plan_section = ""
+    # Build keywords from task ID and title (e.g. mod.3-obsidian → ["obsidian"], mod.7-ntfy + "ntfy notification module" → ["ntfy", "notification", "module"])
+    _stop_words = {"mod", "feat", "auto", "module", "task", "the", "with", "from", "that", "this"}
+    raw_words = [w.lower() for w in _re.split(r"[.\-_]+", task_id) if w and not w.isdigit() and w.lower() not in _stop_words]
+    title_words = [w.lower() for w in _re.split(r"[\s\-_()]+", task_title) if w and len(w) >= 4 and w.lower() not in _stop_words]
+    raw_words.extend(title_words)
+    task_keywords = []
+    for w in raw_words:
+        task_keywords.append(w)
+        # "autoschedule" → also match "schedule", "auto-schedule"
+        parts = _re.findall(r"[a-z]+", w)
+        if len(parts) == 1 and len(w) > 5:
+            for prefix in ("auto",):
+                if w.startswith(prefix) and len(w) > len(prefix):
+                    task_keywords.append(w[len(prefix):])
+                    task_keywords.append(prefix + "-" + w[len(prefix):])
+    for plan_file in sorted(project_dir.glob("docs/plan*.md")):
+        try:
+            content = plan_file.read_text(errors="replace")
+            # Find all iteration sections
+            sections = _re.split(r"\n(?=## Iteration \d)", content)
+            for section in sections:
+                if not section.strip().startswith("## Iteration"):
+                    continue
+                # Strip trailing --- separator
+                section = _re.split(r"\n---\s*$", section, flags=_re.MULTILINE)[0].strip()
+                header = section.split("\n", 1)[0].lower()
+                # Match by keywords from task ID against iteration header
+                # Require the longest keyword to match (most specific)
+                sorted_kw = sorted(task_keywords, key=len, reverse=True)
+                if sorted_kw and any(kw in header for kw in sorted_kw if len(kw) >= 4):
+                    plan_section = section.strip()
+                    break
+            if plan_section:
+                break
+        except Exception:
+            continue
+
+    lines = [f"Task: {task_title} ({task_id})", ""]
+
+    if plan_section:
+        lines.append("## Plan (from docs/)")
+        lines.append(plan_section)
+        lines.append("")
+
+    if criteria:
+        lines.append("## Acceptance Criteria")
+        for c in criteria:
+            lines.append(f"- {c}")
+        lines.append("")
+
+    # Check for prior failed attempts — inbox items and handoff reports
+    prior_failure = ""
+    inbox_file = project_dir / ".superharness" / "inbox.yaml"
+    if inbox_file.exists():
+        items = inbox_items(inbox_file)
+        failed = [i for i in items if i.get("task") == task_id and i.get("status") in ("failed", "stale")]
+        if failed:
+            prior_failure = f"Status: {failed[-1].get('status')}"
+
+    # Check handoff for failure details
+    report = task_report(project_dir, task_id, "")
+    handoff_status = report.get("handoff_status", "")
+    md_report = report.get("markdown_report", "")
+    handoff_outcome = report.get("handoff_outcome", "")
+
+    if handoff_status in ("failed", "blocked", "stale") or prior_failure:
+        lines.append("## Prior Attempt (FAILED)")
+        if prior_failure:
+            lines.append(prior_failure)
+        if handoff_outcome:
+            lines.append(f"Outcome: {handoff_outcome.strip()}")
+        if md_report:
+            # Truncate to keep it readable
+            snippet = md_report.strip()[:2000]
+            lines.append(f"\nAgent report:\n{snippet}")
+        if not handoff_outcome and not md_report:
+            lines.append("No detailed report from previous attempt.")
+        lines.append("")
+        lines.append("Fix the issues above before proceeding.")
+        lines.append("")
+
+    lines.append("## Process")
+    lines.append("1. Read the task details and plan section above")
+    lines.append("2. Propose a TDD plan (RED → GREEN → REFACTOR) and wait for user confirmation")
+    lines.append("3. Implement only after user approves the plan")
+    lines.append("4. Run tests after each phase — all tests must pass before marking done")
+
+    return "\n".join(lines)
+
+
 def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
     """Gather all report data for a given task and optional agent."""
     harness = project_dir / ".superharness"
@@ -735,28 +868,51 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
     # 2. Handoff YAML + markdown report
     handoff_dir = harness / "handoffs"
     if handoff_dir.exists():
-        for f in sorted(handoff_dir.glob("*.yaml"), reverse=True):
+        # Search both .yaml and .md files (md files use YAML frontmatter)
+        handoff_files = sorted(handoff_dir.glob("*.yaml"), reverse=True) + sorted(handoff_dir.glob("*.md"), reverse=True)
+        for f in handoff_files:
             try:
-                content = f.read_text()
-                # Match both task: and task_id: fields
+                content = f.read_text(errors="replace")
+                # Match by task/task_id fields in content, or by filename (skip instructions files)
+                is_instructions = f.name.endswith("-instructions.md")
                 has_task = (f"task: {task_id}" in content or f"task: '{task_id}'" in content
-                            or f"task_id: {task_id}" in content or f"task_id: '{task_id}'" in content)
+                            or f"task_id: {task_id}" in content or f"task_id: '{task_id}'" in content
+                            or (not is_instructions and (f.name.startswith(f"{task_id}-") or f.name.startswith(f"{task_id}."))))
                 if not has_task:
                     continue
                 import yaml
-                hd = yaml.safe_load(content) or {}
+                # For .md files, extract YAML frontmatter between --- delimiters
+                if f.suffix == ".md":
+                    stripped = content.strip()
+                    if stripped.startswith("---"):
+                        parts = stripped.split("---", 2)
+                        if len(parts) >= 3:
+                            hd = yaml.safe_load(parts[1]) or {}
+                            md_body = parts[2].strip()
+                        else:
+                            hd = {}
+                            md_body = stripped
+                    else:
+                        # No frontmatter — use entire content as report body
+                        hd = {}
+                        md_body = stripped
+                else:
+                    hd = yaml.safe_load(content) or {}
+                    md_body = ""
                 if agent and hd.get("to") and hd["to"] != agent and hd.get("from") != agent:
                     continue
                 result["handoff_status"] = hd.get("status", "")
                 result["handoff_summary"] = hd.get("summary", "")
                 result["handoff_outcome"] = hd.get("outcome", "")
                 result["handoff_context"] = hd.get("context", "")
-                result["handoff_date"] = str(hd.get("date", ""))
+                result["handoff_date"] = str(hd.get("date", hd.get("timestamp", "")))
                 md_path = hd.get("markdown_report", "")
                 if md_path:
                     md_file = project_dir / md_path if not Path(md_path).is_absolute() else Path(md_path)
                     if md_file.exists():
                         result["markdown_report"] = md_file.read_text(errors="replace")[:8000]
+                elif md_body:
+                    result["markdown_report"] = md_body[:8000]
                 break
             except Exception:
                 continue
@@ -828,6 +984,66 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
     return result
 
 
+def task_log_content(project_dir: Path, task_id: str, agent: str, lines: int = 0) -> dict:
+    """Retrieve live launcher log content for a task+agent.
+
+    Args:
+        project_dir: Project root directory
+        task_id: Task ID
+        agent: Agent name (optional, if empty will match any agent)
+        lines: If > 0, return only last N lines
+
+    Returns:
+        dict with keys: task, agent, exists, content, log, log_file, size_bytes
+        (includes both 'content' and 'log' for compatibility)
+    """
+    harness = project_dir / ".superharness"
+    log_dir = harness / "launcher-logs"
+
+    result: dict = {
+        "task": task_id,
+        "agent": agent,
+        "exists": False,
+        "content": "",
+        "log": "",
+        "log_file": None,
+        "size_bytes": 0,
+    }
+
+    if not log_dir.exists():
+        result["log"] = "(no log file found)"
+        return result
+
+    # Find most recent log file matching task-agent-*.log or task-*-*.log pattern
+    if agent:
+        pattern = f"{task_id}-{agent}-*.log"
+    else:
+        pattern = f"{task_id}-*.log"
+    matching = sorted(log_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
+
+    if matching:
+        log_file = matching[0]
+        result["exists"] = True
+        result["log_file"] = str(log_file.relative_to(project_dir))
+        try:
+            content = log_file.read_text(errors="replace")
+            if lines > 0:
+                # Return only last N lines
+                all_lines = content.splitlines()
+                content = "\n".join(all_lines[-lines:])
+            result["content"] = content
+            result["log"] = content  # Compatibility with existing JS code
+            result["size_bytes"] = log_file.stat().st_size
+        except Exception as exc:
+            error_msg = f"(error reading log: {exc})"
+            result["content"] = error_msg
+            result["log"] = error_msg
+    else:
+        result["log"] = "(no log file found)"
+
+    return result
+
+
 def contract_owners(contract_file: Path) -> list[str]:
     """Read distinct task owners from contract.yaml."""
     if not contract_file.exists():
@@ -873,7 +1089,7 @@ def watcher_health(runtime: dict, items: list[dict], now_utc: str) -> dict:
     if not loaded:
         return {
             "level": "bad",
-            "message": "Watcher is not running. Use Start watcher (15s) to install/start it.",
+            "message": "Watcher is not running. Run 'shux monitor' to start the dashboard and watcher.",
             "pending_count": pending_count,
             "stale_count": stale_count,
             "failed_count": failed_count,
@@ -1024,6 +1240,9 @@ def contract_tasks(contract_file: Path) -> list[dict]:
                 "status": str(t.get("status", "todo")),
                 "owner": str(t.get("owner", "")),
                 "verified": bool(t.get("verified", False)),
+                "scheduled_after": str(t.get("scheduled_after", "")),
+                "due_by": str(t.get("due_by", "")),
+                "depends_on": t.get("depends_on", []) if isinstance(t.get("depends_on"), list) else [x.strip() for x in str(t.get("depends_on", "")).strip("[]").split(",") if x.strip()],
             })
         return tasks
     except Exception:
@@ -1199,7 +1418,7 @@ def watcher_config(project_dir: Path) -> dict:
         "interval_seconds": 15,
         "recover_timeout_minutes": 3,
         "recover_action": "retry",
-        "launcher_timeout_seconds": 180,
+        "launcher_timeout_seconds": 900,
         "target": "both",
         "codex_bypass": False,
     }
@@ -1307,7 +1526,7 @@ class Handler(BaseHTTPRequestHandler):
 
         return None
 
-    def _action(self, action: str) -> tuple[dict, int]:
+    def _action(self, action: str, payload: dict | None = None) -> tuple[dict, int]:
         wcfg = watcher_config(self.project_dir)
         watcher_project = Path(str(wcfg.get("watcher_project", str(self.project_dir))))
         dispatch = str(self.scripts_dir / "inbox-dispatch.sh")
@@ -1397,6 +1616,38 @@ class Handler(BaseHTTPRequestHandler):
                 return ({"error": "missing task id"}, 400)
             result = _set_task_status(self.project_dir / ".superharness", task_id, "done", from_status="report_ready")
             return result, (200 if result.get("ok") else 500)
+
+        if action.startswith("mark_done:"):
+            task_id = action.split(":", 1)[1]
+            if not task_id:
+                return ({"error": "missing task id"}, 400)
+            result = _set_task_status(self.project_dir / ".superharness", task_id, "done", from_status="todo")
+            return result, (200 if result.get("ok") else 500)
+
+        if action.startswith("enqueue_task:"):
+            parts = action.split(":", 2)
+            if len(parts) < 3 or not parts[1] or not parts[2]:
+                return ({"error": "Missing task ID or target agent."}, 400)
+            task_id, target = parts[1], parts[2]
+            if target not in ("claude-code", "codex-cli"):
+                return ({"error": f"invalid target: {target}"}, 400)
+            # Block duplicate: reject if task already has an active/paused inbox item
+            active_statuses = {"pending", "launched", "running", "paused"}
+            items = inbox_items(self.project_dir / ".superharness" / "inbox.yaml")
+            for item in items:
+                if item.get("task") == task_id and item.get("status") in active_statuses:
+                    return ({"error": f"task '{task_id}' already enqueued (item {item.get('id')}, status={item.get('status')})"}, 409)
+            # Save instructions file if provided
+            instructions = (payload or {}).get("instructions", "").strip()
+            if instructions:
+                instructions_file = self.project_dir / ".superharness" / "handoffs" / f"{task_id}-instructions.md"
+                instructions_file.parent.mkdir(parents=True, exist_ok=True)
+                instructions_file.write_text(instructions, encoding="utf-8")
+            return self._run_cmd(
+                [sys.executable, "-m", "superharness.commands.inbox_enqueue",
+                 "--project", str(self.project_dir),
+                 "--to", target, "--task", task_id, "--priority", "2"]
+            ), 200
 
         if action.startswith("close_task:"):
             task_id = action.split(":", 1)[1]
@@ -1514,9 +1765,17 @@ class Handler(BaseHTTPRequestHandler):
                     "watcher_config": wcfg,
                     "contract_id": contract_id(contract),
                     "contract_tasks": contract_tasks(contract),
-                    "pending_approvals": pending_approvals(self.project_dir / ".superharness" / "handoffs"),
-                    "plan_proposals": plan_proposals(self.project_dir / ".superharness"),
                     "contract_owners": contract_owners(contract),
+                    "active_inbox_tasks": list({
+                        item.get("task") for item in inbox_items(inbox)
+                        if item.get("status") in ("pending", "launched", "running", "paused")
+                        and item.get("task")
+                    }),
+                    "done_inbox_tasks": list({
+                        item.get("task") for item in inbox_items(inbox)
+                        if item.get("status") == "done"
+                        and item.get("task")
+                    }),
                     "inbox_counts": inbox_counts(inbox),
                     "inbox_owners": inbox_owner_counts(inbox),
                     "ledger_tail": tail_lines(ledger, 18),
@@ -1541,6 +1800,36 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"items": items, "status": status_filter, "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
             return
 
+        if p == "/api/task-log":
+            qs = parse_qs(parsed.query)
+            task_id = qs.get("task", [""])[0]
+            agent = qs.get("agent", [""])[0]
+            lines = int(qs.get("lines", ["200"])[0])
+            if not task_id:
+                self._json({"error": "task parameter required"}, 400)
+                return
+            try:
+                result = task_log_content(self.project_dir, task_id, agent, lines)
+                # Add lines field for compatibility
+                result["lines"] = lines
+                self._json(result)
+            except Exception as exc:
+                self._json({"error": f"task_log_content failed: {exc}", "task": task_id, "agent": agent}, 500)
+            return
+
+        if p == "/api/task-instructions":
+            qs = parse_qs(parsed.query)
+            task_id = qs.get("task", [""])[0]
+            if not task_id:
+                self._json({"error": "task parameter required"}, 400)
+                return
+            try:
+                text = task_instructions(self.project_dir, task_id)
+                self._json({"task": task_id, "instructions": text})
+            except Exception as exc:
+                self._json({"error": str(exc)}, 500)
+            return
+
         if p == "/api/task-report":
             qs = parse_qs(parsed.query)
             task_id = qs.get("task", [""])[0]
@@ -1548,7 +1837,10 @@ class Handler(BaseHTTPRequestHandler):
             if not task_id:
                 self._json({"error": "task parameter required"}, 400)
                 return
-            self._json(task_report(self.project_dir, task_id, agent))
+            try:
+                self._json(task_report(self.project_dir, task_id, agent))
+            except Exception as exc:
+                self._json({"error": f"task_report failed: {exc}", "task": task_id, "agent": agent}, 500)
             return
 
         self._json({"error": "not found"}, 404)
@@ -1572,7 +1864,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": "invalid request body"}, 400)
                 return
 
-            data, status = self._action(action)
+            data, status = self._action(action, payload=payload)
             self._json(data, status)
             return
 
@@ -1647,6 +1939,69 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"error": "not found"}, 404)
 
 
+def autohealth_check(port: int, host: str = "127.0.0.1", timeout: float = 2.0) -> bool:
+    """Ping the monitor server. Returns True if healthy, False otherwise."""
+    import urllib.request
+    try:
+        req = urllib.request.Request(f"http://{host}:{port}/api/status")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+
+def autohealth_loop(
+    project_dir: str,
+    port: int = 8787,
+    host: str = "127.0.0.1",
+    interval: int = 5,
+    max_restarts: int = 100,
+) -> None:
+    """Watchdog loop: check server health every `interval` seconds, restart if dead."""
+    import signal
+    restarts = 0
+    proc: subprocess.Popen | None = None
+    log_handle: object = None
+
+    def _start() -> subprocess.Popen:
+        nonlocal log_handle
+        if log_handle is not None:
+            try:
+                log_handle.close()
+            except Exception:
+                pass
+        log_handle = open(os.path.join(project_dir, ".superharness", "monitor-health.log"), "a")
+        return subprocess.Popen(
+            [sys.executable, "-u", __file__, "--project", str(project_dir),
+             "--port", str(port), "--host", host, "--no-open"],
+            start_new_session=True,
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+        )
+
+    def _shutdown(signum: int, frame: object) -> None:
+        if proc and proc.poll() is None:
+            proc.terminate()
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, _shutdown)
+    signal.signal(signal.SIGINT, _shutdown)
+
+    proc = _start()
+    print(f"autohealth: started monitor pid={proc.pid} port={port}")
+
+    while restarts < max_restarts:
+        time.sleep(interval)
+        if proc.poll() is not None or not autohealth_check(port, host):
+            restarts += 1
+            if proc.poll() is None:
+                proc.terminate()
+                proc.wait(timeout=5)
+            proc = _start()
+            print(f"autohealth: restarted monitor pid={proc.pid} (restart #{restarts})")
+    print(f"autohealth: max restarts ({max_restarts}) reached, exiting")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="superharness watcher browser monitor")
     ap.add_argument("--project", default=None, help="project directory containing .superharness (default: cwd)")
@@ -1654,6 +2009,8 @@ def main() -> int:
     ap.add_argument("--host", default="127.0.0.1", help="bind host (default: 127.0.0.1)")
     ap.add_argument("--refresh-seconds", type=int, default=3, help="ui refresh seconds (default: 3)")
     ap.add_argument("--no-open", action="store_true", help="do not open browser automatically")
+    ap.add_argument("--autohealth", action="store_true", help="run watchdog that auto-restarts monitor if it dies")
+    ap.add_argument("--health-interval", type=int, default=5, help="health check interval in seconds (default: 5)")
     args = ap.parse_args()
 
     project_dir = Path(args.project).expanduser().resolve() if args.project else Path.cwd()
@@ -1665,6 +2022,15 @@ def main() -> int:
     except ValueError:
         if args.host not in {"localhost"}:
             raise SystemExit(f"monitor-ui host must be loopback-only, got: {args.host}")
+
+    if args.autohealth:
+        autohealth_loop(
+            project_dir=str(project_dir),
+            port=args.port,
+            host=args.host,
+            interval=args.health_interval,
+        )
+        return 0
 
     scripts_dir = Path(__file__).resolve().parent
     Handler.project_dir = project_dir

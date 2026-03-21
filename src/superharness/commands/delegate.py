@@ -1,7 +1,7 @@
 """Python port of delegate.sh.
 
 Builds a prompt for the target agent (claude-code or codex-cli) and either
-prints it (--print-only) or launches the CLI.
+prints it (--print-only) or launches the CLI or SDK.
 """
 from __future__ import annotations
 
@@ -9,11 +9,34 @@ import os
 import re
 import subprocess
 import sys
+from pathlib import Path
+
+from superharness.engine.sdk_runner import sdk_available, SDKRunner
 
 
 def _abort(msg: str, code: int = 1) -> None:
     print(msg, file=sys.stderr)
     sys.exit(code)
+
+
+def _rotate_launcher_logs(log_dir: Path, task_id: str, agent: str, keep: int = 5) -> None:
+    """Keep only the most recent N log files for a given task+agent combination.
+
+    Args:
+        log_dir: Directory containing launcher log files
+        task_id: Task ID to filter logs
+        agent: Agent name to filter logs
+        keep: Number of most recent logs to keep (default: 5)
+    """
+    pattern = f"{task_id}-{agent}-*.log"
+    log_files = sorted(log_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
+
+    # Delete all but the most recent `keep` files
+    for old_log in log_files[keep:]:
+        try:
+            old_log.unlink()
+        except OSError:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -295,6 +318,7 @@ def delegate(
     model_override: str = "",
     effort_override: str = "",
     no_auto_model: bool = False,
+    via_sdk: bool | None = None,
 ) -> int:
     project_dir = os.path.realpath(project_dir)
 
@@ -318,6 +342,61 @@ def delegate(
                 f"{target} handoff in {handoff_dir}",
                 file=sys.stderr,
             )
+            return 1
+
+    from datetime import datetime, date as _date
+    today = _date.today()
+
+    # Gate 1: scheduled_after — can't delegate before this date
+    scheduled_after = _get_task_field(contract_file, task_id, "scheduled_after")
+    if scheduled_after:
+        try:
+            sched_date = datetime.strptime(scheduled_after.strip(), "%Y-%m-%d").date()
+            if today < sched_date:
+                days_left = (sched_date - today).days
+                print(
+                    f"⛔ Task '{task_id}' is not ready — scheduled after {scheduled_after} ({days_left} day(s) from now).",
+                    file=sys.stderr,
+                )
+                return 1
+        except ValueError:
+            pass
+
+    # Gate 2: due_by — warn if past due date (don't block, just warn)
+    due_by = _get_task_field(contract_file, task_id, "due_by")
+    if due_by:
+        try:
+            due_date = datetime.strptime(due_by.strip(), "%Y-%m-%d").date()
+            if today > due_date:
+                days_overdue = (today - due_date).days
+                print(
+                    f"⚠️  Task '{task_id}' is overdue — due by {due_by} ({days_overdue} day(s) ago).",
+                    file=sys.stderr,
+                )
+        except ValueError:
+            pass
+
+    # Gate 3: depends_on — block if dependency tasks are not done
+    doc = _load_contract(contract_file)
+    task_obj = next((t for t in (doc.get("tasks") or []) if isinstance(t, dict) and str(t.get("id", "")) == task_id), None)
+    depends_on_val = task_obj.get("depends_on") if task_obj else None
+    if depends_on_val:
+        if isinstance(depends_on_val, list):
+            dep_ids = [str(d).strip() for d in depends_on_val if d]
+        else:
+            dep_ids = [d.strip() for d in str(depends_on_val).strip("[]").split(",") if d.strip()]
+        blockers = []
+        for dep_id in dep_ids:
+            dep_status = _get_task_field(contract_file, dep_id, "status")
+            if dep_status != "done":
+                blockers.append(f"{dep_id} (status: {dep_status or 'not found'})")
+        if blockers:
+            print(
+                f"⛔ Task '{task_id}' is blocked — depends on unfinished tasks:",
+                file=sys.stderr,
+            )
+            for b in blockers:
+                print(f"   - {b}", file=sys.stderr)
             return 1
 
     # -----------------------------------------------------------------------
@@ -504,6 +583,14 @@ def delegate(
         print(f"Topic: {disc_topic}")
 
     else:
+        # Check for user-provided instructions file
+        instructions_file = os.path.join(handoff_dir, f"{task_id}-instructions.md")
+        user_instructions = ""
+        if os.path.isfile(instructions_file):
+            user_instructions = Path(instructions_file).read_text(encoding="utf-8").strip()
+            if user_instructions:
+                user_instructions = f"\n\nUser instructions for this task:\n{user_instructions}"
+
         if target == "claude-code":
             if latest_handoff:
                 prompt = (
@@ -513,7 +600,7 @@ def delegate(
                     f"Update .superharness/contract.yaml task status, append .superharness/ledger.md, "  # shipguard:ignore PY-007
                     f"and refresh the handoff with outcomes.\n"
                     f"Contract id: {contract_id}."
-                    f"{acceptance_criteria}{auto_directive}"
+                    f"{acceptance_criteria}{user_instructions}{auto_directive}"
                 )
             else:
                 prompt = (
@@ -523,7 +610,7 @@ def delegate(
                     f"Update .superharness/contract.yaml task status, append .superharness/ledger.md, "  # shipguard:ignore PY-007
                     f"and create a new handoff with outcomes.\n"  # shipguard:ignore PY-007
                     f"Contract id: {contract_id}."
-                    f"{acceptance_criteria}{auto_directive}"
+                    f"{acceptance_criteria}{user_instructions}{auto_directive}"
                 )
         else:  # codex-cli
             if latest_handoff:
@@ -534,7 +621,7 @@ def delegate(
                     f"Update .superharness/contract.yaml task status, append .superharness/ledger.md, "  # shipguard:ignore PY-007
                     f"and refresh the handoff with outcomes.\n"
                     f"Contract id: {contract_id}."
-                    f"{acceptance_criteria}"
+                    f"{acceptance_criteria}{user_instructions}"
                 )
             else:
                 prompt = (
@@ -544,7 +631,7 @@ def delegate(
                     f"Update .superharness/contract.yaml task status, append .superharness/ledger.md, "  # shipguard:ignore PY-007
                     f"and create a new handoff with outcomes.\n"  # shipguard:ignore PY-007
                     f"Contract id: {contract_id}."
-                    f"{acceptance_criteria}"
+                    f"{acceptance_criteria}{user_instructions}"
                 )
 
         # Enrich prompt with vault context
@@ -570,6 +657,14 @@ def delegate(
     print(f"Model: {resolved_model} ({model_source})")
     print(f"Effort: {resolved_effort}")
 
+    # SDK vs CLI dispatch — auto-detect: use SDK if available, fall back to CLI
+    use_sdk = via_sdk if via_sdk is not None else sdk_available()
+    if use_sdk and not sdk_available():
+        print("⚠️  SDK not available — falling back to CLI", file=sys.stderr)
+        use_sdk = False
+
+    print(f"Via: {'sdk' if use_sdk else 'cli'}")
+
     if print_only:
         print()
         print("Generated prompt:")
@@ -577,6 +672,38 @@ def delegate(
         print(prompt)
         return 0
 
+    # SDK dispatch path
+    if use_sdk:
+        print()
+        print(f"Launching via SDK (model: {resolved_model})...")
+        try:
+            # Create launcher log file for streaming output
+            from datetime import datetime
+            log_dir = Path(harness_dir) / "launcher-logs"
+            log_dir.mkdir(exist_ok=True)
+
+            timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+            log_file = log_dir / f"{task_id}-{target}-{timestamp}.log"
+
+            # Rotate old logs before creating new one
+            _rotate_launcher_logs(log_dir, task_id, target, keep=5)
+
+            runner = SDKRunner(
+                project_dir=Path(project_dir),
+                model=resolved_model,
+            )
+            result = runner.run(prompt, log_file=log_file)
+            print()
+            print("SDK execution completed:")
+            print(result.get("content", str(result)))
+            print(f"\nLauncher log: {log_file}")
+            return 0
+        except Exception as e:
+            print(f"⚠️  SDK execution failed: {e}", file=sys.stderr)
+            print("Falling back to CLI...", file=sys.stderr)
+            use_sdk = False
+
+    # CLI dispatch path (original behavior)
     if non_interactive:
         _confirm_non_interactive_risk(target, codex_bypass)
 
@@ -633,6 +760,11 @@ def main(argv: list[str] | None = None) -> None:
         "--no-auto-model", action="store_true", default=False,
         help="Skip auto-classification, use profile defaults or standard/medium",
     )
+    parser.add_argument(
+        "--via", default=None,
+        choices=["cli", "sdk"],
+        help="Force dispatch method (default: auto-detect — SDK if installed, CLI otherwise)",
+    )
 
     opts = parser.parse_args(argv)
 
@@ -663,6 +795,7 @@ def main(argv: list[str] | None = None) -> None:
         model_override=opts.model or "",
         effort_override=opts.effort or "",
         no_auto_model=opts.no_auto_model,
+        via_sdk=True if opts.via == "sdk" else (False if opts.via == "cli" else None),
     )
     sys.exit(rc)
 
