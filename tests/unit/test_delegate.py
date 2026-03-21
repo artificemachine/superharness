@@ -415,23 +415,24 @@ def test_delegate_via_sdk_uses_sdk_runner_when_available(repo_root, tmp_path) ->
 
 def test_delegate_via_sdk_falls_back_to_cli_when_sdk_unavailable(repo_root, tmp_path) -> None:
     """--via sdk falls back to CLI when SDK is not available."""
-    from unittest.mock import patch
-
     project = _setup_project(tmp_path)
     bin_dir = _fake_bin(tmp_path, "claude")
 
-    with patch("superharness.commands.delegate.sdk_available", return_value=False):
-        result = _run_delegate_py(
-            repo_root,
-            args=[
-                "--to", "claude-code", "--project", str(project),
-                "--task", "mcp-docs", "--via", "sdk",
-            ],
-            env={"PATH": f"{bin_dir}:/usr/bin:/bin"},
-        )
+    result = _run_delegate_py(
+        repo_root,
+        args=[
+            "--to", "claude-code", "--project", str(project),
+            "--task", "mcp-docs", "--via", "sdk", "--print-only",
+        ],
+        env={
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "SUPERHARNESS_FORCE_NO_SDK": "1",
+        },
+    )
 
-    # Should warn about fallback but still succeed via CLI
+    # Should warn about fallback and show CLI mode
     assert "SDK not available" in result.stderr or "falling back" in result.stderr.lower()
+    assert "Via: cli" in result.stdout
 
 
 def test_delegate_via_sdk_print_only_falls_back_when_unavailable(repo_root, tmp_path) -> None:
@@ -444,10 +445,12 @@ def test_delegate_via_sdk_print_only_falls_back_when_unavailable(repo_root, tmp_
             "--to", "claude-code", "--project", str(project),
             "--task", "mcp-docs", "--via", "sdk", "--print-only",
         ],
-        env={"PATH": "/usr/bin:/bin"},
+        env={
+            "PATH": "/usr/bin:/bin",
+            "SUPERHARNESS_FORCE_NO_SDK": "1",
+        },
     )
 
     assert result.returncode == 0, result.stderr
-    # Should show fallback warning and indicate CLI mode
     assert "SDK not available" in result.stderr and "falling back" in result.stderr.lower()
     assert "Via: cli" in result.stdout
