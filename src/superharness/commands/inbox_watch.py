@@ -178,6 +178,20 @@ def _run_scripts(
     except OSError:
         pass
 
+    # Fire on_watcher_tick hooks (e.g., auto-schedule module)
+    try:
+        from pathlib import Path
+        from superharness.modules.runner import run_hooks
+        run_hooks("on_watcher_tick", {"project_dir": project_dir}, Path(project_dir))
+    except Exception as e:
+        print(f"Warning: on_watcher_tick hook failed: {e}", file=sys.stderr)
+
+    # Reconcile zombie inbox items (launched but process gone)
+    try:
+        _reconcile_zombies(project_dir)
+    except Exception as e:
+        print(f"Warning: zombie reconciliation failed: {e}", file=sys.stderr)
+
     inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
     if not os.path.exists(inbox_file):
         return
@@ -214,6 +228,103 @@ def _run_scripts(
     if os.path.isfile(disc_dispatch) and os.access(disc_dispatch, os.X_OK):
         subprocess.run(["bash", disc_dispatch, "--project", project_dir],
                        check=False, capture_output=False)
+
+
+def _reconcile_zombies(project_dir: str, max_age_seconds: int = 1200) -> int:
+    """Reconcile launched inbox items that have no running process.
+
+    Three checks in order:
+    1. Contract says done → mark inbox done
+    2. PID set but process dead → mark inbox failed
+    3. No PID + launched > max_age_seconds ago → mark inbox failed
+
+    Returns count of reconciled items.
+    """
+    import yaml as _yaml
+
+    harness = os.path.join(project_dir, ".superharness")
+    inbox_file = os.path.join(harness, "inbox.yaml")
+    contract_file = os.path.join(harness, "contract.yaml")
+
+    if not os.path.exists(inbox_file):
+        return 0
+
+    items = _yaml.safe_load(open(inbox_file, encoding="utf-8").read()) or []
+    if not isinstance(items, list):
+        return 0
+
+    contract_statuses: dict[str, str] = {}
+    if os.path.exists(contract_file):
+        doc = _yaml.safe_load(open(contract_file, encoding="utf-8").read()) or {}
+        for t in doc.get("tasks") or []:
+            if isinstance(t, dict) and t.get("id"):
+                contract_statuses[str(t["id"])] = str(t.get("status", ""))
+
+    now = datetime.now(timezone.utc)
+    reconciled = 0
+    changed = False
+
+    for item in items:
+        if not isinstance(item, dict) or item.get("status") != "launched":
+            continue
+
+        task_id = str(item.get("task", ""))
+        item_id = str(item.get("id", ""))
+        pid = item.get("pid", "")
+        launched_at = str(item.get("launched_at", ""))
+
+        # Check 1: contract says done → mark inbox done + kill lingering process
+        if contract_statuses.get(task_id) == "done":
+            if pid:
+                try:
+                    os.kill(int(pid), signal.SIGTERM)
+                    print(f"zombie-reconcile: killed lingering pid {pid} for {task_id}")
+                except (ProcessLookupError, ValueError, PermissionError):
+                    pass
+            item["status"] = "done"
+            item["completed_at"] = _now_utc()
+            item["pid"] = ""
+            reconciled += 1
+            changed = True
+            print(f"zombie-reconcile: {item_id} ({task_id}) → done (contract done)")
+            continue
+
+        # Check 2: PID set but process dead → mark failed
+        if pid:
+            try:
+                os.kill(int(pid), 0)
+                continue  # process alive, skip
+            except (ProcessLookupError, ValueError):
+                item["status"] = "failed"
+                item["failed_at"] = _now_utc()
+                item["pid"] = ""
+                reconciled += 1
+                changed = True
+                print(f"zombie-reconcile: {item_id} ({task_id}) → failed (pid {pid} dead)")
+                continue
+            except PermissionError:
+                continue  # process exists but we can't signal it
+
+        # Check 3: no PID + old → mark failed
+        if launched_at:
+            try:
+                lt = datetime.fromisoformat(launched_at.replace("Z", "+00:00"))
+                age = (now - lt).total_seconds()
+                if age > max_age_seconds:
+                    item["status"] = "failed"
+                    item["failed_at"] = _now_utc()
+                    reconciled += 1
+                    changed = True
+                    print(f"zombie-reconcile: {item_id} ({task_id}) → failed (no pid, {int(age)}s old)")
+            except (ValueError, TypeError):
+                pass
+
+    if changed:
+        with open(inbox_file, "w", encoding="utf-8") as f:
+            f.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
+            _yaml.dump(items, f, default_flow_style=False, sort_keys=True)
+
+    return reconciled
 
 
 def _find_scripts_dir() -> str:

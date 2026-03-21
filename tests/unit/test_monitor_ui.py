@@ -171,7 +171,7 @@ def test_monitor_action_rejects_cross_origin_with_token(repo_root, tmp_path, mon
 def test_monitor_action_accepts_same_origin_with_token(repo_root, tmp_path, monkeypatch) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
-    monkeypatch.setattr(module.Handler, "_action", lambda self, action: ({"exit_code": 0, "stdout": action, "stderr": ""}, 200))
+    monkeypatch.setattr(module.Handler, "_action", lambda self, action, payload=None: ({"exit_code": 0, "stdout": action, "stderr": ""}, 200))
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
@@ -268,7 +268,7 @@ def test_monitor_action_watcher_start_installs_and_kickstarts(repo_root, tmp_pat
     assert "--confirm-non-interactive" in install_call
     assert "--confirm-skip-permissions" in install_call
     assert "--launcher-timeout" in install_call
-    assert "180" in install_call
+    assert "900" in install_call
     assert kickstart_call[:3] == ["launchctl", "kickstart", "-k"]
 
 
@@ -1305,7 +1305,7 @@ def test_contract_tasks_returns_all_tasks(repo_root, tmp_path):
     ])
     tasks = m.contract_tasks(harness / "contract.yaml")
     assert len(tasks) == 3
-    assert tasks[0] == {"id": "a", "title": "A", "status": "todo", "owner": "claude-code", "verified": False}
+    assert tasks[0] == {"id": "a", "title": "A", "status": "todo", "owner": "claude-code", "verified": False, "scheduled_after": "", "due_by": "", "depends_on": []}
     assert tasks[1]["status"] == "plan_proposed"
     assert tasks[2]["verified"] is True
 
@@ -1344,3 +1344,594 @@ def test_review_failed_loops_back(repo_root, tmp_path):
     _make_contract(harness, [{"id": "loop-task", "status": "review_failed", "title": "Loop", "owner": "claude-code"}])
     r = m._set_task_status(harness, "loop-task", "plan_proposed", from_status="review_failed")
     assert r["ok"] is True
+
+
+# ── enqueue_task action tests ─────────────────────────────────────────────
+
+
+def test_monitor_action_enqueue_task(repo_root, tmp_path, monkeypatch) -> None:
+    """enqueue_task:TASK_ID:TARGET calls inbox_enqueue with correct args."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    captured: dict[str, object] = {}
+
+    def fake_run_cmd(self, args, timeout=30):
+        captured["args"] = args
+        return {"exit_code": 0, "stdout": "Enqueued", "stderr": "", "cmd": " ".join(args)}
+
+    monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json(
+            "POST",
+            base_url + "/api/action",
+            payload={"action": "enqueue_task:mod.0-loader:claude-code"},
+            headers={
+                "Origin": base_url,
+                "Referer": base_url + "/",
+                "Content-Type": "application/json",
+                "X-Superharness-Token": module.Handler.auth_token,
+            },
+        )
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    assert payload["stdout"] == "Enqueued"
+    args = captured["args"]
+    assert "inbox_enqueue" in " ".join(args)
+    assert "--task" in args
+    assert "mod.0-loader" in args
+    assert "--to" in args
+    assert "claude-code" in args
+    assert "--priority" in args
+
+
+def test_monitor_enqueue_with_instructions_saves_file(repo_root, tmp_path, monkeypatch) -> None:
+    """enqueue_with_instructions saves instructions file and enqueues task."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    captured: dict[str, object] = {}
+
+    def fake_run_cmd(self, args, timeout=30):
+        captured["args"] = args
+        return {"exit_code": 0, "stdout": "Enqueued", "stderr": "", "cmd": " ".join(args)}
+
+    monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json(
+            "POST",
+            base_url + "/api/action",
+            payload={
+                "action": "enqueue_task:mod.0-loader:claude-code",
+                "instructions": "Use TDD. RED: write 5 failing tests. GREEN: implement loader. REFACTOR: extract helpers.",
+            },
+            headers={
+                "Origin": base_url,
+                "Referer": base_url + "/",
+                "Content-Type": "application/json",
+                "X-Superharness-Token": module.Handler.auth_token,
+            },
+        )
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    # Instructions file should be saved
+    instructions_file = project / ".superharness" / "handoffs" / "mod.0-loader-instructions.md"
+    assert instructions_file.exists()
+    content = instructions_file.read_text()
+    assert "TDD" in content
+    assert "5 failing tests" in content
+
+
+def test_monitor_action_enqueue_task_invalid_target(repo_root, tmp_path, monkeypatch) -> None:
+    """enqueue_task with invalid target returns 400."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json(
+            "POST",
+            base_url + "/api/action",
+            payload={"action": "enqueue_task:mod.0-loader:bad-target"},
+            headers={
+                "Origin": base_url,
+                "Referer": base_url + "/",
+                "Content-Type": "application/json",
+                "X-Superharness-Token": module.Handler.auth_token,
+            },
+        )
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 400
+    assert "invalid target" in payload.get("error", "")
+
+
+def test_monitor_action_enqueue_task_missing_parts(repo_root, tmp_path, monkeypatch) -> None:
+    """enqueue_task with missing task_id or target returns 400."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json(
+            "POST",
+            base_url + "/api/action",
+            payload={"action": "enqueue_task:mod.0-loader"},
+            headers={
+                "Origin": base_url,
+                "Referer": base_url + "/",
+                "Content-Type": "application/json",
+                "X-Superharness-Token": module.Handler.auth_token,
+            },
+        )
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 400
+    assert "missing" in payload.get("error", "").lower()
+
+
+def test_task_report_endpoint_returns_500_on_crash(repo_root, tmp_path, monkeypatch) -> None:
+    """If task_report() raises, endpoint returns 500 JSON instead of dropping connection."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+
+    def exploding_task_report(project_dir, task_id, agent):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(module, "task_report", exploding_task_report)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json(
+            "GET",
+            base_url + "/api/task-report?task=test-task&agent=claude-code",
+        )
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 500
+    assert "boom" in payload.get("error", "")
+
+
+def test_monitor_action_enqueue_task_duplicate_blocked(repo_root, tmp_path, monkeypatch) -> None:
+    """enqueue_task for a task already in inbox (pending/launched) returns 409."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    # inbox already has an item for task "mcp-docs" (from _setup_project)
+    # Add one for mod.0-loader
+    inbox_file = project / ".superharness" / "inbox.yaml"
+    with open(inbox_file, "a") as f:
+        f.write(
+            "\n- id: existing-item\n"
+            "  to: claude-code\n"
+            "  task: mod.0-loader\n"
+            f"  project: {project}\n"
+            "  status: pending\n"
+            "  priority: 2\n"
+        )
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json(
+            "POST",
+            base_url + "/api/action",
+            payload={"action": "enqueue_task:mod.0-loader:claude-code"},
+            headers={
+                "Origin": base_url,
+                "Referer": base_url + "/",
+                "Content-Type": "application/json",
+                "X-Superharness-Token": module.Handler.auth_token,
+            },
+        )
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 409
+    assert "already" in payload.get("error", "").lower()
+
+
+def test_monitor_action_enqueue_task_paused_also_blocked(repo_root, tmp_path, monkeypatch) -> None:
+    """enqueue_task for a task with a paused inbox item returns 409."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    inbox_file = project / ".superharness" / "inbox.yaml"
+    with open(inbox_file, "a") as f:
+        f.write(
+            "\n- id: paused-item\n"
+            "  to: claude-code\n"
+            "  task: mod.0-loader\n"
+            f"  project: {project}\n"
+            "  status: paused\n"
+            "  priority: 2\n"
+        )
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json(
+            "POST",
+            base_url + "/api/action",
+            payload={"action": "enqueue_task:mod.0-loader:claude-code"},
+            headers={
+                "Origin": base_url,
+                "Referer": base_url + "/",
+                "Content-Type": "application/json",
+                "X-Superharness-Token": module.Handler.auth_token,
+            },
+        )
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 409
+    assert "already" in payload.get("error", "").lower()
+
+
+def test_monitor_action_enqueue_task_allows_after_done(repo_root, tmp_path, monkeypatch) -> None:
+    """enqueue_task allowed if previous inbox item for same task is done."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    inbox_file = project / ".superharness" / "inbox.yaml"
+    with open(inbox_file, "a") as f:
+        f.write(
+            "\n- id: old-item\n"
+            "  to: claude-code\n"
+            "  task: mod.0-loader\n"
+            f"  project: {project}\n"
+            "  status: done\n"
+            "  priority: 2\n"
+        )
+    captured: dict[str, object] = {}
+
+    def fake_run_cmd(self, args, timeout=30):
+        captured["args"] = args
+        return {"exit_code": 0, "stdout": "Enqueued", "stderr": "", "cmd": " ".join(args)}
+
+    monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json(
+            "POST",
+            base_url + "/api/action",
+            payload={"action": "enqueue_task:mod.0-loader:claude-code"},
+            headers={
+                "Origin": base_url,
+                "Referer": base_url + "/",
+                "Content-Type": "application/json",
+                "X-Superharness-Token": module.Handler.auth_token,
+            },
+        )
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    assert "mod.0-loader" in captured["args"]
+
+
+def test_monitor_action_mark_done(repo_root, tmp_path, monkeypatch) -> None:
+    """mark_done transitions task from todo to done."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    harness = project / ".superharness"
+    import yaml
+    contract = yaml.safe_load((harness / "contract.yaml").read_text()) or {}
+    contract["tasks"] = [{"id": "test-task", "status": "todo", "title": "Test", "owner": "claude-code"}]
+    (harness / "contract.yaml").write_text(yaml.dump(contract))
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json(
+            "POST",
+            base_url + "/api/action",
+            payload={"action": "mark_done:test-task"},
+            headers={
+                "Origin": base_url,
+                "Referer": base_url + "/",
+                "Content-Type": "application/json",
+                "X-Superharness-Token": module.Handler.auth_token,
+            },
+        )
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    assert payload.get("ok") is True
+    updated = yaml.safe_load((harness / "contract.yaml").read_text()) or {}
+    task = next(t for t in updated["tasks"] if t["id"] == "test-task")
+    assert task["status"] == "done"
+
+
+def test_monitor_action_mark_done_wrong_status(repo_root, tmp_path, monkeypatch) -> None:
+    """mark_done on a non-todo task returns error."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    harness = project / ".superharness"
+    import yaml
+    contract = yaml.safe_load((harness / "contract.yaml").read_text()) or {}
+    contract["tasks"] = [{"id": "test-task", "status": "in_progress", "title": "Test", "owner": "claude-code"}]
+    (harness / "contract.yaml").write_text(yaml.dump(contract))
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json(
+            "POST",
+            base_url + "/api/action",
+            payload={"action": "mark_done:test-task"},
+            headers={
+                "Origin": base_url,
+                "Referer": base_url + "/",
+                "Content-Type": "application/json",
+                "X-Superharness-Token": module.Handler.auth_token,
+            },
+        )
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 500
+    assert payload.get("ok") is not True
+
+
+def test_status_includes_active_inbox_tasks(repo_root, tmp_path, monkeypatch) -> None:
+    """Status API includes active_inbox_tasks listing task IDs with active inbox items."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    # Add an active item for mod.0-loader
+    inbox_file = project / ".superharness" / "inbox.yaml"
+    with open(inbox_file, "a") as f:
+        f.write(
+            "\n- id: active-item\n"
+            "  to: claude-code\n"
+            "  task: mod.0-loader\n"
+            f"  project: {project}\n"
+            "  status: pending\n"
+            "  priority: 2\n"
+            "\n- id: done-item\n"
+            "  to: claude-code\n"
+            "  task: mod.1-runner\n"
+            f"  project: {project}\n"
+            "  status: done\n"
+            "  priority: 2\n"
+        )
+
+    monkeypatch.setattr(module.Handler, "_run_cmd", lambda self, args, timeout=30: {
+        "exit_code": 0, "stdout": "", "stderr": "", "cmd": ""})
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json("GET", base_url + "/api/status")
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    active = payload.get("active_inbox_tasks", [])
+    assert "mod.0-loader" in active
+    assert "mod.1-runner" not in active  # done items not active
+
+
+def test_status_includes_done_inbox_tasks(repo_root, tmp_path, monkeypatch) -> None:
+    """Status API includes done_inbox_tasks for tasks whose inbox item completed."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    inbox_file = project / ".superharness" / "inbox.yaml"
+    with open(inbox_file, "a") as f:
+        f.write(
+            "\n- id: done-item\n"
+            "  to: claude-code\n"
+            "  task: mod.0-loader\n"
+            f"  project: {project}\n"
+            "  status: done\n"
+            "  priority: 2\n"
+        )
+
+    monkeypatch.setattr(module.Handler, "_run_cmd", lambda self, args, timeout=30: {
+        "exit_code": 0, "stdout": "", "stderr": "", "cmd": ""})
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json("GET", base_url + "/api/status")
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    done = payload.get("done_inbox_tasks", [])
+    assert "mod.0-loader" in done
+    assert "mod.0-loader" not in payload.get("active_inbox_tasks", [])
+
+
+def test_task_instructions_includes_plan_section(repo_root, tmp_path) -> None:
+    """task_instructions extracts the matching iteration from the plan doc."""
+    module = _load_monitor_module(repo_root)
+    project = tmp_path / "proj-instr"
+    harness = project / ".superharness"
+    harness.mkdir(parents=True)
+    (harness / "contract.yaml").write_text(
+        "id: c1\ntasks:\n"
+        "- id: mod.3-obsidian\n  title: Obsidian module\n  status: todo\n  owner: claude-code\n"
+        "  criteria:\n    - 8 tests pass in test_module_obsidian.py\n"
+    )
+    docs = project / "docs"
+    docs.mkdir()
+    (docs / "plan-module-system.md").write_text(
+        "# Plan\n\n## Iteration 2: Registry\n\nRegistry stuff\n\n---\n\n"
+        "## Iteration 3: Obsidian Module\n\n### RED\n\n"
+        "Write 8 tests for vault integration.\n\n### GREEN\n\n"
+        "Implement obsidian_write_note action.\n\n---\n\n"
+        "## Iteration 4: Auto-schedule\n\nAuto stuff\n"
+    )
+
+    result = module.task_instructions(project, "mod.3-obsidian")
+    assert "Obsidian module" in result
+    assert "Iteration 3" in result
+    assert "8 tests" in result
+    assert "obsidian_write_note" in result
+    assert "Iteration 2" not in result
+    assert "Iteration 4" not in result
+    assert "TDD plan" in result
+    assert "user confirmation" in result
+
+
+def test_task_instructions_no_plan_still_works(repo_root, tmp_path) -> None:
+    """task_instructions returns generic steps when no plan doc exists."""
+    module = _load_monitor_module(repo_root)
+    project = tmp_path / "proj-no-plan"
+    harness = project / ".superharness"
+    harness.mkdir(parents=True)
+    (harness / "contract.yaml").write_text(
+        "id: c1\ntasks:\n- id: feat.auto-timeout\n  title: Auto timeout\n  status: todo\n  owner: claude-code\n"
+    )
+
+    result = module.task_instructions(project, "feat.auto-timeout")
+    assert "Auto timeout" in result
+    assert "TDD plan" in result
+    assert "user confirmation" in result
+
+
+def test_task_instructions_includes_prior_failure(repo_root, tmp_path) -> None:
+    """task_instructions shows prior failure context when task was previously attempted."""
+    module = _load_monitor_module(repo_root)
+    project = tmp_path / "proj-fail"
+    harness = project / ".superharness"
+    (harness / "handoffs").mkdir(parents=True)
+    (harness / "contract.yaml").write_text(
+        "id: c1\ntasks:\n- id: mod.3-obsidian\n  title: Obsidian module\n  status: todo\n  owner: claude-code\n"
+    )
+    (harness / "inbox.yaml").write_text(
+        "- id: old-item\n"
+        "  task: mod.3-obsidian\n"
+        "  to: claude-code\n"
+        f"  project: {project}\n"
+        "  status: failed\n"
+        "  priority: 2\n"
+    )
+    (harness / "handoffs" / "mod.3-obsidian-report.md").write_text(
+        "---\n"
+        "task_id: mod.3-obsidian\n"
+        "from: claude-code\n"
+        "to: owner\n"
+        "status: failed\n"
+        "---\n\n"
+        "# Failed: mod.3-obsidian\n\n"
+        "Timed out after 180s. Only completed RED phase — 3 of 8 tests written.\n"
+    )
+
+    result = module.task_instructions(project, "mod.3-obsidian")
+    assert "Prior Attempt" in result or "prior attempt" in result.lower()
+    assert "failed" in result.lower() or "timed out" in result.lower()
+
+
+def test_task_instructions_api_endpoint(repo_root, tmp_path, monkeypatch) -> None:
+    """API endpoint /api/task-instructions returns personalized instructions."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json(
+            "GET",
+            base_url + "/api/task-instructions?task=mcp-docs",
+        )
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    assert "instructions" in payload
+    assert "TDD" in payload["instructions"]
+
+
+def test_task_report_reads_markdown_handoff_with_frontmatter(repo_root, tmp_path) -> None:
+    """task_report finds .md handoffs with YAML frontmatter."""
+    module = _load_monitor_module(repo_root)
+    project = tmp_path / "proj-md-handoff"
+    harness = project / ".superharness"
+    (harness / "handoffs").mkdir(parents=True)
+    (harness / "contract.yaml").write_text("id: c1\ntasks:\n- id: mod.1-runner\n  status: done\n  title: Runner\n  owner: claude-code\n")
+    (harness / "handoffs" / "mod.1-runner-2026-03-20-claude-code.md").write_text(
+        "---\n"
+        "task_id: mod.1-runner\n"
+        "from: claude-code\n"
+        "to: next-agent\n"
+        "status: done\n"
+        "timestamp: 2026-03-20T12:00:00Z\n"
+        "---\n\n"
+        "# Task: mod.1-runner\n\n"
+        "## What Was Done\n\n"
+        "Built the module runner with 7 tests.\n"
+    )
+
+    result = module.task_report(project, "mod.1-runner", "claude-code")
+    assert result["contract_status"] == "done"
+    assert result.get("handoff_status") == "done"
+    assert "module runner" in result.get("markdown_report", "").lower() or "module runner" in result.get("handoff_summary", "").lower()
+
+
+def test_task_log_endpoint_returns_log_content(repo_root, tmp_path, monkeypatch) -> None:
+    """GET /api/task-log returns log file content for a task."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    log_dir = project / ".superharness" / "launcher-logs"
+    log_dir.mkdir(parents=True)
+    (log_dir / "mod.5-security-claude-code-20260320T120000Z.log").write_text(
+        "Starting task mod.5-security...\nRunning tests...\n5 tests passed.\nDone.\n"
+    )
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json(
+            "GET",
+            base_url + "/api/task-log?task=mod.5-security&lines=50",
+        )
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    assert "5 tests passed" in payload["log"]
+    assert payload["task"] == "mod.5-security"
+
+
+def test_task_log_endpoint_no_log(repo_root, tmp_path, monkeypatch) -> None:
+    """GET /api/task-log returns placeholder when no log exists."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json(
+            "GET",
+            base_url + "/api/task-log?task=nonexistent",
+        )
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    assert "no log" in payload["log"].lower()
+
+
+def test_autohealth_loop_exists_and_callable(repo_root, tmp_path, monkeypatch) -> None:
+    """autohealth_loop function exists and is callable."""
+    module = _load_monitor_module(repo_root)
+    assert hasattr(module, "autohealth_loop"), "autohealth_loop function must exist"
+    assert callable(module.autohealth_loop)
+
+
+def test_autohealth_check_returns_health_status(repo_root, tmp_path, monkeypatch) -> None:
+    """autohealth_check pings the server and returns True/False."""
+    module = _load_monitor_module(repo_root)
+    assert hasattr(module, "autohealth_check"), "autohealth_check function must exist"
+
+    # Should return False when nothing is listening
+    assert module.autohealth_check(59999) is False
+
+
+def test_html_contains_enqueue_button_for_todo_tasks(repo_root) -> None:
+    """Monitor HTML includes enqueueTask JS function and Enqueue button rendering."""
+    module = _load_monitor_module(repo_root)
+    html = module.HTML
+    assert "enqueueTask" in html
+    assert "Enqueue" in html

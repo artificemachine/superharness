@@ -141,6 +141,13 @@ superharness delegate --to claude-code --project /path/to/project
 superharness delegate mcp-docs --project /path/to/project --print-only
 ```
 
+**Scheduling gates:** Delegate enforces three gates before dispatching:
+- `scheduled_after` — blocks delegation if the date is in the future
+- `due_by` — warns (doesn't block) if the task is overdue
+- `depends_on` — blocks if dependency tasks are not done
+
+**User instructions:** If `.superharness/handoffs/{task_id}-instructions.md` exists, its contents are injected into the agent prompt. The monitor UI Enqueue modal creates this file automatically.
+
 ### Contract snapshot
 
 ```bash
@@ -165,9 +172,9 @@ todo → plan_proposed → plan_approved → in_progress → report_ready → do
 
 | Phase | Who sets it | What happens |
 |-------|-------------|--------------|
-| `todo` | operator | task created |
+| `todo` | operator | task created; Enqueue button visible in monitor |
 | `plan_proposed` | agent | agent writes plan handoff, stops and waits |
-| `plan_approved` | operator | operator approves via monitor UI or `shux task status` |
+| `plan_approved` | operator | operator approves via `shux task status` (plans are typically reviewed upfront in the Enqueue modal before dispatch) |
 | `in_progress` | agent | agent begins implementation |
 | `report_ready` | agent | agent writes report handoff, stops and waits |
 | `review_requested` | operator | operator requests Opus quality review |
@@ -274,9 +281,20 @@ Checks for: required executables (`bash`, `python3`, `claude`, `codex`), protoco
 
 ```bash
 superharness monitor-ui --project .
+superharness monitor-ui --project . --autohealth   # watchdog mode: auto-restarts if server dies
 ```
 
-Includes: watcher state, inbox counters, one-click queue actions, plan confirmation buttons, optional Logdy log view.
+Includes: watcher state, inbox counters, one-click queue actions, Enqueue modal with TDD instructions, Done button for inbox-completed tasks, optional Logdy log view.
+
+**Task action buttons:**
+- **Enqueue** (todo/failed/stopped) — opens modal with personalized TDD plan from `docs/plan*.md`, acceptance criteria from contract, and prior failure context. User reviews/edits instructions before dispatch.
+- **Enqueued** (disabled) — task already has an active inbox item
+- **Done** — inbox item completed; marks contract task as done
+- **Re-enqueue** (review_failed) — re-dispatch with corrective instructions
+
+**API endpoints:**
+- `GET /api/task-instructions?task=<id>` — personalized TDD instructions assembled from contract + plan docs
+- `GET /api/task-report?task=<id>&agent=<name>` — task report with handoff data (reads both `.yaml` and `.md` handoffs with YAML frontmatter)
 
 **Security:** binds to loopback only (127.0.0.1), mutating actions require per-session token printed to terminal on startup.
 

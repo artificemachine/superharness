@@ -34,7 +34,7 @@ AI coding assistants are powerful within a session but lose context when you swi
 ```
 cli/                    → user-facing shell commands (delegate, enqueue, dispatch, hygiene…)
 src/superharness/engine/→ Python core: YAML ops, queue transitions, contract queries, validation
-scripts/                → watcher install, launchd/systemd, guard scripts, monitor-ui
+scripts/                → watcher install, launchd/systemd, guard scripts, monitor-ui (with autohealth watchdog)
 protocol/               → spec, templates, schema
 adapters/               → Claude Code hooks, Codex CLI templates
 ```
