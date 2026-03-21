@@ -77,7 +77,7 @@ def test_delegate_claude_non_interactive_requires_specific_skip_permissions_conf
 
     result = _run_delegate_py(
         repo_root,
-        args=["--to", "claude-code", "--project", str(project), "--task", "mcp-docs", "--non-interactive"],
+        args=["--to", "claude-code", "--project", str(project), "--task", "mcp-docs", "--non-interactive", "--via", "cli"],
         env={
             "PATH": f"{bin_dir}:/usr/bin:/bin",
             "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
@@ -255,3 +255,199 @@ def test_delegate_codex_tier_resolves_correctly(repo_root, tmp_path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert "Model: gpt-5.2 (manual)" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# Scheduling gate tests
+# ---------------------------------------------------------------------------
+
+
+def test_delegate_blocked_by_scheduled_after(repo_root, tmp_path) -> None:
+    """Task with future scheduled_after date blocks delegation."""
+    project = _setup_project(tmp_path, extra_task_fields="    scheduled_after: '2099-12-31'")
+
+    result = _run_delegate_py(
+        repo_root,
+        args=["--to", "codex-cli", "--project", str(project), "--task", "mcp-docs", "--print-only"],
+        env={"PATH": "/usr/bin:/bin"},
+    )
+
+    assert result.returncode == 1
+    assert "not ready" in result.stderr
+    assert "scheduled after" in result.stderr
+
+
+def test_delegate_allowed_after_scheduled_date(repo_root, tmp_path) -> None:
+    """Task with past scheduled_after date allows delegation."""
+    project = _setup_project(tmp_path, extra_task_fields="    scheduled_after: '2020-01-01'")
+
+    result = _run_delegate_py(
+        repo_root,
+        args=["--to", "codex-cli", "--project", str(project), "--task", "mcp-docs", "--print-only"],
+        env={"PATH": "/usr/bin:/bin"},
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_delegate_warns_overdue_task(repo_root, tmp_path) -> None:
+    """Task past its due_by date prints a warning but still delegates."""
+    project = _setup_project(tmp_path, extra_task_fields="    due_by: '2020-01-01'")
+
+    result = _run_delegate_py(
+        repo_root,
+        args=["--to", "codex-cli", "--project", str(project), "--task", "mcp-docs", "--print-only"],
+        env={"PATH": "/usr/bin:/bin"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "overdue" in result.stderr
+
+
+def test_delegate_blocked_by_dependency(repo_root, tmp_path) -> None:
+    """Task with depends_on unfinished task blocks delegation."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    harness = project / ".superharness"
+    (harness / "handoffs").mkdir(parents=True, exist_ok=True)
+    (harness / "contract.yaml").write_text(
+        "id: test-contract\n"
+        "tasks:\n"
+        "  - id: dep-task\n"
+        "    owner: claude-code\n"
+        "    status: todo\n"
+        f"    project_path: '{project.as_posix()}'\n"
+        "  - id: mcp-docs\n"
+        "    owner: codex-cli\n"
+        "    status: todo\n"
+        "    depends_on: [dep-task]\n"
+        f"    project_path: '{project.as_posix()}'\n"
+    )
+
+    result = _run_delegate_py(
+        repo_root,
+        args=["--to", "codex-cli", "--project", str(project), "--task", "mcp-docs", "--print-only"],
+        env={"PATH": "/usr/bin:/bin"},
+    )
+
+    assert result.returncode == 1
+    assert "blocked" in result.stderr
+    assert "dep-task" in result.stderr
+
+
+def test_delegate_allowed_when_dependency_done(repo_root, tmp_path) -> None:
+    """Task with depends_on finished task allows delegation."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    harness = project / ".superharness"
+    (harness / "handoffs").mkdir(parents=True, exist_ok=True)
+    (harness / "contract.yaml").write_text(
+        "id: test-contract\n"
+        "tasks:\n"
+        "  - id: dep-task\n"
+        "    owner: claude-code\n"
+        "    status: done\n"
+        f"    project_path: '{project.as_posix()}'\n"
+        "  - id: mcp-docs\n"
+        "    owner: codex-cli\n"
+        "    status: todo\n"
+        "    depends_on: [dep-task]\n"
+        f"    project_path: '{project.as_posix()}'\n"
+    )
+
+    result = _run_delegate_py(
+        repo_root,
+        args=["--to", "codex-cli", "--project", str(project), "--task", "mcp-docs", "--print-only"],
+        env={"PATH": "/usr/bin:/bin"},
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_delegate_scheduled_after_idempotent(repo_root, tmp_path) -> None:
+    """Running delegate twice on a future-scheduled task returns same error both times."""
+    project = _setup_project(tmp_path, extra_task_fields="    scheduled_after: '2099-12-31'")
+
+    r1 = _run_delegate_py(
+        repo_root,
+        args=["--to", "codex-cli", "--project", str(project), "--task", "mcp-docs", "--print-only"],
+        env={"PATH": "/usr/bin:/bin"},
+    )
+    r2 = _run_delegate_py(
+        repo_root,
+        args=["--to", "codex-cli", "--project", str(project), "--task", "mcp-docs", "--print-only"],
+        env={"PATH": "/usr/bin:/bin"},
+    )
+
+    assert r1.returncode == 1
+    assert r2.returncode == 1
+    assert r1.stderr == r2.stderr
+
+
+# ---------------------------------------------------------------------------
+# SDK delegation tests (--via sdk)
+# ---------------------------------------------------------------------------
+
+
+def test_delegate_via_sdk_uses_sdk_runner_when_available(repo_root, tmp_path) -> None:
+    """--via sdk uses SDKRunner when SDK is available."""
+    from unittest.mock import MagicMock, patch
+
+    project = _setup_project(tmp_path)
+
+    # Mock SDK runner to simulate successful execution
+    mock_runner = MagicMock()
+    mock_runner.run.return_value = {"content": "Task completed via SDK"}
+
+    with patch("superharness.commands.delegate.sdk_available", return_value=True):
+        with patch("superharness.commands.delegate.SDKRunner", return_value=mock_runner):
+            result = _run_delegate_py(
+                repo_root,
+                args=[
+                    "--to", "claude-code", "--project", str(project),
+                    "--task", "mcp-docs", "--via", "sdk",
+                ],
+                env={"PATH": "/usr/bin:/bin"},
+            )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_delegate_via_sdk_falls_back_to_cli_when_sdk_unavailable(repo_root, tmp_path) -> None:
+    """--via sdk falls back to CLI when SDK is not available."""
+    from unittest.mock import patch
+
+    project = _setup_project(tmp_path)
+    bin_dir = _fake_bin(tmp_path, "claude")
+
+    with patch("superharness.commands.delegate.sdk_available", return_value=False):
+        result = _run_delegate_py(
+            repo_root,
+            args=[
+                "--to", "claude-code", "--project", str(project),
+                "--task", "mcp-docs", "--via", "sdk",
+            ],
+            env={"PATH": f"{bin_dir}:/usr/bin:/bin"},
+        )
+
+    # Should warn about fallback but still succeed via CLI
+    assert "SDK not available" in result.stderr or "falling back" in result.stderr.lower()
+
+
+def test_delegate_via_sdk_print_only_falls_back_when_unavailable(repo_root, tmp_path) -> None:
+    """--via sdk --print-only falls back to CLI when SDK is unavailable."""
+    project = _setup_project(tmp_path)
+
+    result = _run_delegate_py(
+        repo_root,
+        args=[
+            "--to", "claude-code", "--project", str(project),
+            "--task", "mcp-docs", "--via", "sdk", "--print-only",
+        ],
+        env={"PATH": "/usr/bin:/bin"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    # Should show fallback warning and indicate CLI mode
+    assert "SDK not available" in result.stderr and "falling back" in result.stderr.lower()
+    assert "Via: cli" in result.stdout

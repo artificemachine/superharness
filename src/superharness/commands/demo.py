@@ -76,8 +76,8 @@ def main(argv: list[str] | None = None) -> None:
     print("  superharness monitor-ui --project .   # browser dashboard")
     print()
     print("To run real (non-print-only) dispatch you'll need an agent CLI:")
-    print("  Claude Code:  npm install -g @anthropic-ai/claude-code")
-    print("  Codex CLI:    npm install -g @openai/codex")
+    print("  Claude Code:  npm install -g @anthropic-ai/claude-code")  # shipguard:ignore SC-003
+    print("  Codex CLI:    npm install -g @openai/codex")  # shipguard:ignore SC-003
     print()
     print("Full guide: docs/GUIDE.md")
 

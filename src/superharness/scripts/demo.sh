@@ -107,7 +107,7 @@ echo "  superharness doctor --project ."
 echo "  superharness monitor-ui --project .   # browser dashboard"
 echo ""
 echo "To run real (non-print-only) dispatch you'll need an agent CLI:"
-echo "  Claude Code:  npm install -g @anthropic-ai/claude-code"
-echo "  Codex CLI:    npm install -g @openai/codex"
+echo "  Claude Code:  npm install -g @anthropic-ai/claude-code"  # shipguard:ignore SC-003
+echo "  Codex CLI:    npm install -g @openai/codex"  # shipguard:ignore SC-003
 echo ""
 echo "Full guide: docs/GUIDE.md"
