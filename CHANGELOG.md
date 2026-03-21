@@ -1120,3 +1120,44 @@ If you're an agent picking this up:
 ### Fixed
 - Watcher error output now includes stderr detail for diagnosis
 - Hooks auto-install no longer swallows exceptions silently
+
+## [1.1.0] - 2026-03-20
+
+### Added
+- Monitor UI: Enqueue button with TDD instructions modal — personalized from plan docs, acceptance criteria, and prior failure context
+- Monitor UI: Done button for inbox-completed tasks (marks contract task as done)
+- Monitor UI: Re-enqueue button for review_failed tasks
+- Monitor UI: `--autohealth` watchdog mode — auto-restarts server if it dies
+- Monitor UI: `/api/task-instructions` endpoint — assembles personalized TDD plans per task
+- Monitor UI: `/api/task-report` now reads `.md` handoffs with YAML frontmatter
+- Monitor UI: Enqueue duplicate guard — blocks re-enqueue for active/paused inbox items (409)
+- Delegate: reads `{task_id}-instructions.md` from handoffs dir and injects into agent prompt
+- Delegate: scheduling gates — `scheduled_after` (blocks), `due_by` (warns), `depends_on` (blocks)
+- Contract: 12 module system tasks with dependencies (mod.0 through mod.11 + feat.auto-timeout)
+
+### Changed
+- Monitor UI: hidden deprecated plan-confirmation and user-approval panels (replaced by upfront Enqueue modal)
+- Monitor UI: Enqueue button now shows for failed/stopped tasks (not just todo)
+- Monitor UI: CSS fixed `--fg` → `--text` for modal readability
+
+### Fixed
+- Monitor UI: task_report endpoint crash returns 500 JSON instead of dropping connection
+- Delegate: codex-cli prompt now includes user instructions (was silently dropped)
+- Delegate: file handle leak — switched to Path.read_text()
+- Autohealth: file handle leak in _start() — properly closes old handles on restart
+- Pre-existing test fix: test_contract_tasks_returns_all_tasks updated for scheduling gate fields
+- Delegate: missing `from pathlib import Path` crashed all dispatched tasks (NameError)
+- Monitor UI: task_report now reads .md handoffs without YAML frontmatter (plain markdown)
+- Monitor UI: task_report matches handoffs by filename (not just task:/task_id: fields in content)
+- Watcher: zombie inbox reconciliation — auto-detects launched items with dead PID, contract-done, or stale age
+- Watcher: removed placeholder module template (dead code)
+
+### Added (post v1.1.0)
+- Live task log: dispatcher writes agent output to `.superharness/launcher-logs/`
+- Monitor API: `GET /api/task-log?task=<id>` tails live agent output
+- Monitor UI: View Report on active tasks shows live log with 3s auto-refresh
+- Zombie reconciliation: 3-layer check (PID, contract status, age) runs every watcher cycle
+- 12 regression tests in `test_regression_bugs.py` covering all bugs found this session
+- 9 zombie reconciliation tests (6 unit + 1 integration + 2 E2E)
+- Module system: all 12 iterations complete (9 modules, 56 module tests)
+- 847 total tests pass

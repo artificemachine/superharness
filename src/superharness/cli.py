@@ -88,6 +88,19 @@ _cmd("verify",          "Record verification result for a task.",   module="supe
 _cmd("close",           "Close a verified task (done + ledger).",   module="superharness.commands.close")
 _cmd("context",         "Show full context for a task (handoff, decisions, failures, ledger, git).", module="superharness.commands.context")
 _cmd("install-hooks",   "Merge adapter hooks into ~/.claude/settings.json (portable, no hardcoded paths).", module="superharness.commands.install_hooks")
+_cmd("enhance",         "Module marketplace — enable, disable, list integrations.", module="superharness.commands.enhance")
+
+
+def _is_monitor_running(port: int = 8787) -> bool:
+    """Check if the monitor dashboard is already running on the given port."""
+    import socket
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1)
+            s.connect(("127.0.0.1", port))
+            return True
+    except (ConnectionRefusedError, OSError):
+        return False
 
 
 def _run_monitor(args):
@@ -96,13 +109,21 @@ def _run_monitor(args):
     if "--project" not in args_list and "-p" not in args_list:
         args_list = ["--project", os.getcwd()] + args_list
     foreground = "--foreground" in args_list
+
+    # Check if monitor is already running (skip for foreground mode — user wants a new one)
+    if not foreground and _is_monitor_running():
+        print(f"monitor ui: http://127.0.0.1:8787  (already running)")
+        print(f"project: {os.getcwd()}")
+        return
+
     if foreground:
         args_list.remove("--foreground")
         result = subprocess.run([sys.executable, path] + args_list)
         sys.exit(result.returncode)
     # Default: background — detach from terminal, return immediately
     import tempfile, time as _time
-    url_file = tempfile.mktemp(suffix=".monitor-url")
+    fd, url_file = tempfile.mkstemp(suffix=".monitor-url")
+    os.close(fd)  # Close fd; monitor-ui.py will write to this path
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
     env["SUPERHARNESS_MONITOR_URL_FILE"] = url_file
@@ -234,6 +255,8 @@ def cmd_shux():
   shux status              ← dashboard: contract, tasks, watcher, profile
   shux monitor             ← open browser dashboard (auto-detects project, opens browser)
   shux test-type <id>      ← set mandatory test types for a task (interactive prompt)
+  shux enhance             ← list, enable, disable modules (integrations)
+  shux run "<prompt>"      ← run a prompt via SDK (auto-detect, falls back to CLI)
   shux delegate <task-id>  ← create task + enqueue in one step for watcher dispatch
   shux verify <task-id>    ← record verification result (pass/fail) before close
   shux close <task-id>     ← mark task done, append ledger, write handoff (requires verify)
@@ -247,6 +270,73 @@ def cmd_shux():
 
 Full session flow:
   shux init → shux doctor → shux contract → shux continue → shux close <id>""")
+
+
+@main.command(name="run", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def cmd_run(args):
+    """Run a prompt via SDK (auto-detects SDK, falls back to CLI).
+
+    Usage:
+      shux run "summarize CLAUDE.md"
+      shux run "write tests for cli.py" --model opus
+      shux run "fix the bug" --budget 0.50
+    """
+    import argparse
+
+    p = argparse.ArgumentParser(prog="run")
+    p.add_argument("prompt", help="Prompt to send to Claude")
+    p.add_argument("--model", default=None, help="Model override (e.g. claude-sonnet-4-6, haiku)")
+    p.add_argument("--budget", type=float, default=None, help="Max budget in USD")
+    p.add_argument("--timeout", type=int, default=300, help="Timeout in seconds (default: 300)")
+    p.add_argument("--project", "-p", default=None, help="Project directory (default: cwd)")
+    opts = p.parse_args(list(args))
+
+    project_dir = os.path.realpath(opts.project or os.getcwd())
+
+    # Resolve model shorthand
+    model = opts.model
+    if model:
+        shortcuts = {"sonnet": "claude-sonnet-4-6", "haiku": "claude-haiku-4-5-20251001", "opus": "claude-opus-4-6"}
+        model = shortcuts.get(model, model)
+
+    from superharness.engine.sdk_runner import sdk_available, SDKRunner
+
+    if not sdk_available():
+        print("SDK not installed. Install with: pip install claude-agent-sdk", file=sys.stderr)
+        print("Falling back to CLI...", file=sys.stderr)
+        # Fall back to delegate CLI
+        delegate_args = ["--to", "claude-code", "--project", project_dir]
+        if model:
+            delegate_args += ["--model", model]
+        delegate_args += ["--via", "cli"]
+        _run_module("superharness.commands.delegate", tuple(delegate_args))
+        return
+
+    try:
+        import signal as _signal
+
+        runner = SDKRunner(
+            project_dir=__import__("pathlib").Path(project_dir),
+            model=model,
+            max_budget_usd=opts.budget,
+        )
+
+        def _timeout_handler(signum, frame):
+            print(f"\n⏱  Timed out after {opts.timeout}s", file=sys.stderr)
+            sys.exit(124)
+
+        _signal.signal(_signal.SIGALRM, _timeout_handler)
+        _signal.alarm(opts.timeout)
+
+        result = runner.run(opts.prompt)
+
+        _signal.alarm(0)
+        print(result["output"])
+        print(f"\n--- tokens: {result['input_tokens']} in, {result['output_tokens']} out | cost: ${result['cost_usd']:.4f} ---", file=sys.stderr)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 @main.command(name="version")
