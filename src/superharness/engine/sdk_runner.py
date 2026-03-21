@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +44,8 @@ def _try_import_sdk() -> bool:
 
 def sdk_available() -> bool:
     """Check if the Claude Agent SDK is available."""
+    if os.environ.get("SUPERHARNESS_FORCE_NO_SDK"):
+        return False
     return _try_import_sdk()
 
 

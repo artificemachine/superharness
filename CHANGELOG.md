@@ -1161,3 +1161,20 @@ If you're an agent picking this up:
 - 9 zombie reconciliation tests (6 unit + 1 integration + 2 E2E)
 - Module system: all 12 iterations complete (9 modules, 56 module tests)
 - 847 total tests pass
+
+## [1.1.1] - 2026-03-21
+
+### Added
+- `shux run "prompt"` — SDK dispatch command with --model, --budget, --timeout
+- SDK auto-detect: delegate uses SDK when installed, CLI when not (no --via needed)
+- `SUPERHARNESS_FORCE_NO_SDK` env var for testing without SDK
+- 918 total tests pass
+
+### Fixed
+- Monitor UI: close_task action passed task_id as positional arg instead of --id flag
+- Delegate: SDK result key "content" → "output"
+- Dispatch: shell injection in Linux script -c — " ".join → shlex.join
+- Dispatch: _run_with_timeout now records/clears PID in inbox for zombie detection
+- Zombie reconciler: kills lingering processes when contract says done
+- Zombie reconciler: file handle leak — open() → with open()
+- Dispatch: removed dead _inbox_cmd call in _do_dispatch

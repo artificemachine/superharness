@@ -178,9 +178,11 @@ def _set_inbox_status(inbox_file: str, item_id: str, from_: str, to: str, now: s
 # Timeout subprocess runner
 # ---------------------------------------------------------------------------
 
-def _run_with_timeout(timeout_secs: int, cmd: list[str]) -> int:
+def _run_with_timeout(timeout_secs: int, cmd: list[str], inbox_file: str = "", item_id: str = "") -> int:
     """Run a command with a timeout; returns exit code (124 = timed out)."""
     proc = subprocess.Popen(cmd, preexec_fn=os.setsid)
+    if inbox_file and item_id:
+        _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", str(proc.pid)])
     timed_out = [False]
 
     def _on_alarm(signum: int, frame: object) -> None:
@@ -197,6 +199,8 @@ def _run_with_timeout(timeout_secs: int, cmd: list[str]) -> int:
     finally:
         signal.alarm(0)
         signal.signal(signal.SIGALRM, old_handler)
+        if inbox_file and item_id:
+            _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", ""])
 
     if timed_out[0]:
         return 124
@@ -299,12 +303,6 @@ def _do_dispatch(
     lock: _MkdirLock,
 ) -> int:
     # Read next pending item
-    next_args = ["next_pending", "--file", inbox_file]
-    if target_filter:
-        next_args += ["--to", target_filter]
-
-    r = _inbox_cmd(next_args[1:] if next_args[0] == "next_pending" else next_args)
-    # Re-run correctly
     r = subprocess.run(
         [sys.executable, "-m", "superharness.engine.inbox", "next_pending",
          "--file", inbox_file] + (["--to", target_filter] if target_filter else []),
@@ -419,11 +417,12 @@ def _do_dispatch(
     if platform.system() == "Darwin":
         wrapped_args = ["script", "-q", task_log] + launch_args
     else:
-        wrapped_args = ["script", "-q", "-c", " ".join(launch_args), task_log]
+        import shlex
+        wrapped_args = ["script", "-q", "-c", shlex.join(launch_args), task_log]
 
     # Spawn launcher
     if effective_timeout > 0:
-        launcher_rc = _run_with_timeout(effective_timeout, wrapped_args)
+        launcher_rc = _run_with_timeout(effective_timeout, wrapped_args, inbox_file=inbox_file, item_id=item_id)
     else:
         proc = subprocess.Popen(wrapped_args, preexec_fn=os.setsid)
         _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", str(proc.pid)])

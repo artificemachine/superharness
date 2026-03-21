@@ -249,13 +249,15 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 1200) -> int:
     if not os.path.exists(inbox_file):
         return 0
 
-    items = _yaml.safe_load(open(inbox_file, encoding="utf-8").read()) or []
+    with open(inbox_file, encoding="utf-8") as _f:
+        items = _yaml.safe_load(_f.read()) or []
     if not isinstance(items, list):
         return 0
 
     contract_statuses: dict[str, str] = {}
     if os.path.exists(contract_file):
-        doc = _yaml.safe_load(open(contract_file, encoding="utf-8").read()) or {}
+        with open(contract_file, encoding="utf-8") as _f:
+            doc = _yaml.safe_load(_f.read()) or {}
         for t in doc.get("tasks") or []:
             if isinstance(t, dict) and t.get("id"):
                 contract_statuses[str(t["id"])] = str(t.get("status", ""))

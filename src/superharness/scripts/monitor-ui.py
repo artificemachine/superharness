@@ -1655,7 +1655,7 @@ class Handler(BaseHTTPRequestHandler):
                 return ({"error": "missing task id"}, 400)
             return self._run_cmd(
                 [sys.executable, "-m", "superharness.commands.close",
-                 "--project", str(self.project_dir), task_id]
+                 "--project", str(self.project_dir), "--id", task_id]
             ), 200
 
         if action.startswith("approve_task:"):
