@@ -103,7 +103,7 @@ def test_delegate_supervised_sets_non_interactive_only(repo_root, tmp_path) -> N
 
     result = _run_delegate_py(
         repo_root,
-        args=["--to", "claude-code", "--project", str(project), "--task", "task-1", "--non-interactive"],
+        args=["--to", "claude-code", "--project", str(project), "--task", "task-1", "--non-interactive", "--via", "cli"],
         env={
             "PATH": f"{bin_dir}:/usr/bin:/bin",
             "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": None,
@@ -111,7 +111,7 @@ def test_delegate_supervised_sets_non_interactive_only(repo_root, tmp_path) -> N
         },
     )
     # supervised sets NON_INTERACTIVE=YES so risk check passes,
-    # but SKIP_PERMISSIONS is not set → claude-code should refuse (exit 1)
+    # but SKIP_PERMISSIONS is not set → claude-code CLI should refuse (exit 1)
     assert result.returncode == 1
     assert "SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS=YES" in result.stderr
 
