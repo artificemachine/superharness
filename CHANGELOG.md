@@ -1218,3 +1218,10 @@ If you're an agent picking this up:
 ### Changed
 - 108 ruff auto-fixes across `src/` and `tests/` (F401, F541, E401)
 - Added `CONTRIBUTING.md` with quickstart, commands, conventions, and PR instructions
+
+## [1.2.2] - 2026-03-26
+
+### Fixed
+- CI: `pip-audit` now audits only superharness's runtime deps (`--skip-editable`), not the CI toolchain (shipguard, setuptools) — eliminates false-positive CVE failures
+- CI: `contract-hygiene.yml` now installs superharness before running hygiene script (was: `ModuleNotFoundError: No module named 'superharness'`)
+- `test_validate_defaults_to_cwd`: narrowed assertion from `"required" not in stderr` to `"the following arguments are required" not in stderr` — prevents false failure when validate's own "Missing required path: ledger.md" message contains the word "required" (Windows CI)
