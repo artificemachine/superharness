@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 PYTHON = sys.executable
 
@@ -124,7 +125,7 @@ def test_task_create_with_dependency(tmp_path: Path) -> None:
         "--dependency", "dep-task",
     ])
     assert r.returncode == 0, r.stderr
-    assert "dependency=dep-task" in r.stdout
+    assert "dependency" in r.stdout or "blocked_by" in r.stdout
     text = contract.read_text()
     assert "dependency: dep-task" in text
 
@@ -264,3 +265,102 @@ def test_task_status_update_done_with_dep_done(tmp_path: Path) -> None:
     assert r.returncode == 0, r.stderr
     text = contract.read_text()
     assert "status: in_progress" in text
+
+
+# ---------------------------------------------------------------------------
+# tdd block
+# ---------------------------------------------------------------------------
+
+def test_task_create_with_tdd_block(tmp_path: Path) -> None:
+    """task create with --tdd-red/green/refactor writes tdd block to contract."""
+    project, contract = _make_contract(tmp_path)
+    r = _run_task([
+        "create",
+        "--project", str(project),
+        "--id", "feat.tdd-task",
+        "--title", "TDD feature",
+        "--owner", "claude-code",
+        "--tdd-red", "write failing test for X",
+        "--tdd-green", "minimal code to pass X",
+        "--tdd-refactor", "extract helper, no new behaviour",
+    ])
+    assert r.returncode == 0, r.stderr
+    data = yaml.safe_load(contract.read_text())
+    task = next(t for t in data["tasks"] if t["id"] == "feat.tdd-task")
+    assert "tdd" in task
+    assert task["tdd"]["red"] == "write failing test for X"
+    assert task["tdd"]["green"] == "minimal code to pass X"
+    assert task["tdd"]["refactor"] == "extract helper, no new behaviour"
+
+
+def test_task_create_without_tdd_has_no_tdd_key(tmp_path: Path) -> None:
+    """task create without --tdd-* flags omits tdd key from contract."""
+    project, contract = _make_contract(tmp_path)
+    r = _run_task([
+        "create",
+        "--project", str(project),
+        "--id", "feat.no-tdd",
+        "--title", "No TDD",
+        "--owner", "claude-code",
+    ])
+    assert r.returncode == 0, r.stderr
+    data = yaml.safe_load(contract.read_text())
+    task = next(t for t in data["tasks"] if t["id"] == "feat.no-tdd")
+    assert "tdd" not in task
+
+
+def test_task_create_tdd_partial_is_accepted(tmp_path: Path) -> None:
+    """task create with only some tdd flags still writes what's provided."""
+    project, contract = _make_contract(tmp_path)
+    r = _run_task([
+        "create",
+        "--project", str(project),
+        "--id", "feat.partial-tdd",
+        "--title", "Partial TDD",
+        "--owner", "claude-code",
+        "--tdd-red", "write the failing test",
+    ])
+    assert r.returncode == 0, r.stderr
+    data = yaml.safe_load(contract.read_text())
+    task = next(t for t in data["tasks"] if t["id"] == "feat.partial-tdd")
+    assert "tdd" in task
+    assert task["tdd"]["red"] == "write the failing test"
+    assert "green" not in task["tdd"]
+    assert "refactor" not in task["tdd"]
+
+
+# ---------------------------------------------------------------------------
+# Full lifecycle status vocabulary
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("status", [
+    "plan_proposed", "plan_approved", "report_ready", "review_passed", "review_failed",
+])
+def test_task_status_accepts_full_lifecycle_statuses(tmp_path: Path, status: str) -> None:
+    """task status must accept all lifecycle statuses, not just the legacy subset."""
+    project, _ = _make_contract(tmp_path, [{"id": "t-lc", "owner": "claude-code", "status": "todo"}])
+    extra = ["--summary", "moving along"] if status not in ("failed", "stopped") else ["--reason", "blocked"]
+    r = _run_task([
+        "status",
+        "--project", str(project),
+        "--id", "t-lc",
+        "--status", status,
+        "--actor", "claude-code",
+    ] + extra)
+    assert r.returncode == 0, f"status '{status}' rejected: {r.stderr}"
+    assert status in r.stdout
+
+
+def test_task_status_rejects_unknown_status(tmp_path: Path) -> None:
+    """task status must reject statuses not in the vocabulary."""
+    project, _ = _make_contract(tmp_path, [{"id": "t-bad", "owner": "claude-code", "status": "todo"}])
+    r = _run_task([
+        "status",
+        "--project", str(project),
+        "--id", "t-bad",
+        "--status", "flying",
+        "--actor", "claude-code",
+        "--summary", "invalid",
+    ])
+    assert r.returncode != 0
+    assert "status must be" in r.stderr

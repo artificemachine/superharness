@@ -7,7 +7,6 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -35,7 +34,7 @@ def _make_project(tmp_path: Path, *, inbox_items: list[dict] | None = None) -> P
 
     (harness / "contract.yaml").write_text(
         "id: test-contract\ntasks:\n"
-        "  - id: test-task\n    owner: codex-cli\n    status: todo\n"
+        "  - id: test-task\n    owner: codex-cli\n    status: plan_approved\n"
         f"    project_path: '{project.as_posix()}'\n"
     )
 
@@ -50,7 +49,7 @@ def _make_project(tmp_path: Path, *, inbox_items: list[dict] | None = None) -> P
             lines.append(f"  priority: {item.get('priority', 2)}")
             lines.append(f"  retry_count: {item.get('retry_count', 0)}")
             lines.append(f"  max_retries: {item.get('max_retries', 3)}")
-            lines.append(f"  created_at: 2026-01-01T00:00:00Z")
+            lines.append("  created_at: 2026-01-01T00:00:00Z")
         (harness / "inbox.yaml").write_text("\n".join(lines) + "\n")
     else:
         # Empty inbox
@@ -197,6 +196,7 @@ def test_dispatch_dirty_worktree_pauses_codex(tmp_path: Path) -> None:
     subprocess.run(["git", "init"], cwd=project, check=True, capture_output=True)
     subprocess.run(["git", "config", "user.email", "t@test.com"], cwd=project, check=True, capture_output=True)
     subprocess.run(["git", "config", "user.name", "tester"], cwd=project, check=True, capture_output=True)
+    subprocess.run(["git", "config", "core.hooksPath", "/dev/null"], cwd=project, check=True, capture_output=True)
     tracked = project / "tracked.txt"
     tracked.write_text("base\n")
     subprocess.run(["git", "add", "tracked.txt"], cwd=project, check=True, capture_output=True)

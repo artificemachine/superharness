@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: superharness
-Version: 0.9.6
+Version: 1.2.1
 Summary: Multi-agent session handoff framework for Claude Code and Codex CLI
 License-Expression: Apache-2.0
 Project-URL: Homepage, https://github.com/celstnblacc/superharness
@@ -75,8 +75,10 @@ shux uninstall         # remove watcher and system artifacts for this project
 shux hygiene           # validate protocol compliance (contract, handoffs, ledger)
 shux monitor           # open browser dashboard
 shux watch             # start continuous watcher in foreground
-shux update            # pull latest superharness + refresh CLAUDE.md, AGENTS.md, templates
+shux update            # pull latest superharness + refresh templates, hooks, and watcher
 shux discuss           # start or manage a cross-agent discussion (topic, owners, optional ID)
+shux install-hooks     # merge adapter hooks into ~/.claude/settings.json (portable, run once per machine)
+shux init --skip-hooks # init without modifying ~/.claude/settings.json (for CI or conservative setups)
 shux help              # show all shux shortcuts in the terminal
 ```
 
@@ -140,14 +142,14 @@ pytest tests/ -q
 ## What You Get
 
 - **`shux` shortcuts** — Control superharness from inside Claude Code or Codex CLI
-- **`superharness init`** — Bootstrap protocol files (`.superharness/`)
+- **`superharness init`** — Bootstrap protocol files (`.superharness/`); auto-installs Claude Code hooks and background watcher (macOS)
 - **`superharness delegate`** — Launch agent with contract context (auto model routing)
 - **`superharness verify`** — Record verification result before closing a task
 - **`superharness close`** — Close a verified task (done + ledger + handoff)
 - **`superharness enqueue|dispatch|watch`** — Queue-based task routing
 - **`superharness hygiene`** — Protocol compliance checks
 - **`superharness watch --foreground`** — Cross-platform continuous watcher
-- **`superharness monitor-ui`** — Browser dashboard: inbox, tasks, watcher state, plan approvals
+- **`superharness monitor-ui`** — Browser dashboard: inbox, tasks, watcher state, enqueue with TDD instructions
 - **`superharness doctor`** — Prerequisite and setup health check
 - **`superharness uninstall`** — Clean removal of system artifacts
 - **Background watcher** — Unattended execution via macOS launchd or Linux systemd (opt-in)
@@ -253,6 +255,6 @@ CONFIRM_NON_INTERACTIVE=yes bash scripts/install-systemd-inbox-watcher.sh \
 
 ## Current Version
 
-Current version: **v0.8.0**
+Current version: **v0.9.23**
 
 See [CHANGELOG.md](CHANGELOG.md) for the full iteration log.

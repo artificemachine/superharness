@@ -34,7 +34,7 @@ def _write_contract(project: Path) -> None:
                 "tasks:",
                 "  - id: mcp-docs",
                 "    owner: codex-cli",
-                "    status: todo",
+                "    status: plan_approved",
                 f"    project_path: '{project.as_posix()}'" ,
             ]
         )
@@ -317,6 +317,7 @@ def test_dispatch_non_interactive_codex_pauses_when_worktree_dirty(repo_root, tm
     run_cmd(["git", "init"], cwd=project, check=True, capture_output=True, text=True)
     run_cmd(["git", "config", "user.email", "test@example.com"], cwd=project, check=True, capture_output=True, text=True)
     run_cmd(["git", "config", "user.name", "tester"], cwd=project, check=True, capture_output=True, text=True)
+    run_cmd(["git", "config", "core.hooksPath", "/dev/null"], cwd=project, check=True, capture_output=True, text=True)
     tracked = project / "tracked.txt"
     tracked.write_text("base\n")
     run_cmd(["git", "add", "tracked.txt"], cwd=project, check=True, capture_output=True, text=True)
@@ -383,7 +384,7 @@ def test_dispatch_non_interactive_reconciles_to_done_from_contract(repo_root, tm
                 "  shift",
                 "done",
                 'if [ -n \"$proj\" ] && [ -f \"$proj/.superharness/contract.yaml\" ]; then',
-                "  perl -0pi -e 's/(id:\\s*mcp-docs\\s*\\n(?:[^\\n]*\\n)*?\\s*status:\\s*)(?:todo|in_progress|running|failed|done)/${1}done/s' \"$proj/.superharness/contract.yaml\"",
+                "  perl -0pi -e 's/(id:\\s*mcp-docs\\s*\\n(?:[^\\n]*\\n)*?\\s*status:\\s*)(?:todo|plan_approved|in_progress|running|failed|done)/${1}done/s' \"$proj/.superharness/contract.yaml\"",
                 "fi",
                 "echo fake-codex",
             ]
@@ -450,7 +451,7 @@ def test_dispatch_non_interactive_pauses_when_contract_waits_user_approval(repo_
                 "  shift",
                 "done",
                 'if [ -n \"$proj\" ] && [ -f \"$proj/.superharness/contract.yaml\" ]; then',
-                "  perl -0pi -e 's/(id:\\s*mcp-docs\\s*\\n(?:[^\\n]*\\n)*?\\s*status:\\s*)(?:todo|in_progress|running|failed|done|pending_user_approval)/${1}pending_user_approval/s' \"$proj/.superharness/contract.yaml\"",
+                "  perl -0pi -e 's/(id:\\s*mcp-docs\\s*\\n(?:[^\\n]*\\n)*?\\s*status:\\s*)(?:todo|plan_approved|in_progress|running|failed|done|pending_user_approval)/${1}pending_user_approval/s' \"$proj/.superharness/contract.yaml\"",
                 "fi",
                 "echo fake-codex",
             ]
@@ -523,7 +524,7 @@ def test_dispatch_worker_mode_uses_dispatch_project_for_execution(repo_root, tmp
                 "done",
                 f'printf \"%s\" \"$proj\" > "{capture_path}"',
                 'if [ -n \"$proj\" ] && [ -f \"$proj/.superharness/contract.yaml\" ]; then',
-                "  perl -0pi -e 's/(id:\\s*mcp-docs\\s*\\n(?:[^\\n]*\\n)*?\\s*status:\\s*)(?:todo|in_progress|running|failed|done)/${1}done/s' \"$proj/.superharness/contract.yaml\"",
+                "  perl -0pi -e 's/(id:\\s*mcp-docs\\s*\\n(?:[^\\n]*\\n)*?\\s*status:\\s*)(?:todo|plan_approved|in_progress|running|failed|done)/${1}done/s' \"$proj/.superharness/contract.yaml\"",
                 "fi",
                 "echo fake-codex",
             ]

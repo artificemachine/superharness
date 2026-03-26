@@ -8,7 +8,7 @@ Constraints: limited bandwidth. Ship > plan.
 
 ## This Project
 - What: superharness
-- Stack: Python/Ruby
+- Stack: Python
 - Status: active
 
 ## Before Starting Work

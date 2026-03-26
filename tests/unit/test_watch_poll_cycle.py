@@ -6,13 +6,11 @@ from __future__ import annotations
 
 import hashlib
 import os
-import signal
 import subprocess
 import sys
 import time
 from pathlib import Path
 
-import pytest
 
 PYTHON = sys.executable
 
@@ -34,7 +32,7 @@ def _make_project(tmp_path: Path) -> Path:
     (harness / "handoffs").mkdir(parents=True, exist_ok=True)
     (harness / "contract.yaml").write_text(
         "id: test-contract\ntasks:\n"
-        "  - id: t1\n    owner: codex-cli\n    status: todo\n"
+        "  - id: t1\n    owner: codex-cli\n    status: plan_approved\n"
         f"    project_path: '{project.as_posix()}'\n"
     )
     (harness / "inbox.yaml").write_text(INBOX_HEADER)

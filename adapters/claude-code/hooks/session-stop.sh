@@ -155,20 +155,6 @@ except Exception as _e:
 " 2>/dev/null || true
 fi
 
-# --- Kill monitor dashboard if running for this project ---
-MONITOR_PORT="${SUPERHARNESS_MONITOR_PORT:-8787}"
-MONITOR_PID="$(lsof -ti :"${MONITOR_PORT}" 2>/dev/null || true)"
-if [ -n "$MONITOR_PID" ]; then
-  # Only kill if the process is the superharness monitor (not an unrelated service)
-  PROC_CMD="$(ps -p "$MONITOR_PID" -o args= 2>/dev/null || true)"
-  if echo "${PROC_CMD}" | grep -q "superharness"; then
-    kill "$MONITOR_PID" 2>/dev/null || true
-    _ledger "${TIMESTAMP} session-stop: monitor killed (pid ${MONITOR_PID})"
-  fi
-fi
-# Also kill any monitor instance bound to this project path (catches non-default ports)
-pkill -f "monitor-ui.py --project ${PROJECT_DIR}" 2>/dev/null || true
-
 # --- Unload launchd watcher for this project (macOS only) ---
 if [ "$(uname -s)" = "Darwin" ]; then
   PROJECT_SLUG="$(basename "$PROJECT_DIR" | tr -cs 'A-Za-z0-9' '-')"

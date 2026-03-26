@@ -2,10 +2,8 @@
 from __future__ import annotations
 
 import subprocess
-import sys
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
-import pytest
 from click.testing import CliRunner
 
 from superharness.cli import _is_git_repo, main

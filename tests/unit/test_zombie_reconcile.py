@@ -6,13 +6,11 @@ E2E test: inbox_watch --once reconciles zombies end-to-end.
 """
 from __future__ import annotations
 
-import hashlib
 import os
 import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 import yaml
 
 PYTHON = sys.executable

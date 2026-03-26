@@ -1,0 +1,30 @@
+type: report
+from: claude-code
+to: owner
+task_id: mod.0-loader
+date: 2026-03-20
+outcome: |
+  Module loader (Iteration 0) complete — all 5 tests pass.
+
+  Implementation:
+  - src/superharness/modules/loader.py: Module dataclass and load_modules() function
+  - Loads YAML files from .superharness/modules/*.yaml
+  - Returns only enabled modules (enabled: true)
+  - Safe YAML parsing with error handling (malformed files skipped, logged)
+  - Each Module has: name, enabled, hooks, settings, detect, file_path
+
+  Test coverage:
+  - Empty directory handling
+  - Enabled/disabled module filtering
+  - Invalid YAML graceful handling
+  - Full module structure validation
+
+  All acceptance criteria met:
+  ✓ 5 tests pass in test_module_loader.py
+
+context: |
+  This is Iteration 0 of the module system plan (docs/plan-module-system.md).
+  Next step: mod.1-runner (module runner with lifecycle hooks).
+
+  The loader is the foundation — it reads module definitions but doesn't execute them yet.
+  Module execution logic comes in Iteration 1.

@@ -1,0 +1,7 @@
+closed_at: '2026-03-26T00:41:12Z'
+from: claude-code
+status: done
+summary: blocked_by field + full lifecycle gates on delegate and close — 19 tests,
+  TDD complete
+task: feat.task-dependencies
+to: owner

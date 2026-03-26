@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from tests.helpers import REPO_ROOT, run_bash
+from tests.helpers import REPO_ROOT
 import pytest
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
@@ -36,7 +36,7 @@ def _setup_project(tmp_path: Path, extra_task_fields: str = "") -> Path:
             "tasks:",
             "  - id: mcp-docs",
             "    owner: codex-cli",
-            "    status: todo",
+            "    status: plan_approved",
             f"    project_path: '{project.as_posix()}'" ,
         ]
     )
@@ -319,7 +319,7 @@ def test_delegate_blocked_by_dependency(repo_root, tmp_path) -> None:
         f"    project_path: '{project.as_posix()}'\n"
         "  - id: mcp-docs\n"
         "    owner: codex-cli\n"
-        "    status: todo\n"
+        "    status: plan_approved\n"
         "    depends_on: [dep-task]\n"
         f"    project_path: '{project.as_posix()}'\n"
     )
@@ -350,7 +350,7 @@ def test_delegate_allowed_when_dependency_done(repo_root, tmp_path) -> None:
         f"    project_path: '{project.as_posix()}'\n"
         "  - id: mcp-docs\n"
         "    owner: codex-cli\n"
-        "    status: todo\n"
+        "    status: plan_approved\n"
         "    depends_on: [dep-task]\n"
         f"    project_path: '{project.as_posix()}'\n"
     )

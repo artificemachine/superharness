@@ -6,7 +6,6 @@ model names. Falls back to ("standard", "medium") on any failure.
 from __future__ import annotations
 
 import subprocess
-import sys
 
 MODEL_MAP: dict[str, dict[str, str]] = {
     "claude-code": {"mini": "haiku", "standard": "sonnet", "max": "opus"},
