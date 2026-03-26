@@ -40,10 +40,12 @@ shux init              # bootstrap .superharness/ for this project
 shux doctor            # check prerequisites and protocol health
 shux contract          # show all tasks with status and next-task suggestion
 shux continue          # resume active contract automatically
-shux delegate <id>     # create task + enqueue in one step
+shux delegate <id>     # create task + enqueue in one step (task must be plan_approved or later)
 shux test-type <id>    # set mandatory test types for a task
 shux verify <id>       # record verification result (pass/fail)
-shux close <id>        # mark done (requires verify), append ledger, write handoff
+shux close <id>        # mark done (task must be report_ready or review_passed); use --force to bypass
+shux task create       # create a task with --blocked-by, --tdd-red/green/refactor, --criteria flags
+shux task status       # update task lifecycle status (todo → plan_proposed → plan_approved → in_progress → report_ready → done)
 shux status            # dashboard: tasks, watcher, profile
 shux recall <keywords> # search past handoffs and ledger
 shux uninstall         # remove watcher and system artifacts for this project
@@ -118,9 +120,10 @@ pytest tests/ -q
 
 - **`shux` shortcuts** — Control superharness from inside Claude Code or Codex CLI
 - **`superharness init`** — Bootstrap protocol files (`.superharness/`); auto-installs Claude Code hooks and background watcher (macOS)
-- **`superharness delegate`** — Launch agent with contract context (auto model routing)
+- **`superharness task`** — Create and update tasks: `--blocked-by <id>` dependency tracking, `--tdd-red/green/refactor` TDD block, `--criteria` acceptance criteria; `task status` enforces the full lifecycle (todo → plan_proposed → plan_approved → in_progress → report_ready → done)
+- **`superharness delegate`** — Launch agent with contract context (requires task status ≥ `plan_approved`; auto model routing)
 - **`superharness verify`** — Record verification result before closing a task
-- **`superharness close`** — Close a verified task (done + ledger + handoff)
+- **`superharness close`** — Close a verified task (requires `report_ready` or `review_passed`; use `--force` to bypass lifecycle gate)
 - **`superharness enqueue|dispatch|watch`** — Queue-based task routing
 - **`superharness hygiene`** — Protocol compliance checks
 - **`superharness watch --foreground`** — Cross-platform continuous watcher
@@ -230,6 +233,6 @@ CONFIRM_NON_INTERACTIVE=yes bash scripts/install-systemd-inbox-watcher.sh \
 
 ## Current Version
 
-Current version: **v0.9.23**
+Current version: **v1.1.1**
 
 See [CHANGELOG.md](CHANGELOG.md) for the full iteration log.

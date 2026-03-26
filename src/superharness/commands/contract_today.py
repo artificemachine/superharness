@@ -139,7 +139,7 @@ def contract_today(project_dir: str, agent: str = "") -> int:
                 continue
             status = str(t.get("status") or "")
             owner = str(t.get("owner") or "")
-            if status not in ("todo", "in_progress"):
+            if status not in ("todo", "plan_approved", "in_progress"):
                 continue
             if not owner:
                 continue

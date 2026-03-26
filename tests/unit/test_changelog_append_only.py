@@ -17,6 +17,9 @@ def _init_repo(tmp_path: Path) -> Path:
     subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
     subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=repo, capture_output=True, check=True)
     subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, capture_output=True, check=True)
+    # Disable global hooks so the temp repo commits are not blocked by the
+    # machine-wide pre-commit hook (e.g. branch protection for main).
+    subprocess.run(["git", "config", "core.hooksPath", "/dev/null"], cwd=repo, capture_output=True, check=True)
     changelog = repo / "CHANGELOG.md"
     changelog.write_text("# Changelog\n\nInitial entry.\n")
     subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, capture_output=True, check=True)

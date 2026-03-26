@@ -4,9 +4,7 @@ Tests mock claude_agent_sdk.query() to avoid real API calls.
 """
 from __future__ import annotations
 
-import asyncio
-from pathlib import Path
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch
 
 import pytest
 

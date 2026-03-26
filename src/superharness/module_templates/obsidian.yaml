@@ -1,0 +1,18 @@
+name: obsidian
+description: "Save task handoffs to Obsidian vault — auto-detected, no config needed"
+enabled: false
+detect:
+  any_path:
+    - ~/Documents/OBSIDIAN_ICLOUD/coredev/
+    - ~/Documents/Obsidian/
+    - ~/Obsidian/
+  optional_bin: osm
+  optional_mcp: obsidian-semantic
+hooks:
+  on_close:
+    action: obsidian_write_note
+settings:
+  vault_path: ""  # Auto-detected if empty
+  vault_subfolder: "1_ai/{project_name}/"
+  filename_pattern: "{project_name}-{date}-{title}.md"
+  redact_secrets: true

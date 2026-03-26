@@ -92,14 +92,13 @@ _cmd("enhance",         "Module marketplace — enable, disable, list integratio
 
 
 def _is_monitor_running(port: int = 8787) -> bool:
-    """Check if the monitor dashboard is already running on the given port."""
-    import socket
+    """Check if the superharness monitor is running by probing /api/status."""
+    import urllib.request
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(1)
-            s.connect(("127.0.0.1", port))
-            return True
-    except (ConnectionRefusedError, OSError):
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/status")
+        with urllib.request.urlopen(req, timeout=1) as resp:
+            return resp.status == 200
+    except Exception:
         return False
 
 
@@ -112,7 +111,7 @@ def _run_monitor(args):
 
     # Check if monitor is already running (skip for foreground mode — user wants a new one)
     if not foreground and _is_monitor_running():
-        print(f"monitor ui: http://127.0.0.1:8787  (already running)")
+        print("monitor ui: http://127.0.0.1:8787  (already running)")
         print(f"project: {os.getcwd()}")
         return
 
@@ -121,7 +120,8 @@ def _run_monitor(args):
         result = subprocess.run([sys.executable, path] + args_list)
         sys.exit(result.returncode)
     # Default: background — detach from terminal, return immediately
-    import tempfile, time as _time
+    import tempfile
+    import time as _time
     fd, url_file = tempfile.mkstemp(suffix=".monitor-url")
     os.close(fd)  # Close fd; monitor-ui.py will write to this path
     env = os.environ.copy()
@@ -136,16 +136,27 @@ def _run_monitor(args):
     )
     # Wait briefly for the server to write its URL to the temp file
     deadline = _time.monotonic() + 5.0
+    url_written = False
     while _time.monotonic() < deadline:
-        if os.path.exists(url_file):
+        # Check if process crashed before writing anything
+        if proc.poll() is not None:
+            if os.path.exists(url_file):
+                os.unlink(url_file)
+            print(f"monitor failed to start (exit code {proc.returncode})")
+            print("tip: run 'superharness monitor --foreground' to see the error")
+            return
+        if os.path.exists(url_file) and os.path.getsize(url_file) > 0:
             with open(url_file) as f:
                 for line in f:
                     print(line.rstrip())
             os.unlink(url_file)
+            url_written = True
             break
         _time.sleep(0.1)
-    else:
-        print(f"monitor starting in background...")
+    if not url_written:
+        if os.path.exists(url_file):
+            os.unlink(url_file)
+        print("monitor starting in background...")
     print(f"pid: {proc.pid}  (stop with: kill {proc.pid})")
 
 
@@ -314,7 +325,7 @@ def cmd_run(args):
         return
 
     try:
-        import signal as _signal
+        import threading
 
         runner = SDKRunner(
             project_dir=__import__("pathlib").Path(project_dir),
@@ -322,16 +333,25 @@ def cmd_run(args):
             max_budget_usd=opts.budget,
         )
 
-        def _timeout_handler(signum, frame):
-            print(f"\n⏱  Timed out after {opts.timeout}s", file=sys.stderr)
+        result_holder: list = []
+        exc_holder: list = []
+
+        def _run():
+            try:
+                result_holder.append(runner.run(opts.prompt))
+            except Exception as e:
+                exc_holder.append(e)
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        t.join(timeout=opts.timeout)
+        if t.is_alive():
+            print(f"\nTimed out after {opts.timeout}s", file=sys.stderr)
             sys.exit(124)
+        if exc_holder:
+            raise exc_holder[0]
 
-        _signal.signal(_signal.SIGALRM, _timeout_handler)
-        _signal.alarm(opts.timeout)
-
-        result = runner.run(opts.prompt)
-
-        _signal.alarm(0)
+        result = result_holder[0]
         print(result["output"])
         print(f"\n--- tokens: {result['input_tokens']} in, {result['output_tokens']} out | cost: ${result['cost_usd']:.4f} ---", file=sys.stderr)
     except Exception as e:

@@ -1,9 +1,7 @@
 """Tests for module loader (TDD — RED phase)."""
 from __future__ import annotations
 
-from pathlib import Path
 
-import pytest
 
 
 class TestModuleLoader:

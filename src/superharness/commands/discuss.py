@@ -291,14 +291,9 @@ def main(argv: list[str] | None = None) -> None:
     if argv is None:
         argv = sys.argv[1:]
 
-    class _CapUsage(argparse.HelpFormatter):
-        def _format_usage(self, usage, actions, groups, prefix):
-            return super()._format_usage(usage, actions, groups, "Usage: ")
-
     parser = argparse.ArgumentParser(
         prog="discuss",
         description="superharness discussion and approval-gate management",
-        formatter_class=_CapUsage,
         add_help=True,
     )
     sub = parser.add_subparsers(dest="subcmd")

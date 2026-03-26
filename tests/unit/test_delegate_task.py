@@ -21,7 +21,7 @@ def _setup_project(tmp_path: Path, owner: str = "codex-cli") -> Path:
                 "tasks:",
                 "  - id: mcp-docs",
                 f"    owner: {owner}",
-                "    status: todo",
+                "    status: plan_approved",
                 f"    project_path: '{project.as_posix()}'" ,
             ]
         )

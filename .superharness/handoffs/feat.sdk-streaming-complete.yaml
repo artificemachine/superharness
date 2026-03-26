@@ -1,0 +1,38 @@
+task: feat.sdk-streaming
+from: claude-code
+to: owner
+date: 2026-03-20T19:40:37Z
+status: complete
+
+scope: |
+  Live streaming: SDK responses stream to launcher-logs and monitor UI.
+  Feature was already fully implemented through prior work on feat.live-task-log
+  and feat.sdk-runner.
+
+outcomes:
+  - SDK runner streams to launcher-logs via on_event callback
+  - Monitor UI polls /api/task-log every 3 seconds for active tasks
+  - View Report shows live output with auto-scroll and "(auto-refreshing)" indicator
+  - Delegate creates timestamped log files in .superharness/launcher-logs/
+
+acceptance_criteria_met:
+  - "View Report on launched task shows streaming output in real-time": YES
+
+test_results: |
+  SDK Streaming Tests (5/5 pass):
+  - test_runner_streams_to_log_file_when_provided PASSED
+  - test_runner_streams_to_log_file_in_real_time PASSED
+  - test_runner_creates_log_directory_if_missing PASSED
+  - test_runner_handles_missing_on_event_gracefully PASSED
+  - test_runner_without_log_file_works_as_before PASSED
+
+  Live Task Log Tests (5/5 pass):
+  - test_launcher_creates_log_file PASSED
+  - test_api_task_log_endpoint_returns_log_content PASSED
+  - test_ui_polls_live_output_for_launched_task PASSED
+  - test_log_file_rotation_keeps_last_5_launches PASSED
+  - test_api_task_log_handles_missing_file_gracefully PASSED
+
+notes: |
+  No code changes were needed — feature was already complete from earlier sessions.
+  feat.sdk-session and feat.sdk-budget were also already complete.

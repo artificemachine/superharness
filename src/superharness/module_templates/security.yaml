@@ -1,0 +1,11 @@
+name: security
+description: "Auto-run shipguard SAST on verify — blocks on critical findings"
+enabled: false
+detect:
+  any_bin: [shipguard, gitleaks]
+hooks:
+  on_verify:
+    action: security_scan
+    block_on: critical
+settings:
+  severity_threshold: high

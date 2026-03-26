@@ -1,0 +1,10 @@
+name: auto-schedule
+description: "Auto-delegate tasks when scheduled_after date arrives and dependencies are met"
+enabled: false
+hooks:
+  on_watcher_tick:
+    action: check_scheduled_tasks
+settings:
+  check_depends_on: true
+  auto_target: claude-code    # default delegation target
+detect: {}

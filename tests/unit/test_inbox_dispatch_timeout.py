@@ -1,13 +1,10 @@
 """Tests for dispatcher auto-timeout feature (feat.auto-timeout)."""
 from __future__ import annotations
 
-import os
-import tempfile
 import textwrap
 from pathlib import Path
 
 import pytest
-import yaml
 
 from superharness.commands.inbox_dispatch import _get_task_effort_timeout
 

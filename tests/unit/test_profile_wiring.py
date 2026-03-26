@@ -40,9 +40,9 @@ def _setup_project(tmp_path: Path, *, owner: str = "codex-cli") -> Path:
             [
                 "id: test-contract",
                 "tasks:",
-                f"  - id: task-1",
+                "  - id: task-1",
                 f"    owner: {owner}",
-                "    status: todo",
+                "    status: plan_approved",
                 f"    project_path: '{project.as_posix()}'" ,
             ]
         )
@@ -261,7 +261,7 @@ def _setup_contract_today_project(tmp_path: Path) -> Path:
             "  - id: ct-task-1",
             "    title: A task",
             "    owner: codex-cli",
-            "    status: todo",
+            "    status: plan_approved",
         ]) + "\n"
     )
     return project

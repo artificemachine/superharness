@@ -43,6 +43,13 @@ See also: `SOUL.md.template` for the separate soul file approach (preferred for 
 - Keep task status, ledger, and handoff updated before stopping.
 - Keep task `project_path` absolute and accurate.
 
+## Vault Backlog Rule
+When writing anything to the Obsidian vault, also check and update `notes/0_meta/backlog/_backlog_index.md`:
+- Append any new actionable items (TODOs, ideas, "next steps") under the appropriate project heading.
+- Do not duplicate items already present.
+- Use format: `- [ ] **project: idea** — description`
+- `shux hygiene` checks that the backlog index exists.
+
 ## CHANGELOG Policy (Strict)
 - `CHANGELOG.md` is append-only.
 - Never edit, reorder, or delete existing lines in `CHANGELOG.md`.
