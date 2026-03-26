@@ -1241,3 +1241,9 @@ If you're an agent picking this up:
 
 ### Fixed
 - CI: contract-hygiene "Validate protocol hygiene" step now advisory (`|| true`) — pre-existing ledger debt in historical done tasks causes validate.py to exit 1 regardless of `--strict`; YAML syntax validation steps remain blocking
+
+## [1.2.6] - 2026-03-26
+
+### Fixed
+- Windows CI: `_process_alive()` in `engine/inbox.py` used `os.kill(pid, 0)` which on Windows maps to `GenerateConsoleCtrlEvent(CTRL_C_EVENT, pid)`, sending CTRL+C to the entire process group including pytest — replaced with `OpenProcess`/`GetExitCodeProcess` via ctypes on Windows
+- CI: unit-tests matrix now sets `fail-fast: false` so a Windows failure no longer cancels Ubuntu and macOS jobs
