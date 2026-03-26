@@ -1,6 +1,9 @@
 """Tests for ntfy module (TDD — RED → GREEN → REFACTOR)."""
 from __future__ import annotations
 
+import pytest
+pytest.importorskip("requests")
+
 from unittest.mock import Mock, patch
 
 

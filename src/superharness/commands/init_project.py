@@ -481,7 +481,8 @@ def main(argv: list[str] | None = None) -> None:
         print("     or use: superharness watch --foreground --project . --interval 30")
 
     # Plugin install hint: auto-context in Claude Code requires the plugin
-    plugin_path = Path.home() / ".claude" / "plugins" / "superharness"
+    _home = Path(os.environ["HOME"]) if "HOME" in os.environ else Path.home()
+    plugin_path = _home / ".claude" / "plugins" / "superharness"
     if not plugin_path.exists():
         adapter_install = _ROOT / "adapters" / "claude-code" / "install.sh"
         if adapter_install.exists():

@@ -1247,3 +1247,15 @@ If you're an agent picking this up:
 ### Fixed
 - Windows CI: `_process_alive()` in `engine/inbox.py` used `os.kill(pid, 0)` which on Windows maps to `GenerateConsoleCtrlEvent(CTRL_C_EVENT, pid)`, sending CTRL+C to the entire process group including pytest — replaced with `OpenProcess`/`GetExitCodeProcess` via ctypes on Windows
 - CI: unit-tests matrix now sets `fail-fast: false` so a Windows failure no longer cancels Ubuntu and macOS jobs
+
+## [1.2.7] - 2026-03-26
+
+### Fixed
+- CI: `test_module_ntfy` and `test_sdk_runner` skip gracefully when optional deps (`requests`, `claude_agent_sdk`) are not installed in CI — add `pytest.importorskip` at module level
+- CI: `test_module_security.py::test_on_verify_*` tests now also mock `shutil.which` so the scanner-not-found early-return doesn't mask the subprocess assertion
+- CI: `test_delegate_via_sdk_uses_sdk_runner_when_available` skips when `claude_agent_sdk` is not installed (subprocess patches can't cross process boundaries)
+- Windows: `engine/detect.py` emits `project_dir` as POSIX path (`Path.as_posix()`) — Windows backslashes in YAML double-quoted strings cause `ScannerError` (`\U` invalid Unicode escape)
+- Windows: `init_project.py` and `install_hooks.py` now check `HOME` env var before falling back to `Path.home()` — `Path.home()` ignores `HOME` on Windows (uses `USERPROFILE`), breaking tests that set `HOME=<fake_dir>`
+- Windows: `monitor-ui.py` — `watcher_runtime()` returns early on `sys.platform == "win32"` (no `launchctl`); kickstart args use `os.getuid() if hasattr(os, "getuid") else 0`
+- Windows: `test_monitor_ui.py` macOS-specific tests (`watcher_start`, `watcher_runtime` parsing) skip on Windows via `pytest.mark.skipif`
+- Windows: `test_live_task_log.py::test_launcher_creates_log_file` skips on Windows — bash launcher script not available

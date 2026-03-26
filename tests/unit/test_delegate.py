@@ -391,6 +391,7 @@ def test_delegate_scheduled_after_idempotent(repo_root, tmp_path) -> None:
 
 def test_delegate_via_sdk_uses_sdk_runner_when_available(repo_root, tmp_path) -> None:
     """--via sdk uses SDKRunner when SDK is available."""
+    pytest.importorskip("claude_agent_sdk")
     from unittest.mock import MagicMock, patch
 
     project = _setup_project(tmp_path)
