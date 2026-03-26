@@ -1,0 +1,10 @@
+name: ship
+description: "Auto-commit and push on task close"
+enabled: false
+detect:
+  bin: git
+hooks:
+  on_close:
+    action: git_ship
+settings:
+  auto_push: false    # default: commit only, ask before push

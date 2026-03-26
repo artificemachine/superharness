@@ -376,28 +376,50 @@ def delegate(
         except ValueError:
             pass
 
-    # Gate 3: depends_on — block if dependency tasks are not done
+    # Gate 3: depends_on / blocked_by — block if dependency tasks are not done
     doc = _load_contract(contract_file)
     task_obj = next((t for t in (doc.get("tasks") or []) if isinstance(t, dict) and str(t.get("id", "")) == task_id), None)
-    depends_on_val = task_obj.get("depends_on") if task_obj else None
-    if depends_on_val:
-        if isinstance(depends_on_val, list):
-            dep_ids = [str(d).strip() for d in depends_on_val if d]
+
+    # Collect blocker IDs from both blocked_by (new) and depends_on (legacy)
+    _blocked_by_val = task_obj.get("blocked_by") if task_obj else None
+    _depends_on_val = task_obj.get("depends_on") if task_obj else None
+    _dep_id_set: list[str] = []
+    for _val in (_blocked_by_val, _depends_on_val):
+        if not _val or _val == "none":
+            continue
+        if isinstance(_val, list):
+            _dep_id_set.extend(str(d).strip() for d in _val if d and str(d).strip() != "none")
         else:
-            dep_ids = [d.strip() for d in str(depends_on_val).strip("[]").split(",") if d.strip()]
+            _dep_id_set.extend(d.strip() for d in str(_val).strip("[]").split(",") if d.strip() and d.strip() != "none")
+
+    if _dep_id_set:
         blockers = []
-        for dep_id in dep_ids:
+        for dep_id in _dep_id_set:
             dep_status = _get_task_field(contract_file, dep_id, "status")
             if dep_status != "done":
                 blockers.append(f"{dep_id} (status: {dep_status or 'not found'})")
         if blockers:
             print(
-                f"⛔ Task '{task_id}' is blocked — depends on unfinished tasks:",
+                f"blocked: task '{task_id}' depends on unfinished tasks:",
                 file=sys.stderr,
             )
             for b in blockers:
                 print(f"   - {b}", file=sys.stderr)
             return 1
+
+    # Gate 4: status lifecycle — must reach plan_approved before delegation
+    # Terminal statuses (done/failed/stopped) pass through — reconcile handles them.
+    _task_status = task_obj.get("status", "") if task_obj else ""
+    _DISPATCH_TERMINAL_STATUSES = {"done", "failed", "stopped"}
+    _DISPATCH_ALLOWED_STATUSES = {"plan_approved", "in_progress", "report_ready",
+                                   "review_passed", "review_failed", "pending_user_approval"}
+    if _task_status not in _DISPATCH_ALLOWED_STATUSES and _task_status not in _DISPATCH_TERMINAL_STATUSES:
+        print(
+            f"blocked: task '{task_id}' status is '{_task_status}' — "
+            f"plan must be approved before delegating (run: shux task status --id {task_id} --status plan_proposed)",
+            file=sys.stderr,
+        )
+        return 1
 
     # -----------------------------------------------------------------------
     # Model / effort resolution

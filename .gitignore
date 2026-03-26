@@ -28,6 +28,7 @@ dist/
 __pycache__/
 *.pyc
 secrets.json
+TODO.md
 docs/ROADMAP.md
 docs/comparison-*.md
 docs/blog-*-draft.md
@@ -36,3 +37,5 @@ credentials.json
 docs/PYPI_SETUP.md
 docs/PUBLISH_PLAN.md
 *.flock
+build/
+json

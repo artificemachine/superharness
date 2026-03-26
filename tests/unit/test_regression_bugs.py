@@ -5,8 +5,6 @@ If any of these fail, the bug has regressed.
 """
 from __future__ import annotations
 
-import os
-import sys
 import importlib.util
 from pathlib import Path
 

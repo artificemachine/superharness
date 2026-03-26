@@ -62,6 +62,9 @@ def _write_contract(path: str, doc: object) -> None:
             os.unlink(tmp_path)
 
 
+_CLOSE_ALLOWED_STATUSES = {"report_ready", "review_passed"}
+
+
 def close_task(
     contract_file: str,
     task_id: str,
@@ -69,6 +72,7 @@ def close_task(
     summary: str,
     skip_verify: bool = False,
     context: str = "",
+    force: bool = False,
 ) -> int:
     doc = _load_contract(contract_file)
     tasks = doc.get("tasks")
@@ -83,8 +87,20 @@ def close_task(
         _abort(f"task '{task_id}' not found")
 
     owner = str(task.get("owner", ""))
-    if owner and actor != owner:
+    if owner and actor != owner and actor != "owner":
         _abort(f"forbidden: actor '{actor}' cannot close task '{task_id}' owned by '{owner}'")
+
+    # Status lifecycle gate (bypass with --force for emergencies)
+    if not force:
+        current_status = str(task.get("status", ""))
+        if current_status not in _CLOSE_ALLOWED_STATUSES:
+            print(
+                f"Cannot close task '{task_id}': status is '{current_status}', "
+                f"expected report_ready or review_passed.\n"
+                f"Run: superharness task status --id {task_id} --status report_ready --actor <agent> --summary '<summary>'",
+                file=sys.stderr,
+            )
+            return 1
 
     # Verification gate
     if not skip_verify and not task.get("verified"):
@@ -170,6 +186,10 @@ def main(argv: list[str] | None = None) -> None:
         help="Bypass verification gate (not recommended)",
     )
     parser.add_argument(
+        "--force", action="store_true", default=False,
+        help="Bypass status lifecycle gate (emergency use only)",
+    )
+    parser.add_argument(
         "--context", default="",
         help="What the next session needs to know (written to handoff YAML)",
     )
@@ -185,6 +205,7 @@ def main(argv: list[str] | None = None) -> None:
         contract_file, opts.task_id, opts.actor, opts.summary,
         skip_verify=opts.skip_verify,
         context=opts.context,
+        force=opts.force,
     )
     sys.exit(rc)
 

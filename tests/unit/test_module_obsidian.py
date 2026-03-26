@@ -1,14 +1,9 @@
 """Tests for Obsidian module (vault integration)."""
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-import pytest
 
-from superharness.modules.loader import load_modules
-from superharness.modules.runner import register_action, run_hooks
 
 
 class TestObsidianModule:

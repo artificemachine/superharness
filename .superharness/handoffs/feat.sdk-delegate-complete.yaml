@@ -1,0 +1,50 @@
+task: feat.sdk-delegate
+from: claude-code
+to: owner
+contract_id: initial-setup
+created_at: 2026-03-20T19:40:00Z
+status: done
+
+scope: |
+  Implement SDK-based delegation as an alternative to CLI subprocess calls.
+  The --via sdk flag allows dispatching tasks through the claude_agent_sdk.Agent
+  with automatic fallback to CLI when SDK is unavailable.
+
+commands_run:
+  - pytest tests/unit/test_delegate.py -k sdk -v
+  - python3.11 -m superharness.commands.delegate --to claude-code --project . --task feat.sdk-delegate --via sdk --print-only
+
+files_changed:
+  - src/superharness/commands/delegate.py (added --via sdk support, SDK dispatch path, fallback logic)
+  - tests/unit/test_delegate.py (fixed test expectations for SDK unavailable scenario)
+
+outcomes:
+  - ✅ --via sdk flag added to delegate command CLI
+  - ✅ SDK availability check via sdk_available() function
+  - ✅ Automatic fallback to CLI when SDK unavailable with clear warning
+  - ✅ SDK dispatch path creates launcher log for streaming output
+  - ✅ All 3 SDK-related tests pass
+  - ⚠️  Pre-existing test failure unrelated to SDK changes: test_delegate_claude_non_interactive_requires_specific_skip_permissions_confirmation
+
+test_results: |
+  All SDK delegation tests pass:
+  - test_delegate_via_sdk_uses_sdk_runner_when_available PASSED
+  - test_delegate_via_sdk_falls_back_to_cli_when_sdk_unavailable PASSED
+  - test_delegate_via_sdk_print_only_falls_back_when_unavailable PASSED
+
+acceptance_criteria_met:
+  - "delegate --via sdk launches agent via SDK, falls back to CLI if SDK unavailable": YES
+
+next_steps:
+  - feat.sdk-streaming: Live streaming SDK responses to launcher-logs and monitor UI
+  - feat.sdk-session: Session persistence across multiple prompts
+  - Consider installing claude-agent-sdk for actual SDK usage (currently falls back to CLI)
+
+notes: |
+  The feature is fully implemented and tested. The SDK is not currently installed
+  on this system, so all executions fall back to CLI, but the fallback mechanism
+  is tested and works correctly. When claude-agent-sdk is installed, delegation
+  will automatically use the SDK path without code changes.
+
+  The implementation integrates with existing launcher-logs directory for output
+  capture and uses the same log rotation mechanism (keeps last 5 logs per task+agent).

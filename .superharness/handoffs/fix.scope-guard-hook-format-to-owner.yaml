@@ -1,0 +1,18 @@
+type: report
+from: claude-code
+to: owner
+task_id: fix.scope-guard-hook-format
+date: 2026-03-18
+outcome: |
+  Fixed PreToolUse:Write hook error caused by scope-guard.sh using wrong JSON output format.
+  All 5 output statements updated from bare {"decision": "..."} to the required
+  {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "..."}} format,
+  matching branch-guard.sh's correct structure.
+context: |
+  - File changed: adapters/claude-code/hooks/scope-guard.sh
+  - Root cause: scope-guard used {"decision": "allow/block/warn"} but Claude Code PreToolUse
+    hooks require {"hookSpecificOutput": {"permissionDecision": "allow/deny/ask"}}
+  - Mapping: "block" → "deny", "warn" → "ask", "allow" → "allow"
+  - branch-guard.sh already used the correct format; scope-guard was the only outlier
+  - UserPromptSubmit hook error (set-task.sh) was NOT reproduced — empty stdout with exit 0
+    is valid; that error may be intermittent (PATH/timeout). Monitor and revisit if it recurs.

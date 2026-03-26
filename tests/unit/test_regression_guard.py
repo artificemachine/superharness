@@ -36,6 +36,9 @@ def _init_repo(tmp_path: Path) -> Path:
     _run(["git", "init"], repo)
     _run(["git", "config", "user.email", "test@example.com"], repo)
     _run(["git", "config", "user.name", "tester"], repo)
+    # Disable global hooks so commits are not blocked by machine-wide pre-commit
+    # hook (e.g. branch protection for main).
+    _run(["git", "config", "core.hooksPath", "/dev/null"], repo)
     (repo / "app.txt").write_text("base\n")
     _run(["git", "add", "."], repo)
     _run(["git", "commit", "-m", "base"], repo)

@@ -1,0 +1,7 @@
+closed_at: '2026-03-26T00:41:02Z'
+from: claude-code
+status: done
+summary: 'Monitor crash fixed: HTTP probe + url_file race + crash detection + cross-platform
+  timeout'
+task: bug.monitor-crash
+to: owner

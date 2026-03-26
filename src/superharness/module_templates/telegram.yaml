@@ -1,0 +1,13 @@
+name: telegram
+description: "Telegram notifications and mobile task management"
+enabled: false
+detect:
+  env: TELEGRAM_BOT_TOKEN
+hooks:
+  on_close:
+    action: telegram_send
+  on_delegate:
+    action: telegram_send
+settings:
+  token_env: TELEGRAM_BOT_TOKEN
+  chat_id_env: TELEGRAM_CHAT_ID

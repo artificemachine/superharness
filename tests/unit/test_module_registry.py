@@ -1,7 +1,6 @@
 """Tests for module registry (enable, disable, list modules)."""
 from __future__ import annotations
 
-import pytest
 from pathlib import Path
 
 from superharness.modules.registry import (

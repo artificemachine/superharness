@@ -135,19 +135,17 @@ class TestSessionStop:
             proc.terminate()
             proc.wait()
 
-    def test_monitor_kill_guard_checks_process_name(self, repo_root: Path) -> None:
-        """Regression: session-stop.sh must verify process name before killing.
+    def test_monitor_not_killed_on_session_stop(self, repo_root: Path) -> None:
+        """Monitor dashboard is persistent — session-stop.sh must NOT kill it.
 
-        The guard 'grep -q superharness' prevents killing unrelated services that
-        happen to use the same port. This test pins the pattern so it can't be
-        silently removed.
+        The monitor is a long-running dashboard accessed from the browser independently
+        of any Claude session. Killing it on session stop would break the UX.
         """
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
         src = script.read_text()
-        assert 'grep -q "superharness"' in src, (
-            "session-stop.sh must check process cmdline for 'superharness' before "
-            "killing the monitor process — removing this guard would allow killing "
-            "unrelated services on the same port"
+        assert "monitor-ui.py" not in src or "pkill" not in src, (
+            "session-stop.sh must not kill the monitor dashboard — "
+            "it is a persistent service, not a session artifact"
         )
 
 
@@ -291,11 +289,15 @@ class TestSessionStopPausesTasks:
         ledger = (harness / "ledger.md").read_text()
         assert "item-xyz" in ledger
 
-    def test_kills_monitor_by_project_path(self, repo_root: Path) -> None:
-        """Regression: session-stop.sh must kill monitors by project path (any port)."""
+    def test_monitor_not_killed_by_project_path(self, repo_root: Path) -> None:
+        """Monitor dashboard must not be killed by project path either.
+
+        The monitor is persistent across sessions — neither port-based nor
+        path-based killing should appear in session-stop.sh.
+        """
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
         src = script.read_text()
-        assert "pkill" in src and "monitor-ui.py" in src, (
-            "session-stop.sh must use pkill to kill monitor instances by project path, "
-            "not only by port — removes stale monitors on non-default ports"
+        assert not ("pkill" in src and "monitor-ui.py" in src), (
+            "session-stop.sh must not pkill monitor-ui.py — "
+            "the monitor is a persistent service, not a session artifact"
         )

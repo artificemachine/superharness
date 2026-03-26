@@ -39,7 +39,7 @@ def _setup_project(tmp_path: Path) -> Path:
                 "tasks:",
                 "  - id: existing-task",
                 "    owner: codex-cli",
-                "    status: todo",
+                "    status: plan_approved",
                 f"    project_path: '{project.as_posix()}'",
             ]
         )

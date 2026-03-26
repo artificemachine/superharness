@@ -28,7 +28,13 @@ import yaml
 
 VALID_OWNERS = {"claude-code", "codex-cli"}
 VALID_CREATE_STATUSES = {"todo", "in_progress", "pending_user_approval", "done"}
-VALID_ALL_STATUSES = {"todo", "in_progress", "pending_user_approval", "done", "failed", "stopped"}
+VALID_ALL_STATUSES = {
+    "todo", "plan_proposed", "plan_approved",
+    "in_progress", "report_ready",
+    "review_passed", "review_failed",
+    "pending_user_approval",
+    "done", "failed", "stopped",
+}
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 
@@ -108,6 +114,18 @@ def _get_tasks(doc: object, path: str) -> list:
 # Operations
 # ---------------------------------------------------------------------------
 
+def _parse_blocked_by(value: str | list | None) -> str | list:
+    """Normalise blocked_by input to 'none', a single ID, or a list."""
+    if value is None or value == "" or value == "none":
+        return "none"
+    if isinstance(value, list):
+        return [str(v).strip() for v in value if str(v).strip()]
+    s = str(value).strip()
+    if "," in s:
+        return [v.strip() for v in s.split(",") if v.strip()]
+    return s
+
+
 def create(
     contract_file: str,
     task_id: str,
@@ -117,6 +135,10 @@ def create(
     project_path: str,
     dependency: Optional[str] = None,
     criteria: Optional[list] = None,
+    blocked_by: str | list | None = None,
+    tdd_red: str = "",
+    tdd_green: str = "",
+    tdd_refactor: str = "",
 ) -> int:
     _validate_token("task id", task_id)
     if dependency:
@@ -134,12 +156,23 @@ def create(
     if any(isinstance(t, dict) and str(t.get("id", "")) == task_id for t in tasks):
         _abort(f"task '{task_id}' already exists")
 
-    # Check dependency
+    # Check dependency (legacy single-ID field)
     if dependency:
         if dependency == task_id:
             _abort(f"task '{task_id}' cannot depend on itself")
         if not any(isinstance(t, dict) and str(t.get("id", "")) == dependency for t in tasks):
             _abort(f"dependency task '{dependency}' not found")
+
+    # Validate blocked_by IDs
+    blocked = _parse_blocked_by(blocked_by)
+    if blocked != "none":
+        ids_to_check = blocked if isinstance(blocked, list) else [blocked]
+        existing_ids = {str(t.get("id", "")) for t in tasks if isinstance(t, dict)}
+        for bid in ids_to_check:
+            if bid == task_id:
+                _abort(f"task '{task_id}' cannot be blocked by itself")
+            if bid not in existing_ids:
+                _abort(f"blocked_by task '{bid}' not found")
 
     if _RT_AVAILABLE:
         from ruamel.yaml.comments import CommentedMap
@@ -152,19 +185,26 @@ def create(
     task["owner"] = owner
     task["status"] = status
     task["project_path"] = project_path
+    task["blocked_by"] = blocked
     if dependency:
         task["dependency"] = dependency
     if criteria:
         task["acceptance_criteria"] = list(criteria)
+    if tdd_red or tdd_green or tdd_refactor:
+        tdd: dict = {}
+        if tdd_red:
+            tdd["red"] = tdd_red
+        if tdd_green:
+            tdd["green"] = tdd_green
+        if tdd_refactor:
+            tdd["refactor"] = tdd_refactor
+        task["tdd"] = tdd
 
     tasks.append(task)
     doc["tasks"] = tasks  # type: ignore[index]
     _write_contract(contract_file, doc)
 
-    if dependency:
-        print(f"Created task '{task_id}' (owner={owner}, status={status}, dependency={dependency})")
-    else:
-        print(f"Created task '{task_id}' (owner={owner}, status={status})")
+    print(f"Created task '{task_id}' (owner={owner}, status={status}, blocked_by={blocked})")
     return 0
 
 
@@ -196,7 +236,7 @@ def status_update(
     _validate_token("task id", task_id)
 
     if status not in VALID_ALL_STATUSES:
-        _abort("status must be todo, in_progress, pending_user_approval, done, failed, or stopped", 2)
+        _abort(f"status must be one of: {', '.join(sorted(VALID_ALL_STATUSES))}", 2)
 
     if status in ("failed", "stopped") and not reason:
         _abort(f"error: --reason is required when status={status}", 2)
@@ -269,14 +309,9 @@ def main(argv: list[str] | None = None) -> None:
     if argv is None:
         argv = sys.argv[1:]
 
-    class _CapUsage(argparse.HelpFormatter):
-        def _format_usage(self, usage, actions, groups, prefix):
-            return super()._format_usage(usage, actions, groups, "Usage: ")
-
     parser = argparse.ArgumentParser(
         prog="task",
         description="Manage contract tasks",
-        formatter_class=_CapUsage,
         add_help=True,
     )
     sub = parser.add_subparsers(dest="subcmd")
@@ -289,7 +324,16 @@ def main(argv: list[str] | None = None) -> None:
     p_create.add_argument("--owner", default=None)
     p_create.add_argument("--status", default="todo")
     p_create.add_argument("--dependency", default="")
-    p_create.add_argument("--criteria", action="append", default=[], metavar="CRITERION")
+    p_create.add_argument("--blocked-by", dest="blocked_by", default=None,
+                          help="Task ID(s) this task is blocked by (comma-separated, or 'none')")
+    p_create.add_argument("--tdd-red", dest="tdd_red", default="",
+                          help="TDD red phase: failing tests that define done")
+    p_create.add_argument("--tdd-green", dest="tdd_green", default="",
+                          help="TDD green phase: minimal code to make tests pass")
+    p_create.add_argument("--tdd-refactor", dest="tdd_refactor", default="",
+                          help="TDD refactor phase: cleanup after green, no new behaviour")
+    p_create.add_argument("--criteria", action="append", default=[], metavar="CRITERION",
+                          help="Acceptance criterion (repeat for multiple)")
 
     # delete
     p_delete = sub.add_parser("delete", add_help=True)
@@ -300,7 +344,9 @@ def main(argv: list[str] | None = None) -> None:
     p_status = sub.add_parser("status", add_help=True)
     p_status.add_argument("--project", "-p", default=None)
     p_status.add_argument("--id", dest="task_id", required=True)
-    p_status.add_argument("--status", required=True)
+    _valid_status_hint = "{" + "|".join(sorted(VALID_ALL_STATUSES)) + "}"
+    p_status.add_argument("--status", required=True, metavar=_valid_status_hint,
+                          help=f"Lifecycle status. One of: {', '.join(sorted(VALID_ALL_STATUSES))}")
     p_status.add_argument("--actor", required=True)
     p_status.add_argument("--reason", default="")
     p_status.add_argument("--summary", default="")
@@ -353,6 +399,10 @@ def main(argv: list[str] | None = None) -> None:
             project_path=project_dir,
             dependency=opts.dependency or None,
             criteria=opts.criteria or None,
+            blocked_by=opts.blocked_by,
+            tdd_red=opts.tdd_red,
+            tdd_green=opts.tdd_green,
+            tdd_refactor=opts.tdd_refactor,
         )
         sys.exit(rc)
 

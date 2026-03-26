@@ -18,7 +18,7 @@ def _run_cmd(module: str, cwd, args: list[str], env: dict | None = None):
     return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=merged, check=False)
 
 
-def _setup_project(tmp_path: Path, task_status: str = "in_progress", verified: bool = False) -> Path:
+def _setup_project(tmp_path: Path, task_status: str = "report_ready", verified: bool = False) -> Path:
     project = tmp_path / "proj"
     project.mkdir()
     harness = project / ".superharness"
@@ -37,9 +37,9 @@ def _setup_project(tmp_path: Path, task_status: str = "in_progress", verified: b
     )
     if verified:
         task_yaml += (
-            f"    verified: true\n"
-            f"    verified_at: '2026-03-15T00:00:00Z'\n"
-            f"    verified_by: claude-code\n"
+            "    verified: true\n"
+            "    verified_at: '2026-03-15T00:00:00Z'\n"
+            "    verified_by: claude-code\n"
         )
 
     (harness / "contract.yaml").write_text(task_yaml)
@@ -126,7 +126,7 @@ class TestVerify:
 
 class TestClose:
     def test_close_verified_task_succeeds(self, tmp_path):
-        project = _setup_project(tmp_path, task_status="in_progress", verified=True)
+        project = _setup_project(tmp_path, task_status="report_ready", verified=True)
         result = _run_cmd(
             "superharness.commands.close", REPO_ROOT,
             ["--project", str(project), "--id", "feat-001",
@@ -141,7 +141,7 @@ class TestClose:
         assert doc["tasks"][0]["status"] == "done"
 
     def test_close_unverified_task_fails(self, tmp_path):
-        project = _setup_project(tmp_path, task_status="in_progress", verified=False)
+        project = _setup_project(tmp_path, task_status="report_ready", verified=False)
         result = _run_cmd(
             "superharness.commands.close", REPO_ROOT,
             ["--project", str(project), "--id", "feat-001",
@@ -152,7 +152,7 @@ class TestClose:
         assert "superharness verify" in result.stderr
 
     def test_close_skip_verify_bypasses_gate(self, tmp_path):
-        project = _setup_project(tmp_path, task_status="in_progress", verified=False)
+        project = _setup_project(tmp_path, task_status="report_ready", verified=False)
         result = _run_cmd(
             "superharness.commands.close", REPO_ROOT,
             ["--project", str(project), "--id", "feat-001",
@@ -163,7 +163,7 @@ class TestClose:
         assert "Closed task" in result.stdout
 
     def test_close_appends_ledger_entry(self, tmp_path):
-        project = _setup_project(tmp_path, task_status="in_progress", verified=True)
+        project = _setup_project(tmp_path, task_status="report_ready", verified=True)
         _run_cmd(
             "superharness.commands.close", REPO_ROOT,
             ["--project", str(project), "--id", "feat-001",
@@ -174,7 +174,7 @@ class TestClose:
         assert "feat-001" in ledger
 
     def test_close_writes_handoff_yaml(self, tmp_path):
-        project = _setup_project(tmp_path, task_status="in_progress", verified=True)
+        project = _setup_project(tmp_path, task_status="report_ready", verified=True)
         _run_cmd(
             "superharness.commands.close", REPO_ROOT,
             ["--project", str(project), "--id", "feat-001",
@@ -189,7 +189,7 @@ class TestClose:
         assert data["status"] == "done"
 
     def test_close_wrong_actor_fails(self, tmp_path):
-        project = _setup_project(tmp_path, task_status="in_progress", verified=True)
+        project = _setup_project(tmp_path, task_status="report_ready", verified=True)
         result = _run_cmd(
             "superharness.commands.close", REPO_ROOT,
             ["--project", str(project), "--id", "feat-001",
@@ -210,7 +210,7 @@ class TestClose:
 
     def test_close_writes_context_to_handoff(self, tmp_path):
         """--context value must appear in handoff YAML."""
-        project = _setup_project(tmp_path, task_status="in_progress", verified=True)
+        project = _setup_project(tmp_path, task_status="report_ready", verified=True)
         ctx_msg = "Next session must know: use advisory lock, not flock."
         result = _run_cmd(
             "superharness.commands.close", REPO_ROOT,
@@ -229,7 +229,7 @@ class TestClose:
 
     def test_close_without_context_still_works(self, tmp_path):
         """Closing without --context must succeed and omit context field from handoff."""
-        project = _setup_project(tmp_path, task_status="in_progress", verified=True)
+        project = _setup_project(tmp_path, task_status="report_ready", verified=True)
         result = _run_cmd(
             "superharness.commands.close", REPO_ROOT,
             ["--project", str(project), "--id", "feat-001",
@@ -251,7 +251,7 @@ class TestClose:
 
 class TestVerifyThenClose:
     def test_verify_then_close_full_flow(self, tmp_path):
-        project = _setup_project(tmp_path, task_status="in_progress")
+        project = _setup_project(tmp_path, task_status="report_ready")
 
         # Close fails before verify
         r1 = _run_cmd(

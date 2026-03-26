@@ -134,6 +134,18 @@ def run_validate(project: str, strict: bool = False) -> int:
         print("Contract has failures but failures.yaml is empty. Promote reusable failures.")
         issues += 1
 
+    # Vault backlog index check (optional — skipped if vault not configured)
+    vault_base = os.environ.get("SUPERHARNESS_VAULT_BASE", "")
+    if vault_base:
+        backlog_index = os.path.join(vault_base, "notes", "0_meta", "backlog", "_backlog_index.md")
+        if os.path.isfile(backlog_index):
+            with open(backlog_index) as f:
+                backlog_text = f.read()
+            unchecked = [line.strip() for line in backlog_text.splitlines() if line.strip().startswith("- [ ]")]
+            print(f"Vault backlog: {len(unchecked)} open item(s) in _backlog_index.md")
+        else:
+            print("Warning: vault backlog index not found (notes/0_meta/backlog/_backlog_index.md)")
+
     if issues > 0:
         print()
         print(f"Contract hygiene check failed with {issues} issue(s).")
