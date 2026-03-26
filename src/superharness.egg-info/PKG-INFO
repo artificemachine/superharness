@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: superharness
-Version: 1.2.1
+Version: 1.2.6
 Summary: Multi-agent session handoff framework for Claude Code and Codex CLI
 License-Expression: Apache-2.0
 Project-URL: Homepage, https://github.com/celstnblacc/superharness

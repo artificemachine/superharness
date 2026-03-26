@@ -94,6 +94,24 @@ def _process_alive(pid_str: object) -> bool:
         return False
     if pid <= 0:
         return False
+    if sys.platform == "win32":
+        # os.kill(pid, 0) maps to GenerateConsoleCtrlEvent(CTRL_C_EVENT, pid)
+        # on Windows, which sends CTRL+C to the entire process group — never use it.
+        # Use OpenProcess + GetExitCodeProcess instead.
+        import ctypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        handle = ctypes.windll.kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, pid
+        )
+        if not handle:
+            return False  # process not found or no access → treat as dead
+        try:
+            exit_code = ctypes.c_ulong(STILL_ACTIVE)
+            ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
+            return exit_code.value == STILL_ACTIVE
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
         return True
