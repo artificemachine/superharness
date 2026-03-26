@@ -40,8 +40,9 @@ class TestSecurityModule:
         mock_result.stdout = "No critical findings"
         mock_result.stderr = ""
 
-        with patch("subprocess.run", return_value=mock_result):
-            result = security_scan(context, settings)
+        with patch("superharness.modules.actions.security.shutil.which", return_value="/usr/local/bin/shipguard"):
+            with patch("subprocess.run", return_value=mock_result):
+                result = security_scan(context, settings)
 
         assert result["success"] is True
         assert "scan_output" in result
@@ -69,8 +70,9 @@ class TestSecurityModule:
         mock_result.stdout = "CRITICAL: Hardcoded secret detected"
         mock_result.stderr = ""
 
-        with patch("subprocess.run", return_value=mock_result):
-            result = security_scan(context, settings)
+        with patch("superharness.modules.actions.security.shutil.which", return_value="/usr/local/bin/shipguard"):
+            with patch("subprocess.run", return_value=mock_result):
+                result = security_scan(context, settings)
 
         assert result["success"] is False
         assert "blocked" in result

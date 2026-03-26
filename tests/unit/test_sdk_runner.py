@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
+pytest.importorskip("claude_agent_sdk")
+
 
 def _make_result_message(result_text="OK", input_tokens=0, output_tokens=0):
     """Create a mock ResultMessage using the real class."""

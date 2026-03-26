@@ -10,8 +10,11 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
 
 
+
+@pytest.mark.skipif(sys.platform == "win32", reason="bash shell launcher not available on Windows")
 def test_launcher_creates_log_file(tmp_path: Path):
     """Test that launching a task creates a log file in .superharness/launcher-logs/"""
     # Setup
