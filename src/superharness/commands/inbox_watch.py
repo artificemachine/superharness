@@ -322,9 +322,11 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 1200) -> int:
                 pass
 
     if changed:
-        with open(inbox_file, "w", encoding="utf-8") as f:
-            f.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
-            _yaml.dump(items, f, default_flow_style=False, sort_keys=True)
+        from superharness.engine.inbox import _inbox_lock
+        with _inbox_lock(inbox_file):
+            with open(inbox_file, "w", encoding="utf-8") as f:
+                f.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
+                _yaml.dump(items, f, default_flow_style=False, sort_keys=True)
 
     return reconciled
 

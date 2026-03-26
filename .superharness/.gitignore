@@ -1,0 +1,22 @@
+# Security — never commit secrets
+.env
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Runtime state — not version controlled
+ledger.md
+launcher-logs/
+*.flock
+*.heartbeat
+heartbeat.yaml
+watcher.heartbeat
+monitor-health.log
+session-progress.md
+session-summary-*.md
+watcher.yaml
+inbox.yaml
+modules/
+contracts/
+review-lenses/

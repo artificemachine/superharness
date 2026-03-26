@@ -8,7 +8,6 @@ import pytest
 
 from superharness.engine.model_router import (
     MODEL_MAP,
-    VALID_EFFORTS,
     VALID_TIERS,
     classify_task,
     resolve_model,

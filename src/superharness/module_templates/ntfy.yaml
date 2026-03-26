@@ -1,0 +1,16 @@
+name: ntfy
+description: "Push notifications on task events via ntfy"
+enabled: false
+detect:
+  env: NTFY_TOPIC
+hooks:
+  on_close:
+    action: ntfy_send
+    priority: default
+  on_verify:
+    action: ntfy_send
+    priority: high
+    only_on: fail
+settings:
+  url: "https://ntfy.sh"
+  topic_env: NTFY_TOPIC

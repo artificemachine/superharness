@@ -10,7 +10,6 @@ dashboard. Tests have been updated accordingly.
 
 import sys
 
-import pytest
 
 from tests.helpers import REPO_ROOT
 
@@ -134,7 +133,6 @@ def test_status_no_watcher_heartbeat(repo_root, tmp_path) -> None:
 
 def test_status_fresh_watcher(repo_root, tmp_path) -> None:
     """status shows recent heartbeat age."""
-    import time
     from datetime import datetime, timezone
     project = tmp_path / "proj"
     project.mkdir()

@@ -1,0 +1,14 @@
+type: report
+from: claude-code
+to: owner
+task_id: feat.test-type-command
+date: 2026-03-15
+outcome: |
+  Implemented shux test-type command for managing mandatory test types on contract tasks.
+  Supports --set, --add, --remove, --show for individual tasks (--id) or all tasks (--all).
+  Monitor UI updated to display test_types per task.
+context: |
+  - test_type.py is the main command module; test_test_type.py has unit tests
+  - --all flag iterates all contract tasks; --id and --all are mutually exclusive
+  - Also fixed monitor-ui watcher label slug (trailing dash) and inbox_items parser
+  - 3 commits: c89e0f3 (initial), 5f9dcda (docs), 70e4600 (--all flag + fixes)

@@ -1178,3 +1178,43 @@ If you're an agent picking this up:
 - Zombie reconciler: kills lingering processes when contract says done
 - Zombie reconciler: file handle leak — open() → with open()
 - Dispatch: removed dead _inbox_cmd call in _do_dispatch
+
+## [1.2.0] - 2026-03-26
+
+### Added
+- `task create --blocked-by` — dependency field with ID validation
+- `task create --tdd-red/green/refactor` — TDD block written to contract at create time
+- `close --force` — emergency bypass for status lifecycle gate
+- Full lifecycle status vocabulary in `task status`: `plan_proposed`, `plan_approved`, `report_ready`, `review_passed`, `review_failed` now accepted
+- Status lifecycle gate on `delegate`: task must be `plan_approved` or later (terminal statuses pass through for reconciliation)
+- Status lifecycle gate on `close`: task must be `report_ready` or `review_passed`
+- Module health section in `shux doctor` output
+- `.superharness/` protocol state (contract, decisions, failures, handoffs) now tracked in git
+
+### Changed
+- `contract today` delegation suggestion now triggers on `plan_approved` tasks (not only `todo`)
+- `session-stop` hook no longer kills monitor dashboard — monitor is persistent across sessions
+
+### Fixed
+- Monitor crash: `_is_monitor_running` now probes `/api/status` (not raw TCP), url_file race fixed with `getsize > 0` check, crash detection added
+- `shux run --timeout`: replaced Unix-only `SIGALRM` with cross-platform `threading.Thread` timeout
+- `shux close`: `owner` actor can always close any task (was incorrectly rejected)
+- Corrupt handoff YAML: `feat.sdk-streaming-complete.yaml` rewritten as single valid document
+- Inbox zombie reconciler: writes now wrapped with `_inbox_lock` to prevent race condition
+- `validate.py`: hardcoded Obsidian vault path replaced with `SUPERHARNESS_VAULT_BASE` env var
+- `AGENTS.md`: stack updated from `Python/Ruby` to `Python`
+- 925 total tests pass
+
+## [1.2.1] - 2026-03-26
+
+### Fixed
+- `task --help` / `discuss --help`: removed `_CapUsage` formatter that caused `usage: Usage: <cmd>` double-prefix on all subcommands
+- `task status --status`: now shows valid lifecycle states in `--help` and usage metavar
+- `task create --criteria`: now shows `"Acceptance criterion (repeat for multiple)"` in `--help`
+- `monitor-ui.py`: restored `import shutil` (removed by ruff auto-fix) — required as patchable module attribute in tests
+- `.superharness/` excluded from hardcoded-path scan in `test_install_hooks.py` (operational state, not source code)
+- 16 test helpers that create temp git repos now set `core.hooksPath=/dev/null` to prevent global pre-commit hook blocking commits to `main` in isolated test repos
+
+### Changed
+- 108 ruff auto-fixes across `src/` and `tests/` (F401, F541, E401)
+- Added `CONTRIBUTING.md` with quickstart, commands, conventions, and PR instructions

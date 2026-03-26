@@ -175,6 +175,32 @@ def main(argv: list[str] | None = None) -> None:
         except Exception:
             pass
 
+    # Module health check
+    try:
+        from superharness.modules.registry import enabled_modules
+        import yaml as _yaml
+        modules_dir = pathlib.Path(project_dir) / ".superharness" / "modules"
+        enabled = enabled_modules(pathlib.Path(project_dir))
+        if enabled:
+            # Check each enabled module for missing env dependencies
+            for mod_name in sorted(enabled):
+                mod_file = modules_dir / f"{mod_name}.yaml"
+                if mod_file.exists():
+                    try:
+                        mod_data = _yaml.safe_load(mod_file.read_text(encoding="utf-8"))
+                        detect = mod_data.get("detect", {}) if isinstance(mod_data, dict) else {}
+                        env_var = detect.get("env") if isinstance(detect, dict) else None
+                        if env_var and not os.environ.get(env_var):
+                            print(f"WARN module:{mod_name} — {env_var} not set")
+                            warns += 1
+                    except Exception:
+                        pass
+            print(f"PASS modules: {len(enabled)} enabled ({', '.join(sorted(enabled))})")
+        else:
+            print("INFO modules: none enabled — run 'shux enhance' to add integrations")
+    except Exception:
+        pass
+
     print(f"summary: failures={failures} warnings={warns}")
     if failures > 0:
         print()

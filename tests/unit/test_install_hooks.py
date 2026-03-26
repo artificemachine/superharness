@@ -135,10 +135,15 @@ class TestNoHardcodedPathsInRepo:
     Only git-tracked files are checked — .venv, caches, and build artefacts
     are excluded automatically because they are not committed.
     Test fixture paths using placeholder names like /Users/test/ are exempt.
+    .superharness/ is excluded: it is operational protocol state that naturally
+    contains absolute project_path values set at task-creation time.
     """
 
     # Placeholder names used in test fixtures / docs — not real usernames
     _FIXTURE_NAMES = frozenset({"test", "user", "username", "example", "admin", "root", "yourname", "otheruser"})
+
+    # Directories containing operational/protocol state — absolute paths are expected there
+    _SKIP_DIRS = frozenset({".superharness"})
 
     def _git_tracked_files(self, repo_root: Path):
         import subprocess
@@ -147,6 +152,10 @@ class TestNoHardcodedPathsInRepo:
             cwd=repo_root, capture_output=True, text=True, check=False,
         )
         for rel in result.stdout.splitlines():
+            # Skip operational state directories
+            parts = Path(rel).parts
+            if parts and parts[0] in self._SKIP_DIRS:
+                continue
             yield repo_root / rel
 
     def test_no_hardcoded_user_home_in_source(self, repo_root: Path) -> None:

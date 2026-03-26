@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 import sys
 
-from tests.helpers import REPO_ROOT, run_cmd
+from tests.helpers import REPO_ROOT
 
 
 def _run_init_py(cwd, args: list[str] | None = None, stdin: str | None = None, env: dict | None = None):
@@ -57,7 +57,8 @@ def test_init_project_no_watcher_by_default(repo_root, tmp_path) -> None:
     assert result.returncode == 0, result.stderr
     if platform.system() == "Darwin":
         # Watcher install is attempted on macOS, but no plist is created without user confirmation
-        import re, pathlib
+        import re
+        import pathlib
         slug = re.sub(r"[^A-Za-z0-9]+", "-", project.name)
         real_plist = pathlib.Path.home() / "Library" / "LaunchAgents" / f"com.superharness.inbox.{slug}.plist"
         assert not real_plist.exists(), f"Watcher plist must not be auto-created without confirmation: {real_plist}"
@@ -155,7 +156,6 @@ def test_init_creates_user_files_when_missing(repo_root, tmp_path) -> None:
 
 def test_init_prints_plugin_install_hint_when_plugin_missing(repo_root, tmp_path) -> None:
     """Init must print plugin install hint when ~/.claude/plugins/superharness is absent."""
-    import os
     project = tmp_path / "plugtest"
     project.mkdir()
     # Point HOME to a temp dir that has no plugin installed
@@ -170,7 +170,6 @@ def test_init_prints_plugin_install_hint_when_plugin_missing(repo_root, tmp_path
 
 def test_init_no_hint_when_plugin_already_installed(repo_root, tmp_path) -> None:
     """Init must NOT print plugin hint when ~/.claude/plugins/superharness already exists."""
-    import os
     project = tmp_path / "plugtest2"
     project.mkdir()
     # Create fake plugin directory in a fake HOME
@@ -231,7 +230,7 @@ def test_init_skip_hooks_flag(repo_root, tmp_path) -> None:
 
 def test_init_runs_install_hooks(repo_root, tmp_path) -> None:
     """shux init must run install-hooks and write hook entries to ~/.claude/settings.json."""
-    import json, os
+    import json
     project = tmp_path / "inithooks"
     project.mkdir()
     fake_home = tmp_path / "fakehome-hooks"
@@ -256,7 +255,6 @@ def test_init_runs_install_hooks(repo_root, tmp_path) -> None:
 
 def test_init_install_hooks_does_not_fail_init(repo_root, tmp_path) -> None:
     """Even if install-hooks fails (e.g. hooks.json missing), init must still succeed."""
-    import os
     project = tmp_path / "inithooks-fail"
     project.mkdir()
     # HOME with no .claude/ — install-hooks should create it or skip gracefully

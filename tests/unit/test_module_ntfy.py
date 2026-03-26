@@ -1,10 +1,8 @@
 """Tests for ntfy module (TDD — RED → GREEN → REFACTOR)."""
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import Mock, patch
 
-import pytest
 
 
 class TestNtfyModule:

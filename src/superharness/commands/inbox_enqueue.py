@@ -93,10 +93,10 @@ def enqueue_cmd(
     contract_file = os.path.join(harness_dir, "contract.yaml")
 
     if target not in VALID_TARGETS:
-        _abort(f"--to must be claude-code or codex-cli", 2)
+        _abort("--to must be claude-code or codex-cli", 2)
 
     if priority not in (1, 2, 3):
-        _abort(f"--priority must be 1, 2, or 3", 2)
+        _abort("--priority must be 1, 2, or 3", 2)
 
     _validate_token("task id", task_id)
 

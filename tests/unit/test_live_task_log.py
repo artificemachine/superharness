@@ -10,7 +10,6 @@ import sys
 import time
 from pathlib import Path
 
-import pytest
 
 
 def test_launcher_creates_log_file(tmp_path: Path):
@@ -164,7 +163,6 @@ def test_api_task_log_endpoint_returns_log_content(tmp_path: Path):
 
 def test_ui_polls_live_output_for_launched_task(tmp_path: Path):
     """Test that UI JavaScript polls for live output when task is launched."""
-    import importlib.util
     import re
 
     # Load monitor-ui HTML source

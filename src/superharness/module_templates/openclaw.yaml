@@ -1,0 +1,12 @@
+name: openclaw
+description: "Delegate tasks to NemoClaw sandboxed agents via OpenClaw"
+enabled: false
+detect:
+  optional_mcp: nemoclaw
+hooks:
+  on_delegate:
+    action: openclaw_send_task
+    condition: "target == 'openclaw'"
+settings:
+  mcp_server: nemoclaw
+  sandbox_name: default

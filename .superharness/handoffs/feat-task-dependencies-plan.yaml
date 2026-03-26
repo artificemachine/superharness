@@ -1,0 +1,46 @@
+task: feat.task-dependencies
+phase: plan
+status: plan_proposed
+from: claude-code
+to: owner
+date: 2026-03-25T14:55:00Z
+plan: |
+  Add blocked_by dependency tracking and enforce the plan/approve/review lifecycle
+  as mandatory in superharness. Three changes:
+
+  1. Schema: Add `blocked_by` field to task schema in contract.yaml.
+     - Accepts a task ID or list of task IDs, or `none`.
+     - Validated on `task create` — field is mandatory.
+
+  2. CLI enforcement:
+     - `shux delegate <id>` refuses if blocked_by task is not `done`.
+     - `shux delegate <id>` refuses if status is `todo` (must be `plan_approved` first).
+     - `shux close <id>` refuses unless status is `report_ready` or `review_passed`.
+     - All gates print clear error messages with the expected next step.
+
+  3. Spec update: Add blocked_by to protocol/spec.md task schema,
+     document lifecycle enforcement rules, update the phase diagram.
+
+tdd:
+  red: |
+    - test_task_create_requires_blocked_by — fails if blocked_by not provided
+    - test_delegate_blocked_task_refused — delegate fails when dependency not done
+    - test_delegate_without_plan_approved_refused — delegate fails on status=todo
+    - test_close_without_report_refused — close fails if not report_ready/review_passed
+    - test_delegate_unblocked_succeeds — delegate works when dependency is done
+    - test_blocked_by_none_accepted — blocked_by=none is valid
+    - test_blocked_by_list_accepted — blocked_by=[a,b] is valid
+  green: |
+    - Patch src/superharness/commands/delegate.py — add blocked_by + status checks
+    - Patch src/superharness/commands/close.py — add report_ready/review_passed gate
+    - Patch task create to require blocked_by field
+    - Update contract.yaml schema validation
+  refactor: |
+    - Extract lifecycle validation into shared module
+    - Update protocol/spec.md with new schema + rules
+    - Update CLAUDE.md template with lifecycle reminder
+
+risks: |
+  - Existing projects with contracts missing blocked_by will need migration or a default
+  - Need to decide: is blocked_by mandatory on ALL projects or opt-in?
+  - May need a `--force` flag for emergencies that skip lifecycle gates

@@ -8,7 +8,7 @@ import json
 import os
 import secrets
 import shlex
-import shutil
+import shutil  # noqa: F401 — patched by tests to mock agent CLI detection
 import subprocess
 import sys
 import time
@@ -644,7 +644,7 @@ setInterval(refresh, 3000);
 
 def tail_lines(path: Path, n: int) -> list[str]:
     if not path.exists():
-        return [f"No log file yet (created when watcher runs as launchd service). Foreground mode logs to stdout."]
+        return ["No log file yet (created when watcher runs as launchd service). Foreground mode logs to stdout."]
     with path.open("r", encoding="utf-8", errors="replace") as f:
         lines = f.readlines()
     return [ln.rstrip("\n") for ln in lines[-n:]]

@@ -1,0 +1,8 @@
+name: remember
+description: "Auto-refresh context from CLAUDE.md and last handoff on continue"
+enabled: false
+detect: {}
+hooks:
+  on_continue:
+    action: refresh_context
+settings: {}
