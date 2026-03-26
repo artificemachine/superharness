@@ -26,16 +26,20 @@ jobs:
           shipguard scan . --format terminal | tee shipguard.txt
           sed -n '1,260p' shipguard.txt
 
-      - name: Install pip-audit and superharness
-        run: |
-          pip install "pip-audit==2.7.3"
-          pip install -e .
+      - name: Install pip-audit
+        run: pip install "pip-audit==2.7.3"
 
-      - name: Run pip-audit (superharness dependencies only)
-        # Audit only superharness's resolved runtime deps, not the CI toolchain.
-        # --skip-editable excludes superharness itself; remaining packages are
-        # click, pyyaml, ruamel.yaml and their transitive deps.
-        run: pip-audit --skip-editable --format json --output pip-audit.json
+      - name: Run pip-audit (superharness runtime deps only)
+        # Extract declared runtime deps from pyproject.toml and audit only those.
+        # This avoids false positives from the CI toolchain (shipguard, pip-audit itself).
+        run: |
+          python3 -c "
+          import tomllib
+          with open('pyproject.toml', 'rb') as f:
+              d = tomllib.load(f)
+          print('\n'.join(d['project']['dependencies']))
+          " > /tmp/sh-requirements.txt
+          pip-audit -r /tmp/sh-requirements.txt --format json --output pip-audit.json
 
       - name: Upload report artifact
         uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
