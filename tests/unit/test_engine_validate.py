@@ -47,10 +47,10 @@ def test_validate_passes_clean_project(repo_root, tmp_path) -> None:
 
 def test_validate_defaults_to_cwd(repo_root) -> None:
     # --project is optional; when omitted, validate uses cwd.
-    # Running from repo_root (which has .superharness/) should succeed or
-    # produce hygiene warnings — it must not fail with a "required" error.
+    # Must not raise an argparse "required argument missing" error.
+    # (validate's own "Missing required path" messages are expected and allowed.)
     r = _run_validate(repo_root, [])
-    assert "required" not in r.stderr.lower()
+    assert "the following arguments are required" not in r.stderr.lower()
 
 
 def test_validate_fails_missing_handoff_for_done_task(repo_root, tmp_path) -> None:
