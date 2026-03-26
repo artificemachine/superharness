@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 import threading
 import urllib.error
 import urllib.request
@@ -230,6 +231,7 @@ def test_monitor_action_remove_item_calls_inbox_remove(repo_root, tmp_path, monk
     assert "sample-item" in args
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="launchctl/os.getuid not available on Windows")
 def test_monitor_action_watcher_start_installs_and_kickstarts(repo_root, tmp_path, monkeypatch) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
@@ -428,6 +430,7 @@ def test_confirm_plan_action_via_api(repo_root, tmp_path, monkeypatch) -> None:
     assert payload.get("ok") is True
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="launchctl/os.getuid not available on Windows")
 def test_monitor_helpers_parse_runtime_and_inbox(repo_root, tmp_path, monkeypatch) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
@@ -635,6 +638,7 @@ def test_monitor_watcher_runtime_nonzero_exit(repo_root, monkeypatch) -> None:
     assert runtime["loaded"] is False
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="launchctl/os.getuid not available on Windows")
 def test_monitor_watcher_runtime_unparseable_interval(repo_root, monkeypatch) -> None:
     module = _load_monitor_module(repo_root)
 

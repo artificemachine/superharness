@@ -223,7 +223,7 @@ def run(project_dir: Path, output_path: Path | None = None) -> None:
         f"# {now}\n"
         f'detected_at: "{now}"\n'
         f'project_name: "{name}"\n'
-        f'project_dir: "{project_dir}"\n'
+        f'project_dir: "{Path(project_dir).as_posix()}"\n'
         f"already_initialized: {str(already_initialized).lower()}\n"
         f'stack: "{"/".join(stack)}"\n'
         f"agents_available:\n{_list(agents)}\n"

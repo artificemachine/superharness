@@ -657,6 +657,8 @@ def watcher_runtime(label: str) -> dict:
         "last_exit_code": "",
         "run_interval_seconds": 0,
     }
+    if sys.platform == "win32":
+        return info
     try:
         out = subprocess.run(
             ["launchctl", "print", f"gui/{os.getuid()}/{label}"],
@@ -1561,12 +1563,13 @@ class Handler(BaseHTTPRequestHandler):
             install_result = self._run_cmd(install_args, timeout=120)
             if install_result["exit_code"] != 0:
                 return install_result, 200
+            uid = os.getuid() if hasattr(os, "getuid") else 0
             kickstart_result = self._run_cmd(
                 [
                     "launchctl",
                     "kickstart",
                     "-k",
-                    f"gui/{os.getuid()}/{self.label}",
+                    f"gui/{uid}/{self.label}",
                 ]
             )
             merged = {

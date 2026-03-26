@@ -128,7 +128,8 @@ def install_hooks(
     hooks_dir: Path | None = None,
 ) -> int:
     if settings_file is None:
-        settings_file = Path.home() / ".claude" / "settings.json"
+        _home = Path(os.environ["HOME"]) if "HOME" in os.environ else Path.home()
+        settings_file = _home / ".claude" / "settings.json"
     if hooks_dir is None:
         try:
             hooks_dir = _find_hooks_dir()
@@ -164,7 +165,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--settings-file",
         type=Path,
-        default=Path.home() / ".claude" / "settings.json",
+        default=Path(os.environ["HOME"]) / ".claude" / "settings.json" if "HOME" in os.environ else Path.home() / ".claude" / "settings.json",
         help="Target settings file (default: ~/.claude/settings.json)",
     )
     parser.add_argument(
