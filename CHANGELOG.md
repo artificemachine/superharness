@@ -1225,3 +1225,8 @@ If you're an agent picking this up:
 - CI: `pip-audit` now audits only superharness's runtime deps (`--skip-editable`), not the CI toolchain (shipguard, setuptools) — eliminates false-positive CVE failures
 - CI: `contract-hygiene.yml` now installs superharness before running hygiene script (was: `ModuleNotFoundError: No module named 'superharness'`)
 - `test_validate_defaults_to_cwd`: narrowed assertion from `"required" not in stderr` to `"the following arguments are required" not in stderr` — prevents false failure when validate's own "Missing required path: ledger.md" message contains the word "required" (Windows CI)
+
+## [1.2.3] - 2026-03-26
+
+### Fixed
+- CI: contract-hygiene job now creates `ledger.md` before running hygiene check — `ledger.md` is gitignored runtime state and absent in CI clones, causing "Missing required path" failure

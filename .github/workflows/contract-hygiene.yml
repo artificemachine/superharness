@@ -31,6 +31,12 @@ jobs:
             echo "No .superharness directory found; skipping protocol hygiene check."
           fi
 
+      - name: Initialise runtime state files
+        if: steps.check_harness.outputs.has_harness == 'true'
+        # ledger.md is gitignored (runtime state); create it so the hygiene
+        # check does not fail on "Missing required path: ledger.md" in CI.
+        run: touch .superharness/ledger.md
+
       - name: Validate contract protocol hygiene
         if: steps.check_harness.outputs.has_harness == 'true'
         run: |
