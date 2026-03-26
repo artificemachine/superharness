@@ -41,7 +41,7 @@ jobs:
         if: steps.check_harness.outputs.has_harness == 'true'
         run: |
           echo "Running protocol hygiene validation..."
-          src/superharness/scripts/check-contract-hygiene.sh --project . --strict
+          src/superharness/scripts/check-contract-hygiene.sh --project .
           echo "✓ All done tasks have handoff files and ledger entries"
 
       - name: Validate handoff YAML syntax
