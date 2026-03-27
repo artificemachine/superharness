@@ -1,0 +1,7 @@
+closed_at: '2026-03-26T14:26:38Z'
+from: owner
+status: done
+summary: 'Working tree clean at v1.2.5 — prior dirty files already merged via PRs
+  #49-55. Obsolete stash dropped.'
+task: fix.uncommitted-work
+to: owner

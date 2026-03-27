@@ -1,0 +1,27 @@
+task: fix.uncommitted-work
+phase: report
+status: report_ready
+from: claude-code
+to: owner
+date: 2026-03-26T12:15:42Z
+outcome: |
+  No uncommitted work remains. The 15 dirty files from the 2026-03-25 handoff were
+  already committed and merged to main via PRs #49–#55 (v1.2.1 through v1.2.5).
+  Working tree is clean at v1.2.5 (fae5fe9).
+  
+  Also found and dropped an obsolete stash (stash@{0}) that contained WIP from
+  the v1.1.1 era. Those changes (verify.py, close.py, doctor.py, test_verify_and_close.py)
+  are already present in main.
+context: |
+  This task was resolved implicitly through normal PR flow. Future handoffs that
+  reference "uncommitted work" should be verified against git log before assuming
+  files are still dirty — fast-forward merges may have already included them.
+  
+  Remaining open tasks in contract:
+  - fix.hygiene-debt (low priority): backfill handoffs for 18 done tasks
+  - test.template-validation: full mandatory template validation
+outcomes:
+  - Verified working tree clean at v1.2.5
+  - Dropped obsolete stash (already merged to main)
+  - fix.uncommitted-work verified as PASS
+tests_passed: true
