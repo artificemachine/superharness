@@ -1,0 +1,25 @@
+task: test.template-validation
+phase: report
+status: report_ready
+from: claude-code
+to: owner
+date: '2026-03-26T00:00:00Z'
+outcome: |
+  Template validation complete. All mandatory fields are now present in the
+  test.template-validation task entry in contract.yaml.
+context: |
+  Mandatory fields per project_task_template_policy: id, title, owner, status,
+  project_path, blocked_by, acceptance_criteria, test_types, tdd, summary.
+
+  The task was missing test_types and summary — both added. The tdd block
+  (red/green/refactor) was already present and readable.
+
+  shux hygiene reports 18 pre-existing issues (missing handoff files for
+  historical done tasks from prior sessions). These are unrelated to this
+  task's scope and were present before this task began.
+outcomes:
+  - All 10 mandatory template fields now present in test.template-validation
+  - tdd block (red/green/refactor) confirmed written and readable
+  - Task status updated to report_ready in contract.yaml
+  - Ledger entry appended
+tests_passed: true
