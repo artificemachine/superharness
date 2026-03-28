@@ -21,11 +21,15 @@ except ImportError:
     _ruamel_rt = None  # type: ignore[assignment]
 
 
-def safe_load(path: str, expected_class: type) -> Union[dict, list]:
+def safe_load(path: str, expected_class: type, schema: type = None, strict: bool = False) -> Union[dict, list]:
     """Load a YAML file safely.
 
     Returns the expected type's empty value if the file is missing or contains
     nil. Raises TypeError on type mismatch.
+
+    If schema= is provided (a Pydantic model class), validates and returns a
+    model instance. Returns empty dict on missing file.
+    strict= is accepted for compatibility but has no additional effect.
     """
     empty: Union[dict, list] = {} if expected_class is dict else []
     if not os.path.exists(path):
@@ -40,6 +44,8 @@ def safe_load(path: str, expected_class: type) -> Union[dict, list]:
             f"YAML document has unexpected type in {path}: "
             f"expected {expected_class.__name__}, got {type(data).__name__}"
         )
+    if schema is not None:
+        return schema.model_validate(data)
     return data
 
 

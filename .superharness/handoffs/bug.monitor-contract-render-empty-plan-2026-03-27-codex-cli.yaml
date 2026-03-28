@@ -1,0 +1,50 @@
+task: bug.monitor-contract-render-empty
+phase: plan
+status: plan_proposed
+from: codex-cli
+to: owner
+date: 2026-03-27T20:45:53Z
+plan: |
+  Fix the repo-served monitor UI so contract-backed sections render from the
+  existing `/api/status` payload instead of showing empty fallback values like
+  `contract id: -`, `(no tasks)`, and `(no owners)`.
+
+  1. Reproduce the frontend/render mismatch in tests.
+     - Cover the case where `/api/status` contains `contract_id`,
+       `contract_tasks`, and `contract_owners` but the page still blanks those
+       sections.
+     - Pin the expected DOM/content updates for the contract header, task list,
+       and owner list.
+
+  2. Patch the browser-side render path.
+     - Inspect `refresh()`, `renderContractTasks()`, and `renderOwnersList()`
+       for exceptions or state handling that can abort contract rendering while
+       leaving other sections partially updated.
+     - Keep the fix narrow to the contract render path unless the root cause
+       clearly sits in shared refresh logic.
+
+  3. Verify against the live repo monitor path.
+     - Confirm the frontend now displays the same contract data that a direct
+       `/api/status` request already returns.
+
+tdd:
+  red: |
+    - Add a failing monitor UI test that simulates a populated `/api/status`
+      payload and asserts contract id/tasks/owners render into the page.
+    - Add a regression test for the blank fallback values not appearing when the
+      payload contains valid contract data.
+  green: |
+    - Patch the frontend refresh/render logic so contract data renders from the
+      existing payload without being dropped by JS errors or malformed DOM
+      updates.
+  refactor: |
+    - Isolate contract rendering helpers and make the failure surface more
+      obvious if a future UI change breaks one section.
+
+risks: |
+  - The page is currently updating some sections but not others, which strongly
+    suggests a JS exception during refresh; the fix must avoid masking the
+    underlying exception with silent fallback behavior.
+  - Because the backend already returns correct data, this is likely a frontend
+    regression near recently changed rendering code, so tests must guard the
+    whole refresh path rather than only string presence in the HTML source.

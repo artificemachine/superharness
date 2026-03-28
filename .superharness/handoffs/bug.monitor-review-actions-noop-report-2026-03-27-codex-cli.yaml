@@ -1,0 +1,51 @@
+task: bug.monitor-review-actions-noop
+phase: report
+status: report_ready
+from: codex-cli
+to: owner
+date: 2026-03-27T20:59:30Z
+outcome: |
+  Fixed the report-ready task buttons in the monitor so they now trigger real
+  workflow actions instead of only changing contract status.
+
+  - `Request Review` now enqueues the task to the opposite agent as a review
+    request and then marks the task `review_requested`.
+  - `Close Without Review` now runs the real `superharness.commands.close`
+    command path instead of directly flipping the contract status to `done`.
+
+  This means the buttons now produce visible action output and respect the
+  existing close/verification gate behavior.
+context: |
+  Updated files:
+  - src/superharness/scripts/monitor-ui.py
+  - tests/unit/test_monitor_ui.py
+
+  Implementation detail:
+  - Added `_contract_task()` and `_review_target_for_owner()` helpers.
+  - `request_review:*` now:
+    1. validates the task is still `report_ready`
+    2. rejects duplicate active inbox items
+    3. enqueues a review request to the opposite agent
+    4. sets the task to `review_requested`
+  - `approve_report:*` now runs the actual close command with actor `owner`,
+    so verification and lifecycle checks are enforced by the existing close
+    implementation.
+
+  Verification run:
+  - pytest tests/unit/test_monitor_ui.py -q
+
+  Live monitor:
+  - restarted the repo-served monitor on http://127.0.0.1:8787
+  - current foreground session id: 14836
+
+  Operator note:
+  - Refresh the monitor page and click the buttons again.
+  - `Request Review` should now enqueue a review item and move the task to
+    `review_requested`.
+  - `Close Without Review` should now either close the task successfully or
+    show the real close-command error if verification is still missing.
+outcomes:
+  - Replaced status-only review button behavior with real workflow actions.
+  - Added regression coverage for review enqueue and close-command dispatch.
+  - Preserved existing lifecycle labels while making the buttons auditable.
+tests_passed: true

@@ -4,12 +4,13 @@ set -euo pipefail
 usage() {
   cat << 'USAGE'
 Usage:
-  delegate-task.sh <task-id> [--project DIR] [--print-only] [--non-interactive]
+  delegate-task.sh <task-id> [--project DIR] [--print-only] [--non-interactive] [--for-review]
 
 Options:
   -p, --project DIR   Project directory containing .superharness/ (default: current dir)
       --print-only    Print generated prompt and exit (do not launch CLI)
       --non-interactive  Launch target in non-interactive mode where supported
+      --for-review   Allow dispatch of a review_requested task for review workflow
   -h, --help          Show this help message and exit
 USAGE
 }
@@ -18,6 +19,10 @@ PROJECT_DIR="$(pwd)"
 TASK_ID=""
 PRINT_ONLY=0
 NON_INTERACTIVE=0
+FOR_REVIEW=0
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SRC_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+export PYTHONPATH="${SRC_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 PYTHON3="${SUPERHARNESS_PYTHON:-python3}"
 
 while [ $# -gt 0 ]; do
@@ -33,6 +38,10 @@ while [ $# -gt 0 ]; do
       ;;
     --non-interactive)
       NON_INTERACTIVE=1
+      shift
+      ;;
+    --for-review)
+      FOR_REVIEW=1
       shift
       ;;
     -h|--help)
@@ -91,6 +100,9 @@ if [ "$PRINT_ONLY" -eq 1 ]; then
 fi
 if [ "$NON_INTERACTIVE" -eq 1 ]; then
   ARGS+=(--non-interactive)
+fi
+if [ "$FOR_REVIEW" -eq 1 ]; then
+  ARGS+=(--for-review)
 fi
 
 exec "$PYTHON3" -m superharness.commands.delegate "${ARGS[@]}"

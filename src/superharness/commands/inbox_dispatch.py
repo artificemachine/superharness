@@ -394,6 +394,17 @@ def _do_dispatch(
 
     # Build launcher args
     launch_args = ["bash", launcher, "--project", exec_project, "--task", item_task]
+    task_status = ""
+    if os.path.exists(contract_file):
+        cr = subprocess.run(
+            [sys.executable, "-m", "superharness.engine.contract", "task_status",
+             "--file", contract_file, "--task", item_task],
+            capture_output=True, text=True, check=False,
+        )
+        if cr.returncode == 0:
+            task_status = cr.stdout.strip()
+    if task_status == "review_requested":
+        launch_args.append("--for-review")
     if print_only:
         launch_args.append("--print-only")
     if non_interactive:

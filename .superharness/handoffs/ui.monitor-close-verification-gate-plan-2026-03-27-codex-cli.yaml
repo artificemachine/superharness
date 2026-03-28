@@ -1,0 +1,37 @@
+task: ui.monitor-close-verification-gate
+phase: plan
+status: plan_proposed
+from: codex-cli
+to: owner
+date: 2026-03-27T21:02:51Z
+plan: |
+  Fix the monitor UI so the close-bypass action reflects the real verification
+  gate instead of looking available for tasks that the backend will refuse.
+
+  1. Reproduce the mismatch in tests.
+     - Prove that unverified `report_ready` tasks currently show `Close Without
+       Review` even though the real close command rejects them as not verified.
+
+  2. Patch report-ready action rendering.
+     - Make verification status visible in the task row.
+     - Replace the misleading close action for unverified tasks with a clearer
+       state such as `Verify First`, or disable the close path until verified.
+
+  3. Verify browser-facing behavior.
+     - Confirm verified tasks still expose the bypass close action.
+     - Confirm unverified tasks no longer imply that close will succeed.
+
+tdd:
+  red: |
+    - Add failing tests proving unverified report_ready tasks currently render a
+      close button that conflicts with the close command's verification gate.
+  green: |
+    - Patch monitor task action rendering so close bypass is only offered when
+      verified, and unverified tasks show explicit verification guidance.
+  refactor: |
+    - Centralize close-action eligibility and verification hint rendering so
+      future label changes cannot drift from backend rules.
+
+risks: |
+  - The UI must still leave a clear path for verified tasks to close from the
+    monitor without implying that verification can be skipped.

@@ -264,11 +264,12 @@ def test_monitor_action_watcher_start_installs_and_kickstarts(repo_root, tmp_pat
     assert len(calls) == 2
     install_call = calls[0]
     kickstart_call = calls[1]
-    assert "install-launchd-inbox-watcher.sh" in " ".join(install_call)
+    assert "superharness.commands.watcher_worker" in " ".join(install_call)
+    assert "--project" in install_call
+    assert str(project) in install_call
+    assert "--worker" in install_call
     assert "--interval" in install_call
     assert "15" in install_call
-    assert "--confirm-non-interactive" in install_call
-    assert "--confirm-skip-permissions" in install_call
     assert "--launcher-timeout" in install_call
     assert "900" in install_call
     assert kickstart_call[:3] == ["launchctl", "kickstart", "-k"]
@@ -920,7 +921,28 @@ def test_monitor_heartbeat_health_stale(repo_root, tmp_path) -> None:
     result = module.heartbeat_health(project)
     assert result["level"] == "warn"
     assert "stale" in result["message"].lower()
-    assert result["age_seconds"] >= 590
+
+
+def test_monitor_heartbeat_health_reads_worker_project(repo_root, tmp_path) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    worker = tmp_path / "worker"
+    (worker / ".superharness").mkdir(parents=True)
+    (project / ".superharness" / "watcher.yaml").write_text(
+        f'watcher_project: "{worker}"\ninterval_seconds: 30\n',
+        encoding="utf-8",
+    )
+    from datetime import datetime, timezone
+
+    fresh_ts = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    (worker / ".superharness" / "watcher.heartbeat").write_text(fresh_ts + "\n", encoding="utf-8")
+    (project / ".superharness" / "watcher.heartbeat").write_text("2026-01-01T00:00:00Z\n", encoding="utf-8")
+
+    result = module.heartbeat_health(project)
+
+    assert result["level"] == "ok"
+    assert "worker project" in result["message"]
+    assert result["age_seconds"] >= 0
 
 
 def test_monitor_heartbeat_health_ok(repo_root, tmp_path) -> None:
@@ -1309,9 +1331,19 @@ def test_contract_tasks_returns_all_tasks(repo_root, tmp_path):
     ])
     tasks = m.contract_tasks(harness / "contract.yaml")
     assert len(tasks) == 3
-    assert tasks[0] == {"id": "a", "title": "A", "status": "todo", "owner": "claude-code", "verified": False, "scheduled_after": "", "due_by": "", "depends_on": []}
+    assert tasks[0] == {"id": "a", "title": "A", "status": "todo", "owner": "claude-code", "review_target": "", "verified": False, "scheduled_after": "", "due_by": "", "depends_on": []}
     assert tasks[1]["status"] == "plan_proposed"
     assert tasks[2]["verified"] is True
+
+
+def test_contract_tasks_adds_review_target_for_review_requested(repo_root, tmp_path):
+    m = _load_monitor_module(repo_root)
+    harness = tmp_path / ".superharness"
+    _make_contract(harness, [
+        {"id": "r1", "status": "review_requested", "title": "Needs review", "owner": "codex-cli"},
+    ])
+    tasks = m.contract_tasks(harness / "contract.yaml")
+    assert tasks[0]["review_target"] == "claude-code"
 
 
 def test_contract_tasks_returns_empty_for_missing_file(repo_root, tmp_path):
@@ -1480,6 +1512,106 @@ def test_monitor_action_enqueue_task_missing_parts(repo_root, tmp_path, monkeypa
 
     assert status == 400
     assert "missing" in payload.get("error", "").lower()
+
+
+def test_monitor_action_request_review_enqueues_opposite_agent_and_updates_status(repo_root, tmp_path, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    harness = project / ".superharness"
+    _make_contract(
+        harness,
+        [{"id": "review-me", "status": "report_ready", "title": "Review me", "owner": "codex-cli"}],
+    )
+
+    captured: dict[str, object] = {}
+
+    def fake_run_cmd(self, args, timeout=30):  # noqa: ANN001, ANN202
+        captured["args"] = args
+        return {"exit_code": 0, "stdout": "Enqueued", "stderr": "", "cmd": " ".join(args)}
+
+    monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
+    module.Handler.project_dir = project
+    module.Handler.scripts_dir = repo_root / "src" / "superharness" / "scripts"
+
+    handler = module.Handler.__new__(module.Handler)
+    payload, status = handler._action("request_review:review-me")
+
+    assert status == 200
+    assert payload["status"] == "review_requested"
+    assert payload["review_target"] == "claude-code"
+    assert "Requested review" in payload["stdout"]
+    args = captured["args"]
+    assert "inbox_enqueue" in " ".join(args)
+    assert "--task" in args and "review-me" in args
+    assert "--to" in args and "claude-code" in args
+
+    import yaml
+
+    doc = yaml.safe_load((harness / "contract.yaml").read_text())
+    task = next(t for t in doc["tasks"] if t["id"] == "review-me")
+    assert task["status"] == "review_requested"
+
+
+def test_monitor_action_request_review_rejects_when_already_enqueued(repo_root, tmp_path) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    harness = project / ".superharness"
+    _make_contract(
+        harness,
+        [{"id": "review-me", "status": "report_ready", "title": "Review me", "owner": "codex-cli"}],
+    )
+    (harness / "inbox.yaml").write_text(
+        "\n".join(
+            [
+                "- id: review-item",
+                "  to: claude-code",
+                "  task: review-me",
+                f"  project: {project}",
+                "  status: pending",
+                "  priority: 1",
+            ]
+        )
+        + "\n"
+    )
+
+    module.Handler.project_dir = project
+    module.Handler.scripts_dir = repo_root / "src" / "superharness" / "scripts"
+
+    handler = module.Handler.__new__(module.Handler)
+    payload, status = handler._action("request_review:review-me")
+
+    assert status == 409
+    assert "already enqueued" in payload["error"]
+
+
+def test_monitor_action_close_without_review_runs_close_command(repo_root, tmp_path, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    harness = project / ".superharness"
+    _make_contract(
+        harness,
+        [{"id": "close-me", "status": "report_ready", "title": "Close me", "owner": "codex-cli"}],
+    )
+
+    captured: dict[str, object] = {}
+
+    def fake_run_cmd(self, args, timeout=30):  # noqa: ANN001, ANN202
+        captured["args"] = args
+        return {"exit_code": 0, "stdout": "Closed task 'close-me' (actor=owner)", "stderr": "", "cmd": " ".join(args)}
+
+    monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
+    module.Handler.project_dir = project
+    module.Handler.scripts_dir = repo_root / "src" / "superharness" / "scripts"
+
+    handler = module.Handler.__new__(module.Handler)
+    payload, status = handler._action("approve_report:close-me")
+
+    assert status == 200
+    assert "Closed task" in payload["stdout"]
+    args = captured["args"]
+    assert "superharness.commands.close" in " ".join(args)
+    assert "--id" in args and "close-me" in args
+    assert "--actor" in args and "owner" in args
 
 
 def test_task_report_endpoint_returns_500_on_crash(repo_root, tmp_path, monkeypatch) -> None:
@@ -1939,3 +2071,65 @@ def test_html_contains_enqueue_button_for_todo_tasks(repo_root) -> None:
     html = module.HTML
     assert "enqueueTask" in html
     assert "Enqueue" in html
+
+
+def test_html_contains_dedicated_left_aligned_task_actions(repo_root) -> None:
+    """Task rows render all buttons inside a shared left-aligned actions group."""
+    module = _load_monitor_module(repo_root)
+    html = module.HTML
+    assert ".task-actions" in html
+    assert ".task-meta" in html
+    assert 'row.className = \'task-row\'' in html
+    assert 'row.innerHTML = `<div class="task-actions">${actionButtons.join(\' \')}</div><div class="task-meta">${badge}${title}${reviewerInfo}${owner}</div>`;' in html
+
+
+def test_html_keeps_view_report_inside_task_actions_group(repo_root) -> None:
+    """View Report remains grouped with state-specific task actions."""
+    module = _load_monitor_module(repo_root)
+    html = module.HTML
+    assert "View Report" in html
+    assert "actionButtons.push(viewReportBtn);" in html
+    assert "actionButtons.push(`<button onclick=\"approvePlan('${tid}')\"" in html
+    assert "actionButtons.push(`<button onclick=\"approveReport('${tid}')\"" in html
+
+
+def test_html_makes_plan_approved_tasks_enqueueable(repo_root) -> None:
+    """Approved plans must render the next-step enqueue action instead of no action."""
+    module = _load_monitor_module(repo_root)
+    html = module.HTML
+    assert "const canEnqueue = ['todo', 'plan_approved', 'failed', 'stopped'].includes(st);" in html
+
+
+def test_html_uses_review_first_wording_for_report_ready(repo_root) -> None:
+    """Report-ready tasks should offer review first, with explicit close bypass wording."""
+    module = _load_monitor_module(repo_root)
+    html = module.HTML
+    assert "Request Review" in html
+    assert "Close Without Review" in html
+    assert "Request Opus Review" not in html
+    assert "Accept & Close" not in html
+
+
+def test_html_requires_verification_before_close_bypass(repo_root) -> None:
+    """Unverified report_ready tasks should not present a misleading close action."""
+    module = _load_monitor_module(repo_root)
+    html = module.HTML
+    assert "Verify First" in html
+    assert 'if (t.verified)' in html
+    assert 'Run verify before closing' in html
+
+
+def test_html_shows_reviewer_for_review_requested_rows(repo_root) -> None:
+    module = _load_monitor_module(repo_root)
+    html = module.HTML
+    assert "reviewerInfo" in html
+    assert "reviewer ${t.review_target}" in html
+    assert "st === 'review_requested' && t.review_target" in html
+
+
+def test_monitor_bootstraps_into_venv_when_yaml_missing(repo_root) -> None:
+    """Repo monitor should have a bootstrap path for missing PyYAML in plain python3."""
+    source = (repo_root / "src" / "superharness" / "scripts" / "monitor-ui.py").read_text()
+    assert "def _ensure_python_with_yaml()" in source
+    assert 'SUPERHARNESS_MONITOR_REEXEC' in source
+    assert '_ensure_python_with_yaml()' in source
