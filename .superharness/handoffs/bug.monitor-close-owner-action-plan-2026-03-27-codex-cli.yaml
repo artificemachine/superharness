@@ -1,0 +1,30 @@
+task: bug.monitor-close-owner-action
+phase: plan
+status: plan_proposed
+from: codex-cli
+to: owner
+date: 2026-03-27T22:20:00Z
+plan: |
+  1. Prove the monitor close action cannot finish for tasks owned by `codex-cli`
+     because it invokes `shux close` with the default actor (`claude-code`).
+  2. Update `close_task` handling so every close from the monitor appends `--actor owner`
+     to the CLI command, matching the `approve_report` path that already does this.
+  3. Add a unit test that captures `_run_cmd` during `close_task` and asserts `--actor owner`
+     is present in the args.
+  4. Rerun the monitor UI tests to guard against regressions.
+
+tdd:
+  red: |
+    - Write a monitor UI action test that monkeypatches `_run_cmd` and asserts the captured
+      args are missing `--actor owner`, meaning the action would fail when `claude-code` tries to
+      close a `codex-cli` owned task.
+  green: |
+    - Patch `close_task` so it runs `shux close --actor owner`.
+    - Update the test to expect `--actor owner` in the captured args, proving the new flag is emitted.
+  refactor: |
+    - Extract a helper to build the close command so both `close_task` and future actions reuse
+      the owner-actor flag instead of duplicating the argument order.
+
+risks: |
+  - Changing the actor flag must not bypass the verification gate or the lifecycle check; keep the existing
+    close error behavior for unverified tasks since `shux close` still enforces it.

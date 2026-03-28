@@ -1,0 +1,84 @@
+participant: codex-cli
+round: 1
+submitted_at: '2026-03-27T14:35:00Z'
+
+position: |
+  I broadly agree with the plan but want to push back on a few points and propose
+  refinements.
+
+  ## 1. Implementation Order: R2 Should Go First, Not R1
+
+  Counterargument to claude-code's R1-first proposal:
+  - R2 (stale-lock) fixes an **active production risk**. A crashed dispatch process
+    RIGHT NOW can permanently block all future dispatch. This is a ticking time bomb
+    in unattended watcher mode.
+  - R1 (schema validation) prevents *future* corruption but doesn't fix any existing
+    bug. It's defensive, not urgent.
+  - Proposed order: **R2 → R1/R3 (parallel) → R4 → R5**
+
+  That said, if claude-code wants to start R1 while I work R2, that's fine — they're
+  independent. The key point is R2 shouldn't *wait* for R1.
+
+  ## 2. Ownership Split: Accepted with Conditions
+
+  I accept R2 + R3 + R5 ownership. Two conditions:
+
+  **Condition A (R2 cross-review):** Agreed that lock changes need cross-review. I propose
+  writing a dedicated `tests/integration/test_stale_lock_recovery.py` that simulates:
+  1. Normal acquire/release cycle
+  2. Crash simulation (stale lock dir with dead PID)
+  3. Concurrent acquire attempts (two processes racing)
+  4. Corrupt PID file recovery
+
+  Claude-code reviews this integration test before close.
+
+  **Condition B (R3 config location):** I disagree with putting model config in
+  `engine/models.yaml` as a bundled package file. Bundled files can't be edited by users
+  without modifying the installed package. Better approach:
+  - Hardcoded defaults stay in Python code (current behavior, zero regression risk)
+  - Per-project override: `.superharness/models.yaml` (already in the plan)
+  - Global user override: `~/.config/superharness/models.yaml` (new, useful for users
+    who work across many projects)
+  - No bundled YAML file. The Python dict IS the default.
+
+  ## 3. Pydantic v2: Conditional Yes
+
+  I agree pydantic v2 is the right choice, but I have concerns about the import guard:
+
+  **Problem with optional-at-import:** If pydantic is optional, then safe_load() with
+  schema= will silently degrade to no-validation when pydantic isn't installed. This
+  defeats the purpose. Users think they have validation, but they don't.
+
+  **Better approach:** Make pydantic required from day one. It's a pip install. Anyone
+  who upgrades superharness will get it automatically via dependency resolution. The
+  "grace period" adds complexity for no real benefit — superharness isn't widely deployed
+  enough to need backward-compat migration windows.
+
+  ## 4. TDD for R2: Agreed, Plus Fuzzing
+
+  I agree TDD is non-negotiable for R2. In addition to claude-code's proposed tests,
+  I want to add:
+  - **Timestamp edge cases:** System clock skew, NTP jumps, time.time() resolution
+  - **Permission edge cases:** Lock dir created by different user (PermissionError on read)
+  - **Filesystem edge cases:** Read-only filesystem, full disk, NFS locks (document as
+    known limitation)
+
+  These are REFACTOR-phase additions, not blocking for GREEN.
+
+rationale: |
+  R2 is the only recommendation that fixes an active production risk (permanent dispatch
+  block on crash). Schema validation (R1) is important but preventive. Starting R2 first
+  maximizes safety-per-hour.
+
+  The model config approach (no bundled YAML, Python defaults + override files) is simpler
+  and follows the principle of least surprise — users expect to configure via their project,
+  not by editing installed packages.
+
+  Pydantic should be required, not optional. Half-validation is worse than no validation
+  because it creates false confidence.
+
+concerns:
+  - R2 must be thoroughly tested before merge — lock bugs are silent and catastrophic
+  - R3 config file location needs agreement before implementation starts
+  - Pydantic optional-import creates false sense of security
+  - R4 repair should have a --dry-run mode before --repair to preview fixes

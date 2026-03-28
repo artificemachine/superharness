@@ -1,0 +1,46 @@
+task: bug.monitor-contract-render-empty
+phase: report
+status: report_ready
+from: codex-cli
+to: owner
+date: 2026-03-27T20:52:30Z
+outcome: |
+  Fixed the repo-served monitor path so contract data renders again instead of
+  falling back to `-`, `(no tasks)`, and `(no owners)`.
+
+  The root cause was environment drift: when the monitor was started directly
+  from the repo with plain `python3`, it could run without `PyYAML`, which
+  caused the contract-loading helpers to fail and return empty contract fields.
+  The monitor now re-execs itself into the repo `.venv` Python when YAML support
+  is missing, so the live `/api/status` payload includes the expected contract
+  id, tasks, and owners.
+context: |
+  Updated files:
+  - src/superharness/scripts/monitor-ui.py
+  - tests/unit/test_monitor_ui.py
+
+  Implementation detail:
+  - Added `_ensure_python_with_yaml()` at startup.
+  - If `import yaml` fails under the initial interpreter, the monitor resolves
+    the repo root, finds `.venv/bin/python`, and `execv`s into that interpreter.
+  - This keeps direct repo launches working even when the outer Python lacks the
+    YAML dependency required by contract parsing.
+
+  Verification run:
+  - pytest tests/unit/test_monitor_ui.py -q
+  - curl -fsS http://127.0.0.1:8787/api/status
+
+  Verification result:
+  - `/api/status` now returns `contract_id: initial-setup`
+  - `/api/status` now returns populated `contract_tasks`
+  - `/api/status` now returns populated `contract_owners`
+
+  Operator note:
+  - Refresh the monitor page after this change. If the page still shows blank
+    contract sections, capture the browser error state because the server-side
+    payload is now correct again.
+outcomes:
+  - Hardened direct repo monitor startup against missing `PyYAML`.
+  - Restored populated contract/task/owner data in the live status API.
+  - Added regression coverage for monitor bootstrap into the repo virtualenv.
+tests_passed: true

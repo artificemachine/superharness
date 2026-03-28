@@ -1,0 +1,41 @@
+task: ui.monitor-show-reviewer
+phase: report
+status: report_ready
+from: codex-cli
+to: owner
+date: 2026-03-27T21:09:30Z
+outcome: |
+  Added reviewer visibility to `review_requested` task rows in the monitor UI.
+
+  The monitor now shows the assigned reviewer target inline on those rows using
+  the same routing rule as `Request Review`, so the UI no longer hides who the
+  task was sent to.
+
+context: |
+  Updated files:
+  - src/superharness/scripts/monitor-ui.py
+  - tests/unit/test_monitor_ui.py
+
+  Implementation detail:
+  - `contract_tasks()` now includes `review_target` for `review_requested`
+    tasks.
+  - The task-row renderer displays `reviewer <agent>` inline for
+    `review_requested` rows.
+  - The reviewer target is derived from `_review_target_for_owner()`, matching
+    the routing used by the `Request Review` action path.
+
+  Verification run:
+  - pytest tests/unit/test_monitor_ui.py -q
+
+  Live monitor:
+  - restarted repo monitor on http://127.0.0.1:8787
+  - current foreground session id: 50086
+
+  Operator note:
+  - Refresh the monitor page.
+  - `review_requested` rows should now display the reviewer target inline.
+outcomes:
+  - review_requested rows now show the assigned reviewer.
+  - reviewer display reuses the actual review-routing helper.
+  - task-row layout remains left-aligned and intact.
+tests_passed: true

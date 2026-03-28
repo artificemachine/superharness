@@ -315,6 +315,7 @@ def delegate(
     print_only: bool,
     non_interactive: bool,
     codex_bypass: bool,
+    for_review: bool = False,
     model_override: str = "",
     effort_override: str = "",
     no_auto_model: bool = False,
@@ -413,6 +414,8 @@ def delegate(
     _DISPATCH_TERMINAL_STATUSES = {"done", "failed", "stopped"}
     _DISPATCH_ALLOWED_STATUSES = {"plan_approved", "in_progress", "report_ready",
                                    "review_passed", "review_failed", "pending_user_approval"}
+    if for_review:
+        _DISPATCH_ALLOWED_STATUSES.add("review_requested")
     if _task_status not in _DISPATCH_ALLOWED_STATUSES and _task_status not in _DISPATCH_TERMINAL_STATUSES:
         print(
             f"blocked: task '{task_id}' status is '{_task_status}' — "
@@ -769,6 +772,8 @@ def main(argv: list[str] | None = None) -> None:
                         help="Launch agent without live supervision (requires confirmation or env var)")
     parser.add_argument("--codex-bypass", action="store_true", default=False,
                         help="Codex only: use --dangerously-bypass-approvals-and-sandbox")
+    parser.add_argument("--for-review", action="store_true", default=False,
+                        help="Allow dispatch of review_requested tasks for review workflow only")
     parser.add_argument(
         "--model", default=None,
         help="Override model. Accepts tier (mini/standard/max) or model name (sonnet, gpt-5.3-codex, etc.)",
@@ -814,6 +819,7 @@ def main(argv: list[str] | None = None) -> None:
         print_only=opts.print_only,
         non_interactive=opts.non_interactive,
         codex_bypass=opts.codex_bypass,
+        for_review=opts.for_review,
         model_override=opts.model or "",
         effort_override=opts.effort or "",
         no_auto_model=opts.no_auto_model,

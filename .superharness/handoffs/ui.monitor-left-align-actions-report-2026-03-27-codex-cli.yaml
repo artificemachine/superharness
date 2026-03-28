@@ -1,0 +1,33 @@
+task: ui.monitor-left-align-actions
+phase: report
+status: report_ready
+from: codex-cli
+to: owner
+date: 2026-03-27T20:16:37Z
+outcome: |
+  Updated the monitor task-list layout so task action buttons now render in a
+  dedicated left-aligned action group. "View Report" stays in that same action
+  cluster, and state-specific buttons (Enqueue, Approve Plan, Accept & Close,
+  Re-enqueue, Close) no longer drift inline with the badge/title/owner text.
+
+  Added focused monitor UI tests to pin the dedicated task action container and
+  keep View Report grouped with the rest of the task actions.
+context: |
+  The change is intentionally layout-only. Task action semantics and state
+  transitions were not changed.
+
+  Updated files:
+  - src/superharness/scripts/monitor-ui.py
+  - tests/unit/test_monitor_ui.py
+
+  Verification run:
+  - pytest tests/unit/test_monitor_ui.py -q
+
+  If follow-up UI tweaks are needed, the new structure is:
+  - .task-actions: left-aligned button/action cluster
+  - .task-meta: badge + title + owner cluster
+outcomes:
+  - Added `.task-row`, `.task-actions`, and `.task-meta` layout classes in monitor HTML/CSS.
+  - Refactored task row rendering to build a single shared left-aligned action button group.
+  - Added regression tests for the dedicated task action group and View Report grouping.
+tests_passed: true

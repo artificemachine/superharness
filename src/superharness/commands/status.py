@@ -47,8 +47,21 @@ def _watcher_status_linux(project_dir: str) -> tuple[str, str]:
     return "warn", f"systemd unit {unit} not found"
 
 
-def _heartbeat_status(harness_dir: str) -> tuple[str, str]:
-    hb_file = os.path.join(harness_dir, "watcher.heartbeat")
+def _watcher_project(project_dir: str) -> str:
+    watcher_cfg = os.path.join(project_dir, ".superharness", "watcher.yaml")
+    if not os.path.isfile(watcher_cfg):
+        return project_dir
+    data = safe_load(watcher_cfg, dict) or {}
+    candidate = os.path.realpath(str(data.get("watcher_project", "") or ""))
+    if candidate and os.path.isdir(os.path.join(candidate, ".superharness")):
+        return candidate
+    return project_dir
+
+
+def _heartbeat_status(project_dir: str, harness_dir: str) -> tuple[str, str]:
+    watcher_project = _watcher_project(project_dir)
+    hb_project = watcher_project if watcher_project != project_dir else project_dir
+    hb_file = os.path.join(hb_project, ".superharness", "watcher.heartbeat")
     stale_seconds = 120
     if not os.path.isfile(hb_file):
         return "missing", "no heartbeat file"
@@ -62,8 +75,14 @@ def _heartbeat_status(harness_dir: str) -> tuple[str, str]:
         age = int((now_dt - hb_dt).total_seconds())
         age_min = age // 60
         if age >= stale_seconds:
-            return "stale", f"last heartbeat {age_min}m ago"
-        return "ok", f"last heartbeat {age}s ago"
+            detail = f"last heartbeat {age_min}m ago"
+            if hb_project != project_dir:
+                detail += " (worker project)"
+            return "stale", detail
+        detail = f"last heartbeat {age}s ago"
+        if hb_project != project_dir:
+            detail += " (worker project)"
+        return "ok", detail
     except Exception:
         return "missing", "invalid heartbeat timestamp"
 
@@ -157,7 +176,7 @@ def main(argv: list[str] | None = None) -> None:
         watcher_level = "warn"
         watcher_msg = f"no watcher check available on {sys_platform}"
 
-    heartbeat_status, heartbeat_detail = _heartbeat_status(harness_dir)
+    heartbeat_status, heartbeat_detail = _heartbeat_status(project_dir, harness_dir)
 
     stats = _inbox_stats(inbox_file, handoff_dir, discussions_dir, opts.retry_threshold)
     counts = stats["counts"]

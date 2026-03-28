@@ -1,0 +1,49 @@
+task: bug.monitor-review-actions-noop
+phase: plan
+status: plan_proposed
+from: codex-cli
+to: owner
+date: 2026-03-27T20:55:58Z
+plan: |
+  Fix the monitor UI report-ready actions so they perform the workflow users
+  expect instead of only mutating contract state. Keep scope limited to the
+  `Request Review` and `Close Without Review` actions.
+
+  1. Reproduce the current no-op behavior in tests.
+     - Prove that `Request Review` only changes status to `review_requested`
+       without launching or enqueueing any reviewer path.
+     - Prove that `Close Without Review` only flips contract status to `done`
+       instead of executing the real close/bypass workflow.
+
+  2. Patch the report-ready action wiring.
+     - Make `Request Review` invoke a concrete review workflow path that is
+       visible in the monitor and leaves useful action output.
+     - Make `Close Without Review` execute the intended close/bypass path or
+       rename the action if the real close command cannot be used safely from
+       the monitor.
+
+  3. Verify monitor-facing behavior.
+     - Trigger both actions through the existing handler path.
+     - Confirm success/failure feedback is surfaced in the UI instead of silent
+       status-only transitions.
+
+tdd:
+  red: |
+    - Add failing tests proving `request_review:*` and `approve_report:*`
+      currently act like status flips rather than workflow actions.
+    - Add a regression test covering visible action output for the report-ready
+      buttons.
+  green: |
+    - Patch monitor action handlers so report-ready actions use concrete review
+      or close workflow commands.
+    - Keep status transitions aligned with the workflow they trigger.
+  refactor: |
+    - Consolidate report-ready action policy so labels, confirmation dialogs,
+      and backend handlers cannot drift apart again.
+
+risks: |
+  - Review dispatch semantics may depend on which reviewer agent/model is
+    available, so the fix should prefer existing repo workflows over inventing a
+    new review subsystem.
+  - Closing directly from the monitor may have side effects beyond status
+    mutation, so the bypass path must stay explicit and auditable.

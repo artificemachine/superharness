@@ -50,6 +50,7 @@ shux status            # dashboard: tasks, watcher, profile
 shux recall <keywords> # search past handoffs and ledger
 shux uninstall         # remove watcher and system artifacts for this project
 shux hygiene           # validate protocol compliance (contract, handoffs, ledger)
+shux hygiene --repair  # auto-fix missing handoffs, ledger entries, and stuck statuses
 shux monitor           # open browser dashboard
 shux watch             # start continuous watcher in foreground
 shux update            # pull latest superharness + refresh templates, hooks, and watcher
