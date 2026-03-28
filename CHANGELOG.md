@@ -1259,3 +1259,23 @@ If you're an agent picking this up:
 - Windows: `monitor-ui.py` — `watcher_runtime()` returns early on `sys.platform == "win32"` (no `launchctl`); kickstart args use `os.getuid() if hasattr(os, "getuid") else 0`
 - Windows: `test_monitor_ui.py` macOS-specific tests (`watcher_start`, `watcher_runtime` parsing) skip on Windows via `pytest.mark.skipif`
 - Windows: `test_live_task_log.py::test_launcher_creates_log_file` skips on Windows — bash launcher script not available
+
+## [1.2.8] - 2026-03-28
+
+### Added
+- `hygiene --repair`: auto-fix missing handoffs, ledger entries, and stuck statuses (`verified=true` but `status != done`). Without `--repair` the check remains read-only.
+- Monitor UI: per-status filter pills (done / disabled / review / in_progress / plan / todo) with live counts and toggle hide/show
+- Monitor UI: Disable/Enable buttons per task (sets status to `stopped`/`todo`)
+- Monitor UI: task list ordered newest-first
+
+### Fixed
+- Monitor UI: `close_task` and `verify_and_close` now pass `--actor owner` so codex-cli-owned tasks can be closed from the UI
+- Monitor UI: path traversal sanitization on task IDs containing `/` or `..`
+- Monitor UI: Close button now only appears for `review_passed` (not `done && verified`)
+- `sync_task_status` in `inbox.py`: ghost inbox items with status `failed`, `paused`, or `stale` are now cleaned when their task is closed
+- `test_session_stop.py`: git commits in tmp test dirs no longer blocked by global pre-commit hook (`--no-verify`)
+- `pyproject.toml`: added `pydantic>=2.0,<3` to runtime dependencies (was missing, caused `test_schemas.py` import error in clean venv)
+- `validate.py`: moved `import yaml` to module top-level (was inside function body)
+
+### Changed
+- `yaml_helpers.safe_load()` now accepts optional `schema=` (Pydantic model class) and `strict=` kwargs — zero impact on existing callers

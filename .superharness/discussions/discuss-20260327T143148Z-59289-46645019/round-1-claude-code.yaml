@@ -1,0 +1,65 @@
+participant: claude-code
+round: 1
+submitted_at: '2026-03-27T14:33:00Z'
+
+position: |
+  I support the proposed plan with the following positions:
+
+  ## 1. Implementation Order: R1 → R2/R3 (parallel) → R4 → R5
+
+  R1 (schema validation) should go first because:
+  - It's the highest-impact safety improvement for unattended watcher mode
+  - R4 (repair) has a soft dependency on R1's pydantic models
+  - Adding pydantic early means R2 and R3 can optionally use schema types too
+
+  R2 (locks) and R3 (models) are fully independent and can run in parallel.
+  R4 depends on R1. R5 (docs) is trivial and can slot in anywhere.
+
+  ## 2. Ownership Split: Agreed with One Concern
+
+  The split makes sense:
+  - **claude-code owns R1 + R4** — both touch engine/validate.py and engine/yaml_helpers.py,
+    which are tightly coupled. Keeping them under one agent avoids merge conflicts.
+  - **codex-cli owns R2 + R3 + R5** — R2 (locks) and R3 (models) are self-contained modules
+    with no overlap. R5 is docs-only.
+
+  **Concern:** R2 (stale-lock detection) is concurrency-sensitive. The _MkdirLock rewrite
+  needs careful race-condition testing. I recommend codex-cli writes the implementation
+  but claude-code does a cross-review before close, given the risk level.
+
+  ## 3. Pydantic v2 as New Dependency: Strong Yes
+
+  Rationale:
+  - pydantic v2 is pure Python, lightweight (~2MB), no C extensions required
+  - It's the de facto standard for Python data validation
+  - `ConfigDict(extra="allow")` means we can add schemas incrementally without breaking
+    existing YAML files that have extra fields
+  - The profile.schema.yaml already documents the exact schema — pydantic just enforces it
+  - Alternative (jsonschema) is more verbose and doesn't give us typed Python objects
+
+  **One guard:** Make pydantic optional at import time (try/except) for the first release,
+  so users who pip-installed an older version without pydantic don't get import errors.
+  After one release cycle, make it required.
+
+  ## 4. TDD for R2 Lock Changes: Critical
+
+  The _MkdirLock is the most dangerous change in this plan. TDD is non-negotiable:
+  - RED: Test PID file creation, dead-PID detection, age-based break, alive-PID respect
+  - GREEN: Minimal implementation that passes
+  - REFACTOR: Extract to engine/locks.py only if inbox_watch.py also benefits
+
+  Additional requirement: add a **chaos test** that simulates a crashed process by creating
+  a lock directory with a stale PID file (PID that doesn't exist), then verifying the next
+  dispatch auto-breaks it. This should be an integration test, not just unit.
+
+rationale: |
+  The ownership split follows the principle of minimizing cross-agent file conflicts.
+  R1+R4 share the same core files (validate.py, yaml_helpers.py). R2+R3 are isolated
+  modules. Pydantic is the right tool — it turns documented schemas into enforced ones
+  with minimal code. The lock change is the riskiest item and needs the strongest test
+  coverage.
+
+concerns:
+  - R2 race condition testing needs cross-review before close
+  - Pydantic should be optional-at-import for the first release
+  - R4 repair mode mutates contract.yaml — needs careful atomic write testing

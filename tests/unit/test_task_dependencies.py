@@ -7,10 +7,12 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
+import os
 
 import yaml
 
 PYTHON = sys.executable
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 # ---------------------------------------------------------------------------
@@ -45,9 +47,11 @@ def _run_task(args: list[str]) -> subprocess.CompletedProcess:
 
 
 def _run_delegate(args: list[str]) -> subprocess.CompletedProcess:
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
     return subprocess.run(
         [PYTHON, "-m", "superharness.commands.delegate"] + args,
-        capture_output=True, text=True, check=False,
+        capture_output=True, text=True, check=False, env=env,
     )
 
 
@@ -279,6 +283,33 @@ class TestDelegateStatusGate:
         r = _run_delegate([
             "--project", str(project), "--task", "feat.x",
             "--to", "claude-code", "--print-only",
+        ])
+        assert r.returncode == 0, r.stderr
+
+    def test_delegate_status_review_requested_refused_without_review_flag(self, tmp_path):
+        """review_requested must not bypass the normal implementation gate by default."""
+        project, contract = _make_contract(tmp_path, [
+            {"id": "feat.review", "title": "Review", "owner": "claude-code",
+             "status": "review_requested", "project_path": "__project__",
+             "blocked_by": "none"},
+        ])
+        r = _run_delegate([
+            "--project", str(project), "--task", "feat.review",
+            "--to", "claude-code", "--print-only",
+        ])
+        assert r.returncode != 0
+        assert "plan" in r.stderr.lower() or "approve" in r.stderr.lower()
+
+    def test_delegate_status_review_requested_allowed_for_review(self, tmp_path):
+        """review_requested may dispatch only when explicitly marked as review workflow."""
+        project, contract = _make_contract(tmp_path, [
+            {"id": "feat.review", "title": "Review", "owner": "claude-code",
+             "status": "review_requested", "project_path": "__project__",
+             "blocked_by": "none"},
+        ])
+        r = _run_delegate([
+            "--project", str(project), "--task", "feat.review",
+            "--to", "claude-code", "--print-only", "--for-review",
         ])
         assert r.returncode == 0, r.stderr
 

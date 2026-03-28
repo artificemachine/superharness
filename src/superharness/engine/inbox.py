@@ -425,7 +425,7 @@ def deadline_fail(file: str, id: str, now: str, reason: str = "") -> int:
 
 def sync_task_status(file: str, task: str, to: str, now: str) -> int:
     items = _load_items(file)
-    active_statuses = {"pending", "launched", "running"}
+    active_statuses = {"pending", "launched", "running", "failed", "paused", "stale"}
     updated = 0
     for idx, item in enumerate(items):
         if not isinstance(item, dict):
