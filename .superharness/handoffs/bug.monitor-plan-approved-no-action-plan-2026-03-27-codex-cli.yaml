@@ -1,0 +1,46 @@
+task: bug.monitor-plan-approved-no-action
+phase: plan
+status: plan_proposed
+from: codex-cli
+to: owner
+date: 2026-03-27T20:22:31Z
+plan: |
+  Fix the monitor UI lifecycle action mapping so `plan_approved` tasks are not
+  stranded without any actionable button. Keep scope limited to monitor task
+  rendering and the correct next-step action for an approved plan.
+
+  1. Reproduce the gap in tests.
+     - Add a focused failing test showing that `plan_approved` currently renders
+       no action button in the monitor task list.
+     - Pin the expected next-step action in the UI for that lifecycle state.
+
+  2. Patch the monitor task action mapping.
+     - Update `monitor-ui.py` so `plan_approved` renders the correct operator
+       action instead of an empty state.
+     - Keep existing mappings for `todo`, `plan_proposed`, `report_ready`,
+       `review_failed`, `review_passed`, and `done` intact.
+
+  3. Refactor the state/action mapping slightly if needed.
+     - Reduce the risk of future missing-state regressions by making the action
+       mapping easier to audit.
+
+tdd:
+  red: |
+    - Add a failing monitor UI test for `plan_approved` showing no current
+      action button.
+    - Add a test that the expected approved-plan action is rendered alongside
+      the rest of the task row controls.
+  green: |
+    - Patch `monitor-ui.py` to render the correct action button for
+      `plan_approved`.
+    - Keep button wiring aligned with the intended next step for approved plans.
+  refactor: |
+    - Extract or simplify lifecycle-to-action rendering so missing UI states are
+      easier to spot and test.
+
+risks: |
+  - The correct next-step action must match the actual operational workflow for
+    approved plans; if the backend action naming is inconsistent, a UI-only fix
+    could still point to the wrong path.
+  - This bug sits next to the broader delegate/enqueue recursion problem for
+    codex-owned tasks, so the UI fix should avoid masking that deeper issue.

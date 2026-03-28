@@ -41,7 +41,7 @@ def _init_git(project: Path, *, branch: str = "feat/test-branch") -> None:
     dummy.write_text("# test\n")
     subprocess.run(["git", "-C", str(project), "add", "README.md"], capture_output=True, check=True)
     subprocess.run(
-        ["git", "-C", str(project), "commit", "-m", "initial commit", "--no-gpg-sign"],
+        ["git", "-C", str(project), "commit", "-m", "initial commit", "--no-gpg-sign", "--no-verify"],
         capture_output=True, check=True,
         env={**__import__("os").environ, "GIT_AUTHOR_NAME": "test", "GIT_AUTHOR_EMAIL": "test@test.com",
              "GIT_COMMITTER_NAME": "test", "GIT_COMMITTER_EMAIL": "test@test.com"},

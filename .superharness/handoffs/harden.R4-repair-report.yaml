@@ -1,0 +1,42 @@
+task: harden.R4-repair
+phase: report
+status: report_ready
+from: claude-code
+to: owner
+date: 2026-03-27T17:30:00Z
+outcome: |
+  Implemented hygiene --repair mode in src/superharness/engine/validate.py.
+
+  Three repair helpers extracted as named functions:
+  - _repair_create_handoff(task_id, handoff_dir) — creates skeleton YAML in handoffs/
+  - _repair_append_ledger(ledger_file, msg) — appends [repair]-prefixed line with ISO timestamp
+  - _repair_fix_stuck_status(task_id, contract_file) — sets status=done when verified=true but status!=done
+
+  run_validate() gains a repair=False kwarg. When repair=True:
+  - Missing handoff → creates skeleton, logs to ledger, no issue count
+  - Missing ledger entry → appends ledger line, no issue count
+  - Stuck status (verified + non-done) → fixes contract YAML via round_trip_dump, logs to ledger
+  Without --repair, all three conditions still count as issues (behaviour unchanged).
+
+  HELP_TEXT and main() updated with --repair flag.
+
+context: |
+  20 new tests in tests/unit/test_hygiene_repair.py (all pass).
+  All pre-existing validate tests (test_engine_validate_python.py,
+  test_contract_hygiene.py, test_yaml_helpers.py) still pass — 19/19.
+
+  Acceptance criteria status:
+  - hygiene --repair fixes missing handoffs: DONE (test_repair_creates_skeleton_handoff)
+  - hygiene --repair fixes missing ledger entries: DONE (test_repair_appends_ledger_for_missing_entry)
+  - hygiene --repair fixes stuck statuses: DONE (test_repair_fixes_stuck_status)
+  - All repairs logged to ledger with [repair] prefix: DONE (multiple tests)
+  - Without --repair, behavior identical to current: DONE (test_no_repair_does_not_create_handoff, etc.)
+  - 15+ new tests pass: DONE (20 tests)
+
+outcomes:
+  - validate.py: --repair flag wired through main() → run_validate(repair=)
+  - validate.py: 3 repair helper functions (_repair_create_handoff, _repair_append_ledger, _repair_fix_stuck_status)
+  - validate.py: stuck-status check loop added (verified=true + status!=done)
+  - tests/unit/test_hygiene_repair.py: 20 new tests, all green
+
+tests_passed: true

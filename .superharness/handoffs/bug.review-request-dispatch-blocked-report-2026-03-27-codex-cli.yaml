@@ -1,0 +1,67 @@
+task: bug.review-request-dispatch-blocked
+phase: report
+status: report_ready
+from: codex-cli
+to: owner
+date: 2026-03-27T22:17:42Z
+outcome: |
+  Fixed review dispatch so `review_requested` tasks can be launched for review
+  without weakening the normal implementation gate.
+
+  Root cause:
+  - the delegate lifecycle gate still only allowed normal implementation
+    statuses, so `review_requested` items failed at launch time
+  - the live watcher worker was also running a stale copy of the repo shell
+    wrappers, so dispatch from launchd kept resolving `python -m superharness`
+    against the installed package instead of the updated repo source
+
+  Fixes applied:
+  - `delegate` now accepts `review_requested` only when dispatch is explicitly
+    marked `--for-review`
+  - inbox dispatch detects `review_requested` tasks and adds `--for-review`
+    only for those review launches
+  - shell wrappers now export repo `src/` on `PYTHONPATH` so repo-run dispatch
+    does not silently fall back to the installed package
+  - the watcher worker was rebuilt so launchd now uses the updated worker copy
+
+  Live verification:
+  - focused tests now pass for the review-dispatch lifecycle path
+  - a fresh review request for `ui.monitor-show-reviewer` was enqueued and the
+    live watcher moved it to `launched`
+  - the newest launcher log now shows normal review launch output instead of
+    the old `status is 'review_requested' — plan must be approved` failure
+
+context: |
+  Updated files:
+  - src/superharness/commands/delegate.py
+  - src/superharness/commands/inbox_dispatch.py
+  - src/superharness/scripts/inbox-dispatch.sh
+  - src/superharness/scripts/inbox-watch.sh
+  - src/superharness/scripts/delegate-task.sh
+  - src/superharness/scripts/delegate-to-claude.sh
+  - src/superharness/scripts/delegate-to-codex.sh
+  - tests/unit/test_task_dependencies.py
+  - tests/unit/test_inbox_dispatch.py
+
+  Verification run:
+  - pytest tests/unit/test_task_dependencies.py tests/unit/test_inbox_dispatch.py -q
+    -> 37 passed
+
+  Operational repair performed:
+  - rebuilt watcher worker via:
+    `shux watcher-worker --project /Users/airm2max/DevOpsSec/superharness --worker /Users/airm2max/.superharness-workers/superharness --interval 30 --recover-timeout-minutes 3 --recover-action retry --launcher-timeout 300 --to both`
+  - confirmed worker wrappers now include the repo `PYTHONPATH` bootstrap
+  - confirmed live inbox item:
+    `20260327T221636Z-ui.monitor-show-reviewer-4752-4f3c3c`
+    is `status: launched`
+
+  Remaining note:
+  - historical failed review items remain in inbox history; they were created
+    before this fix and are useful evidence of the prior failure mode
+outcomes:
+  - review-requested tasks can now dispatch for review without bypassing the
+    normal plan-approval gate for implementation work
+  - live watcher launches now use the updated repo source path after worker
+    refresh
+  - monitor/inbox state now reflects an active launched Claude review
+tests_passed: true

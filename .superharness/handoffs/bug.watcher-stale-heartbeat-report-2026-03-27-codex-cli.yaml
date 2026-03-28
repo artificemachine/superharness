@@ -1,0 +1,59 @@
+task: bug.watcher-stale-heartbeat
+phase: report
+status: report_ready
+from: codex-cli
+to: owner
+date: 2026-03-27T21:18:30Z
+outcome: |
+  Fixed the watcher health mismatch that was showing a stale heartbeat and
+  misleading idle/not-running state even though launchd had a watcher loaded.
+
+  Root cause:
+  - the configured watcher worker project had diverged from the source project
+    and was using its own standalone `.superharness` directory instead of the
+    source project's `.superharness`
+  - the monitor/status paths were reading heartbeat from the source project
+    while the actual launchd watcher was updating heartbeat in the worker copy
+  - monitor watcher restart/start was reinstalling the stale worker directly
+    instead of rebuilding it through `watcher-worker`
+
+  Fixes applied:
+  - status now resolves heartbeat from the configured worker project when one is
+    present
+  - monitor heartbeat health does the same
+  - monitor watcher start/restart now goes through `watcher-worker`, which
+    rebuilds the worker and restores the `.superharness` symlink correctly
+
+  Live verification:
+  - worker `.superharness` is now a symlink to the source project
+  - `shux status` now reports:
+    - watcher: `level=ok loaded state=running interval=30s`
+    - heartbeat: `ok (last heartbeat 8s ago (worker project))`
+
+context: |
+  Updated files:
+  - src/superharness/commands/status.py
+  - src/superharness/scripts/monitor-ui.py
+  - tests/unit/test_status.py
+  - tests/unit/test_monitor_ui.py
+
+  Verification run:
+  - pytest tests/unit/test_monitor_ui.py tests/unit/test_status.py -q
+
+  Operational repair performed:
+  - rebuilt worker via:
+    `shux watcher-worker --project /Users/airm2max/DevOpsSec/superharness --worker /Users/airm2max/.superharness-workers/superharness --interval 30 --recover-timeout-minutes 3 --recover-action retry --launcher-timeout 300 --to both`
+  - confirmed worker `.superharness` symlink points to:
+    `/Users/airm2max/DevOpsSec/superharness/.superharness`
+
+  Important follow-up:
+  - while verifying, a separate bug surfaced in review dispatch:
+    `review_requested` inbox items now reach the dispatcher, but the delegate
+    path rejects them because it still expects `plan_approved`
+  - that is not the watcher-heartbeat bug anymore; it is a distinct
+    review-dispatch lifecycle bug
+outcomes:
+  - heartbeat health now reflects the actual configured watcher worker
+  - monitor watcher restart repairs the worker instead of preserving divergence
+  - live watcher runtime/heartbeat now agree
+tests_passed: true

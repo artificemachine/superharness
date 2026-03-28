@@ -177,3 +177,25 @@ def test_status_with_profile(repo_root, tmp_path) -> None:
     result = _run_python(["--project", str(project)])
     assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
     assert "superharness status" in result.stdout
+
+
+def test_status_reads_worker_project_heartbeat(repo_root, tmp_path) -> None:
+    from datetime import datetime, timezone
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    sh_dir = _write_harness(project)
+    worker = tmp_path / "worker"
+    (worker / ".superharness").mkdir(parents=True)
+    (sh_dir / "watcher.yaml").write_text(
+        f'watcher_project: "{worker}"\ninterval_seconds: 30\n',
+        encoding="utf-8",
+    )
+    (sh_dir / "watcher.heartbeat").write_text("2026-01-01T00:00:00Z\n", encoding="utf-8")
+    fresh = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    (worker / ".superharness" / "watcher.heartbeat").write_text(fresh + "\n", encoding="utf-8")
+
+    result = _run_python(["--project", str(project)])
+    assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
+    assert "heartbeat: ok" in result.stdout.lower()
+    assert "worker project" in result.stdout.lower()

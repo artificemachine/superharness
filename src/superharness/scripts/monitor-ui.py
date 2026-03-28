@@ -19,6 +19,29 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 
+def _ensure_python_with_yaml() -> None:
+    """Re-exec into the repo venv if the current interpreter lacks PyYAML."""
+    try:
+        import yaml  # noqa: F401
+        return
+    except Exception:
+        pass
+
+    if os.environ.get("SUPERHARNESS_MONITOR_REEXEC") == "1":
+        return
+
+    repo_root = Path(__file__).resolve().parents[3]
+    venv_python = repo_root / ".venv" / "bin" / "python"
+    if not venv_python.exists():
+        return
+    if Path(sys.executable).resolve() == venv_python.resolve():
+        return
+
+    env = os.environ.copy()
+    env["SUPERHARNESS_MONITOR_REEXEC"] = "1"
+    os.execve(str(venv_python), [str(venv_python), str(Path(__file__).resolve()), *sys.argv[1:]], env)
+
+
 HTML = """<!doctype html>
 <html lang=\"en\">
 <head>
@@ -52,6 +75,9 @@ HTML = """<!doctype html>
     .inbox-detail th { text-align:left; color:var(--muted); border-bottom:1px solid var(--line); padding:4px 8px; }
     .inbox-detail td { padding:4px 8px; border-bottom:1px solid var(--line); word-break:break-all; }
     .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+    .task-row { display:flex; align-items:flex-start; gap:8px; padding:5px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    .task-actions { display:flex; align-items:flex-start; gap:4px; flex-wrap:wrap; justify-content:flex-start; flex:0 0 auto; }
+    .task-meta { display:flex; align-items:center; gap:8px; flex:1 1 280px; min-width:180px; flex-wrap:wrap; }
     button { background:var(--btn); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px 10px; cursor:pointer; }
     button:hover { background:var(--btn2); }
     .small { font-size:11px; color:var(--muted); }
@@ -137,6 +163,7 @@ HTML = """<!doctype html>
 
     <div class=\"card\" style=\"margin-top:10px;\">
       <h2>tasks</h2>
+      <div id=\"taskFilterPills\" style=\"display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;\"></div>
       <div id=\"contractTaskList\">-</div>
     </div>
 
@@ -437,52 +464,121 @@ const PHASE_LABEL = {
   stopped:          ['⏹',  'stopped',          'muted'],
 };
 
+// Status filter pills — maps status group → list of statuses it covers
+const STATUS_GROUPS = [
+  { key: 'done',           label: '✅ done',           statuses: ['done'],                          color: 'var(--ok)' },
+  { key: 'stopped',        label: '⛔ disabled',        statuses: ['stopped'],                       color: 'var(--muted)' },
+  { key: 'review',         label: '🔍 review',          statuses: ['review_requested','review_passed','review_failed'], color: 'var(--warn)' },
+  { key: 'in_progress',    label: '🔄 in progress',     statuses: ['in_progress','launched','running'], color: '#4a9eff' },
+  { key: 'plan',           label: '📋 plan',            statuses: ['plan_proposed','plan_approved'], color: '#a78bfa' },
+  { key: 'todo',           label: '🕐 todo',            statuses: ['todo'],                          color: 'var(--muted)' },
+];
+// hidden groups — set of group keys currently hidden
+const _hiddenGroups = new Set();
+
+function _statusToGroup(st) {
+  for (const g of STATUS_GROUPS) {
+    if (g.statuses.includes(st)) return g.key;
+  }
+  return 'todo';
+}
+
+function renderTaskFilterPills(tasks) {
+  const el = document.getElementById('taskFilterPills');
+  if (!el) return;
+  // Count per group
+  const counts = {};
+  for (const t of tasks) {
+    const gk = _statusToGroup(t.status || 'todo');
+    counts[gk] = (counts[gk] || 0) + 1;
+  }
+  el.innerHTML = '';
+  for (const g of STATUS_GROUPS) {
+    const n = counts[g.key] || 0;
+    if (n === 0) continue;
+    const hidden = _hiddenGroups.has(g.key);
+    const pill = document.createElement('span');
+    pill.title = hidden ? `Show ${g.key}` : `Hide ${g.key}`;
+    pill.style.cssText = `cursor:pointer;font-size:11px;padding:2px 8px;border-radius:10px;border:1px solid ${g.color};color:${hidden ? 'var(--muted)' : g.color};background:${hidden ? 'transparent' : g.color+'22'};text-decoration:${hidden ? 'line-through' : 'none'};user-select:none`;
+    pill.textContent = `${g.label} ${n}`;
+    pill.onclick = () => {
+      if (_hiddenGroups.has(g.key)) _hiddenGroups.delete(g.key);
+      else _hiddenGroups.add(g.key);
+      refresh();
+    };
+    el.appendChild(pill);
+  }
+}
+
 function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
   const el = document.getElementById('contractTaskList');
   if (!tasks.length) { el.textContent = '(no tasks)'; return; }
   el.innerHTML = '';
-  for (const t of tasks) {
+  const sorted = [...tasks].reverse();
+  renderTaskFilterPills(sorted);
+  const visible = _hiddenGroups.size === 0 ? sorted : sorted.filter(t => !_hiddenGroups.has(_statusToGroup(t.status || 'todo')));
+  if (!visible.length) { el.textContent = '(no tasks match current filters)'; return; }
+  for (const t of visible) {
     const st = t.status || 'todo';
     const [icon, label, cls] = PHASE_LABEL[st] || ['?', st, 'muted'];
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--line);flex-wrap:wrap';
+    row.className = 'task-row';
 
     const badge = `<span class="pill ${cls}" style="font-size:11px">${icon} ${label}</span>`;
     const schedInfo = t.scheduled_after ? ` <span class="small" style="color:var(--warn)">⏳ after ${t.scheduled_after}</span>` : '';
     const dueInfo = t.due_by ? ` <span class="small" style="color:${new Date(t.due_by) < new Date() ? 'var(--bad)' : 'var(--muted)'}">📅 due ${t.due_by}</span>` : '';
     const depsInfo = (t.depends_on && t.depends_on.length) ? ` <span class="small" style="color:var(--muted)">🔗 ${t.depends_on.join(', ')}</span>` : '';
+    const reviewerInfo = (st === 'review_requested' && t.review_target) ? ` <span class="small" style="color:var(--warn)">👀 reviewer ${t.review_target}</span>` : '';
     const title = `<span style="flex:1;min-width:120px">${t.id} <span class="small" style="color:var(--muted)">${t.title}</span>${schedInfo}${dueInfo}${depsInfo}</span>`;
     const owner = `<span class="small" style="color:var(--muted)">${t.owner}</span>`;
 
-    let actions = '';
+    const actionButtons = [];
     const tid = t.id.replace(/'/g, "\\\\'");
     const ownerEsc = (t.owner || '').replace(/'/g, "\\\\'");
     // View Report button for any task with a handoff or in report_ready/done status
     const viewReportBtn = `<button onclick="viewTaskReport('${tid}','${ownerEsc}')" style="font-size:11px;padding:2px 8px">View Report</button>`;
+    actionButtons.push(viewReportBtn);
     const isEnqueued = activeInboxTasks.has(t.id);
     const isDoneInbox = doneInboxTasks.has(t.id);
-    const canEnqueue = ['todo', 'failed', 'stopped'].includes(st);
-    let enqueueBtn = '';
+    const canEnqueue = ['todo', 'plan_approved', 'failed', 'stopped'].includes(st);
     if (canEnqueue && isDoneInbox && !isEnqueued) {
-      enqueueBtn = ` <button onclick="markTaskDone('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Done</button>`;
+      actionButtons.push(`<button onclick="markTaskDone('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Done</button>`);
     } else if (canEnqueue && isEnqueued) {
-      enqueueBtn = ` <button disabled style="font-size:11px;padding:2px 8px;opacity:0.4;cursor:not-allowed" title="Already in inbox">Enqueued</button>`;
+      actionButtons.push(`<button disabled style="font-size:11px;padding:2px 8px;opacity:0.4;cursor:not-allowed" title="Already in inbox">Enqueued</button>`);
     } else if (canEnqueue && !isEnqueued) {
-      enqueueBtn = ` <button onclick="enqueueTask('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Enqueue</button>`;
+      actionButtons.push(`<button onclick="enqueueTask('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Enqueue</button>`);
     }
     if (st === 'plan_proposed') {
-      actions = `<button onclick="approvePlan('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Approve Plan</button>`;
+      actionButtons.push(`<button onclick="approvePlan('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Approve Plan</button>`);
     } else if (st === 'report_ready') {
-      actions = `<button onclick="requestReview('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Request Opus Review</button>
-                 <button onclick="approveReport('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Accept & Close</button>`;
+      actionButtons.push(`<button onclick="requestReview('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Request Review</button>`);
+      if (t.verified) {
+        actionButtons.push(`<button onclick="approveReport('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--muted)">Close Without Review</button>`);
+      } else {
+        actionButtons.push(`<button disabled title="Run verify before closing" style="font-size:11px;padding:2px 8px;opacity:0.45;cursor:not-allowed">Verify First</button>`);
+      }
     } else if (st === 'review_failed') {
-      actions = `<span class="small" style="color:var(--bad)">↩ review failed</span> <button onclick="enqueueTask('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Re-enqueue</button>`;
-    } else if (st === 'review_passed' || (st === 'done' && t.verified)) {
-      actions = `<button onclick="runClose('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Close</button>`;
+      actionButtons.push(`<span class="small" style="color:var(--bad)">↩ review failed</span>`);
+      actionButtons.push(`<button onclick="enqueueTask('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Re-enqueue</button>`);
+    } else if (st === 'review_passed') {
+      actionButtons.push(`<button onclick="runClose('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Close</button>`);
     }
-    row.innerHTML = viewReportBtn + enqueueBtn + ' ' + badge + title + owner + (actions ? `<span style="display:flex;gap:4px;flex-wrap:wrap">${actions}</span>` : '');
+    if (st === 'stopped') {
+      actionButtons.push(`<button onclick="enableTask('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Enable</button>`);
+    } else if (st !== 'done') {
+      actionButtons.push(`<button onclick="disableTask('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--muted)">Disable</button>`);
+    }
+    row.innerHTML = `<div class="task-actions">${actionButtons.join(' ')}</div><div class="task-meta">${badge}${title}${reviewerInfo}${owner}</div>`;
     el.appendChild(row);
   }
+}
+
+async function disableTask(taskId) {
+  if (!window.confirm(`Disable task "${taskId}"? It will be set to stopped and hidden with done tasks.`)) return;
+  await act('disable_task:' + taskId);
+}
+async function enableTask(taskId) {
+  await act('enable_task:' + taskId);
 }
 
 async function approvePlan(taskId) {
@@ -491,12 +587,12 @@ async function approvePlan(taskId) {
 }
 
 async function requestReview(taskId) {
-  if (!window.confirm(`Request Opus review for task "${taskId}"?`)) return;
+  if (!window.confirm(`Request review for task "${taskId}"?`)) return;
   await act('request_review:' + taskId);
 }
 
 async function approveReport(taskId) {
-  if (!window.confirm(`Accept report and mark task "${taskId}" ready to close?`)) return;
+  if (!window.confirm(`Close task "${taskId}" without requesting review?`)) return;
   await act('approve_report:' + taskId);
 }
 
@@ -1177,7 +1273,9 @@ def watcher_health(runtime: dict, items: list[dict], now_utc: str) -> dict:
 
 
 def heartbeat_health(project_dir: Path, stale_seconds: int = 120) -> dict:
-    hb_file = project_dir / ".superharness" / "watcher.heartbeat"
+    watcher_project = Path(str(watcher_config(project_dir).get("watcher_project", str(project_dir))))
+    hb_root = watcher_project if (watcher_project / ".superharness").exists() else project_dir
+    hb_file = hb_root / ".superharness" / "watcher.heartbeat"
     if not hb_file.exists():
         return {
             "level": "warn",
@@ -1200,16 +1298,17 @@ def heartbeat_health(project_dir: Path, stale_seconds: int = 120) -> dict:
         }
     now_dt = dt.datetime.now(tz=dt.timezone.utc)
     age = int((now_dt - hb_dt).total_seconds())
+    via_worker = hb_root != project_dir
     if age >= stale_seconds:
         mins = age // 60
         return {
             "level": "warn",
-            "message": f"Heartbeat stale ({mins}m ago) — watcher may have crashed.",
+            "message": f"Heartbeat stale ({mins}m ago){' — worker project' if via_worker else ''} — watcher may have crashed.",
             "age_seconds": age,
         }
     return {
         "level": "ok",
-        "message": f"Heartbeat OK ({age}s ago).",
+        "message": f"Heartbeat OK ({age}s ago){' — worker project' if via_worker else ''}.",
         "age_seconds": age,
     }
 
@@ -1241,6 +1340,7 @@ def contract_tasks(contract_file: Path) -> list[dict]:
                 "title": str(t.get("title", "")),
                 "status": str(t.get("status", "todo")),
                 "owner": str(t.get("owner", "")),
+                "review_target": _review_target_for_owner(str(t.get("owner", ""))) if str(t.get("status", "todo")) == "review_requested" else "",
                 "verified": bool(t.get("verified", False)),
                 "scheduled_after": str(t.get("scheduled_after", "")),
                 "due_by": str(t.get("due_by", "")),
@@ -1360,6 +1460,27 @@ def _set_task_status(harness_dir: Path, task_id: str, to_status: str, from_statu
         return {"ok": True, "task": task_id, "status": to_status}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+def _contract_task(harness_dir: Path, task_id: str) -> dict | None:
+    contract_file = harness_dir / "contract.yaml"
+    if not contract_file.exists():
+        return None
+    try:
+        import yaml  # noqa: F811
+        doc = yaml.safe_load(contract_file.read_text()) or {}
+    except Exception:
+        return None
+    for task in doc.get("tasks") or []:
+        if isinstance(task, dict) and task.get("id") == task_id:
+            return task
+    return None
+
+
+def _review_target_for_owner(owner: str) -> str:
+    if owner == "claude-code":
+        return "codex-cli"
+    return "claude-code"
 
 
 def _confirm_plan(harness_dir: Path, task_id: str) -> dict:
@@ -1539,9 +1660,12 @@ class Handler(BaseHTTPRequestHandler):
 
         if action in {"watcher_start", "watcher_restart"}:
             install_args = [
-                "bash",
-                install_watcher,
+                sys.executable,
+                "-m",
+                "superharness.commands.watcher_worker",
                 "--project",
+                str(self.project_dir),
+                "--worker",
                 str(watcher_project),
                 "--interval",
                 str(int(wcfg.get("interval_seconds", 15))),
@@ -1553,13 +1677,9 @@ class Handler(BaseHTTPRequestHandler):
                 str(int(wcfg.get("launcher_timeout_seconds", 180))),
                 "--to",
                 str(wcfg.get("target", "both")),
-                "--confirm-non-interactive",
-                "yes",
-                "--confirm-skip-permissions",
-                "yes",
             ]
             if bool(wcfg.get("codex_bypass", False)):
-                install_args.extend(["--codex-bypass", "--confirm-codex-bypass", "yes"])
+                install_args.append("--codex-bypass")
             install_result = self._run_cmd(install_args, timeout=120)
             if install_result["exit_code"] != 0:
                 return install_result, 200
@@ -1599,6 +1719,20 @@ class Handler(BaseHTTPRequestHandler):
             result = _confirm_plan(self.project_dir / ".superharness", task_id)
             return result, (200 if result.get("ok") else 500)
 
+        if action.startswith("disable_task:"):
+            task_id = action.split(":", 1)[1]
+            if not task_id:
+                return ({"error": "missing task id"}, 400)
+            result = _set_task_status(self.project_dir / ".superharness", task_id, "stopped")
+            return result, (200 if result.get("ok") else 500)
+
+        if action.startswith("enable_task:"):
+            task_id = action.split(":", 1)[1]
+            if not task_id:
+                return ({"error": "missing task id"}, 400)
+            result = _set_task_status(self.project_dir / ".superharness", task_id, "todo", from_status="stopped")
+            return result, (200 if result.get("ok") else 500)
+
         if action.startswith("approve_plan:"):
             task_id = action.split(":", 1)[1]
             if not task_id:
@@ -1610,15 +1744,73 @@ class Handler(BaseHTTPRequestHandler):
             task_id = action.split(":", 1)[1]
             if not task_id:
                 return ({"error": "missing task id"}, 400)
-            result = _set_task_status(self.project_dir / ".superharness", task_id, "review_requested", from_status="report_ready")
-            return result, (200 if result.get("ok") else 500)
+            harness_dir = self.project_dir / ".superharness"
+            task = _contract_task(harness_dir, task_id)
+            if not task:
+                return ({"error": f"task {task_id} not found"}, 404)
+            if str(task.get("status", "")) != "report_ready":
+                return ({"error": f"task {task_id} is {task.get('status')!r}, expected 'report_ready'"}, 400)
+
+            items = inbox_items(harness_dir / "inbox.yaml")
+            active_statuses = {"pending", "launched", "running", "paused"}
+            for item in items:
+                if item.get("task") == task_id and item.get("status") in active_statuses:
+                    return ({"error": f"task '{task_id}' already enqueued (item {item.get('id')}, status={item.get('status')})"}, 409)
+
+            target = _review_target_for_owner(str(task.get("owner", "")))
+            enqueue_result = self._run_cmd(
+                [
+                    sys.executable,
+                    "-m",
+                    "superharness.commands.inbox_enqueue",
+                    "--project",
+                    str(self.project_dir),
+                    "--to",
+                    target,
+                    "--task",
+                    task_id,
+                    "--priority",
+                    "1",
+                ]
+            )
+            if enqueue_result.get("exit_code") != 0:
+                return enqueue_result, 200
+
+            status_result = _set_task_status(harness_dir, task_id, "review_requested", from_status="report_ready")
+            if not status_result.get("ok"):
+                return status_result, 500
+
+            return (
+                {
+                    "exit_code": 0,
+                    "stdout": f"Requested review for '{task_id}' via {target}.\n{enqueue_result.get('stdout', '').strip()}".strip(),
+                    "stderr": enqueue_result.get("stderr", ""),
+                    "cmd": enqueue_result.get("cmd", ""),
+                    "status": "review_requested",
+                    "review_target": target,
+                },
+                200,
+            )
 
         if action.startswith("approve_report:"):
             task_id = action.split(":", 1)[1]
             if not task_id:
                 return ({"error": "missing task id"}, 400)
-            result = _set_task_status(self.project_dir / ".superharness", task_id, "done", from_status="report_ready")
-            return result, (200 if result.get("ok") else 500)
+            return self._run_cmd(
+                [
+                    sys.executable,
+                    "-m",
+                    "superharness.commands.close",
+                    "--project",
+                    str(self.project_dir),
+                    "--id",
+                    task_id,
+                    "--actor",
+                    "owner",
+                    "--summary",
+                    "Closed from monitor without review request",
+                ]
+            ), 200
 
         if action.startswith("mark_done:"):
             task_id = action.split(":", 1)[1]
@@ -1658,7 +1850,8 @@ class Handler(BaseHTTPRequestHandler):
                 return ({"error": "missing task id"}, 400)
             return self._run_cmd(
                 [sys.executable, "-m", "superharness.commands.close",
-                 "--project", str(self.project_dir), "--id", task_id]
+                 "--project", str(self.project_dir), "--id", task_id,
+                 "--actor", "owner"]
             ), 200
 
         if action.startswith("approve_task:"):
@@ -2006,6 +2199,7 @@ def autohealth_loop(
 
 
 def main() -> int:
+    _ensure_python_with_yaml()
     ap = argparse.ArgumentParser(description="superharness watcher browser monitor")
     ap.add_argument("--project", default=None, help="project directory containing .superharness (default: cwd)")
     ap.add_argument("--port", type=int, default=8787, help="HTTP port (default: 8787)")

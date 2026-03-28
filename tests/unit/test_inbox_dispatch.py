@@ -24,7 +24,7 @@ def _run_normalize(args: list[str]) -> subprocess.CompletedProcess:
     )
 
 
-def _write_contract(project: Path) -> None:
+def _write_contract(project: Path, *, status: str = "plan_approved") -> None:
     (project / ".superharness").mkdir(parents=True, exist_ok=True)
     (project / ".superharness" / "handoffs").mkdir(parents=True, exist_ok=True)
     (project / ".superharness" / "contract.yaml").write_text(
@@ -34,7 +34,7 @@ def _write_contract(project: Path) -> None:
                 "tasks:",
                 "  - id: mcp-docs",
                 "    owner: codex-cli",
-                "    status: plan_approved",
+                f"    status: {status}",
                 f"    project_path: '{project.as_posix()}'" ,
             ]
         )
@@ -95,7 +95,11 @@ def test_dispatch_picks_highest_priority_and_sets_launched_in_print_only_mode(re
         script,
         cwd=repo_root,
         args=["--project", str(project), "--to", "codex-cli", "--print-only"],
-        env={"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"},
+        env={
+            "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+            "SUPERHARNESS_PYTHON": sys.executable,
+            "PYTHONPATH": str(repo_root / "src"),
+        },
     )
 
     assert result.returncode == 0, result.stderr
@@ -147,6 +151,41 @@ def test_dispatch_marks_failed_when_retry_limit_reached(repo_root, tmp_path) -> 
     assert "id: exhausted-retries" in inbox_text
     assert "  status: failed" in inbox_text
     assert "  failed_at:" in inbox_text
+
+
+def test_dispatch_allows_review_requested_items_for_review_launch(repo_root, tmp_path) -> None:
+    project = tmp_path / "proj_review"
+    project.mkdir()
+    _write_contract(project, status="review_requested")
+    _write_inbox(
+        project,
+        [
+            "# Delegation inbox",
+            "# status: pending|launched|running|done|failed",
+            "",
+            "- id: review-item",
+            "  to: codex-cli",
+            "  task: mcp-docs",
+            f"  project: {project}",
+            "  status: pending",
+            "  priority: 1",
+            "  retry_count: 0",
+            "  max_retries: 3",
+            "  created_at: 2026-03-08T18:00:00Z",
+        ],
+    )
+
+    bin_dir = _fake_bin(tmp_path)
+    script = repo_root / "src" / "superharness" / "scripts" / "inbox-dispatch.sh"
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=["--project", str(project), "--to", "codex-cli", "--print-only"],
+        env={"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "review-item -> launched" in result.stdout
 
 
 def test_normalize_archives_only_dropped_rows(repo_root, tmp_path) -> None:
