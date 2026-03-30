@@ -1279,3 +1279,90 @@ If you're an agent picking this up:
 
 ### Changed
 - `yaml_helpers.safe_load()` now accepts optional `schema=` (Pydantic model class) and `strict=` kwargs — zero impact on existing callers
+
+## [1.3.0] - 2026-03-30
+
+### Added
+- **Orchestrator mode** (`--orchestrate` flag on `delegate`): Opus 4.6 decomposes a task into subtasks, assigns each a model tier (mini/standard/max), estimates cost, writes subtasks to `contract.yaml`, then dispatches sub-agents (Haiku/Sonnet/Opus) at the appropriate tier
+- `engine/orchestrator.py` — `Orchestrator` class with Opus-powered decomposition, JSON parsing, and single-subtask fallback on failure
+- `engine/cost_estimator.py` — pre-flight token and USD cost estimation per subtask tier; `estimate_subtask_cost()`, `estimate_task_cost()` with configurable budget buffer
+- `engine/subtask_aggregator.py` — records sub-agent results back to `contract.yaml`; promotes parent task to `report_ready` when all subtasks done, `failed` if any fail
+- `schemas.py` — `Subtask`, `ModelTier`, `SubtaskStatus` models; `ContractTask` gains `subtasks`, `estimated_cost_usd`, `budget_usd` fields
+- `sdk_runner.py` — exports `MODEL_PRICING` as single pricing source of truth (eliminates duplication with cost estimator)
+- 30 new tests across 5 test files covering schema, cost estimation, orchestration, dispatch, and aggregation
+
+## [1.3.1] - 2026-03-30
+
+### Added
+- `shux monitor-kill` — kill monitor-ui processes by port (`--port`) or all at once
+- `shux monitor-list` — list all running monitor-ui processes with PID, port, and URL; output cross-references `monitor-kill` and `monitor` start commands
+
+### Changed
+- Monitor UI: done tasks hidden by default in the tasks panel (click the pill to show)
+- Monitor UI: `verify.*` tasks show **Close Without Review** as primary action; **Request Review** demoted to smaller secondary button with tooltip
+- Watcher plist: `--to both` changed to `--to claude-code` for superharness project — prevents codex-cli from re-dispatching verify tasks for review
+
+### Fixed
+- `test_subtask_budget.py`: SDK mock patched via `sys.modules` instead of direct `claude_agent_sdk` path — fixes `ModuleNotFoundError` when `claude_agent_sdk` is absent from the test venv
+
+## [1.3.2] - 2026-03-30
+
+### Added
+- **Project-aware monitor detection**: `_find_monitor_processes()` parses `--project` arg from each running `monitor-ui.py` process; `_is_monitor_running(project_dir)` now identifies monitors by project path, not just port 8787
+- `monitor-ui.py` startup guard: prevents duplicate monitors for the same project — prints "monitor already running for project X at port Y" and exits cleanly
+- `shux monitor-kill --project <dir>` — kill the monitor for a specific project
+- `shux monitor-list` now shows a **Project** column alongside PID/port/URL
+
+### Fixed
+- `test_cli.py`: updated `TestIsMonitorRunning` assertions and `TestMonitorCommand` mocks to match new `_is_monitor_running() → (bool, port|None)` tuple return
+- `test_subtask_budget.py`: replaced `_mock_query_gen` (which called `ResultMessage.__new__(ResultMessage)` on a MagicMock — `TypeError` in Python 3.11) with `_make_mock_sdk()` using real class stubs for `ResultMessage`, `ClaudeAgentOptions`, `StreamEvent`
+
+## [1.3.3] - 2026-03-30
+
+### Added
+- **Duplicate inbox guard**: `enqueue()` now rejects a second pending item for the same `(task, to)` pair — prevents double-dispatch when `shux delegate` and `superharness enqueue` are both called. Returns `result=duplicate_task` with exit code 2. Discussion dispatch is unaffected (same task can be enqueued for `claude-code` and `codex-cli` simultaneously).
+- 4 new tests in `test_engine_inbox_python.py` covering: duplicate pending, duplicate launched, same task different agent (allowed), re-enqueue after done (allowed)
+- 14 new tests in `test_cli.py` covering project-aware monitor detection, `monitor-list` columns, `monitor-kill --project` filtering
+
+### Fixed
+- `inbox_enqueue.py`: error message updated from "Inbox item id already exists" to "Duplicate rejected (id or pending task already exists)" to accurately cover both rejection cases
+
+## [Session Summary 2026-03-30] — feat/orchestrator-subtask-routing
+
+### v1.3.1 — Monitor Management Commands
+- `shux monitor-kill` — kill all monitor-ui processes, or by `--port`
+- `shux monitor-list` — list running monitors with PID, port, URL; both commands cross-hint each other in output
+- Monitor UI: done tasks hidden by default in tasks panel (click pill to show)
+- Monitor UI: `verify.*` tasks show "Close Without Review" as primary button; "Request Review" demoted to small secondary
+
+### v1.3.2 — Project-Aware Monitor Detection
+- Duplicate monitor prevention: starting `shux monitor` for a project already running prints "already running" and exits — no more accumulation
+- `monitor-ui.py` has its own startup guard (catches direct invocations too)
+- `shux monitor-list` shows Project column; `shux monitor-kill --project <dir>` kills only the monitor for that project
+- `_is_monitor_running(project_dir)` returns `(bool, port)` tuple, matched by project path
+
+### v1.3.3 — Duplicate Inbox Guard
+- `enqueue()` blocks double-dispatch: same `(task, to)` pair can't be pending/launched twice simultaneously
+- Scoped to `(task + to)` so discussion dispatch can still enqueue same task for both `claude-code` and `codex-cli`
+- Watcher reinstalled for superharness project with `--to claude-code`, 30s interval
+
+### Supporting Work
+- Watcher reinstalled for superharness project (plist was missing)
+- 5 verify tasks created + enqueued for all new features
+- 50+ new tests across inbox, cli, subtask budget, monitor detection
+- Fixed `TestSDKRunnerSubtaskBudget` Python 3.11 `issubclass` TypeError via real class stubs
+- Fixed `_is_monitor_running` test mocks after signature change to tuple return
+- 1137/1137 tests pass
+
+## [1.3.4] - 2026-03-30
+
+### Added
+- **Task report — verbose**: shows full contract data: ID, Title, Owner, Status, Model, Effort, Via, Timeline, Acceptance Criteria, Test Types, TDD block, Outcomes, Verified, Tests Passed, Handoff sections
+- **Task report — Model line**: parses launcher log to show `Model: sonnet (auto-classified) (effort: medium) via sdk` — reads most recent non-empty log, strips `^D`/backspace artifacts from `script` recorder
+- **Remove button**: each task row in tasks panel has a red Remove button — confirms before deleting task from `contract.yaml`
+
+## [1.3.4] - 2026-03-30
+
+### Fixed
+- **Watcher stability — root cause fix**: `session-stop.sh` was calling `launchctl unload` on every Claude Code session end, killing the background watcher. Removed the unload block — the inbox watcher is a persistent service and must survive session boundaries. Inbox items are already paused on session stop, preventing stale dispatch.
+- **Watcher auto-recovery on session start**: `session-start.sh` now passes `--confirm-non-interactive yes --confirm-skip-permissions yes` to `ensure-launchd-inbox-watcher.sh`, enabling automatic plist reinstallation if the file is ever missing (e.g. after a manual unload or fresh machine setup).
