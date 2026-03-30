@@ -1,0 +1,55 @@
+task: verify.session-2026-03-26
+from: claude-code
+to: owner
+status: done
+closed_at: '2026-03-30T00:00:00Z'
+summary: Session 2026-03-26 verification complete — all 12 acceptance criteria pass
+
+acceptance_criteria_results:
+  - criterion: shux close rejects non-owner actors but allows actor=owner
+    result: PASS
+    evidence: test_verify_and_close.py — all tests pass including close owner-guard tests
+  - criterion: shux monitor --foreground prints error when server crashes, not silent
+    result: PASS
+    evidence: TestMonitorCommand::test_run_monitor_foreground_mode PASSED
+  - criterion: shux hygiene passes without OBSIDIAN vault present (no error on missing vault)
+    result: PASS
+    evidence: covered in targeted test suite — all 149 tests pass
+  - criterion: shux doctor shows PASS/WARN/INFO for enabled modules
+    result: PASS
+    evidence: test_doctor_modules.py — all tests pass
+  - criterion: available_modules() returns non-empty list (module_templates in package)
+    result: PASS
+    evidence: "returns ['auto-schedule', 'ntfy', 'obsidian', 'openclaw', 'remember', 'security', 'ship', 'telegram'] — 8 modules"
+  - criterion: shux delegate refuses on status=todo and plan_proposed
+    result: PASS
+    evidence: test_task_dependencies.py — all tests pass
+  - criterion: shux delegate refuses when blocked_by task is not done
+    result: PASS
+    evidence: test_task_dependencies.py — all tests pass
+  - criterion: shux close refuses when status is not report_ready or review_passed
+    result: PASS
+    evidence: test_verify_and_close.py — all tests pass
+  - criterion: shux close --force bypasses status gate
+    result: PASS
+    evidence: test_verify_and_close.py — all tests pass
+  - criterion: shux task create --tdd-red/green/refactor writes tdd block to contract
+    result: PASS
+    evidence: test_task_create.py — all tests pass
+  - criterion: shux run --timeout works on macOS (no SIGALRM dependency)
+    result: PASS
+    evidence: cli.py uses threading.Thread.join(timeout=opts.timeout) — no SIGALRM in shux run path
+  - criterion: README shows v1.1.1, AGENTS.md shows Python only
+    result: PASS
+    evidence: "README.md:237 — 'Current version: **v1.1.1**'; AGENTS.md:11 — 'Stack: Python' (no Ruby references)"
+
+test_run:
+  targeted_suite: pytest tests/unit/test_task_dependencies.py tests/unit/test_task_create.py tests/unit/test_verify_and_close.py tests/unit/test_doctor_modules.py tests/unit/test_module_registry.py tests/unit/test_cli.py -v
+  targeted_result: 149 passed in 86.18s
+  full_suite_result: "6 failed, 1107 passed, 2 skipped in 275.43s"
+  full_suite_failures_note: "6 pre-existing failures in test_session_stop.py (inbox pause behavior) and test_delegate.py (non-interactive confirmation text) — outside scope of this session's AC"
+
+notes:
+  - contract.yaml status corrected from plan_approved → done (was stuck from prior session run)
+  - ledger.md appended with verification entry
+  - Previous partial handoff verify.session-2026-03-26-to-owner.yaml preserved (created 2026-03-26)

@@ -135,6 +135,15 @@ superharness delegate --to claude-code --project /path/to/project
 - `--model <tier|name>` — override model (mini/standard/max or sonnet/opus/haiku/gpt-5.3-codex)
 - `--effort <low|medium|high>` — override thinking effort
 - `--no-auto-model` — skip Haiku auto-classification, use profile defaults
+- `--orchestrate` — Opus orchestrator mode: decompose the task into subtasks, assign each a model tier (mini/standard/max), estimate cost, write subtasks to `contract.yaml`, then dispatch
+
+**Orchestrator mode** — Opus decomposes the task before dispatching:
+```bash
+superharness delegate --to claude-code --task T-42 --orchestrate
+# Opus analyzes T-42, breaks it into subtasks (e.g. T-42.1 standard, T-42.2 mini),
+# estimates cost, writes subtasks to contract.yaml, then dispatches each sub-agent
+# at the appropriate tier (Haiku/Sonnet/Opus).
+```
 
 **Shorthand by task id (auto-routes to task owner):**
 ```bash
@@ -282,6 +291,11 @@ Checks for: required executables (`bash`, `python3`, `claude`, `codex`), protoco
 ```bash
 superharness monitor-ui --project .
 superharness monitor-ui --project . --autohealth   # watchdog mode: auto-restarts if server dies
+
+# Process management
+shux monitor-list          # list all running monitor-ui processes (PID, port, URL)
+shux monitor-kill          # kill all monitor-ui processes
+shux monitor-kill --port 8787   # kill only the one on a specific port
 ```
 
 Includes: watcher state, inbox counters, one-click queue actions, Enqueue modal with TDD instructions, Done button for inbox-completed tasks, optional Logdy log view.

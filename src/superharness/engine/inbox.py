@@ -190,6 +190,20 @@ def enqueue(
     if any(isinstance(x, dict) and str(x.get("id", "")) == str(id) for x in items):
         print(f"result=duplicate_id id={id}")
         return 2
+    # Block duplicate pending entries for the same (task, to) pair — prevents
+    # double-dispatch when shux delegate and enqueue are both called for the
+    # same agent target. Uses (task + to) so discussion dispatch can legitimately
+    # enqueue the same task for claude-code and codex-cli simultaneously.
+    existing = next(
+        (x for x in items if isinstance(x, dict)
+         and str(x.get("task", "")) == str(task)
+         and str(x.get("to", "")) == str(to)
+         and x.get("status") in ("pending", "launched", "running")),
+        None,
+    )
+    if existing is not None:
+        print(f"result=duplicate_task task={task} to={to} existing_id={existing['id']} status={existing.get('status')}")
+        return 2
     norm_p = _norm_priority(priority)
     item: dict = {
         "id": str(id),

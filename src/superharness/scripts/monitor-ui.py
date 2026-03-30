@@ -421,22 +421,84 @@ async function viewTaskReport(taskId, agent) {
     }
     meta.textContent = `task=${taskId}  agent=${agent}  status=${d.contract_status || '-'}`;
     let report = '';
+
+    // ── Contract Task ─────────────────────────────────────────────────────────
+    if (d.contract_status) {
+      report += '═══ CONTRACT TASK ═══════════════════════════════════════════\\n';
+      report += 'ID:      ' + taskId + '\\n';
+      if (d.contract_title)  report += 'Title:   ' + d.contract_title + '\\n';
+      if (d.contract_owner)  report += 'Owner:   ' + d.contract_owner + '\\n';
+      report += 'Status:  ' + d.contract_status + '\\n';
+      if (d.dispatch_model)
+        report += 'Model:   ' + d.dispatch_model +
+                  (d.dispatch_effort ? '  (effort: ' + d.dispatch_effort + ')' : '') +
+                  (d.dispatch_via    ? '  via ' + d.dispatch_via : '') + '\\n';
+      if (d.blocked_by && d.blocked_by !== 'none' && d.blocked_by !== '')
+        report += 'Blocked: ' + d.blocked_by + '\\n';
+      if (d.verified != null)
+        report += 'Verified: ' + (d.verified ? '✓ yes' : '✗ no') +
+                  (d.verified_by ? ' by ' + d.verified_by : '') +
+                  (d.verified_at ? ' at ' + d.verified_at : '') + '\\n';
+      if (d.tests_passed != null)
+        report += 'Tests passed: ' + (d.tests_passed ? '✓ yes' : '✗ no') + '\\n';
+
+      // Timestamps
+      const tsKeys = ['todo_at','plan_proposed_at','plan_approved_at','in_progress_at','report_ready_at','done_at','stopped_at'];
+      const tsLabels = {'todo_at':'Todo','plan_proposed_at':'Plan proposed','plan_approved_at':'Plan approved',
+                        'in_progress_at':'In progress','report_ready_at':'Report ready','done_at':'Done','stopped_at':'Stopped'};
+      const tsParts = tsKeys.filter(k => d[k]).map(k => tsLabels[k] + ': ' + d[k]);
+      if (tsParts.length) report += '\\nTimeline:\\n' + tsParts.map(s => '  ' + s).join('\\n') + '\\n';
+
+      // Acceptance criteria
+      if (d.acceptance_criteria && d.acceptance_criteria.length) {
+        report += '\\nAcceptance Criteria:\\n';
+        d.acceptance_criteria.forEach(c => { report += '  ✦ ' + c + '\\n'; });
+      }
+
+      // Test types
+      if (d.test_types && d.test_types.length)
+        report += '\\nTest Types: ' + d.test_types.join(', ') + '\\n';
+
+      // TDD block
+      if (d.tdd && Object.keys(d.tdd).length) {
+        report += '\\nTDD:\\n';
+        if (d.tdd.red)     report += '  RED:     ' + String(d.tdd.red).replace(/\\n/g,'\\n           ') + '\\n';
+        if (d.tdd.green)   report += '  GREEN:   ' + String(d.tdd.green).replace(/\\n/g,'\\n           ') + '\\n';
+        if (d.tdd.refactor)report += '  REFACTOR:' + String(d.tdd.refactor).replace(/\\n/g,'\\n           ') + '\\n';
+      }
+
+      // Outcomes
+      if (d.outcomes && d.outcomes.length) {
+        report += '\\nOutcomes:\\n';
+        d.outcomes.forEach(o => { report += '  • ' + o + '\\n'; });
+      }
+
+      // Summary
+      if (d.contract_summary) report += '\\nSummary: ' + d.contract_summary + '\\n';
+
+      report += '\\n';
+    }
+
+    // ── Discussion ────────────────────────────────────────────────────────────
     if (d.discussion_topic) {
-      report += '## Discussion\\n';
-      report += 'Topic: ' + d.discussion_topic + '\\n';
+      report += '═══ DISCUSSION ══════════════════════════════════════════════\\n';
+      report += 'Topic:  ' + d.discussion_topic + '\\n';
       report += 'Status: ' + (d.discussion_status||'-') + '\\n';
-      report += 'Round: ' + (d.discussion_round||'?') + '/' + (d.discussion_max_rounds||'?') + '\\n\\n';
+      report += 'Round:  ' + (d.discussion_round||'?') + '/' + (d.discussion_max_rounds||'?') + '\\n\\n';
     }
-    if (d.contract_status) report += '## Contract Task\\nStatus: ' + d.contract_status + '\\n';
-    if (d.contract_summary) report += d.contract_summary + '\\n\\n';
-    if (d.handoff_outcome) {
-      report += '## Outcome' + (d.handoff_date ? ' (' + d.handoff_date + ')' : '') + '\\n' + d.handoff_outcome + '\\n\\n';
+
+    // ── Handoff / Report ──────────────────────────────────────────────────────
+    if (d.handoff_outcome || d.handoff_context || d.handoff_summary || d.markdown_report) {
+      report += '═══ HANDOFF REPORT' + (d.handoff_date ? ' (' + d.handoff_date + ')' : '') + ' ════════════════════════\\n';
+      if (d.handoff_outcome)  report += '\\nOutcome:\\n' + d.handoff_outcome + '\\n';
+      if (d.handoff_context)  report += '\\nContext (for next session):\\n' + d.handoff_context + '\\n';
+      if (d.handoff_summary)  report += '\\nSummary: ' + d.handoff_summary + '\\n';
+      if (d.markdown_report)  report += '\\n' + d.markdown_report + '\\n';
     }
-    if (d.handoff_context) report += '## Context (for next session)\\n' + d.handoff_context + '\\n\\n';
-    if (d.discussion_position) report += '## Discussion Position (' + (d.discussion_agent||agent) + ')\\n' + d.discussion_position + '\\n\\n';
-    if (d.discussion_verdict) report += 'Verdict: ' + d.discussion_verdict + '\\n\\n';
-    if (d.handoff_summary) report += '## Handoff Summary\\n' + d.handoff_summary + '\\n\\n';
-    if (d.markdown_report) report += '## Handoff Report\\n' + d.markdown_report + '\\n\\n';
+
+    if (d.discussion_position) report += '\\n═══ DISCUSSION POSITION (' + (d.discussion_agent||agent) + ') ═══════════════\\n' + d.discussion_position + '\\n';
+    if (d.discussion_verdict)  report += 'Verdict: ' + d.discussion_verdict + '\\n';
+
     if (!report) report = '(no report data found for this task)';
     body.textContent = report;
   } catch (e) {
@@ -473,8 +535,8 @@ const STATUS_GROUPS = [
   { key: 'plan',           label: '📋 plan',            statuses: ['plan_proposed','plan_approved'], color: '#a78bfa' },
   { key: 'todo',           label: '🕐 todo',            statuses: ['todo'],                          color: 'var(--muted)' },
 ];
-// hidden groups — set of group keys currently hidden
-const _hiddenGroups = new Set();
+// hidden groups — set of group keys currently hidden; done is hidden by default
+const _hiddenGroups = new Set(['done']);
 
 function _statusToGroup(st) {
   for (const g of STATUS_GROUPS) {
@@ -551,11 +613,18 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
     if (st === 'plan_proposed') {
       actionButtons.push(`<button onclick="approvePlan('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Approve Plan</button>`);
     } else if (st === 'report_ready') {
-      actionButtons.push(`<button onclick="requestReview('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Request Review</button>`);
-      if (t.verified) {
-        actionButtons.push(`<button onclick="approveReport('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--muted)">Close Without Review</button>`);
+      const isVerifyTask = tid.startsWith('verify.');
+      if (isVerifyTask) {
+        // Verify tasks are self-verifying — close is the primary action
+        actionButtons.push(`<button onclick="approveReport('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Close Without Review</button>`);
+        actionButtons.push(`<button onclick="requestReview('${tid}')" style="font-size:10px;padding:1px 6px;color:var(--muted);opacity:0.7" title="Request meta-review of this verification">Request Review</button>`);
       } else {
-        actionButtons.push(`<button disabled title="Run verify before closing" style="font-size:11px;padding:2px 8px;opacity:0.45;cursor:not-allowed">Verify First</button>`);
+        actionButtons.push(`<button onclick="requestReview('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Request Review</button>`);
+        if (t.verified) {
+          actionButtons.push(`<button onclick="approveReport('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--muted)">Close Without Review</button>`);
+        } else {
+          actionButtons.push(`<button disabled title="Run verify before closing" style="font-size:11px;padding:2px 8px;opacity:0.45;cursor:not-allowed">Verify First</button>`);
+        }
       }
     } else if (st === 'review_failed') {
       actionButtons.push(`<span class="small" style="color:var(--bad)">↩ review failed</span>`);
@@ -568,6 +637,7 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
     } else if (st !== 'done') {
       actionButtons.push(`<button onclick="disableTask('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--muted)">Disable</button>`);
     }
+    actionButtons.push(`<button onclick="removeTask('${tid}')" style="font-size:11px;padding:2px 6px;color:var(--bad)">Remove</button>`);
     row.innerHTML = `<div class="task-actions">${actionButtons.join(' ')}</div><div class="task-meta">${badge}${title}${reviewerInfo}${owner}</div>`;
     el.appendChild(row);
   }
@@ -579,6 +649,10 @@ async function disableTask(taskId) {
 }
 async function enableTask(taskId) {
   await act('enable_task:' + taskId);
+}
+async function removeTask(taskId) {
+  if (!window.confirm(`Remove task "${taskId}" from contract? This cannot be undone.`)) return;
+  await act('remove_task:' + taskId);
 }
 
 async function approvePlan(taskId) {
@@ -949,7 +1023,7 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
     harness = project_dir / ".superharness"
     result: dict = {"task": task_id, "agent": agent}
 
-    # 1. Contract task summary
+    # 1. Contract task — full data
     contract_file = harness / "contract.yaml"
     if contract_file.exists():
         try:
@@ -957,9 +1031,55 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
             doc = yaml.safe_load(contract_file.read_text()) or {}
             for t in doc.get("tasks") or []:
                 if isinstance(t, dict) and t.get("id") == task_id:
-                    result["contract_status"] = t.get("status", "")
-                    result["contract_summary"] = t.get("summary", "")
+                    result["contract_status"]   = t.get("status", "")
+                    result["contract_title"]    = t.get("title", "")
+                    result["contract_owner"]    = t.get("owner", "")
+                    result["contract_summary"]  = t.get("summary", "")
+                    result["blocked_by"]        = t.get("blocked_by", "")
+                    result["acceptance_criteria"] = t.get("acceptance_criteria") or []
+                    result["test_types"]        = t.get("test_types") or []
+                    result["tdd"]               = t.get("tdd") or {}
+                    result["outcomes"]          = t.get("outcomes") or []
+                    result["tests_passed"]      = t.get("tests_passed", None)
+                    result["verified"]          = t.get("verified", None)
+                    result["verified_at"]       = str(t.get("verified_at", ""))
+                    result["verified_by"]       = t.get("verified_by", "")
+                    # timestamps
+                    for ts_key in ("todo_at", "plan_proposed_at", "plan_approved_at",
+                                   "in_progress_at", "report_ready_at", "done_at", "stopped_at"):
+                        if t.get(ts_key):
+                            result[ts_key] = str(t[ts_key])
                     break
+        except Exception:
+            pass
+
+    # 1b. Launcher log — extract Model / Effort / Via written at dispatch time
+    launcher_log_dir = harness / "launcher-logs"
+    if launcher_log_dir.exists():
+        try:
+            # Most recent log for this task+agent
+            logs = sorted(launcher_log_dir.glob(f"{task_id}-{agent}-*.log"), reverse=True)
+            if not logs:
+                logs = sorted(launcher_log_dir.glob(f"{task_id}-*.log"), reverse=True)
+            if logs:
+                import re as _re
+                # Pick most recent log that has actual content (empty logs are stale)
+                log_text = ""
+                for _log in logs:
+                    _t = _log.read_text(errors="replace")
+                    if len(_t.strip()) > 10:
+                        log_text = _t
+                        break
+                for line in log_text.splitlines():
+                    # Strip ^D literal, backspace chars, and surrounding whitespace
+                    line = _re.sub(r'[\x00-\x08\x0e-\x1f\x7f]', '', line)
+                    line = line.replace("^D", "").strip()
+                    if line.startswith("Model:"):
+                        result["dispatch_model"] = line.split(":", 1)[1].strip()
+                    elif line.startswith("Effort:"):
+                        result["dispatch_effort"] = line.split(":", 1)[1].strip()
+                    elif line.startswith("Via:"):
+                        result["dispatch_via"] = line.split(":", 1)[1].strip()
         except Exception:
             pass
 
@@ -1733,6 +1853,27 @@ class Handler(BaseHTTPRequestHandler):
             result = _set_task_status(self.project_dir / ".superharness", task_id, "todo", from_status="stopped")
             return result, (200 if result.get("ok") else 500)
 
+        if action.startswith("remove_task:"):
+            task_id = action.split(":", 1)[1]
+            if not task_id:
+                return ({"error": "missing task id"}, 400)
+            harness_dir = self.project_dir / ".superharness"
+            contract_file = harness_dir / "contract.yaml"
+            try:
+                import yaml as _yaml
+                with open(contract_file) as _f:
+                    _contract = _yaml.safe_load(_f)
+                _tasks = _contract.get("tasks", [])
+                _before = len(_tasks)
+                _contract["tasks"] = [t for t in _tasks if t.get("id") != task_id]
+                if len(_contract["tasks"]) == _before:
+                    return ({"error": f"task '{task_id}' not found"}, 404)
+                with open(contract_file, "w") as _f:
+                    _yaml.safe_dump(_contract, _f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+                return {"ok": True, "removed": task_id}, 200
+            except Exception as exc:
+                return ({"error": str(exc)}, 500)
+
         if action.startswith("approve_plan:"):
             task_id = action.split(":", 1)[1]
             if not task_id:
@@ -2230,6 +2371,53 @@ def main() -> int:
         return 0
 
     scripts_dir = Path(__file__).resolve().parent
+
+    # Guard: prevent a second monitor for the same project directory.
+    # Scan running processes for another monitor-ui.py with the same --project arg.
+    _my_pid = os.getpid()
+    try:
+        import subprocess as _sp
+        _ps = _sp.run(["ps", "ax", "-o", "pid=,args="], capture_output=True, text=True).stdout
+        for _line in _ps.splitlines():
+            _line = _line.strip()
+            if "monitor-ui.py" not in _line:
+                continue
+            _parts = _line.split()
+            try:
+                _other_pid = int(_parts[0])
+            except (ValueError, IndexError):
+                continue
+            if _other_pid == _my_pid:
+                continue
+            # Extract --project from that process's cmdline
+            _other_proj = None
+            for _i, _p in enumerate(_parts):
+                if _p == "--project" and _i + 1 < len(_parts):
+                    _other_proj = str(Path(_parts[_i + 1]).expanduser().resolve())
+                    break
+            if _other_proj and Path(_other_proj).resolve() == project_dir.resolve():
+                # Find its port via lsof
+                _lsof = _sp.run(
+                    ["lsof", "-a", "-i", "TCP", "-sTCP:LISTEN", "-n", "-P", "-p", str(_other_pid)],
+                    capture_output=True, text=True,
+                ).stdout
+                _existing_port = None
+                for _ll in _lsof.splitlines():
+                    _lp = _ll.split()
+                    if len(_lp) >= 9:
+                        try:
+                            _existing_port = int(_lp[8].split(":")[-1])
+                        except ValueError:
+                            pass
+                _url = f"http://127.0.0.1:{_existing_port}" if _existing_port else "(port unknown)"
+                print(f"monitor already running for project '{project_dir.name}' (pid={_other_pid}, {_url})")
+                print(f"  kill it first:  shux monitor-kill --project {project_dir}")
+                raise SystemExit(0)
+    except SystemExit:
+        raise
+    except Exception:
+        pass  # Guard failure must never block startup
+
     Handler.project_dir = project_dir
     Handler.label = project_label(project_dir)
     Handler.refresh_seconds = args.refresh_seconds

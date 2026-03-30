@@ -58,6 +58,84 @@ def test_enqueue_duplicate_id_rejected(tmp_path: Path) -> None:
     assert "duplicate_id" in r.stdout
 
 
+def test_enqueue_duplicate_task_rejected_when_pending(tmp_path: Path) -> None:
+    """Second enqueue for the same task is blocked while the first is pending."""
+    f = _inbox_file(tmp_path)
+    _run_inbox("enqueue", [
+        "--file", str(f), "--id", "first-id", "--to", "claude-code",
+        "--task", "my-task", "--project", "/p", "--priority", "1",
+        "--created-at", "2026-01-01T00:00:00Z",
+    ])
+    r = _run_inbox("enqueue", [
+        "--file", str(f), "--id", "second-id", "--to", "claude-code",
+        "--task", "my-task", "--project", "/p", "--priority", "1",
+        "--created-at", "2026-01-01T00:00:01Z",
+    ])
+    assert r.returncode == 2
+    assert "duplicate_task" in r.stdout
+    assert "my-task" in r.stdout
+
+
+def test_enqueue_duplicate_task_rejected_when_launched(tmp_path: Path) -> None:
+    """Second enqueue is also blocked when the first item is already launched."""
+    f = _inbox_file(tmp_path)
+    _run_inbox("enqueue", [
+        "--file", str(f), "--id", "first-id", "--to", "claude-code",
+        "--task", "my-task", "--project", "/p", "--priority", "1",
+        "--created-at", "2026-01-01T00:00:00Z",
+    ])
+    # Advance to launched
+    _run_inbox("launch", ["--file", str(f), "--id", "first-id", "--now", "2026-01-01T00:00:05Z"])
+    r = _run_inbox("enqueue", [
+        "--file", str(f), "--id", "second-id", "--to", "claude-code",
+        "--task", "my-task", "--project", "/p", "--priority", "1",
+        "--created-at", "2026-01-01T00:00:06Z",
+    ])
+    assert r.returncode == 2
+    assert "duplicate_task" in r.stdout
+
+
+def test_enqueue_same_task_different_agent_allowed(tmp_path: Path) -> None:
+    """Same task can be enqueued for a different agent (discussion dispatch use case)."""
+    f = _inbox_file(tmp_path)
+    _run_inbox("enqueue", [
+        "--file", str(f), "--id", "first-id", "--to", "claude-code",
+        "--task", "my-task", "--project", "/p", "--priority", "1",
+        "--created-at", "2026-01-01T00:00:00Z",
+    ])
+    # Same task but different target — must be allowed (multi-agent discussion)
+    r = _run_inbox("enqueue", [
+        "--file", str(f), "--id", "second-id", "--to", "codex-cli",
+        "--task", "my-task", "--project", "/p", "--priority", "1",
+        "--created-at", "2026-01-01T00:00:01Z",
+    ])
+    assert r.returncode == 0
+    assert "result=enqueued" in r.stdout
+
+
+def test_enqueue_same_task_allowed_after_done(tmp_path: Path) -> None:
+    """Same task can be re-enqueued once the previous item is done."""
+    f = _inbox_file(tmp_path)
+    _run_inbox("enqueue", [
+        "--file", str(f), "--id", "first-id", "--to", "claude-code",
+        "--task", "my-task", "--project", "/p", "--priority", "1",
+        "--created-at", "2026-01-01T00:00:00Z",
+    ])
+    # Mark it done via set_status
+    _run_inbox("set_status", [
+        "--file", str(f), "--id", "first-id",
+        "--from", "pending", "--to", "done",
+        "--now", "2026-01-01T01:00:00Z", "--stamp-key", "done_at",
+    ])
+    r = _run_inbox("enqueue", [
+        "--file", str(f), "--id", "second-id", "--to", "claude-code",
+        "--task", "my-task", "--project", "/p", "--priority", "1",
+        "--created-at", "2026-01-01T02:00:00Z",
+    ])
+    assert r.returncode == 0
+    assert "result=enqueued" in r.stdout
+
+
 def test_enqueue_normalizes_priority(tmp_path: Path) -> None:
     f = _inbox_file(tmp_path)
     r = _run_inbox("enqueue", [

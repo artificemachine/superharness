@@ -41,6 +41,17 @@ adapters/               → Claude Code hooks, Codex CLI templates
 
 **Python for `engine/`:** structured YAML support via PyYAML, fast startup. Bash handles orchestration; Python handles YAML and business logic.
 
+**Key engine modules:**
+
+| Module | Role |
+|--------|------|
+| `schemas.py` | Pydantic v2 models for all protocol YAML types (`ContractTask`, `Subtask`, `InboxItem`, etc.) |
+| `model_router.py` | Maps tier names (mini/standard/max) to agent-specific model IDs |
+| `cost_estimator.py` | Pre-flight token and cost estimation per subtask tier before dispatch |
+| `orchestrator.py` | Opus-level orchestrator: decomposes a task into subtasks, assigns model tiers, estimates cost |
+| `subtask_aggregator.py` | Records sub-agent results back to `contract.yaml`; sets parent task status on completion |
+| `sdk_runner.py` | Wraps `claude_agent_sdk.query()` for programmatic dispatch with token/cost tracking and budget guards |
+
 ---
 
 ## Runtime State (`.superharness/`)
@@ -98,6 +109,9 @@ graph TB
         contract_py["contract.py"]
         profile_py["profile.py"]
         recall_py["recall.py"]
+        orchestrator_py["orchestrator.py"]
+        cost_estimator_py["cost_estimator.py"]
+        subtask_agg_py["subtask_aggregator.py"]
     end
 
     subgraph State[".superharness/"]
