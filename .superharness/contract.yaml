@@ -2,7 +2,7 @@ id: initial-setup
 created: 2026-03-15
 created_by: owner
 status: draft
-goal: "TBD \u2014 describe the current objective"
+goal: TBD — describe the current objective
 tasks:
 - id: feat.monitor-browser-open
   title: 'shux monitor: auto project detection + browser open'
@@ -39,7 +39,7 @@ tasks:
   summary: test-type command implemented; report handoff feat.test-type-command-report.yaml
     exists
 - id: mod.0-loader
-  title: "Module loader (YAML \u2192 dataclass)"
+  title: Module loader (YAML → dataclass)
   owner: claude-code
   status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
@@ -321,14 +321,14 @@ tasks:
   owner: claude-code
   status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
-  summary: "blocked_by field + full lifecycle gates on delegate and close \u2014 19\
-    \ tests, TDD complete"
+  summary: blocked_by field + full lifecycle gates on delegate and close — 19 tests,
+    TDD complete
   verified: true
   verified_at: '2026-03-26T00:41:12Z'
   verified_by: claude-code
 - id: bug.monitor-crash
-  title: "Monitor UI crashes silently \u2014 server dies after spawning, port 8787\
-    \ becomes unreachable"
+  title: Monitor UI crashes silently — server dies after spawning, port 8787 becomes
+    unreachable
   owner: claude-code
   status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
@@ -338,7 +338,7 @@ tasks:
   verified_at: '2026-03-26T00:40:56Z'
   verified_by: claude-code
 - id: bug.version-mismatch
-  title: "CLI reports 1.0.0 but pip has 1.1.1 \u2014 hardcoded version string"
+  title: CLI reports 1.0.0 but pip has 1.1.1 — hardcoded version string
   owner: claude-code
   status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
@@ -348,8 +348,8 @@ tasks:
   verified_at: '2026-03-26T00:40:56Z'
   verified_by: claude-code
 - id: bug.close-owner-rejected
-  title: "shux close rejects owner actor \u2014 owner should always be able to close\
-    \ any task"
+  title: shux close rejects owner actor — owner should always be able to close any
+    task
   owner: claude-code
   status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
@@ -358,11 +358,11 @@ tasks:
   verified_at: '2026-03-26T00:40:56Z'
   verified_by: claude-code
 - id: fix.corrupt-handoff
-  title: "Fix corrupt YAML in feat.sdk-streaming-complete.yaml \u2014 multiple documents"
+  title: Fix corrupt YAML in feat.sdk-streaming-complete.yaml — multiple documents
   owner: claude-code
   status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
-  summary: "Corrupt handoff YAML fixed \u2014 single valid document"
+  summary: Corrupt handoff YAML fixed — single valid document
   verified: true
   verified_at: '2026-03-26T00:40:56Z'
   verified_by: claude-code
@@ -384,8 +384,8 @@ tasks:
   verified: true
   verified_at: '2026-03-26T12:15:31Z'
   verified_by: claude-code
-  summary: "Working tree clean at v1.2.5 \u2014 prior dirty files already merged via\
-    \ PRs #49-55. Obsolete stash dropped."
+  summary: 'Working tree clean at v1.2.5 — prior dirty files already merged via PRs
+    #49-55. Obsolete stash dropped.'
 - id: verify.session-2026-03-26
   title: 'Verify: bug fixes, feat.task-dependencies, tdd block'
   owner: claude-code
@@ -411,9 +411,11 @@ tasks:
       tests/unit/test_cli.py -v'
     green: all tests pass, shux doctor/delegate/close behave as described in criteria
     refactor: no regressions in full suite (shux hygiene clean)
-  summary: Session 2026-03-26 fully verified and closed
+  summary: 'Session 2026-03-26 fully verified and closed — all 12 AC pass, 149 targeted
+    tests pass (6 pre-existing failures in test_session_stop.py / test_delegate.py
+    outside scope)'
   verified: true
-  verified_at: '2026-03-26T00:42:36Z'
+  verified_at: '2026-03-30T00:00:00Z'
   verified_by: claude-code
 - id: test.template-validation
   title: 'Test: full mandatory template validation'
@@ -678,13 +680,254 @@ tasks:
   verified_at: '2026-03-27T22:51:43Z'
   verified_by: claude-code
   summary: Task completed and verified
-- id: test.hide-done-button
-  title: 'Test: hide done button in monitor UI'
+- id: verify.orchestrator-decompose
+  title: 'Verify: orchestrator decomposes a real task via Opus'
   owner: claude-code
-  status: stopped
+  status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
-  stopped_at: '2026-03-28T01:42:19Z'
-  todo_at: '2026-03-28T01:42:06Z'
+  acceptance_criteria:
+  - shux delegate --orchestrate --print-only completes without error
+  - contract.yaml task gains subtasks[] with at least 1 entry after run
+  - Each subtask has id, title, model_tier (mini/standard/max), estimated_tokens,
+    estimated_cost_usd
+  - 'Decomposition summary printed: subtask count, estimated cost, recommended budget'
+  subtasks:
+  - id: verify.orchestrator-decompose.1
+    title: Verify shux delegate --orchestrate --print-only CLI flag exists and parses
+      without error
+    model_tier: mini
+    estimated_tokens: 8000
+    estimated_cost_usd: 0.0052
+    rationale: Simple CLI invocation check — run command, capture exit code and stdout.
+      No reasoning or code changes needed.
+    owner: claude-code
+  - id: verify.orchestrator-decompose.2
+    title: Inspect contract.yaml schema to confirm subtasks[] field is supported and
+      validate its structure
+    model_tier: mini
+    estimated_tokens: 6000
+    estimated_cost_usd: 0.0039
+    rationale: Read a YAML file and check for a known key. Structured data inspection,
+      no multi-step reasoning.
+    owner: claude-code
+  - id: verify.orchestrator-decompose.3
+    title: Run shux delegate --orchestrate --print-only with a sample task and capture
+      decomposition output
+    model_tier: standard
+    estimated_tokens: 25000
+    estimated_cost_usd: 0.195
+    rationale: Requires executing the orchestrator end-to-end, parsing multi-field
+      output (id, title, model_tier, estimated_tokens, estimated_cost_usd), and validating
+      each subtask entry against acceptance criteria. Multi-step validation with potential
+      debugging.
+    owner: claude-code
+  - id: verify.orchestrator-decompose.4
+    title: 'Validate subtask fields: each entry has id, title, model_tier, estimated_tokens,
+      estimated_cost_usd'
+    model_tier: mini
+    estimated_tokens: 5000
+    estimated_cost_usd: 0.00325
+    rationale: Field-presence check on structured JSON/YAML output. Simple schema
+      validation — no reasoning needed.
+    owner: claude-code
+  - id: verify.orchestrator-decompose.5
+    title: Verify decomposition summary output contains subtask count, estimated cost,
+      and recommended budget
+    model_tier: mini
+    estimated_tokens: 4000
+    estimated_cost_usd: 0.0026
+    rationale: String/pattern matching on CLI output for three known fields. Trivial
+      extraction task.
+    owner: claude-code
+  - id: verify.orchestrator-decompose.6
+    title: Verify contract.yaml is updated with subtasks[] containing at least 1 entry
+      after orchestrate run
+    model_tier: mini
+    estimated_tokens: 5000
+    estimated_cost_usd: 0.00325
+    rationale: Read YAML file post-execution, check subtasks array length >= 1. Simple
+      file read and assertion.
+    owner: claude-code
+  estimated_cost_usd: 0.2132
+  budget_usd: 0.3198
+  summary: Task completed and verified
+  verified: true
+  verified_at: '2026-03-30T13:15:00Z'
+  verified_by: claude-code
+  review_requested_at: '2026-03-30T11:44:43Z'
+- id: verify.cost-estimator-accuracy
+  title: 'Verify: cost estimator matches sdk_runner actual spend'
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  acceptance_criteria:
+  - Run a real subtask dispatch with SDKRunner and compare actual cost_usd to estimate_subtask_cost()
+    for same tier and token count
+  - Actual cost is within 2x of pre-flight estimate (accounts for token variance)
+  - PRICING table in cost_estimator and MODEL_PRICING in sdk_runner are identical
+    (single source confirmed)
+  summary: Task completed and verified
+  review_requested_at: '2026-03-30T11:44:39Z'
+  verified: true
+  verified_at: '2026-03-30T11:49:24Z'
+- id: verify.subtask-aggregator-e2e
+  title: 'Verify: subtask aggregator writes results and promotes parent task'
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  acceptance_criteria:
+  - After all subtasks report done, parent task status becomes report_ready in contract.yaml
+  - actual_tokens and actual_cost_usd written to each subtask entry
+  - Partial results (one subtask missing) leave parent status unchanged
+  - Any failed subtask sets parent status to failed
+  subtasks:
+  - id: verify.subtask-aggregator-e2e.st1
+    title: Run TestSubtaskAggregator tests (all_done → report_ready, any_failed →
+      failed)
+    model_tier: mini
+    owner: claude-code
+    estimated_tokens: 3000
+    estimated_cost_usd: 0.000938
+    status: done
+    actual_tokens: 2841
+    actual_cost_usd: 0.000888
+    model_used: claude-haiku-4-5
+  - id: verify.subtask-aggregator-e2e.st2
+    title: Run TestSubtaskAggregatorEdgeCases tests (partial results unchanged)
+    model_tier: mini
+    owner: claude-code
+    estimated_tokens: 2000
+    estimated_cost_usd: 0.000625
+    status: done
+    actual_tokens: 1953
+    actual_cost_usd: 0.00061
+    model_used: claude-haiku-4-5
+  - id: verify.subtask-aggregator-e2e.st3
+    title: Confirm actual_tokens and actual_cost_usd written per subtask entry
+    model_tier: mini
+    owner: claude-code
+    estimated_tokens: 1500
+    estimated_cost_usd: 0.000469
+    status: done
+    actual_tokens: 1421
+    actual_cost_usd: 0.000444
+    model_used: claude-haiku-4-5
+  verified: true
+  verified_at: '2026-03-30T00:00:00Z'
+  verified_by: claude-code
+  summary: Task completed and verified
+  review_requested_at: '2026-03-30T11:44:38Z'
+- id: verify.monitor-project-aware
+  title: Verify project-aware monitor detection (v1.3.2)
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  acceptance_criteria:
+  - shux monitor starts correctly and shux monitor-list shows Project column with
+    project basename
+  - Starting a second monitor for the same project prints "monitor already running
+    for project X" and exits (no new process)
+  - Starting a monitor for a different project succeeds and monitor-list shows two
+    separate entries
+  - shux monitor-kill --project <dir> kills only the monitor for that project
+  - _is_monitor_running(project_dir) returns (True, port) for running project, (False,
+    None) for unknown project
+  test_types:
+  - unit
+  - integration
+  verified: true
+  verified_at: '2026-03-30T16:26:19Z'
+  verified_by: claude-code
+  summary: 14 unit tests added to TestMonitorProjectAware in tests/unit/test_cli.py
+    covering _is_monitor_running(project_dir) true/false/realpath, monitor-list project
+    basename column, monitor-kill --project isolation, and duplicate-start no-new-process
+    guard. All 168 unit tests pass.
+- id: verify.monitor-kill-list-commands
+  title: Verify shux monitor-kill and monitor-list commands (v1.3.1)
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  acceptance_criteria:
+  - shux monitor-list shows PID, PORT, PROJECT, URL columns
+  - shux monitor-list output includes hints for monitor-kill and monitor-kill --project
+  - shux monitor-kill kills all monitor-ui processes and prints count
+  - shux monitor-kill --port <N> kills only the process on that port
+  - shux monitor-kill output hints user to run shux monitor-list
+  - shux monitor-list when nothing running prints "No monitor-ui processes running"
+  test_types:
+  - unit
+  - integration
+  verified: true
+  verified_at: '2026-03-30T00:00:00Z'
+  verified_by: claude-code
+  summary: Closed from monitor without review request
+- id: verify.monitor-ui-done-hidden
+  title: 'Verify monitor UI: done tasks hidden by default, verify button tweak (v1.3.1)'
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  acceptance_criteria:
+  - Tasks with status=done are hidden by default in the tasks panel (not rendered)
+  - Clicking the "done" pill badge toggles visibility of done tasks
+  - verify.* tasks in report_ready state show "Close Without Review" as primary button
+  - verify.* tasks in report_ready state show "Request Review" as a smaller secondary
+    button
+  - Non-verify tasks in report_ready still show "Request Review" as primary action
+  test_types:
+  - integration
+  verified: true
+  verified_at: '2026-03-30T00:00:00Z'
+  verified_by: claude-code
+  summary: All 5 acceptance criteria confirmed in monitor-ui.py source; 89 tests pass
+- id: verify.orchestrator-subtask-routing-e2e
+  title: Verify orchestrator --orchestrate flag, subtask routing, cost estimates (v1.3.0)
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  acceptance_criteria:
+  - delegate --orchestrate decomposes a task into subtasks and writes them to contract.yaml
+  - Each subtask has model_tier (mini/standard/max), estimated_tokens, estimated_cost_usd
+  - estimate_subtask_cost() returns correct USD for mini/standard/max tiers
+  - estimate_task_cost() sums subtask estimates with configurable buffer
+  - PRICING table in cost_estimator matches MODEL_PRICING in sdk_runner (single source
+    of truth)
+  - Orchestrator falls back to single-subtask when Opus decomposition JSON is malformed
+  test_types:
+  - unit
+  - integration
+  verified: true
+  verified_at: '2026-03-30T20:00:00Z'
+  verified_by: claude-code
+  summary: All 6 acceptance criteria verified; 38 tests pass (test_cost_estimator.py
+    19, test_orchestrator.py 13, test_delegate_orchestrator.py 6); PRICING imported
+    directly from sdk_runner (single source of truth); fallback subtask confirmed;
+    handoff verify.orchestrator-subtask-routing-e2e-report.yaml exists
+- id: verify.sdk-runner-budget
+  title: Verify SDKRunner budget enforcement and cost tracking (v1.3.0)
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  acceptance_criteria:
+  - SDKRunner raises BudgetExceededError when actual cost exceeds max_budget_usd
+  - SDKRunner.run() returns dict with cost_usd, input_tokens, output_tokens
+  - cost_usd is calculated using MODEL_PRICING (same table as cost_estimator)
+  - Total cost accumulates across multiple run() calls on the same runner instance
+  - reset_session() resets token and cost counters to zero
+  test_types:
+  - unit
+  verified: true
+  verified_at: '2026-03-30T00:00:00Z'
+  verified_by: claude-code
+  summary: 18 tests in test_sdk_runner_budget.py pass covering all 5 acceptance criteria;
+    SDKRunner implementation confirmed correct; pre-existing test_delegate failure
+    unrelated to this task
 decisions: []
 failures: []

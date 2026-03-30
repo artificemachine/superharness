@@ -155,15 +155,9 @@ except Exception as _e:
 " 2>/dev/null || true
 fi
 
-# --- Unload launchd watcher for this project (macOS only) ---
-if [ "$(uname -s)" = "Darwin" ]; then
-  PROJECT_SLUG="$(basename "$PROJECT_DIR" | tr -cs 'A-Za-z0-9' '-')"
-  LABEL="com.superharness.inbox.${PROJECT_SLUG}"
-  PLIST_PATH="$HOME/Library/LaunchAgents/${LABEL}.plist"
-  if [ -f "$PLIST_PATH" ] && launchctl list "$LABEL" >/dev/null 2>&1; then
-    launchctl unload "$PLIST_PATH" >/dev/null 2>&1 || true
-    _ledger "$TIMESTAMP session-stop: watcher unloaded ($LABEL)"
-  fi
-fi
+# NOTE: Do NOT unload the launchd watcher on session end.
+# The watcher is a persistent background service — it must survive Claude session boundaries.
+# Unloading here caused the watcher to go dead every session and require manual reinstallation.
+# Inbox items are already paused above, so the watcher won't dispatch stale jobs next cycle.
 
 exit 0
