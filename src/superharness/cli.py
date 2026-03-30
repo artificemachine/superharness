@@ -91,15 +91,78 @@ _cmd("install-hooks",   "Merge adapter hooks into ~/.claude/settings.json (porta
 _cmd("enhance",         "Module marketplace — enable, disable, list integrations.", module="superharness.commands.enhance")
 
 
-def _is_monitor_running(port: int = 8787) -> bool:
-    """Check if the superharness monitor is running by probing /api/status."""
-    import urllib.request
+def _find_monitor_processes():
+    """Return list of (pid, port, project_dir) for all running monitor-ui.py processes."""
+    import subprocess as _sp
     try:
-        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/status")
-        with urllib.request.urlopen(req, timeout=1) as resp:
-            return resp.status == 200
+        ps_out = _sp.run(
+            ["ps", "ax", "-o", "pid=,args="], capture_output=True, text=True
+        ).stdout
     except Exception:
-        return False
+        return []
+
+    results = []
+    for line in ps_out.splitlines():
+        line = line.strip()
+        if "monitor-ui.py" not in line:
+            continue
+        parts = line.split()
+        try:
+            pid = int(parts[0])
+        except (ValueError, IndexError):
+            continue
+
+        # Extract --project arg from cmdline
+        proj = None
+        for i, p in enumerate(parts):
+            if p == "--project" and i + 1 < len(parts):
+                proj = os.path.realpath(parts[i + 1])
+                break
+
+        # Find listening port via lsof
+        lsof_out = _sp.run(
+            ["lsof", "-a", "-i", "TCP", "-sTCP:LISTEN", "-n", "-P", "-p", str(pid)],
+            capture_output=True, text=True,
+        ).stdout
+        port = None
+        for lline in lsof_out.splitlines():
+            lparts = lline.split()
+            if len(lparts) >= 9:
+                addr = lparts[8]
+                try:
+                    port = int(addr.split(":")[-1])
+                except ValueError:
+                    pass
+
+        results.append((pid, port, proj))
+    return results
+
+
+def _is_monitor_running(project_dir: str = None) -> tuple:
+    """Return (running: bool, port: int|None) for the monitor serving project_dir.
+
+    If project_dir is None, falls back to checking any monitor on port 8787.
+    """
+    import urllib.request
+    if project_dir is not None:
+        real_proj = os.path.realpath(project_dir)
+        for pid, port, proj in _find_monitor_processes():
+            if proj and os.path.realpath(proj) == real_proj and port:
+                try:
+                    req = urllib.request.Request(f"http://127.0.0.1:{port}/api/status")
+                    with urllib.request.urlopen(req, timeout=1) as resp:
+                        if resp.status == 200:
+                            return True, port
+                except Exception:
+                    pass
+        return False, None
+    # Fallback: check default port 8787
+    try:
+        req = urllib.request.Request("http://127.0.0.1:8787/api/status")
+        with urllib.request.urlopen(req, timeout=1) as resp:
+            return resp.status == 200, 8787
+    except Exception:
+        return False, None
 
 
 def _run_monitor(args):
@@ -109,11 +172,20 @@ def _run_monitor(args):
         args_list = ["--project", os.getcwd()] + args_list
     foreground = "--foreground" in args_list
 
-    # Check if monitor is already running (skip for foreground mode — user wants a new one)
-    if not foreground and _is_monitor_running():
-        print("monitor ui: http://127.0.0.1:8787  (already running)")
-        print(f"project: {os.getcwd()}")
-        return
+    # Resolve the project dir being requested
+    proj = os.getcwd()
+    for i, a in enumerate(args_list):
+        if a == "--project" and i + 1 < len(args_list):
+            proj = args_list[i + 1]
+            break
+
+    # Check if a monitor for THIS project is already running
+    if not foreground:
+        running, port = _is_monitor_running(proj)
+        if running:
+            print(f"monitor ui: http://127.0.0.1:{port}  (already running)")
+            print(f"project: {proj}")
+            return
 
     if foreground:
         args_list.remove("--foreground")
@@ -158,6 +230,89 @@ def _run_monitor(args):
             os.unlink(url_file)
         print("monitor starting in background...")
     print(f"pid: {proc.pid}  (stop with: kill {proc.pid})")
+
+
+@main.command(name="monitor-kill")
+@click.option("--port", "-p", type=int, default=None, help="Kill only the monitor on this port.")
+@click.option("--project", "proj", default=None, help="Kill only the monitor serving this project directory.")
+@click.option("--all", "kill_all", is_flag=True, default=False, help="Kill all monitor-ui processes (default when no filter given).")
+def cmd_monitor_kill(port, proj, kill_all):
+    """Kill running monitor-ui process(es).
+
+    \b
+    shux monitor-kill                        # kill all monitor-ui processes
+    shux monitor-kill --port 8787            # kill by port
+    shux monitor-kill --project /path/to/p  # kill monitor for a specific project
+    """
+    import signal as _signal
+
+    candidates = _find_monitor_processes()  # [(pid, port, project_dir)]
+
+    if not candidates:
+        print("No monitor-ui processes found.")
+        print("  list:   shux monitor-list")
+        print("  start:  shux monitor")
+        return
+
+    # Filter
+    targets = candidates
+    if port is not None:
+        targets = [(pid, p, pj) for pid, p, pj in candidates if p == port]
+        if not targets:
+            ports_found = [str(p) for _, p, _ in candidates if p]
+            print(f"No monitor-ui found on port {port}. Running on: {', '.join(ports_found) or 'unknown'}")
+            sys.exit(1)
+    elif proj is not None:
+        real_proj = os.path.realpath(proj)
+        targets = [(pid, p, pj) for pid, p, pj in candidates if pj and os.path.realpath(pj) == real_proj]
+        if not targets:
+            print(f"No monitor-ui found for project: {proj}")
+            print("  list running:  shux monitor-list")
+            sys.exit(1)
+
+    killed = 0
+    for pid, p, pj in targets:
+        port_str = f":{p}" if p else ""
+        proj_str = f"  project={pj}" if pj else ""
+        try:
+            os.kill(pid, _signal.SIGTERM)
+            print(f"Killed monitor-ui  pid={pid}  port{port_str}{proj_str}")
+            killed += 1
+        except ProcessLookupError:
+            print(f"Process {pid} already gone.")
+        except PermissionError:
+            print(f"Permission denied killing pid {pid}.", file=sys.stderr)
+
+    print(f"{killed} monitor-ui process(es) stopped.")
+    if killed:
+        print("  list remaining:  shux monitor-list")
+        print("  restart:         shux monitor")
+
+
+@main.command(name="monitor-list")
+def cmd_monitor_list():
+    """List all running monitor-ui processes with their ports and projects."""
+    found = _find_monitor_processes()  # [(pid, port, project_dir)]
+
+    if not found:
+        print("No monitor-ui processes running.")
+        print("  start:  shux monitor")
+        return
+
+    print(f"{'PID':<8} {'PORT':<8} {'PROJECT':<40} URL")
+    print("-" * 80)
+    for pid, port, proj in found:
+        url = f"http://127.0.0.1:{port}" if port else "(port unknown)"
+        proj_label = os.path.basename(proj) if proj else "?"
+        print(f"{pid:<8} {port or '?':<8} {proj_label:<40} {url}")
+    print()
+    print("  kill all:              shux monitor-kill")
+    if len(found) == 1:
+        pid, port, proj = found[0]
+        if port:
+            print(f"  kill this one:         shux monitor-kill --port {port}")
+        if proj:
+            print(f"  kill by project:       shux monitor-kill --project {proj}")
 
 
 @main.command(name="monitor", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})

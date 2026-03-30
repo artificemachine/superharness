@@ -5,8 +5,10 @@ Enqueue an inbox item, with optional contract validation.
 from __future__ import annotations
 
 import os
+import platform
 import re
 import secrets
+import subprocess
 import sys
 from datetime import datetime, timezone
 
@@ -73,12 +75,29 @@ def _validate_contract(contract_file: str, task_id: str, project_dir: str) -> No
         )
 
 
+def _check_watcher_health(project_dir: str) -> bool:
+    """Check if the watcher launchd job is loaded for this project."""
+    if platform.system() != "Darwin":
+        return True  # Non-macOS — skip launchd check
+
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", os.path.basename(project_dir))
+    label = f"com.superharness.inbox.{slug}"
+    try:
+        r = subprocess.run(
+            ["launchctl", "list"], capture_output=True, text=True, check=False,
+        )
+        return label in r.stdout
+    except (FileNotFoundError, OSError):
+        return True  # Can't check — don't block
+
+
 def enqueue_cmd(
     project_dir: str,
     target: str,
     task_id: str,
     item_id: str | None,
     priority: int,
+    require_watcher: bool = False,
 ) -> int:
     if not os.path.isdir(project_dir):
         _abort(f"Project directory does not exist: {project_dir}")
@@ -112,6 +131,17 @@ def enqueue_cmd(
     if os.path.exists(contract_file):
         _validate_contract(contract_file, task_id, project_dir)
 
+    # Watcher health check
+    if not _check_watcher_health(project_dir):
+        msg = (
+            f"watcher not loaded — enqueued tasks won't dispatch automatically.\n"
+            f"  Run: shux watcher-worker --project {project_dir}"
+        )
+        if require_watcher:
+            _abort(msg)
+        else:
+            print(msg, file=sys.stderr)
+
     # Ensure inbox file exists with header
     from superharness.engine.inbox import HEADER, _inbox_lock, enqueue
 
@@ -133,7 +163,7 @@ def enqueue_cmd(
         )
 
     if rc == 2:
-        _abort(f"Inbox item id already exists: {item_id}")
+        _abort(f"Duplicate rejected (id or pending task already exists): {item_id}")
 
     if rc != 0:
         _abort(f"Failed to enqueue inbox item: {inbox_file}")
@@ -162,6 +192,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--task", "-t", required=True, dest="task_id", help="Task id from contract/handoff")
     parser.add_argument("--priority", type=int, default=2, help="Priority 1-3 (1 highest, default: 2)")
     parser.add_argument("--id", default=None, dest="item_id", help="Optional inbox item id")
+    parser.add_argument("--require-watcher", action="store_true", default=False,
+                        help="Block enqueue if watcher is not loaded (default: warn only)")
 
     opts = parser.parse_args(argv)
 
@@ -171,6 +203,7 @@ def main(argv: list[str] | None = None) -> None:
         task_id=opts.task_id,
         item_id=opts.item_id,
         priority=opts.priority,
+        require_watcher=opts.require_watcher,
     )
     sys.exit(rc)
 

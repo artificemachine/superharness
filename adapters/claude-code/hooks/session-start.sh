@@ -112,7 +112,13 @@ fi
 WATCHER_STATUS=""
 ENSURE_WATCHER="$SUPERHARNESS_ROOT/src/superharness/scripts/ensure-launchd-inbox-watcher.sh"
 if [ -d "$PROJECT_DIR/.superharness" ] && [ -x "$ENSURE_WATCHER" ]; then
-  ENSURE_OUT=$(bash "$ENSURE_WATCHER" --project "$PROJECT_DIR" 2>/dev/null || true)
+  # Pass confirmation flags so the installer can auto-reinstall a missing plist without prompting.
+  # These flags mirror the defaults used by install-launchd-inbox-watcher.sh.
+  ENSURE_OUT=$(bash "$ENSURE_WATCHER" \
+    --project "$PROJECT_DIR" \
+    --confirm-non-interactive yes \
+    --confirm-skip-permissions yes \
+    2>/dev/null || true)
   if [ -n "$ENSURE_OUT" ]; then
     WATCHER_STATUS="$ENSURE_OUT"
   else

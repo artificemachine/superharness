@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 from superharness.engine.sdk_runner import sdk_available, SDKRunner
+from superharness.engine.orchestrator import Orchestrator, DecompositionResult
 
 
 def _abort(msg: str, code: int = 1) -> None:
@@ -141,6 +142,33 @@ def _get_latest_handoff_task(handoff_dir: str, to: str) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 _DISC_ROUND_RE = re.compile(r"^(discuss-[^/]+)/round-(\d+)$")
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator helpers
+# ---------------------------------------------------------------------------
+
+def _write_subtasks_to_contract(
+    contract_file: str,
+    task_id: str,
+    decomposition: DecompositionResult,
+) -> None:
+    """Write orchestrator decomposition subtasks into contract.yaml."""
+    import yaml
+
+    with open(contract_file) as f:
+        doc = yaml.safe_load(f) or {}
+
+    tasks = doc.get("tasks") or []
+    for t in tasks:
+        if isinstance(t, dict) and str(t.get("id", "")) == task_id:
+            t["subtasks"] = decomposition.subtasks
+            t["estimated_cost_usd"] = round(decomposition.total_estimated_cost_usd, 4)
+            t["budget_usd"] = round(decomposition.recommended_budget_usd, 4)
+            break
+
+    with open(contract_file, "w") as f:
+        yaml.safe_dump(doc, f, default_flow_style=False, sort_keys=False)
 
 
 def _get_round_context(disc_dir: str, round_: int, agent: str) -> dict:
@@ -320,6 +348,7 @@ def delegate(
     effort_override: str = "",
     no_auto_model: bool = False,
     via_sdk: bool | None = None,
+    orchestrate: bool = False,
 ) -> int:
     project_dir = os.path.realpath(project_dir)
 
@@ -513,6 +542,34 @@ def delegate(
             resolved_model = _resolve_model(target, tier)
     except Exception:
         pass
+
+    # -----------------------------------------------------------------------
+    # Orchestrator mode: decompose task into subtasks before dispatch
+    # -----------------------------------------------------------------------
+    if orchestrate and target == "claude-code":
+        orch = Orchestrator(project_dir=project_dir)
+        task_data = {
+            "id": task_id,
+            "title": _get_task_title(contract_file, task_id) or task_id,
+            "owner": "claude-code",
+            "acceptance_criteria": _get_task_acceptance_criteria(contract_file, task_id),
+        }
+        decomposition = orch.decompose(task_data)
+
+        # Write subtasks to contract
+        _write_subtasks_to_contract(contract_file, task_id, decomposition)
+
+        # Print decomposition summary
+        print()
+        print(f"Orchestrator decomposition for {task_id}:")
+        print(f"  Subtasks: {len(decomposition.subtasks)}")
+        for st in decomposition.subtasks:
+            print(f"    - {st['id']}: {st['title']} [{st['model_tier']}] ~{st.get('estimated_tokens', 0)} tokens")
+        print(f"  Estimated cost: ${decomposition.total_estimated_cost_usd:.4f}")
+        print(f"  Recommended budget: ${decomposition.recommended_budget_usd:.4f}")
+
+        if print_only:
+            return 0
 
     # Acceptance criteria
     ac_lines = _get_task_acceptance_criteria(contract_file, task_id)
@@ -792,6 +849,10 @@ def main(argv: list[str] | None = None) -> None:
         choices=["cli", "sdk"],
         help="Force dispatch method (default: auto-detect — SDK if installed, CLI otherwise)",
     )
+    parser.add_argument(
+        "--orchestrate", action="store_true", default=False,
+        help="Opus orchestrator mode: decompose task into subtasks, assign model tiers, estimate cost",
+    )
 
     opts = parser.parse_args(argv)
 
@@ -824,6 +885,7 @@ def main(argv: list[str] | None = None) -> None:
         effort_override=opts.effort or "",
         no_auto_model=opts.no_auto_model,
         via_sdk=True if opts.via == "sdk" else (False if opts.via == "cli" else None),
+        orchestrate=opts.orchestrate,
     )
     sys.exit(rc)
 

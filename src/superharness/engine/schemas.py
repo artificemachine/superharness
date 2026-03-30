@@ -39,9 +39,37 @@ class InboxStatus(str, Enum):
     paused = "paused"
 
 
+class ModelTier(str, Enum):
+    mini = "mini"
+    standard = "standard"
+    max = "max"
+
+
+class SubtaskStatus(str, Enum):
+    pending = "pending"
+    in_progress = "in_progress"
+    done = "done"
+    failed = "failed"
+
+
 # ---------------------------------------------------------------------------
 # Contract
 # ---------------------------------------------------------------------------
+
+
+class Subtask(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    title: str
+    model_tier: ModelTier
+    owner: str
+    estimated_tokens: int
+    estimated_cost_usd: float
+    status: SubtaskStatus = SubtaskStatus.pending
+    actual_tokens: Optional[int] = None
+    actual_cost_usd: Optional[float] = None
+    model_used: Optional[str] = None
 
 
 class ContractTask(BaseModel):
@@ -63,6 +91,9 @@ class ContractTask(BaseModel):
     verified_by: Optional[str] = None
     deadline_minutes: Optional[int] = None
     review_requested_at: Optional[str] = None
+    subtasks: list[Subtask] = []
+    estimated_cost_usd: Optional[float] = None
+    budget_usd: Optional[float] = None
 
 
 class Contract(BaseModel):
