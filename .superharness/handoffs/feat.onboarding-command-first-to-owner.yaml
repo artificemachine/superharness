@@ -1,0 +1,9 @@
+closed_at: '2026-04-03T17:50:20Z'
+context: Patched launcher scripts to auto-detect shux Python runtime to avoid PyYAML
+  mismatch in dispatch environment.
+from: codex-cli
+status: done
+summary: 'Added command-first onboarding UX: Quick Start in --help, demo workflow
+  guidance, and onboarding-focused test coverage.'
+task: feat.onboarding-command-first
+to: owner

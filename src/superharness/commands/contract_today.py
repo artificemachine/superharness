@@ -6,7 +6,11 @@ and delegate suggestion for team projects.
 from __future__ import annotations
 
 import os
+import re
 import sys
+
+
+_DISC_ROUND_RE = re.compile(r"^discuss-[^/]+/round-\d+$")
 
 
 def _status_label(s: str) -> str:
@@ -43,6 +47,27 @@ def _read_team_size(project_dir: str) -> str:
         return str(doc.get("team_size") or "team")
     except Exception:
         return "team"
+
+
+def _infer_workflow(task: dict) -> str:
+    workflow = str(task.get("workflow") or "").strip().lower()
+    if workflow:
+        return workflow
+    task_id = str(task.get("id") or "")
+    if _DISC_ROUND_RE.match(task_id):
+        return "discussion"
+    return "implementation"
+
+
+def _is_delegate_candidate(task: dict) -> bool:
+    status = str(task.get("status") or "")
+    workflow = _infer_workflow(task)
+
+    if workflow == "implementation":
+        return status in ("plan_approved", "in_progress")
+    if workflow in ("quick", "note"):
+        return status in ("todo", "in_progress")
+    return False
 
 
 def contract_today(project_dir: str, agent: str = "") -> int:
@@ -137,13 +162,12 @@ def contract_today(project_dir: str, agent: str = "") -> int:
         for t in tasks:
             if not isinstance(t, dict):
                 continue
-            status = str(t.get("status") or "")
             owner = str(t.get("owner") or "")
-            if status not in ("todo", "plan_approved", "in_progress"):
-                continue
             if not owner:
                 continue
             if agent and owner == agent:
+                continue
+            if not _is_delegate_candidate(t):
                 continue
             candidate = t
             break

@@ -9,6 +9,8 @@ import os
 import sys
 from datetime import datetime, timezone
 
+from superharness.commands.task import VALID_OWNERS
+
 
 def _abort(msg: str, code: int = 1) -> None:
     print(msg, file=sys.stderr)
@@ -72,6 +74,16 @@ def _read_contract_owners(contract_file: str) -> list[str]:
     return list(seen.keys())
 
 
+def _normalize_owners(values: list[str] | None) -> list[str]:
+    seen: dict[str, None] = {}
+    for value in values or []:
+        for owner in str(value).split(","):
+            owner = owner.strip()
+            if owner:
+                seen[owner] = None
+    return list(seen.keys())
+
+
 def cmd_start(
     discussions_dir: str,
     inbox_file: str,
@@ -81,6 +93,7 @@ def cmd_start(
     max_rounds: int,
     project_dir: str,
     actor: str,
+    owners: list[str] | None = None,
     exclude: list[str] | None = None,
 ) -> int:
     import secrets
@@ -90,8 +103,8 @@ def cmd_start(
 
     from superharness.engine.inbox import HEADER, _inbox_lock, enqueue
 
-    # Derive participants from contract, applying exclusions
-    all_owners = _read_contract_owners(contract_file)
+    # Derive participants from explicit owners or the contract, applying exclusions.
+    all_owners = _normalize_owners(owners) or _read_contract_owners(contract_file)
     exclude_set = set(exclude or [])
     participants = [o for o in all_owners if o not in exclude_set]
 
@@ -103,7 +116,10 @@ def cmd_start(
         )
         if exclude_set:
             print(f"Excluded: {' '.join(sorted(exclude_set))}", file=sys.stderr)
-        print("Add tasks for both claude-code and codex-cli before starting a discussion.", file=sys.stderr)
+        if owners:
+            print("Pass at least 2 owners after exclusions.", file=sys.stderr)
+        else:
+            print("Add tasks for both claude-code and codex-cli or pass --owners.", file=sys.stderr)
         return 2
 
     participant_args: list[str] = []
@@ -145,13 +161,15 @@ def cmd_start(
 
     # Create contract task for round 1
     round_task_id = f"{disc_id}/round-1"
+    round_task_owner = next((p for p in participants if p in VALID_OWNERS), participants[0])
     subprocess.run(
         [sys.executable, "-m", "superharness.commands.task", "create",
          "--project", project_dir,
          "--id", round_task_id,
          "--title", f"Discussion round 1: {topic}",
-         "--owner", participants[0],
-         "--status", "in_progress"],
+         "--owner", round_task_owner,
+         "--status", "in_progress",
+         "--workflow", "discussion"],
         capture_output=True, check=False,
     )
 
@@ -316,6 +334,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--topic", required=True)
     p.add_argument("--task", default=None)
     p.add_argument("--max-rounds", type=int, default=3)
+    p.add_argument("--owners", action="append", default=[], metavar="OWNER[,OWNER...]")
     p.add_argument("--exclude", action="append", default=[], metavar="OWNER")
 
     # rounds
@@ -373,6 +392,7 @@ def main(argv: list[str] | None = None) -> None:
             max_rounds=opts.max_rounds,
             project_dir=project_dir,
             actor="owner",
+            owners=opts.owners,
             exclude=opts.exclude,
         )
 

@@ -25,6 +25,8 @@ shux discuss start --topic "How to store tags on the Project model" \
   --owners claude-code,codex-cli --max-rounds 3
 ```
 
+If `--owners` is omitted, participants are derived from distinct task owners already present in `contract.yaml`.
+
 This creates:
 ```
 .superharness/discussions/discuss-tags-on-project/

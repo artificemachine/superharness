@@ -80,6 +80,8 @@ class ContractTask(BaseModel):
     owner: str
     status: TaskStatus
     project_path: Optional[str] = None
+    workflow: Optional[str] = None
+    development_method: Optional[str] = None
     acceptance_criteria: Optional[list[str]] = None
     test_types: Optional[list[str]] = None
     tdd: Optional[dict] = None
