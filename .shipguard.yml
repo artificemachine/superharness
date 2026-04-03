@@ -10,7 +10,10 @@ exclude_paths:
   - "htmlcov/**"
   - "archive/**"
 
-disable_rules: []
+disable_rules:
+  # PY-007: false positive — f.write() in test_changelog_append_only.py triggers
+  # sql-string-format rule; superharness has no SQL queries
+  - PY-007
 
 custom_rules_dirs: []
 
