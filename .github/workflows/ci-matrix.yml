@@ -1,0 +1,126 @@
+name: Windows-Native CI Matrix
+
+# Iteration 7 gate — proves Windows-native behaviour.
+# Runs the cross-platform baseline tests and the Windows-native e2e matrix
+# on all three supported OSes.
+#
+# Exit criteria (from docs/windows-native-full-fix-tdd-plan.md):
+#   All OS matrix jobs pass for: init → watch → enqueue → dispatch → status
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Cross-platform unit tests (Iterations 0–5 coverage)
+  # ---------------------------------------------------------------------------
+  cross-platform-unit:
+    name: Cross-Platform Unit (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3 # v5.2.0
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pytest pyyaml click "pydantic>=2.0" ruamel.yaml && pip install -e .
+
+      - name: Run cross-platform baseline tests
+        run: python -m pytest tests/unit/test_cross_platform_baseline.py -v
+        env:
+          PYTHONPATH: src
+          PYTHONUTF8: "1"
+
+  # ---------------------------------------------------------------------------
+  # Windows-native e2e matrix (Iteration 7)
+  # ---------------------------------------------------------------------------
+  windows-native-e2e:
+    name: Windows-Native E2E (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3 # v5.2.0
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pytest pyyaml click "pydantic>=2.0" ruamel.yaml && pip install -e .
+
+      - name: Run Windows-native e2e tests
+        run: python -m pytest tests/e2e/test_windows_native_matrix.py -v
+        env:
+          PYTHONPATH: src
+          PYTHONUTF8: "1"
+
+  # ---------------------------------------------------------------------------
+  # platform_runtime import smoke (verifies module ships correctly)
+  # ---------------------------------------------------------------------------
+  platform-runtime-smoke:
+    name: platform_runtime import (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3 # v5.2.0
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: pip install -e .
+
+      - name: Verify new modules import cleanly
+        run: |
+          python -c "from superharness.engine.platform_runtime import watcher_lock_path, tmp_dir, sync_worker_copy, launch_agent; print('platform_runtime OK')"
+          python -c "from superharness.engine.service_installer import detect_backend, install, uninstall; print('service_installer OK:', detect_backend())"
+          python -c "from superharness.engine.runtime_probe import probe_runtime, probe_required_modules; print('runtime_probe OK:', probe_runtime())"
+        env:
+          PYTHONPATH: src
+
+  # ---------------------------------------------------------------------------
+  # Release gate — all three jobs must pass
+  # ---------------------------------------------------------------------------
+  windows-native-gate:
+    name: Windows-Native Release Gate
+    runs-on: ubuntu-latest
+    needs:
+      - cross-platform-unit
+      - windows-native-e2e
+      - platform-runtime-smoke
+    if: always()
+    steps:
+      - name: Evaluate gate
+        env:
+          UNIT: ${{ needs.cross-platform-unit.result }}
+          E2E: ${{ needs.windows-native-e2e.result }}
+          SMOKE: ${{ needs.platform-runtime-smoke.result }}
+        run: |
+          echo "cross-platform-unit => $UNIT"
+          echo "windows-native-e2e  => $E2E"
+          echo "platform-runtime-smoke => $SMOKE"
+          failures=0
+          [ "$UNIT"  = "success" ] || failures=1
+          [ "$E2E"   = "success" ] || failures=1
+          [ "$SMOKE" = "success" ] || failures=1
+          if [ "$failures" -ne 0 ]; then
+            echo "Windows-native release gate FAILED." >&2
+            exit 1
+          fi
+          echo "Windows-native release gate PASSED."
