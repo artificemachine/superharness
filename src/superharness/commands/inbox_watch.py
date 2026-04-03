@@ -5,7 +5,6 @@ Watches the inbox and dispatches pending items. Supports single-cycle
 """
 from __future__ import annotations
 
-import hashlib
 import importlib.resources as _importlib_resources
 import os
 import signal
@@ -28,13 +27,9 @@ def _abort(msg: str, code: int = 1) -> None:
 # Lock (directory-based)
 # ---------------------------------------------------------------------------
 
-def _lock_key(project_dir: str) -> str:
-    return hashlib.sha1(project_dir.encode()).hexdigest()
-
-
 def _lock_dir_path(project_dir: str) -> str:
-    key = _lock_key(project_dir)
-    return f"/tmp/superharness-inbox-watch-{key}.lock"
+    from superharness.engine.platform_runtime import watcher_lock_path
+    return watcher_lock_path(project_dir)
 
 
 def _auto_break_stale_lock(lock_dir: str, stale_minutes: int) -> bool:
@@ -86,19 +81,8 @@ def _sync_worker_copy(project_dir: str) -> None:
         return
     if not os.path.isdir(os.path.join(project_dir, ".git")):
         return
-    try:
-        subprocess.run(
-            ["rsync", "-a", "--delete",
-             "--exclude", ".git",
-             "--exclude", ".superharness",
-             "--exclude", ".venv",
-             "--exclude", "node_modules",
-             "--exclude", ".pytest_cache",
-             f"{project_dir}/", f"{worker_dir}/"],
-            capture_output=True, check=False,
-        )
-    except FileNotFoundError:
-        pass
+    from superharness.engine.platform_runtime import sync_worker_copy
+    sync_worker_copy(project_dir, worker_dir)
 
 
 # ---------------------------------------------------------------------------
