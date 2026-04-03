@@ -272,6 +272,26 @@ def test_discuss_start_rejects_single_owner(repo_root, tmp_path) -> None:
     assert "at least 2 distinct task owners" in result.stderr
 
 
+def test_discuss_start_allows_explicit_owners_without_contract_owners(repo_root, tmp_path) -> None:
+    """Explicit --owners should bypass the need for 2 distinct owners in the contract."""
+    project = _setup_project_with_contract(tmp_path, owners=["codex-cli"])
+
+    result = _run_discuss_py(
+        repo_root,
+        args=[
+            "start",
+            "--project", str(project),
+            "--topic", "Explicit owners",
+            "--owners", "claude-code,codex-cli",
+        ],
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Participants: claude-code codex-cli" in result.stdout
+
+    contract_text = (project / ".superharness" / "contract.yaml").read_text()
+    assert "workflow: discussion" in contract_text
+
+
 def test_discuss_start_rejects_no_owners(repo_root, tmp_path) -> None:
     """discuss start fails when contract has no tasks."""
     project = _setup_project_with_contract(tmp_path, owners=[])

@@ -18,6 +18,33 @@ _SCRIPTS = str(_importlib_resources.files("superharness").joinpath("scripts"))
 _ROOT = os.path.dirname(os.path.dirname(_PACKAGE_DIR))  # repo root (editable installs / shux update)
 
 
+def _inject_quickstart(help_text: str) -> str:
+    """Insert onboarding quickstart before the Commands section."""
+    lines = help_text.split("\n")
+    insert_idx = next((i for i, line in enumerate(lines) if line.startswith("Commands:")), len(lines))
+    quickstart = [
+        "",
+        "Quick Start — First Commands:",
+        "  1. Install:     pipx install superharness",
+        "  2. Bootstrap:   shux init",
+        "  3. Verify:      shux doctor",
+        "  4. View tasks:  shux contract",
+        "  5. Next:        shux delegate <task-id>",
+        "",
+        "Try it:",
+        "  shux demo      # Zero-config walkthrough (no agent CLI needed)",
+        "",
+    ]
+    return "\n".join(lines[:insert_idx] + quickstart + lines[insert_idx:])
+
+
+class _OnboardingGroup(click.Group):
+    """Group that injects the first-commands quickstart into --help output."""
+
+    def get_help(self, ctx: click.Context) -> str:  # noqa: D401
+        return _inject_quickstart(super().get_help(ctx))
+
+
 def _run_script(script: str, args: tuple) -> None:
     """Run a shell script and exit with its return code."""
     path = os.path.join(_SCRIPTS, script)
@@ -31,7 +58,11 @@ def _run_module(module: str, args: tuple) -> None:
     sys.exit(result.returncode)
 
 
-@click.group(invoke_without_command=True, context_settings={"help_option_names": ["--help", "-h"]})
+@click.group(
+    cls=_OnboardingGroup,
+    invoke_without_command=True,
+    context_settings={"help_option_names": ["--help", "-h"]},
+)
 @click.version_option(__version__, "-v", "--version", prog_name="superharness")
 @click.pass_context
 def main(ctx):
