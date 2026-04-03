@@ -2093,11 +2093,16 @@ def test_html_keeps_view_report_inside_task_actions_group(repo_root) -> None:
     assert "actionButtons.push(`<button onclick=\"approveReport('${tid}')\"" in html
 
 
-def test_html_makes_plan_approved_tasks_enqueueable(repo_root) -> None:
-    """Approved plans must render the next-step enqueue action instead of no action."""
+def test_html_uses_workflow_aware_enqueue_rules(repo_root) -> None:
+    """Enqueue affordances must be workflow-aware so the UI matches delegate gating."""
     module = _load_monitor_module(repo_root)
     html = module.HTML
-    assert "const canEnqueue = ['todo', 'plan_approved', 'failed', 'stopped'].includes(st);" in html
+    assert "function inferredWorkflow(task)" in html
+    assert "function canEnqueueTask(task)" in html
+    assert "workflow === 'implementation'" in html
+    assert "['plan_approved', 'failed', 'stopped'].includes(st)" in html
+    assert "workflow === 'quick' || workflow === 'note'" in html
+    assert "const canEnqueue = canEnqueueTask(t);" in html
 
 
 def test_html_uses_review_first_wording_for_report_ready(repo_root) -> None:

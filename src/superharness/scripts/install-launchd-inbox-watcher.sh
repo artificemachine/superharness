@@ -337,9 +337,19 @@ _resolve_python_bin() {
 }
 
 PYTHON3_RESOLVED=""
-if command -v python3 >/dev/null 2>&1; then
+# Explicit override wins when valid.
+if [ -n "${SUPERHARNESS_PYTHON:-}" ]; then
+  _candidate="$(_resolve_python_bin "$SUPERHARNESS_PYTHON")"
+  if [ -n "$_candidate" ] && "$_candidate" -c "import superharness.engine.inbox" 2>/dev/null; then
+    PYTHON3_RESOLVED="$_candidate"
+  else
+    echo "warning: SUPERHARNESS_PYTHON is set but cannot import superharness.engine.inbox: ${SUPERHARNESS_PYTHON}" >&2
+  fi
+fi
+
+if [ -z "$PYTHON3_RESOLVED" ] && command -v python3 >/dev/null 2>&1; then
   _candidate="$(_resolve_python_bin "$(command -v python3)")"
-  if [ -n "$_candidate" ] && "$_candidate" -c "import superharness" 2>/dev/null; then
+  if [ -n "$_candidate" ] && "$_candidate" -c "import superharness.engine.inbox" 2>/dev/null; then
     PYTHON3_RESOLVED="$_candidate"
   fi
 fi
@@ -349,7 +359,7 @@ if [ -z "$PYTHON3_RESOLVED" ]; then
   for _try in python3.13 python3.12 python3.11 python3.10 python3.9; do
     if command -v "$_try" >/dev/null 2>&1; then
       _candidate="$(_resolve_python_bin "$(command -v "$_try")")"
-      if [ -n "$_candidate" ] && "$_candidate" -c "import superharness" 2>/dev/null; then
+      if [ -n "$_candidate" ] && "$_candidate" -c "import superharness.engine.inbox" 2>/dev/null; then
         PYTHON3_RESOLVED="$_candidate"
         echo "note: pinning $PYTHON3_RESOLVED (default python3 does not have superharness)"
         break

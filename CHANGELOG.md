@@ -1384,3 +1384,17 @@ If you're an agent picking this up:
 - `commands/watcher_worker.py` — delegates to `service_installer.install()` and `runtime_probe.persist_runtime()`
 - `commands/task.py` — default workflow is now `quick`
 - `README.md` — updated platform support to include Windows Task Scheduler watcher
+
+## [1.5.0] - 2026-04-04
+
+### Added
+- `shux --help` now shows a First Commands quickstart section (init → doctor → contract → delegate)
+- `shux demo` command-first walkthrough — no agent CLI required
+- New onboarding tests (`test_onboarding.py`, `test_discussion_dispatch.py` additions)
+- Additional `test_superharness_commands.py` and `test_task_dependencies.py` coverage
+
+### Changed
+- `cli.py` — `_OnboardingGroup` injects quickstart into `--help` output
+- `contract_today.py`, `discuss.py` — onboarding flow improvements
+- `schemas.py` — minor additions
+- Shell scripts — consistency updates

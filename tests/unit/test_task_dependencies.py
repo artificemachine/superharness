@@ -286,6 +286,48 @@ class TestDelegateStatusGate:
         ])
         assert r.returncode == 0, r.stderr
 
+    def test_delegate_status_todo_allowed_for_quick_workflow(self, tmp_path):
+        """Quick workflow tasks may dispatch directly from todo."""
+        project, contract = _make_contract(tmp_path, [
+            {"id": "feat.quick", "title": "Quick", "owner": "claude-code",
+             "status": "todo", "workflow": "quick", "project_path": "__project__",
+             "blocked_by": "none"},
+        ])
+        r = _run_delegate([
+            "--project", str(project), "--task", "feat.quick",
+            "--to", "claude-code", "--print-only",
+        ])
+        assert r.returncode == 0, r.stderr
+
+    def test_delegate_discussion_round_allowed_without_plan_gate(self, tmp_path):
+        """Discussion round tasks should not be forced through plan_approved."""
+        project, contract = _make_contract(tmp_path, [
+            {"id": "discuss-demo/round-1", "title": "Round 1", "owner": "claude-code",
+             "status": "in_progress", "workflow": "discussion", "project_path": "__project__",
+             "blocked_by": "none"},
+        ])
+        disc_dir = project / ".superharness" / "discussions" / "discuss-demo"
+        disc_dir.mkdir(parents=True, exist_ok=True)
+        (disc_dir / "state.yaml").write_text(
+            yaml.dump(
+                {
+                    "id": "discuss-demo",
+                    "topic": "Test discussion",
+                    "participants": ["claude-code", "codex-cli"],
+                    "max_rounds": 2,
+                    "current_round": 1,
+                    "status": "active",
+                },
+                default_flow_style=False,
+            )
+        )
+
+        r = _run_delegate([
+            "--project", str(project), "--task", "discuss-demo/round-1",
+            "--to", "claude-code", "--print-only",
+        ])
+        assert r.returncode == 0, r.stderr
+
     def test_delegate_status_review_requested_refused_without_review_flag(self, tmp_path):
         """review_requested must not bypass the normal implementation gate by default."""
         project, contract = _make_contract(tmp_path, [

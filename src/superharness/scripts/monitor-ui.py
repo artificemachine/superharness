@@ -572,6 +572,21 @@ function renderTaskFilterPills(tasks) {
   }
 }
 
+function inferredWorkflow(task) {
+  if (task.workflow) return task.workflow;
+  const taskId = task.id || '';
+  if (taskId.startsWith('discuss-') && taskId.includes('/round-')) return 'discussion';
+  return 'implementation';
+}
+
+function canEnqueueTask(task) {
+  const st = task.status || 'todo';
+  const workflow = inferredWorkflow(task);
+  if (workflow === 'implementation') return ['plan_approved', 'failed', 'stopped'].includes(st);
+  if (workflow === 'quick' || workflow === 'note') return ['todo', 'in_progress', 'failed', 'stopped'].includes(st);
+  return false;
+}
+
 function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
   const el = document.getElementById('contractTaskList');
   if (!tasks.length) { el.textContent = '(no tasks)'; return; }
@@ -602,7 +617,7 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
     actionButtons.push(viewReportBtn);
     const isEnqueued = activeInboxTasks.has(t.id);
     const isDoneInbox = doneInboxTasks.has(t.id);
-    const canEnqueue = ['todo', 'plan_approved', 'failed', 'stopped'].includes(st);
+    const canEnqueue = canEnqueueTask(t);
     if (canEnqueue && isDoneInbox && !isEnqueued) {
       actionButtons.push(`<button onclick="markTaskDone('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Done</button>`);
     } else if (canEnqueue && isEnqueued) {
