@@ -49,6 +49,38 @@ def test_contract_today_outputs_delegate_prompt(repo_root, tmp_path) -> None:
     assert "I detected owner is codex-cli. Do you want to delegate mcp-docs now?" in result.stdout
 
 
+def test_contract_today_skips_discussion_round_delegate_prompt(repo_root, tmp_path) -> None:
+    project = _setup_project(tmp_path)
+    harness = project / ".superharness"
+    (harness / "contract.yaml").write_text(
+        "\n".join(
+            [
+                "id: demo-contract",
+                "created: 2026-03-09",
+                "goal: \"Demo\"",
+                "tasks:",
+                "  - id: discuss-demo/round-1",
+                "    title: \"Discussion round\"",
+                "    owner: codex-cli",
+                "    status: in_progress",
+                "    workflow: discussion",
+                f"    project_path: '{project.as_posix()}'" ,
+            ]
+        )
+        + "\n"
+    )
+    wrapper = repo_root / "superharness"
+
+    result = run_bash(
+        wrapper,
+        cwd=repo_root,
+        args=["contract", "today", "--project", str(project)],
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Do you want to delegate" not in result.stdout
+
+
 def test_contract_today_auto_detects_project_from_cwd(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
     wrapper = repo_root / "superharness"
@@ -151,6 +183,36 @@ def test_task_create_allows_pending_user_approval_status(repo_root, tmp_path) ->
     contract_text = (project / ".superharness" / "contract.yaml").read_text()
     assert "id: approval-task" in contract_text
     assert "status: pending_user_approval" in contract_text
+
+
+def test_task_create_accepts_workflow_and_development_method(repo_root, tmp_path) -> None:
+    project = _setup_project(tmp_path)
+    wrapper = repo_root / "superharness"
+
+    create_res = run_bash(
+        wrapper,
+        cwd=repo_root,
+        args=[
+            "task",
+            "create",
+            "--project",
+            str(project),
+            "--id",
+            "quick-task",
+            "--title",
+            "Quick task",
+            "--owner",
+            "claude-code",
+            "--workflow",
+            "quick",
+            "--development-method",
+            "tdd",
+        ],
+    )
+    assert create_res.returncode == 0, create_res.stderr
+    contract_text = (project / ".superharness" / "contract.yaml").read_text()
+    assert "workflow: quick" in contract_text
+    assert "development_method: tdd" in contract_text
 
 
 def test_task_create_rejects_failed_status(repo_root, tmp_path) -> None:
