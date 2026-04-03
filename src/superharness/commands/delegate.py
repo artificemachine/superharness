@@ -144,6 +144,46 @@ def _get_latest_handoff_task(handoff_dir: str, to: str) -> tuple[str, str]:
 _DISC_ROUND_RE = re.compile(r"^(discuss-[^/]+)/round-(\d+)$")
 
 
+def _infer_workflow(task_id: str, task_obj: dict | None) -> str:
+    workflow = ""
+    if isinstance(task_obj, dict):
+        workflow = str(task_obj.get("workflow", "") or "").strip().lower()
+    if workflow:
+        return workflow
+    if _DISC_ROUND_RE.match(task_id):
+        return "discussion"
+    return "implementation"
+
+
+def _allowed_statuses_for_workflow(workflow: str, *, for_review: bool) -> set[str]:
+    if workflow == "implementation":
+        allowed = {
+            "plan_approved",
+            "in_progress",
+            "report_ready",
+            "review_passed",
+            "review_failed",
+            "pending_user_approval",
+        }
+        if for_review:
+            allowed.add("review_requested")
+        return allowed
+    if workflow == "quick":
+        return {"todo", "in_progress", "report_ready", "failed", "stopped"}
+    if workflow == "note":
+        return {"todo", "in_progress", "failed", "stopped"}
+    if workflow == "discussion":
+        return {"todo", "in_progress"}
+    if workflow == "review":
+        allowed = {"todo", "in_progress", "review_requested", "review_failed"}
+        if for_review:
+            allowed.add("review_passed")
+        return allowed
+    if workflow == "approval":
+        return {"pending_user_approval"}
+    return {"plan_approved", "in_progress"}
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator helpers
 # ---------------------------------------------------------------------------
@@ -265,6 +305,9 @@ def _launch_agent(
 ) -> None:
     display_label = f" {label}" if label else ""
 
+    from superharness.engine.platform_runtime import launch_agent, expand_agent_path
+    expand_agent_path()
+
     if target == "claude-code":
         if not _cmd_exists("claude"):
             _abort("claude CLI is not installed or not on PATH")
@@ -282,11 +325,14 @@ def _launch_agent(
                 "Risk: Claude --dangerously-skip-permissions disables permission prompts. Continue?",
             )
             print(f"Launching Claude{display_label}...")
-            os.chdir(project_dir)
-            os.execvp("claude", ["claude", "-p", "--dangerously-skip-permissions"] + model_args + [prompt])
+            rc = launch_agent(
+                ["claude", "-p", "--dangerously-skip-permissions"] + model_args + [prompt],
+                cwd=project_dir,
+            )
+            sys.exit(rc)
         print(f"Launching Claude{display_label}...")
-        os.chdir(project_dir)
-        os.execvp("claude", ["claude"] + model_args + [prompt])
+        rc = launch_agent(["claude"] + model_args + [prompt], cwd=project_dir)
+        sys.exit(rc)
 
     else:  # codex-cli
         if not _cmd_exists("codex"):
@@ -305,10 +351,19 @@ def _launch_agent(
                     "SUPERHARNESS_CONFIRM_CODEX_BYPASS",
                     "Risk: Codex bypass disables sandbox and approval prompts. Continue?",
                 )
-                os.execvp("codex", ["codex"] + common + codex_model_args + ["--dangerously-bypass-approvals-and-sandbox", prompt])
-            os.execvp("codex", ["codex"] + common + codex_model_args + ["--full-auto", prompt])
+                rc = launch_agent(
+                    ["codex"] + common + codex_model_args + ["--dangerously-bypass-approvals-and-sandbox", prompt],
+                    cwd=project_dir,
+                )
+                sys.exit(rc)
+            rc = launch_agent(
+                ["codex"] + common + codex_model_args + ["--full-auto", prompt],
+                cwd=project_dir,
+            )
+            sys.exit(rc)
         print(f"Launching Codex{display_label}...")
-        os.execvp("codex", ["codex", "-C", project_dir] + codex_model_args + [prompt])
+        rc = launch_agent(["codex", "-C", project_dir] + codex_model_args + [prompt], cwd=project_dir)
+        sys.exit(rc)
 
 
 def _expand_path() -> None:
@@ -437,20 +492,26 @@ def delegate(
                 print(f"   - {b}", file=sys.stderr)
             return 1
 
-    # Gate 4: status lifecycle — must reach plan_approved before delegation
+    # Gate 4: status lifecycle — dispatch is workflow-aware.
     # Terminal statuses (done/failed/stopped) pass through — reconcile handles them.
     _task_status = task_obj.get("status", "") if task_obj else ""
+    _workflow = _infer_workflow(task_id, task_obj)
     _DISPATCH_TERMINAL_STATUSES = {"done", "failed", "stopped"}
-    _DISPATCH_ALLOWED_STATUSES = {"plan_approved", "in_progress", "report_ready",
-                                   "review_passed", "review_failed", "pending_user_approval"}
-    if for_review:
-        _DISPATCH_ALLOWED_STATUSES.add("review_requested")
+    _DISPATCH_ALLOWED_STATUSES = _allowed_statuses_for_workflow(_workflow, for_review=for_review)
     if _task_status not in _DISPATCH_ALLOWED_STATUSES and _task_status not in _DISPATCH_TERMINAL_STATUSES:
-        print(
-            f"blocked: task '{task_id}' status is '{_task_status}' — "
-            f"plan must be approved before delegating (run: shux task status --id {task_id} --status plan_proposed)",
-            file=sys.stderr,
-        )
+        if _workflow == "implementation":
+            print(
+                f"blocked: task '{task_id}' status is '{_task_status}' — "
+                f"plan must be approved before delegating (run: shux task status --id {task_id} --status plan_proposed)",
+                file=sys.stderr,
+            )
+        else:
+            allowed = ", ".join(sorted(_DISPATCH_ALLOWED_STATUSES))
+            print(
+                f"blocked: task '{task_id}' status is '{_task_status}' for workflow '{_workflow}' "
+                f"(allowed: {allowed})",
+                file=sys.stderr,
+            )
         return 1
 
     # -----------------------------------------------------------------------

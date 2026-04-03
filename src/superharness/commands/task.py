@@ -35,6 +35,8 @@ VALID_ALL_STATUSES = {
     "pending_user_approval",
     "done", "failed", "stopped",
 }
+VALID_WORKFLOWS = {"implementation", "quick", "discussion", "review", "approval", "note"}
+VALID_DEVELOPMENT_METHODS = {"tdd", "bdd", "sdd", "none"}
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 
@@ -139,6 +141,8 @@ def create(
     tdd_red: str = "",
     tdd_green: str = "",
     tdd_refactor: str = "",
+    workflow: str = "quick",
+    development_method: str = "",
 ) -> int:
     _validate_token("task id", task_id)
     if dependency:
@@ -148,6 +152,17 @@ def create(
         _abort("owner must be claude-code or codex-cli", 2)
     if status not in VALID_CREATE_STATUSES:
         _abort("status must be todo, in_progress, pending_user_approval, or done", 2)
+    if workflow and workflow not in VALID_WORKFLOWS:
+        _abort(
+            f"workflow must be one of: {', '.join(sorted(VALID_WORKFLOWS))}",
+            2,
+        )
+    if development_method and development_method not in VALID_DEVELOPMENT_METHODS:
+        _abort(
+            "development_method must be one of: "
+            + ", ".join(sorted(VALID_DEVELOPMENT_METHODS)),
+            2,
+        )
 
     doc = _load_contract(contract_file)
     tasks = _get_tasks(doc, contract_file)
@@ -186,6 +201,10 @@ def create(
     task["status"] = status
     task["project_path"] = project_path
     task["blocked_by"] = blocked
+    if workflow:
+        task["workflow"] = workflow
+    if development_method:
+        task["development_method"] = development_method
     if dependency:
         task["dependency"] = dependency
     if criteria:
@@ -332,6 +351,10 @@ def main(argv: list[str] | None = None) -> None:
                           help="TDD green phase: minimal code to make tests pass")
     p_create.add_argument("--tdd-refactor", dest="tdd_refactor", default="",
                           help="TDD refactor phase: cleanup after green, no new behaviour")
+    p_create.add_argument("--workflow", default="quick",
+                          help="Optional workflow template: implementation, quick, discussion, review, approval, note (default: quick)")
+    p_create.add_argument("--development-method", dest="development_method", default="",
+                          help="Optional development method: tdd, bdd, sdd, none")
     p_create.add_argument("--criteria", action="append", default=[], metavar="CRITERION",
                           help="Acceptance criterion (repeat for multiple)")
 
@@ -403,6 +426,8 @@ def main(argv: list[str] | None = None) -> None:
             tdd_red=opts.tdd_red,
             tdd_green=opts.tdd_green,
             tdd_refactor=opts.tdd_refactor,
+            workflow=opts.workflow,
+            development_method=opts.development_method,
         )
         sys.exit(rc)
 

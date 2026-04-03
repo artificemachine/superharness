@@ -2,32 +2,11 @@
 from __future__ import annotations
 
 import os
-import platform
 import shutil
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-
-_EXCLUDE = {".git", ".superharness", ".venv", "node_modules", ".pytest_cache"}
-
-
-def _copy_tree(src: Path, dst: Path) -> None:
-    """Copy src -> dst excluding _EXCLUDE dirs, compatible with Python 3.11+."""
-    dst.mkdir(parents=True, exist_ok=True)
-    for item in src.iterdir():
-        if item.name in _EXCLUDE:
-            continue
-        target = dst / item.name
-        if item.is_symlink():
-            if target.exists() or target.is_symlink():
-                target.unlink()
-            os.symlink(os.readlink(item), target)
-        elif item.is_dir():
-            _copy_tree(item, target)
-        else:
-            shutil.copy2(str(item), str(target))
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -64,25 +43,8 @@ def main(argv: list[str] | None = None) -> None:
     worker_dir = worker_dir.resolve()
 
     # Copy project files (excluding .git, .superharness, etc.)
-    # Try rsync first (macOS/Linux), fall back to Python
-    rsync = shutil.which("rsync")
-    if rsync and platform.system() != "Windows":
-        subprocess.run([
-            rsync, "-a", "--delete",
-            "--exclude=.git", "--exclude=.superharness", "--exclude=.venv",
-            "--exclude=node_modules", "--exclude=.pytest_cache",
-            f"{project_dir}/", f"{worker_dir}/"
-        ], check=True)
-    else:
-        # Remove existing (except .superharness symlink)
-        for child in list(worker_dir.iterdir()):
-            if child.name == ".superharness":
-                continue
-            if child.is_dir() and not child.is_symlink():
-                shutil.rmtree(str(child))
-            else:
-                child.unlink(missing_ok=True)
-        _copy_tree(project_dir, worker_dir)
+    from superharness.engine.platform_runtime import sync_worker_copy
+    sync_worker_copy(str(project_dir), str(worker_dir))
 
     # Symlink .superharness -> source project's .superharness
     sh_link = worker_dir / ".superharness"
@@ -95,28 +57,24 @@ def main(argv: list[str] | None = None) -> None:
     except OSError as e:
         print(f"Warning: could not create .superharness symlink: {e}", file=sys.stderr)  # shipguard:ignore PY-007
 
-    # Install watcher (macOS launchd only)
-    install_script = scripts_dir / "install-launchd-inbox-watcher.sh"
-    if platform.system() == "Darwin" and install_script.is_file():
-        install_args = [
-            "bash", str(install_script),
-            "--project", str(worker_dir),
-            "--interval", str(opts.interval),
-            "--recover-timeout-minutes", str(opts.recover_timeout),
-            "--recover-action", opts.recover_action,
-            "--launcher-timeout", str(opts.launcher_timeout),
-            "--to", opts.to,
-            "--confirm-non-interactive", "yes",
-            "--confirm-skip-permissions", "yes",
-        ]
-        if opts.codex_bypass:
-            install_args += ["--codex-bypass", "--confirm-codex-bypass", "yes"]
-        subprocess.run(install_args, check=False)
-    elif platform.system() != "Darwin":
-        print(f"INFO: launchd watcher install skipped on {platform.system()}.")
-        print("      Use 'superharness watch --foreground --project .' to run the watcher manually.")
+    # Install watcher via OS-aware service installer
+    from superharness.engine.service_installer import install as _install_service
+    _install_service(
+        project_dir=project_dir,
+        worker_dir=worker_dir,
+        scripts_dir=scripts_dir,
+        interval=opts.interval,
+        recover_timeout=opts.recover_timeout,
+        recover_action=opts.recover_action,
+        launcher_timeout=opts.launcher_timeout,
+        to=opts.to,
+        codex_bypass=opts.codex_bypass,
+    )
 
     # Write watcher.yaml
+    from superharness.engine.runtime_probe import probe_runtime, persist_runtime
+    chosen_interpreter = probe_runtime()
+
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     watcher_cfg = project_dir / ".superharness" / "watcher.yaml"
     watcher_cfg.write_text(
@@ -130,6 +88,7 @@ def main(argv: list[str] | None = None) -> None:
         f"codex_bypass: {'true' if opts.codex_bypass else 'false'}\n",
         encoding="utf-8"
     )
+    persist_runtime(watcher_cfg, chosen_interpreter)
 
     print("Watcher worker is ready.")
     print(f"  Source project : {project_dir}")
