@@ -23,6 +23,12 @@ brew install pipx && pipx install superharness
 
 # Linux
 python3 -m pip install --user pipx && pipx install superharness
+
+# Windows (PowerShell)
+python -m pip install --user pipx
+python -m pipx install superharness
+# Add pipx bin dir to PATH if not already present:
+python -m pipx ensurepath
 ```
 
 If already installed, upgrade to latest:
@@ -273,7 +279,53 @@ superharness init --detect
 
 ## Platform notes
 
-- **macOS**: Offer launchd watcher setup (`superharness init --with-watcher`)
+- **macOS**: Offer launchd watcher setup (`superharness watcher-worker --project .`)
 - **Linux**: Mention systemd unit file in `scripts/superharness-watcher@.service`
 - **Docker/CI**: Use `--non-interactive` flag with explicit env var confirmation
-- **Windows/WSL**: superharness requires bash 4+. WSL works. Native Windows does not.
+- **Windows (native)**: superharness runs natively on Windows — no WSL or bash required.
+
+### Windows native install (copy-paste ready)
+
+```powershell
+# 1. Install pipx (if not present)
+python -m pip install --user pipx
+python -m pipx ensurepath
+# Open a new PowerShell window, then:
+
+# 2. Install superharness
+pipx install superharness
+
+# 3. Verify
+superharness --version
+
+# 4. Bootstrap project
+cd C:\path\to\your\project
+superharness init
+superharness doctor
+
+# 5. Start the watcher (background via Windows Task Scheduler)
+superharness watcher-worker --project .
+# Or run in the foreground:
+superharness watch --foreground --project .
+```
+
+### Windows watcher background service
+
+`superharness watcher-worker --project .` registers a Windows Task Scheduler task
+that runs the inbox watcher on a repeating interval.  No bash, no WSL, no launchd.
+
+To remove the scheduled task:
+```powershell
+schtasks /Delete /TN "SuperharnessWatcher_*" /F
+```
+
+### Windows notes for agents
+
+- All core commands (`init`, `doctor`, `contract`, `task`, `delegate`, `enqueue`, `watch`,
+  `discuss`, `recall`, `hygiene`, `verify`, `close`) run natively on Windows.
+- The `delegate` command uses `subprocess.run` instead of `os.execvp` — exit codes are
+  propagated correctly.
+- Lock paths use `%TEMP%` (e.g. `C:\Users\<user>\AppData\Local\Temp`) rather than `/tmp`.
+- `shux doctor` will show `winsvc` as the watcher backend on Windows.
+- Agent CLI detection (`claude`, `codex`) searches both standard PATH and common Windows
+  install locations (`%LOCALAPPDATA%\Programs\Python\Scripts`, `%APPDATA%\Python\Scripts`).

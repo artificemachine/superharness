@@ -1366,3 +1366,21 @@ If you're an agent picking this up:
 ### Fixed
 - **Watcher stability — root cause fix**: `session-stop.sh` was calling `launchctl unload` on every Claude Code session end, killing the background watcher. Removed the unload block — the inbox watcher is a persistent service and must survive session boundaries. Inbox items are already paused on session stop, preventing stale dispatch.
 - **Watcher auto-recovery on session start**: `session-start.sh` now passes `--confirm-non-interactive yes --confirm-skip-permissions yes` to `ensure-launchd-inbox-watcher.sh`, enabling automatic plist reinstallation if the file is ever missing (e.g. after a manual unload or fresh machine setup).
+
+## [1.4.0] - 2026-04-04
+
+### Added
+- `engine/platform_runtime.py` — central OS abstraction: `watcher_lock_path()`, `tmp_dir()`, `sync_worker_copy()`, `launch_agent()`, `expand_agent_path()`
+- `engine/service_installer.py` — OS-aware watcher service router: launchd (macOS), systemd (Linux), Windows Task Scheduler (`schtasks.exe`)
+- `engine/runtime_probe.py` — Python interpreter probe and pinning; persists chosen interpreter to `watcher.yaml`
+- Windows Task Scheduler watcher install via `schtasks.exe` — no bash, no WSL required
+- 30 new cross-platform tests (`test_cross_platform_baseline.py`, `test_windows_native_matrix.py`)
+- CI matrix workflow (`ci-matrix.yml`) gating ubuntu/macos/windows on all new tests
+- Windows native install section in `docs/INSTALL-AGENT.md`
+
+### Changed
+- `commands/delegate.py` — replaced `os.execvp()` with `subprocess.run()` + `sys.exit(rc)` for correct Windows behaviour
+- `commands/inbox_watch.py` — lock path uses `tempfile.gettempdir()` instead of hardcoded `/tmp`; sync uses `platform_runtime.sync_worker_copy()`
+- `commands/watcher_worker.py` — delegates to `service_installer.install()` and `runtime_probe.persist_runtime()`
+- `commands/task.py` — default workflow is now `quick`
+- `README.md` — updated platform support to include Windows Task Scheduler watcher
