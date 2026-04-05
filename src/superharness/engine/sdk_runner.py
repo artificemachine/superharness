@@ -9,10 +9,109 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _find_latest_session(project_dir: str) -> str | None:
+    """Find the most recent Claude session ID for a project directory."""
+    import glob
+    safe_path = project_dir.replace("/", "-")
+    session_dir = os.path.join(
+        os.path.expanduser("~"), ".claude", "projects", safe_path,
+    )
+    if not os.path.isdir(session_dir):
+        return None
+    candidates = sorted(
+        glob.glob(os.path.join(session_dir, "*.jsonl")),
+        key=lambda p: os.path.getmtime(p),
+        reverse=True,
+    )
+    if not candidates:
+        return None
+    # Extract session ID from filename (UUID.jsonl)
+    basename = os.path.basename(candidates[0])
+    if basename.endswith(".jsonl"):
+        return basename[:-6]  # strip .jsonl
+    return None
+
+
+def _start_jsonl_tailer(
+    project_dir: str, log_handle: Any, poll_interval: float = 1.0,
+) -> tuple[Any, Any]:
+    """Tail the newest Claude session JSONL and pipe assistant text to log_handle.
+
+    Returns (stop_event, thread) so caller can signal shutdown.
+    """
+    import glob
+    import json
+    import threading
+    import time as _time
+
+    stop = threading.Event()
+
+    def _tail() -> None:
+        # Find Claude project session dir
+        safe_path = project_dir.replace("/", "-")
+        session_dir = os.path.join(
+            os.path.expanduser("~"), ".claude", "projects", safe_path,
+        )
+        # Wait briefly for session file to appear
+        jsonl_file = None
+        for _ in range(10):
+            if stop.is_set():
+                return
+            candidates = sorted(
+                glob.glob(os.path.join(session_dir, "*.jsonl")),
+                key=lambda p: os.path.getmtime(p),
+                reverse=True,
+            )
+            if candidates:
+                jsonl_file = candidates[0]
+                break
+            _time.sleep(1)
+        if not jsonl_file:
+            return
+
+        try:
+            with open(jsonl_file, "r", encoding="utf-8") as f:
+                # Seek to end — only tail new content
+                f.seek(0, 2)
+                while not stop.is_set():
+                    line = f.readline()
+                    if not line:
+                        _time.sleep(poll_interval)
+                        continue
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        d = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if d.get("type") != "assistant":
+                        continue
+                    msg = d.get("message", {})
+                    for block in msg.get("content", []):
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            text = block.get("text", "")
+                            if text:
+                                log_handle.write(text + "\n")
+                                log_handle.flush()
+                        elif isinstance(block, dict) and block.get("type") == "tool_use":
+                            name = block.get("name", "")
+                            if name:
+                                log_handle.write(f"[tool: {name}]\n")
+                                log_handle.flush()
+        except OSError:
+            pass
+
+    t = threading.Thread(target=_tail, daemon=True)
+    t.start()
+    return stop, t
 
 
 class BudgetExceededError(Exception):
@@ -62,6 +161,7 @@ class SDKRunner:
         project_dir: Path,
         model: str | None = None,
         max_budget_usd: float | None = None,
+        warm_start: bool = True,
     ) -> None:
         if not _try_import_sdk():
             raise RuntimeError(
@@ -71,6 +171,7 @@ class SDKRunner:
         self.project_dir = project_dir
         self.model = model
         self.max_budget_usd = max_budget_usd
+        self.warm_start = warm_start
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.total_cost_usd = 0.0
@@ -99,6 +200,16 @@ class SDKRunner:
             options.model = self.model
         options.cwd = str(self.project_dir)
         options.permission_mode = "bypassPermissions"
+        # Inherit user + project settings (MCP servers like tilth/Serena, hooks like RTK)
+        options.setting_sources = ["user", "project"]
+
+        # Warm start: fork the most recent session to inherit codebase context
+        if self.warm_start:
+            session_id = _find_latest_session(str(self.project_dir))
+            if session_id:
+                options.resume = session_id
+                options.fork_session = True
+                logger.info("Warm start: forking session %s", session_id)
 
         log_handle = None
         if log_file:
@@ -108,6 +219,14 @@ class SDKRunner:
         output_text = ""
         input_tokens = 0
         output_tokens = 0
+
+        # JSONL tailer: streams assistant text from the SDK session file to the log
+        tailer_stop = None
+        tailer_thread = None
+        if log_handle:
+            tailer_stop, tailer_thread = _start_jsonl_tailer(
+                str(self.project_dir), log_handle,
+            )
 
         async def _run() -> str:
             nonlocal input_tokens, output_tokens
@@ -120,18 +239,15 @@ class SDKRunner:
                         usage = event.usage if isinstance(event.usage, dict) else vars(event.usage) if hasattr(event.usage, '__dict__') else {}
                         input_tokens += usage.get("input_tokens", 0)
                         output_tokens += usage.get("output_tokens", 0)
-                elif isinstance(event, StreamEvent):
-                    chunk = getattr(event, "text", "") or ""
-                    if chunk:
-                        text_parts.append(chunk)
-                        if log_handle:
-                            log_handle.write(chunk)
-                            log_handle.flush()
             return result_text or "".join(text_parts)
 
         try:
             output_text = asyncio.run(_run())
         finally:
+            if tailer_stop is not None:
+                tailer_stop.set()
+            if tailer_thread is not None:
+                tailer_thread.join(timeout=2)
             if log_handle:
                 log_handle.close()
 

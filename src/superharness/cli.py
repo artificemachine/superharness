@@ -120,6 +120,8 @@ _cmd("close",           "Close a verified task (done + ledger).",   module="supe
 _cmd("context",         "Show full context for a task (handoff, decisions, failures, ledger, git).", module="superharness.commands.context")
 _cmd("install-hooks",   "Merge adapter hooks into ~/.claude/settings.json (portable, no hardcoded paths).", module="superharness.commands.install_hooks")
 _cmd("enhance",         "Module marketplace — enable, disable, list integrations.", module="superharness.commands.enhance")
+_cmd("adapters",        "List, inspect, and validate agent runtime adapters.",      module="superharness.commands.adapters")
+_cmd("pack",            "Export and import portable project state.",               module="superharness.commands.pack")
 
 
 def _find_monitor_processes():

@@ -10,6 +10,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 
 DIRTY_WORKTREE_REASON = "dirty_worktree_requires_user_confirmation"
@@ -34,22 +35,86 @@ def _abort(msg: str, code: int = 1) -> None:
 # ---------------------------------------------------------------------------
 
 class _MkdirLock:
-    """Non-blocking mutex using a directory (same as shell inbox-dispatch.sh)."""
+    """Non-blocking mutex using a directory with PID-based orphan detection."""
 
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: str, stale_seconds: int = 300) -> None:
         self.path = path
         self._held = False
+        self._stale_seconds = stale_seconds
+
+    def _pid_file(self) -> str:
+        return os.path.join(self.path, "owner.pid")
+
+    def _write_pid(self) -> None:
+        try:
+            with open(self._pid_file(), "w", encoding="utf-8") as f:
+                f.write(f"{os.getpid()}\n")
+        except OSError:
+            pass
+
+    def _read_pid(self) -> int | None:
+        try:
+            with open(self._pid_file(), encoding="utf-8") as f:
+                return int(f.readline().strip())
+        except (OSError, ValueError):
+            return None
+
+    @staticmethod
+    def _pid_alive(pid: int | None) -> bool:
+        if pid is None:
+            return False
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        except OSError:
+            return False
+
+    def _break_orphan(self) -> bool:
+        """Remove lock if owning PID is dead or lock is stale with no PID."""
+        if not os.path.isdir(self.path):
+            return False
+        pid = self._read_pid()
+        if pid is not None and not self._pid_alive(pid):
+            print(f"Auto-breaking orphaned dispatch lock (pid {pid} not running): {self.path}")
+            self._remove()
+            return True
+        if pid is None:
+            try:
+                age = time.time() - os.stat(self.path).st_mtime
+            except OSError:
+                return False
+            if age >= self._stale_seconds:
+                print(f"Auto-breaking stale dispatch lock (age: {int(age)}s, no pid): {self.path}")
+                self._remove()
+                return True
+        return False
+
+    def _remove(self) -> None:
+        try:
+            os.unlink(self._pid_file())
+        except OSError:
+            pass
+        try:
+            os.rmdir(self.path)
+        except OSError:
+            pass
 
     def acquire(self) -> bool:
         try:
             os.mkdir(self.path)
+            self._write_pid()
             self._held = True
             return True
         except FileExistsError:
+            if self._break_orphan():
+                return self.acquire()
             return False
 
     def acquire_with_retry(self, attempts: int = 50, delay: float = 0.1) -> bool:
-        import time
         for _ in range(attempts):
             if self.acquire():
                 return True
@@ -58,10 +123,7 @@ class _MkdirLock:
 
     def release(self) -> None:
         if self._held:
-            try:
-                os.rmdir(self.path)
-            except OSError:
-                pass
+            self._remove()
             self._held = False
 
 
@@ -178,9 +240,10 @@ def _set_inbox_status(inbox_file: str, item_id: str, from_: str, to: str, now: s
 # Timeout subprocess runner
 # ---------------------------------------------------------------------------
 
-def _run_with_timeout(timeout_secs: int, cmd: list[str], inbox_file: str = "", item_id: str = "") -> int:
+def _run_with_timeout(timeout_secs: int, cmd: list[str], inbox_file: str = "", item_id: str = "",
+                      env: dict | None = None, stdout=None, stderr=None) -> int:
     """Run a command with a timeout; returns exit code (124 = timed out)."""
-    proc = subprocess.Popen(cmd, preexec_fn=os.setsid)
+    proc = subprocess.Popen(cmd, preexec_fn=os.setsid, env=env, stdout=stdout, stderr=stderr)
     if inbox_file and item_id:
         _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", str(proc.pid)])
     timed_out = [False]
@@ -262,9 +325,6 @@ def dispatch(
         _importlib_resources.files("superharness").joinpath("scripts")
     )
 
-    launch_claude = os.path.join(script_dir, "delegate-to-claude.sh")
-    launch_codex = os.path.join(script_dir, "delegate-to-codex.sh")
-
     # Lock
     lock = _MkdirLock(inbox_file + ".lock.d")
     if not lock.acquire():
@@ -281,8 +341,7 @@ def dispatch(
             non_interactive=non_interactive,
             codex_bypass=codex_bypass,
             launcher_timeout=launcher_timeout,
-            launch_claude=launch_claude,
-            launch_codex=launch_codex,
+            script_dir=script_dir,
             lock=lock,
         )
     finally:
@@ -298,8 +357,7 @@ def _do_dispatch(
     non_interactive: bool,
     codex_bypass: bool,
     launcher_timeout: int,
-    launch_claude: str,
-    launch_codex: str,
+    script_dir: str,
     lock: _MkdirLock,
 ) -> int:
     # Read next pending item
@@ -347,13 +405,12 @@ def _do_dispatch(
     except OSError:
         pass
 
-    # Launcher selection
-    if item_to == "claude-code":
-        launcher = launch_claude
-    elif item_to == "codex-cli":
-        launcher = launch_codex
-    else:
-        print(f"Unsupported target '{item_to}' for inbox item '{item_id}'", file=sys.stderr)
+    # Registry-driven launcher selection
+    from superharness.engine.adapter_registry import AdapterValidationError, resolve_launcher
+    try:
+        launcher = resolve_launcher(item_to, script_dir)
+    except AdapterValidationError as e:
+        print(f"Adapter error for target '{item_to}': {e}", file=sys.stderr)
         return 1
 
     # Auto-calculate timeout from task effort if not explicitly set
@@ -423,7 +480,11 @@ def _do_dispatch(
     from superharness.commands.delegate import _rotate_launcher_logs
     _rotate_launcher_logs(Path(launcher_log_dir), item_task, item_to, keep=5)
 
-    # Wrap in `script` to capture all PTY output (claude CLI writes to terminal, not stdout)
+    # Pass log path to delegate so SDK runner's JSONL tailer writes to the same file
+    spawn_env = os.environ.copy()
+    spawn_env["SUPERHARNESS_LAUNCHER_LOG"] = task_log
+
+    # Wrap in `script` to capture PTY output (bash launcher needs a terminal)
     import platform
     if platform.system() == "Darwin":
         wrapped_args = ["script", "-q", task_log] + launch_args
@@ -433,9 +494,10 @@ def _do_dispatch(
 
     # Spawn launcher
     if effective_timeout > 0:
-        launcher_rc = _run_with_timeout(effective_timeout, wrapped_args, inbox_file=inbox_file, item_id=item_id)
+        launcher_rc = _run_with_timeout(effective_timeout, wrapped_args, inbox_file=inbox_file, item_id=item_id,
+                                        env=spawn_env)
     else:
-        proc = subprocess.Popen(wrapped_args, preexec_fn=os.setsid)
+        proc = subprocess.Popen(wrapped_args, preexec_fn=os.setsid, env=spawn_env)
         _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", str(proc.pid)])
         launcher_rc = proc.wait()
         _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", ""])
@@ -548,9 +610,12 @@ def main(argv: list[str] | None = None) -> None:
         print("--launcher-timeout must be a non-negative integer", file=sys.stderr)
         sys.exit(2)
 
-    if opts.target_filter and opts.target_filter not in ("claude-code", "codex-cli"):
-        print("--to must be claude-code or codex-cli", file=sys.stderr)
-        sys.exit(2)
+    if opts.target_filter:
+        from superharness.engine.adapter_registry import list_adapters
+        valid_targets = list_adapters()
+        if opts.target_filter not in valid_targets:
+            print(f"--to must be one of: {', '.join(valid_targets) or 'none'}", file=sys.stderr)
+            sys.exit(2)
 
     rc = dispatch(
         project_dir=opts.project,

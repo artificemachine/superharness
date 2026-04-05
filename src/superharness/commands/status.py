@@ -61,8 +61,33 @@ def _watcher_project(project_dir: str) -> str:
 def _heartbeat_status(project_dir: str, harness_dir: str) -> tuple[str, str]:
     watcher_project = _watcher_project(project_dir)
     hb_project = watcher_project if watcher_project != project_dir else project_dir
-    hb_file = os.path.join(hb_project, ".superharness", "watcher.heartbeat")
+    via_worker = hb_project != project_dir
     stale_seconds = 120
+
+    # Prefer structured heartbeat contract v1 when available
+    try:
+        from superharness.engine.heartbeat_contract import (
+            heartbeat_path,
+            read_heartbeat,
+            age_seconds as hb_age_seconds,
+        )
+        structured_path = heartbeat_path(hb_project, "watcher")
+        if os.path.isfile(structured_path):
+            hb = read_heartbeat(structured_path)
+            if hb is not None:
+                age = hb_age_seconds(hb)
+                if age < 0:
+                    return "missing", "invalid heartbeat timestamp"
+                age_min = age // 60
+                suffix = " (worker project)" if via_worker else ""
+                if age >= stale_seconds:
+                    return "stale", f"last heartbeat {age_min}m ago{suffix}"
+                return "ok", f"last heartbeat {age}s ago{suffix}"
+    except Exception:
+        pass
+
+    # Fall back to legacy plain-timestamp file
+    hb_file = os.path.join(hb_project, ".superharness", "watcher.heartbeat")
     if not os.path.isfile(hb_file):
         return "missing", "no heartbeat file"
     with open(hb_file) as f:
@@ -74,15 +99,10 @@ def _heartbeat_status(project_dir: str, harness_dir: str) -> tuple[str, str]:
         now_dt = datetime.now(timezone.utc)
         age = int((now_dt - hb_dt).total_seconds())
         age_min = age // 60
+        suffix = " (worker project)" if via_worker else ""
         if age >= stale_seconds:
-            detail = f"last heartbeat {age_min}m ago"
-            if hb_project != project_dir:
-                detail += " (worker project)"
-            return "stale", detail
-        detail = f"last heartbeat {age}s ago"
-        if hb_project != project_dir:
-            detail += " (worker project)"
-        return "ok", detail
+            return "stale", f"last heartbeat {age_min}m ago{suffix}"
+        return "ok", f"last heartbeat {age}s ago{suffix}"
     except Exception:
         return "missing", "invalid heartbeat timestamp"
 

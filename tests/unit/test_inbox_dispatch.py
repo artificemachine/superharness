@@ -191,7 +191,7 @@ def test_dispatch_allows_review_requested_items_for_review_launch(repo_root, tmp
 def test_normalize_archives_only_dropped_rows(repo_root, tmp_path) -> None:
     project = tmp_path / "proj3"
     project.mkdir()
-    _write_contract(project)
+    _write_contract(project, status="done")
     _write_inbox(
         project,
         [
@@ -228,6 +228,39 @@ def test_normalize_archives_only_dropped_rows(repo_root, tmp_path) -> None:
     archive_text = (project / ".superharness" / "inbox.archive.yaml").read_text()
     assert "id: drop-row" in archive_text
     assert "id: keep-row" not in archive_text
+
+
+def test_normalize_re_enqueues_failed_dispatch_ready_tasks(repo_root, tmp_path) -> None:
+    project = tmp_path / "proj_reenqueue"
+    project.mkdir()
+    _write_contract(project, status="plan_approved")
+    _write_inbox(
+        project,
+        [
+            "# Delegation inbox",
+            "# status: pending|launched|running|done|failed|stale",
+            "",
+            "- id: failed-but-ready",
+            "  to: codex-cli",
+            "  task: mcp-docs",
+            f"  project: {project}",
+            "  status: failed",
+            "  priority: 2",
+            "  retry_count: 2",
+            "  max_retries: 3",
+            "  failed_at: 2026-04-05T10:00:00Z",
+        ],
+    )
+
+    result = _run_normalize(["--project", str(project), "--drop-status", "failed"])
+    assert result.returncode == 0, result.stderr
+    assert "re-enqueued" in result.stdout
+
+    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
+    assert "id: failed-but-ready" in inbox_text
+    assert "status: pending" in inbox_text
+    assert "retry_count: 0" in inbox_text
+    assert "failed_at" not in inbox_text
 
 
 def test_normalize_drops_rows_by_id_prefix(repo_root, tmp_path) -> None:
@@ -804,3 +837,63 @@ def test_dispatch_rejects_invalid_launcher_timeout(repo_root, tmp_path) -> None:
 
     assert result.returncode == 2
     assert "non-negative integer" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# _MkdirLock PID-based orphan detection tests
+# ---------------------------------------------------------------------------
+
+def test_dispatch_lock_writes_owner_pid(tmp_path) -> None:
+    from superharness.commands.inbox_dispatch import _MkdirLock
+
+    lock_path = str(tmp_path / "test.lock.d")
+    lock = _MkdirLock(lock_path)
+    assert lock.acquire() is True
+
+    pid_file = Path(lock_path) / "owner.pid"
+    assert pid_file.exists()
+    assert int(pid_file.read_text().strip()) == os.getpid()
+    lock.release()
+    assert not Path(lock_path).exists()
+
+
+def test_dispatch_lock_breaks_dead_pid(tmp_path) -> None:
+    from superharness.commands.inbox_dispatch import _MkdirLock
+
+    lock_path = tmp_path / "test.lock.d"
+    lock_path.mkdir()
+    (lock_path / "owner.pid").write_text("999999\n")
+
+    lock = _MkdirLock(str(lock_path))
+    assert lock.acquire() is True
+    assert int((lock_path / "owner.pid").read_text().strip()) == os.getpid()
+    lock.release()
+
+
+def test_dispatch_lock_respects_live_pid(tmp_path) -> None:
+    from superharness.commands.inbox_dispatch import _MkdirLock
+
+    lock_path = tmp_path / "test.lock.d"
+    lock_path.mkdir()
+    (lock_path / "owner.pid").write_text(f"{os.getpid()}\n")
+
+    lock = _MkdirLock(str(lock_path))
+    assert lock.acquire() is False
+
+    # cleanup
+    (lock_path / "owner.pid").unlink()
+    lock_path.rmdir()
+
+
+def test_dispatch_lock_breaks_stale_pidless(tmp_path) -> None:
+    import time as _time
+    from superharness.commands.inbox_dispatch import _MkdirLock
+
+    lock_path = tmp_path / "test.lock.d"
+    lock_path.mkdir()
+    stale_time = _time.time() - 600
+    os.utime(str(lock_path), (stale_time, stale_time))
+
+    lock = _MkdirLock(str(lock_path), stale_seconds=300)
+    assert lock.acquire() is True
+    lock.release()

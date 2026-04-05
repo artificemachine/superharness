@@ -91,6 +91,24 @@ HTML = """<!doctype html>
     .plan-banner b { color:#fff; }
     .plan-list { margin-top:6px; font-size:12px; line-height:1.8; }
     .watcher-health { margin-top:6px; font-size:12px; line-height:1.4; }
+    .board { display:grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap:8px; margin-top:10px; }
+    .board-col { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px; min-height:80px; }
+    .board-col-header { font-size:11px; font-weight:bold; color:var(--muted); margin-bottom:6px; display:flex; align-items:center; justify-content:space-between; }
+    .board-col-count { background:var(--btn); border-radius:999px; padding:0 6px; font-size:10px; }
+    .board-task { font-size:11px; padding:4px 6px; margin-bottom:4px; background:var(--bg); border:1px solid var(--line); border-radius:6px; cursor:pointer; }
+    .board-task:hover { border-color:#4a6fa5; }
+    .board-task .bt-id { color:var(--muted); font-size:10px; }
+    .board-task .bt-owner { color:var(--muted); font-size:10px; float:right; }
+    .review-banner { display:none; margin:0 0 10px; padding:10px 12px; border-radius:10px; border:1px solid #92400e; background:#1c1208; color:#fde68a; font-size:13px; line-height:1.4; }
+    .review-banner b { color:#fff; }
+    .review-list { margin-top:6px; font-size:12px; line-height:1.8; }
+    .agent-health-pills { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+    .agent-pill { display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--line); }
+    .live-badge { display:inline-block; font-size:10px; padding:1px 6px; border-radius:999px; background:#ef444422; color:var(--bad); border:1px solid var(--bad); animation:pulse 1.5s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .view-toggle { display:flex; gap:6px; margin-bottom:8px; align-items:center; }
+    .view-btn { font-size:11px; padding:2px 10px; border-radius:6px; cursor:pointer; border:1px solid var(--line); background:var(--btn); color:var(--muted); }
+    .view-btn.active { background:var(--btn2); color:#fff; border-color:#4a6fa5; }
   </style>
 </head>
 <body>
@@ -99,6 +117,10 @@ HTML = """<!doctype html>
     <div class=\"meta\" id=\"meta\">loading...</div>
     <div class=\"banner\" id=\"approvalBanner\" style=\"display:none\">User approval required.</div>
     <div class=\"plan-banner\" id=\"planBanner\" style=\"display:none\">Plan confirmation required.</div>
+    <div class=\"review-banner\" id=\"reviewBanner\">
+      <b>Review queue</b> — tasks awaiting operator action
+      <div class=\"review-list\" id=\"reviewList\"></div>
+    </div>
 
     <div class=\"grid\">
       <div class=\"card\"><div class=\"k\">watcher label</div><div class=\"v\" id=\"label\">-</div></div>
@@ -110,6 +132,7 @@ HTML = """<!doctype html>
       <h2>watcher control</h2>
       <div class=\"watcher-health\" id=\"watcherHealth\">-</div>
       <div class=\"watcher-health\" id=\"heartbeat\">-</div>
+      <div class=\"agent-health-pills\" id=\"agentHealthPills\"></div>
       <div class=\"actions\">
         <button onclick=\"act('watcher_start')\">Start watcher</button>
         <button onclick=\"act('watcher_restart')\">Restart watcher</button>
@@ -162,9 +185,19 @@ HTML = """<!doctype html>
     </div>
 
     <div class=\"card\" style=\"margin-top:10px;\">
-      <h2>tasks</h2>
+      <div style=\"display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;\">
+        <h2 style=\"margin:0\">tasks</h2>
+        <div class=\"view-toggle\">
+          <span class=\"view-btn active\" id=\"listViewBtn\" onclick=\"setView('list')\">☰ list</span>
+          <span class=\"view-btn\" id=\"boardViewBtn\" onclick=\"setView('board')\">▦ board</span>
+        </div>
+      </div>
       <div id=\"taskFilterPills\" style=\"display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;\"></div>
       <div id=\"contractTaskList\">-</div>
+    </div>
+    <div class=\"card\" style=\"margin-top:10px; display:none;\" id=\"boardViewCard\">
+      <h2>board view</h2>
+      <div class=\"board\" id=\"boardColumns\"></div>
     </div>
 
     <div class=\"card\" style=\"margin-top:10px;\">
@@ -234,6 +267,13 @@ async function refresh() {
     document.getElementById('ts').textContent = d.now_utc;
     renderOwnersList(d.contract_owners || []);
     renderContractTasks(d.contract_tasks || [], new Set(d.active_inbox_tasks || []), new Set(d.done_inbox_tasks || []));
+    // Review queue banner
+    const reviewTasks = (d.contract_tasks || []).filter(t => ['review_requested','review_passed','review_failed'].includes(t.status));
+    renderReviewQueue(d.review_queue_count || 0, reviewTasks);
+    // Agent health pills (list view)
+    renderAgentHealthPills((d.agent_status||{}).agents||{});
+    // Refresh board if active
+    if (_currentView === 'board') loadBoardView();
     document.getElementById('ledger').textContent = (d.ledger_tail || []).join('\\n');
     document.getElementById('out').textContent = (d.out_tail || []).join('\\n');
     document.getElementById('err').textContent = (d.err_tail || []).join('\\n');
@@ -401,18 +441,22 @@ async function viewTaskReport(taskId, agent) {
   if (_liveLogInterval) { clearInterval(_liveLogInterval); _liveLogInterval = null; }
   try {
     const d = await api('/api/task-report?task=' + encodeURIComponent(taskId) + '&agent=' + encodeURIComponent(agent));
-    const isActive = d.contract_status === 'in_progress' || d.contract_status === 'todo';
+    const _liveStatuses = new Set(['in_progress','todo','plan_approved','report_ready','review_requested']);
+    const isActive = _liveStatuses.has(d.contract_status);
     if (isActive) {
       try {
         const logData = await api('/api/task-log?task=' + encodeURIComponent(taskId) + '&lines=100');
         if (logData.log && !logData.log.startsWith('(no log')) {
-          meta.textContent = `task=${taskId}  agent=${agent}  LIVE LOG (auto-refreshing)`;
+          const sdkBadge = logData.sdk_status ? ` &nbsp; <span style="color:var(--warn)">${logData.sdk_status}</span>` : '';
+          meta.innerHTML = `task=${taskId} &nbsp; agent=${agent} &nbsp; <span class="live-badge">LIVE ●</span> auto-refreshing${sdkBadge}`;
           body.textContent = logData.log;
           body.scrollTop = body.scrollHeight;
           _liveLogInterval = setInterval(async () => {
             try {
               const fresh = await api('/api/task-log?task=' + encodeURIComponent(taskId) + '&lines=100');
               if (fresh.log) { body.textContent = fresh.log; body.scrollTop = body.scrollHeight; }
+              const freshBadge = fresh.sdk_status ? ` &nbsp; <span style="color:var(--warn)">${fresh.sdk_status}</span>` : '';
+              meta.innerHTML = `task=${taskId} &nbsp; agent=${agent} &nbsp; <span class="live-badge">LIVE ●</span> auto-refreshing${freshBadge}`;
             } catch(e) {}
           }, 3000);
           return;
@@ -798,6 +842,95 @@ async function removeOwner(name) {
     await refresh();
   } catch (e) {
     st.textContent = 'error: ' + e;
+  }
+}
+
+let _currentView = 'list';
+
+function setView(v) {
+  _currentView = v;
+  document.getElementById('listViewBtn').className = 'view-btn' + (v==='list' ? ' active' : '');
+  document.getElementById('boardViewBtn').className = 'view-btn' + (v==='board' ? ' active' : '');
+  document.getElementById('contractTaskList').style.display = v === 'list' ? '' : 'none';
+  document.getElementById('taskFilterPills').style.display = v === 'list' ? '' : 'none';
+  document.getElementById('boardViewCard').style.display = v === 'board' ? '' : 'none';
+  if (v === 'board') loadBoardView();
+}
+
+const BOARD_COL_LABELS = {
+  todo: {label:'⬜ todo', color:'var(--muted)'},
+  plan: {label:'📋 plan', color:'#a78bfa'},
+  in_progress: {label:'🔄 in progress', color:'#4a9eff'},
+  review: {label:'🔍 review', color:'var(--warn)'},
+  done: {label:'✅ done', color:'var(--ok)'},
+};
+
+async function loadBoardView() {
+  const el = document.getElementById('boardColumns');
+  if (!el) return;
+  try {
+    const d = await api('/api/board');
+    el.innerHTML = '';
+    for (const [col, meta] of Object.entries(BOARD_COL_LABELS)) {
+      const tasks = (d.columns || {})[col] || [];
+      const div = document.createElement('div');
+      div.className = 'board-col';
+      const header = `<div class="board-col-header"><span style="color:${meta.color}">${meta.label}</span><span class="board-col-count">${tasks.length}</span></div>`;
+      let rows = '';
+      for (const t of tasks) {
+        const st = t.status || '';
+        const [icon] = PHASE_LABEL[st] || ['?'];
+        const eid = (t.id || '').replace(/'/g, "\\'");
+        rows += `<div class="board-task" onclick="viewTaskReport('${eid}','${(t.owner||'').replace(/'/g,"\\'")}')">
+          <div class="bt-owner">${t.owner||''}</div>
+          <div class="bt-id">${icon} ${t.id||''}</div>
+          <div style="font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.title||''}</div>
+        </div>`;
+      }
+      div.innerHTML = header + (rows || '<div style="color:var(--muted);font-size:11px;text-align:center;padding:8px">empty</div>');
+      el.appendChild(div);
+    }
+    renderAgentHealthPills((d.agent_status||{}).agents||{});
+  } catch(e) {
+    el.textContent = 'Error loading board: ' + e;
+  }
+}
+
+function renderAgentHealthPills(agents) {
+  const el = document.getElementById('agentHealthPills');
+  if (!el) return;
+  el.innerHTML = '';
+  for (const [agent, info] of Object.entries(agents)) {
+    const lvl = (info.level || 'warn');
+    const color = lvl === 'ok' ? 'var(--ok)' : lvl === 'warn' ? 'var(--warn)' : 'var(--bad)';
+    const pill = document.createElement('span');
+    pill.className = 'agent-pill';
+    pill.style.cssText = `border-color:${color};color:${color}`;
+    pill.title = info.message || '';
+    pill.textContent = `${agent} ● ${lvl}`;
+    el.appendChild(pill);
+  }
+}
+
+function renderReviewQueue(reviewCount, reviewTasks) {
+  const banner = document.getElementById('reviewBanner');
+  const list = document.getElementById('reviewList');
+  if (!banner || !list) return;
+  if (!reviewCount) {
+    banner.style.display = 'none';
+    return;
+  }
+  banner.style.display = '';
+  list.innerHTML = '';
+  for (const t of (reviewTasks||[])) {
+    const st = t.status || '';
+    const [icon] = PHASE_LABEL[st] || ['?'];
+    const eid = (t.id||'').replace(/'/g,"\\'");
+    const a = document.createElement('div');
+    a.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:2px;';
+    a.innerHTML = `<span>${icon} <b>${t.id}</b> <span style="color:var(--muted)">${t.title||''}</span> <span style="color:var(--muted);font-size:11px">→ ${t.owner||''}</span></span>
+      <button onclick="viewTaskReport('${eid}','${(t.owner||'').replace(/'/g,"\\'")}'')" style="font-size:10px;padding:1px 6px">View</button>`;
+    list.appendChild(a);
   }
 }
 
@@ -1274,7 +1407,87 @@ def task_log_content(project_dir: Path, task_id: str, agent: str, lines: int = 0
     else:
         result["log"] = "(no log file found)"
 
+    # Check SDK session JSONL for sub-agent activity
+    sdk_status = _detect_sdk_activity(project_dir)
+    if sdk_status:
+        result["sdk_status"] = sdk_status
+        if result["log"] and not result["log"].startswith("(no log"):
+            result["log"] += f"\n\n--- {sdk_status} ---"
+            result["content"] = result["log"]
+
+    # Live diff: show what the agent is changing right now
+    git_diff = _git_diff_stat(project_dir)
+    if git_diff:
+        result["git_diff"] = git_diff
+        if result["log"] and not result["log"].startswith("(no log"):
+            result["log"] += f"\n\n--- files changed ---\n{git_diff}"
+            result["content"] = result["log"]
+
     return result
+
+
+def _git_diff_stat(project_dir: Path) -> str:
+    """Return compact git diff --stat for uncommitted changes."""
+    import subprocess
+    try:
+        r = subprocess.run(
+            ["git", "diff", "--stat", "--no-color", "HEAD"],
+            capture_output=True, text=True, check=False, timeout=5,
+            cwd=str(project_dir),
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _detect_sdk_activity(project_dir: Path) -> str:
+    """Scan the newest SDK session JSONL for current activity."""
+    import json as _json
+    safe_path = str(project_dir).replace("/", "-")
+    session_dir = Path.home() / ".claude" / "projects" / safe_path
+    if not session_dir.exists():
+        return ""
+    candidates = sorted(session_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not candidates:
+        return ""
+    jsonl = candidates[0]
+    try:
+        # Read last few lines to detect current activity
+        with open(jsonl, "r", encoding="utf-8") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            # Read last 8KB
+            f.seek(max(0, size - 8192))
+            tail = f.read()
+        last_tool = ""
+        last_text = ""
+        for line in tail.strip().splitlines():
+            if not line.strip():
+                continue
+            try:
+                d = _json.loads(line)
+            except _json.JSONDecodeError:
+                continue
+            if d.get("type") == "assistant":
+                msg = d.get("message", {})
+                for block in msg.get("content", []):
+                    if isinstance(block, dict):
+                        if block.get("type") == "tool_use":
+                            name = block.get("name", "")
+                            inp = block.get("input", {})
+                            if name == "Agent":
+                                desc = inp.get("description", "")
+                                return f"sub-agent running: {desc}" if desc else "sub-agent running"
+                            last_tool = name
+                        elif block.get("type") == "text":
+                            last_text = block.get("text", "")[:100]
+        if last_tool:
+            return f"last tool: {last_tool}"
+        return ""
+    except Exception:
+        return ""
 
 
 def contract_owners(contract_file: Path) -> list[str]:
@@ -1405,6 +1618,19 @@ def watcher_health(runtime: dict, items: list[dict], now_utc: str) -> dict:
         "stale_count": stale_count,
         "failed_count": failed_count,
     }
+
+
+def _agent_status_health(project_dir: Path, stale_seconds: int = 120) -> dict:
+    """Return agent status health for all runtimes — no hardcoded runtime names.
+
+    Uses heartbeat contract v1 (engine.agent_status).  Falls back gracefully
+    if the module is unavailable so existing deployments are not broken.
+    """
+    try:
+        from superharness.engine.agent_status import agent_status_health
+        return agent_status_health(project_dir, stale_seconds=stale_seconds)
+    except Exception:
+        return {"agents": {}}
 
 
 def heartbeat_health(project_dir: Path, stale_seconds: int = 120) -> dict:
@@ -1618,6 +1844,65 @@ def _review_target_for_owner(owner: str) -> str:
     return "claude-code"
 
 
+def board_view(contract_file: Path) -> dict:
+    """Return contract tasks grouped into operator board columns.
+
+    Columns: todo | plan | in_progress | review | done
+    review_queue: tasks in review_requested / review_passed / review_failed states.
+    totals: per-column task count.
+    """
+    _STATUS_TO_COL = {
+        "todo": "todo",
+        "plan_proposed": "plan",
+        "plan_approved": "plan",
+        "plan_confirmed": "plan",
+        "in_progress": "in_progress",
+        "launched": "in_progress",
+        "running": "in_progress",
+        "report_ready": "review",
+        "review_requested": "review",
+        "review_passed": "review",
+        "review_failed": "review",
+        "done": "done",
+        "stopped": "done",
+        "failed": "done",
+    }
+    _REVIEW_QUEUE_STATUSES = {"review_requested", "review_passed", "review_failed"}
+    empty: dict = {col: [] for col in ("todo", "plan", "in_progress", "review", "done")}
+
+    if not contract_file.exists():
+        return {"columns": empty, "review_queue": [], "totals": {col: 0 for col in empty}}
+
+    try:
+        import yaml  # noqa: F811
+        doc = yaml.safe_load(contract_file.read_text(encoding="utf-8", errors="replace")) or {}
+    except Exception:
+        return {"columns": empty, "review_queue": [], "totals": {col: 0 for col in empty}}
+
+    columns: dict = {col: [] for col in ("todo", "plan", "in_progress", "review", "done")}
+    review_queue: list = []
+
+    for t in doc.get("tasks") or []:
+        if not isinstance(t, dict):
+            continue
+        st = str(t.get("status", "todo"))
+        col = _STATUS_TO_COL.get(st, "todo")
+        entry = {
+            "id": str(t.get("id", "")),
+            "title": str(t.get("title", "")),
+            "status": st,
+            "owner": str(t.get("owner", "")),
+            "verified": bool(t.get("verified", False)),
+            "blocked_by": str(t.get("blocked_by", "") or ""),
+        }
+        columns[col].append(entry)
+        if st in _REVIEW_QUEUE_STATUSES:
+            review_queue.append(entry)
+
+    totals = {col: len(tasks) for col, tasks in columns.items()}
+    return {"columns": columns, "review_queue": review_queue, "totals": totals}
+
+
 def _confirm_plan(harness_dir: Path, task_id: str) -> dict:
     """Confirm a plan_proposed task: set contract task to todo, update handoff."""
     import yaml  # noqa: F811
@@ -1714,6 +1999,121 @@ def watcher_config(project_dir: Path) -> dict:
         elif line.startswith("codex_bypass:"):
             cfg_map["codex_bypass"] = line.split(":", 1)[1].strip().lower() == "true"
     return cfg_map
+
+
+def board_tasks(contract_file: Path) -> dict[str, list[dict]]:
+    """Group contract tasks by board column (todo/plan/active/review/done/stopped)."""
+    if not contract_file.exists():
+        return {}
+    try:
+        import yaml  # noqa: F811
+        doc = yaml.safe_load(contract_file.read_text(encoding="utf-8", errors="replace")) or {}
+    except Exception:
+        return {}
+
+    _STATUS_TO_COL: dict[str, str] = {
+        "todo": "todo",
+        "plan_proposed": "plan",
+        "plan_approved": "plan",
+        "in_progress": "active",
+        "launched": "active",
+        "running": "active",
+        "report_ready": "review",
+        "review_requested": "review",
+        "review_passed": "review",
+        "review_failed": "review",
+        "done": "done",
+        "failed": "done",
+        "stopped": "stopped",
+    }
+
+    columns: dict[str, list[dict]] = {
+        "todo": [], "plan": [], "active": [], "review": [], "done": [], "stopped": []
+    }
+
+    for t in doc.get("tasks") or []:
+        if not isinstance(t, dict):
+            continue
+        st = str(t.get("status", "todo"))
+        col = _STATUS_TO_COL.get(st, "todo")
+        columns[col].append({
+            "id": str(t.get("id", "")),
+            "title": str(t.get("title", "")),
+            "status": st,
+            "owner": str(t.get("owner", "")),
+            "verified": bool(t.get("verified", False)),
+        })
+
+    return columns
+
+
+def review_queue(contract_file: Path) -> list[dict]:
+    """Return tasks in review states ordered by urgency (review_failed first)."""
+    if not contract_file.exists():
+        return []
+    try:
+        import yaml  # noqa: F811
+        doc = yaml.safe_load(contract_file.read_text(encoding="utf-8", errors="replace")) or {}
+    except Exception:
+        return []
+
+    _REVIEW_STATUSES = {"report_ready", "review_requested", "review_passed", "review_failed"}
+    _URGENCY = {
+        "review_failed": 0,
+        "report_ready": 1,
+        "review_requested": 2,
+        "review_passed": 3,
+    }
+
+    queue = []
+    for t in doc.get("tasks") or []:
+        if not isinstance(t, dict):
+            continue
+        st = str(t.get("status", ""))
+        if st not in _REVIEW_STATUSES:
+            continue
+        queue.append({
+            "id": str(t.get("id", "")),
+            "title": str(t.get("title", "")),
+            "status": st,
+            "owner": str(t.get("owner", "")),
+            "review_target": _review_target_for_owner(str(t.get("owner", ""))),
+            "verified": bool(t.get("verified", False)),
+            "urgency": _URGENCY.get(st, 9),
+        })
+
+    return sorted(queue, key=lambda x: x["urgency"])
+
+
+def budget_signals(project_dir: Path) -> dict:
+    """Extract per-agent budget/usage signals from .superharness/agents/*.status.yaml."""
+    try:
+        from superharness.engine.agent_status import read_all_agent_statuses
+        records = read_all_agent_statuses(project_dir)
+        signals: dict = {}
+        for runtime, record in records.items():
+            if record and record.budget:
+                signals[runtime] = record.budget if isinstance(record.budget, dict) else dict(record.budget)
+        return {"agents": signals, "available": True}
+    except Exception:
+        # Fallback: manually scan agents/*.status.yaml for budget fields
+        agents_dir = project_dir / ".superharness" / "agents"
+        if not agents_dir.exists():
+            return {"agents": {}, "available": False}
+        signals = {}
+        try:
+            import yaml  # noqa: F811
+            for f in agents_dir.glob("*.status.yaml"):
+                try:
+                    data = yaml.safe_load(f.read_text(encoding="utf-8", errors="replace")) or {}
+                    runtime = data.get("runtime", f.stem.replace(".status", ""))
+                    if "budget" in data and data["budget"]:
+                        signals[runtime] = data["budget"]
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return {"agents": signals, "available": bool(signals)}
 
 
 def project_label(project_dir: Path) -> str:
@@ -2112,6 +2512,7 @@ class Handler(BaseHTTPRequestHandler):
                     "launchctl_state": state or ("loaded" if runtime.get("loaded") else ""),
                     "watcher_health": watcher_health(runtime, items, now_utc),
                     "heartbeat": heartbeat_health(self.project_dir),
+                    "agent_status": _agent_status_health(self.project_dir),
                     "watcher_runtime": runtime,
                     "watcher_project": str(wcfg.get("watcher_project", str(self.project_dir))),
                     "watcher_config": wcfg,
@@ -2130,6 +2531,13 @@ class Handler(BaseHTTPRequestHandler):
                     }),
                     "inbox_counts": inbox_counts(inbox),
                     "inbox_owners": inbox_owner_counts(inbox),
+                    "review_queue_count": sum(
+                        1 for t in contract_tasks(contract)
+                        if t.get("status") in {"review_requested", "review_passed", "review_failed"}
+                    ),
+                    "review_queue": review_queue(contract),
+                    "board_columns": board_tasks(contract),
+                    "budget": budget_signals(self.project_dir),
                     "ledger_tail": tail_lines(ledger, 18),
                     "out_tail": tail_lines(outlog, 16),
                     "err_tail": tail_lines(errlog, 16),
@@ -2193,6 +2601,32 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(task_report(self.project_dir, task_id, agent))
             except Exception as exc:
                 self._json({"error": f"task_report failed: {exc}", "task": task_id, "agent": agent}, 500)
+            return
+
+        if p == "/api/board":
+            contract = self.project_dir / ".superharness" / "contract.yaml"
+            agent_health = _agent_status_health(self.project_dir)
+            bv = board_view(contract)
+            self._json({
+                # New fields (feat.monitor-operator-upgrade)
+                "board": board_tasks(contract),
+                "review_queue": review_queue(contract),
+                "agent_health": agent_health,
+                "budget": budget_signals(self.project_dir),
+                # Legacy fields (backward compat with existing tests/JS)
+                "columns": bv.get("columns", {}),
+                "totals": bv.get("totals", {}),
+                "agent_status": agent_health,
+                "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            })
+            return
+
+        if p == "/api/review-queue":
+            contract = self.project_dir / ".superharness" / "contract.yaml"
+            self._json({
+                "queue": review_queue(contract),
+                "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            })
             return
 
         self._json({"error": "not found"}, 404)

@@ -1,3 +1,4 @@
+schema_version: '1'
 name: ship
 description: "Auto-commit and push on task close"
 enabled: false
