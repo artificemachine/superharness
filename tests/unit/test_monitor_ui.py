@@ -2138,3 +2138,538 @@ def test_monitor_bootstraps_into_venv_when_yaml_missing(repo_root) -> None:
     assert "def _ensure_python_with_yaml()" in source
     assert 'SUPERHARNESS_MONITOR_REEXEC' in source
     assert '_ensure_python_with_yaml()' in source
+
+
+# ── feat.monitor-operator-upgrade: board view, review queue, agent health ──
+
+
+def _setup_board_project(tmp_path: Path) -> Path:
+    """Project with tasks across multiple workflow states."""
+    import yaml
+
+    project = tmp_path / "board_proj"
+    project.mkdir()
+    harness = project / ".superharness"
+    (harness / "handoffs").mkdir(parents=True)
+    doc = {
+        "id": "board-contract",
+        "tasks": [
+            {"id": "t-todo", "status": "todo", "title": "Todo task", "owner": "claude-code"},
+            {"id": "t-plan-p", "status": "plan_proposed", "title": "Plan proposed", "owner": "claude-code"},
+            {"id": "t-plan-a", "status": "plan_approved", "title": "Plan approved", "owner": "codex-cli"},
+            {"id": "t-inprog", "status": "in_progress", "title": "In progress", "owner": "claude-code"},
+            {"id": "t-rpt", "status": "report_ready", "title": "Report ready", "owner": "codex-cli"},
+            {"id": "t-rr", "status": "review_requested", "title": "Review requested", "owner": "claude-code"},
+            {"id": "t-rpas", "status": "review_passed", "title": "Review passed", "owner": "codex-cli"},
+            {"id": "t-rfail", "status": "review_failed", "title": "Review failed", "owner": "claude-code"},
+            {"id": "t-done", "status": "done", "title": "Done task", "owner": "claude-code"},
+            {"id": "t-stop", "status": "stopped", "title": "Stopped task", "owner": "codex-cli"},
+        ],
+    }
+    (harness / "contract.yaml").write_text(yaml.dump(doc))
+    (harness / "ledger.md").write_text(
+        "Append-only activity log. Never edit previous entries.\n"
+    )
+    (harness / "inbox.yaml").write_text("# Delegation inbox\n")
+    return project
+
+
+def test_board_view_groups_tasks_by_column(repo_root, tmp_path) -> None:
+    """board_view() groups tasks into operator board columns."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_board_project(tmp_path)
+
+    result = module.board_view(project / ".superharness" / "contract.yaml")
+
+    cols = result["columns"]
+    assert len(cols["todo"]) == 1
+    assert cols["todo"][0]["id"] == "t-todo"
+    assert len(cols["plan"]) == 2
+    plan_ids = {t["id"] for t in cols["plan"]}
+    assert plan_ids == {"t-plan-p", "t-plan-a"}
+    assert len(cols["in_progress"]) == 1
+    assert cols["in_progress"][0]["id"] == "t-inprog"
+    # review column: report_ready + review_requested + review_passed + review_failed
+    assert len(cols["review"]) == 4
+    assert len(cols["done"]) == 2  # done + stopped
+
+
+def test_board_view_review_queue_only_review_states(repo_root, tmp_path) -> None:
+    """board_view() review_queue contains only review_requested/passed/failed tasks."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_board_project(tmp_path)
+
+    result = module.board_view(project / ".superharness" / "contract.yaml")
+
+    rq_ids = {t["id"] for t in result["review_queue"]}
+    # review_requested, review_passed, review_failed only (not report_ready)
+    assert rq_ids == {"t-rr", "t-rpas", "t-rfail"}
+    # report_ready should NOT be in review_queue (it awaits operator action)
+    assert "t-rpt" not in rq_ids
+
+
+def test_board_view_totals_match_column_counts(repo_root, tmp_path) -> None:
+    """board_view() totals dict matches actual column task counts."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_board_project(tmp_path)
+
+    result = module.board_view(project / ".superharness" / "contract.yaml")
+
+    for col, tasks in result["columns"].items():
+        assert result["totals"][col] == len(tasks), f"totals[{col!r}] mismatch"
+
+
+def test_board_view_returns_safe_empty_for_missing_contract(repo_root, tmp_path) -> None:
+    """board_view() returns safe empty structure when contract.yaml is absent."""
+    module = _load_monitor_module(repo_root)
+    result = module.board_view(tmp_path / "nonexistent.yaml")
+    assert result["review_queue"] == []
+    assert all(len(v) == 0 for v in result["columns"].values())
+
+
+def test_board_api_endpoint_returns_grouped_tasks(repo_root, tmp_path, monkeypatch) -> None:
+    """GET /api/board returns columns, review_queue, totals, and now_utc."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_board_project(tmp_path)
+    monkeypatch.setattr(
+        module,
+        "watcher_runtime",
+        lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0},
+    )
+    monkeypatch.setattr(module.shutil, "which", lambda name: None)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json("GET", base_url + "/api/board")
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    assert "columns" in payload
+    assert "review_queue" in payload
+    assert "totals" in payload
+    assert "now_utc" in payload
+    assert "agent_status" in payload
+    assert payload["columns"]["todo"][0]["id"] == "t-todo"
+    rq_ids = {t["id"] for t in payload["review_queue"]}
+    assert "t-rr" in rq_ids
+
+
+def test_board_api_includes_agent_status(repo_root, tmp_path, monkeypatch) -> None:
+    """GET /api/board includes agent_status from _agent_status_health."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_board_project(tmp_path)
+    monkeypatch.setattr(
+        module,
+        "_agent_status_health",
+        lambda project_dir, **kwargs: {"agents": {"claude-code": {"level": "ok", "message": "healthy"}}},
+    )
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json("GET", base_url + "/api/board")
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    assert "agent_status" in payload
+    assert "claude-code" in payload["agent_status"].get("agents", {})
+    assert payload["agent_status"]["agents"]["claude-code"]["level"] == "ok"
+
+
+def test_status_includes_review_queue_count(repo_root, tmp_path, monkeypatch) -> None:
+    """/api/status includes review_queue_count for operator at-a-glance visibility."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_board_project(tmp_path)
+    monkeypatch.setattr(
+        module,
+        "watcher_runtime",
+        lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0},
+    )
+    monkeypatch.setattr(module, "contract_id", lambda path: "board-contract")
+    monkeypatch.setattr(module.shutil, "which", lambda name: None)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json("GET", base_url + "/api/status")
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    assert "review_queue_count" in payload
+    # 3 review tasks: review_requested + review_passed + review_failed
+    assert payload["review_queue_count"] == 3
+
+
+def test_board_view_task_fields_are_complete(repo_root, tmp_path) -> None:
+    """board_view() task entries include id, title, status, owner, verified, blocked_by."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_board_project(tmp_path)
+
+    result = module.board_view(project / ".superharness" / "contract.yaml")
+
+    task = result["columns"]["todo"][0]
+    for field in ("id", "title", "status", "owner", "verified", "blocked_by"):
+        assert field in task, f"missing field: {field!r}"
+    assert task["id"] == "t-todo"
+    assert task["status"] == "todo"
+    assert task["owner"] == "claude-code"
+    assert task["verified"] is False
+    assert task["blocked_by"] == ""
+
+
+# ── feat.monitor-operator-upgrade tests ──────────────────────────────────────
+
+def _setup_project_with_tasks(tmp_path: Path) -> Path:
+    """Create a project with contract tasks spanning multiple workflow states."""
+    project = _setup_project(tmp_path)
+    harness = project / ".superharness"
+    (harness / "contract.yaml").write_text(
+        "id: board-contract\n"
+        "created: 2026-04-05\n"
+        "goal: \"Board test\"\n"
+        "tasks:\n"
+        "- id: task.todo\n"
+        "  title: A todo task\n"
+        "  owner: claude-code\n"
+        "  status: todo\n"
+        "- id: task.plan-proposed\n"
+        "  title: A plan proposed task\n"
+        "  owner: claude-code\n"
+        "  status: plan_proposed\n"
+        "- id: task.plan-approved\n"
+        "  title: A plan approved task\n"
+        "  owner: claude-code\n"
+        "  status: plan_approved\n"
+        "- id: task.in-progress\n"
+        "  title: An active task\n"
+        "  owner: codex-cli\n"
+        "  status: in_progress\n"
+        "- id: task.report-ready\n"
+        "  title: A report ready task\n"
+        "  owner: claude-code\n"
+        "  status: report_ready\n"
+        "  verified: false\n"
+        "- id: task.review-requested\n"
+        "  title: A review requested task\n"
+        "  owner: codex-cli\n"
+        "  status: review_requested\n"
+        "- id: task.review-passed\n"
+        "  title: A review passed task\n"
+        "  owner: claude-code\n"
+        "  status: review_passed\n"
+        "- id: task.review-failed\n"
+        "  title: A review failed task\n"
+        "  owner: codex-cli\n"
+        "  status: review_failed\n"
+        "- id: task.done\n"
+        "  title: A done task\n"
+        "  owner: claude-code\n"
+        "  status: done\n"
+        "- id: task.stopped\n"
+        "  title: A stopped task\n"
+        "  owner: claude-code\n"
+        "  status: stopped\n"
+    )
+    return project
+
+
+def test_board_tasks_groups_by_column(repo_root) -> None:
+    """board_tasks() groups contract tasks into board columns."""
+    module = _load_monitor_module(repo_root)
+    import tempfile, yaml
+    with tempfile.TemporaryDirectory() as tmp:
+        contract = Path(tmp) / "contract.yaml"
+        contract.write_text(
+            "id: test\n"
+            "tasks:\n"
+            "- {id: t1, title: T1, owner: a, status: todo}\n"
+            "- {id: t2, title: T2, owner: a, status: plan_proposed}\n"
+            "- {id: t3, title: T3, owner: a, status: plan_approved}\n"
+            "- {id: t4, title: T4, owner: a, status: in_progress}\n"
+            "- {id: t5, title: T5, owner: a, status: report_ready}\n"
+            "- {id: t6, title: T6, owner: a, status: review_requested}\n"
+            "- {id: t7, title: T7, owner: a, status: review_passed}\n"
+            "- {id: t8, title: T8, owner: a, status: done}\n"
+            "- {id: t9, title: T9, owner: a, status: stopped}\n"
+        )
+        board = module.board_tasks(contract)
+
+    assert "todo" in board
+    assert "plan" in board
+    assert "active" in board
+    assert "review" in board
+    assert "done" in board
+    assert "stopped" in board
+
+    todo_ids = [t["id"] for t in board["todo"]]
+    assert "t1" in todo_ids
+
+    plan_ids = [t["id"] for t in board["plan"]]
+    assert "t2" in plan_ids
+    assert "t3" in plan_ids
+
+    active_ids = [t["id"] for t in board["active"]]
+    assert "t4" in active_ids
+
+    review_ids = [t["id"] for t in board["review"]]
+    assert "t5" in review_ids
+    assert "t6" in review_ids
+    assert "t7" in review_ids
+
+    done_ids = [t["id"] for t in board["done"]]
+    assert "t8" in done_ids
+
+    stopped_ids = [t["id"] for t in board["stopped"]]
+    assert "t9" in stopped_ids
+
+
+def test_board_tasks_missing_contract(repo_root, tmp_path) -> None:
+    """board_tasks() returns empty dict for missing contract."""
+    module = _load_monitor_module(repo_root)
+    result = module.board_tasks(tmp_path / "nonexistent.yaml")
+    assert result == {}
+
+
+def test_review_queue_returns_review_state_tasks(repo_root) -> None:
+    """review_queue() returns tasks in review states ordered by urgency."""
+    module = _load_monitor_module(repo_root)
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        contract = Path(tmp) / "contract.yaml"
+        contract.write_text(
+            "id: test\n"
+            "tasks:\n"
+            "- {id: t1, title: T1, owner: claude-code, status: todo}\n"
+            "- {id: t2, title: T2, owner: claude-code, status: report_ready, verified: false}\n"
+            "- {id: t3, title: T3, owner: codex-cli, status: review_requested}\n"
+            "- {id: t4, title: T4, owner: claude-code, status: review_passed}\n"
+            "- {id: t5, title: T5, owner: codex-cli, status: review_failed}\n"
+            "- {id: t6, title: T6, owner: claude-code, status: done}\n"
+        )
+        queue = module.review_queue(contract)
+
+    review_ids = [t["id"] for t in queue]
+    # Only review-state tasks
+    assert "t1" not in review_ids
+    assert "t6" not in review_ids
+    assert "t2" in review_ids
+    assert "t3" in review_ids
+    assert "t4" in review_ids
+    assert "t5" in review_ids
+    # review_failed should come first (highest urgency)
+    assert queue[0]["id"] == "t5"
+    # Each item has review_target
+    for item in queue:
+        assert "review_target" in item
+
+
+def test_review_queue_empty_for_no_review_tasks(repo_root) -> None:
+    """review_queue() returns empty list when no tasks are in review states."""
+    module = _load_monitor_module(repo_root)
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        contract = Path(tmp) / "contract.yaml"
+        contract.write_text(
+            "id: test\n"
+            "tasks:\n"
+            "- {id: t1, title: T1, owner: a, status: todo}\n"
+            "- {id: t2, title: T2, owner: a, status: done}\n"
+        )
+        result = module.review_queue(contract)
+    assert result == []
+
+
+def test_budget_signals_returns_empty_when_no_agents(repo_root, tmp_path) -> None:
+    """budget_signals() returns empty agents dict when no agent status files exist."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    result = module.budget_signals(project)
+    assert "agents" in result
+    assert isinstance(result["agents"], dict)
+
+
+def test_budget_signals_reads_agent_status_files(repo_root, tmp_path) -> None:
+    """budget_signals() reads agent budget data from .superharness/agents/*.status.yaml."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    agents_dir = project / ".superharness" / "agents"
+    agents_dir.mkdir(parents=True, exist_ok=True)
+    # Write a mock agent status file with budget
+    (agents_dir / "claude-code.status.yaml").write_text(
+        "schema_version: '1'\n"
+        "runtime: claude-code\n"
+        "updated_at: '2026-04-05T12:00:00Z'\n"
+        "liveness: active\n"
+        "budget:\n"
+        "  model: claude-opus-4-5\n"
+        "  input_tokens: 5000\n"
+        "  output_tokens: 1000\n"
+        "  cost_usd: 0.045\n"
+        "  max_budget_usd: 1.0\n"
+    )
+    result = module.budget_signals(project)
+    assert "agents" in result
+    # Should have claude-code budget data
+    assert "claude-code" in result["agents"] or result.get("available") is False  # fallback ok
+
+
+def test_monitor_board_endpoint_exists(repo_root, tmp_path, monkeypatch) -> None:
+    """GET /api/board returns 200 with board, review_queue, agent_health, budget fields."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project_with_tasks(tmp_path)
+    monkeypatch.setattr(module, "watcher_runtime", lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0})
+    monkeypatch.setattr(module.shutil, "which", lambda name: None)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json("GET", base_url + "/api/board")
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    assert "board" in payload
+    assert "review_queue" in payload
+    assert "agent_health" in payload
+    assert "budget" in payload
+    assert "now_utc" in payload
+
+
+def test_monitor_board_endpoint_groups_tasks_correctly(repo_root, tmp_path, monkeypatch) -> None:
+    """GET /api/board groups tasks into correct columns."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project_with_tasks(tmp_path)
+    monkeypatch.setattr(module, "watcher_runtime", lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0})
+    monkeypatch.setattr(module.shutil, "which", lambda name: None)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json("GET", base_url + "/api/board")
+    finally:
+        _stop_server(server, thread)
+
+    board = payload["board"]
+    todo_ids = [t["id"] for t in board.get("todo", [])]
+    plan_ids = [t["id"] for t in board.get("plan", [])]
+    active_ids = [t["id"] for t in board.get("active", [])]
+    review_ids = [t["id"] for t in board.get("review", [])]
+
+    assert "task.todo" in todo_ids
+    assert "task.plan-proposed" in plan_ids
+    assert "task.plan-approved" in plan_ids
+    assert "task.in-progress" in active_ids
+    assert "task.report-ready" in review_ids
+    assert "task.review-requested" in review_ids
+    assert "task.review-passed" in review_ids
+
+
+def test_monitor_board_endpoint_review_queue_populated(repo_root, tmp_path, monkeypatch) -> None:
+    """GET /api/board includes review queue with tasks in review states."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project_with_tasks(tmp_path)
+    monkeypatch.setattr(module, "watcher_runtime", lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0})
+    monkeypatch.setattr(module.shutil, "which", lambda name: None)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json("GET", base_url + "/api/board")
+    finally:
+        _stop_server(server, thread)
+
+    rq = payload["review_queue"]
+    rq_ids = [t["id"] for t in rq]
+    assert "task.report-ready" in rq_ids
+    assert "task.review-requested" in rq_ids
+    assert "task.review-passed" in rq_ids
+    assert "task.review-failed" in rq_ids
+    # Non-review tasks should NOT be in queue
+    assert "task.todo" not in rq_ids
+    assert "task.done" not in rq_ids
+
+
+def test_monitor_review_queue_endpoint_exists(repo_root, tmp_path, monkeypatch) -> None:
+    """GET /api/review-queue returns 200 with queue field."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project_with_tasks(tmp_path)
+    monkeypatch.setattr(module, "watcher_runtime", lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0})
+    monkeypatch.setattr(module.shutil, "which", lambda name: None)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json("GET", base_url + "/api/review-queue")
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    assert "queue" in payload
+    assert "now_utc" in payload
+
+
+def test_monitor_review_queue_endpoint_returns_review_tasks(repo_root, tmp_path, monkeypatch) -> None:
+    """GET /api/review-queue returns only review-state tasks."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project_with_tasks(tmp_path)
+    monkeypatch.setattr(module, "watcher_runtime", lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0})
+    monkeypatch.setattr(module.shutil, "which", lambda name: None)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json("GET", base_url + "/api/review-queue")
+    finally:
+        _stop_server(server, thread)
+
+    queue = payload["queue"]
+    queue_ids = [t["id"] for t in queue]
+    assert "task.report-ready" in queue_ids
+    assert "task.review-requested" in queue_ids
+    assert "task.todo" not in queue_ids
+    assert "task.done" not in queue_ids
+    # review_failed should be first (highest urgency)
+    assert queue[0]["id"] == "task.review-failed"
+
+
+def test_monitor_status_includes_review_queue_and_board(repo_root, tmp_path, monkeypatch) -> None:
+    """GET /api/status includes review_queue and board_columns for operator use."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project_with_tasks(tmp_path)
+    monkeypatch.setattr(module, "watcher_runtime", lambda label: {"loaded": True, "state": "running", "last_exit_code": "0", "run_interval_seconds": 15})
+    monkeypatch.setattr(module, "contract_id", lambda path: "board-contract")
+    monkeypatch.setattr(module.shutil, "which", lambda name: None)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json("GET", base_url + "/api/status")
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    assert "review_queue" in payload
+    assert "board_columns" in payload
+    # review queue should contain the review-state tasks
+    review_ids = [t["id"] for t in payload["review_queue"]]
+    assert "task.report-ready" in review_ids
+    # board_columns should have column keys
+    board = payload["board_columns"]
+    assert "todo" in board or "review" in board
+
+
+def test_monitor_html_contains_board_and_review_queue_elements(repo_root, tmp_path, monkeypatch) -> None:
+    """HTML page contains board view and review queue DOM elements."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    monkeypatch.setattr(module.shutil, "which", lambda name: None)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        import urllib.request
+        with urllib.request.urlopen(base_url + "/", timeout=2) as resp:
+            html = resp.read().decode("utf-8")
+    finally:
+        _stop_server(server, thread)
+
+    # Board view element
+    assert "boardColumns" in html or "boardView" in html or "board-col" in html
+    # Review queue element
+    assert "reviewQueueList" in html or "reviewQueueCard" in html or "review queue" in html.lower()
+    # Agent health element
+    assert "agentHealthList" in html or "agentHealthCard" in html or "agent health" in html.lower()

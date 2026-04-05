@@ -138,12 +138,54 @@ def _strict_int(v: object, name: str) -> int:
         sys.exit(f"{name} must be an integer, got: {v}")
 
 
+def _deps_satisfied(contract_file: str, task_id: str) -> bool:
+    """Return True if all blocked_by dependencies for task_id are done.
+
+    Reads contract_file to resolve dependency statuses. Returns True if:
+    - contract_file doesn't exist or can't be read
+    - task_id not found in contract
+    - blocked_by is absent, None, or "none"
+    - all listed dependency task IDs have status "done"
+
+    Returns False only when at least one dependency exists and is not done.
+    """
+    if not os.path.exists(contract_file):
+        return True
+    try:
+        from superharness.engine.yaml_helpers import safe_load
+        doc = safe_load(contract_file, dict)
+        tasks = doc.get("tasks") or []
+        task = next(
+            (t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == task_id),
+            None,
+        )
+        if task is None:
+            return True
+        blocked_by = task.get("blocked_by")
+        if not blocked_by or str(blocked_by).strip().lower() in ("none", "", "null"):
+            return True
+        if isinstance(blocked_by, str):
+            dep_ids = [d.strip() for d in blocked_by.split(",") if d.strip()]
+        elif isinstance(blocked_by, list):
+            dep_ids = [str(d).strip() for d in blocked_by if str(d).strip()]
+        else:
+            return True
+        status_map = {
+            str(t.get("id", "")): str(t.get("status", ""))
+            for t in tasks
+            if isinstance(t, dict)
+        }
+        return all(status_map.get(dep_id, "") == "done" for dep_id in dep_ids)
+    except Exception:
+        return True  # Fail open: don't block dispatch on read errors
+
+
 # ---------------------------------------------------------------------------
 # Operations
 # ---------------------------------------------------------------------------
 
 
-def next_pending(file: str, target: str | None = None) -> int:
+def next_pending(file: str, target: str | None = None, contract_file: str | None = None) -> int:
     items = _load_items(file)
     best = None
     best_prio = None
@@ -155,6 +197,11 @@ def next_pending(file: str, target: str | None = None) -> int:
             continue
         if target and str(item.get("to", "")) != target:
             continue
+        # Dependency-aware scheduling: skip items whose deps are not satisfied
+        if contract_file:
+            task_id = str(item.get("task", ""))
+            if task_id and not _deps_satisfied(contract_file, task_id):
+                continue
         prio = _norm_priority(item.get("priority", 2))
         if best is None or prio < best_prio or (prio == best_prio and idx < best_idx):
             best = item
@@ -173,6 +220,73 @@ def next_pending(file: str, target: str | None = None) -> int:
     }
     print(json.dumps(out, separators=(", ", ": ")))
     return 0
+
+
+def claim(file: str, now: str, target: str | None = None, contract_file: str | None = None) -> int:
+    """Atomically claim (checkout) the next eligible pending inbox item.
+
+    Combines dependency-filtered next_pending + launch in a single lock hold,
+    preventing double-dispatch under concurrent parallel agents.
+
+    Prints JSON with claimed item on success (rc=0, non-empty stdout).
+    Returns rc=0 with empty stdout when nothing is eligible.
+    Returns rc=4 when retry limit is exhausted (item → failed).
+    """
+    with _inbox_lock(file):
+        items = _load_items(file)
+        best = None
+        best_prio = None
+        best_idx = None
+        for idx, item in enumerate(items):
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("status", "")) != "pending":
+                continue
+            if target and str(item.get("to", "")) != target:
+                continue
+            if contract_file:
+                task_id = str(item.get("task", ""))
+                if task_id and not _deps_satisfied(contract_file, task_id):
+                    continue
+            prio = _norm_priority(item.get("priority", 2))
+            if best is None or prio < best_prio or (prio == best_prio and idx < best_idx):
+                best = item
+                best_prio = prio
+                best_idx = idx
+
+        if best is None:
+            return 0  # Nothing eligible to claim
+
+        item = items[best_idx]
+        retry_count = int(item.get("retry_count", 0) or 0)
+        max_retries = int(item.get("max_retries", 3) or 3)
+
+        if retry_count >= max_retries:
+            item["status"] = "failed"
+            item["failed_at"] = now
+            items[best_idx] = item
+            _write_items(file, items)
+            print(f"result=retry_exhausted retry_count={retry_count} max_retries={max_retries}")
+            return 4
+
+        item["retry_count"] = retry_count + 1
+        item["status"] = "launched"
+        item["launched_at"] = now
+        items[best_idx] = item
+        _write_items(file, items)
+
+        prio = _norm_priority(item.get("priority", 2))
+        out = {
+            "id": str(item.get("id", "")),
+            "to": str(item.get("to", "")),
+            "task": str(item.get("task", "")),
+            "project": str(item.get("project", "")),
+            "retry_count": item["retry_count"],
+            "max_retries": max_retries,
+            "priority": prio,
+        }
+        print(json.dumps(out, separators=(", ", ": ")))
+        return 0
 
 
 def enqueue(
@@ -295,6 +409,24 @@ def remove_item(file: str, id: str) -> int:
     return 0
 
 
+def _task_is_dispatch_ready(project_dir: str, task_id: str) -> bool:
+    """Check if a contract task is in a dispatch-ready status."""
+    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
+    if not os.path.exists(contract_file):
+        return False
+    try:
+        from superharness.engine.yaml_helpers import safe_load
+        doc = safe_load(contract_file, dict)
+        tasks = doc.get("tasks") or []
+        task = next((t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == task_id), None)
+        if task is None:
+            return False
+        status = str(task.get("status", ""))
+        return status in ("plan_approved", "in_progress", "todo")
+    except Exception:
+        return False
+
+
 def normalize(
     file: str,
     drop_statuses: list[str],
@@ -305,16 +437,30 @@ def normalize(
     items = _load_items(file)
     filtered = []
     dropped = []
+
+    # Derive project dir from inbox file path
+    project_dir = os.path.dirname(os.path.dirname(file))
+
     for item in items:
         if not isinstance(item, dict):
             filtered.append(item)
             continue
         id_ = str(item.get("id", ""))
         status = str(item.get("status", ""))
+        task_id = str(item.get("task", ""))
         drop_by_status = status in drop_statuses
         drop_by_prefix = any(p and id_.startswith(p) for p in drop_prefixes)
         if drop_by_status or drop_by_prefix:
-            dropped.append(item)
+            # Re-enqueue as pending if contract task is still dispatch-ready
+            if drop_by_status and task_id and _task_is_dispatch_ready(project_dir, task_id):
+                item["status"] = "pending"
+                item.pop("failed_at", None)
+                item.pop("launched_at", None)
+                item["retry_count"] = 0
+                filtered.append(item)
+                print(f"normalize: re-enqueued {task_id} (contract still dispatch-ready)")
+            else:
+                dropped.append(item)
         else:
             filtered.append(item)
     _write_items(file, filtered)
@@ -502,12 +648,12 @@ def main(argv: list[str] | None = None) -> None:
     valid_cmds = {
         "next_pending", "launch", "enqueue", "set_status", "set_field",
         "remove", "sync_task_status", "normalize", "recover_launched",
-        "list_launched", "deadline_fail", "has_active",
+        "list_launched", "deadline_fail", "has_active", "claim",
     }
     if cmd not in valid_cmds:
         print(
             "Usage: inbox <next_pending|launch|enqueue|set_status|set_field|remove"
-            "|sync_task_status|normalize|recover_launched|list_launched|deadline_fail|has_active> [options]",
+            "|sync_task_status|normalize|recover_launched|list_launched|deadline_fail|has_active|claim> [options]",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -517,11 +663,24 @@ def main(argv: list[str] | None = None) -> None:
     if cmd == "next_pending":
         parser.add_argument("--file")
         parser.add_argument("--to")
+        parser.add_argument("--contract")
         opts = parser.parse_args(rest)
         if not opts.file:
             print("--file is required", file=sys.stderr)
             sys.exit(1)
-        rc = next_pending(opts.file, target=opts.to or None)
+        rc = next_pending(opts.file, target=opts.to or None, contract_file=opts.contract or None)
+        sys.exit(rc)
+
+    elif cmd == "claim":
+        parser.add_argument("--file")
+        parser.add_argument("--now")
+        parser.add_argument("--to")
+        parser.add_argument("--contract")
+        opts = parser.parse_args(rest)
+        if not all([opts.file, opts.now]):
+            print("--file and --now are required", file=sys.stderr)
+            sys.exit(1)
+        rc = claim(opts.file, opts.now, target=opts.to or None, contract_file=opts.contract or None)
         sys.exit(rc)
 
     elif cmd == "enqueue":

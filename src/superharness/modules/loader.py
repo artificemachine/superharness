@@ -10,6 +10,24 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+# Avoid circular import: import validator lazily inside load_modules
+def _validate(data: dict[str, Any], file_name: str) -> bool:
+    """Validate manifest data against SDK v1 schema.
+
+    Returns True if valid, False (and logs a warning) if invalid.
+    """
+    try:
+        from .validator import ManifestValidationError, validate_manifest
+
+        validate_manifest(data)
+        return True
+    except Exception as exc:  # ManifestValidationError or unexpected
+        name = data.get("name", file_name) if isinstance(data, dict) else file_name
+        logger.warning(
+            f"Module '{name}' failed SDK v1 manifest validation and will be skipped: {exc}"
+        )
+        return False
+
 
 @dataclass
 class Module:
@@ -61,6 +79,10 @@ def load_modules(project_dir: Path) -> list[Module]:
     for yaml_file in sorted(modules_dir.glob("*.yaml")):
         data = _safe_yaml_load(yaml_file)
         if data is None:
+            continue
+
+        # Validate manifest against SDK v1 schema before loading
+        if not _validate(data, yaml_file.stem):
             continue
 
         # Extract required fields with defaults

@@ -351,6 +351,67 @@ def test_task_status_accepts_full_lifecycle_statuses(tmp_path: Path, status: str
     assert status in r.stdout
 
 
+def test_task_plan_approved_warns_large_scope(tmp_path: Path) -> None:
+    """plan_approved warns when acceptance_criteria > 3."""
+    project = tmp_path / "proj"
+    project.mkdir(parents=True)
+    harness = project / ".superharness"
+    harness.mkdir()
+    (harness / "contract.yaml").write_text(
+        "id: test-contract\n"
+        "tasks:\n"
+        "  - id: big-task\n"
+        "    title: Big task\n"
+        "    owner: claude-code\n"
+        "    status: plan_proposed\n"
+        f"    project_path: '{project.as_posix()}'\n"
+        "    acceptance_criteria:\n"
+        "      - criterion 1\n"
+        "      - criterion 2\n"
+        "      - criterion 3\n"
+        "      - criterion 4\n"
+    )
+    r = _run_task([
+        "status",
+        "--project", str(project),
+        "--id", "big-task",
+        "--status", "plan_approved",
+        "--actor", "claude-code",
+    ])
+    assert r.returncode == 0, r.stderr
+    assert "Scope warning" in r.stderr
+    assert "4 acceptance criteria" in r.stderr
+
+
+def test_task_plan_approved_no_warning_small_scope(tmp_path: Path) -> None:
+    """plan_approved does not warn when acceptance_criteria <= 3."""
+    project = tmp_path / "proj"
+    project.mkdir(parents=True)
+    harness = project / ".superharness"
+    harness.mkdir()
+    (harness / "contract.yaml").write_text(
+        "id: test-contract\n"
+        "tasks:\n"
+        "  - id: small-task\n"
+        "    title: Small task\n"
+        "    owner: claude-code\n"
+        "    status: plan_proposed\n"
+        f"    project_path: '{project.as_posix()}'\n"
+        "    acceptance_criteria:\n"
+        "      - criterion 1\n"
+        "      - criterion 2\n"
+    )
+    r = _run_task([
+        "status",
+        "--project", str(project),
+        "--id", "small-task",
+        "--status", "plan_approved",
+        "--actor", "claude-code",
+    ])
+    assert r.returncode == 0, r.stderr
+    assert "Scope warning" not in r.stderr
+
+
 def test_task_status_rejects_unknown_status(tmp_path: Path) -> None:
     """task status must reject statuses not in the vocabulary."""
     project, _ = _make_contract(tmp_path, [{"id": "t-bad", "owner": "claude-code", "status": "todo"}])

@@ -50,6 +50,15 @@ When writing anything to the Obsidian vault, also check and update `notes/0_meta
 - Use format: `- [ ] **project: idea** — description`
 - `shux hygiene` checks that the backlog index exists.
 
+## Task Scope Rule
+If a task has **>3 acceptance criteria** or the plan touches **>4 files**, decompose it into subtasks before approving:
+1. Split into subtasks with `blocked_by` for ordering
+2. Each subtask should be completable in <10 min of agent time
+3. Use `shux delegate <id> --orchestrate` for auto-decomposition, or split manually
+4. The plan approval flow will warn when a task exceeds the threshold
+
+This is enforced by a scope warning on `plan_approved` transitions.
+
 ## CHANGELOG Policy (Strict)
 - `CHANGELOG.md` is append-only.
 - Never edit, reorder, or delete existing lines in `CHANGELOG.md`.

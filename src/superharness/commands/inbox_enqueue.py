@@ -30,8 +30,11 @@ def _validate_token(name: str, value: str) -> None:
         _abort(f"{name} must match ^[A-Za-z0-9._-]+$", 2)
 
 
+ENQUEUE_BLOCKED_STATUSES = {"plan_proposed", "done"}
+
+
 def _validate_contract(contract_file: str, task_id: str, project_dir: str) -> None:
-    """Validate task project_path against the running project_dir."""
+    """Validate task project_path and lifecycle status against the running project_dir."""
     from superharness.engine.yaml_helpers import safe_load
 
     doc = safe_load(contract_file, dict)
@@ -44,6 +47,14 @@ def _validate_contract(contract_file: str, task_id: str, project_dir: str) -> No
             file=sys.stderr,
         )
         return
+
+    status = str(task.get("status", ""))
+    if status in ENQUEUE_BLOCKED_STATUSES:
+        _abort(
+            f"blocked: task '{task_id}' status is '{status}' — cannot enqueue.\n"
+            f"  plan_proposed: approve the plan first (shux task status --id {task_id} --status plan_approved ...)\n"
+            f"  done: task is already closed."
+        )
 
     task_path = str(task.get("project_path", "") or "")
     if not task_path:
