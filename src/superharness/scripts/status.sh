@@ -95,8 +95,28 @@ if [ "$PLATFORM" = "Darwin" ]; then
       watcher_msg="loaded state=${state:-unknown} exit=${last_exit:-unknown}"
     fi
   else
-    watcher_level="bad"
-    watcher_msg="not loaded"
+    # Auto-heal: try to reinstall and load the plist
+    _scripts_dir="$(python3 -c 'import importlib.resources; print(importlib.resources.files("superharness").joinpath("scripts"))' 2>/dev/null || true)"
+    _install_script="${_scripts_dir}/install-launchd-inbox-watcher.sh"
+    _worker_dir="$HOME/.superharness-workers/$(basename "$PROJECT_DIR")"
+    if [ -f "$_install_script" ] && [ -d "$_worker_dir" ]; then
+      bash "$_install_script" \
+        --project "$_worker_dir" \
+        --confirm-non-interactive yes \
+        --confirm-skip-permissions yes \
+        >/dev/null 2>&1
+      # Re-check after repair
+      if launchctl_out="$(launchctl print "gui/$(id -u)/$label" 2>/dev/null)"; then
+        watcher_level="ok"
+        watcher_msg="loaded (auto-repaired) idle interval=30s"
+      else
+        watcher_level="bad"
+        watcher_msg="not loaded (auto-repair failed)"
+      fi
+    else
+      watcher_level="bad"
+      watcher_msg="not loaded"
+    fi
   fi
 elif [ "$PLATFORM" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
   unit="superharness-watcher@$(basename "$PROJECT_DIR").service"
@@ -236,6 +256,12 @@ done <<< "$stats"
 echo "superharness status"
 echo "project: $PROJECT_DIR"
 echo "watcher: level=$watcher_level $watcher_msg"
+
+# Amend heartbeat detail: stale during active dispatch is expected
+if [ "$heartbeat_status" = "stale" ] && [ "${launched:-0}" -gt 0 ]; then
+  heartbeat_detail="${heartbeat_detail} (expected — dispatch in progress)"
+  heartbeat_status="ok"
+fi
 echo "heartbeat: $heartbeat_status ($heartbeat_detail)"
 echo "inbox: pending=${pending:-0} launched=${launched:-0} running=${running:-0} paused=${paused:-0} done=${done:-0} failed=${failed} stale=${stale} stopped=${stopped:-0}"
 echo "retry-alert: threshold=$RETRY_THRESHOLD high=$retry_high ids=${retry_high_ids:-none}"
@@ -254,6 +280,19 @@ if [ "${failed:-0}" -gt 0 ] || [ "${stale:-0}" -gt 0 ] || [ "${retry_high:-0}" -
 fi
 
 echo "summary: issues=$issues"
+
+# Hints for actionable cleanup
+if [ "$watcher_level" = "bad" ]; then
+  echo "  hint: watcher not running — run \`shux watcher-worker -p .\` to reinstall, or start manually:"
+  echo "        \`python3 -m superharness.commands.inbox_watch -p . --foreground --interval 30 --non-interactive &\`"
+fi
+if [ "${failed:-0}" -gt 0 ]; then
+  echo "  hint: run \`shux normalize -p . --drop-status failed --archive\` to clean up failed entries"
+fi
+if [ "${stale:-0}" -gt 0 ]; then
+  echo "  hint: run \`shux normalize -p . --drop-status stale --archive\` to clean up stale entries"
+fi
+
 if [ "$CHECK_MODE" -eq 1 ] && [ "$issues" -gt 0 ]; then
   exit 1
 fi

@@ -89,6 +89,67 @@ def test_enqueue_rejects_invalid_task_token(repo_root, tmp_path) -> None:
     assert "task id" in combined.lower() or "invalid" in combined.lower() or "match" in combined.lower()
 
 
+def test_enqueue_blocks_plan_proposed_status(repo_root, tmp_path) -> None:
+    project = _setup_project(tmp_path, "proj-plan-proposed")
+    _write_contract(
+        project,
+        [
+            "id: test-contract",
+            "tasks:",
+            "  - id: feat.blocked",
+            "    status: plan_proposed",
+            f"    project_path: '{project.resolve().as_posix()}'",
+        ],
+    )
+
+    result = _run_python(["--project", str(project), "--to", "claude-code", "--task", "feat.blocked"])
+
+    assert result.returncode == 1
+    combined = result.stdout + result.stderr
+    assert "plan_proposed" in combined
+    assert "cannot enqueue" in combined
+
+
+def test_enqueue_blocks_done_status(repo_root, tmp_path) -> None:
+    project = _setup_project(tmp_path, "proj-done")
+    _write_contract(
+        project,
+        [
+            "id: test-contract",
+            "tasks:",
+            "  - id: feat.closed",
+            "    status: done",
+            f"    project_path: '{project.resolve().as_posix()}'",
+        ],
+    )
+
+    result = _run_python(["--project", str(project), "--to", "claude-code", "--task", "feat.closed"])
+
+    assert result.returncode == 1
+    combined = result.stdout + result.stderr
+    assert "done" in combined
+    assert "cannot enqueue" in combined
+
+
+def test_enqueue_allows_plan_approved_status(repo_root, tmp_path) -> None:
+    project = _setup_project(tmp_path, "proj-approved")
+    _write_contract(
+        project,
+        [
+            "id: test-contract",
+            "tasks:",
+            "  - id: feat.ready",
+            "    status: plan_approved",
+            f"    project_path: '{project.resolve().as_posix()}'",
+        ],
+    )
+
+    result = _run_python(["--project", str(project), "--to", "claude-code", "--task", "feat.ready"])
+
+    assert result.returncode == 0
+    assert "Enqueued inbox item" in result.stdout
+
+
 def test_enqueue_rejects_invalid_custom_item_id(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path, "proj-invalid-id")
     _write_contract(

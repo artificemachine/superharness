@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from tests.helpers import run_bash
@@ -29,15 +30,14 @@ def _write_project(tmp_path: Path) -> Path:
     return project
 
 
-def _lock_key(project_dir: str) -> str:
-    import hashlib
-    return hashlib.sha1(project_dir.encode()).hexdigest()
+def _actual_lock_dir(project: Path) -> Path:
+    from superharness.engine.platform_runtime import watcher_lock_path
+    return Path(watcher_lock_path(str(project)))
 
 
 def test_watch_auto_breaks_stale_lock(repo_root, tmp_path) -> None:
     project = _write_project(tmp_path)
-    lock_key = _lock_key(str(project))
-    lock_dir = Path(f"/tmp/superharness-inbox-watch-{lock_key}.lock")
+    lock_dir = _actual_lock_dir(project)
 
     # Create a stale lock directory and backdate it
     lock_dir.mkdir(exist_ok=True)
@@ -68,8 +68,7 @@ def test_watch_auto_breaks_stale_lock(repo_root, tmp_path) -> None:
 
 def test_watch_respects_fresh_lock(repo_root, tmp_path) -> None:
     project = _write_project(tmp_path)
-    lock_key = _lock_key(str(project))
-    lock_dir = Path(f"/tmp/superharness-inbox-watch-{lock_key}.lock")
+    lock_dir = _actual_lock_dir(project)
 
     # Create a fresh lock (just now)
     lock_dir.mkdir(exist_ok=True)
@@ -95,10 +94,106 @@ def test_watch_respects_fresh_lock(repo_root, tmp_path) -> None:
             lock_dir.rmdir()
 
 
+def test_watch_auto_breaks_orphaned_lock_when_pid_is_dead(repo_root, tmp_path) -> None:
+    project = _write_project(tmp_path)
+    lock_dir = _actual_lock_dir(project)
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    (lock_dir / "owner.pid").write_text("999999\n")
+
+    try:
+        script = repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"
+        result = run_bash(
+            script,
+            cwd=repo_root,
+            args=[
+                "--project", str(project),
+                "--to", "claude-code",
+                "--print-only",
+            ],
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert "Auto-breaking orphaned watcher lock" in result.stdout
+        assert "Watcher already running" not in result.stdout
+    finally:
+        if lock_dir.exists():
+            try:
+                for child in lock_dir.iterdir():
+                    child.unlink()
+                lock_dir.rmdir()
+            except OSError:
+                pass
+
+
+def test_watch_auto_breaks_pidless_lock_when_heartbeat_is_stale(repo_root, tmp_path) -> None:
+    project = _write_project(tmp_path)
+    heartbeat = project / ".superharness" / "watcher.heartbeat"
+    heartbeat.write_text(
+        (datetime.now(timezone.utc) - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ") + "\n"
+    )
+    lock_dir = _actual_lock_dir(project)
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    stale_time = time.time() - (5 * 60)
+    os.utime(str(lock_dir), (stale_time, stale_time))
+
+    try:
+        script = repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"
+        result = run_bash(
+            script,
+            cwd=repo_root,
+            args=[
+                "--project", str(project),
+                "--to", "claude-code",
+                "--print-only",
+                "--interval", "30",
+            ],
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert "Auto-breaking orphaned watcher lock" in result.stdout
+        assert "Watcher already running" not in result.stdout
+    finally:
+        if lock_dir.exists():
+            try:
+                lock_dir.rmdir()
+            except OSError:
+                pass
+
+
+def test_watch_keeps_pidless_lock_when_heartbeat_is_fresh(repo_root, tmp_path) -> None:
+    project = _write_project(tmp_path)
+    heartbeat = project / ".superharness" / "watcher.heartbeat"
+    heartbeat.write_text(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") + "\n")
+    lock_dir = _actual_lock_dir(project)
+    lock_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        script = repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"
+        result = run_bash(
+            script,
+            cwd=repo_root,
+            args=[
+                "--project", str(project),
+                "--to", "claude-code",
+                "--print-only",
+                "--interval", "30",
+            ],
+        )
+
+        assert result.returncode == 0
+        assert "Watcher already running" in result.stdout
+        assert "Auto-breaking orphaned watcher lock" not in result.stdout
+    finally:
+        if lock_dir.exists():
+            try:
+                lock_dir.rmdir()
+            except OSError:
+                pass
+
+
 def test_watch_lock_stale_disabled_with_zero(repo_root, tmp_path) -> None:
     project = _write_project(tmp_path)
-    lock_key = _lock_key(str(project))
-    lock_dir = Path(f"/tmp/superharness-inbox-watch-{lock_key}.lock")
+    lock_dir = _actual_lock_dir(project)
 
     # Create an old lock
     lock_dir.mkdir(exist_ok=True)

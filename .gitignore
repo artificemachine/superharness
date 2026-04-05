@@ -42,3 +42,5 @@ json
 # Watcher env snapshot (contains API keys)
 .superharness/watcher-env.yaml
 .serena/
+
+.token-budget

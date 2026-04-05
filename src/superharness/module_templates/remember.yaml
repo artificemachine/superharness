@@ -1,3 +1,4 @@
+schema_version: '1'
 name: remember
 description: "Auto-refresh context from CLAUDE.md and last handoff on continue"
 enabled: false
