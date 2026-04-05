@@ -122,6 +122,7 @@ _cmd("install-hooks",   "Merge adapter hooks into ~/.claude/settings.json (porta
 _cmd("enhance",         "Module marketplace — enable, disable, list integrations.", module="superharness.commands.enhance")
 _cmd("adapters",        "List, inspect, and validate agent runtime adapters.",      module="superharness.commands.adapters")
 _cmd("pack",            "Export and import portable project state.",               module="superharness.commands.pack")
+_cmd("benchmark",       "Show dispatch cost and duration leaderboard.",            module="superharness.commands.benchmark")
 
 
 def _find_monitor_processes():
