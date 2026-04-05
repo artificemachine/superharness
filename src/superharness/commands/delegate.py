@@ -91,14 +91,27 @@ def _build_context_hint(project_dir: str, task: dict) -> str:
     except Exception:
         pass
 
-    # Include prior failure context if exists
-    failures_file = os.path.join(project_dir, ".superharness", "failures.yaml")
+    # Inject similar-task skill hints from past completed work
+    try:
+        from superharness.engine.skill_extractor import get_skill_hints
+        skill_hints = get_skill_hints(project_dir, task)
+        if skill_hints:
+            lines.append("\nRelated past skills (reuse proven approaches):")
+            for h in skill_hints:
+                lines.append(f"  - {h}")
+    except Exception:
+        pass
+
+    # Inject failure pattern hints from prior failed attempts
     task_id = str(task.get("id", ""))
-    if os.path.isfile(failures_file) and task_id:
+    if task_id:
         try:
-            content = Path(failures_file).read_text(encoding="utf-8")
-            if task_id in content:
-                lines.append(f"\nNote: prior failures exist for this task — check .superharness/failures.yaml")
+            from superharness.engine.failure_patterns import get_failure_hints
+            hints = get_failure_hints(project_dir, task_id)
+            if hints:
+                lines.append("\nPrior failure hints (avoid repeating these mistakes):")
+                for h in hints:
+                    lines.append(f"  - {h}")
         except Exception:
             pass
 
@@ -538,6 +551,7 @@ def delegate(
     no_auto_model: bool = False,
     via_sdk: bool | None = None,
     orchestrate: bool = False,
+    skip_preflight: bool = False,
 ) -> int:
     project_dir = os.path.realpath(project_dir)
 
@@ -647,6 +661,32 @@ def delegate(
                 file=sys.stderr,
             )
         return 1
+
+    # -----------------------------------------------------------------------
+    # Pre-flight analysis (fast, local-only)
+    # Runs after all gates so task_obj is resolved. Warns or blocks if needed.
+    # -----------------------------------------------------------------------
+    if not print_only and not skip_preflight and task_obj is not None:
+        try:
+            from superharness.engine.preflight import run_preflight
+            pf = run_preflight(
+                project_dir=project_dir,
+                task=dict(task_obj),
+                contract_file=contract_file,
+                skip_git=non_interactive,  # skip git check in non-interactive mode
+            )
+            if pf.status != "pass":
+                print(pf.format_summary(verbose=False), file=sys.stderr)
+            if not pf.can_dispatch:
+                return 1
+            # Surface fanout hint if complexity suggests parallel
+            if pf.suggested_mode != "single":
+                print(
+                    f"  Hint: consider `--fanout {pf.suggested_fanout_n}` or swarm mode for this task.",
+                    file=sys.stderr,
+                )
+        except Exception:
+            pass  # Preflight is advisory — never block on its own errors
 
     # -----------------------------------------------------------------------
     # Model / effort resolution
@@ -1060,6 +1100,10 @@ def main(argv: list[str] | None = None) -> None:
         "--orchestrate", action="store_true", default=False,
         help="Opus orchestrator mode: decompose task into subtasks, assign model tiers, estimate cost",
     )
+    parser.add_argument(
+        "--skip-preflight", action="store_true", default=False,
+        help="Skip pre-flight analysis (useful when you know the task is ready)",
+    )
 
     opts = parser.parse_args(argv)
 
@@ -1093,6 +1137,7 @@ def main(argv: list[str] | None = None) -> None:
         no_auto_model=opts.no_auto_model,
         via_sdk=True if opts.via == "sdk" else (False if opts.via == "cli" else None),
         orchestrate=opts.orchestrate,
+        skip_preflight=opts.skip_preflight,
     )
     sys.exit(rc)
 

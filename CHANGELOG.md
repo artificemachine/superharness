@@ -1431,3 +1431,24 @@ If you're an agent picking this up:
 ### Fixed
 - SIGTERM/SIGHUP handlers in single-cycle watcher mode (prevents orphaned locks)
 - Watcher lock not released on normal exit in launchd mode
+
+## [1.7.0] - 2026-04-05
+
+### Added
+- Parallel fan-out dispatch: run N agents concurrently on isolated git worktrees (engine/parallel_dispatch.py)
+- Swarm mode: N workers + Opus reviewer picks best solution, optional auto-merge (engine/swarm.py)
+- Failure pattern matching: 15 built-in patterns classify errors, inject fix hints into next dispatch (engine/failure_patterns.py)
+- Skill extraction: learn reusable patterns from completed tasks, surface hints for similar work (engine/skill_extractor.py)
+- Benchmark leaderboard: track dispatch cost/duration/outcome per task in JSONL (engine/benchmark.py)
+- `shux benchmark` CLI command with --top and --agents flags
+- Pre-flight analysis: validate task spec, TDD block, dependencies, git state before dispatch (engine/preflight.py)
+- Complexity estimator suggests single/fanout/swarm mode based on task scope
+- --skip-preflight flag on delegate command
+
+### Security
+- task_id sanitization rejects path traversal in worktree branch names and paths
+- Safe-key allowlist on failure record extra fields (blocks field injection)
+- Benchmark JSONL uses os.write() for atomic append (concurrent worker safety)
+- Worktree cleanup wrapped in try/finally (prevents resource leaks on exception)
+- WorktreeSlot.project_dir replaces fragile parent-path derivation
+- severity ranking uses .get() with safe default (prevents KeyError crash)
