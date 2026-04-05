@@ -329,6 +329,15 @@ def status_update(
             for c in ac:
                 print(f"  - {c}", file=sys.stderr)
 
+        # Extract and persist skill for future dispatch context
+        try:
+            from superharness.engine.skill_extractor import record_skill
+            skill = record_skill(project_dir, dict(task))
+            if skill:
+                print(f"Skill recorded: [{skill.category}] {skill.title}")
+        except Exception:
+            pass
+
     print(f"Updated task '{task_id}' status={status} by actor={actor}")
     return 0
 

@@ -493,6 +493,8 @@ def _do_dispatch(
         wrapped_args = ["script", "-q", "-c", shlex.join(launch_args), task_log]
 
     # Spawn launcher
+    import time as _time
+    _launch_start = _time.time()
     if effective_timeout > 0:
         launcher_rc = _run_with_timeout(effective_timeout, wrapped_args, inbox_file=inbox_file, item_id=item_id,
                                         env=spawn_env)
@@ -508,6 +510,33 @@ def _do_dispatch(
             print(f"Launcher timed out after {effective_timeout}s for {item_id}", file=sys.stderr)
         new_lock = _MkdirLock(inbox_file + ".lock.d")
         _mark_item_failed(inbox_file, item_id, fail_now, new_lock)
+
+        # Record failure pattern for next dispatch
+        try:
+            from superharness.engine.failure_patterns import record_failure
+            error_snippet = ""
+            if os.path.isfile(task_log):
+                try:
+                    lines = Path(task_log).read_text(encoding="utf-8", errors="replace").splitlines()
+                    error_snippet = "\n".join(lines[-50:])
+                except Exception:
+                    pass
+            if launcher_rc == 124:
+                error_snippet = f"timed out\n{error_snippet}"
+            if error_snippet:
+                record_failure(exec_project, item_task, error_snippet, agent=item_to)
+        except Exception:
+            pass
+
+        # Record benchmark for failed launch
+        try:
+            from superharness.engine.benchmark import record_dispatch
+            outcome = "timeout" if launcher_rc == 124 else "failed"
+            record_dispatch(exec_project, item_task, item_to, outcome,
+                            _time.time() - _launch_start)
+        except Exception:
+            pass
+
         return 1
 
     # Reconcile in non-interactive mode
@@ -563,10 +592,21 @@ def _do_dispatch(
             print(f"Inbox item updated: {item_id} -> paused (awaiting_user_approval)")
             return 0
         if reconciled == 1:
+            _elapsed = _time.time() - _launch_start
             if final_state == "done":
                 print(f"Inbox item updated: {item_id} -> done (reconciled from contract task status)")
+                try:
+                    from superharness.engine.benchmark import record_dispatch
+                    record_dispatch(exec_project, item_task, item_to, "done", _elapsed)
+                except Exception:
+                    pass
                 return 0
             print(f"Inbox item updated: {item_id} -> failed (non-interactive launch exited without done/failed)")
+            try:
+                from superharness.engine.benchmark import record_dispatch
+                record_dispatch(exec_project, item_task, item_to, "failed", _elapsed)
+            except Exception:
+                pass
             return 1
 
     return 0
