@@ -1398,3 +1398,36 @@ If you're an agent picking this up:
 - `contract_today.py`, `discuss.py` — onboarding flow improvements
 - `schemas.py` — minor additions
 - Shell scripts — consistency updates
+
+## [1.5.1] - 2026-04-05
+
+### Fixed
+- Watcher lock: orphaned locks now broken immediately via PID liveness check instead of waiting 30 minutes (Codex contribution)
+- Watcher lock: pid-less stale locks broken early when heartbeat is also stale
+- Reinstalled editable package to sync site-packages with local source
+
+### Added
+- `test_watch_poll_cycle.py` — 3 new tests: owner.pid creation, dead-PID lock breaking, live-PID lock preservation
+
+## [1.6.0] - 2026-04-05
+
+### Added
+- Dispatch lock PID tracking with orphan recovery (mirrors watcher lock fix)
+- Enqueue guard: blocks plan_proposed/done tasks from entering inbox
+- Task scope warning on plan_approved when >3 acceptance criteria
+- Monitor live log expanded to plan_approved, report_ready, review_requested states
+- SDK JSONL tailer for real-time session streaming to launcher logs
+- SDK warm start via session fork (resume + fork_session)
+- SDK settings inheritance (tilth, Serena, RTK via setting_sources)
+- Live git diff view in monitor task report
+- Token budget per task (effort→budget mapping, SDK enforces)
+- Context hint builder (relevant files + recent changes injected into dispatch prompt)
+- Context cache saved after each dispatch for future warm-start
+- Normalize re-enqueues failed tasks whose contract is still dispatch-ready
+- Status hints for failed/stale inbox cleanup and watcher restart
+- Status auto-repair for missing launchd plist
+- Heartbeat suppresses stale warning during active dispatch
+
+### Fixed
+- SIGTERM/SIGHUP handlers in single-cycle watcher mode (prevents orphaned locks)
+- Watcher lock not released on normal exit in launchd mode

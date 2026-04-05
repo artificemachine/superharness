@@ -1,3 +1,4 @@
+schema_version: '1'
 name: telegram
 description: "Telegram notifications and mobile task management"
 enabled: false

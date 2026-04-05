@@ -1,3 +1,4 @@
+schema_version: '1'
 name: auto-schedule
 description: "Auto-delegate tasks when scheduled_after date arrives and dependencies are met"
 enabled: false

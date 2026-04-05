@@ -32,22 +32,112 @@ def _lock_dir_path(project_dir: str) -> str:
     return watcher_lock_path(project_dir)
 
 
-def _auto_break_stale_lock(lock_dir: str, stale_minutes: int) -> bool:
-    """Remove lock dir if older than stale_minutes. Returns True if broken."""
-    if stale_minutes <= 0:
+def _lock_pid_file(lock_dir: str) -> str:
+    return os.path.join(lock_dir, "owner.pid")
+
+
+def _write_lock_pid(lock_dir: str) -> None:
+    try:
+        with open(_lock_pid_file(lock_dir), "w", encoding="utf-8") as f:
+            f.write(f"{os.getpid()}\n")
+    except OSError:
+        pass
+
+
+def _read_lock_pid(lock_dir: str) -> int | None:
+    try:
+        with open(_lock_pid_file(lock_dir), encoding="utf-8") as f:
+            raw = f.readline().strip()
+        pid = int(raw)
+        return pid if pid > 0 else None
+    except (OSError, ValueError):
+        return None
+
+
+def _pid_is_running(pid: int | None) -> bool:
+    if pid is None:
         return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
+def _heartbeat_age_seconds(project_dir: str) -> int | None:
+    hb_file = os.path.join(project_dir, ".superharness", "watcher.heartbeat")
+    if not os.path.isfile(hb_file):
+        return None
+    try:
+        with open(hb_file, encoding="utf-8") as f:
+            hb_ts = f.readline().strip()
+        if not hb_ts:
+            return None
+        hb_dt = datetime.fromisoformat(hb_ts.replace("Z", "+00:00"))
+        return int((datetime.now(timezone.utc) - hb_dt).total_seconds())
+    except (OSError, ValueError):
+        return None
+
+
+def _remove_lock_dir(lock_dir: str) -> None:
+    try:
+        os.unlink(_lock_pid_file(lock_dir))
+    except OSError:
+        pass
+    try:
+        os.rmdir(lock_dir)
+    except OSError:
+        pass
+
+
+def _auto_break_stale_lock(
+    lock_dir: str,
+    stale_minutes: int,
+    *,
+    project_dir: str | None = None,
+    heartbeat_stale_seconds: int | None = None,
+) -> bool:
+    """Remove an orphaned or stale lock dir. Returns True if broken."""
     if not os.path.isdir(lock_dir):
         return False
+
+    lock_pid = _read_lock_pid(lock_dir)
+    if lock_pid is not None and not _pid_is_running(lock_pid):
+        print(f"Auto-breaking orphaned watcher lock (pid {lock_pid} not running): {lock_dir}")
+        _remove_lock_dir(lock_dir)
+        return True
+
     try:
         stat = os.stat(lock_dir)
         lock_age = time.time() - stat.st_mtime
+        if (
+            project_dir
+            and heartbeat_stale_seconds is not None
+            and lock_pid is None
+        ):
+            hb_age = _heartbeat_age_seconds(project_dir)
+            if hb_age is not None and hb_age >= heartbeat_stale_seconds and lock_age >= heartbeat_stale_seconds:
+                print(
+                    f"Auto-breaking orphaned watcher lock "
+                    f"(stale heartbeat: {hb_age}s, no lock pid): {lock_dir}"
+                )
+                _remove_lock_dir(lock_dir)
+                return True
+
+        if stale_minutes <= 0:
+            return False
+
         stale_secs = stale_minutes * 60
-        if lock_age >= stale_secs:
+        if lock_pid is None and lock_age >= stale_secs:
             print(
                 f"Auto-breaking stale watcher lock (age: {int(lock_age)}s, "
                 f"threshold: {stale_secs}s): {lock_dir}"
             )
-            os.rmdir(lock_dir)
+            _remove_lock_dir(lock_dir)
             return True
     except OSError:
         pass
@@ -57,16 +147,14 @@ def _auto_break_stale_lock(lock_dir: str, stale_minutes: int) -> bool:
 def _acquire_watcher_lock(lock_dir: str) -> bool:
     try:
         os.mkdir(lock_dir)
+        _write_lock_pid(lock_dir)
         return True
     except FileExistsError:
         return False
 
 
 def _release_watcher_lock(lock_dir: str) -> None:
-    try:
-        os.rmdir(lock_dir)
-    except OSError:
-        pass
+    _remove_lock_dir(lock_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -130,6 +218,27 @@ def _run_dispatch_cmd(
     subprocess.run(args, check=False, env=env)
 
 
+def _run_scripts_heartbeat(project_dir: str) -> None:
+    """Write both legacy timestamp and structured heartbeat contract for the watcher."""
+    # Legacy: plain timestamp — consumed by existing health checks
+    heartbeat_file = os.path.join(project_dir, ".superharness", "watcher.heartbeat")
+    try:
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with open(heartbeat_file, "w") as _hf:
+            _hf.write(ts + "\n")
+    except OSError:
+        pass
+
+    # Heartbeat contract v1: YAML heartbeat — runtime-agnostic, consumed by monitor
+    try:
+        from superharness.engine.heartbeat_contract import AgentHeartbeat, write_heartbeat
+        write_heartbeat(project_dir, AgentHeartbeat(
+            agent_id="watcher", runtime="native", status="idle", pid=os.getpid(),
+        ))
+    except Exception:
+        pass
+
+
 def _run_scripts(
     project_dir: str,
     *,
@@ -152,15 +261,8 @@ def _run_scripts(
         subprocess.run(["bash", deadline_check, "--project", project_dir],
                        check=False, capture_output=False)
 
-    # Heartbeat: write UTC timestamp so health checks know watcher is alive
-    heartbeat_file = os.path.join(project_dir, ".superharness", "watcher.heartbeat")
-    try:
-        from datetime import datetime, timezone as _tz
-        ts = datetime.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        with open(heartbeat_file, "w") as _hf:
-            _hf.write(ts + "\n")
-    except OSError:
-        pass
+    # Heartbeat: write legacy timestamp + structured contract heartbeat
+    _run_scripts_heartbeat(project_dir)
 
     # Fire on_watcher_tick hooks (e.g., auto-schedule module)
     try:
@@ -353,7 +455,12 @@ def watch(
     lock_dir = _lock_dir_path(project_dir)
 
     # Auto-break stale lock
-    _auto_break_stale_lock(lock_dir, lock_stale_minutes)
+    _auto_break_stale_lock(
+        lock_dir,
+        lock_stale_minutes,
+        project_dir=project_dir,
+        heartbeat_stale_seconds=max(interval * 2, 60),
+    )
 
     # Try to acquire lock
     if not _acquire_watcher_lock(lock_dir):
@@ -362,9 +469,13 @@ def watch(
 
     def _on_exit(signum: int = 0, frame: object = None) -> None:
         _release_watcher_lock(lock_dir)
+        if signum:
+            sys.exit(0)
 
     import atexit
     atexit.register(_on_exit)
+    signal.signal(signal.SIGTERM, _on_exit)
+    signal.signal(signal.SIGHUP, _on_exit)
 
     try:
         dispatch_kwargs = dict(

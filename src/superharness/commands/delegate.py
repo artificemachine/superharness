@@ -20,6 +20,91 @@ def _abort(msg: str, code: int = 1) -> None:
     sys.exit(code)
 
 
+def _build_context_hint(project_dir: str, task: dict) -> str:
+    """Build a compact context block from task metadata to reduce agent cold-start.
+
+    Scans acceptance criteria and TDD block for keywords, finds matching source
+    files, and returns a pre-built context string the agent can use immediately.
+    """
+    lines: list[str] = []
+
+    # Extract keywords from acceptance criteria + TDD
+    keywords: list[str] = []
+    for ac in task.get("acceptance_criteria") or []:
+        # Pull nouns/identifiers from criteria
+        for word in re.findall(r'[a-z_]{4,}', str(ac).lower()):
+            if word not in ("that", "this", "with", "from", "have", "been", "should", "must", "when", "each", "into"):
+                keywords.append(word)
+    tdd = task.get("tdd") or {}
+    for phase in ("red", "green", "refactor"):
+        for word in re.findall(r'[a-z_]{4,}', str(tdd.get(phase, "")).lower()):
+            if word not in ("that", "this", "with", "from", "have", "been", "should", "must", "when", "each", "into", "test", "tests", "code", "make", "pass"):
+                keywords.append(word)
+
+    # Deduplicate, take top 10
+    seen = set()
+    unique_kw = []
+    for kw in keywords:
+        if kw not in seen:
+            seen.add(kw)
+            unique_kw.append(kw)
+    keywords = unique_kw[:10]
+
+    if not keywords:
+        return ""
+
+    # Find matching source files (quick grep, limit results)
+    src_dir = os.path.join(project_dir, "src")
+    if not os.path.isdir(src_dir):
+        src_dir = project_dir
+
+    relevant_files: set[str] = set()
+    for kw in keywords[:5]:  # limit to 5 greps
+        try:
+            r = subprocess.run(
+                ["grep", "-rl", "--include=*.py", "-m", "3", kw, src_dir],
+                capture_output=True, text=True, check=False, timeout=5,
+            )
+            for f in r.stdout.strip().splitlines()[:3]:
+                if f:
+                    relevant_files.add(os.path.relpath(f, project_dir))
+        except Exception:
+            pass
+
+    if relevant_files:
+        lines.append("\nRelevant source files (start here, don't explore from scratch):")
+        for f in sorted(relevant_files)[:10]:
+            lines.append(f"  - {f}")
+
+    # Include recent git changes for context
+    try:
+        r = subprocess.run(
+            ["git", "diff", "--name-only", "HEAD~3"],
+            capture_output=True, text=True, check=False, timeout=5,
+            cwd=project_dir,
+        )
+        recent = [f for f in r.stdout.strip().splitlines() if f.endswith(".py")][:5]
+        if recent:
+            lines.append("\nRecently changed files:")
+            for f in recent:
+                lines.append(f"  - {f}")
+    except Exception:
+        pass
+
+    # Include prior failure context if exists
+    failures_file = os.path.join(project_dir, ".superharness", "failures.yaml")
+    task_id = str(task.get("id", ""))
+    if os.path.isfile(failures_file) and task_id:
+        try:
+            content = Path(failures_file).read_text(encoding="utf-8")
+            if task_id in content:
+                lines.append(f"\nNote: prior failures exist for this task — check .superharness/failures.yaml")
+        except Exception:
+            pass
+
+    return "\n".join(lines) if lines else ""
+
+
 def _rotate_launcher_logs(log_dir: Path, task_id: str, agent: str, keep: int = 5) -> None:
     """Keep only the most recent N log files for a given task+agent combination.
 
@@ -106,6 +191,55 @@ def _get_task_field(contract_file: str, task_id: str, field: str) -> str | None:
             val = t.get(field)
             return str(val) if val is not None else None
     return None
+
+
+# Effort → max budget USD (per-task caps to prevent runaway spend)
+EFFORT_BUDGET_MAP = {
+    "low": 0.50,
+    "medium": 2.00,
+    "high": 5.00,
+    "max": 15.00,
+}
+
+
+def _get_task_budget(contract_file: str, task_id: str, effort: str) -> float | None:
+    """Return task budget: explicit budget_usd from contract, or effort-based default."""
+    explicit = _get_task_field(contract_file, task_id, "budget_usd")
+    if explicit:
+        try:
+            return float(explicit)
+        except (ValueError, TypeError):
+            pass
+    return EFFORT_BUDGET_MAP.get(effort)
+
+
+def _save_context_snapshot(project_dir: str, task_id: str, result: dict) -> None:
+    """Save a context snapshot after dispatch for future warm-start reference."""
+    import subprocess
+    snapshot_dir = os.path.join(project_dir, ".superharness", "context-cache")
+    os.makedirs(snapshot_dir, exist_ok=True)
+    snapshot = {
+        "task_id": task_id,
+        "input_tokens": result.get("input_tokens", 0),
+        "output_tokens": result.get("output_tokens", 0),
+        "cost_usd": result.get("cost_usd", 0),
+    }
+    # Capture which files were modified during dispatch
+    try:
+        r = subprocess.run(
+            ["git", "diff", "--name-only", "HEAD"],
+            capture_output=True, text=True, check=False, timeout=5,
+            cwd=project_dir,
+        )
+        snapshot["files_touched"] = [f for f in r.stdout.strip().splitlines() if f]
+    except Exception:
+        snapshot["files_touched"] = []
+    try:
+        from superharness.engine.yaml_helpers import safe_dump
+        with open(os.path.join(snapshot_dir, f"{task_id}.yaml"), "w") as f:
+            safe_dump(snapshot, f)
+    except Exception:
+        pass
 
 
 def _get_task_previously_failed(contract_file: str, task_id: str) -> bool:
@@ -734,6 +868,9 @@ def delegate(
             if user_instructions:
                 user_instructions = f"\n\nUser instructions for this task:\n{user_instructions}"
 
+        # Build context hint to reduce cold-start exploration time
+        context_hint = _build_context_hint(project_dir, task_obj or {})
+
         if target == "claude-code":
             if latest_handoff:
                 prompt = (
@@ -743,7 +880,7 @@ def delegate(
                     f"Update .superharness/contract.yaml task status, append .superharness/ledger.md, "  # shipguard:ignore PY-007
                     f"and refresh the handoff with outcomes.\n"
                     f"Contract id: {contract_id}."
-                    f"{acceptance_criteria}{user_instructions}{auto_directive}"
+                    f"{acceptance_criteria}{context_hint}{user_instructions}{auto_directive}"
                 )
             else:
                 prompt = (
@@ -753,7 +890,7 @@ def delegate(
                     f"Update .superharness/contract.yaml task status, append .superharness/ledger.md, "  # shipguard:ignore PY-007
                     f"and create a new handoff with outcomes.\n"  # shipguard:ignore PY-007
                     f"Contract id: {contract_id}."
-                    f"{acceptance_criteria}{user_instructions}{auto_directive}"
+                    f"{acceptance_criteria}{context_hint}{user_instructions}{auto_directive}"
                 )
         else:  # codex-cli
             if latest_handoff:
@@ -820,26 +957,35 @@ def delegate(
         print()
         print(f"Launching via SDK (model: {resolved_model})...")
         try:
-            # Create launcher log file for streaming output
-            from datetime import datetime
-            log_dir = Path(harness_dir) / "launcher-logs"
-            log_dir.mkdir(exist_ok=True)
+            # Use dispatcher-provided log path if available, otherwise create our own
+            env_log = os.environ.get("SUPERHARNESS_LAUNCHER_LOG")
+            if env_log:
+                log_file = Path(env_log)
+                log_file.parent.mkdir(parents=True, exist_ok=True)
+            else:
+                from datetime import datetime
+                log_dir = Path(harness_dir) / "launcher-logs"
+                log_dir.mkdir(exist_ok=True)
+                timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+                log_file = log_dir / f"{task_id}-{target}-{timestamp}.log"
+                _rotate_launcher_logs(log_dir, task_id, target, keep=5)
 
-            timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-            log_file = log_dir / f"{task_id}-{target}-{timestamp}.log"
-
-            # Rotate old logs before creating new one
-            _rotate_launcher_logs(log_dir, task_id, target, keep=5)
-
+            task_budget = _get_task_budget(contract_file, task_id, resolved_effort)
+            if task_budget:
+                print(f"Budget: ${task_budget:.2f}")
             runner = SDKRunner(
                 project_dir=Path(project_dir),
                 model=resolved_model,
+                max_budget_usd=task_budget,
             )
             result = runner.run(prompt, log_file=log_file)
             print()
             print("SDK execution completed:")
             print(result.get("output", ""))
             print(f"\nLauncher log: {log_file}")
+
+            # Save context snapshot for warm-start on related future tasks
+            _save_context_snapshot(project_dir, task_id, result)
             return 0
         except Exception as e:
             print(f"⚠️  SDK execution failed: {e}", file=sys.stderr)

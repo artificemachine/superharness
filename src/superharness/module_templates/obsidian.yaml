@@ -1,3 +1,4 @@
+schema_version: '1'
 name: obsidian
 description: "Save task handoffs to Obsidian vault — auto-detected, no config needed"
 enabled: false

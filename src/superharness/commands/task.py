@@ -290,6 +290,21 @@ def status_update(
         if dep_status != "done":
             _abort(f"blocked: task '{task_id}' depends on '{dependency}' (status={dep_status})")
 
+    # Scope guard: warn on plan_approved if task looks too large to dispatch as one unit
+    if status == "plan_approved":
+        ac = task.get("acceptance_criteria")
+        ac_count = len(ac) if isinstance(ac, list) else 0
+        tdd = task.get("tdd")
+        has_tdd = bool(tdd and isinstance(tdd, dict))
+        if ac_count > 3:
+            print(
+                f"⚠  Scope warning: task '{task_id}' has {ac_count} acceptance criteria (threshold: 3).\n"
+                f"   Consider decomposing into subtasks before dispatch.\n"
+                f"   Use: shux delegate {task_id} --orchestrate  (auto-decompose via Opus)\n"
+                f"   Or: manually split into smaller tasks with blocked_by ordering.",
+                file=sys.stderr,
+            )
+
     task["status"] = status
 
     if status in ("failed", "stopped") and reason:
