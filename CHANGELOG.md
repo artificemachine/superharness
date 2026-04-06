@@ -1489,3 +1489,9 @@ If you're an agent picking this up:
 
 ### Changed
 - `parallel_dispatch.py` and `swarm.py` now import shared helpers from `engine/worktree_ops.py` (private aliases preserved)
+
+## [1.8.1] - 2026-04-06
+
+### Added
+- `shux explain` — zero-setup one-screen pitch ("why does superharness exist?"). Works before `init`, no project required. Aliases: `shux why`, `shux wtf`.
+- Updated `docs/plan-onboarding-pipeline.md`: added Current State table, rewrote Feature 3 scope to budget-guard delta only, fixed stale references, flagged dependency decision as open.

@@ -29,6 +29,9 @@ KNOWN_SUBCOMMANDS = [
     "benchmark",
     "daemon",
     "diff",
+    "explain",
+    "why",   # alias
+    "wtf",   # alias
     "version",
 ]
 
