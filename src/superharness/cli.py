@@ -148,6 +148,17 @@ def _register_daemon():
 _register_daemon()
 
 
+# onboard runs in-process so CliRunner captures output correctly
+def _register_onboard():
+    try:
+        from superharness.commands.onboard import cmd_onboard
+        main.add_command(cmd_onboard)
+    except Exception:
+        pass
+
+_register_onboard()
+
+
 def _find_dashboard_processes():
     """Return list of (pid, port, project_dir) for all running dashboard-ui.py processes."""
     import subprocess as _sp

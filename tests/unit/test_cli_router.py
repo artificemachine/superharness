@@ -32,6 +32,7 @@ KNOWN_SUBCOMMANDS = [
     "explain",
     "why",   # alias
     "wtf",   # alias
+    "onboard",
     "version",
 ]
 

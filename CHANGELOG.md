@@ -1495,3 +1495,14 @@ If you're an agent picking this up:
 ### Added
 - `shux explain` — zero-setup one-screen pitch ("why does superharness exist?"). Works before `init`, no project required. Aliases: `shux why`, `shux wtf`.
 - Updated `docs/plan-onboarding-pipeline.md`: added Current State table, rewrote Feature 3 scope to budget-guard delta only, fixed stale references, flagged dependency decision as open.
+
+## [1.9.0] - 2026-04-06
+
+### Added
+- `shux onboard` — interactive 7-step setup wizard (detect, init, git_track, doctor, task, delegate, summary).
+  Supports `--non-interactive`, `--git-mode team|solo`, `--task-title TEXT`, `--enqueue`.
+  Creates `.superharness/onboarding.yaml` for step state and resumability.
+  Inner `.superharness/.gitignore` always written with runtime exclusions.
+  Doctor step is non-blocking; non-git projects skip step 3 gracefully.
+- 16 new tests in `tests/unit/test_onboard.py` covering all wizard steps.
+- `shux onboard` added to CLI router and README command list.
