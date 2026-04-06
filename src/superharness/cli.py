@@ -19,22 +19,38 @@ _ROOT = os.path.dirname(os.path.dirname(_PACKAGE_DIR))  # repo root (editable in
 
 
 def _inject_quickstart(help_text: str) -> str:
-    """Insert onboarding quickstart before the Commands section."""
+    """Insert onboarding quickstart before the Commands section.
+
+    Shows a cold-start banner ('New here? Run shux onboard') when .superharness/
+    is absent from the current directory — i.e. the user hasn't set up this project yet.
+    """
     lines = help_text.split("\n")
     insert_idx = next((i for i, line in enumerate(lines) if line.startswith("Commands:")), len(lines))
-    quickstart = [
-        "",
-        "Quick Start — First Commands:",
-        "  1. Install:     pipx install superharness",
-        "  2. Bootstrap:   shux init",
-        "  3. Verify:      shux doctor",
-        "  4. View tasks:  shux contract",
-        "  5. Next:        shux delegate <task-id>",
-        "",
-        "Try it:",
-        "  shux demo      # Zero-config walkthrough (no agent CLI needed)",
-        "",
-    ]
+
+    has_superharness = os.path.isdir(os.path.join(os.getcwd(), ".superharness"))
+
+    if not has_superharness:
+        quickstart = [
+            "",
+            "New here?  →  shux onboard",
+            "  Guided setup wizard — runs in under 3 minutes, sets up your project,",
+            "  writes AGENTS.md so Claude Code / Codex know to use superharness.",
+            "",
+            "  shux explain   # What is superharness? (10-second answer)",
+            "  shux onboard   # Interactive setup wizard",
+            "  shux demo      # Zero-config sandbox walkthrough",
+            "",
+        ]
+    else:
+        quickstart = [
+            "",
+            "Quick Start — First Commands:",
+            "  shux contract          # View all tasks",
+            "  shux delegate <id>     # Hand a task to an agent",
+            "  shux doctor            # Check prerequisites",
+            "  shux dashboard         # Open browser dashboard",
+            "",
+        ]
     return "\n".join(lines[:insert_idx] + quickstart + lines[insert_idx:])
 
 

@@ -103,7 +103,39 @@ def _step_detect(project: Path, state: dict) -> None:
     is_git = _is_git_repo(project)
     git_label = "git repo" if is_git else "no git"
     click.echo(f"[detect] Project stack: {stack} ({git_label}) — found at {project}")
+    click.echo(f"  → superharness will use this to tailor agent instructions and task defaults.")
     _mark(state, "detect")
+
+
+_AGENTS_MD_TEMPLATE = """\
+# superharness — agent instructions
+
+## Before starting work
+- Run `shux contract` to see all tasks and their status.
+- Run `shux recall "<keywords>"` to search prior session context.
+- Read `.superharness/contract.yaml`, `failures.yaml`, and handoffs addressed to you.
+
+## Task lifecycle
+Every task follows: `todo → plan_proposed → plan_approved → in_progress → report_ready → done`
+
+- Set status to `plan_proposed` and write a plan handoff before implementing anything.
+- Only implement after the operator sets status to `plan_approved`.
+- After implementation, write a report handoff and set status to `report_ready`.
+- Never self-close a task — only the operator runs `shux close <id>`.
+
+## Key commands
+- `shux contract`          — view all tasks
+- `shux delegate <id>`     — enqueue a task for dispatch
+- `shux verify <id>`       — record verification before closing
+- `shux close <id>`        — mark a task done
+- `shux hygiene`           — validate protocol compliance
+- `shux recall "<words>"`  — search past handoffs and decisions
+
+## Protocol
+- Keep `.superharness/` updated before stopping.
+- Never commit `.env`, credentials, or secrets.
+- Never push directly to `main`.
+"""
 
 
 def _step_init(project: Path, state: dict) -> None:
@@ -111,19 +143,30 @@ def _step_init(project: Path, state: dict) -> None:
     if _is_completed(state, "init"):
         click.echo("[skip] Step 2 (init): already completed")
         return
-    if sh.exists() and (sh / "contract.yaml").exists():
+    already_existed = sh.exists() and (sh / "contract.yaml").exists()
+    if already_existed:
         click.echo("[skip] Step 2 (init): .superharness/ already exists")
-        _mark(state, "init")
-        return
-    # Create scaffold
-    sh.mkdir(exist_ok=True)
-    contract = sh / "contract.yaml"
-    if not contract.exists():
-        contract.write_text("id: main\ntasks: []\n")
-    ledger = sh / "ledger.md"
-    if not ledger.exists():
-        ledger.write_text("# Ledger\n")
-    click.echo("[init] Initialized .superharness/")
+    else:
+        # Create scaffold
+        sh.mkdir(exist_ok=True)
+        contract = sh / "contract.yaml"
+        if not contract.exists():
+            contract.write_text("id: main\ntasks: []\n")
+        ledger = sh / "ledger.md"
+        if not ledger.exists():
+            ledger.write_text("# Ledger\n")
+        click.echo("[init] Initialized .superharness/")
+        click.echo("  → contract.yaml  tracks every task and its status.")
+        click.echo("  → ledger.md      is the session history agents read first.")
+
+    # Always write AGENTS.md if missing — this is what tells Claude/Codex to use shux
+    agents_md = project / "AGENTS.md"
+    if not agents_md.exists():
+        agents_md.write_text(_AGENTS_MD_TEMPLATE)
+        click.echo("[init] Wrote AGENTS.md")
+        click.echo("  → AGENTS.md tells Claude Code and Codex CLI to use shux commands.")
+        click.echo("  → Without it, agents won't know superharness is installed.")
+
     _mark(state, "init")
 
 
@@ -147,9 +190,12 @@ def _step_git_track(project: Path, state: dict, git_mode: str) -> None:
             with gitignore.open("a") as f:
                 f.write("\n# superharness — local only\n.superharness/\n")
         click.echo("[git_track] Added .superharness/ to root .gitignore (solo mode)")
+        click.echo("  → solo mode: task state is local only, not shared with teammates.")
+        click.echo("  → Use --git-mode team to commit task state for shared projects.")
     else:
         # team mode: ensure .superharness is NOT in root .gitignore
         click.echo("[git_track] Team mode: .superharness/ will be committed")
+        click.echo("  → team mode: task state is committed — your whole team shares it.")
 
     # Inner .gitignore always created
     inner = sh / ".gitignore"
@@ -162,6 +208,7 @@ def _step_git_track(project: Path, state: dict, git_mode: str) -> None:
     if added or not inner.exists():
         inner.write_text("\n".join(sorted(inner_lines)) + "\n")
     click.echo("[git_track] Created/updated .superharness/.gitignore")
+    click.echo("  → Runtime files (logs, daemon pid, watcher env) excluded from commits.")
 
     _mark(state, "git_track")
 
@@ -178,10 +225,13 @@ def _step_doctor(project: Path, state: dict) -> None:
         )
         if r.returncode != 0:
             click.echo(f"[doctor] Warning: some checks failed (non-blocking):\n{r.stdout.strip()}")
+            click.echo("  → These won't stop you — proceed and run 'shux doctor' to fix later.")
         else:
             click.echo("[doctor] All checks passed")
+            click.echo("  → Your environment is ready for agent dispatch.")
     except FileNotFoundError:
         click.echo("[doctor] Warning: could not run doctor (non-blocking)")
+        click.echo("  → Run 'shux doctor' manually once your PATH is configured.")
     _mark(state, "doctor")
 
 
@@ -193,6 +243,7 @@ def _step_task(project: Path, state: dict, task_title: Optional[str]) -> Optiona
 
     if not task_title:
         click.echo("[task] Skipped (no --task-title provided)")
+        click.echo("  → Add your first task later: shux task create --title \"...\"")
         _mark(state, "task")
         return None
 
@@ -216,6 +267,8 @@ def _step_task(project: Path, state: dict, task_title: Optional[str]) -> Optiona
     doc["tasks"] = tasks
     contract_file.write_text(yaml.dump(doc, default_flow_style=False))
     click.echo(f"[task] Created task '{task_title}' (id: {task_id})")
+    click.echo(f"  → Task lives in contract.yaml. Run 'shux contract' to see it.")
+    click.echo(f"  → Next: approve the plan, then 'shux delegate {task_id}' to dispatch.")
     _mark(state, "task")
     state["task_id"] = task_id
     return task_id
@@ -228,6 +281,7 @@ def _step_delegate(project: Path, state: dict, enqueue: bool, task_id: Optional[
 
     if not enqueue or not task_id:
         click.echo("[delegate] Skipped (no --enqueue or no task)")
+        click.echo("  → When ready: shux delegate <task-id> to hand work to an agent.")
         _mark(state, "delegate")
         return
 
@@ -246,6 +300,8 @@ def _step_delegate(project: Path, state: dict, enqueue: bool, task_id: Optional[
     items.append(item)
     inbox.write_text(yaml.dump(items, default_flow_style=False))
     click.echo(f"[delegate] Enqueued task {task_id} to inbox.yaml")
+    click.echo("  → The watcher picks this up within 30s and launches the agent.")
+    click.echo("  → Run 'shux daemon start' to keep the watcher running in the background.")
     _mark(state, "delegate")
 
 
@@ -256,6 +312,9 @@ def _step_summary(project: Path, state: dict) -> None:
 
     click.echo("")
     click.echo("superharness is set up for this project.")
+    click.echo("")
+    click.echo("  → AGENTS.md written — Claude Code and Codex now know to use shux.")
+    click.echo("  → Open Claude Code or Codex in this project and they'll follow the protocol.")
     click.echo("")
     click.echo("Next steps:")
     click.echo("  shux contract     — view all tasks")
