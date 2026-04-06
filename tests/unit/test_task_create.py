@@ -425,3 +425,21 @@ def test_task_status_rejects_unknown_status(tmp_path: Path) -> None:
     ])
     assert r.returncode != 0
     assert "status must be" in r.stderr
+
+
+def test_task_create_autogenerates_id(tmp_path: Path) -> None:
+    """--id is optional; task create auto-generates a t-XXXXXX id when omitted."""
+    project, contract_file = _make_contract(tmp_path)
+    r = _run_task([
+        "create",
+        "--project", str(project),
+        "--title", "Auto ID task",
+        "--owner", "claude-code",
+    ])
+    assert r.returncode == 0, r.stderr
+    doc = yaml.safe_load(contract_file.read_text())
+    tasks = doc.get("tasks", [])
+    assert len(tasks) == 1
+    task_id = tasks[0]["id"]
+    assert task_id.startswith("t-"), f"Expected t-XXXXXX, got {task_id!r}"
+    assert len(task_id) == 8, f"Expected t-XXXXXX (8 chars), got {task_id!r}"

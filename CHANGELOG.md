@@ -1566,3 +1566,11 @@ If you're an agent picking this up:
 - `shux onboard` step 2 (init) now creates `decisions.yaml`, `failures.yaml`,
   and `handoffs/` as empty stubs so `shux doctor` passes cleanly on a fresh
   project. Previously, a brand-new `shux onboard` produced 3 FAIL lines.
+
+## [1.10.5] - 2026-04-06
+
+### Fixed
+- `shux task create` no longer requires `--id`. When omitted, a task ID is
+  auto-generated as `t-XXXXXX` (6 hex chars). Reduces friction for new users
+  who don't need to invent their own IDs.
+- `docs/GUIDE.md`: updated `task create` example to show `--id` is optional.
