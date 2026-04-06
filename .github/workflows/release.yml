@@ -1,0 +1,71 @@
+name: Auto Release
+
+# Triggers when a version-bump commit lands on main (pyproject.toml changed).
+# Reads the version, creates a GitHub Release + tag, which in turn triggers publish.yml.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - pyproject.toml
+
+permissions:
+  contents: write   # needed to create releases and tags
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from pyproject.toml
+        id: version
+        run: |
+          VERSION=$(python3 -c "
+          import re, pathlib
+          text = pathlib.Path('pyproject.toml').read_text()
+          m = re.search(r'^version\s*=\s*[\"\']([\d.]+)[\"\']', text, re.MULTILINE)
+          print(m.group(1))
+          ")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check if tag already exists
+        id: tag_check
+        run: |
+          if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract changelog section for this version
+        id: changelog
+        if: steps.tag_check.outputs.exists == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          # Extract the block between ## [VERSION] and the next ## [
+          NOTES=$(python3 -c "
+          import re, pathlib
+          text = pathlib.Path('CHANGELOG.md').read_text()
+          pattern = rf'## \[{re.escape(\"$VERSION\")}\][^\n]*\n(.*?)(?=\n## \[|\Z)'
+          m = re.search(pattern, text, re.DOTALL)
+          print(m.group(1).strip() if m else 'See CHANGELOG.md for details.')
+          ")
+          # Write to file to handle multiline safely
+          echo "$NOTES" > /tmp/release_notes.txt
+          echo "notes_file=/tmp/release_notes.txt" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        if: steps.tag_check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "superharness ${{ steps.version.outputs.tag }}" \
+            --notes-file "${{ steps.changelog.outputs.notes_file }}" \
+            --latest
