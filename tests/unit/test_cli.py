@@ -3,8 +3,8 @@ Comprehensive tests for superharness.cli module.
 
 Tests cover:
 - Main group behavior (help, version, no-args)
-- Helper functions (_run_script, _run_module, _is_monitor_running, _is_git_repo)
-- CLI commands (monitor, delegate, update, contract, run, shux, version, help)
+- Helper functions (_run_script, _run_module, _is_dashboard_running, _is_git_repo)
+- CLI commands (dashboard, delegate, update, contract, run, shux, version, help)
 - Edge cases and error handling
 """
 from __future__ import annotations
@@ -17,14 +17,14 @@ from click.testing import CliRunner
 
 from superharness.cli import (
     _cmd,
-    _find_monitor_processes,
+    _find_dashboard_processes,
     _is_git_repo,
-    _is_monitor_running,
+    _is_dashboard_running,
     _run_module,
-    _run_monitor,
+    _run_dashboard,
     _run_script,
-    cmd_monitor_kill,
-    cmd_monitor_list,
+    cmd_dashboard_kill,
+    cmd_dashboard_list,
     cmd_shux,
     cmd_version,
     main,
@@ -189,47 +189,47 @@ class TestRunModule:
 
 
 class TestIsMonitorRunning:
-    """Tests for the _is_monitor_running helper function."""
+    """Tests for the _is_dashboard_running helper function."""
 
-    def test_monitor_running_on_default_port(self):
-        """_is_monitor_running should detect running monitor via /api/status on default port."""
+    def test_dashboard_running_on_default_port(self):
+        """_is_dashboard_running should detect running dashboard via /api/status on default port."""
         mock_resp = MagicMock()
         mock_resp.status = 200
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
         with patch("urllib.request.urlopen", return_value=mock_resp) as mock_open:
-            running, port = _is_monitor_running()
+            running, port = _is_dashboard_running()
             assert running is True
             assert port == 8787
             url = mock_open.call_args[0][0]
             assert "127.0.0.1:8787" in url.full_url
             assert "/api/status" in url.full_url
 
-    def test_monitor_not_running_connection_refused(self):
-        """_is_monitor_running should return False when connection refused."""
-        with patch("superharness.cli._find_monitor_processes", return_value=[]):
+    def test_dashboard_not_running_connection_refused(self):
+        """_is_dashboard_running should return False when connection refused."""
+        with patch("superharness.cli._find_dashboard_processes", return_value=[]):
             with patch("urllib.request.urlopen", side_effect=ConnectionRefusedError()):
-                running, port = _is_monitor_running()
+                running, port = _is_dashboard_running()
                 assert running is False
                 assert port is None
 
-    def test_monitor_not_running_os_error(self):
-        """_is_monitor_running should return False on OSError."""
-        with patch("superharness.cli._find_monitor_processes", return_value=[]):
+    def test_dashboard_not_running_os_error(self):
+        """_is_dashboard_running should return False on OSError."""
+        with patch("superharness.cli._find_dashboard_processes", return_value=[]):
             with patch("urllib.request.urlopen", side_effect=OSError()):
-                running, port = _is_monitor_running()
+                running, port = _is_dashboard_running()
                 assert running is False
                 assert port is None
 
-    def test_monitor_running_custom_port(self):
-        """_is_monitor_running should detect monitor for a given project_dir."""
+    def test_dashboard_running_custom_port(self):
+        """_is_dashboard_running should detect dashboard for a given project_dir."""
         mock_resp = MagicMock()
         mock_resp.status = 200
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
-        with patch("superharness.cli._find_monitor_processes", return_value=[(9001, 9000, "/myproject")]):
+        with patch("superharness.cli._find_dashboard_processes", return_value=[(9001, 9000, "/myproject")]):
             with patch("urllib.request.urlopen", return_value=mock_resp):
-                running, port = _is_monitor_running("/myproject")
+                running, port = _is_dashboard_running("/myproject")
                 assert running is True
                 assert port == 9000
 
@@ -266,65 +266,65 @@ class TestIsGitRepo:
             assert _is_git_repo("/nonexistent/path") is False
 
 
-class TestMonitorCommand:
-    """Tests for monitor and monitor-ui commands."""
+class TestDashboardCommand:
+    """Tests for dashboard and dashboard-ui commands."""
 
-    def test_cmd_monitor_delegates_to_run_monitor(self, runner):
-        """cmd_monitor should delegate to _run_monitor."""
-        with patch("superharness.cli._run_monitor") as mock_run_monitor:
-            runner.invoke(main, ["monitor", "--port", "9000"])
-            mock_run_monitor.assert_called_once()
+    def test_cmd_dashboard_delegates_to_run_dashboard(self, runner):
+        """cmd_dashboard should delegate to _run_dashboard."""
+        with patch("superharness.cli._run_dashboard") as mock_run_dashboard:
+            runner.invoke(main, ["dashboard", "--port", "9000"])
+            mock_run_dashboard.assert_called_once()
 
-    def test_cmd_monitor_ui_delegates_to_run_monitor(self, runner):
-        """cmd_monitor_ui should delegate to _run_monitor."""
-        with patch("superharness.cli._run_monitor") as mock_run_monitor:
-            runner.invoke(main, ["monitor-ui", "--port", "9000"])
-            mock_run_monitor.assert_called_once()
+    def test_cmd_dashboard_ui_delegates_to_run_dashboard(self, runner):
+        """cmd_dashboard_ui should delegate to _run_dashboard."""
+        with patch("superharness.cli._run_dashboard") as mock_run_dashboard:
+            runner.invoke(main, ["dashboard-ui", "--port", "9000"])
+            mock_run_dashboard.assert_called_once()
 
-    def test_run_monitor_already_running_background(self, capsys):
-        """_run_monitor should print URL if already running (background mode)."""
-        with patch("superharness.cli._is_monitor_running", return_value=(True, 8787)):
+    def test_run_dashboard_already_running_background(self, capsys):
+        """_run_dashboard should print URL if already running (background mode)."""
+        with patch("superharness.cli._is_dashboard_running", return_value=(True, 8787)):
             with patch("superharness.cli.os.getcwd", return_value="/test/proj"):
-                _run_monitor(("--port", "8787"))
+                _run_dashboard(("--port", "8787"))
 
-                # Should print existing monitor URL
+                # Should print existing dashboard URL
                 captured = capsys.readouterr()
                 output = captured.out + captured.err
                 assert "8787" in output or "http" in output
 
-    def test_run_monitor_foreground_mode(self):
-        """_run_monitor should handle foreground mode."""
+    def test_run_dashboard_foreground_mode(self):
+        """_run_dashboard should handle foreground mode."""
         with patch("superharness.cli.subprocess.run") as mock_run:
             with patch("superharness.cli.sys.exit") as mock_exit:
                 mock_run.return_value = MagicMock(returncode=0)
 
-                _run_monitor(("--foreground",))
+                _run_dashboard(("--foreground",))
 
                 # Should call subprocess.run (not Popen)
                 mock_run.assert_called_once()
                 mock_exit.assert_called_once_with(0)
 
-    def test_run_monitor_injects_project_default(self):
-        """_run_monitor should inject --project if not provided."""
-        with patch("superharness.cli._is_monitor_running", return_value=(False, None)):
+    def test_run_dashboard_injects_project_default(self):
+        """_run_dashboard should inject --project if not provided."""
+        with patch("superharness.cli._is_dashboard_running", return_value=(False, None)):
             with patch("superharness.cli.subprocess.Popen") as mock_popen:
                 mock_popen.return_value.pid = 12345
                 with patch("superharness.cli.os.getcwd", return_value="/myproject"):
                     with patch("superharness.cli.os.path.exists", return_value=False):
-                        _run_monitor(())
+                        _run_dashboard(())
 
                         # Should inject --project
                         call_args = mock_popen.call_args[0][0]
                         assert "--project" in call_args
                         assert "/myproject" in call_args
 
-    def test_run_monitor_respects_explicit_project(self):
-        """_run_monitor should not inject project if already specified."""
-        with patch("superharness.cli._is_monitor_running", return_value=(False, None)):
+    def test_run_dashboard_respects_explicit_project(self):
+        """_run_dashboard should not inject project if already specified."""
+        with patch("superharness.cli._is_dashboard_running", return_value=(False, None)):
             with patch("superharness.cli.subprocess.Popen") as mock_popen:
                 mock_popen.return_value.pid = 12345
                 with patch("superharness.cli.os.path.exists", return_value=False):
-                    _run_monitor(("--project", "/explicit/path"))
+                    _run_dashboard(("--project", "/explicit/path"))
 
                     # Should not duplicate --project
                     call_args = mock_popen.call_args[0][0]
@@ -616,9 +616,9 @@ class TestEdgeCases:
             assert "--name" in args
             assert "test" in args
 
-    def test_monitor_url_file_timeout(self, capsys):
-        """_run_monitor should handle URL file not appearing in time."""
-        with patch("superharness.cli._is_monitor_running", return_value=(False, None)):
+    def test_dashboard_url_file_timeout(self, capsys):
+        """_run_dashboard should handle URL file not appearing in time."""
+        with patch("superharness.cli._is_dashboard_running", return_value=(False, None)):
             with patch("superharness.cli.subprocess.Popen") as mock_popen:
                 mock_popen.return_value.pid = 12345
                 mock_popen.return_value.poll.return_value = None  # process still running
@@ -626,7 +626,7 @@ class TestEdgeCases:
                     with patch("time.monotonic") as mock_time:
                         # Simulate time passing
                         mock_time.side_effect = [0, 0.1, 5.1]
-                        _run_monitor(())
+                        _run_dashboard(())
 
                         # Should print "starting in background" message
                         captured = capsys.readouterr()
@@ -664,177 +664,177 @@ class TestIntegration:
         assert re.search(r"\d+\.\d+\.\d+", flag_result.output)
 
 
-class TestMonitorProjectAware:
-    """Tests for project-aware monitor detection (verify.monitor-project-aware)."""
+class TestDashboardProjectAware:
+    """Tests for project-aware dashboard detection (verify.dashboard-project-aware)."""
 
-    # ── _is_monitor_running with project_dir ──────────────────────────────────
+    # ── _is_dashboard_running with project_dir ──────────────────────────────────
 
-    def test_is_monitor_running_returns_true_for_matching_project(self):
-        """_is_monitor_running(project_dir) returns (True, port) when a monitor serves that project."""
+    def test_is_dashboard_running_returns_true_for_matching_project(self):
+        """_is_dashboard_running(project_dir) returns (True, port) when a dashboard serves that project."""
         mock_resp = MagicMock()
         mock_resp.status = 200
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
-        with patch("superharness.cli._find_monitor_processes", return_value=[(1234, 8800, "/projects/myapp")]):
+        with patch("superharness.cli._find_dashboard_processes", return_value=[(1234, 8800, "/projects/myapp")]):
             with patch("urllib.request.urlopen", return_value=mock_resp):
-                running, port = _is_monitor_running("/projects/myapp")
+                running, port = _is_dashboard_running("/projects/myapp")
         assert running is True
         assert port == 8800
 
-    def test_is_monitor_running_returns_false_for_unknown_project(self):
-        """_is_monitor_running(project_dir) returns (False, None) when no monitor serves that project."""
-        with patch("superharness.cli._find_monitor_processes", return_value=[(1234, 8800, "/projects/other")]):
-            running, port = _is_monitor_running("/projects/myapp")
+    def test_is_dashboard_running_returns_false_for_unknown_project(self):
+        """_is_dashboard_running(project_dir) returns (False, None) when no dashboard serves that project."""
+        with patch("superharness.cli._find_dashboard_processes", return_value=[(1234, 8800, "/projects/other")]):
+            running, port = _is_dashboard_running("/projects/myapp")
         assert running is False
         assert port is None
 
-    def test_is_monitor_running_returns_false_when_no_processes(self):
-        """_is_monitor_running(project_dir) returns (False, None) when no monitors are running."""
-        with patch("superharness.cli._find_monitor_processes", return_value=[]):
+    def test_is_dashboard_running_returns_false_when_no_processes(self):
+        """_is_dashboard_running(project_dir) returns (False, None) when no dashboards are running."""
+        with patch("superharness.cli._find_dashboard_processes", return_value=[]):
             with patch("urllib.request.urlopen", side_effect=ConnectionRefusedError()):
-                running, port = _is_monitor_running("/projects/myapp")
+                running, port = _is_dashboard_running("/projects/myapp")
         assert running is False
         assert port is None
 
-    def test_is_monitor_running_resolves_realpath_for_project(self):
-        """_is_monitor_running normalises symlinks when comparing project paths."""
+    def test_is_dashboard_running_resolves_realpath_for_project(self):
+        """_is_dashboard_running normalises symlinks when comparing project paths."""
         import os
         real_path = os.path.realpath("/projects/myapp")
         mock_resp = MagicMock()
         mock_resp.status = 200
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
-        with patch("superharness.cli._find_monitor_processes", return_value=[(5678, 9100, real_path)]):
+        with patch("superharness.cli._find_dashboard_processes", return_value=[(5678, 9100, real_path)]):
             with patch("urllib.request.urlopen", return_value=mock_resp):
-                running, port = _is_monitor_running("/projects/myapp")
+                running, port = _is_dashboard_running("/projects/myapp")
         assert running is True
         assert port == 9100
 
-    # ── monitor-list shows Project column ─────────────────────────────────────
+    # ── dashboard-list shows Project column ─────────────────────────────────────
 
-    def test_monitor_list_shows_project_basename(self, runner):
-        """monitor-list shows basename of project_dir in PROJECT column."""
+    def test_dashboard_list_shows_project_basename(self, runner):
+        """dashboard-list shows basename of project_dir in PROJECT column."""
         processes = [(1111, 8800, "/home/user/projects/coolapp")]
-        with patch("superharness.cli._find_monitor_processes", return_value=processes):
-            result = runner.invoke(main, ["monitor-list"])
+        with patch("superharness.cli._find_dashboard_processes", return_value=processes):
+            result = runner.invoke(main, ["dashboard-list"])
         assert result.exit_code == 0
         assert "coolapp" in result.output
 
-    def test_monitor_list_shows_pid_port_url_columns(self, runner):
-        """monitor-list output contains PID, PORT, PROJECT, URL headers."""
+    def test_dashboard_list_shows_pid_port_url_columns(self, runner):
+        """dashboard-list output contains PID, PORT, PROJECT, URL headers."""
         processes = [(2222, 9000, "/some/project")]
-        with patch("superharness.cli._find_monitor_processes", return_value=processes):
-            result = runner.invoke(main, ["monitor-list"])
+        with patch("superharness.cli._find_dashboard_processes", return_value=processes):
+            result = runner.invoke(main, ["dashboard-list"])
         assert result.exit_code == 0
         assert "PID" in result.output
         assert "PORT" in result.output
         assert "PROJECT" in result.output
         assert "URL" in result.output
 
-    def test_monitor_list_no_processes_shows_empty_message(self, runner):
-        """monitor-list prints helpful message when nothing is running."""
-        with patch("superharness.cli._find_monitor_processes", return_value=[]):
-            result = runner.invoke(main, ["monitor-list"])
+    def test_dashboard_list_no_processes_shows_empty_message(self, runner):
+        """dashboard-list prints helpful message when nothing is running."""
+        with patch("superharness.cli._find_dashboard_processes", return_value=[]):
+            result = runner.invoke(main, ["dashboard-list"])
         assert result.exit_code == 0
-        assert "No monitor-ui processes running" in result.output
+        assert "No dashboard processes running" in result.output
 
-    def test_monitor_list_shows_multiple_entries(self, runner):
-        """monitor-list shows one row per running monitor."""
+    def test_dashboard_list_shows_multiple_entries(self, runner):
+        """dashboard-list shows one row per running dashboard."""
         processes = [
             (1111, 8800, "/projects/alpha"),
             (2222, 8801, "/projects/beta"),
         ]
-        with patch("superharness.cli._find_monitor_processes", return_value=processes):
-            result = runner.invoke(main, ["monitor-list"])
+        with patch("superharness.cli._find_dashboard_processes", return_value=processes):
+            result = runner.invoke(main, ["dashboard-list"])
         assert result.exit_code == 0
         assert "alpha" in result.output
         assert "beta" in result.output
         assert "8800" in result.output
         assert "8801" in result.output
 
-    # ── monitor-kill --project kills only that project ─────────────────────────
+    # ── dashboard-kill --project kills only that project ─────────────────────────
 
-    def test_monitor_kill_project_kills_matching_process(self, runner):
-        """monitor-kill --project <dir> kills only the monitor for that project."""
+    def test_dashboard_kill_project_kills_matching_process(self, runner):
+        """dashboard-kill --project <dir> kills only the dashboard for that project."""
         processes = [
             (1111, 8800, "/projects/alpha"),
             (2222, 8801, "/projects/beta"),
         ]
-        with patch("superharness.cli._find_monitor_processes", return_value=processes):
+        with patch("superharness.cli._find_dashboard_processes", return_value=processes):
             with patch("superharness.cli.os.kill") as mock_kill:
-                result = runner.invoke(main, ["monitor-kill", "--project", "/projects/alpha"])
+                result = runner.invoke(main, ["dashboard-kill", "--project", "/projects/alpha"])
         assert result.exit_code == 0
         # Should have killed only pid 1111 (alpha), not 2222 (beta)
         killed_pids = [call.args[0] for call in mock_kill.call_args_list]
         assert 1111 in killed_pids
         assert 2222 not in killed_pids
 
-    def test_monitor_kill_project_not_found_exits_nonzero(self, runner):
-        """monitor-kill --project <dir> exits with non-zero when project not found."""
+    def test_dashboard_kill_project_not_found_exits_nonzero(self, runner):
+        """dashboard-kill --project <dir> exits with non-zero when project not found."""
         processes = [(1111, 8800, "/projects/alpha")]
-        with patch("superharness.cli._find_monitor_processes", return_value=processes):
+        with patch("superharness.cli._find_dashboard_processes", return_value=processes):
             with patch("superharness.cli.os.kill"):
-                result = runner.invoke(main, ["monitor-kill", "--project", "/projects/notfound"])
+                result = runner.invoke(main, ["dashboard-kill", "--project", "/projects/notfound"])
         assert result.exit_code != 0
 
-    def test_monitor_kill_no_args_kills_all(self, runner):
-        """monitor-kill with no filter kills all monitor-ui processes."""
+    def test_dashboard_kill_no_args_kills_all(self, runner):
+        """dashboard-kill with no filter kills all dashboard processes."""
         processes = [
             (1111, 8800, "/projects/alpha"),
             (2222, 8801, "/projects/beta"),
         ]
-        with patch("superharness.cli._find_monitor_processes", return_value=processes):
+        with patch("superharness.cli._find_dashboard_processes", return_value=processes):
             with patch("superharness.cli.os.kill") as mock_kill:
-                result = runner.invoke(main, ["monitor-kill"])
+                result = runner.invoke(main, ["dashboard-kill"])
         assert result.exit_code == 0
         killed_pids = [call.args[0] for call in mock_kill.call_args_list]
         assert 1111 in killed_pids
         assert 2222 in killed_pids
 
-    def test_monitor_kill_no_processes_prints_message(self, runner):
-        """monitor-kill when nothing running prints helpful message."""
-        with patch("superharness.cli._find_monitor_processes", return_value=[]):
-            result = runner.invoke(main, ["monitor-kill"])
+    def test_dashboard_kill_no_processes_prints_message(self, runner):
+        """dashboard-kill when nothing running prints helpful message."""
+        with patch("superharness.cli._find_dashboard_processes", return_value=[]):
+            result = runner.invoke(main, ["dashboard-kill"])
         assert result.exit_code == 0
-        assert "No monitor-ui processes found" in result.output
+        assert "No dashboard processes found" in result.output
 
-    # ── duplicate detection in _run_monitor ───────────────────────────────────
+    # ── duplicate detection in _run_dashboard ───────────────────────────────────
 
-    def test_run_monitor_already_running_shows_url_and_project(self, capsys):
-        """When a monitor is already running for this project, _run_monitor prints URL and project path."""
-        with patch("superharness.cli._is_monitor_running", return_value=(True, 8800)):
+    def test_run_dashboard_already_running_shows_url_and_project(self, capsys):
+        """When a dashboard is already running for this project, _run_dashboard prints URL and project path."""
+        with patch("superharness.cli._is_dashboard_running", return_value=(True, 8800)):
             with patch("superharness.cli.os.getcwd", return_value="/projects/myapp"):
-                _run_monitor(("--project", "/projects/myapp"))
+                _run_dashboard(("--project", "/projects/myapp"))
         captured = capsys.readouterr()
         output = captured.out + captured.err
         assert "8800" in output
         # Should mention the project or "already"
         assert "already" in output.lower() or "/projects/myapp" in output
 
-    def test_run_monitor_already_running_does_not_start_new_process(self):
-        """When a monitor is already running, _run_monitor must NOT spawn a new process."""
-        with patch("superharness.cli._is_monitor_running", return_value=(True, 8800)):
+    def test_run_dashboard_already_running_does_not_start_new_process(self):
+        """When a dashboard is already running, _run_dashboard must NOT spawn a new process."""
+        with patch("superharness.cli._is_dashboard_running", return_value=(True, 8800)):
             with patch("superharness.cli.os.getcwd", return_value="/projects/myapp"):
                 with patch("superharness.cli.subprocess.Popen") as mock_popen:
-                    _run_monitor(("--project", "/projects/myapp"))
+                    _run_dashboard(("--project", "/projects/myapp"))
         mock_popen.assert_not_called()
 
 
-class TestMonitorList:
-    """Tests for `shux monitor-list` command (acceptance criteria v1.3.1)."""
+class TestDashboardList:
+    """Tests for `shux dashboard-list` command (acceptance criteria v1.3.1)."""
 
     def test_no_processes_running(self, runner):
-        """When no monitor-ui processes found, prints sentinel message."""
-        with patch("superharness.cli._find_monitor_processes", return_value=[]):
-            result = runner.invoke(main, ["monitor-list"])
+        """When no dashboard-ui processes found, prints sentinel message."""
+        with patch("superharness.cli._find_dashboard_processes", return_value=[]):
+            result = runner.invoke(main, ["dashboard-list"])
         assert result.exit_code == 0
-        assert "No monitor-ui processes running" in result.output
+        assert "No dashboard processes running" in result.output
 
     def test_shows_column_headers(self, runner):
         """When processes exist, header row includes PID, PORT, PROJECT, URL."""
         procs = [(12345, 8787, "/home/user/myproject")]
-        with patch("superharness.cli._find_monitor_processes", return_value=procs):
-            result = runner.invoke(main, ["monitor-list"])
+        with patch("superharness.cli._find_dashboard_processes", return_value=procs):
+            result = runner.invoke(main, ["dashboard-list"])
         assert result.exit_code == 0
         assert "PID" in result.output
         assert "PORT" in result.output
@@ -844,97 +844,97 @@ class TestMonitorList:
     def test_shows_process_row_data(self, runner):
         """Process row shows pid, port, project basename, and URL."""
         procs = [(99999, 8787, "/home/user/myproject")]
-        with patch("superharness.cli._find_monitor_processes", return_value=procs):
-            result = runner.invoke(main, ["monitor-list"])
+        with patch("superharness.cli._find_dashboard_processes", return_value=procs):
+            result = runner.invoke(main, ["dashboard-list"])
         assert result.exit_code == 0
         assert "99999" in result.output
         assert "8787" in result.output
         assert "myproject" in result.output
         assert "http://127.0.0.1:8787" in result.output
 
-    def test_hints_monitor_kill(self, runner):
-        """Output includes hint for shux monitor-kill."""
+    def test_hints_dashboard_kill(self, runner):
+        """Output includes hint for shux dashboard-kill."""
         procs = [(12345, 8787, "/home/user/proj")]
-        with patch("superharness.cli._find_monitor_processes", return_value=procs):
-            result = runner.invoke(main, ["monitor-list"])
+        with patch("superharness.cli._find_dashboard_processes", return_value=procs):
+            result = runner.invoke(main, ["dashboard-list"])
         assert result.exit_code == 0
-        assert "monitor-kill" in result.output
+        assert "dashboard-kill" in result.output
 
-    def test_hints_monitor_kill_port(self, runner):
-        """Single-process output includes hint for monitor-kill --port."""
+    def test_hints_dashboard_kill_port(self, runner):
+        """Single-process output includes hint for dashboard-kill --port."""
         procs = [(12345, 8787, "/home/user/myproj")]
-        with patch("superharness.cli._find_monitor_processes", return_value=procs):
-            result = runner.invoke(main, ["monitor-list"])
+        with patch("superharness.cli._find_dashboard_processes", return_value=procs):
+            result = runner.invoke(main, ["dashboard-list"])
         assert result.exit_code == 0
         assert "--port" in result.output
 
-    def test_hints_monitor_kill_project(self, runner):
-        """Single-process output includes hint for monitor-kill --project."""
+    def test_hints_dashboard_kill_project(self, runner):
+        """Single-process output includes hint for dashboard-kill --project."""
         procs = [(12345, 8787, "/home/user/myproj")]
-        with patch("superharness.cli._find_monitor_processes", return_value=procs):
-            result = runner.invoke(main, ["monitor-list"])
+        with patch("superharness.cli._find_dashboard_processes", return_value=procs):
+            result = runner.invoke(main, ["dashboard-list"])
         assert result.exit_code == 0
         assert "--project" in result.output
 
 
-class TestMonitorKill:
-    """Tests for `shux monitor-kill` command (acceptance criteria v1.3.1)."""
+class TestDashboardKill:
+    """Tests for `shux dashboard-kill` command (acceptance criteria v1.3.1)."""
 
     def test_no_processes_found(self, runner):
         """When no processes running, prints not-found message and exits 0."""
-        with patch("superharness.cli._find_monitor_processes", return_value=[]):
-            result = runner.invoke(main, ["monitor-kill"])
+        with patch("superharness.cli._find_dashboard_processes", return_value=[]):
+            result = runner.invoke(main, ["dashboard-kill"])
         assert result.exit_code == 0
-        assert "No monitor-ui processes found" in result.output
+        assert "No dashboard processes found" in result.output
 
-    def test_no_processes_hints_monitor_list(self, runner):
-        """When no processes running, output hints user toward shux monitor-list."""
-        with patch("superharness.cli._find_monitor_processes", return_value=[]):
-            result = runner.invoke(main, ["monitor-kill"])
+    def test_no_processes_hints_dashboard_list(self, runner):
+        """When no processes running, output hints user toward shux dashboard-list."""
+        with patch("superharness.cli._find_dashboard_processes", return_value=[]):
+            result = runner.invoke(main, ["dashboard-kill"])
         assert result.exit_code == 0
-        assert "monitor-list" in result.output
+        assert "dashboard-list" in result.output
 
     def test_kills_all_processes_and_prints_count(self, runner):
         """With no filter, kills every discovered process and prints count."""
         procs = [(11111, 8787, "/proj/a"), (22222, 8788, "/proj/b")]
-        with patch("superharness.cli._find_monitor_processes", return_value=procs):
+        with patch("superharness.cli._find_dashboard_processes", return_value=procs):
             with patch("superharness.cli.os.kill"):
-                result = runner.invoke(main, ["monitor-kill"])
+                result = runner.invoke(main, ["dashboard-kill"])
         assert result.exit_code == 0
-        assert "2 monitor-ui process(es) stopped" in result.output
+        assert "2 dashboard process(es) stopped" in result.output
 
-    def test_kill_hints_monitor_list_after_success(self, runner):
-        """After killing processes, output hints user to run shux monitor-list."""
+    def test_kill_hints_dashboard_list_after_success(self, runner):
+        """After killing processes, output hints user to run shux dashboard-list."""
         procs = [(11111, 8787, "/proj/a")]
-        with patch("superharness.cli._find_monitor_processes", return_value=procs):
+        with patch("superharness.cli._find_dashboard_processes", return_value=procs):
             with patch("superharness.cli.os.kill"):
-                result = runner.invoke(main, ["monitor-kill"])
+                result = runner.invoke(main, ["dashboard-kill"])
         assert result.exit_code == 0
-        assert "monitor-list" in result.output
+        assert "dashboard-list" in result.output
 
     def test_kill_by_port_kills_only_matching(self, runner):
         """--port filter kills only the process on the given port."""
         import signal
         procs = [(11111, 8787, "/proj/a"), (22222, 8788, "/proj/b")]
-        with patch("superharness.cli._find_monitor_processes", return_value=procs):
+        with patch("superharness.cli._find_dashboard_processes", return_value=procs):
             with patch("superharness.cli.os.kill") as mock_kill:
-                result = runner.invoke(main, ["monitor-kill", "--port", "8787"])
+                result = runner.invoke(main, ["dashboard-kill", "--port", "8787"])
         assert result.exit_code == 0
         mock_kill.assert_called_once_with(11111, signal.SIGTERM)
-        assert "1 monitor-ui process(es) stopped" in result.output
+        assert "1 dashboard process(es) stopped" in result.output
 
     def test_kill_by_port_not_found_exits_nonzero(self, runner):
         """--port for a port not in use exits non-zero."""
         procs = [(11111, 8787, "/proj/a")]
-        with patch("superharness.cli._find_monitor_processes", return_value=procs):
-            result = runner.invoke(main, ["monitor-kill", "--port", "9999"])
+        with patch("superharness.cli._find_dashboard_processes", return_value=procs):
+            result = runner.invoke(main, ["dashboard-kill", "--port", "9999"])
         assert result.exit_code != 0
 
     def test_already_dead_process_handled(self, runner):
         """ProcessLookupError is handled gracefully — count still printed."""
         procs = [(11111, 8787, "/proj/a")]
-        with patch("superharness.cli._find_monitor_processes", return_value=procs):
+        with patch("superharness.cli._find_dashboard_processes", return_value=procs):
             with patch("superharness.cli.os.kill", side_effect=ProcessLookupError):
-                result = runner.invoke(main, ["monitor-kill"])
+                result = runner.invoke(main, ["dashboard-kill"])
         assert result.exit_code == 0
         assert "process(es) stopped" in result.output

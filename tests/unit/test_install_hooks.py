@@ -140,7 +140,7 @@ class TestNoHardcodedPathsInRepo:
     """
 
     # Placeholder names used in test fixtures / docs — not real usernames
-    _FIXTURE_NAMES = frozenset({"test", "user", "username", "example", "admin", "root", "yourname", "otheruser"})
+    _FIXTURE_NAMES = frozenset({"test", "user", "username", "example", "admin", "root", "yourname", "otheruser", "testuser", "alice", "bob"})
 
     # Directories containing operational/protocol state — absolute paths are expected there
     _SKIP_DIRS = frozenset({".superharness"})

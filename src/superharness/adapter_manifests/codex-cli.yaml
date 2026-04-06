@@ -1,0 +1,20 @@
+name: codex-cli
+version: "1"
+description: "Codex CLI — OpenAI's coding agent (native adapter)"
+type: native
+launcher_script: delegate-to-codex.sh
+capabilities:
+  - code_generation
+  - file_editing
+  - test_execution
+  - multi_file_refactor
+model_tiers:
+  mini: gpt-5.2
+  standard: gpt-5.3-codex
+  max: gpt-5.4
+requires:
+  bin: codex
+  env: []
+validation:
+  check_bin: true
+  check_env: false

@@ -104,7 +104,7 @@ echo ""
 echo "Next steps to try on a real project:"
 echo "  superharness init \"My Project\" \"Python\" \"active\""
 echo "  superharness doctor --project ."
-echo "  superharness monitor-ui --project .   # browser dashboard"
+echo "  superharness dashboard-ui --project .   # browser dashboard"
 echo ""
 echo "To run real (non-print-only) dispatch you'll need an agent CLI:"
 echo "  Claude Code:  npm install -g @anthropic-ai/claude-code"  # shipguard:ignore SC-003

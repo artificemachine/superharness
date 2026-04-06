@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -33,6 +34,7 @@ def test_snapshot_creates_yaml(project: Path, monkeypatch):
     assert "captured_at" in doc
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Unix file permissions not available on Windows")
 def test_snapshot_chmod_600(project: Path, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
 
@@ -154,6 +156,7 @@ def test_check_warns_on_no_api_keys(project: Path, monkeypatch):
     assert any("no API keys" in m for m in msgs)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="check() validates Unix file permissions")
 def test_check_passes_with_keys(project: Path, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-good")
     monkeypatch.setenv("PATH", "/usr/bin")

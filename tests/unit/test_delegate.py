@@ -390,26 +390,28 @@ def test_delegate_scheduled_after_idempotent(repo_root, tmp_path) -> None:
 
 
 def test_delegate_via_sdk_uses_sdk_runner_when_available(repo_root, tmp_path) -> None:
-    """--via sdk uses SDKRunner when SDK is available."""
-    pytest.importorskip("claude_agent_sdk")
-    from unittest.mock import MagicMock, patch
+    """--via sdk uses SDKRunner when SDK is available.
+
+    This test runs delegate as a subprocess, so in-process patches have no
+    effect. It requires the real SDK + CLI to be installed on the machine.
+    """
+    sdk = pytest.importorskip("claude_agent_sdk")
+    # Skip if the module is a test stub (no real query function)
+    if not callable(getattr(sdk, "query", None)):
+        pytest.skip("claude_agent_sdk is a test stub, not the real SDK")
+    import shutil
+    if not shutil.which("claude"):
+        pytest.skip("claude CLI not on PATH")
 
     project = _setup_project(tmp_path)
 
-    # Mock SDK runner to simulate successful execution
-    mock_runner = MagicMock()
-    mock_runner.run.return_value = {"content": "Task completed via SDK"}
-
-    with patch("superharness.commands.delegate.sdk_available", return_value=True):
-        with patch("superharness.commands.delegate.SDKRunner", return_value=mock_runner):
-            result = _run_delegate_py(
-                repo_root,
-                args=[
-                    "--to", "claude-code", "--project", str(project),
-                    "--task", "mcp-docs", "--via", "sdk",
-                ],
-                env={"PATH": "/usr/bin:/bin"},
-            )
+    result = _run_delegate_py(
+        repo_root,
+        args=[
+            "--to", "claude-code", "--project", str(project),
+            "--task", "mcp-docs", "--via", "sdk", "--print-only",
+        ],
+    )
 
     assert result.returncode == 0, result.stderr
 

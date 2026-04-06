@@ -63,7 +63,7 @@ export PYTHONPATH="${ROOT_DIR}/src${PYTHONPATH:+:${PYTHONPATH}}"
 NOW="$(date -u +%FT%TZ)"
 NOW_EPOCH="$(date -u +%s)"
 
-PY_HELPER="$(mktemp "${TMPDIR:-/tmp}/superharness-deadline-XXXXXX.py")"
+PY_HELPER="$(mktemp "${TMPDIR:-/tmp}/superharness-deadline-XXXXXX")"
 trap 'rm -f "$PY_HELPER"' EXIT
 
 cat > "$PY_HELPER" << 'PYTHON'
