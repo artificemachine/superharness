@@ -209,7 +209,7 @@ def main(argv: list[str] | None = None) -> None:
     if opts.check and warns > 0:
         sys.exit(1)
     print()
-    print("→ Next: run 'shux contract' to see your tasks, or 'shux monitor' to open the dashboard.")
+    print("→ Next: run 'shux contract' to see your tasks, or 'shux dashboard' to open the dashboard.")
 
 
 if __name__ == "__main__":

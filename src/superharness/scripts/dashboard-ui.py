@@ -47,7 +47,7 @@ HTML = """<!doctype html>
 <head>
   <meta charset=\"utf-8\" />
   <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" />
-  <title>superharness monitor</title>
+  <title>superharness dashboard</title>
   <style>
     :root { --bg:#0b1220; --panel:#131c2e; --text:#e7ecf6; --muted:#9fb0d0; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444; --line:#23314d; --btn:#1b2a46; --btn2:#334e7d; }
     body { margin:0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:var(--bg); color:var(--text); }
@@ -113,7 +113,7 @@ HTML = """<!doctype html>
 </head>
 <body>
   <div class=\"wrap\">
-    <h1>superharness monitor</h1>
+    <h1>superharness dashboard</h1>
     <div class=\"meta\" id=\"meta\">loading...</div>
     <div class=\"banner\" id=\"approvalBanner\" style=\"display:none\">User approval required.</div>
     <div class=\"plan-banner\" id=\"planBanner\" style=\"display:none\">Plan confirmation required.</div>
@@ -1535,7 +1535,7 @@ def watcher_health(runtime: dict, items: list[dict], now_utc: str) -> dict:
     if not loaded:
         return {
             "level": "bad",
-            "message": "Watcher is not running. Run 'shux monitor' to start the dashboard and watcher.",
+            "message": "Watcher is not running. Run 'shux dashboard' to start the dashboard and watcher.",
             "pending_count": pending_count,
             "stale_count": stale_count,
             "failed_count": failed_count,
@@ -2364,7 +2364,7 @@ class Handler(BaseHTTPRequestHandler):
                     "--actor",
                     "owner",
                     "--summary",
-                    "Closed from monitor without review request",
+                    "Closed from dashboard without review request",
                 ]
             ), 200
 
@@ -2426,7 +2426,7 @@ class Handler(BaseHTTPRequestHandler):
                     "--by",
                     "owner",
                     "--note",
-                    "Approved from monitor-ui",
+                    "Approved from dashboard",
                 ]
             ), 200
 
@@ -2608,7 +2608,7 @@ class Handler(BaseHTTPRequestHandler):
             agent_health = _agent_status_health(self.project_dir)
             bv = board_view(contract)
             self._json({
-                # New fields (feat.monitor-operator-upgrade)
+                # New fields (feat.dashboard-operator-upgrade)
                 "board": board_tasks(contract),
                 "review_queue": review_queue(contract),
                 "agent_health": agent_health,
@@ -2726,7 +2726,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def autohealth_check(port: int, host: str = "127.0.0.1", timeout: float = 2.0) -> bool:
-    """Ping the monitor server. Returns True if healthy, False otherwise."""
+    """Ping the dashboard server. Returns True if healthy, False otherwise."""
     import urllib.request
     try:
         req = urllib.request.Request(f"http://{host}:{port}/api/status")
@@ -2756,7 +2756,7 @@ def autohealth_loop(
                 log_handle.close()
             except Exception:
                 pass
-        log_handle = open(os.path.join(project_dir, ".superharness", "monitor-health.log"), "a")
+        log_handle = open(os.path.join(project_dir, ".superharness", "dashboard-health.log"), "a")
         return subprocess.Popen(
             [sys.executable, "-u", __file__, "--project", str(project_dir),
              "--port", str(port), "--host", host, "--no-open"],
@@ -2774,7 +2774,7 @@ def autohealth_loop(
     signal.signal(signal.SIGINT, _shutdown)
 
     proc = _start()
-    print(f"autohealth: started monitor pid={proc.pid} port={port}")
+    print(f"autohealth: started dashboard pid={proc.pid} port={port}")
 
     while restarts < max_restarts:
         time.sleep(interval)
@@ -2784,19 +2784,19 @@ def autohealth_loop(
                 proc.terminate()
                 proc.wait(timeout=5)
             proc = _start()
-            print(f"autohealth: restarted monitor pid={proc.pid} (restart #{restarts})")
+            print(f"autohealth: restarted dashboard pid={proc.pid} (restart #{restarts})")
     print(f"autohealth: max restarts ({max_restarts}) reached, exiting")
 
 
 def main() -> int:
     _ensure_python_with_yaml()
-    ap = argparse.ArgumentParser(description="superharness watcher browser monitor")
+    ap = argparse.ArgumentParser(description="superharness browser dashboard")
     ap.add_argument("--project", default=None, help="project directory containing .superharness (default: cwd)")
     ap.add_argument("--port", type=int, default=8787, help="HTTP port (default: 8787)")
     ap.add_argument("--host", default="127.0.0.1", help="bind host (default: 127.0.0.1)")
     ap.add_argument("--refresh-seconds", type=int, default=3, help="ui refresh seconds (default: 3)")
     ap.add_argument("--no-open", action="store_true", help="do not open browser automatically")
-    ap.add_argument("--autohealth", action="store_true", help="run watchdog that auto-restarts monitor if it dies")
+    ap.add_argument("--autohealth", action="store_true", help="run watchdog that auto-restarts dashboard if it dies")
     ap.add_argument("--health-interval", type=int, default=5, help="health check interval in seconds (default: 5)")
     args = ap.parse_args()
 
@@ -2805,10 +2805,10 @@ def main() -> int:
         raise SystemExit(f"Missing .superharness in project: {project_dir}")
     try:
         if not ipaddress.ip_address(args.host).is_loopback:
-            raise SystemExit(f"monitor-ui host must be loopback-only, got: {args.host}")
+            raise SystemExit(f"dashboard host must be loopback-only, got: {args.host}")
     except ValueError:
         if args.host not in {"localhost"}:
-            raise SystemExit(f"monitor-ui host must be loopback-only, got: {args.host}")
+            raise SystemExit(f"dashboard host must be loopback-only, got: {args.host}")
 
     if args.autohealth:
         autohealth_loop(
@@ -2821,15 +2821,14 @@ def main() -> int:
 
     scripts_dir = Path(__file__).resolve().parent
 
-    # Guard: prevent a second monitor for the same project directory.
-    # Scan running processes for another monitor-ui.py with the same --project arg.
+    # Guard: prevent a second dashboard for the same project directory.
     _my_pid = os.getpid()
     try:
         import subprocess as _sp
         _ps = _sp.run(["ps", "ax", "-o", "pid=,args="], capture_output=True, text=True).stdout
         for _line in _ps.splitlines():
             _line = _line.strip()
-            if "monitor-ui.py" not in _line:
+            if "dashboard-ui.py" not in _line and "monitor-ui.py" not in _line:
                 continue
             _parts = _line.split()
             try:
@@ -2859,8 +2858,8 @@ def main() -> int:
                         except ValueError:
                             pass
                 _url = f"http://127.0.0.1:{_existing_port}" if _existing_port else "(port unknown)"
-                print(f"monitor already running for project '{project_dir.name}' (pid={_other_pid}, {_url})")
-                print(f"  kill it first:  shux monitor-kill --project {project_dir}")
+                print(f"dashboard already running for project '{project_dir.name}' (pid={_other_pid}, {_url})")
+                print(f"  kill it first:  shux dashboard-kill --project {project_dir}")
                 raise SystemExit(0)
     except SystemExit:
         raise
@@ -2897,13 +2896,13 @@ def main() -> int:
                 raise SystemExit(f"Port {port} is already in use") from None
             raise
     url = f"http://{args.host}:{port}"
-    print(f"monitor ui: {url}")
+    print(f"dashboard: {url}")
     print(f"project: {project_dir}")
     print(f"watcher label: {Handler.label}")
-    url_file = os.environ.get("SUPERHARNESS_MONITOR_URL_FILE")
+    url_file = os.environ.get("SUPERHARNESS_DASHBOARD_URL_FILE") or os.environ.get("SUPERHARNESS_MONITOR_URL_FILE")
     if url_file:
         with open(url_file, "w") as _f:
-            _f.write(f"monitor ui: {url}\n")
+            _f.write(f"dashboard: {url}\n")
             _f.write(f"project: {project_dir}\n")
     if not args.no_open:
         webbrowser.open(url)

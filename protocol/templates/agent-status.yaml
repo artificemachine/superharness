@@ -1,0 +1,19 @@
+# Agent status file — heartbeat contract v1
+# Written by each agent runtime to .superharness/agents/<runtime>.status.yaml
+# Watcher and monitor consume this without hardcoding runtime names.
+#
+# schema_version: "1"
+# runtime:        identifier string (e.g. "claude-code", "my-custom-bot")
+# updated_at:     ISO-8601 UTC timestamp — updated on each tick
+# liveness:       active | idle | stopping | dead
+# active_task:    current contract task ID, or null
+# next_wake_at:   ISO-8601 UTC of next scheduled wake, or null
+# budget:         optional token/cost metadata (model, input_tokens, output_tokens, cost_usd, max_budget_usd)
+
+schema_version: "1"
+runtime: __RUNTIME__
+updated_at: __TIMESTAMP__
+liveness: active
+active_task: null
+next_wake_at: null
+budget: null

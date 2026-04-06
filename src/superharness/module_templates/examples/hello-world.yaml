@@ -1,0 +1,13 @@
+schema_version: '1'
+name: hello-world
+description: >
+  Minimal SDK v1 example — prints a greeting when a task is closed.
+  Use this as a starting point for your own modules.
+enabled: false
+detect: {}
+hooks:
+  on_close:
+    action: hello_world_on_close
+    priority: normal
+settings:
+  greeting: "Hello from hello-world module!"

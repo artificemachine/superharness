@@ -125,8 +125,8 @@ _cmd("pack",            "Export and import portable project state.",            
 _cmd("benchmark",       "Show dispatch cost and duration leaderboard.",            module="superharness.commands.benchmark")
 
 
-def _find_monitor_processes():
-    """Return list of (pid, port, project_dir) for all running monitor-ui.py processes."""
+def _find_dashboard_processes():
+    """Return list of (pid, port, project_dir) for all running dashboard-ui.py processes."""
     import subprocess as _sp
     try:
         ps_out = _sp.run(
@@ -138,7 +138,7 @@ def _find_monitor_processes():
     results = []
     for line in ps_out.splitlines():
         line = line.strip()
-        if "monitor-ui.py" not in line:
+        if "dashboard-ui.py" not in line and "monitor-ui.py" not in line:
             continue
         parts = line.split()
         try:
@@ -172,15 +172,15 @@ def _find_monitor_processes():
     return results
 
 
-def _is_monitor_running(project_dir: str = None) -> tuple:
-    """Return (running: bool, port: int|None) for the monitor serving project_dir.
+def _is_dashboard_running(project_dir: str = None) -> tuple:
+    """Return (running: bool, port: int|None) for the dashboard serving project_dir.
 
-    If project_dir is None, falls back to checking any monitor on port 8787.
+    If project_dir is None, falls back to checking any dashboard on port 8787.
     """
     import urllib.request
     if project_dir is not None:
         real_proj = os.path.realpath(project_dir)
-        for pid, port, proj in _find_monitor_processes():
+        for pid, port, proj in _find_dashboard_processes():
             if proj and os.path.realpath(proj) == real_proj and port:
                 try:
                     req = urllib.request.Request(f"http://127.0.0.1:{port}/api/status")
@@ -199,8 +199,8 @@ def _is_monitor_running(project_dir: str = None) -> tuple:
         return False, None
 
 
-def _run_monitor(args):
-    path = os.path.join(_SCRIPTS, "monitor-ui.py")
+def _run_dashboard(args):
+    path = os.path.join(_SCRIPTS, "dashboard-ui.py")
     args_list = list(args)
     if "--project" not in args_list and "-p" not in args_list:
         args_list = ["--project", os.getcwd()] + args_list
@@ -213,11 +213,11 @@ def _run_monitor(args):
             proj = args_list[i + 1]
             break
 
-    # Check if a monitor for THIS project is already running
+    # Check if a dashboard for THIS project is already running
     if not foreground:
-        running, port = _is_monitor_running(proj)
+        running, port = _is_dashboard_running(proj)
         if running:
-            print(f"monitor ui: http://127.0.0.1:{port}  (already running)")
+            print(f"dashboard: http://127.0.0.1:{port}  (already running)")
             print(f"project: {proj}")
             return
 
@@ -228,11 +228,11 @@ def _run_monitor(args):
     # Default: background — detach from terminal, return immediately
     import tempfile
     import time as _time
-    fd, url_file = tempfile.mkstemp(suffix=".monitor-url")
-    os.close(fd)  # Close fd; monitor-ui.py will write to this path
+    fd, url_file = tempfile.mkstemp(suffix=".dashboard-url")
+    os.close(fd)  # Close fd; dashboard-ui.py will write to this path
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
-    env["SUPERHARNESS_MONITOR_URL_FILE"] = url_file
+    env["SUPERHARNESS_DASHBOARD_URL_FILE"] = url_file
     proc = subprocess.Popen(
         [sys.executable, "-u", path] + args_list,
         start_new_session=True,
@@ -248,8 +248,8 @@ def _run_monitor(args):
         if proc.poll() is not None:
             if os.path.exists(url_file):
                 os.unlink(url_file)
-            print(f"monitor failed to start (exit code {proc.returncode})")
-            print("tip: run 'superharness monitor --foreground' to see the error")
+            print(f"dashboard failed to start (exit code {proc.returncode})")
+            print("tip: run 'superharness dashboard --foreground' to see the error")
             return
         if os.path.exists(url_file) and os.path.getsize(url_file) > 0:
             with open(url_file) as f:
@@ -262,30 +262,30 @@ def _run_monitor(args):
     if not url_written:
         if os.path.exists(url_file):
             os.unlink(url_file)
-        print("monitor starting in background...")
+        print("dashboard starting in background...")
     print(f"pid: {proc.pid}  (stop with: kill {proc.pid})")
 
 
-@main.command(name="monitor-kill")
-@click.option("--port", "-p", type=int, default=None, help="Kill only the monitor on this port.")
-@click.option("--project", "proj", default=None, help="Kill only the monitor serving this project directory.")
-@click.option("--all", "kill_all", is_flag=True, default=False, help="Kill all monitor-ui processes (default when no filter given).")
-def cmd_monitor_kill(port, proj, kill_all):
-    """Kill running monitor-ui process(es).
+@main.command(name="dashboard-kill")
+@click.option("--port", "-p", type=int, default=None, help="Kill only the dashboard on this port.")
+@click.option("--project", "proj", default=None, help="Kill only the dashboard serving this project directory.")
+@click.option("--all", "kill_all", is_flag=True, default=False, help="Kill all dashboard processes (default when no filter given).")
+def cmd_dashboard_kill(port, proj, kill_all):
+    """Kill running dashboard process(es).
 
     \b
-    shux monitor-kill                        # kill all monitor-ui processes
-    shux monitor-kill --port 8787            # kill by port
-    shux monitor-kill --project /path/to/p  # kill monitor for a specific project
+    shux dashboard-kill                        # kill all dashboard processes
+    shux dashboard-kill --port 8787            # kill by port
+    shux dashboard-kill --project /path/to/p  # kill dashboard for a specific project
     """
     import signal as _signal
 
-    candidates = _find_monitor_processes()  # [(pid, port, project_dir)]
+    candidates = _find_dashboard_processes()
 
     if not candidates:
-        print("No monitor-ui processes found.")
-        print("  list:   shux monitor-list")
-        print("  start:  shux monitor")
+        print("No dashboard processes found.")
+        print("  list:   shux dashboard-list")
+        print("  start:  shux dashboard")
         return
 
     # Filter
@@ -294,14 +294,14 @@ def cmd_monitor_kill(port, proj, kill_all):
         targets = [(pid, p, pj) for pid, p, pj in candidates if p == port]
         if not targets:
             ports_found = [str(p) for _, p, _ in candidates if p]
-            print(f"No monitor-ui found on port {port}. Running on: {', '.join(ports_found) or 'unknown'}")
+            print(f"No dashboard found on port {port}. Running on: {', '.join(ports_found) or 'unknown'}")
             sys.exit(1)
     elif proj is not None:
         real_proj = os.path.realpath(proj)
         targets = [(pid, p, pj) for pid, p, pj in candidates if pj and os.path.realpath(pj) == real_proj]
         if not targets:
-            print(f"No monitor-ui found for project: {proj}")
-            print("  list running:  shux monitor-list")
+            print(f"No dashboard found for project: {proj}")
+            print("  list running:  shux dashboard-list")
             sys.exit(1)
 
     killed = 0
@@ -310,27 +310,27 @@ def cmd_monitor_kill(port, proj, kill_all):
         proj_str = f"  project={pj}" if pj else ""
         try:
             os.kill(pid, _signal.SIGTERM)
-            print(f"Killed monitor-ui  pid={pid}  port{port_str}{proj_str}")
+            print(f"Killed dashboard  pid={pid}  port{port_str}{proj_str}")
             killed += 1
         except ProcessLookupError:
             print(f"Process {pid} already gone.")
         except PermissionError:
             print(f"Permission denied killing pid {pid}.", file=sys.stderr)
 
-    print(f"{killed} monitor-ui process(es) stopped.")
+    print(f"{killed} dashboard process(es) stopped.")
     if killed:
-        print("  list remaining:  shux monitor-list")
-        print("  restart:         shux monitor")
+        print("  list remaining:  shux dashboard-list")
+        print("  restart:         shux dashboard")
 
 
-@main.command(name="monitor-list")
-def cmd_monitor_list():
-    """List all running monitor-ui processes with their ports and projects."""
-    found = _find_monitor_processes()  # [(pid, port, project_dir)]
+@main.command(name="dashboard-list")
+def cmd_dashboard_list():
+    """List all running dashboard processes with their ports and projects."""
+    found = _find_dashboard_processes()
 
     if not found:
-        print("No monitor-ui processes running.")
-        print("  start:  shux monitor")
+        print("No dashboard processes running.")
+        print("  start:  shux dashboard")
         return
 
     print(f"{'PID':<8} {'PORT':<8} {'PROJECT':<40} URL")
@@ -340,27 +340,51 @@ def cmd_monitor_list():
         proj_label = os.path.basename(proj) if proj else "?"
         print(f"{pid:<8} {port or '?':<8} {proj_label:<40} {url}")
     print()
-    print("  kill all:              shux monitor-kill")
+    print("  kill all:              shux dashboard-kill")
     if len(found) == 1:
         pid, port, proj = found[0]
         if port:
-            print(f"  kill this one:         shux monitor-kill --port {port}")
+            print(f"  kill this one:         shux dashboard-kill --port {port}")
         if proj:
-            print(f"  kill by project:       shux monitor-kill --project {proj}")
+            print(f"  kill by project:       shux dashboard-kill --project {proj}")
 
 
-@main.command(name="monitor", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
+@main.command(name="dashboard", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def cmd_monitor(args):
-    """Launch local watcher dashboard (alias: monitor-ui)."""
-    _run_monitor(args)
+def cmd_dashboard(args):
+    """Launch local browser dashboard."""
+    _run_dashboard(args)
 
 
-@main.command(name="monitor-ui", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
+@main.command(name="dashboard-ui", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def cmd_monitor_ui(args):
-    """Launch local watcher dashboard."""
-    _run_monitor(args)
+def cmd_dashboard_ui(args):
+    """Launch local browser dashboard."""
+    _run_dashboard(args)
+
+
+# Hidden backwards-compat aliases
+@main.command(name="monitor", hidden=True, context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def cmd_monitor_compat(args):
+    """Backwards-compat alias for 'dashboard'."""
+    _run_dashboard(args)
+
+
+@main.command(name="monitor-kill", hidden=True)
+@click.option("--port", "-p", type=int, default=None)
+@click.option("--project", "proj", default=None)
+@click.option("--all", "kill_all", is_flag=True, default=False)
+def cmd_monitor_kill_compat(port, proj, kill_all):
+    """Backwards-compat alias for 'dashboard-kill'."""
+    cmd_dashboard_kill.invoke(click.Context(cmd_dashboard_kill, info_name="dashboard-kill",
+                              params={"port": port, "proj": proj, "kill_all": kill_all}))
+
+
+@main.command(name="monitor-list", hidden=True)
+def cmd_monitor_list_compat():
+    """Backwards-compat alias for 'dashboard-list'."""
+    cmd_dashboard_list.invoke(click.Context(cmd_dashboard_list, info_name="dashboard-list"))
 
 
 @main.command(name="delegate", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
@@ -453,7 +477,7 @@ def cmd_shux():
   shux contract            ← show all tasks with status, owner, next-task suggestion
   shux continue            ← resume active contract and run full session lifecycle
   shux status              ← dashboard: contract, tasks, watcher, profile
-  shux monitor             ← open browser dashboard (auto-detects project, opens browser)
+  shux dashboard           ← open browser dashboard (auto-detects project, opens browser)
   shux test-type <id>      ← set mandatory test types for a task (interactive prompt)
   shux enhance             ← list, enable, disable modules (integrations)
   shux run "<prompt>"      ← run a prompt via SDK (auto-detect, falls back to CLI)

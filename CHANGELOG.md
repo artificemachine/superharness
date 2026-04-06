@@ -1452,3 +1452,23 @@ If you're an agent picking this up:
 - Worktree cleanup wrapped in try/finally (prevents resource leaks on exception)
 - WorktreeSlot.project_dir replaces fragile parent-path derivation
 - severity ranking uses .get() with safe default (prevents KeyError crash)
+
+## [1.7.1] - 2026-04-06
+
+### Added
+- Adapter registry: agent runtime adapter manifests for claude-code and codex-cli
+- Agent status tracking: real-time activity state per agent
+- Heartbeat contract: contract-level heartbeat monitoring
+- Pack export/import: portable project state bundling
+- Module system SDK + validator + constants
+- Module templates (hello-world, task-logger examples)
+- Parallel checkout safety tests
+- README: intelligence layer feature table (v1.7.0 features documented)
+- `shux benchmark` added to README commands list
+
+### Fixed
+- macOS `mktemp` compatibility: removed `.py` suffix from deadline check temp file template (fixes 2 test failures)
+
+### Changed
+- docs/ROADMAP.md: parallel dispatch marked as implemented (v1.7.0)
+- docs/improvements.md: parallel dispatch marked as completed

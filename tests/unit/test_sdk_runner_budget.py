@@ -55,11 +55,25 @@ _SDK_STUB = _build_sdk_stub()
 
 
 def _install_sdk_stub():
-    """Register the stub in sys.modules."""
-    sys.modules.setdefault("claude_agent_sdk", _SDK_STUB)
+    """Force-register the stub in sys.modules (overrides any prior mock)."""
+    sys.modules["claude_agent_sdk"] = _SDK_STUB
 
 
 _install_sdk_stub()
+
+
+@pytest.fixture(autouse=True)
+def _ensure_sdk_stub():
+    """Ensure the SDK stub is active for every test in this module.
+
+    Other test modules (e.g. test_subtask_budget) may replace
+    sys.modules["claude_agent_sdk"] with a different mock. This fixture
+    restores our stub so isinstance checks in sdk_runner.run() match
+    the ResultMessage class we yield from _mock_query.
+    """
+    _install_sdk_stub()
+    yield
+    _install_sdk_stub()
 
 
 # ---------------------------------------------------------------------------
