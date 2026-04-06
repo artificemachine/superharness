@@ -1506,3 +1506,18 @@ If you're an agent picking this up:
   Doctor step is non-blocking; non-git projects skip step 3 gracefully.
 - 16 new tests in `tests/unit/test_onboard.py` covering all wizard steps.
 - `shux onboard` added to CLI router and README command list.
+
+## [1.10.0] - 2026-04-06
+
+### Added
+- `engine/model_budget.py` — budget guard: `check_budget()` returns OK/WARN/BLOCK
+  based on daily spend vs `profile.yaml` limits (80% warn threshold, strict-mode block).
+- `shux config get/set` — read/write dot-path keys in `profile.yaml`
+  (e.g. `budget.daily_limit`, `budget.strict`, `default_model`).
+- `shux benchmark --models` — 7-day per-model cost/task breakdown table with optional
+  weekly budget % summary.
+- 9 new tests: `test_model_budget.py` (4), `test_config_cmd.py` (3), `test_benchmark_models.py` (2).
+- `shux config` and `shux benchmark --models` added to CLI router and README.
+
+### Changed (1.10.0 addendum)
+- `shux delegate` now calls `check_budget()` before every dispatch: prints WARN at ≥80% daily limit, returns exit 1 on BLOCK (strict mode). Override with `--force`.
