@@ -69,3 +69,13 @@ jobs:
             --title "superharness ${{ steps.version.outputs.tag }}" \
             --notes-file "${{ steps.changelog.outputs.notes_file }}" \
             --latest
+
+      # GitHub won't trigger publish.yml from a release created by GITHUB_TOKEN,
+      # so we dispatch it explicitly via workflow_dispatch.
+      - name: Trigger publish workflow
+        if: steps.tag_check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run publish.yml \
+            --ref "${{ steps.version.outputs.tag }}"
