@@ -1604,3 +1604,20 @@ If you're an agent picking this up:
   programmatic profile reads/writes.
 - `docs/GUIDE.md`: documented `auto_dispatch` config key with usage example.
 - 19 new tests in `tests/unit/test_auto_dispatch.py`.
+
+## [1.11.1] - 2026-04-06
+
+### Added
+- `shux demo` and `shux onboard` now open with a "what is superharness" intro
+  block — explains the problem, the 3 key files, the task flow, and the 5 core
+  commands before running any setup steps.
+- `shux demo` step markers (`── N / 5`) now flush before subprocess output,
+  ensuring correct ordering in all terminal environments.
+- `docs/GUIDE.md`: added `shux demo` command entry and section documenting the
+  walkthrough and adapter bundling.
+
+### Fixed
+- Adapter hooks (`adapters/claude-code/hooks/`) are now bundled inside the
+  installed package. `shux install-hooks` and `shux onboard` no longer error
+  with "Adapter hooks directory not found" after a `pip install` or
+  `pipx install superharness` without a repo checkout.

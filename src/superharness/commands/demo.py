@@ -24,16 +24,39 @@ def main(argv: list[str] | None = None) -> None:
     def step(n: str) -> None:
         print()
         print(f"── {n}")
+        sys.stdout.flush()
 
     py = sys.executable
     src_root = Path(__file__).resolve().parent.parent.parent.parent
     env = {**os.environ, "PYTHONPATH": str(src_root / "src")}
 
     print()
+    print("superharness — what is it?")
+    print("==========================")
+    print()
+    print("  You delegate work to AI agents (Claude Code, Codex CLI, etc.).")
+    print("  They forget context between sessions. Work gets lost or duplicated.")
+    print()
+    print("  superharness fixes that with three files:")
+    print("    contract.yaml  — single source of truth for every task")
+    print("    handoffs/      — context passed between agents (nothing lost)")
+    print("    inbox.yaml     — tasks queued, dispatched, and tracked")
+    print()
+    print("  The flow:")
+    print("    task → delegate → agent works → handoff → verify → close")
+    print()
+    print("  5 commands to know:")
+    print("    shux onboard           set up this project")
+    print("    shux contract          view all tasks and their status")
+    print("    shux delegate <id>     hand a task to an agent")
+    print("    shux dashboard         open the browser dashboard")
+    print("    shux close <id>        mark a task done")
+    print()
     print("superharness demo — task lifecycle walkthrough")
     print("===============================================")
     print(f"Temp project: {demo_dir}")
 
+    sys.stdout.flush()
     step("1 / 5  init")
     subprocess.run([py, "-m", "superharness.commands.init_project", "--dry-run", "Demo Project", "Bash", "greenfield"],
                    env=env, cwd=demo_dir, check=False)

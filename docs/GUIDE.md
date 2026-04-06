@@ -19,6 +19,7 @@ Type these directly into Claude Code or Codex CLI — no terminal needed after f
 | `shux close <task-id>` | Mark task done (requires verify), append ledger, write handoff |
 | `shux status` | Dashboard: contract, tasks, watcher state, profile |
 | `shux recall <keywords>` | Search past handoffs and ledger entries |
+| `shux demo` | Zero-config task lifecycle walkthrough in a temp directory — explains what superharness is and shows all 5 core commands before running |
 | `shux uninstall` | Remove watcher and system artifacts for this project |
 | `shux hygiene` | Validate protocol compliance (contract, handoffs, ledger) |
 | `shux dashboard` | Open browser dashboard |
@@ -95,7 +96,7 @@ sequenceDiagram
 
 ## Onboarding a New Project (`shux onboard`)
 
-`shux onboard` is the recommended first command for any project that doesn't yet have superharness set up. It runs a 7-step wizard that detects your stack, scaffolds the protocol directory, and gets Claude/Codex agents oriented immediately.
+`shux onboard` is the recommended first command for any project that doesn't yet have superharness set up. It opens with a brief explanation of what superharness is and the 5 core commands, then runs a 7-step wizard that detects your stack, scaffolds the protocol directory, and gets Claude/Codex agents oriented immediately.
 
 ```bash
 shux onboard                        # interactive wizard in current directory
@@ -130,6 +131,25 @@ shux onboard --project /path/to/project            # target a different director
 - `~/.claude/CLAUDE.md` — a `## superharness` section is appended (once) so every Claude Code session on this machine knows to use `shux`. Never written if the file is missing; never duplicated if already present.
 - Root `.gitignore` — `.superharness/` entry added (solo mode only)
 - `.superharness/.gitignore` — excludes runtime files: `watcher-env.yaml`, `launcher-logs/`, `daemon.pid.json`, `onboarding.yaml`
+
+## Exploring superharness (`shux demo`)
+
+`shux demo` runs a zero-config task lifecycle walkthrough in a temporary directory. It requires no arguments and leaves your project untouched.
+
+**What it does:**
+
+1. Prints a "what is superharness" intro — the problem it solves, the 3 key files, the task flow, and the 5 core commands.
+2. Scaffolds a temp project and walks through: `init` → `task create` → `enqueue` → `dispatch (print-only)` → `hygiene check`.
+3. Prints next steps for trying it on a real project.
+
+```bash
+shux demo           # walkthrough in a temp dir (deleted after)
+shux demo --keep    # keep the temp dir to inspect the files
+```
+
+Use `shux demo` to orient a new team member or verify that your superharness install is working end-to-end.
+
+**Adapter hooks bundled in the package:** Since v1.11.0, the Claude Code adapter hooks (`adapters/claude-code/hooks/`) are bundled inside the installed package. `shux install-hooks` and `shux onboard` now work correctly after a `pip install superharness` or `pipx install superharness` without requiring a repo checkout.
 
 ---
 
