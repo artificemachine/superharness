@@ -1472,3 +1472,20 @@ If you're an agent picking this up:
 ### Changed
 - docs/ROADMAP.md: parallel dispatch marked as implemented (v1.7.0)
 - docs/improvements.md: parallel dispatch marked as completed
+
+## [1.8.0] - 2026-04-05
+
+### Added
+- `shux daemon start/stop/status/restart` — portable cross-platform background watcher daemon (replaces launchd/systemd install scripts)
+- `shux diff <task-id>` — preview agent changes for a task before closing (supports `--stat` and `--base` flags)
+- `engine/worktree_ops.py` — shared git worktree helpers extracted from `parallel_dispatch.py` (used by both fanout and swarm)
+- Dashboard `/api/costs` endpoint — reads `benchmark.jsonl`, returns cost leaderboard + totals
+- Dashboard cost panel — dispatch cost leaderboard table in the browser UI (auto-refreshes every 30s)
+- Hidden compat alias `monitor-ui` for `dashboard-ui` (backwards compatibility)
+
+### Fixed
+- `test_regression_bugs.py` now loads `dashboard-ui.py` (was still referencing renamed `monitor-ui.py`)
+- CLI router test updated to include `dashboard`, `dashboard-ui`, `benchmark`, `daemon`, `diff` in known subcommands
+
+### Changed
+- `parallel_dispatch.py` and `swarm.py` now import shared helpers from `engine/worktree_ops.py` (private aliases preserved)

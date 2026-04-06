@@ -15,8 +15,10 @@ KNOWN_SUBCOMMANDS = [
     "dispatch",
     "watch",
     "uninstall",
-    "monitor",
-    "monitor-ui",
+    "dashboard",
+    "dashboard-ui",
+    "monitor",       # compat alias
+    "monitor-ui",    # compat alias
     "doctor",
     "install-wrapper",
     "recover",
@@ -24,6 +26,9 @@ KNOWN_SUBCOMMANDS = [
     "hygiene",
     "discuss",
     "watcher-worker",
+    "benchmark",
+    "daemon",
+    "diff",
     "version",
 ]
 
