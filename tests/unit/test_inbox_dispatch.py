@@ -352,6 +352,7 @@ def test_dispatch_non_interactive_reconciles_stuck_launched_to_failed(repo_root,
         env={
             "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
             "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
+            "SUPERHARNESS_NO_PTY_WRAP": "1",
         },
     )
 
@@ -405,6 +406,7 @@ def test_dispatch_non_interactive_codex_pauses_when_worktree_dirty(repo_root, tm
         env={
             "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
             "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
+            "SUPERHARNESS_NO_PTY_WRAP": "1",
         },
     )
 
@@ -473,10 +475,13 @@ def test_dispatch_non_interactive_reconciles_to_done_from_contract(repo_root, tm
         env={
             "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
             "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
+            "SUPERHARNESS_NO_PTY_WRAP": "1",
+            # Skip the `script` PTY wrapper — no controlling terminal in test subprocess
+            "SUPERHARNESS_NO_PTY_WRAP": "1",
         },
     )
 
-    assert result.returncode == 0
+    assert result.returncode == 0, result.stderr
     assert "reconciled from contract task status" in result.stdout
     inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
     assert "id: reconcile-done-item" in inbox_text
@@ -540,6 +545,7 @@ def test_dispatch_non_interactive_pauses_when_contract_waits_user_approval(repo_
         env={
             "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
             "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
+            "SUPERHARNESS_NO_PTY_WRAP": "1",
         },
     )
 
@@ -613,6 +619,7 @@ def test_dispatch_worker_mode_uses_dispatch_project_for_execution(repo_root, tmp
         env={
             "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
             "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
+            "SUPERHARNESS_NO_PTY_WRAP": "1",
         },
     )
 
@@ -718,6 +725,7 @@ def test_dispatch_marks_failed_after_transient_lock_contention(repo_root, tmp_pa
             env={
                 "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
                 "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
+            "SUPERHARNESS_NO_PTY_WRAP": "1",
             },
         )
     finally:
@@ -771,6 +779,7 @@ def test_dispatch_launcher_timeout_kills_hung_process(repo_root, tmp_path) -> No
         env={
             "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
             "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
+            "SUPERHARNESS_NO_PTY_WRAP": "1",
         },
     )
 
