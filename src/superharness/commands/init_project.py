@@ -469,7 +469,7 @@ def main(argv: list[str] | None = None) -> None:
     print("  shux close <id>        ← mark task done")
     print("  shux status            ← dashboard")
     print("  shux recall <keywords> ← search past work")
-    print("  shux monitor           ← open browser dashboard")
+    print("  shux dashboard         ← open browser dashboard")
     print()
     print("Next steps (terminal):")
     print("  superharness doctor --project .   ← verify setup")
@@ -491,9 +491,9 @@ def main(argv: list[str] | None = None) -> None:
             print(f"   bash {adapter_install}")
             print("   This makes Claude see your task context automatically on every session start.")
     print()
-    print("→ Next: run 'shux doctor' to verify your setup, then 'shux monitor' to open the dashboard.")
+    print("→ Next: run 'shux doctor' to verify your setup, then 'shux dashboard' to open the dashboard.")
     print()
-    print("Monitor UI: http://127.0.0.1:8787  (start with: shux monitor)")
+    print("Dashboard: http://127.0.0.1:8787  (start with: shux dashboard)")
 
 
 if __name__ == "__main__":
