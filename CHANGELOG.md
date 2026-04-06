@@ -1541,3 +1541,21 @@ If you're an agent picking this up:
   Skips gracefully if the file doesn't exist or already mentions superharness.
   Override path for testing via `SUPERHARNESS_GLOBAL_CLAUDE_MD` env var.
 - 3 new tests covering append, skip-if-present, skip-if-missing.
+
+## [1.10.3] - 2026-04-06
+
+### Fixed
+- `test_monitor_ui.py`: updated all references from the old `monitor-ui.py` to
+  `dashboard-ui.py` (renamed in v1.7.1 #68). All 110 tests now pass.
+
+### Changed
+- `docs/GUIDE.md`: added full reference sections for `shux onboard`, `shux config
+  get/set`, budget guard in `delegate` (`--force`), `shux benchmark --models`,
+  cold-start banner, and updated team onboarding section.
+- `docs/ROADMAP.md`: added "Recently Shipped" table (v1.9.0–v1.10.2); file is now
+  tracked in git (removed from `.gitignore`).
+
+### Added
+- `.github/workflows/release.yml`: auto-creates a GitHub Release when
+  `pyproject.toml` version changes on `main`, which triggers `publish.yml` → PyPI.
+  Full release pipeline is now fully automated.
