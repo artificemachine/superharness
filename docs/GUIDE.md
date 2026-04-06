@@ -255,7 +255,10 @@ The dashboard (`shux dashboard`) shows each task's current phase and presents th
 # Guided interactive wizard
 superharness task
 
-# Create task
+# Create task (--id is optional; auto-generated as t-XXXXXX when omitted)
+superharness task create --project . --title "Task title" --owner codex-cli
+
+# Create task with explicit ID
 superharness task create --project . --id task-id --title "Task title" --owner codex-cli
 
 # Create task with dependency
