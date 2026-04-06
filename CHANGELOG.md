@@ -1521,3 +1521,13 @@ If you're an agent picking this up:
 
 ### Changed (1.10.0 addendum)
 - `shux delegate` now calls `check_budget()` before every dispatch: prints WARN at ≥80% daily limit, returns exit 1 on BLOCK (strict mode). Override with `--force`.
+
+## [1.10.1] - 2026-04-06
+
+### Changed
+- `shux onboard` now writes `AGENTS.md` at step 2 (init) if missing — tells Claude Code and
+  Codex CLI to use shux commands. Existing `AGENTS.md` is never overwritten.
+- Each onboard step prints a `→` context line explaining what was done and why.
+- `shux --help` shows a cold-start banner ("New here? → shux onboard") when no
+  `.superharness/` exists in the current directory; shows the regular task quickstart otherwise.
+- 4 new tests covering AGENTS.md creation, hint output, and cold-start help.
