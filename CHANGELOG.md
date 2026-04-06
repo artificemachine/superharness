@@ -1531,3 +1531,13 @@ If you're an agent picking this up:
 - `shux --help` shows a cold-start banner ("New here? → shux onboard") when no
   `.superharness/` exists in the current directory; shows the regular task quickstart otherwise.
 - 4 new tests covering AGENTS.md creation, hint output, and cold-start help.
+
+## [1.10.2] - 2026-04-06
+
+### Changed
+- `shux onboard` (step 2b) appends a superharness section to `~/.claude/CLAUDE.md` if not
+  already present — makes every Claude Code session on this machine superharness-aware,
+  across all projects, not just the one being onboarded.
+  Skips gracefully if the file doesn't exist or already mentions superharness.
+  Override path for testing via `SUPERHARNESS_GLOBAL_CLAUDE_MD` env var.
+- 3 new tests covering append, skip-if-present, skip-if-missing.

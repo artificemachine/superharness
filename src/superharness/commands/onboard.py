@@ -1,13 +1,14 @@
 """shux onboard — interactive (or non-interactive) 7-step setup wizard.
 
 Steps:
-  1. detect   — detect project stack
-  2. init     — scaffold .superharness/ (skipped if already exists)
-  3. git_track — configure .gitignore for team/solo mode
-  4. doctor   — run health checks (non-blocking)
-  5. task     — create a first task in contract.yaml
-  6. delegate — enqueue the task to inbox.yaml
-  7. summary  — print next steps
+  1. detect        — detect project stack
+  2. init          — scaffold .superharness/ + write project AGENTS.md
+  2b. global_claude — append superharness section to ~/.claude/CLAUDE.md
+  3. git_track     — configure .gitignore for team/solo mode
+  4. doctor        — run health checks (non-blocking)
+  5. task          — create a first task in contract.yaml
+  6. delegate      — enqueue the task to inbox.yaml
+  7. summary       — print next steps
 """
 from __future__ import annotations
 
@@ -27,7 +28,7 @@ import yaml
 # Step status helpers
 # ---------------------------------------------------------------------------
 
-_STEPS = ["detect", "init", "git_track", "doctor", "task", "delegate", "summary"]
+_STEPS = ["detect", "init", "global_claude", "git_track", "doctor", "task", "delegate", "summary"]
 
 _INNER_GITIGNORE_ENTRIES = [
     "watcher-env.yaml",
@@ -168,6 +169,56 @@ def _step_init(project: Path, state: dict) -> None:
         click.echo("  → Without it, agents won't know superharness is installed.")
 
     _mark(state, "init")
+
+
+_GLOBAL_CLAUDE_MD_BLOCK = """
+## superharness
+
+`shux` is installed globally. In any superharness project:
+- Run `shux contract` at the start of every session to see all tasks.
+- Use `shux delegate <id>` to hand work to an agent.
+- Use `shux close <id>` to mark a task done after verification.
+- If no `.superharness/` exists yet in this project, run `shux onboard`.
+
+Key commands: shux contract · shux delegate · shux doctor · shux dashboard · shux recall
+"""
+
+
+def _global_claude_md_path() -> Path:
+    """Return path to global CLAUDE.md, overridable via env var for testing."""
+    override = os.environ.get("SUPERHARNESS_GLOBAL_CLAUDE_MD")
+    if override:
+        return Path(override)
+    return Path.home() / ".claude" / "CLAUDE.md"
+
+
+def _step_global_claude_md(state: dict) -> None:
+    """Append a superharness section to ~/.claude/CLAUDE.md if not already present."""
+    if _is_completed(state, "global_claude"):
+        click.echo("[skip] Step 2b (global_claude): already completed")
+        return
+
+    path = _global_claude_md_path()
+
+    if not path.exists():
+        click.echo("[skip] Step 2b (global_claude): ~/.claude/CLAUDE.md not found — skipping")
+        click.echo("  → If you use a global CLAUDE.md, add a superharness section manually.")
+        _mark(state, "global_claude")
+        return
+
+    content = path.read_text(encoding="utf-8")
+    if "superharness" in content.lower():
+        click.echo("[skip] Step 2b (global_claude): superharness already in global CLAUDE.md")
+        _mark(state, "global_claude")
+        return
+
+    with path.open("a", encoding="utf-8") as f:
+        f.write(_GLOBAL_CLAUDE_MD_BLOCK)
+
+    click.echo(f"[global_claude] Appended superharness section to {path}")
+    click.echo("  → Every Claude Code session on this machine now knows to use shux.")
+    click.echo("  → Works across ALL projects, not just this one.")
+    _mark(state, "global_claude")
 
 
 def _step_git_track(project: Path, state: dict, git_mode: str) -> None:
@@ -355,6 +406,9 @@ def cmd_onboard(
     _save_state(sh, state)
 
     _step_init(project_path, state)
+    _save_state(sh, state)
+
+    _step_global_claude_md(state)
     _save_state(sh, state)
 
     _step_git_track(project_path, state, git_mode)
