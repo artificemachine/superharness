@@ -156,6 +156,14 @@ def _step_init(project: Path, state: dict) -> None:
         ledger = sh / "ledger.md"
         if not ledger.exists():
             ledger.write_text("# Ledger\n")
+        decisions = sh / "decisions.yaml"
+        if not decisions.exists():
+            decisions.write_text("[]\n")
+        failures = sh / "failures.yaml"
+        if not failures.exists():
+            failures.write_text("[]\n")
+        handoffs = sh / "handoffs"
+        handoffs.mkdir(exist_ok=True)
         click.echo("[init] Initialized .superharness/")
         click.echo("  → contract.yaml  tracks every task and its status.")
         click.echo("  → ledger.md      is the session history agents read first.")
