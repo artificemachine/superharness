@@ -29,7 +29,6 @@ __pycache__/
 *.pyc
 secrets.json
 TODO.md
-docs/ROADMAP.md
 docs/comparison-*.md
 docs/blog-*-draft.md
 docs/IMPROVEMENT_PLAN.md
