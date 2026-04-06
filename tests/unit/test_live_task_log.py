@@ -126,7 +126,7 @@ def test_api_task_log_endpoint_returns_log_content(tmp_path: Path):
 
     # Load monitor-ui module
     repo_root = Path(__file__).parent.parent.parent
-    monitor_script = repo_root / "src" / "superharness" / "scripts" / "monitor-ui.py"
+    monitor_script = repo_root / "src" / "superharness" / "scripts" / "dashboard-ui.py"
     spec = importlib.util.spec_from_file_location("monitor_ui", monitor_script)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
@@ -170,12 +170,12 @@ def test_ui_polls_live_output_for_launched_task(tmp_path: Path):
 
     # Load monitor-ui HTML source
     repo_root = Path(__file__).parent.parent.parent
-    monitor_script = repo_root / "src" / "superharness" / "scripts" / "monitor-ui.py"
+    monitor_script = repo_root / "src" / "superharness" / "scripts" / "dashboard-ui.py"
     source = monitor_script.read_text()
 
     # Extract JavaScript code
     js_match = re.search(r"<script>(.*?)</script>", source, re.DOTALL)
-    assert js_match, "Could not find <script> block in monitor-ui.py"
+    assert js_match, "Could not find <script> block in dashboard-ui.py"
     js_code = js_match.group(1)
 
     # Verify polling logic exists
@@ -229,7 +229,7 @@ def test_api_task_log_handles_missing_file_gracefully(tmp_path: Path):
 
     # Load and start server
     repo_root = Path(__file__).parent.parent.parent
-    monitor_script = repo_root / "src" / "superharness" / "scripts" / "monitor-ui.py"
+    monitor_script = repo_root / "src" / "superharness" / "scripts" / "dashboard-ui.py"
     spec = importlib.util.spec_from_file_location("monitor_ui", monitor_script)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)

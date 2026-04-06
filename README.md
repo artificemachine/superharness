@@ -58,6 +58,12 @@ shux discuss           # start or manage a cross-agent discussion (topic, owners
 shux install-hooks     # merge adapter hooks into ~/.claude/settings.json (portable, run once per machine)
 shux init --skip-hooks # init without modifying ~/.claude/settings.json (for CI or conservative setups)
 shux benchmark         # show dispatch cost/duration leaderboard (--top N, --agents)
+shux diff <id>         # preview agent changes for a task before closing (--stat, --base)
+shux daemon start      # start background watcher daemon (portable, no launchd/systemd needed)
+shux daemon stop       # stop the daemon
+shux daemon status     # show daemon running state and PID
+shux pack export       # bundle .superharness/ into a portable .tar.gz for handoff
+shux pack import       # restore a pack into a new project
 shux help              # show all shux shortcuts in the terminal
 ```
 
