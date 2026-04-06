@@ -17,8 +17,8 @@ import yaml
 # ---------------------------------------------------------------------------
 
 def _load_monitor_module(repo_root: Path):
-    script = repo_root / "src" / "superharness" / "scripts" / "monitor-ui.py"
-    spec = importlib.util.spec_from_file_location("monitor_ui_module", script)
+    script = repo_root / "src" / "superharness" / "scripts" / "dashboard-ui.py"
+    spec = importlib.util.spec_from_file_location("dashboard_ui_module", script)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -93,7 +93,7 @@ class TestBug3_CodexInstructions:
 class TestBug4_PausedDuplicateGuard:
     def test_active_statuses_include_paused(self, repo_root):
         """The enqueue duplicate guard must check paused status too."""
-        source = (repo_root / "src" / "superharness" / "scripts" / "monitor-ui.py").read_text()
+        source = (repo_root / "src" / "superharness" / "scripts" / "dashboard-ui.py").read_text()
         # Find the Python backend handler (not the JS)
         idx = source.find("Block duplicate: reject if task already has an active")
         assert idx > 0, "Duplicate guard comment not found"
@@ -110,7 +110,7 @@ class TestBug4_PausedDuplicateGuard:
 class TestBug5_MkdirBeforeWrite:
     def test_instructions_write_creates_parent_dir(self, repo_root):
         """Monitor must mkdir before writing instructions file."""
-        source = (repo_root / "src" / "superharness" / "scripts" / "monitor-ui.py").read_text()
+        source = (repo_root / "src" / "superharness" / "scripts" / "dashboard-ui.py").read_text()
         # Find instructions file write
         idx = source.find("instructions_file.write_text")
         assert idx > 0
@@ -239,7 +239,7 @@ class TestBug8_ZombieReconciliation:
 class TestBug9_TaskReportCrashHandling:
     def test_task_report_crash_returns_500(self, repo_root):
         """task_report must be wrapped in try/except — crash returns 500 JSON, not dropped connection."""
-        source = (repo_root / "src" / "superharness" / "scripts" / "monitor-ui.py").read_text()
+        source = (repo_root / "src" / "superharness" / "scripts" / "dashboard-ui.py").read_text()
         idx = source.find("task_report(self.project_dir, task_id, agent)")
         assert idx > 0
         surrounding = source[max(0, idx - 100):idx + 200]
