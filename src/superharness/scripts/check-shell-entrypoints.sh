@@ -35,6 +35,12 @@ ENTRYPOINT_FILES=(
   "src/superharness/scripts/init-project.sh"
   "cli/recall.sh"
   "cli/status.sh"
+  "src/superharness/adapters/claude-code/install.sh"
+  "src/superharness/adapters/claude-code/hooks/branch-guard.sh"
+  "src/superharness/adapters/claude-code/hooks/ledger-append.sh"
+  "src/superharness/adapters/claude-code/hooks/scope-guard.sh"
+  "src/superharness/adapters/claude-code/hooks/session-start.sh"
+  "src/superharness/adapters/claude-code/hooks/session-stop.sh"
 )
 
 HOOK_FILES=(

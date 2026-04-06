@@ -1,0 +1,87 @@
+# {{PROJECT_NAME}}
+
+## Identity
+@import ../../protocol/templates/identity-core.md
+
+## This Project
+<!-- Add project-specific context here -->
+- What: {{PROJECT_DESCRIPTION}}
+- Stack: {{TECH_STACK}}
+- Status: {{STATUS}}
+
+## Cross-Agent Protocol
+This project uses superharness. Protocol files are in `.superharness/`.
+- Read `contract.yaml` before starting any work.
+- Read `failures.yaml` before implementing — search for past failures with this technology.
+- Read `decisions.yaml` for architectural context.
+- Read any handoffs in `handoffs/` addressed to `claude-code`.
+- When you make a decision between alternatives: log it in the contract's decisions section.
+- When something fails: log it in the contract's failures section.
+- When you finish a task: update contract status, write a handoff, append to ledger.
+- When creating/updating contract tasks: always set `project_path` to the absolute project directory.
+- When reviewing Codex's work: use the review lenses assigned to the task in the contract.
+
+## Delegation Prompting Rule
+When the user asks to read the contract (or equivalent), do this:
+1. Read `.superharness/contract.yaml`.
+2. Summarize contract id, status, and tasks with owner/status.
+3. If any task is `todo` or `in_progress` and owner is `codex-cli`, ask:
+   "I detected owner is codex-cli. Do you want to delegate `<task_id>` now?"
+   Do not use generic alternatives like "Want me to tackle...".
+4. If user says yes:
+   - set task status to `in_progress` (if needed),
+   - create/update `.superharness/handoffs/<DATE>-<TASK_ID>.yaml` addressed to `codex-cli`,
+   - append one line to `.superharness/ledger.md`,
+   - return the exact Codex kickoff prompt.
+
+## Trigger Phrases (`shux` prefix)
+All shux shortcuts and behavior rules are defined in `shux/SHUX.md` (repo root) — read it for the full reference.
+Execute shux commands immediately without asking for confirmation (except where SHUX.md says to ask).
+
+## Canonical contract today Output (Highest Priority)
+This section overrides any conflicting `contract today` formatting guidance above.
+- Output header exactly: `Contract <id> — <created date>`
+- Output next line exactly: `Goal: <goal>`
+- Render a Unicode box-drawing table (not markdown) with columns in this exact order:
+  1. `ID`
+  2. `Title`
+  3. `Status`
+  4. `Owner`
+- Include ALL tasks from contract (no truncation).
+- Render one task per single-line row; never wrap/split a task across multiple lines.
+- If content exceeds width, truncate with `...` rather than wrapping.
+- Add a full horizontal separator line between every task row (Claude-style readability).
+- Status must be emoji + text:
+  - `done` -> `✅ done`
+  - `in_progress` -> `🟡 in_progress`
+  - `todo` -> `🔲 todo`
+  - `failed` -> `❌ failed`
+  - `stale` -> `⚠️ stale`
+- If any task is `todo` or `in_progress` and owner is `codex-cli`, the final line MUST be exactly:
+  `I detected owner is codex-cli. Do you want to delegate <task_id> now?`
+  Use the first matching task in contract order.
+
+## Delegation Execution
+When delegating a contract task to `codex-cli`, use:
+- `bash /path/to/superharness/scripts/delegate-to-codex.sh --project .`
+- Use `--task <TASK_ID>` when delegating a specific task.
+- Use `--print-only` when you only need the kickoff prompt without launching Codex.
+
+## Review Lenses
+When reviewing, check the `review_lenses` field on the task. Apply only the assigned lenses:
+- security: auth, secrets, injection, data exposure
+- architecture: patterns, coupling, dependency direction
+- performance: N+1 queries, memory, scaling
+- tests: coverage, edge cases, determinism
+- error-handling: failure modes, logging, graceful degradation
+- devops: config, CI/CD, observability
+- api-contract: backwards compatibility, versioning
+
+## Do Not
+<!-- Add project-specific failures here, promoted from .superharness/failures.yaml -->
+
+## Project Rules
+<!-- Add project-specific rules here -->
+- Security: never commit secrets, never skip security scan
+- Branches: feature branches, never push to main
+- Tests: run before every handoff
