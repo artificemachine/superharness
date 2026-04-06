@@ -14,6 +14,7 @@ src/superharness/commands/__init__.py
 src/superharness/commands/adapters.py
 src/superharness/commands/benchmark.py
 src/superharness/commands/close.py
+src/superharness/commands/config.py
 src/superharness/commands/context.py
 src/superharness/commands/contract_today.py
 src/superharness/commands/daemon.py
@@ -24,6 +25,7 @@ src/superharness/commands/discuss.py
 src/superharness/commands/discussion_dispatch.py
 src/superharness/commands/doctor.py
 src/superharness/commands/enhance.py
+src/superharness/commands/explain.py
 src/superharness/commands/heartbeat.py
 src/superharness/commands/inbox_dispatch.py
 src/superharness/commands/inbox_enqueue.py
@@ -34,6 +36,7 @@ src/superharness/commands/init_project.py
 src/superharness/commands/install_hooks.py
 src/superharness/commands/install_wrapper.py
 src/superharness/commands/notify.py
+src/superharness/commands/onboard.py
 src/superharness/commands/pack.py
 src/superharness/commands/status.py
 src/superharness/commands/task.py
@@ -54,6 +57,7 @@ src/superharness/engine/env_snapshot.py
 src/superharness/engine/failure_patterns.py
 src/superharness/engine/heartbeat_contract.py
 src/superharness/engine/inbox.py
+src/superharness/engine/model_budget.py
 src/superharness/engine/model_router.py
 src/superharness/engine/orchestrator.py
 src/superharness/engine/osm.py
