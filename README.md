@@ -36,6 +36,7 @@ bash ~/.local/share/superharness/scripts/install-wrapper.sh
 
 **Step 3 — Type these phrases directly to the agent:**
 ```
+shux explain           # what is superharness? (10-second answer — aliases: shux why, shux wtf)
 shux init              # bootstrap .superharness/ for this project
 shux doctor            # check prerequisites and protocol health
 shux contract          # show all tasks with status and next-task suggestion
