@@ -10,6 +10,16 @@ src/superharness.egg-info/dependency_links.txt
 src/superharness.egg-info/entry_points.txt
 src/superharness.egg-info/requires.txt
 src/superharness.egg-info/top_level.txt
+src/superharness/adapters/claude-code/CLAUDE.md.template
+src/superharness/adapters/claude-code/install.sh
+src/superharness/adapters/claude-code/.claude-plugin/plugin.json
+src/superharness/adapters/claude-code/hooks/branch-guard.sh
+src/superharness/adapters/claude-code/hooks/hooks.json
+src/superharness/adapters/claude-code/hooks/ledger-append.sh
+src/superharness/adapters/claude-code/hooks/scope-guard.sh
+src/superharness/adapters/claude-code/hooks/session-start.sh
+src/superharness/adapters/claude-code/hooks/session-stop.sh
+src/superharness/adapters/codex-cli/AGENTS.md.template
 src/superharness/commands/__init__.py
 src/superharness/commands/adapters.py
 src/superharness/commands/benchmark.py

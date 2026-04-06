@@ -19,17 +19,27 @@ from pathlib import Path
 def _find_hooks_dir() -> Path:
     """Locate the adapter hooks directory.
 
-    Works for editable installs (repo checkout) and regular pip installs
-    when adapters are included in the package.
+    Checks two locations in order:
+    1. Bundled inside the installed package (pip/pipx install):
+       <package>/adapters/claude-code/hooks/
+    2. Editable install (repo checkout):
+       <repo_root>/adapters/claude-code/hooks/
     """
-    # Editable install: this file is at src/superharness/commands/install_hooks.py
-    # repo root is 3 levels up; adapters live at <repo>/adapters/claude-code/hooks/
-    candidate = Path(__file__).resolve().parents[3] / "adapters" / "claude-code" / "hooks"
-    if candidate.is_dir():
-        return candidate
+    # 1. In-package location (regular pip/pipx install)
+    # __file__ is at <package>/commands/install_hooks.py
+    # adapters live at <package>/adapters/claude-code/hooks/
+    in_package = Path(__file__).resolve().parent.parent / "adapters" / "claude-code" / "hooks"
+    if in_package.is_dir():
+        return in_package
+
+    # 2. Editable install: repo root is 3 levels up from src/superharness/commands/
+    editable = Path(__file__).resolve().parents[3] / "adapters" / "claude-code" / "hooks"
+    if editable.is_dir():
+        return editable
+
     raise FileNotFoundError(
-        f"Adapter hooks directory not found at {candidate}. "
-        "Ensure superharness is installed with 'pip install -e .' from the repo root."
+        f"Adapter hooks directory not found at {in_package} or {editable}. "
+        "Ensure superharness is installed with 'pip install superharness' or 'pip install -e .' from the repo root."
     )
 
 
