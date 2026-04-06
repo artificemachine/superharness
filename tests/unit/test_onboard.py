@@ -335,3 +335,51 @@ def test_help_cold_start_suggests_onboard(tmp_path, runner):
     assert result.exit_code == 0
     assert "onboard" in result.output.lower(), \
         "shux --help should mention 'onboard' for cold-start projects"
+
+
+# ---------------------------------------------------------------------------
+# Global ~/.claude/CLAUDE.md update
+# ---------------------------------------------------------------------------
+
+def test_onboard_appends_global_claude_md(runner, project, tmp_path, monkeypatch):
+    """onboard appends a superharness section to global CLAUDE.md if not present."""
+    global_claude = tmp_path / "CLAUDE.md"
+    global_claude.write_text("# My Global Rules\n\nSome existing content.\n")
+    monkeypatch.setenv("SUPERHARNESS_GLOBAL_CLAUDE_MD", str(global_claude))
+
+    from superharness.commands.onboard import cmd_onboard
+    result = runner.invoke(cmd_onboard, [
+        "--project", str(project), "--non-interactive",
+    ])
+    assert result.exit_code == 0, result.output
+    content = global_claude.read_text()
+    assert "superharness" in content.lower()
+    assert "shux contract" in content
+
+
+def test_onboard_skips_global_if_already_present(runner, project, tmp_path, monkeypatch):
+    """If global CLAUDE.md already mentions superharness, it is not duplicated."""
+    global_claude = tmp_path / "CLAUDE.md"
+    original = "# Rules\n\n## superharness\nshux contract\nAlready configured.\n"
+    global_claude.write_text(original)
+    monkeypatch.setenv("SUPERHARNESS_GLOBAL_CLAUDE_MD", str(global_claude))
+
+    from superharness.commands.onboard import cmd_onboard
+    runner.invoke(cmd_onboard, ["--project", str(project), "--non-interactive"])
+    runner.invoke(cmd_onboard, ["--project", str(project), "--non-interactive"])
+
+    content = global_claude.read_text()
+    assert content.count("shux contract") == original.count("shux contract"), \
+        "superharness block was duplicated in global CLAUDE.md"
+
+
+def test_onboard_skips_global_if_no_claude_md(runner, project, tmp_path, monkeypatch):
+    """If ~/.claude/CLAUDE.md doesn't exist, skip gracefully without crashing."""
+    nonexistent = tmp_path / "nonexistent_dir" / "CLAUDE.md"
+    monkeypatch.setenv("SUPERHARNESS_GLOBAL_CLAUDE_MD", str(nonexistent))
+
+    from superharness.commands.onboard import cmd_onboard
+    result = runner.invoke(cmd_onboard, [
+        "--project", str(project), "--non-interactive",
+    ])
+    assert result.exit_code == 0, result.output
