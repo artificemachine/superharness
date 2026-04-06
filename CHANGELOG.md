@@ -1586,3 +1586,21 @@ If you're an agent picking this up:
 - `inbox_dispatch`: added `SUPERHARNESS_NO_PTY_WRAP=1` env var to bypass the
   `script` PTY wrapper in test/CI environments without a controlling terminal.
   Fixes flaky `test_dispatch_non_interactive_reconciles_to_done_from_contract`.
+
+## [1.11.0] - 2026-04-06
+
+### Added
+- **Always-on auto-dispatch**: watcher now automatically enqueues `plan_approved`
+  contract tasks into the inbox when `auto_dispatch: true` is set in
+  `.superharness/profile.yaml`. No need to manually run `shux delegate` for
+  approved tasks.
+- `auto_enqueue_approved(project_dir)` in `inbox_watch` — scans contract each
+  watcher tick, skips tasks with active inbox entries (pending/launched/running/
+  paused), respects `blocked_by` dependencies via `_deps_satisfied`, and
+  re-enqueues after a prior run reaches `done` or `failed`.
+- `run_once()` in `inbox_watch` — single-tick entry point for test isolation
+  without acquiring the watcher lock.
+- `get_config_value` / `set_config_value` public helpers in `config.py` for
+  programmatic profile reads/writes.
+- `docs/GUIDE.md`: documented `auto_dispatch` config key with usage example.
+- 19 new tests in `tests/unit/test_auto_dispatch.py`.

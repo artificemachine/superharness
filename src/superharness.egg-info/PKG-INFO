@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: superharness
-Version: 1.10.0
+Version: 1.11.0
 Summary: Multi-agent session handoff framework for Claude Code and Codex CLI
 License-Expression: Apache-2.0
 Project-URL: Homepage, https://github.com/celstnblacc/superharness
@@ -62,6 +62,8 @@ bash ~/.local/share/superharness/scripts/install-wrapper.sh
 
 **Step 3 — Type these phrases directly to the agent:**
 ```
+shux explain           # what is superharness? (10-second answer — aliases: shux why, shux wtf)
+shux onboard           # guided 7-step setup wizard (non-interactive: --non-interactive --git-mode team|solo)
 shux init              # bootstrap .superharness/ for this project
 shux doctor            # check prerequisites and protocol health
 shux contract          # show all tasks with status and next-task suggestion
@@ -83,7 +85,15 @@ shux update            # pull latest superharness + refresh templates, hooks, an
 shux discuss           # start or manage a cross-agent discussion (topic, owners, optional ID)
 shux install-hooks     # merge adapter hooks into ~/.claude/settings.json (portable, run once per machine)
 shux init --skip-hooks # init without modifying ~/.claude/settings.json (for CI or conservative setups)
-shux benchmark         # show dispatch cost/duration leaderboard (--top N, --agents)
+shux benchmark         # show dispatch cost/duration leaderboard (--top N, --agents, --models)
+shux config get <key>  # read a profile.yaml setting (e.g. budget.daily_limit, default_model)
+shux config set <key> <val>  # write a profile.yaml setting (e.g. budget.daily_limit 5.00, budget.strict true)
+shux diff <id>         # preview agent changes for a task before closing (--stat, --base)
+shux daemon start      # start background watcher daemon (portable, no launchd/systemd needed)
+shux daemon stop       # stop the daemon
+shux daemon status     # show daemon running state and PID
+shux pack export       # bundle .superharness/ into a portable .tar.gz for handoff
+shux pack import       # restore a pack into a new project
 shux help              # show all shux shortcuts in the terminal
 ```
 
