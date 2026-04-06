@@ -484,9 +484,12 @@ def _do_dispatch(
     spawn_env = os.environ.copy()
     spawn_env["SUPERHARNESS_LAUNCHER_LOG"] = task_log
 
-    # Wrap in `script` to capture PTY output (bash launcher needs a terminal)
+    # Wrap in `script` to capture PTY output (bash launcher needs a terminal).
+    # SUPERHARNESS_NO_PTY_WRAP=1 bypasses this for test/CI environments without a TTY.
     import platform
-    if platform.system() == "Darwin":
+    if os.environ.get("SUPERHARNESS_NO_PTY_WRAP", "").strip() in ("1", "true", "yes"):
+        wrapped_args = launch_args
+    elif platform.system() == "Darwin":
         wrapped_args = ["script", "-q", task_log] + launch_args
     else:
         import shlex
