@@ -63,6 +63,18 @@ def _coerce(value: str):
         return value
 
 
+def get_config_value(project: str, key: str):
+    """Return the value for a dot-separated profile key, or None if not set."""
+    return _get_nested(_load_profile(project), key)
+
+
+def set_config_value(project: str, key: str, value: str) -> None:
+    """Set a dot-separated profile key to a coerced value and persist."""
+    doc = _load_profile(project)
+    _set_nested(doc, key, _coerce(value))
+    _save_profile(project, doc)
+
+
 @click.group(name="config")
 def cmd_config():
     """Get or set project profile settings."""

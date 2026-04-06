@@ -365,6 +365,20 @@ budget:
 
 Both keys are optional. If `daily_limit` is absent, the budget guard is disabled.
 
+**Auto-dispatch key in `profile.yaml`:**
+
+```yaml
+auto_dispatch: true   # Automatically enqueue plan_approved tasks to inbox without manual shux delegate
+```
+
+When `auto_dispatch: true`, the watcher scans the contract on each tick and enqueues any task with
+`status: plan_approved` (owned by the appropriate agent) that has no active inbox entry and whose
+`blocked_by` dependencies are resolved. Set via:
+
+```bash
+shux config set auto_dispatch true
+```
+
 ### Cost Tracking (`shux benchmark`)
 
 ```bash

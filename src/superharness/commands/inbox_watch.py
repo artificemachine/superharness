@@ -239,6 +239,131 @@ def _run_scripts_heartbeat(project_dir: str) -> None:
         pass
 
 
+def auto_enqueue_approved(project_dir: str) -> int:
+    """Scan contract.yaml for plan_approved tasks and enqueue them to inbox.yaml.
+
+    Only runs when auto_dispatch=True in profile.yaml. Skips tasks that already
+    have an active inbox entry (pending/launched/running/paused). Uses
+    _deps_satisfied to respect blocked_by dependencies.
+
+    Returns the number of tasks newly enqueued.
+    """
+    import uuid
+    from datetime import datetime, timezone
+
+    profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
+    if not os.path.exists(profile_file):
+        return 0
+    try:
+        import yaml as _yaml
+        profile = _yaml.safe_load(open(profile_file, encoding="utf-8").read()) or {}
+    except Exception:
+        return 0
+    if not profile.get("auto_dispatch"):
+        return 0
+
+    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
+    inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
+
+    if not os.path.exists(contract_file):
+        return 0
+
+    try:
+        import yaml as _yaml
+        contract = _yaml.safe_load(open(contract_file, encoding="utf-8").read()) or {}
+        tasks = contract.get("tasks") or []
+    except Exception:
+        return 0
+
+    inbox_items: list[dict] = []
+    if os.path.exists(inbox_file):
+        try:
+            import yaml as _yaml
+            inbox_items = _yaml.safe_load(open(inbox_file, encoding="utf-8").read()) or []
+        except Exception:
+            inbox_items = []
+
+    _ACTIVE = {"pending", "launched", "running", "paused"}
+    active_tasks = {
+        str(item.get("task", ""))
+        for item in inbox_items
+        if isinstance(item, dict) and str(item.get("status", "")) in _ACTIVE
+    }
+
+    try:
+        from superharness.engine.inbox import _deps_satisfied
+    except ImportError:
+        _deps_satisfied = None  # type: ignore[assignment]
+
+    added = 0
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        if task.get("status") != "plan_approved":
+            continue
+        task_id = str(task.get("id", ""))
+        if not task_id:
+            continue
+        if task_id in active_tasks:
+            continue
+        if _deps_satisfied is not None:
+            if not _deps_satisfied(contract_file, task_id):
+                continue
+
+        owner = str(task.get("owner", "claude-code"))
+        item_id = f"auto-{uuid.uuid4().hex[:6]}"
+        new_item: dict = {
+            "id": item_id,
+            "task": task_id,
+            "to": owner,
+            "status": "pending",
+            "priority": 2,
+            "retry_count": 0,
+            "max_retries": 3,
+            "created_at": now,
+            "project": project_dir,
+        }
+        inbox_items.append(new_item)
+        active_tasks.add(task_id)
+        added += 1
+        print(f"auto-dispatch: enqueued {task_id} → {owner} (item {item_id})")
+
+    if added > 0:
+        import yaml as _yaml
+        try:
+            with open(inbox_file, "w", encoding="utf-8") as _f:
+                _f.write(_yaml.dump(inbox_items, default_flow_style=False))
+        except Exception as e:
+            print(f"auto-dispatch: failed to write inbox: {e}", file=sys.stderr)
+            return 0
+
+    return added
+
+
+def run_once(
+    project_dir: str,
+    *,
+    to: str = "both",
+    non_interactive: bool = False,
+    recover_timeout_minutes: int = 3,
+    recover_action: str = "retry",
+    launcher_timeout: int = 0,
+) -> None:
+    """Run a single watcher tick without acquiring the watcher lock. For tests."""
+    _run_scripts(
+        project_dir,
+        target=to,
+        print_only=False,
+        non_interactive=non_interactive,
+        codex_bypass=False,
+        launcher_timeout=launcher_timeout,
+        recover_timeout_minutes=recover_timeout_minutes,
+        recover_action=recover_action,
+    )
+
+
 def _run_scripts(
     project_dir: str,
     *,
@@ -271,6 +396,12 @@ def _run_scripts(
         run_hooks("on_watcher_tick", {"project_dir": project_dir}, Path(project_dir))
     except Exception as e:
         print(f"Warning: on_watcher_tick hook failed: {e}", file=sys.stderr)
+
+    # Auto-enqueue plan_approved tasks when auto_dispatch=True in profile.yaml
+    try:
+        auto_enqueue_approved(project_dir)
+    except Exception as e:
+        print(f"Warning: auto_enqueue_approved failed: {e}", file=sys.stderr)
 
     # Reconcile zombie inbox items (launched but process gone)
     try:
