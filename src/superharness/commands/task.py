@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import tempfile
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -362,7 +363,8 @@ def main(argv: list[str] | None = None) -> None:
     # create
     p_create = sub.add_parser("create", add_help=True)
     p_create.add_argument("--project", "-p", default=None)
-    p_create.add_argument("--id", dest="task_id", required=True)
+    p_create.add_argument("--id", dest="task_id", default=None,
+                          help="Task ID (auto-generated as t-XXXXXX if omitted)")
     p_create.add_argument("--title", required=True)
     p_create.add_argument("--owner", default=None)
     p_create.add_argument("--status", default="todo")
@@ -437,9 +439,10 @@ def main(argv: list[str] | None = None) -> None:
                 pass
         if not owner:
             _abort("--owner is required (or set in profile.yaml)", 2)
+        task_id = opts.task_id or f"t-{uuid.uuid4().hex[:6]}"
         rc = create(
             contract_file,
-            task_id=opts.task_id,
+            task_id=task_id,
             title=opts.title,
             owner=owner,
             status=opts.status,
