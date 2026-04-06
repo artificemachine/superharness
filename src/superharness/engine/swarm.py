@@ -16,14 +16,16 @@ from typing import Any
 
 from superharness.engine.parallel_dispatch import (
     FanoutResult,
-    WorktreeSlot,
     _collect_diffs,
-    _create_worktree,
-    _copy_superharness_state,
-    _remove_worktree,
     _run_sdk_in_worktree,
-    _sanitize_task_id,
     _try_merge,
+)
+from superharness.engine.worktree_ops import (
+    WorktreeSlot,
+    copy_superharness_state as _copy_superharness_state,
+    create_worktree as _create_worktree,
+    remove_worktree as _remove_worktree,
+    sanitize_task_id as _sanitize_task_id,
 )
 
 

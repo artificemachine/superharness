@@ -219,6 +219,22 @@ HTML = """<!doctype html>
       <div class=\"card\"><h2>watcher out.log tail</h2><pre id=\"out\">-</pre></div>
       <div class=\"card\"><h2>watcher err.log tail</h2><pre id=\"err\">-</pre></div>
     </div>
+
+    <div class=\"logs\">
+      <div class=\"card\" style=\"flex:1;\">
+        <h2>dispatch cost leaderboard <span id=\"costSummary\" style=\"font-weight:normal;font-size:0.85em;\"></span></h2>
+        <table id=\"costTable\" style=\"width:100%;border-collapse:collapse;font-size:0.85em;\">
+          <thead><tr style=\"text-align:left;\">
+            <th style=\"padding:2px 6px;\">task</th>
+            <th style=\"padding:2px 6px;text-align:right;\">cost $</th>
+            <th style=\"padding:2px 6px;text-align:right;\">tokens</th>
+            <th style=\"padding:2px 6px;text-align:right;\">runs</th>
+            <th style=\"padding:2px 6px;text-align:right;\">avg s</th>
+          </tr></thead>
+          <tbody id=\"costRows\"><tr><td colspan=\"5\">-</td></tr></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 <script>
 let lastActionText = '-';
@@ -934,8 +950,33 @@ function renderReviewQueue(reviewCount, reviewTasks) {
   }
 }
 
+async function refreshCosts() {
+  try {
+    const d = await api('/api/costs?top=20');
+    const s = d.summary || {};
+    document.getElementById('costSummary').textContent =
+      s.total_records ? `(${s.total_records} records · $${(s.total_cost_usd||0).toFixed(4)} total)` : '(no data)';
+    const tbody = document.getElementById('costRows');
+    if (!d.leaderboard || d.leaderboard.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);padding:4px 6px">no benchmark data yet</td></tr>';
+      return;
+    }
+    tbody.innerHTML = d.leaderboard.map(r => `<tr>
+      <td style="padding:2px 6px;font-family:monospace">${r.task_id}</td>
+      <td style="padding:2px 6px;text-align:right">$${r.total_cost_usd.toFixed(4)}</td>
+      <td style="padding:2px 6px;text-align:right">${r.total_tokens.toLocaleString()}</td>
+      <td style="padding:2px 6px;text-align:right">${r.dispatch_count}</td>
+      <td style="padding:2px 6px;text-align:right">${r.avg_duration_seconds}s</td>
+    </tr>`).join('');
+  } catch(e) {
+    document.getElementById('costSummary').textContent = '(error)';
+  }
+}
+
 refresh();
+refreshCosts();
 setInterval(refresh, 3000);
+setInterval(refreshCosts, 30000);
 </script>
 
 <div id="enqueueModal" onclick="if(event.target===this)cancelEnqueue()" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:999">
@@ -2625,6 +2666,39 @@ class Handler(BaseHTTPRequestHandler):
             contract = self.project_dir / ".superharness" / "contract.yaml"
             self._json({
                 "queue": review_queue(contract),
+                "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            })
+            return
+
+        if p == "/api/costs":
+            try:
+                from superharness.engine.benchmark import load_records, aggregate
+            except ImportError:
+                self._json({"error": "benchmark module not available"}, 500)
+                return
+            qs = parse_qs(parsed.query)
+            top_n = int(qs.get("top", ["20"])[0])
+            records = load_records(self.project_dir)
+            stats = aggregate(records)[:top_n]
+            total_cost = sum(r.get("cost_usd", 0.0) for r in records)
+            total_tokens = sum(r.get("tokens", 0) for r in records)
+            self._json({
+                "leaderboard": [
+                    {
+                        "task_id": s.task_id,
+                        "total_cost_usd": round(s.total_cost_usd, 4),
+                        "total_tokens": s.total_tokens,
+                        "dispatch_count": s.dispatch_count,
+                        "success_count": s.success_count,
+                        "avg_duration_seconds": round(s.avg_duration_seconds, 1),
+                    }
+                    for s in stats
+                ],
+                "summary": {
+                    "total_records": len(records),
+                    "total_cost_usd": round(total_cost, 4),
+                    "total_tokens": total_tokens,
+                },
                 "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             })
             return

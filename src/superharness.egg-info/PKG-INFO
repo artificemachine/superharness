@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: superharness
-Version: 1.5.0
+Version: 1.8.0
 Summary: Multi-agent session handoff framework for Claude Code and Codex CLI
 License-Expression: Apache-2.0
 Project-URL: Homepage, https://github.com/celstnblacc/superharness
@@ -77,16 +77,33 @@ shux recall <keywords> # search past handoffs and ledger
 shux uninstall         # remove watcher and system artifacts for this project
 shux hygiene           # validate protocol compliance (contract, handoffs, ledger)
 shux hygiene --repair  # auto-fix missing handoffs, ledger entries, and stuck statuses
-shux monitor           # open browser dashboard
+shux dashboard         # open browser dashboard
 shux watch             # start continuous watcher in foreground
 shux update            # pull latest superharness + refresh templates, hooks, and watcher
 shux discuss           # start or manage a cross-agent discussion (topic, owners, optional ID)
 shux install-hooks     # merge adapter hooks into ~/.claude/settings.json (portable, run once per machine)
 shux init --skip-hooks # init without modifying ~/.claude/settings.json (for CI or conservative setups)
+shux benchmark         # show dispatch cost/duration leaderboard (--top N, --agents)
 shux help              # show all shux shortcuts in the terminal
 ```
 
 **That's it.** Steps 1 and 2 are one-time. From then on, `shux contract` starts every session.
+
+---
+
+### Intelligence layer (v1.7.0)
+
+Dispatch is now smarter. These features activate automatically — no extra setup needed.
+
+| Feature | What it does |
+|---------|-------------|
+| **Pre-flight analysis** | Validates task spec, TDD block, dependencies, and git state before dispatch. Blocks on unresolved deps, warns on missing criteria. |
+| **Complexity estimator** | Scores acceptance criteria + TDD scope and suggests single/fanout/swarm mode. |
+| **Failure pattern matching** | 15 built-in classifiers (ImportError, timeout, git conflict, etc.) analyze errors and inject fix hints into the next dispatch. |
+| **Skill extraction** | When a task completes, extracts category, techniques, and diff stats into `skills.yaml`. Future dispatches for similar tasks get technique hints. |
+| **Benchmark leaderboard** | Tracks cost, duration, and outcome per dispatch in `benchmark.jsonl`. View with `shux benchmark`. |
+| **Parallel fan-out** | Run N agents concurrently on isolated git worktrees. Use `fanout_dispatch()` from the SDK. |
+| **Swarm mode** | N workers solve the same task, then an Opus reviewer picks the best solution. Optional auto-merge. |
 
 ---
 
@@ -120,9 +137,9 @@ superharness delegate --to codex-cli --project .
 superharness enqueue --project . --to codex-cli --task my-task --priority 1
 superharness dispatch --project . --to codex-cli
 
-# Protocol hygiene + browser monitor
+# Protocol hygiene + browser dashboard
 superharness hygiene --project .
-superharness monitor-ui --project .
+superharness dashboard-ui --project .
 ```
 
 **Run tests:**
@@ -154,7 +171,7 @@ pytest tests/ -q
 - **`superharness enqueue|dispatch|watch`** — Queue-based task routing
 - **`superharness hygiene`** — Protocol compliance checks
 - **`superharness watch --foreground`** — Cross-platform continuous watcher
-- **`superharness monitor-ui`** — Browser dashboard: inbox, tasks, watcher state, enqueue with TDD instructions
+- **`superharness dashboard-ui`** — Browser dashboard: inbox, tasks, watcher state, enqueue with TDD instructions
 - **`superharness doctor`** — Prerequisite and setup health check
 - **`superharness uninstall`** — Clean removal of system artifacts
 - **Background watcher** — Unattended execution via macOS launchd or Linux systemd (opt-in)

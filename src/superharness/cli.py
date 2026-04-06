@@ -123,6 +123,17 @@ _cmd("enhance",         "Module marketplace — enable, disable, list integratio
 _cmd("adapters",        "List, inspect, and validate agent runtime adapters.",      module="superharness.commands.adapters")
 _cmd("pack",            "Export and import portable project state.",               module="superharness.commands.pack")
 _cmd("benchmark",       "Show dispatch cost and duration leaderboard.",            module="superharness.commands.benchmark")
+_cmd("diff",            "Preview agent changes for a task before closing.",        module="superharness.commands.diff")
+
+# Daemon is a Click group — import and add directly
+def _register_daemon():
+    try:
+        from superharness.commands.daemon import cmd_daemon
+        main.add_command(cmd_daemon)
+    except Exception:
+        pass
+
+_register_daemon()
 
 
 def _find_dashboard_processes():
@@ -385,6 +396,13 @@ def cmd_monitor_kill_compat(port, proj, kill_all):
 def cmd_monitor_list_compat():
     """Backwards-compat alias for 'dashboard-list'."""
     cmd_dashboard_list.invoke(click.Context(cmd_dashboard_list, info_name="dashboard-list"))
+
+
+@main.command(name="monitor-ui", hidden=True, context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def cmd_monitor_ui_compat(args):
+    """Backwards-compat alias for 'dashboard-ui'."""
+    _run_dashboard(args)
 
 
 @main.command(name="delegate", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})

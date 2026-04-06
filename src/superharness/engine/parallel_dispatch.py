@@ -6,7 +6,6 @@ are collected for merge or voting.
 from __future__ import annotations
 
 import os
-import re
 import subprocess
 import threading
 import time
@@ -14,32 +13,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from superharness.engine.worktree_ops import (
+    WorktreeSlot,
+    copy_superharness_state,
+    create_worktree,
+    remove_worktree,
+    sanitize_task_id,
+)
 
-def _sanitize_task_id(task_id: str) -> str:
-    """Sanitize task_id for safe use in git branch names and filesystem paths.
-
-    Only allows alphanumeric, hyphens, underscores, and dots.
-    Rejects path traversal components.
-    """
-    sanitized = re.sub(r'[^a-zA-Z0-9._-]', '-', task_id)
-    # Reject any remaining path traversal
-    if '..' in sanitized or sanitized.startswith('/'):
-        sanitized = sanitized.replace('..', '--').lstrip('/')
-    return sanitized[:100]  # Cap length for filesystem safety
-
-
-@dataclass
-class WorktreeSlot:
-    """One parallel dispatch slot."""
-    index: int
-    branch: str
-    worktree_path: str
-    project_dir: str = ""    # root project dir (set by dispatcher)
-    status: str = "pending"  # pending, running, done, failed
-    result: dict = field(default_factory=dict)
-    error: str = ""
-    cost_usd: float = 0.0
-    duration_seconds: float = 0.0
+# Private aliases kept for any code that imported these directly before
+# the shared module was extracted.
+_sanitize_task_id = sanitize_task_id
+_create_worktree = create_worktree
+_remove_worktree = remove_worktree
+_copy_superharness_state = copy_superharness_state
 
 
 @dataclass
@@ -50,42 +37,6 @@ class FanoutResult:
     total_duration_seconds: float = 0.0
     merge_conflicts: list[str] = field(default_factory=list)
     winner_index: int | None = None
-
-
-def _create_worktree(project_dir: str, branch: str, path: str) -> bool:
-    """Create a git worktree for parallel dispatch."""
-    try:
-        r = subprocess.run(
-            ["git", "worktree", "add", "-b", branch, path, "HEAD"],
-            capture_output=True, text=True, check=False, cwd=project_dir,
-        )
-        return r.returncode == 0
-    except (OSError, FileNotFoundError):
-        return False
-
-
-def _remove_worktree(project_dir: str, path: str, branch: str) -> None:
-    """Remove a git worktree and its branch."""
-    subprocess.run(
-        ["git", "worktree", "remove", "--force", path],
-        capture_output=True, text=True, check=False, cwd=project_dir,
-    )
-    subprocess.run(
-        ["git", "branch", "-D", branch],
-        capture_output=True, text=True, check=False, cwd=project_dir,
-    )
-
-
-def _copy_superharness_state(src_dir: str, dst_dir: str) -> None:
-    """Copy .superharness/ state to worktree so the agent has context."""
-    src = os.path.join(src_dir, ".superharness")
-    dst = os.path.join(dst_dir, ".superharness")
-    if not os.path.isdir(src):
-        return
-    # Symlink instead of copy — shared state
-    if os.path.exists(dst):
-        return
-    os.symlink(src, dst)
 
 
 def _run_sdk_in_worktree(
