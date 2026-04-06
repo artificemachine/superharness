@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: superharness
-Version: 1.3.4
+Version: 1.5.0
 Summary: Multi-agent session handoff framework for Claude Code and Codex CLI
 License-Expression: Apache-2.0
 Project-URL: Homepage, https://github.com/celstnblacc/superharness
@@ -188,12 +188,12 @@ You probably **don't need** superharness if you only ever run a single agent int
 
 **Cross-platform: macOS, Linux, Windows.** All user-facing commands are Python and work everywhere `python3` is available. CI runs on all three platforms.
 
-- **Background watcher** has automated installers for both macOS (`launchd`) and Linux (`systemd`). `superharness watch --foreground` works everywhere including Windows.
+- **Background watcher** has automated service installers for macOS (`launchd`), Linux (`systemd`), and Windows (Task Scheduler via `schtasks.exe`). `superharness watch --foreground` works everywhere as an alternative.
 
 ## Prerequisites
 
-- `python3` 3.9+ + `pyyaml` — `uv sync --dev` (or `pip install pyyaml click ruamel.yaml`)
-- `bash` (only needed for background watcher installer on macOS; not required for core commands)
+- `python3` 3.11+ + `pyyaml` — `uv sync --dev` (or `pip install pyyaml click ruamel.yaml`)
+- `bash` — only needed for macOS/Linux watcher service install scripts; not required on Windows or for any core commands
 - `claude` CLI (for Claude delegation commands): `npm install -g @anthropic-ai/claude-code`
 - `codex` CLI (for Codex delegation commands): `npm install -g @openai/codex`
 - macOS `launchd` or Linux `systemd` for background watcher (see Platform Support); `--foreground` mode works everywhere

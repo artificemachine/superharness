@@ -1,0 +1,17 @@
+schema_version: '1'
+name: task-logger
+description: >
+  SDK v1 example — appends a JSON log entry on close and verify lifecycle events.
+  Demonstrates multi-hook registration and settings-driven configuration.
+enabled: false
+detect: {}
+hooks:
+  on_close:
+    action: task_logger_on_close
+    priority: normal
+  on_verify:
+    action: task_logger_on_verify
+    priority: normal
+settings:
+  log_path: ".superharness/task-log.jsonl"
+  include_actor: true

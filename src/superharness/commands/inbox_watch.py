@@ -229,7 +229,7 @@ def _run_scripts_heartbeat(project_dir: str) -> None:
     except OSError:
         pass
 
-    # Heartbeat contract v1: YAML heartbeat — runtime-agnostic, consumed by monitor
+    # Heartbeat contract v1: YAML heartbeat — runtime-agnostic, consumed by dashboard
     try:
         from superharness.engine.heartbeat_contract import AgentHeartbeat, write_heartbeat
         write_heartbeat(project_dir, AgentHeartbeat(
@@ -475,7 +475,8 @@ def watch(
     import atexit
     atexit.register(_on_exit)
     signal.signal(signal.SIGTERM, _on_exit)
-    signal.signal(signal.SIGHUP, _on_exit)
+    if hasattr(signal, "SIGHUP"):
+        signal.signal(signal.SIGHUP, _on_exit)
 
     try:
         dispatch_kwargs = dict(
@@ -503,7 +504,8 @@ def watch(
 
             signal.signal(signal.SIGINT, _stop)
             signal.signal(signal.SIGTERM, _stop)
-            signal.signal(signal.SIGHUP, _stop)
+            if hasattr(signal, "SIGHUP"):
+                signal.signal(signal.SIGHUP, _stop)
 
             print(f"superharness watcher (foreground) — project: {project_dir}", flush=True)
             print(f"Polling every {interval}s. Press Ctrl+C to stop.", flush=True)

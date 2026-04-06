@@ -1,0 +1,20 @@
+name: claude-code
+version: "1"
+description: "Claude Code — Anthropic's AI coding agent (native adapter)"
+type: native
+launcher_script: delegate-to-claude.sh
+capabilities:
+  - code_generation
+  - file_editing
+  - test_execution
+  - multi_file_refactor
+model_tiers:
+  mini: haiku
+  standard: sonnet
+  max: opus
+requires:
+  bin: claude
+  env: []
+validation:
+  check_bin: true
+  check_env: false

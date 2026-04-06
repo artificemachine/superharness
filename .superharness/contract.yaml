@@ -2,7 +2,7 @@ id: initial-setup
 created: 2026-03-15
 created_by: owner
 status: draft
-goal: TBD — describe the current objective
+goal: "TBD \u2014 describe the current objective"
 tasks:
 - id: feat.monitor-browser-open
   title: 'shux monitor: auto project detection + browser open'
@@ -19,8 +19,8 @@ tasks:
   verified: true
   verified_at: '2026-03-26T15:00:00Z'
   verified_by: claude-code
-  summary: Auto project detection and browser open implemented; handoff 
-    feat.monitor-browser-open-to-owner.yaml exists
+  summary: Auto project detection and browser open implemented; handoff feat.monitor-browser-open-to-owner.yaml
+    exists
 - id: feat.test-type-command
   title: 'shux test-type: mandatory test types on contract tasks'
   owner: claude-code
@@ -36,10 +36,10 @@ tasks:
   verified: true
   verified_at: '2026-03-26T15:00:00Z'
   verified_by: claude-code
-  summary: test-type command implemented; report handoff 
-    feat.test-type-command-report.yaml exists
+  summary: test-type command implemented; report handoff feat.test-type-command-report.yaml
+    exists
 - id: mod.0-loader
-  title: Module loader (YAML → dataclass)
+  title: "Module loader (YAML \u2192 dataclass)"
   owner: claude-code
   status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
@@ -50,8 +50,8 @@ tasks:
   verified: true
   verified_at: '2026-03-26T15:00:00Z'
   verified_by: claude-code
-  summary: Module loader complete; handoffs mod.0-loader-to-next.md and 
-    mod.0-loader-to-owner.yaml exist
+  summary: Module loader complete; handoffs mod.0-loader-to-next.md and mod.0-loader-to-owner.yaml
+    exist
 - id: mod.1-runner
   title: Module runner (lifecycle hooks)
   owner: claude-code
@@ -65,8 +65,8 @@ tasks:
   verified: true
   verified_at: '2026-03-26T15:00:00Z'
   verified_by: claude-code
-  summary: Module runner with lifecycle hooks complete; handoff 
-    mod.1-runner-2026-03-20T12-20-51Z-claude-code.md exists
+  summary: Module runner with lifecycle hooks complete; handoff mod.1-runner-2026-03-20T12-20-51Z-claude-code.md
+    exists
 - id: mod.2-registry
   title: Registry + shux enhance CLI
   owner: claude-code
@@ -94,8 +94,8 @@ tasks:
   verified: true
   verified_at: '2026-03-26T15:00:00Z'
   verified_by: claude-code
-  summary: Obsidian vault integration module complete; handoff 
-    mod.3-obsidian-2026-03-20.md exists
+  summary: Obsidian vault integration module complete; handoff mod.3-obsidian-2026-03-20.md
+    exists
 - id: mod.4-autoschedule
   title: Auto-schedule module (watcher tick)
   owner: claude-code
@@ -109,8 +109,8 @@ tasks:
   verified: true
   verified_at: '2026-03-26T15:00:00Z'
   verified_by: claude-code
-  summary: Auto-schedule watcher tick module complete; handoff 
-    mod.4-autoschedule-2026-03-20T13-02-35Z-claude-code.md exists
+  summary: Auto-schedule watcher tick module complete; handoff mod.4-autoschedule-2026-03-20T13-02-35Z-claude-code.md
+    exists
 - id: mod.5-security
   title: Security module (shipguard gate)
   owner: claude-code
@@ -124,8 +124,8 @@ tasks:
   verified: true
   verified_at: '2026-03-26T15:00:00Z'
   verified_by: claude-code
-  summary: Security/shipguard gate module complete; handoff 
-    mod.5-security-to-next.md exists
+  summary: Security/shipguard gate module complete; handoff mod.5-security-to-next.md
+    exists
 - id: mod.6-remember
   title: Remember module (context refresh)
   owner: claude-code
@@ -139,8 +139,8 @@ tasks:
   verified: true
   verified_at: '2026-03-26T15:00:00Z'
   verified_by: claude-code
-  summary: Remember/context refresh module complete; handoff 
-    mod.6-remember-to-next.md exists
+  summary: Remember/context refresh module complete; handoff mod.6-remember-to-next.md
+    exists
 - id: mod.7-ntfy
   title: ntfy notification module
   owner: claude-code
@@ -168,8 +168,8 @@ tasks:
   verified: true
   verified_at: '2026-03-26T15:00:00Z'
   verified_by: claude-code
-  summary: Ship/auto-commit-on-close module complete; instructions handoff 
-    mod.8-ship-instructions.md exists
+  summary: Ship/auto-commit-on-close module complete; instructions handoff mod.8-ship-instructions.md
+    exists
 - id: mod.9-openclaw
   title: OpenClaw module (NemoClaw delegation)
   owner: claude-code
@@ -183,8 +183,8 @@ tasks:
   verified: true
   verified_at: '2026-03-26T15:00:00Z'
   verified_by: claude-code
-  summary: OpenClaw/NemoClaw delegation module complete; handoff 
-    mod.9-openclaw-2026-03-20T17-26-15Z-claude-code.md exists
+  summary: OpenClaw/NemoClaw delegation module complete; handoff mod.9-openclaw-2026-03-20T17-26-15Z-claude-code.md
+    exists
 - id: mod.10-telegram
   title: Telegram + Discord modules
   owner: claude-code
@@ -198,8 +198,8 @@ tasks:
   verified: true
   verified_at: '2026-03-26T15:00:00Z'
   verified_by: claude-code
-  summary: Telegram + Discord notification modules complete; instructions 
-    handoff mod.10-telegram-instructions.md exists
+  summary: Telegram + Discord notification modules complete; instructions handoff
+    mod.10-telegram-instructions.md exists
 - id: mod.11-doctor
   title: Doctor module health section
   owner: claude-code
@@ -213,23 +213,23 @@ tasks:
   verified: true
   verified_at: '2026-03-26T15:00:00Z'
   verified_by: claude-code
-  summary: Doctor module health section complete; handoff 
-    mod.11-doctor-claude-code-20260320-172600.md exists
+  summary: Doctor module health section complete; handoff mod.11-doctor-claude-code-20260320-172600.md
+    exists
 - id: feat.auto-timeout
   title: 'Dispatcher auto-timeout: estimate from task effort/plan'
   owner: claude-code
   status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
   acceptance_criteria:
-  - Dispatcher reads effort estimate from contract/plan and sets proportional 
-    launcher timeout
+  - Dispatcher reads effort estimate from contract/plan and sets proportional launcher
+    timeout
   test_types:
   - unit
   verified: true
   verified_at: '2026-03-26T15:00:00Z'
   verified_by: claude-code
-  summary: Dispatcher auto-timeout from effort estimate complete; handoff 
-    feat.auto-timeout.to-owner.md exists
+  summary: Dispatcher auto-timeout from effort estimate complete; handoff feat.auto-timeout.to-owner.md
+    exists
 - id: feat.live-task-log
   title: Live agent output in View Report for launched tasks
   owner: claude-code
@@ -263,8 +263,7 @@ tasks:
   project_path: /Users/airm2max/DevOpsSec/superharness
   dependency: feat.sdk-runner
   acceptance_criteria:
-  - delegate --via sdk launches agent via SDK, falls back to CLI if SDK 
-    unavailable
+  - delegate --via sdk launches agent via SDK, falls back to CLI if SDK unavailable
   test_types:
   - unit
   summary: 'SDK delegation complete: --via sdk flag added, uses SDKRunner when available,
@@ -318,19 +317,18 @@ tasks:
   verified_by: claude-code
   summary: Budget guard complete; handoff feat.sdk-budget-claude-code.md exists
 - id: feat.task-dependencies
-  title: Add blocked_by field + enforce plan/approve/review lifecycle on task 
-    create
+  title: Add blocked_by field + enforce plan/approve/review lifecycle on task create
   owner: claude-code
   status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
-  summary: blocked_by field + full lifecycle gates on delegate and close — 19 
-    tests, TDD complete
+  summary: "blocked_by field + full lifecycle gates on delegate and close \u2014 19\
+    \ tests, TDD complete"
   verified: true
   verified_at: '2026-03-26T00:41:12Z'
   verified_by: claude-code
 - id: bug.monitor-crash
-  title: Monitor UI crashes silently — server dies after spawning, port 8787 
-    becomes unreachable
+  title: "Monitor UI crashes silently \u2014 server dies after spawning, port 8787\
+    \ becomes unreachable"
   owner: claude-code
   status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
@@ -340,7 +338,7 @@ tasks:
   verified_at: '2026-03-26T00:40:56Z'
   verified_by: claude-code
 - id: bug.version-mismatch
-  title: CLI reports 1.0.0 but pip has 1.1.1 — hardcoded version string
+  title: "CLI reports 1.0.0 but pip has 1.1.1 \u2014 hardcoded version string"
   owner: claude-code
   status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
@@ -350,8 +348,8 @@ tasks:
   verified_at: '2026-03-26T00:40:56Z'
   verified_by: claude-code
 - id: bug.close-owner-rejected
-  title: shux close rejects owner actor — owner should always be able to close 
-    any task
+  title: "shux close rejects owner actor \u2014 owner should always be able to close\
+    \ any task"
   owner: claude-code
   status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
@@ -360,12 +358,11 @@ tasks:
   verified_at: '2026-03-26T00:40:56Z'
   verified_by: claude-code
 - id: fix.corrupt-handoff
-  title: Fix corrupt YAML in feat.sdk-streaming-complete.yaml — multiple 
-    documents
+  title: "Fix corrupt YAML in feat.sdk-streaming-complete.yaml \u2014 multiple documents"
   owner: claude-code
   status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
-  summary: Corrupt handoff YAML fixed — single valid document
+  summary: "Corrupt handoff YAML fixed \u2014 single valid document"
   verified: true
   verified_at: '2026-03-26T00:40:56Z'
   verified_by: claude-code
@@ -387,8 +384,8 @@ tasks:
   verified: true
   verified_at: '2026-03-26T12:15:31Z'
   verified_by: claude-code
-  summary: 'Working tree clean at v1.2.5 — prior dirty files already merged via PRs
-    #49-55. Obsolete stash dropped.'
+  summary: "Working tree clean at v1.2.5 \u2014 prior dirty files already merged via\
+    \ PRs #49-55. Obsolete stash dropped."
 - id: verify.session-2026-03-26
   title: 'Verify: bug fixes, feat.task-dependencies, tdd block'
   owner: claude-code
@@ -398,8 +395,7 @@ tasks:
   acceptance_criteria:
   - shux close rejects non-owner actors but allows actor=owner
   - shux monitor --foreground prints error when server crashes, not silent
-  - shux hygiene passes without OBSIDIAN vault present (no error on missing 
-    vault)
+  - shux hygiene passes without OBSIDIAN vault present (no error on missing vault)
   - shux doctor shows PASS/WARN/INFO for enabled modules
   - available_modules() returns non-empty list (module_templates in package)
   - shux delegate refuses on status=todo and plan_proposed
@@ -413,12 +409,11 @@ tasks:
     red: 'run: pytest tests/unit/test_task_dependencies.py tests/unit/test_task_create.py
       tests/unit/test_verify_and_close.py tests/unit/test_doctor_modules.py tests/unit/test_module_registry.py
       tests/unit/test_cli.py -v'
-    green: all tests pass, shux doctor/delegate/close behave as described in 
-      criteria
+    green: all tests pass, shux doctor/delegate/close behave as described in criteria
     refactor: no regressions in full suite (shux hygiene clean)
-  summary: 'Session 2026-03-26 fully verified and closed — all 12 AC pass, 149 targeted
-    tests pass (6 pre-existing failures in test_session_stop.py / test_delegate.py
-    outside scope)'
+  summary: "Session 2026-03-26 fully verified and closed \u2014 all 12 AC pass, 149\
+    \ targeted tests pass (6 pre-existing failures in test_session_stop.py / test_delegate.py\
+    \ outside scope)"
   verified: true
   verified_at: '2026-03-30T00:00:00Z'
   verified_by: claude-code
@@ -434,8 +429,7 @@ tasks:
   test_types:
   - unit
   tdd:
-    red: assert task has tdd.red, tdd.green, tdd.refactor, blocked_by, 
-      acceptance_criteria
+    red: assert task has tdd.red, tdd.green, tdd.refactor, blocked_by, acceptance_criteria
     green: create task with all fields via CLI
     refactor: verify shux hygiene passes
   summary: Task completed and verified
@@ -444,24 +438,23 @@ tasks:
   verified_at: '2026-03-26T15:04:42Z'
   verified_by: claude-code
 - id: bug.watcher-stale-heartbeat
-  title: Watcher reports stale heartbeat / not-running state despite loaded 
-    watcher
+  title: Watcher reports stale heartbeat / not-running state despite loaded watcher
   owner: codex-cli
   status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
   - shux status reports watcher heartbeat ok after a healthy cycle
-  - monitor /api/status watcher_runtime no longer says not running for a healthy
-    loaded watcher
+  - monitor /api/status watcher_runtime no longer says not running for a healthy loaded
+    watcher
   - stale watcher lock does not leave heartbeat falsely stale
   tdd:
-    red: Add failing tests for stale lock recovery, heartbeat freshness, and 
-      runtime state reconciliation.
-    green: Patch watcher status/runtime detection and lock handling so loaded 
-      watcher reports fresh heartbeat when healthy.
-    refactor: Extract shared watcher state helpers and tighten status 
-      diagnostics without changing behaviour.
+    red: Add failing tests for stale lock recovery, heartbeat freshness, and runtime
+      state reconciliation.
+    green: Patch watcher status/runtime detection and lock handling so loaded watcher
+      reports fresh heartbeat when healthy.
+    refactor: Extract shared watcher state helpers and tighten status diagnostics
+      without changing behaviour.
   plan_approved_at: '2026-03-27T20:12:51Z'
   summary: Task completed and verified
   review_requested_at: '2026-03-27T22:08:53Z'
@@ -477,15 +470,15 @@ tasks:
   acceptance_criteria:
   - All task action buttons render on the left side in the monitor task list
   - View Report remains first-class and aligned with other task actions
-  - Existing task actions keep working across todo, plan_proposed, report_ready,
-    review_failed, and review_requested states
+  - Existing task actions keep working across todo, plan_proposed, report_ready, review_failed,
+    and review_requested states
   tdd:
-    red: Add failing tests for task row HTML/CSS so View Report and all task 
-      action buttons render in a dedicated left-aligned actions group.
-    green: Patch monitor-ui task row layout and CSS so all task buttons render 
-      in the same left-aligned actions block.
-    refactor: Extract task action row rendering helpers and simplify button 
-      layout markup without changing behavior.
+    red: Add failing tests for task row HTML/CSS so View Report and all task action
+      buttons render in a dedicated left-aligned actions group.
+    green: Patch monitor-ui task row layout and CSS so all task buttons render in
+      the same left-aligned actions block.
+    refactor: Extract task action row rendering helpers and simplify button layout
+      markup without changing behavior.
   plan_approved_at: '2026-03-27T20:15:10Z'
   summary: Task completed and verified
   review_requested_at: '2026-03-27T20:18:04Z'
@@ -503,12 +496,12 @@ tasks:
   - The button triggers the correct next step for an approved plan
   - Existing task action mappings for other lifecycle states remain intact
   tdd:
-    red: Add failing tests that plan_approved tasks render an actionable monitor
-      button and are not stranded without UI controls.
-    green: Patch monitor-ui task action rendering so plan_approved tasks show 
-      the correct next-step action.
-    refactor: Extract state-to-action mapping helper so lifecycle states cannot 
-      silently lose UI actions.
+    red: Add failing tests that plan_approved tasks render an actionable monitor button
+      and are not stranded without UI controls.
+    green: Patch monitor-ui task action rendering so plan_approved tasks show the
+      correct next-step action.
+    refactor: Extract state-to-action mapping helper so lifecycle states cannot silently
+      lose UI actions.
   plan_approved_at: '2026-03-27T20:23:06Z'
   summary: Task completed and verified
   review_requested_at: '2026-03-27T20:58:17Z'
@@ -522,19 +515,17 @@ tasks:
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
-  - report_ready no longer presents ambiguous Request Opus Review + Accept & 
-    Close as equal primary actions
-  - Review action wording is provider-aware or generic instead of hardcoded to 
-    Opus
+  - report_ready no longer presents ambiguous Request Opus Review + Accept & Close
+    as equal primary actions
+  - Review action wording is provider-aware or generic instead of hardcoded to Opus
   - Accept & Close is gated behind review_passed or an explicit bypass action
   tdd:
-    red: Add failing tests for report_ready actions so review is the primary 
-      path and close is only available after review or an explicit bypass path.
-    green: Patch monitor-ui action mapping and labels so report_ready tasks 
-      request review first and only show close after review_passed or explicit 
-      bypass.
-    refactor: Extract review action policy and reviewer label rendering so 
-      provider-specific review wording stays consistent.
+    red: Add failing tests for report_ready actions so review is the primary path
+      and close is only available after review or an explicit bypass path.
+    green: Patch monitor-ui action mapping and labels so report_ready tasks request
+      review first and only show close after review_passed or explicit bypass.
+    refactor: Extract review action policy and reviewer label rendering so provider-specific
+      review wording stays consistent.
   plan_approved_at: '2026-03-27T20:30:26Z'
   summary: Task completed and verified
   review_requested_at: '2026-03-27T20:58:21Z'
@@ -552,39 +543,37 @@ tasks:
   - tasks list renders contract_tasks from /api/status
   - contract owners render from contract_owners from /api/status
   tdd:
-    red: Add failing tests proving refresh() receives 
-      contract_id/contract_tasks/contract_owners but the UI still renders '-' 
-      and '(no tasks)'/'(no owners)'.
-    green: Patch monitor-ui frontend refresh/render logic so contract id, tasks,
-      and owners render from the existing /api/status payload.
-    refactor: Isolate contract rendering and add tighter coverage so future UI 
-      changes cannot silently blank contract sections.
+    red: Add failing tests proving refresh() receives contract_id/contract_tasks/contract_owners
+      but the UI still renders '-' and '(no tasks)'/'(no owners)'.
+    green: Patch monitor-ui frontend refresh/render logic so contract id, tasks, and
+      owners render from the existing /api/status payload.
+    refactor: Isolate contract rendering and add tighter coverage so future UI changes
+      cannot silently blank contract sections.
   summary: Task completed and verified
   review_requested_at: '2026-03-27T20:58:23Z'
   verified: true
   verified_at: '2026-03-27T22:50:23Z'
   verified_by: claude-code
 - id: bug.monitor-review-actions-noop
-  title: Monitor UI review actions change status only and do not perform real 
-    review/close workflow
+  title: Monitor UI review actions change status only and do not perform real review/close
+    workflow
   owner: codex-cli
   status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
-  - Request Review triggers an actual review workflow instead of only flipping 
-    contract status
-  - Close Without Review performs the intended close/bypass path or is renamed 
-    to match actual behavior
+  - Request Review triggers an actual review workflow instead of only flipping contract
+    status
+  - Close Without Review performs the intended close/bypass path or is renamed to
+    match actual behavior
   - monitor UI gives visible feedback when review/close actions succeed or fail
   tdd:
-    red: Add regression tests proving Request Review and Close Without Review 
-      currently only mutate status and do not run the real workflow path.
-    green: Patch monitor action handling so review requests dispatch a concrete 
-      review path and close-without-review performs the explicit bypass close 
-      path.
-    refactor: Extract report-ready action handling so labels and backend actions
-      stay aligned.
+    red: Add regression tests proving Request Review and Close Without Review currently
+      only mutate status and do not run the real workflow path.
+    green: Patch monitor action handling so review requests dispatch a concrete review
+      path and close-without-review performs the explicit bypass close path.
+    refactor: Extract report-ready action handling so labels and backend actions stay
+      aligned.
   summary: Task completed and verified
   plan_approved_at: '2026-03-27T20:56:15Z'
   review_requested_at: '2026-03-27T21:05:09Z'
@@ -592,24 +581,22 @@ tasks:
   verified_at: '2026-03-27T22:50:24Z'
   verified_by: claude-code
 - id: ui.monitor-close-verification-gate
-  title: Monitor UI should reflect verification gate before offering close 
-    bypass
+  title: Monitor UI should reflect verification gate before offering close bypass
   owner: codex-cli
   status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
-  - report_ready tasks that are not verified do not present a misleading close 
-    action
+  - report_ready tasks that are not verified do not present a misleading close action
   - monitor task row makes the verification prerequisite visible before close
   - close-related labels and action output match the real close command behavior
   tdd:
-    red: Add failing tests proving unverified report_ready tasks currently show 
-      a close action that ends in backend verification refusal.
-    green: Patch the monitor UI so unverified tasks show Verify First or an 
-      equivalent disabled/non-misleading state instead of Close Without Review.
-    refactor: Consolidate close-action eligibility so verification and lifecycle
-      gates stay aligned.
+    red: Add failing tests proving unverified report_ready tasks currently show a
+      close action that ends in backend verification refusal.
+    green: Patch the monitor UI so unverified tasks show Verify First or an equivalent
+      disabled/non-misleading state instead of Close Without Review.
+    refactor: Consolidate close-action eligibility so verification and lifecycle gates
+      stay aligned.
   summary: Task completed and verified
   plan_approved_at: '2026-03-27T21:03:52Z'
   review_requested_at: '2026-03-27T21:05:46Z'
@@ -627,12 +614,12 @@ tasks:
   - reviewer display matches the actual routing used by Request Review
   - reviewer display does not break other task-row layouts
   tdd:
-    red: Add failing tests proving review_requested rows currently hide the 
-      reviewer target even though Request Review determines one.
-    green: Patch monitor task-row rendering and task payload data so 
-      review_requested rows show the reviewer target.
-    refactor: Reuse one reviewer-target helper across action handling and 
-      rendering so they cannot drift.
+    red: Add failing tests proving review_requested rows currently hide the reviewer
+      target even though Request Review determines one.
+    green: Patch monitor task-row rendering and task payload data so review_requested
+      rows show the reviewer target.
+    refactor: Reuse one reviewer-target helper across action handling and rendering
+      so they cannot drift.
   summary: Task completed and verified
   plan_approved_at: '2026-03-27T21:07:43Z'
   review_requested_at: '2026-03-27T21:10:06Z'
@@ -641,25 +628,24 @@ tasks:
   verified_at: '2026-03-27T22:50:25Z'
   verified_by: claude-code
 - id: bug.review-request-dispatch-blocked
-  title: Dispatcher rejects review_requested tasks because delegate still 
-    requires plan_approved
+  title: Dispatcher rejects review_requested tasks because delegate still requires
+    plan_approved
   owner: codex-cli
   status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
-  - review_requested tasks can be dispatched for review without tripping the 
-    main plan_approved gate
+  - review_requested tasks can be dispatched for review without tripping the main
+    plan_approved gate
   - normal implementation dispatch still requires plan_approved
   - review-request dispatch result is visible in inbox/launcher state
   tdd:
-    red: Add failing tests proving review_requested tasks currently reach 
-      dispatch but are blocked by the delegate lifecycle gate.
-    green: Patch dispatch/delegate flow so review_requested tasks are allowed 
-      only for review dispatch, without loosening the normal plan_approved 
-      guard.
-  refactor: Separate implementation-dispatch and review-dispatch eligibility 
-    rules so future workflow states remain explicit.
+    red: Add failing tests proving review_requested tasks currently reach dispatch
+      but are blocked by the delegate lifecycle gate.
+    green: Patch dispatch/delegate flow so review_requested tasks are allowed only
+      for review dispatch, without loosening the normal plan_approved guard.
+  refactor: Separate implementation-dispatch and review-dispatch eligibility rules
+    so future workflow states remain explicit.
   plan_approved_at: '2026-03-27T22:05:33Z'
   review_requested_at: '2026-03-27T22:18:56Z'
   verified: true
@@ -673,20 +659,20 @@ tasks:
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
-  - Closing a review_passed/done task from the monitor UI runs `shux close` with
-    `--actor owner` so codex-cli-owned tasks are allowed to close.
-  - The close action still requires verification and respects the existing 
-    lifecycle gate.
-  - Monitor close button behavior remains idempotent for tasks already being 
-    closed or for tasks owned by other agents.
+  - Closing a review_passed/done task from the monitor UI runs `shux close` with `--actor
+    owner` so codex-cli-owned tasks are allowed to close.
+  - The close action still requires verification and respects the existing lifecycle
+    gate.
+  - Monitor close button behavior remains idempotent for tasks already being closed
+    or for tasks owned by other agents.
   tdd:
-    red: Add a monitor action test that asserts the close_task action currently 
-      calls `shux close` without `--actor owner` and therefore cannot close 
-      codex-cli owned tasks when run by the monitor.
-    green: Patch the close_task handler so it appends `--actor owner` to the CLI
-      args and extend the test to verify the new flag is present.
-    refactor: Extract the common close-command builder so future UI actions that
-      invoke `shux close` reuse the `--actor owner` flag consistently.
+    red: Add a monitor action test that asserts the close_task action currently calls
+      `shux close` without `--actor owner` and therefore cannot close codex-cli owned
+      tasks when run by the monitor.
+    green: Patch the close_task handler so it appends `--actor owner` to the CLI args
+      and extend the test to verify the new flag is present.
+    refactor: Extract the common close-command builder so future UI actions that invoke
+      `shux close` reuse the `--actor owner` flag consistently.
   plan_proposed_at: '2026-03-27T22:20:00Z'
   plan_approved_at: '2026-03-27T22:30:02Z'
   review_passed_at: '2026-03-27T22:35:00Z'
@@ -703,38 +689,38 @@ tasks:
   acceptance_criteria:
   - shux delegate --orchestrate --print-only completes without error
   - contract.yaml task gains subtasks[] with at least 1 entry after run
-  - Each subtask has id, title, model_tier (mini/standard/max), 
-    estimated_tokens, estimated_cost_usd
+  - Each subtask has id, title, model_tier (mini/standard/max), estimated_tokens,
+    estimated_cost_usd
   - 'Decomposition summary printed: subtask count, estimated cost, recommended budget'
   subtasks:
   - id: verify.orchestrator-decompose.1
-    title: Verify shux delegate --orchestrate --print-only CLI flag exists and 
-      parses without error
+    title: Verify shux delegate --orchestrate --print-only CLI flag exists and parses
+      without error
     model_tier: mini
     estimated_tokens: 8000
     estimated_cost_usd: 0.0052
-    rationale: Simple CLI invocation check — run command, capture exit code and 
-      stdout. No reasoning or code changes needed.
+    rationale: "Simple CLI invocation check \u2014 run command, capture exit code\
+      \ and stdout. No reasoning or code changes needed."
     owner: claude-code
   - id: verify.orchestrator-decompose.2
-    title: Inspect contract.yaml schema to confirm subtasks[] field is supported
-      and validate its structure
+    title: Inspect contract.yaml schema to confirm subtasks[] field is supported and
+      validate its structure
     model_tier: mini
     estimated_tokens: 6000
     estimated_cost_usd: 0.0039
-    rationale: Read a YAML file and check for a known key. Structured data 
-      inspection, no multi-step reasoning.
+    rationale: Read a YAML file and check for a known key. Structured data inspection,
+      no multi-step reasoning.
     owner: claude-code
   - id: verify.orchestrator-decompose.3
-    title: Run shux delegate --orchestrate --print-only with a sample task and 
-      capture decomposition output
+    title: Run shux delegate --orchestrate --print-only with a sample task and capture
+      decomposition output
     model_tier: standard
     estimated_tokens: 25000
     estimated_cost_usd: 0.195
-    rationale: Requires executing the orchestrator end-to-end, parsing 
-      multi-field output (id, title, model_tier, estimated_tokens, 
-      estimated_cost_usd), and validating each subtask entry against acceptance 
-      criteria. Multi-step validation with potential debugging.
+    rationale: Requires executing the orchestrator end-to-end, parsing multi-field
+      output (id, title, model_tier, estimated_tokens, estimated_cost_usd), and validating
+      each subtask entry against acceptance criteria. Multi-step validation with potential
+      debugging.
     owner: claude-code
   - id: verify.orchestrator-decompose.4
     title: 'Validate subtask fields: each entry has id, title, model_tier, estimated_tokens,
@@ -742,26 +728,26 @@ tasks:
     model_tier: mini
     estimated_tokens: 5000
     estimated_cost_usd: 0.00325
-    rationale: Field-presence check on structured JSON/YAML output. Simple 
-      schema validation — no reasoning needed.
+    rationale: "Field-presence check on structured JSON/YAML output. Simple schema\
+      \ validation \u2014 no reasoning needed."
     owner: claude-code
   - id: verify.orchestrator-decompose.5
-    title: Verify decomposition summary output contains subtask count, estimated
-      cost, and recommended budget
+    title: Verify decomposition summary output contains subtask count, estimated cost,
+      and recommended budget
     model_tier: mini
     estimated_tokens: 4000
     estimated_cost_usd: 0.0026
-    rationale: String/pattern matching on CLI output for three known fields. 
-      Trivial extraction task.
+    rationale: String/pattern matching on CLI output for three known fields. Trivial
+      extraction task.
     owner: claude-code
   - id: verify.orchestrator-decompose.6
-    title: Verify contract.yaml is updated with subtasks[] containing at least 1
-      entry after orchestrate run
+    title: Verify contract.yaml is updated with subtasks[] containing at least 1 entry
+      after orchestrate run
     model_tier: mini
     estimated_tokens: 5000
     estimated_cost_usd: 0.00325
-    rationale: Read YAML file post-execution, check subtasks array length >= 1. 
-      Simple file read and assertion.
+    rationale: Read YAML file post-execution, check subtasks array length >= 1. Simple
+      file read and assertion.
     owner: claude-code
   estimated_cost_usd: 0.2132
   budget_usd: 0.3198
@@ -777,12 +763,11 @@ tasks:
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
-  - Run a real subtask dispatch with SDKRunner and compare actual cost_usd to 
-    estimate_subtask_cost() for same tier and token count
-  - Actual cost is within 2x of pre-flight estimate (accounts for token 
-    variance)
-  - PRICING table in cost_estimator and MODEL_PRICING in sdk_runner are 
-    identical (single source confirmed)
+  - Run a real subtask dispatch with SDKRunner and compare actual cost_usd to estimate_subtask_cost()
+    for same tier and token count
+  - Actual cost is within 2x of pre-flight estimate (accounts for token variance)
+  - PRICING table in cost_estimator and MODEL_PRICING in sdk_runner are identical
+    (single source confirmed)
   summary: Task completed and verified
   review_requested_at: '2026-03-30T11:44:39Z'
   verified: true
@@ -794,15 +779,14 @@ tasks:
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
-  - After all subtasks report done, parent task status becomes report_ready in 
-    contract.yaml
+  - After all subtasks report done, parent task status becomes report_ready in contract.yaml
   - actual_tokens and actual_cost_usd written to each subtask entry
   - Partial results (one subtask missing) leave parent status unchanged
   - Any failed subtask sets parent status to failed
   subtasks:
   - id: verify.subtask-aggregator-e2e.st1
-    title: Run TestSubtaskAggregator tests (all_done → report_ready, any_failed 
-      → failed)
+    title: "Run TestSubtaskAggregator tests (all_done \u2192 report_ready, any_failed\
+      \ \u2192 failed)"
     model_tier: mini
     owner: claude-code
     estimated_tokens: 3000
@@ -843,26 +827,25 @@ tasks:
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
-  - shux monitor starts correctly and shux monitor-list shows Project column 
-    with project basename
-  - Starting a second monitor for the same project prints "monitor already 
-    running for project X" and exits (no new process)
-  - Starting a monitor for a different project succeeds and monitor-list shows 
-    two separate entries
+  - shux monitor starts correctly and shux monitor-list shows Project column with
+    project basename
+  - Starting a second monitor for the same project prints "monitor already running
+    for project X" and exits (no new process)
+  - Starting a monitor for a different project succeeds and monitor-list shows two
+    separate entries
   - shux monitor-kill --project <dir> kills only the monitor for that project
-  - _is_monitor_running(project_dir) returns (True, port) for running project, 
-    (False, None) for unknown project
+  - _is_monitor_running(project_dir) returns (True, port) for running project, (False,
+    None) for unknown project
   test_types:
   - unit
   - integration
   verified: true
   verified_at: '2026-03-30T16:26:19Z'
   verified_by: claude-code
-  summary: 14 unit tests added to TestMonitorProjectAware in 
-    tests/unit/test_cli.py covering _is_monitor_running(project_dir) 
-    true/false/realpath, monitor-list project basename column, monitor-kill 
-    --project isolation, and duplicate-start no-new-process guard. All 168 unit 
-    tests pass.
+  summary: 14 unit tests added to TestMonitorProjectAware in tests/unit/test_cli.py
+    covering _is_monitor_running(project_dir) true/false/realpath, monitor-list project
+    basename column, monitor-kill --project isolation, and duplicate-start no-new-process
+    guard. All 168 unit tests pass.
 - id: verify.monitor-kill-list-commands
   title: Verify shux monitor-kill and monitor-list commands (v1.3.1)
   owner: claude-code
@@ -871,13 +854,11 @@ tasks:
   blocked_by: none
   acceptance_criteria:
   - shux monitor-list shows PID, PORT, PROJECT, URL columns
-  - shux monitor-list output includes hints for monitor-kill and monitor-kill 
-    --project
+  - shux monitor-list output includes hints for monitor-kill and monitor-kill --project
   - shux monitor-kill kills all monitor-ui processes and prints count
   - shux monitor-kill --port <N> kills only the process on that port
   - shux monitor-kill output hints user to run shux monitor-list
-  - shux monitor-list when nothing running prints "No monitor-ui processes 
-    running"
+  - shux monitor-list when nothing running prints "No monitor-ui processes running"
   test_types:
   - unit
   - integration
@@ -892,51 +873,42 @@ tasks:
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
-  - Tasks with status=done are hidden by default in the tasks panel (not 
-    rendered)
+  - Tasks with status=done are hidden by default in the tasks panel (not rendered)
   - Clicking the "done" pill badge toggles visibility of done tasks
-  - verify.* tasks in report_ready state show "Close Without Review" as primary 
+  - verify.* tasks in report_ready state show "Close Without Review" as primary button
+  - verify.* tasks in report_ready state show "Request Review" as a smaller secondary
     button
-  - verify.* tasks in report_ready state show "Request Review" as a smaller 
-    secondary button
-  - Non-verify tasks in report_ready still show "Request Review" as primary 
-    action
+  - Non-verify tasks in report_ready still show "Request Review" as primary action
   test_types:
   - integration
   verified: true
   verified_at: '2026-03-30T00:00:00Z'
   verified_by: claude-code
-  summary: All 5 acceptance criteria confirmed in monitor-ui.py source; 89 tests
-    pass
+  summary: All 5 acceptance criteria confirmed in monitor-ui.py source; 89 tests pass
 - id: verify.orchestrator-subtask-routing-e2e
-  title: Verify orchestrator --orchestrate flag, subtask routing, cost estimates
-    (v1.3.0)
+  title: Verify orchestrator --orchestrate flag, subtask routing, cost estimates (v1.3.0)
   owner: claude-code
   status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
-  - delegate --orchestrate decomposes a task into subtasks and writes them to 
-    contract.yaml
-  - Each subtask has model_tier (mini/standard/max), estimated_tokens, 
-    estimated_cost_usd
+  - delegate --orchestrate decomposes a task into subtasks and writes them to contract.yaml
+  - Each subtask has model_tier (mini/standard/max), estimated_tokens, estimated_cost_usd
   - estimate_subtask_cost() returns correct USD for mini/standard/max tiers
   - estimate_task_cost() sums subtask estimates with configurable buffer
-  - PRICING table in cost_estimator matches MODEL_PRICING in sdk_runner (single 
-    source of truth)
-  - Orchestrator falls back to single-subtask when Opus decomposition JSON is 
-    malformed
+  - PRICING table in cost_estimator matches MODEL_PRICING in sdk_runner (single source
+    of truth)
+  - Orchestrator falls back to single-subtask when Opus decomposition JSON is malformed
   test_types:
   - unit
   - integration
   verified: true
   verified_at: '2026-03-30T20:00:00Z'
   verified_by: claude-code
-  summary: All 6 acceptance criteria verified; 38 tests pass 
-    (test_cost_estimator.py 19, test_orchestrator.py 13, 
-    test_delegate_orchestrator.py 6); PRICING imported directly from sdk_runner 
-    (single source of truth); fallback subtask confirmed; handoff 
-    verify.orchestrator-subtask-routing-e2e-report.yaml exists
+  summary: All 6 acceptance criteria verified; 38 tests pass (test_cost_estimator.py
+    19, test_orchestrator.py 13, test_delegate_orchestrator.py 6); PRICING imported
+    directly from sdk_runner (single source of truth); fallback subtask confirmed;
+    handoff verify.orchestrator-subtask-routing-e2e-report.yaml exists
 - id: verify.sdk-runner-budget
   title: Verify SDKRunner budget enforcement and cost tracking (v1.3.0)
   owner: claude-code
@@ -947,17 +919,16 @@ tasks:
   - SDKRunner raises BudgetExceededError when actual cost exceeds max_budget_usd
   - SDKRunner.run() returns dict with cost_usd, input_tokens, output_tokens
   - cost_usd is calculated using MODEL_PRICING (same table as cost_estimator)
-  - Total cost accumulates across multiple run() calls on the same runner 
-    instance
+  - Total cost accumulates across multiple run() calls on the same runner instance
   - reset_session() resets token and cost counters to zero
   test_types:
   - unit
   verified: true
   verified_at: '2026-03-30T00:00:00Z'
   verified_by: claude-code
-  summary: 18 tests in test_sdk_runner_budget.py pass covering all 5 acceptance 
-    criteria; SDKRunner implementation confirmed correct; pre-existing 
-    test_delegate failure unrelated to this task
+  summary: 18 tests in test_sdk_runner_budget.py pass covering all 5 acceptance criteria;
+    SDKRunner implementation confirmed correct; pre-existing test_delegate failure
+    unrelated to this task
 - id: feat.onboarding-command-first
   title: 'Onboarding: command-first shux help/demo + Windows docs'
   owner: codex-cli
@@ -985,8 +956,230 @@ tasks:
   workflow: note
   development_method: none
   acceptance_criteria:
-  - Capture decisions, changed files, test evidence, and next action after 
-    onboarding work
-  summary: 'Session summary prepared for next run.'
+  - Capture decisions, changed files, test evidence, and next action after onboarding
+    work
+  summary: Session summary prepared for next run.
+- id: feat.adapter-registry-v1
+  title: Adapter registry v1 (manifest-driven agent routing)
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: implementation
+  development_method: tdd
+  acceptance_criteria:
+  - Introduce a versioned adapter registry/manifest contract for agent runtimes
+  - Claude Code and Codex CLI dispatch paths use the same registry-driven flow
+  - shux adapters list/info/test surfaces installed adapters and validation results
+  - Unsupported or misconfigured adapters fail with clear validation errors before
+    dispatch
+  - Existing Claude/Codex behavior remains backward compatible for current users
+  test_types:
+  - unit
+  - integration
+  tdd:
+    red: Add failing tests for manifest loading, adapter capability detection, registry
+      lookup, and delegate/dispatch routing through a generic adapter interface.
+    green: Implement the minimal registry, adapter manifest loader, and shared dispatch
+      path so native adapters run through one interface and invalid adapters fail
+      safely.
+    refactor: Remove duplicated agent-type branching from dispatch/delegate code and
+      centralize adapter validation plus capability checks.
+  summary: "Adapter registry v1 complete. YAML manifests for claude-code and codex-cli\
+    \ in adapter_manifests/. engine/adapter_registry.py with AdapterManifest, AdapterValidationError,\
+    \ list_adapters, load_manifest, validate_adapter, resolve_launcher, adapter_info.\
+    \ commands/adapters.py CLI (shux adapters list/info/test). inbox_dispatch.py routing\
+    \ refactored to use resolve_launcher() \u2014 no hard-coded if/else. 21/21 unit\
+    \ tests pass. 0 regressions."
+  plan_approved_at: '2026-04-05T10:54:09Z'
+  done_at: '2026-04-05T11:30:00Z'
+- id: feat.heartbeat-contract-v1
+  title: Heartbeat contract v1 (runtime-agnostic agent status)
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: feat.adapter-registry-v1
+  workflow: implementation
+  development_method: tdd
+  acceptance_criteria:
+  - Define a stable file-based heartbeat schema for native and external agent runtimes
+  - Watcher and monitor consume heartbeat/status data without hardcoding runtime-specific
+    assumptions
+  - Heartbeats can report active task, liveness, next wake time, and budget or usage
+    metadata
+  - Stale-heartbeat detection and recovery paths behave consistently across runtimes
+  - Existing watcher health/status flows remain compatible with current native agents
+  test_types:
+  - unit
+  - integration
+  tdd:
+    red: Add failing tests for heartbeat schema parsing, stale-session detection,
+      recovery behavior, and status projection for non-native runtimes.
+    green: Implement the minimal heartbeat contract, readers/writers, and status plumbing
+      so watcher and monitor can consume any compliant runtime.
+    refactor: Consolidate runtime-specific watcher and monitor status helpers behind
+      the new heartbeat contract to reduce drift.
+  verified: true
+  verified_at: '2026-04-05T12:50:28Z'
+  verified_by: claude-code
+  done_at: '2026-04-05T13:00:00Z'
+  summary: "Heartbeat contract v1 complete. engine/heartbeat_contract.py: AgentHeartbeat\
+    \ + AgentBudget dataclasses, write_heartbeat/read_heartbeat/is_stale/age_seconds/list_agent_heartbeats.\
+    \ engine/agent_status.py: AgentStatusRecord, write/read/read_all, is_status_stale,\
+    \ list_stale_agents, agent_status_health \u2014 all runtime-agnostic via directory\
+    \ scan. inbox_watch.py writes both legacy watcher.heartbeat and structured watcher.heartbeat.yaml\
+    \ each tick. status.py prefers structured YAML, falls back to legacy. protocol/templates/agent-status.yaml\
+    \ template published. 72 tests pass (16 heartbeat_contract + 45 agent_status +\
+    \ 11 heartbeat cmd). 0 regressions."
+- id: feat.monitor-operator-upgrade
+  title: 'Monitor operator upgrade: board view, health, budget, review queue'
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: feat.heartbeat-contract-v1
+  workflow: implementation
+  development_method: tdd
+  acceptance_criteria:
+  - Monitor UI adds a clearer operator-focused board view grouped by workflow state
+  - Review queue, per-agent health, and budget/usage signals are visible from the
+    existing lightweight monitor
+  - Task actions remain correct across todo, plan, review, verify, and close states
+  - Live log affordances improve without requiring a frontend stack rewrite
+  - New monitor affordances are covered by endpoint or render regression tests
+  test_types:
+  - unit
+  - integration
+  tdd:
+    red: Add failing API/render tests for grouped task views, reviewer queue state,
+      health pills, and budget indicators in the existing monitor.
+    green: Implement the smallest monitor UI and API changes needed to surface operator
+      controls and richer task/runtime visibility.
+    refactor: Extract reusable monitor rendering and task-action helpers so richer
+      UI state does not reintroduce lifecycle drift.
+  verified: true
+  verified_at: '2026-04-05T14:00:00Z'
+  verified_by: claude-code
+  tests_passed: true
+  done_at: '2026-04-05T14:00:00Z'
+  summary: 'board_tasks() + review_queue() + budget_signals() Python functions; /api/board
+    and /api/review-queue endpoints; /api/status extended with review_queue + board_columns
+    + budget; HTML/CSS/JS: board view (5-column CSS grid), review queue card with
+    urgency badge, agent health & budget pills, board toggle. 21 new tests; 110/110
+    pass.'
+- id: feat.module-sdk-v1
+  title: Module SDK v1 (formalize extension manifests and hooks)
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: feat.adapter-registry-v1
+  workflow: implementation
+  development_method: tdd
+  acceptance_criteria:
+  - Promote the current module system into a documented, schema-validated SDK
+  - Extension manifests include schema versioning and stable lifecycle hook contracts
+  - Hook isolation and validation failures are explicit and test-covered
+  - At least two example modules demonstrate the public SDK shape
+  - Existing built-in modules remain supported or are migrated cleanly onto the SDK
+    contract
+  test_types:
+  - unit
+  - integration
+  tdd:
+    red: Add failing tests for manifest validation, hook isolation, backward compatibility,
+      and example-module loading through a public SDK path.
+    green: Implement the minimal SDK schema, loader, and lifecycle contract so modules
+      can be validated and executed through one documented interface.
+    refactor: Migrate built-in modules and registry code onto the SDK contract while
+      preserving zero-config defaults for core users.
+  verified: true
+  verified_at: '2026-04-05T00:00:00Z'
+  verified_by: claude-code
+  summary: "Completed on earlier dispatch \u2014 31/31 tests pass"
+- id: feat.project-pack-export-import
+  title: 'Project packs: export and import portable .superharness state'
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: feat.module-sdk-v1
+  workflow: implementation
+  development_method: tdd
+  acceptance_criteria:
+  - Add shux pack export and shux pack import for portable project state
+  - Export scrubs secrets, machine-local watcher/install state, and unsafe absolute-path
+    metadata
+  - Import handles collisions deterministically and preserves portable protocol files
+  - Round-trip export/import regression tests pass on representative sample projects
+  - Portable pack format is documented for operators and agents
+  test_types:
+  - unit
+  - integration
+  tdd:
+    red: Add failing tests for secret scrubbing, machine-local field removal, deterministic
+      import collision handling, and export-import round trips.
+    green: Implement the smallest pack format and CLI commands needed to export and
+      restore portable superharness project state safely.
+    refactor: Separate portable project state from machine-local runtime state so
+      export/import rules stay explicit and auditable.
+  summary: Closed from monitor without review request
+  verified: true
+  verified_at: '2026-04-05T17:24:38Z'
+  verified_by: claude-code
+- id: feat.parallel-checkout-safety
+  title: Parallel checkout safety (atomic per-task claims for multi-agent work)
+  owner: claude-code
+  status: review_requested
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: feat.project-pack-export-import
+  workflow: implementation
+  development_method: tdd
+  acceptance_criteria:
+  - Independent tasks can be claimed in parallel without double-dispatch or silent
+    overlap
+  - Task checkout is atomic and covered by concurrency-focused regression tests
+  - Dependency-aware scheduling prevents blocked tasks from being claimed early
+  - Stale lock recovery is explicit and does not leave tasks stranded
+  - Existing single-agent flows remain correct and unchanged for non-parallel users
+  test_types:
+  - unit
+  - integration
+  - e2e
+  tdd:
+    red: Add failing tests for concurrent checkout, double-claim prevention, dependency-aware
+      scheduling, and stale-lock recovery under parallel load.
+    green: Implement minimal per-task claim locking and scheduler checks so eligible
+      tasks can run safely in parallel.
+    refactor: Consolidate lock helpers and scheduling rules so parallel and single-agent
+      flows share one explicit checkout policy.
+  summary: "Added atomic claim() + _deps_satisfied() to inbox.py. claim() combines\
+    \ next_pending + launch under single flock \u2014 eliminates double-dispatch race.\
+    \ next_pending() gains optional contract_file param for dependency-aware scheduling.\
+    \ delegate.py ctx bug fixed (UnboundLocalError on non-discussion paths). 31 new\
+    \ concurrency regression tests all pass; 112 related tests pass."
+  verified: false
+  review_requested_at: '2026-04-05T18:19:41Z'
+- id: bug.sdk-live-log
+  title: SDK dispatch produces no live logs in monitor UI
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: quick
+  review_requested_at: '2026-04-05T11:44:05Z'
+  verified: true
+  verified_at: '2026-04-05T12:26:38Z'
+  verified_by: claude-code
+  summary: Task completed and verified
+- id: bug.noisy-lock-cleanup
+  title: "Watcher lock not released on normal exit \u2014 orphan messages every cycle"
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: quick
+  summary: Register SIGTERM/SIGHUP handlers in single-cycle (launchd) mode to release
+    watcher lock on signal
+  verified: true
+  verified_at: '2026-04-05T13:18:21Z'
+  verified_by: claude-code
 decisions: []
 failures: []

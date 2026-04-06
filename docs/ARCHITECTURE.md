@@ -34,7 +34,7 @@ AI coding assistants are powerful within a session but lose context when you swi
 ```
 cli/                    → user-facing shell commands (delegate, enqueue, dispatch, hygiene…)
 src/superharness/engine/→ Python core: YAML ops, queue transitions, contract queries, validation
-scripts/                → watcher install, launchd/systemd, guard scripts, monitor-ui (with autohealth watchdog)
+scripts/                → watcher install, launchd/systemd, guard scripts, dashboard-ui (with autohealth watchdog)
 protocol/               → spec, templates, schema
 adapters/               → Claude Code hooks, Codex CLI templates
 ```
@@ -101,7 +101,7 @@ graph TB
         dispatch["inbox-dispatch.sh"]
         watch["inbox-watch.sh"]
         heartbeat["heartbeat.sh"]
-        monitor["monitor-ui.py"]
+        dashboard["dashboard-ui.py"]
     end
 
     subgraph Engine["src/superharness/engine/ (Python)"]
@@ -132,14 +132,14 @@ graph TB
     end
 
     CLI --> Scripts
-    Browser -->|HTTP| monitor
+    Browser -->|HTTP| dashboard
     launchd -->|every 15s| watch
     watch --> dispatch
     watch --> heartbeat
     dispatch --> delegate
     delegate --> claude
     delegate --> codex
-    monitor --> State
+    dashboard --> State
     claude --> State
     codex --> State
     Engine --> State

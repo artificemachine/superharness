@@ -140,12 +140,12 @@ superharness watch --foreground --project . --interval 30
 
 This runs the same watcher loop in your terminal. Works on macOS, Linux, and Windows. Press Ctrl+C to stop.
 
-### Monitor Autohealth Watchdog
+### Dashboard Autohealth Watchdog
 
-The monitor dashboard has a built-in watchdog that auto-restarts it if the server process dies:
+The dashboard has a built-in watchdog that auto-restarts it if the server process dies:
 
 ```bash
-superharness monitor-ui --project . --autohealth --no-open
+superharness dashboard-ui --project . --autohealth --no-open
 ```
 
-The watchdog checks server health every 5 seconds (configurable with `--health-interval`) and restarts the HTTP server if it becomes unresponsive. This is a lightweight alternative to running the monitor as a launchd/systemd service.
+The watchdog checks server health every 5 seconds (configurable with `--health-interval`) and restarts the HTTP server if it becomes unresponsive. This is a lightweight alternative to running the dashboard as a launchd/systemd service.

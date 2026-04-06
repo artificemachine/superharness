@@ -20,7 +20,7 @@ Type these directly into Claude Code or Codex CLI — no terminal needed after f
 | `shux recall <keywords>` | Search past handoffs and ledger entries |
 | `shux uninstall` | Remove watcher and system artifacts for this project |
 | `shux hygiene` | Validate protocol compliance (contract, handoffs, ledger) |
-| `shux monitor` | Open browser dashboard |
+| `shux dashboard` | Open browser dashboard |
 | `shux watch` | Start continuous watcher in foreground |
 | `shux update` | Pull latest superharness (`git pull` in repo) + re-run init to refresh `CLAUDE.md`, `AGENTS.md`, templates |
 
@@ -40,7 +40,7 @@ graph TD
     B -->|pass| C([shux contract])
     B -->|fail| B2[fix issues] --> B
     C --> D([shux continue])
-    C --> E([shux monitor])
+    C --> E([shux dashboard])
     D --> F{task done?}
     F -->|yes| F2([shux verify task-id])
     F2 --> G([shux close task-id])
@@ -155,7 +155,7 @@ superharness delegate mcp-docs --project /path/to/project --print-only
 - `due_by` — warns (doesn't block) if the task is overdue
 - `depends_on` — blocks if dependency tasks are not done
 
-**User instructions:** If `.superharness/handoffs/{task_id}-instructions.md` exists, its contents are injected into the agent prompt. The monitor UI Enqueue modal creates this file automatically.
+**User instructions:** If `.superharness/handoffs/{task_id}-instructions.md` exists, its contents are injected into the agent prompt. The dashboard Enqueue modal creates this file automatically.
 
 ### Contract snapshot
 
@@ -181,7 +181,7 @@ todo → plan_proposed → plan_approved → in_progress → report_ready → do
 
 | Phase | Who sets it | What happens |
 |-------|-------------|--------------|
-| `todo` | operator | task created; Enqueue button visible in monitor |
+| `todo` | operator | task created; Enqueue button visible in dashboard |
 | `plan_proposed` | agent | agent writes plan handoff, stops and waits |
 | `plan_approved` | operator | operator approves via `shux task status` (plans are typically reviewed upfront in the Enqueue modal before dispatch) |
 | `in_progress` | agent | agent begins implementation |
@@ -191,7 +191,7 @@ todo → plan_proposed → plan_approved → in_progress → report_ready → do
 | `review_failed` | Opus | review failed → agent loops back to `plan_proposed` |
 | `done` | operator | operator runs `shux close <id>` |
 
-The monitor UI (`shux monitor`) shows each task's current phase and presents the appropriate action button automatically.
+The dashboard (`shux dashboard`) shows each task's current phase and presents the appropriate action button automatically.
 
 ### Task management
 
@@ -286,16 +286,16 @@ superharness doctor --project .
 
 Checks for: required executables (`bash`, `python3`, `claude`, `codex`), protocol directory structure, YAML syntax validity, file permissions.
 
-### Monitor UI
+### Dashboard UI
 
 ```bash
-superharness monitor-ui --project .
-superharness monitor-ui --project . --autohealth   # watchdog mode: auto-restarts if server dies
+superharness dashboard-ui --project .
+superharness dashboard-ui --project . --autohealth   # watchdog mode: auto-restarts if server dies
 
 # Process management
-shux monitor-list          # list all running monitor-ui processes (PID, port, URL)
-shux monitor-kill          # kill all monitor-ui processes
-shux monitor-kill --port 8787   # kill only the one on a specific port
+shux dashboard-list          # list all running dashboard-ui processes (PID, port, URL)
+shux dashboard-kill          # kill all dashboard-ui processes
+shux dashboard-kill --port 8787   # kill only the one on a specific port
 ```
 
 Includes: watcher state, inbox counters, one-click queue actions, Enqueue modal with TDD instructions, Done button for inbox-completed tasks, optional Logdy log view.
@@ -345,7 +345,7 @@ superharness uninstall --project /path/to/project
 - `SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS=YES`
 
 **Optional env vars:**
-- `SUPERHARNESS_MONITOR_PORT` — override the monitor dashboard port (default: `8787`). Set this if port 8787 is in use. The session-stop hook uses this value when killing the monitor on session end.
+- `SUPERHARNESS_DASHBOARD_PORT` — override the dashboard port (default: `8787`). Set this if port 8787 is in use. The session-stop hook uses this value when killing the dashboard on session end.
 
 ### Readiness Audits
 

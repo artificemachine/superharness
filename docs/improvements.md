@@ -34,9 +34,9 @@ shux task create --from-template bugfix --id fix-auth --title "Fix token refresh
 
 Create a new task pre-loaded with a prior handoff's context. Useful when a completed task spawns follow-up work — instead of manually copying context, fork the handoff and edit the scope.
 
-### Cost dashboard in monitor UI
+### Cost dashboard in dashboard
 
-`cost_estimator.py` already estimates token costs per subtask. Surface this in the monitor dashboard — cumulative cost per task, per day, per agent. Low effort, high visibility.
+`cost_estimator.py` already estimates token costs per subtask. Surface this in the dashboard — cumulative cost per task, per day, per agent. Low effort, high visibility.
 
 ---
 
@@ -69,7 +69,7 @@ These are already scoped with TDD plans. Not restated here — just the priority
 | **Module system iters 3, 6** (obsidian + remember) | `plan-module-system.md` | Closes the knowledge loop — vault notes on close, context refresh on continue. Core value prop. |
 | **always-on-agent daemon mode** | `ROADMAP.md` | `shux daemon start` replaces the brittle launchd/systemd install scripts. Single biggest DX pain point for watcher setup. |
 | **always-on-agent cron + model fallback** | `ROADMAP.md` | Cron enables scheduled tasks without external crontab. Model fallback adds resilience (Sonnet → Haiku on budget). |
-| **Parallel dispatch + worktrees** | `ROADMAP.md` | Biggest architectural change. Requires new locking model, worktree lifecycle, merge strategy. Do last. |
+| **Parallel dispatch + worktrees** | ✅ Implemented v1.7.0 | `fanout_dispatch()` + `swarm_dispatch()` with git worktrees, Opus reviewer, try/finally cleanup. |
 
 ---
 
@@ -80,7 +80,7 @@ Features other tools have that superharness intentionally does not pursue:
 | Feature | Who has it | Why not |
 |---------|-----------|---------|
 | **Agent/provider neutrality** (15+ providers) | pi.dev | superharness dispatches to `claude` and `codex` CLIs — the two best coding agents. Adding aider/cursor adapters would increase maintenance surface for tools the project owner doesn't use. Revisit only if a concrete user requests it. |
-| **Desktop GUI** (Electron app) | Dorothy | Conflicts with the "works over SSH, in CI, headless" design principle. The monitor UI at `:8787` covers the visual needs without an Electron dependency. |
+| **Desktop GUI** (Electron app) | Dorothy | Conflicts with the "works over SSH, in CI, headless" design principle. The dashboard at `:8787` covers the visual needs without an Electron dependency. |
 | **Enterprise integrations** (JIRA, Figma, Vercel) | Dorothy | superharness targets solo devs with limited bandwidth, not enterprise teams. These integrations are maintenance-heavy and outside the core value prop. |
 | **Shareable extension packages** (npm marketplace) | pi.dev | The module system uses YAML templates, not packaged code. Community distribution (`gh:user/module`) is interesting but premature — build the module system first, then see if there's demand. |
 
@@ -95,13 +95,13 @@ Features other tools have that superharness intentionally does not pursue:
 | 3 | `shux diff` | Small scope, high trust payoff. Verifying agent work before close prevents silent failures from compounding across sessions. |
 | 4 | Daemon mode (always-on-agent merge) | Removes the most common onboarding friction. launchd plists are brittle and OS-specific; `shux daemon start` is portable. |
 | 5 | `shux discuss` hardening | Already implemented — just needs staleness timeout and verdict validation. Small effort, prevents data quality rot. |
-| 6 | Cost dashboard in monitor UI | Low effort — `cost_estimator.py` exists, just needs a `/api/costs` endpoint and a panel in the dashboard. |
+| 6 | Cost dashboard | Low effort — `cost_estimator.py` exists, just needs a `/api/costs` endpoint and a panel in the dashboard. |
 | 7 | `shux global-status` | Becomes more valuable as the number of superharness-managed projects grows. Not urgent at 2–3 projects. |
 | 8 | Semantic recall | Grep works fine below ~200 handoffs. Worth doing when the archive outgrows keyword search. |
 | 9 | Task templates | Convenience, not blocking. The Enqueue modal already assembles TDD instructions per task. |
 | 10 | Cron + model fallback (always-on-agent) | Useful but not blocking anything. Cron jobs can use system crontab in the meantime. |
 | 11 | `shux fork` | Nice workflow shortcut. Manual copy-paste of handoff context works today. |
-| 12 | Parallel dispatch + worktrees | Big architectural change with limited payoff at solo-dev scale. Do last, or when a real user reports agent conflicts. |
+| 12 | Parallel dispatch + worktrees | ✅ Implemented v1.7.0 — `fanout_dispatch()`, `swarm_dispatch()`, git worktrees, Opus reviewer. |
 
 ---
 

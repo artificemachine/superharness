@@ -82,7 +82,7 @@ def main(argv: list[str] | None = None) -> None:
     print('  cd /your/project')
     print('  shux init "My Project" "Python" "active"')
     print("  shux doctor")
-    print("  shux monitor           # browser dashboard")
+    print("  shux dashboard         # browser dashboard")
     print()
     print("To run real (non-print-only) dispatch you'll need an agent CLI:")
     print("  Claude Code:  npm install -g @anthropic-ai/claude-code")  # shipguard:ignore SC-003
