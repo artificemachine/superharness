@@ -47,8 +47,12 @@ def _is_pid_alive(pid: int) -> bool:
     try:
         os.kill(pid, 0)
         return True
-    except (ProcessLookupError, PermissionError):
-        return False
+    except ProcessLookupError:
+        return False  # No such process
+    except PermissionError:
+        return True   # Process exists; we just lack permission to signal it
+    except OSError:
+        return False  # Windows: OSError(22) for invalid/out-of-range PID
 
 
 def _find_watch_script() -> Path | None:
