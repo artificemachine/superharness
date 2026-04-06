@@ -125,6 +125,18 @@ _cmd("pack",            "Export and import portable project state.",            
 _cmd("benchmark",       "Show dispatch cost and duration leaderboard.",            module="superharness.commands.benchmark")
 _cmd("diff",            "Preview agent changes for a task before closing.",        module="superharness.commands.diff")
 
+# explain runs in-process (no subprocess) so CliRunner captures output correctly
+def _register_explain():
+    try:
+        from superharness.commands.explain import cmd_explain
+        main.add_command(cmd_explain, name="explain")
+        main.add_command(cmd_explain, name="why")
+        main.add_command(cmd_explain, name="wtf")
+    except Exception:
+        pass
+
+_register_explain()
+
 # Daemon is a Click group — import and add directly
 def _register_daemon():
     try:
