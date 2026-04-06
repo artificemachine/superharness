@@ -275,3 +275,63 @@ def test_onboard_works_without_agent_cli(runner, project, monkeypatch):
     ])
     # Should complete without crashing (may skip real enqueue, but no exception)
     assert result.exit_code == 0, result.output
+
+
+# ---------------------------------------------------------------------------
+# AGENTS.md creation
+# ---------------------------------------------------------------------------
+
+def test_onboard_creates_agents_md(runner, project):
+    """Step 2 (init) writes AGENTS.md if it doesn't exist."""
+    from superharness.commands.onboard import cmd_onboard
+    result = runner.invoke(cmd_onboard, [
+        "--project", str(project), "--non-interactive",
+    ])
+    assert result.exit_code == 0, result.output
+    agents_md = project / "AGENTS.md"
+    assert agents_md.exists(), "AGENTS.md not created by onboard"
+    content = agents_md.read_text()
+    assert "shux contract" in content, "AGENTS.md should mention shux contract"
+
+
+def test_onboard_does_not_overwrite_agents_md(runner, project):
+    """If AGENTS.md already exists, onboard must NOT overwrite it."""
+    existing = "# My custom AGENTS.md\nDo not overwrite me.\n"
+    (project / "AGENTS.md").write_text(existing)
+    from superharness.commands.onboard import cmd_onboard
+    result = runner.invoke(cmd_onboard, [
+        "--project", str(project), "--non-interactive",
+    ])
+    assert result.exit_code == 0, result.output
+    assert (project / "AGENTS.md").read_text() == existing, "AGENTS.md was overwritten"
+
+
+# ---------------------------------------------------------------------------
+# Step hints (→ context lines)
+# ---------------------------------------------------------------------------
+
+def test_onboard_steps_have_context_hints(runner, project):
+    """Each step prints at least one → hint line explaining what was done."""
+    from superharness.commands.onboard import cmd_onboard
+    result = runner.invoke(cmd_onboard, [
+        "--project", str(project), "--non-interactive",
+    ])
+    assert result.exit_code == 0, result.output
+    assert "→" in result.output, "No → hint lines found in onboard output"
+    # At least 3 distinct hint lines
+    hint_lines = [l for l in result.output.splitlines() if "→" in l]
+    assert len(hint_lines) >= 3, f"Expected ≥3 hint lines, got {len(hint_lines)}"
+
+
+# ---------------------------------------------------------------------------
+# Cold-start hint in shux --help
+# ---------------------------------------------------------------------------
+
+def test_help_cold_start_suggests_onboard(tmp_path, runner):
+    """shux --help in a dir without .superharness/ mentions shux onboard."""
+    from superharness.cli import main
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        result = runner.invoke(main, ["--help"])
+    assert result.exit_code == 0
+    assert "onboard" in result.output.lower(), \
+        "shux --help should mention 'onboard' for cold-start projects"
