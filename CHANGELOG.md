@@ -1559,3 +1559,10 @@ If you're an agent picking this up:
 - `.github/workflows/release.yml`: auto-creates a GitHub Release when
   `pyproject.toml` version changes on `main`, which triggers `publish.yml` → PyPI.
   Full release pipeline is now fully automated.
+
+## [1.10.4] - 2026-04-06
+
+### Fixed
+- `shux onboard` step 2 (init) now creates `decisions.yaml`, `failures.yaml`,
+  and `handoffs/` as empty stubs so `shux doctor` passes cleanly on a fresh
+  project. Previously, a brand-new `shux onboard` produced 3 FAIL lines.
