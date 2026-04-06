@@ -59,7 +59,9 @@ shux update            # pull latest superharness + refresh templates, hooks, an
 shux discuss           # start or manage a cross-agent discussion (topic, owners, optional ID)
 shux install-hooks     # merge adapter hooks into ~/.claude/settings.json (portable, run once per machine)
 shux init --skip-hooks # init without modifying ~/.claude/settings.json (for CI or conservative setups)
-shux benchmark         # show dispatch cost/duration leaderboard (--top N, --agents)
+shux benchmark         # show dispatch cost/duration leaderboard (--top N, --agents, --models)
+shux config get <key>  # read a profile.yaml setting (e.g. budget.daily_limit, default_model)
+shux config set <key> <val>  # write a profile.yaml setting (e.g. budget.daily_limit 5.00, budget.strict true)
 shux diff <id>         # preview agent changes for a task before closing (--stat, --base)
 shux daemon start      # start background watcher daemon (portable, no launchd/systemd needed)
 shux daemon stop       # stop the daemon

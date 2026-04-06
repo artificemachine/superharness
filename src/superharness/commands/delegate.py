@@ -552,6 +552,7 @@ def delegate(
     via_sdk: bool | None = None,
     orchestrate: bool = False,
     skip_preflight: bool = False,
+    force: bool = False,
 ) -> int:
     project_dir = os.path.realpath(project_dir)
 
@@ -992,6 +993,20 @@ def delegate(
         print(prompt)
         return 0
 
+    # Budget guard — warn or block before any dispatch
+    try:
+        from superharness.engine.model_budget import check_budget, BudgetStatus
+        budget_result = check_budget(project_dir)
+        if budget_result.status == BudgetStatus.WARN:
+            print(f"\n⚠️  {budget_result.message}")
+        elif budget_result.status == BudgetStatus.BLOCK:
+            print(f"\n⛔ {budget_result.message}", file=sys.stderr)
+            print("  Use --force to override.", file=sys.stderr)
+            if not force:
+                return 1
+    except Exception:
+        pass  # budget check is best-effort — never block dispatch on error
+
     # SDK dispatch path
     if use_sdk:
         print()
@@ -1104,6 +1119,10 @@ def main(argv: list[str] | None = None) -> None:
         "--skip-preflight", action="store_true", default=False,
         help="Skip pre-flight analysis (useful when you know the task is ready)",
     )
+    parser.add_argument(
+        "--force", action="store_true", default=False,
+        help="Override budget block for this dispatch",
+    )
 
     opts = parser.parse_args(argv)
 
@@ -1138,6 +1157,7 @@ def main(argv: list[str] | None = None) -> None:
         via_sdk=True if opts.via == "sdk" else (False if opts.via == "cli" else None),
         orchestrate=opts.orchestrate,
         skip_preflight=opts.skip_preflight,
+        force=opts.force,
     )
     sys.exit(rc)
 
