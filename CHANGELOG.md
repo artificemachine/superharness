@@ -1574,3 +1574,15 @@ If you're an agent picking this up:
   auto-generated as `t-XXXXXX` (6 hex chars). Reduces friction for new users
   who don't need to invent their own IDs.
 - `docs/GUIDE.md`: updated `task create` example to show `--id` is optional.
+
+## [1.10.6] - 2026-04-06
+
+### Fixed
+- `_is_pid_alive` in daemon now correctly handles `OSError(22)` on Windows (invalid
+  PID range). Previously `os.kill(999999999, 0)` raised an uncaught `OSError`,
+  causing `test_daemon_status_stale_pid` to fail on Windows CI.
+- `_is_pid_alive` now returns `True` on `PermissionError` (process exists, we lack
+  permission to signal it) — the prior behavior incorrectly returned `False`.
+- `inbox_dispatch`: added `SUPERHARNESS_NO_PTY_WRAP=1` env var to bypass the
+  `script` PTY wrapper in test/CI environments without a controlling terminal.
+  Fixes flaky `test_dispatch_non_interactive_reconciles_to_done_from_contract`.
