@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: write   # needed to create releases and tags
+  actions: write    # needed to dispatch publish.yml via workflow_dispatch
 
 jobs:
   release:
