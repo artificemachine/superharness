@@ -8,11 +8,12 @@ Type these directly into Claude Code or Codex CLI — no terminal needed after f
 
 | Phrase | What happens |
 |--------|-------------|
+| `shux onboard` | First-time setup wizard — detect stack, scaffold `.superharness/`, write `AGENTS.md`, configure git tracking, create first task |
 | `shux init` | Bootstrap `.superharness/` for this project (interactive) |
 | `shux doctor` | Check prerequisites and protocol health |
 | `shux contract` | Show all tasks with status, owner, and next-task suggestion |
 | `shux continue` | Resume active contract and run full session lifecycle |
-| `shux delegate <task-id>` | Create task + enqueue in one step for watcher dispatch |
+| `shux delegate <task-id>` | Create task + enqueue in one step for watcher dispatch. Add `--force` to bypass budget block. |
 | `shux test-type <task-id>` | Set mandatory test types for a task (interactive prompt) |
 | `shux verify <task-id>` | Record verification result (pass/fail) before close |
 | `shux close <task-id>` | Mark task done (requires verify), append ledger, write handoff |
@@ -23,8 +24,12 @@ Type these directly into Claude Code or Codex CLI — no terminal needed after f
 | `shux dashboard` | Open browser dashboard |
 | `shux watch` | Start continuous watcher in foreground |
 | `shux update` | Pull latest superharness (`git pull` in repo) + re-run init to refresh `CLAUDE.md`, `AGENTS.md`, templates |
+| `shux config get <key>` | Read a dot-path key from `profile.yaml` (e.g. `budget.daily_limit`) |
+| `shux config set <key> <value>` | Write a dot-path key to `profile.yaml` |
 
-**Full session flow:** `shux init` → `shux doctor` → `shux contract` → `shux continue` → `shux verify <id>` → `shux close <id>`
+**Full session flow:** `shux onboard` (new project) → `shux doctor` → `shux contract` → `shux continue` → `shux verify <id>` → `shux close <id>`
+
+**New project cold-start:** Running `shux --help` in a directory without `.superharness/` shows a quickstart banner pointing to `shux onboard`.
 
 Old long-form phrases (`contract today`, `continue contract`, etc.) still work.
 
@@ -88,6 +93,46 @@ sequenceDiagram
 
 ---
 
+## Onboarding a New Project (`shux onboard`)
+
+`shux onboard` is the recommended first command for any project that doesn't yet have superharness set up. It runs a 7-step wizard that detects your stack, scaffolds the protocol directory, and gets Claude/Codex agents oriented immediately.
+
+```bash
+shux onboard                        # interactive wizard in current directory
+shux onboard --non-interactive      # fully unattended (CI, scripts)
+shux onboard --git-mode solo        # keep .superharness/ local (gitignored)
+shux onboard --git-mode team        # commit .superharness/ for shared access (default)
+shux onboard --task-title "Fix auth bug"           # create first task during setup
+shux onboard --task-title "Fix auth bug" --enqueue  # create + enqueue immediately
+shux onboard --project /path/to/project            # target a different directory
+```
+
+**Steps (in order):**
+
+| Step | Name | What it does |
+|------|------|-------------|
+| 1 | `detect` | Heuristic stack detection (Python, Node.js, Rust, Go, Ruby, unknown) |
+| 2 | `init` | Creates `.superharness/` scaffold (`contract.yaml`, `ledger.md`); writes `AGENTS.md` if missing |
+| 2b | `global_claude` | Appends a superharness section to `~/.claude/CLAUDE.md` (once per machine, skip if already present) |
+| 3 | `git_track` | Configures `.gitignore` for solo or team mode; writes `.superharness/.gitignore` for runtime files |
+| 4 | `doctor` | Runs `shux doctor` non-blocking — warnings shown but don't stop setup |
+| 5 | `task` | Creates a first task in `contract.yaml` if `--task-title` given |
+| 6 | `delegate` | Enqueues the task to `inbox.yaml` if `--enqueue` given |
+| 7 | `summary` | Prints next steps |
+
+**Resumability:** Each step records its result in `.superharness/onboarding.yaml`. Re-running `shux onboard` skips completed steps — safe to run multiple times.
+
+**What gets written:**
+
+- `.superharness/contract.yaml` — empty task list (append tasks later with `shux delegate`)
+- `.superharness/ledger.md` — session history file
+- `AGENTS.md` — instructions for Claude Code and Codex CLI to use `shux` commands. Never overwritten if it already exists.
+- `~/.claude/CLAUDE.md` — a `## superharness` section is appended (once) so every Claude Code session on this machine knows to use `shux`. Never written if the file is missing; never duplicated if already present.
+- Root `.gitignore` — `.superharness/` entry added (solo mode only)
+- `.superharness/.gitignore` — excludes runtime files: `watcher-env.yaml`, `launcher-logs/`, `daemon.pid.json`, `onboarding.yaml`
+
+---
+
 ## Terminal Reference — Alternative Interface
 
 For scripting, CI, or users who prefer direct shell access.
@@ -136,6 +181,17 @@ superharness delegate --to claude-code --project /path/to/project
 - `--effort <low|medium|high>` — override thinking effort
 - `--no-auto-model` — skip Haiku auto-classification, use profile defaults
 - `--orchestrate` — Opus orchestrator mode: decompose the task into subtasks, assign each a model tier (mini/standard/max), estimate cost, write subtasks to `contract.yaml`, then dispatch
+- `--force` — bypass a daily budget BLOCK and dispatch anyway (use sparingly)
+
+**Budget guard:** Before dispatching, `delegate` checks today's total spend (summed from `benchmark.jsonl`) against `budget.daily_limit` in `profile.yaml`:
+- **WARN** (≥ 80% of limit) — prints a warning, dispatch continues
+- **BLOCK** (≥ 100% of limit) — prints an error and returns exit 1; use `--force` to override
+
+Configure the limit:
+```bash
+shux config set budget.daily_limit 5.00    # block at $5/day
+shux config set budget.weekly_limit 20.00  # informational weekly cap shown in benchmark
+```
 
 **Orchestrator mode** — Opus decomposes the task before dispatching:
 ```bash
@@ -277,6 +333,43 @@ superharness hygiene --project . --strict   # requires promotion alignment
 1. Record task-local incidents in `.superharness/contract.yaml` under `failures`.
 2. Promote reusable incidents to `.superharness/failures.yaml`.
 3. Keep strict hygiene green by ensuring promoted failures are not left only in the contract.
+
+### Configuration (`shux config`)
+
+Read and write dot-path keys in `.superharness/profile.yaml`:
+
+```bash
+# Read a value
+shux config get budget.daily_limit
+shux config get budget.weekly_limit
+
+# Write a value (auto-coerced to int/float/bool/str)
+shux config set budget.daily_limit 5.00
+shux config set budget.weekly_limit 20.00
+
+# Target a different project
+shux config get budget.daily_limit --project /path/to/project
+shux config set budget.daily_limit 3.00 --project /path/to/project
+```
+
+**Budget keys in `profile.yaml`:**
+
+```yaml
+budget:
+  daily_limit: 5.00    # BLOCK dispatch when today's spend reaches this (USD)
+  weekly_limit: 20.00  # Informational cap shown in shux benchmark --models
+```
+
+Both keys are optional. If `daily_limit` is absent, the budget guard is disabled.
+
+### Cost Tracking (`shux benchmark`)
+
+```bash
+shux benchmark --project .            # recent session cost summary
+shux benchmark --project . --models   # per-model 7-day cost breakdown table
+```
+
+`--models` output shows: model name, call count, total tokens, total cost, % of weekly budget (if `budget.weekly_limit` is set in `profile.yaml`).
 
 ### Doctor Checks
 
@@ -471,13 +564,19 @@ superharness watch --foreground --project . --interval 60 --launcher-timeout 300
 ### Onboarding a new team member
 
 ```bash
-# Terminal: install CLI (one-time)
+# 1. Install CLI (one-time per machine)
 pipx install superharness   # or: pipx upgrade superharness
 
-# Then in Claude Code or Codex CLI:
+# 2. In the project directory, run the setup wizard
+shux onboard                # sets up .superharness/, AGENTS.md, git tracking
+# or: shux onboard --non-interactive --git-mode team
+
+# 3. Then in Claude Code or Codex CLI:
 # shux doctor      ← verify setup
 # shux contract    ← pick up where the last session left off
 ```
+
+The wizard also appends a `## superharness` section to `~/.claude/CLAUDE.md` (once per machine) so Claude Code knows to use `shux` commands in any project.
 
 ---
 
