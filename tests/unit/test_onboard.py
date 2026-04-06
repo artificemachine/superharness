@@ -52,6 +52,21 @@ def test_onboard_creates_state_file(runner, project):
     assert state_file.exists(), "onboarding.yaml not created"
 
 
+def test_onboard_init_creates_doctor_clean_scaffold(runner, project):
+    """Step 2 (init) creates decisions.yaml, failures.yaml, and handoffs/ so doctor passes cleanly."""
+    from superharness.commands.onboard import cmd_onboard
+    result = runner.invoke(cmd_onboard, [
+        "--project", str(project), "--non-interactive",
+    ])
+    assert result.exit_code == 0, result.output
+    sh = project / ".superharness"
+    assert (sh / "decisions.yaml").exists(), "decisions.yaml not created"
+    assert (sh / "failures.yaml").exists(), "failures.yaml not created"
+    assert (sh / "handoffs").is_dir(), "handoffs/ not created"
+    assert (sh / "decisions.yaml").read_text().strip() == "[]"
+    assert (sh / "failures.yaml").read_text().strip() == "[]"
+
+
 def test_onboard_skips_init_if_exists(runner, initialized_project):
     """If .superharness/ already exists, the init step is skipped."""
     from superharness.commands.onboard import cmd_onboard
