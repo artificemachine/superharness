@@ -13,7 +13,7 @@ import pytest
 
 
 def _load_monitor_module(repo_root: Path):
-    script = repo_root / "src" / "superharness" / "scripts" / "monitor-ui.py"
+    script = repo_root / "src" / "superharness" / "scripts" / "dashboard-ui.py"
     spec = importlib.util.spec_from_file_location("monitor_ui_module", script)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -284,7 +284,7 @@ def test_monitor_main_rejects_non_loopback_host(repo_root, tmp_path) -> None:
 
         argv = sys.argv
         sys.argv = [
-            "monitor-ui.py",
+            "dashboard-ui.py",
             "--project",
             str(project),
             "--host",
@@ -724,7 +724,7 @@ def test_monitor_html_endpoint(repo_root, tmp_path, monkeypatch) -> None:
         with urllib.request.urlopen(req, timeout=2) as resp:
             body = resp.read().decode("utf-8")
             assert resp.status == 200
-            assert "superharness monitor" in body
+            assert "superharness dashboard" in body
     finally:
         _stop_server(server, thread)
 
@@ -1143,7 +1143,7 @@ def test_monitor_main_auto_finds_free_port(repo_root, tmp_path, monkeypatch) -> 
 
     import sys
     orig = sys.argv
-    sys.argv = ["monitor-ui.py", "--project", str(project), "--no-open"]
+    sys.argv = ["dashboard-ui.py", "--project", str(project), "--no-open"]
     try:
         module.main()
     except SystemExit as exc:
@@ -1182,7 +1182,7 @@ def test_monitor_main_skips_multiple_occupied_ports(repo_root, tmp_path, monkeyp
 
     import sys
     orig = sys.argv
-    sys.argv = ["monitor-ui.py", "--project", str(project), "--no-open"]
+    sys.argv = ["dashboard-ui.py", "--project", str(project), "--no-open"]
     try:
         module.main()
     except SystemExit as exc:
@@ -1207,7 +1207,7 @@ def test_monitor_main_exits_when_all_ports_busy(repo_root, tmp_path, monkeypatch
 
     import sys
     orig = sys.argv
-    sys.argv = ["monitor-ui.py", "--project", str(project), "--no-open"]
+    sys.argv = ["dashboard-ui.py", "--project", str(project), "--no-open"]
     try:
         with pytest.raises(SystemExit, match="No free port"):
             module.main()
@@ -1228,7 +1228,7 @@ def test_monitor_main_explicit_port_fails_clearly(repo_root, tmp_path, monkeypat
 
     import sys
     orig = sys.argv
-    sys.argv = ["monitor-ui.py", "--project", str(project), "--port", "9000", "--no-open"]
+    sys.argv = ["dashboard-ui.py", "--project", str(project), "--port", "9000", "--no-open"]
     try:
         with pytest.raises(SystemExit, match="9000"):
             module.main()
@@ -1261,7 +1261,7 @@ def test_monitor_main_linux_eaddrinuse(repo_root, tmp_path, monkeypatch) -> None
 
     import sys
     orig = sys.argv
-    sys.argv = ["monitor-ui.py", "--project", str(project), "--no-open"]
+    sys.argv = ["dashboard-ui.py", "--project", str(project), "--no-open"]
     try:
         module.main()
     except SystemExit as exc:
@@ -2134,7 +2134,7 @@ def test_html_shows_reviewer_for_review_requested_rows(repo_root) -> None:
 
 def test_monitor_bootstraps_into_venv_when_yaml_missing(repo_root) -> None:
     """Repo monitor should have a bootstrap path for missing PyYAML in plain python3."""
-    source = (repo_root / "src" / "superharness" / "scripts" / "monitor-ui.py").read_text()
+    source = (repo_root / "src" / "superharness" / "scripts" / "dashboard-ui.py").read_text()
     assert "def _ensure_python_with_yaml()" in source
     assert 'SUPERHARNESS_MONITOR_REEXEC' in source
     assert '_ensure_python_with_yaml()' in source
