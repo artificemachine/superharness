@@ -159,6 +159,16 @@ def _register_onboard():
 _register_onboard()
 
 
+def _register_config():
+    try:
+        from superharness.commands.config import cmd_config
+        main.add_command(cmd_config)
+    except Exception:
+        pass
+
+_register_config()
+
+
 def _find_dashboard_processes():
     """Return list of (pid, port, project_dir) for all running dashboard-ui.py processes."""
     import subprocess as _sp
