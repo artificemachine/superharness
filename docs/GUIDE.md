@@ -496,6 +496,7 @@ Checks for: required executables (`bash`, `python3`, `claude`, `codex`), protoco
 
 ```bash
 superharness dashboard-ui --project .
+superharness dashboard-ui --project . --port 8788
 superharness dashboard-ui --project . --autohealth   # watchdog mode: auto-restarts if server dies
 
 # Process management
@@ -505,6 +506,11 @@ shux dashboard-kill --port 8787   # kill only the one on a specific port
 ```
 
 Includes: watcher state, inbox counters, one-click queue actions, Enqueue modal with TDD instructions, Done button for inbox-completed tasks, optional Logdy log view.
+
+Notes:
+- Multiple dashboard processes can run at once for different projects.
+- Without an explicit `--port`, the dashboard tries `8787` first and then the next free ports in the local scan range.
+- Use `shux dashboard-list` to see which project is on which port.
 
 **Dashboard panels:**
 - **Git context** — current branch, dirty file count, and last commit in the header
@@ -562,14 +568,11 @@ superharness uninstall --project /path/to/project
 **Notes:**
 - Avoid `~/Documents`, `~/Desktop`, `~/Downloads` for watcher-managed projects on macOS — launchd can fail with `Operation not permitted`.
 - Watcher logs: `~/Library/Logs/superharness/com.superharness.inbox.<project-name>-.out.log`
-- **Auto-lifecycle (macOS):** The watcher is automatically unloaded when a Claude Code session ends (`session-stop` hook) and reloaded when a new session starts (`session-start` hook). You do not need to manually start/stop it between sessions. If the watcher appears absent mid-session, run `shux status` to check and `shux watch` to restart if needed.
+- **Session lifecycle:** `session-stop` writes `session-progress.md`, marks active Claude-owned `in_progress` tasks as `stopped`, writes a stop handoff, and pauses remaining Claude-targeted active inbox items. It does not unload the watcher or kill running dashboards.
 
 **Required env vars for unattended dispatch:**
 - `SUPERHARNESS_CONFIRM_NON_INTERACTIVE=YES`
 - `SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS=YES`
-
-**Optional env vars:**
-- `SUPERHARNESS_DASHBOARD_PORT` — override the dashboard port (default: `8787`). Set this if port 8787 is in use. The session-stop hook uses this value when killing the dashboard on session end.
 
 ### Readiness Audits
 

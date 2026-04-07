@@ -87,20 +87,157 @@ PROGRESS_EOF
 # Append a ledger entry recording the session end
 _ledger "$TIMESTAMP session-stop: snapshot written to session-progress.md (branch: ${GIT_BRANCH:-unknown})"
 
-# --- Pause active inbox items (pending / launched / running) ---
-INBOX_FILE="$SH_DIR/inbox.json"
-if [ -f "$INBOX_FILE" ] && command -v python3 >/dev/null 2>&1; then
-  NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%SZ")"
-  PAUSABLE_IDS="$(python3 -c "
-import yaml, sys
+# Prefer inbox.yaml, but keep inbox.json fallback for older projects.
+INBOX_FILE=""
+if [ -f "$SH_DIR/inbox.yaml" ]; then
+  INBOX_FILE="$SH_DIR/inbox.yaml"
+elif [ -f "$SH_DIR/inbox.json" ]; then
+  INBOX_FILE="$SH_DIR/inbox.json"
+fi
+
+# --- Stop active Claude-owned tasks and write handoffs ---
+STOPPED_TASK_IDS=""
+if [ -f "$SH_DIR/contract.yaml" ] && command -v python3 >/dev/null 2>&1; then
+  export SH_SESSION_STOP_TIMESTAMP="$TIMESTAMP"
+  export SH_SESSION_STOP_HARNESS_DIR="$SH_DIR"
+  export SH_SESSION_STOP_TASK_CONTEXT="$TASK_CONTEXT"
+  export SH_SESSION_STOP_BRANCH="${GIT_BRANCH:-}"
+  export SH_SESSION_STOP_GIT_STATUS="${GIT_STATUS:-}"
+  export SH_SESSION_STOP_GIT_LOG="${GIT_LOG:-}"
+  STOPPED_TASK_IDS="$(python3 - <<'PY'
+import io
+import os
+import sys
+import yaml
+
+timestamp = os.environ.get("SH_SESSION_STOP_TIMESTAMP", "").strip()
+harness_dir = os.environ.get("SH_SESSION_STOP_HARNESS_DIR", "").strip()
+task_context = (os.environ.get("SH_SESSION_STOP_TASK_CONTEXT") or "").strip()
+branch = (os.environ.get("SH_SESSION_STOP_BRANCH") or "").strip()
+git_status = (os.environ.get("SH_SESSION_STOP_GIT_STATUS") or "").strip()
+git_log = (os.environ.get("SH_SESSION_STOP_GIT_LOG") or "").strip()
+
+contract_path = os.path.join(harness_dir, "contract.yaml")
+handoffs_dir = os.path.join(harness_dir, "handoffs")
+os.makedirs(handoffs_dir, exist_ok=True)
+timestamp_safe = (timestamp or "unknown").replace(":", "-")
+
+summary = "Session ended before task completion; task marked stopped by session-stop hook."
+outcome = "Claude Code session ended while the task was still in progress. The task was marked stopped for operator review."
+context = (
+    "Session snapshot: .superharness/session-progress.md\n"
+    f"Task context:\n{task_context or '(none)'}\n\n"
+    f"Branch:\n{branch or '(not a git repo or detached HEAD)'}\n\n"
+    f"Uncommitted changes:\n{git_status or '(clean)'}\n\n"
+    f"Recent commits:\n{git_log or '(none)'}\n"
+)
+
 try:
-    items = yaml.safe_load(open('$INBOX_FILE').read()) or []
+    try:
+        import ruamel.yaml as _ry
+        _yaml = _ry.YAML()
+        _yaml.preserve_quotes = True
+        with open(contract_path, encoding="utf-8") as fh:
+            doc = _yaml.load(fh) or {}
+        use_ruamel = True
+    except ImportError:
+        with open(contract_path, encoding="utf-8") as fh:
+            doc = yaml.safe_load(fh) or {}
+        use_ruamel = False
+
+    changed = False
+    stopped_ids = []
+    for task in (doc.get("tasks") or []):
+        if not isinstance(task, dict):
+            continue
+        if str(task.get("owner", "")) != "claude-code":
+            continue
+        if str(task.get("status", "")) != "in_progress":
+            continue
+        task_id = str(task.get("id", "")).strip()
+        if not task_id:
+            continue
+
+        task["status"] = "stopped"
+        task["stopped_reason"] = "session_stopped"
+        task["stopped_at"] = timestamp
+        task["summary"] = summary
+        changed = True
+        stopped_ids.append(task_id)
+
+        handoff = {
+            "task": task_id,
+            "phase": "session_stop",
+            "status": "stopped",
+            "from": "claude-code",
+            "to": "owner",
+            "date": timestamp,
+            "summary": summary,
+            "outcome": outcome,
+            "context": context,
+            "artifacts": [".superharness/session-progress.md"],
+        }
+        handoff_path = os.path.join(
+            handoffs_dir,
+            f"{task_id}-session-stop-{timestamp_safe}-claude-code.yaml",
+        )
+        with open(handoff_path, "w", encoding="utf-8") as fh:
+            yaml.safe_dump(handoff, fh, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+    if changed:
+        with open(contract_path, "w", encoding="utf-8") as fh:
+            if use_ruamel:
+                buf = io.StringIO()
+                _yaml.dump(doc, buf)
+                fh.write(buf.getvalue())
+            else:
+                fh.write(yaml.dump(doc, default_flow_style=False, allow_unicode=True, sort_keys=False))
+
+    for task_id in stopped_ids:
+        print(task_id)
+except Exception as exc:
+    print(f"warn: could not stop contract tasks: {exc}", file=sys.stderr)
+PY
+)" || true
+fi
+
+for TASK_ID in $STOPPED_TASK_IDS; do
+  [ -z "$TASK_ID" ] && continue
+  _ledger "$TIMESTAMP session-stop: task stopped ($TASK_ID)"
+  if [ -n "$INBOX_FILE" ] && command -v python3 >/dev/null 2>&1; then
+    SYNC_RESULT="$(python3 -m superharness.engine.inbox sync_task_status \
+      --file "$INBOX_FILE" --task "$TASK_ID" --to stopped --now "$TIMESTAMP" 2>/dev/null || true)"
+    case "$SYNC_RESULT" in
+      *"synced=0"*) ;;
+      *"synced="*) _ledger "$TIMESTAMP session-stop: inbox task stopped ($TASK_ID)" ;;
+    esac
+  fi
+done
+
+# --- Pause any remaining active Claude-targeted inbox items ---
+if [ -n "$INBOX_FILE" ] && command -v python3 >/dev/null 2>&1; then
+  NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%SZ")"
+  export SH_SESSION_STOP_INBOX_FILE="$INBOX_FILE"
+  PAUSABLE_IDS="$(python3 - <<'PY'
+import os
+import sys
+import yaml
+
+inbox_file = os.environ.get("SH_SESSION_STOP_INBOX_FILE", "").strip()
+try:
+    with open(inbox_file, encoding="utf-8") as fh:
+        items = yaml.safe_load(fh.read()) or []
     for item in (items if isinstance(items, list) else []):
-        if isinstance(item, dict) and item.get('status') in ('pending', 'launched', 'running'):
-            print(item.get('id', ''))
-except Exception as e:
-    print('warn:', e, file=sys.stderr)
-" 2>/dev/null || true)"
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("to", "")) != "claude-code":
+            continue
+        if str(item.get("status", "")) in ("pending", "launched", "running"):
+            print(item.get("id", ""))
+except Exception as exc:
+    print(f"warn: {exc}", file=sys.stderr)
+PY
+)" || true
   for ITEM_ID in $PAUSABLE_IDS; do
     [ -z "$ITEM_ID" ] && continue
     python3 -m superharness.engine.inbox set_status \
@@ -116,48 +253,10 @@ except Exception as e:
   done
 fi
 
-# --- Revert in_progress contract tasks to todo ---
-if [ -f "$SH_DIR/contract.yaml" ] && command -v python3 >/dev/null 2>&1; then
-  python3 -c "
-import sys
-try:
-    try:
-        import ruamel.yaml as _ry
-        _yaml = _ry.YAML()
-        _yaml.preserve_quotes = True
-        import io as _io
-        with open('$SH_DIR/contract.yaml') as _f:
-            _doc = _yaml.load(_f)
-        _changed = False
-        for _t in (_doc.get('tasks') or []):
-            if isinstance(_t, dict) and _t.get('status') == 'in_progress':
-                _t['status'] = 'todo'
-                _changed = True
-        if _changed:
-            _buf = _io.StringIO()
-            _yaml.dump(_doc, _buf)
-            with open('$SH_DIR/contract.yaml', 'w') as _f:
-                _f.write(_buf.getvalue())
-    except ImportError:
-        import yaml as _pyyaml
-        with open('$SH_DIR/contract.yaml') as _f:
-            _doc = _pyyaml.safe_load(_f)
-        _changed = False
-        for _t in (_doc.get('tasks') or []):
-            if isinstance(_t, dict) and _t.get('status') == 'in_progress':
-                _t['status'] = 'todo'
-                _changed = True
-        if _changed:
-            with open('$SH_DIR/contract.yaml', 'w') as _f:
-                _pyyaml.dump(_doc, _f, default_flow_style=False)
-except Exception as _e:
-    print(f'warn: could not revert contract tasks: {_e}', file=sys.stderr)
-" 2>/dev/null || true
-fi
-
 # NOTE: Do NOT unload the launchd watcher on session end.
 # The watcher is a persistent background service — it must survive Claude session boundaries.
 # Unloading here caused the watcher to go dead every session and require manual reinstallation.
-# Inbox items are already paused above, so the watcher won't dispatch stale jobs next cycle.
+# The hook now stops active Claude-owned work and pauses remaining Claude-targeted
+# inbox items, so the watcher won't dispatch orphaned jobs next cycle.
 
 exit 0

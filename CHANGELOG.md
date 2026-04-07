@@ -1727,3 +1727,13 @@ If you're an agent picking this up:
 - `shux demo` and `shux onboard` intro blocks: split into "Core commands"
   and "Maintenance" sections with new commands listed.
 - Onboard AGENTS.md template: added recap, inbox-gc, worktree-gc commands.
+
+## [1.15.2] - 2026-04-07
+
+### Fixed
+- `session-stop` hook: mark in-progress `claude-code` tasks as `stopped` with
+  handoff; pause remaining Claude-targeted inbox items on session end.
+- `session-stop` hook: suppress false ledger line when no matching inbox task exists.
+- `shux dashboard --help` / `python -m superharness.cli dashboard --help` now
+  prints help instead of silently exiting 0.
+- `cli.py`: added `if __name__ == "__main__"` guard for direct module invocation.
