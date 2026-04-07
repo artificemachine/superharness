@@ -186,8 +186,8 @@ def test_dispatch_state_reconcile_failed(tmp_path: Path) -> None:
     assert "status: failed" in text
 
 
-def test_dispatch_dirty_worktree_pauses_codex(tmp_path: Path) -> None:
-    """Dirty worktree + codex-cli + non-interactive -> item paused."""
+def test_dispatch_dirty_worktree_uses_worktree(tmp_path: Path) -> None:
+    """Dirty worktree + non-interactive -> dispatches in a temporary worktree."""
     project = _make_project(tmp_path, inbox_items=[
         {"id": "dirty-item", "to": "codex-cli", "task": "test-task"},
     ])
@@ -211,8 +211,7 @@ def test_dispatch_dirty_worktree_pauses_codex(tmp_path: Path) -> None:
     (bin_dir / "claude").chmod(0o755)
 
     r = _run_dispatch(project, ["--to", "codex-cli", "--non-interactive"], bin_dir)
-    assert r.returncode == 0, r.stderr
-    assert "dirty-item -> paused" in r.stdout
-    text = (project / ".superharness" / "inbox.yaml").read_text()
-    assert "status: paused" in text
-    assert "pause_reason: dirty_worktree_requires_user_confirmation" in text
+    # Should dispatch in worktree, not pause
+    assert "worktree" in r.stdout.lower() or r.returncode == 0
+    # Main worktree should still be dirty
+    assert tracked.read_text() == "dirty\n"

@@ -12,6 +12,9 @@ import yaml
 # Inbox statuses eligible for GC (terminal-but-stale)
 GC_ELIGIBLE = {"stopped", "failed", "stale", "paused"}
 
+# Task statuses where a dispatch is no longer relevant — work is done or past dispatch phase
+TASK_PAST_DISPATCH = {"done", "report_ready", "review_requested", "review_passed", "review_failed"}
+
 
 def run_gc(project_dir: str | Path, dry_run: bool = False) -> dict:
     """Reconcile inbox items against contract tasks.
@@ -55,24 +58,24 @@ def run_gc(project_dir: str | Path, dry_run: bool = False) -> dict:
             continue
 
         task_status = task_statuses.get(task_id, "")
-        if task_status != "done":
+        if task_status not in TASK_PAST_DISPATCH:
             continue
 
         if dry_run:
             would_reconcile += 1
             details.append({"item_id": item_id, "task": task_id, "from": status, "action": "would_mark_done"})
-            print(f"[dry-run] would reconcile: {item_id} ({status} → done, task {task_id} is done)")
+            print(f"[dry-run] would reconcile: {item_id} ({status} → done, task {task_id} is {task_status})")
         else:
             item["status"] = "done"
             item["done_at"] = now
             item["gc_reconciled"] = True
             reconciled += 1
             details.append({"item_id": item_id, "task": task_id, "from": status, "action": "marked_done"})
-            print(f"Reconciled: {item_id} ({status} → done, task {task_id} is done)")
+            print(f"Reconciled: {item_id} ({status} → done, task {task_id} is {task_status})")
 
             if ledger_file.exists():
                 with open(ledger_file, "a") as f:
-                    f.write(f"- {now} — [gc] — reconciled inbox item {item_id}: {status} → done (task {task_id} is done)\n")
+                    f.write(f"- {now} — [gc] — reconciled inbox item {item_id}: {status} → done (task {task_id} is {task_status})\n")
 
     if not dry_run and reconciled > 0:
         inbox_file.write_text(yaml.dump(items, default_flow_style=False))

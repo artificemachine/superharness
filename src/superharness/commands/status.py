@@ -198,6 +198,16 @@ def main(argv: list[str] | None = None) -> None:
 
     heartbeat_status, heartbeat_detail = _heartbeat_status(project_dir, harness_dir)
 
+    # Heartbeat overrides watcher status: if heartbeat is fresh, watcher is running
+    # (foreground or daemon — doesn't matter)
+    if watcher_level == "bad" and heartbeat_status == "ok":
+        watcher_level = "ok"
+        watcher_msg = f"foreground ({heartbeat_detail})"
+    elif watcher_level == "bad" and heartbeat_status == "stale":
+        watcher_msg = f"not loaded, heartbeat stale ({heartbeat_detail})"
+    elif watcher_level == "bad" and heartbeat_status == "missing":
+        watcher_msg = "not running (no heartbeat)"
+
     stats = _inbox_stats(inbox_file, handoff_dir, discussions_dir, opts.retry_threshold)
     counts = stats["counts"]
 

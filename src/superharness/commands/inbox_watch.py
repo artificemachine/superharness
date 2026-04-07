@@ -364,6 +364,33 @@ def run_once(
     )
 
 
+# Mutable cycle counter for GC interval tracking (reset per watcher session)
+_watcher_cycle_count = [0]
+
+DEFAULT_GC_INTERVAL_CYCLES = 5
+
+
+def _run_gc_if_due(project_dir: str, cycle_count: int) -> bool:
+    """Run inbox GC if the current cycle is a multiple of gc_interval_cycles. Returns True if GC ran."""
+    gc_interval = DEFAULT_GC_INTERVAL_CYCLES
+    profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
+    if os.path.isfile(profile_file):
+        try:
+            import yaml as _yaml
+            with open(profile_file) as f:
+                profile = _yaml.safe_load(f) or {}
+            gc_interval = int(profile.get("gc_interval_cycles", DEFAULT_GC_INTERVAL_CYCLES))
+        except Exception:
+            pass
+    if gc_interval < 1:
+        gc_interval = DEFAULT_GC_INTERVAL_CYCLES
+    if cycle_count % gc_interval != 0:
+        return False
+    from superharness.commands.inbox_gc import run_gc
+    result = run_gc(project_dir)
+    return result.get("reconciled", 0) >= 0
+
+
 def _run_scripts(
     project_dir: str,
     *,
@@ -408,6 +435,13 @@ def _run_scripts(
         _reconcile_zombies(project_dir)
     except Exception as e:
         print(f"Warning: zombie reconciliation failed: {e}", file=sys.stderr)
+
+    # Inbox GC: reconcile stale items against contract
+    try:
+        _watcher_cycle_count[0] += 1
+        _run_gc_if_due(project_dir, _watcher_cycle_count[0])
+    except Exception as e:
+        print(f"Warning: inbox gc failed: {e}", file=sys.stderr)
 
     inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
     if not os.path.exists(inbox_file):
