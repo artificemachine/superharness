@@ -1691,3 +1691,28 @@ If you're an agent picking this up:
   (report_ready, review_requested, review_passed, review_failed).
 - Reason fields (pause_reason, failed_reason, etc.) cleared on forward
   inbox transitions (pending/launched/running).
+
+## [1.15.0] - 2026-04-07
+
+### Added
+- `shux worktree-gc` — clean orphaned dispatch worktrees from /tmp.
+- `shux recap` — session timeline (ledger, inbox, handoffs, task changes)
+  for the last N hours.
+- `shux notify-desktop` — native macOS/Linux desktop notifications.
+  Auto-fires on task done/failed during dispatch.
+- Dashboard: activity feed — live timeline of dispatch, gc, and inbox events.
+- Dashboard: git context in header — branch, dirty count, last commit.
+- Dashboard: task dependency graph (press `g` to toggle).
+- Dashboard: keyboard shortcuts (`r` refresh, `g` graph, `l` list, `b` board,
+  `?` help).
+- Dashboard: dispatch preview in enqueue modal — model, effort, cost, timeout.
+
+### Changed
+- Dashboard HTML extracted to separate `dashboard.html` file — eliminates
+  Python string escaping bugs, enables direct HTML/JS editing.
+
+### Fixed
+- Dashboard JS syntax errors from Python triple-quote escaping (removeOwner,
+  mermaid join, review queue View button).
+- Cost leaderboard API crash: `TaskStats.total_tokens` mapped to
+  `total_runs` / `successes`.

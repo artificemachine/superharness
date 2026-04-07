@@ -42,1038 +42,106 @@ def _ensure_python_with_yaml() -> None:
     os.execve(str(venv_python), [str(venv_python), str(Path(__file__).resolve()), *sys.argv[1:]], env)
 
 
-HTML = """<!doctype html>
-<html lang=\"en\">
-<head>
-  <meta charset=\"utf-8\" />
-  <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" />
-  <title>superharness dashboard</title>
-  <style>
-    :root { --bg:#0b1220; --panel:#131c2e; --text:#e7ecf6; --muted:#9fb0d0; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444; --line:#23314d; --btn:#1b2a46; --btn2:#334e7d; }
-    body { margin:0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:var(--bg); color:var(--text); }
-    .wrap { max-width:100%; margin:12px 0; padding:0 8px; }
-    .grid { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:10px; }
-    .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; }
-    .k { color:var(--muted); font-size:12px; }
-    .v { font-size:13px; margin-top:6px; word-break:break-all; overflow-wrap:anywhere; }
-    .ok { color:var(--ok); } .warn { color:var(--warn); } .bad { color:var(--bad); }
-    h1 { font-size:20px; margin:0 0 12px; }
-    h2 { font-size:14px; margin:0 0 8px; color:var(--muted); }
-    pre { margin:0; white-space:pre-wrap; word-break:break-word; font-size:12px; line-height:1.3; }
-    .report-scroll { max-height:60vh; overflow-y:scroll; }
-    .report-scroll::-webkit-scrollbar { width:8px; }
-    .report-scroll::-webkit-scrollbar-track { background:var(--bg); border-radius:4px; }
-    .report-scroll::-webkit-scrollbar-thumb { background:var(--btn2); border-radius:4px; }
-    .report-scroll::-webkit-scrollbar-thumb:hover { background:#4a6fa5; }
-    .logs { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
-    .meta { margin:8px 0 12px; color:var(--muted); font-size:12px; }
-    .pill { display:inline-block; border:1px solid var(--line); border-radius:999px; padding:2px 8px; margin-right:6px; margin-top:4px; font-size:13px; cursor:pointer; user-select:none; }
-    .pill:hover { background:var(--btn); }
-    .pill.sel { background:var(--btn2); border-color:#4a6fa5; color:#fff; }
-    .inbox-detail { margin-top:10px; overflow-x:auto; }
-    .inbox-detail table { width:100%; border-collapse:collapse; font-size:12px; }
-    .inbox-detail th { text-align:left; color:var(--muted); border-bottom:1px solid var(--line); padding:4px 8px; }
-    .inbox-detail td { padding:4px 8px; border-bottom:1px solid var(--line); word-break:break-all; }
-    .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
-    .task-row { display:flex; align-items:flex-start; gap:8px; padding:5px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; }
-    .task-actions { display:flex; align-items:flex-start; gap:4px; flex-wrap:wrap; justify-content:flex-start; flex:0 0 auto; }
-    .task-meta { display:flex; align-items:center; gap:8px; flex:1 1 280px; min-width:180px; flex-wrap:wrap; }
-    button { background:var(--btn); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px 10px; cursor:pointer; }
-    button:hover { background:var(--btn2); }
-    .small { font-size:11px; color:var(--muted); }
-    .status { margin-top:8px; font-size:12px; color:var(--muted); }
-    .approval-list { margin-top:6px; font-size:12px; line-height:1.4; }
-    .approval-list a { color:#93c5fd; text-decoration:none; }
-    .approval-list a:hover { text-decoration:underline; }
-    .banner { display:none; margin:0 0 10px; padding:10px 12px; border-radius:10px; border:1px solid #7f1d1d; background:#2b1212; color:#fecaca; font-size:13px; line-height:1.4; }
-    .banner b { color:#fff; }
-    .plan-banner { display:none; margin:0 0 10px; padding:10px 12px; border-radius:10px; border:1px solid #78350f; background:#1c1408; color:#fde68a; font-size:13px; line-height:1.4; }
-    .plan-banner b { color:#fff; }
-    .plan-list { margin-top:6px; font-size:12px; line-height:1.8; }
-    .watcher-health { margin-top:6px; font-size:12px; line-height:1.4; }
-    .board { display:grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap:8px; margin-top:10px; }
-    .board-col { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px; min-height:80px; }
-    .board-col-header { font-size:11px; font-weight:bold; color:var(--muted); margin-bottom:6px; display:flex; align-items:center; justify-content:space-between; }
-    .board-col-count { background:var(--btn); border-radius:999px; padding:0 6px; font-size:10px; }
-    .board-task { font-size:11px; padding:4px 6px; margin-bottom:4px; background:var(--bg); border:1px solid var(--line); border-radius:6px; cursor:pointer; }
-    .board-task:hover { border-color:#4a6fa5; }
-    .board-task .bt-id { color:var(--muted); font-size:10px; }
-    .board-task .bt-owner { color:var(--muted); font-size:10px; float:right; }
-    .review-banner { display:none; margin:0 0 10px; padding:10px 12px; border-radius:10px; border:1px solid #92400e; background:#1c1208; color:#fde68a; font-size:13px; line-height:1.4; }
-    .review-banner b { color:#fff; }
-    .review-list { margin-top:6px; font-size:12px; line-height:1.8; }
-    .agent-health-pills { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
-    .agent-pill { display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--line); }
-    .live-badge { display:inline-block; font-size:10px; padding:1px 6px; border-radius:999px; background:#ef444422; color:var(--bad); border:1px solid var(--bad); animation:pulse 1.5s ease-in-out infinite; }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-    .view-toggle { display:flex; gap:6px; margin-bottom:8px; align-items:center; }
-    .view-btn { font-size:11px; padding:2px 10px; border-radius:6px; cursor:pointer; border:1px solid var(--line); background:var(--btn); color:var(--muted); }
-    .view-btn.active { background:var(--btn2); color:#fff; border-color:#4a6fa5; }
-  </style>
-</head>
-<body>
-  <div class=\"wrap\">
-    <h1>superharness dashboard</h1>
-    <div class=\"meta\" id=\"meta\">loading...</div>
-    <div class=\"banner\" id=\"approvalBanner\" style=\"display:none\">User approval required.</div>
-    <div class=\"plan-banner\" id=\"planBanner\" style=\"display:none\">Plan confirmation required.</div>
-    <div class=\"review-banner\" id=\"reviewBanner\">
-      <b>Review queue</b> — tasks awaiting operator action
-      <div class=\"review-list\" id=\"reviewList\"></div>
-    </div>
+HTML = (Path(__file__).parent / "dashboard.html").read_text()
 
-    <div class=\"grid\">
-      <div class=\"card\"><div class=\"k\">watcher label</div><div class=\"v\" id=\"label\">-</div></div>
-      <div class=\"card\"><div class=\"k\">watcher state</div><div class=\"v\" id=\"state\">-</div></div>
-      <div class=\"card\"><div class=\"k\">contract id</div><div class=\"v\" id=\"contract\">-</div></div>
-      <div class=\"card\"><div class=\"k\">last refresh (UTC)</div><div class=\"v\" id=\"ts\">-</div></div>
-    </div>
-    <div class=\"card\" style=\"margin-top:10px;\">
-      <h2>watcher control</h2>
-      <div class=\"watcher-health\" id=\"watcherHealth\">-</div>
-      <div class=\"watcher-health\" id=\"heartbeat\">-</div>
-      <div class=\"agent-health-pills\" id=\"agentHealthPills\"></div>
-      <div class=\"actions\">
-        <button onclick=\"act('watcher_start')\">Start watcher</button>
-        <button onclick=\"act('watcher_restart')\">Restart watcher</button>
-      </div>
-    </div>
 
-    <div class=\"card\" style=\"margin-top:10px;display:none;\">
-      <h2>plans to confirm</h2>
-      <div class=\"v\" id=\"planCount\">-</div>
-      <div class=\"plan-list\" id=\"planList\">-</div>
-    </div>
-    <div class=\"card report-scroll\" style=\"margin-top:10px; display:none;\" id=\"planReportCard\">
-      <h2 style=\"position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;\">plan preview <button onclick=\"document.getElementById('planReportCard').style.display='none'\" style=\"font-size:11px;padding:2px 8px;float:right\">close</button></h2>
-      <div class=\"small\" id=\"planReportMeta\" style=\"position:sticky;top:28px;background:var(--panel);padding-bottom:4px;z-index:1;\">-</div>
-      <pre id=\"planReportBody\">-</pre>
-    </div>
+def git_context(project_dir: Path) -> dict:
+    """Get current branch, dirty file count, and last commit."""
+    import subprocess as _sp
+    result = {"branch": "", "dirty_count": 0, "last_commit": ""}
+    try:
+        r = _sp.run(["git", "-C", str(project_dir), "branch", "--show-current"],
+                    capture_output=True, text=True, check=False)
+        if r.returncode == 0:
+            result["branch"] = r.stdout.strip()
+        r2 = _sp.run(["git", "-C", str(project_dir), "status", "--porcelain", "--untracked-files=normal"],
+                     capture_output=True, text=True, check=False)
+        if r2.returncode == 0:
+            result["dirty_count"] = len([l for l in r2.stdout.strip().splitlines() if l.strip()])
+        r3 = _sp.run(["git", "-C", str(project_dir), "log", "-1", "--format=%h %s"],
+                     capture_output=True, text=True, check=False)
+        if r3.returncode == 0:
+            result["last_commit"] = r3.stdout.strip()
+    except Exception:
+        pass
+    return result
 
-    <div class=\"card\" style=\"margin-top:10px;display:none;\">
-      <h2>user approval alerts</h2>
-      <div class=\"v\" id=\"approvalCount\">-</div>
-      <div class=\"approval-list\" id=\"approvalList\">-</div>
-    </div>
-    <div class=\"card report-scroll\" style=\"margin-top:10px; display:none;\" id=\"approvalReportCard\">
-      <h2 style=\"position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;\">approval report preview <button onclick=\"document.getElementById('approvalReportCard').style.display='none'\" style=\"font-size:11px;padding:2px 8px;float:right\">close</button></h2>
-      <div class=\"small\" id=\"approvalReportMeta\" style=\"position:sticky;top:28px;background:var(--panel);padding-bottom:4px;z-index:1;\">-</div>
-      <pre id=\"approvalReportBody\">-</pre>
-    </div>
 
-    <div class=\"card report-scroll\" style=\"margin-top:10px; display:none;\" id=\"taskReportCard\">
-      <h2 style=\"position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;\">task report <button onclick=\"document.getElementById('taskReportCard').style.display='none'\" style=\"font-size:11px;padding:2px 8px;float:right\">close</button></h2>
-      <div class=\"small\" id=\"taskReportMeta\" style=\"position:sticky;top:28px;background:var(--panel);padding-bottom:4px;z-index:1;\">-</div>
-      <pre id=\"taskReportBody\">-</pre>
-    </div>
+def activity_feed(project_dir: Path, inbox_file: Path, ledger_file: Path, limit: int = 30) -> list[dict]:
+    """Build a combined activity feed from inbox events + ledger entries, sorted by time."""
+    import re as _re
+    events: list[dict] = []
+    cutoff_hours = 4
 
-    <div class=\"card report-scroll\" style=\"margin-top:10px; display:none;\" id=\"inboxReasonCard\">
-      <h2 style=\"position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;\">inbox item details <button onclick=\"document.getElementById('inboxReasonCard').style.display='none'\" style=\"font-size:11px;padding:2px 8px;float:right\">close</button></h2>
-      <div class=\"small\" id=\"inboxReasonMeta\" style=\"position:sticky;top:28px;background:var(--panel);padding-bottom:4px;z-index:1;\">-</div>
-      <pre id=\"inboxReasonBody\" style=\"white-space:pre-wrap;word-break:break-word;\">-</pre>
-    </div>
+    now = time.time()
+    cutoff = now - (cutoff_hours * 3600)
 
-    <div class=\"card\" style=\"margin-top:10px;\">
-      <h2>inbox status counts</h2>
-      <div id=\"ownerFilter\" style=\"margin-bottom:8px;\"></div>
-      <div id=\"counts\"></div>
-      <div class=\"inbox-detail\" id=\"inboxDetail\" style=\"display:none\">
-        <table><thead><tr><th>id</th><th>task</th><th>to</th><th>priority</th><th>launched_at</th><th>timer</th><th>reason</th><th></th></tr></thead>
-        <tbody id=\"inboxRows\"></tbody></table>
-      </div>
-      <div class=\"actions\">
-        <button onclick=\"act('dispatch_print_codex')\">Dispatch preview codex</button>
-        <button onclick=\"act('dispatch_print_claude')\">Dispatch preview claude</button>
-        <button onclick=\"act('recover_retry')\">Recover stale -> retry</button>
-        <button onclick=\"act('normalize_stale')\">Normalize stale</button>
-      </div>
-      <div class=\"status\" id=\"actionStatus\">ready</div>
-    </div>
-
-    <div class=\"card\" style=\"margin-top:10px;\">
-      <div style=\"display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;\">
-        <h2 style=\"margin:0\">tasks</h2>
-        <div class=\"view-toggle\">
-          <span class=\"view-btn active\" id=\"listViewBtn\" onclick=\"setView('list')\">☰ list</span>
-          <span class=\"view-btn\" id=\"boardViewBtn\" onclick=\"setView('board')\">▦ board</span>
-        </div>
-      </div>
-      <div id=\"taskFilterPills\" style=\"display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;\"></div>
-      <div id=\"contractTaskList\">-</div>
-    </div>
-    <div class=\"card\" style=\"margin-top:10px; display:none;\" id=\"boardViewCard\">
-      <h2>board view</h2>
-      <div class=\"board\" id=\"boardColumns\"></div>
-    </div>
-
-    <div class=\"card\" style=\"margin-top:10px;\">
-      <h2>contract owners</h2>
-      <div id=\"ownersList\" style=\"margin-bottom:8px;\"></div>
-      <div style=\"display:flex;gap:6px;align-items:center;\">
-        <input id=\"newOwnerInput\" type=\"text\" placeholder=\"new-agent-name\" style=\"background:var(--btn);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;font-family:inherit;\" />
-        <button onclick=\"addOwner()\">Add owner</button>
-      </div>
-      <div class=\"small\" id=\"ownerStatus\" style=\"margin-top:4px;\"></div>
-    </div>
-
-    <div class=\"logs\">
-      <div class=\"card\"><h2>ledger tail</h2><pre id=\"ledger\">-</pre></div>
-      <div class=\"card\"><h2>action output</h2><pre id=\"actionOut\">-</pre></div>
-    </div>
-
-    <div class=\"logs\">
-      <div class=\"card\"><h2>watcher out.log tail</h2><pre id=\"out\">-</pre></div>
-      <div class=\"card\"><h2>watcher err.log tail</h2><pre id=\"err\">-</pre></div>
-    </div>
-
-    <div class=\"logs\">
-      <div class=\"card\" style=\"flex:1;\">
-        <h2>dispatch cost leaderboard <span id=\"costSummary\" style=\"font-weight:normal;font-size:0.85em;\"></span></h2>
-        <table id=\"costTable\" style=\"width:100%;border-collapse:collapse;font-size:0.85em;\">
-          <thead><tr style=\"text-align:left;\">
-            <th style=\"padding:2px 6px;\">task</th>
-            <th style=\"padding:2px 6px;text-align:right;\">cost $</th>
-            <th style=\"padding:2px 6px;text-align:right;\">tokens</th>
-            <th style=\"padding:2px 6px;text-align:right;\">runs</th>
-            <th style=\"padding:2px 6px;text-align:right;\">avg s</th>
-          </tr></thead>
-          <tbody id=\"costRows\"><tr><td colspan=\"5\">-</td></tr></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-<script>
-let lastActionText = '-';
-let selectedStatus = null;
-let selectedOwners = new Set();
-let knownOwners = [];
-const AUTH_TOKEN = __AUTH_TOKEN__;
-
-async function api(path, init) {
-  const r = await fetch(path, init);
-  const d = await r.json();
-  if (!r.ok) throw new Error(d.error || ('http ' + r.status));
-  return d;
-}
-
-async function refresh() {
-  try {
-    const d = await api('/api/status');
-    document.getElementById('meta').textContent = `project: ${d.project} | refresh: ${d.refresh_seconds}s`;
-    document.getElementById('label').textContent = d.label;
-    const s = document.getElementById('state');
-    const hb = d.heartbeat || {};
-    const wh = d.watcher_health || {};
-    // Reconcile: if heartbeat is OK but launchd says not-loaded, watcher is in foreground mode
-    const heartbeatOk = hb.level === 'ok';
-    const launchdLoaded = d.launchctl_state === 'running' || d.launchctl_state === 'loaded';
-    if (heartbeatOk && !launchdLoaded) {
-      s.textContent = 'foreground';
-      s.className = 'v ok';
-    } else {
-      s.textContent = d.launchctl_state || 'not-loaded';
-      s.className = 'v ' + (launchdLoaded ? 'ok' : (d.launchctl_state ? 'warn' : 'bad'));
-    }
-    const whEl = document.getElementById('watcherHealth');
-    if (heartbeatOk && wh.level === 'bad') {
-      whEl.textContent = 'Watcher running in foreground mode (heartbeat active).';
-      whEl.className = 'watcher-health ok';
-    } else {
-      whEl.textContent = wh.message || 'watcher health unavailable';
-      whEl.className = 'watcher-health ' + (wh.level === 'ok' ? 'ok' : (wh.level === 'warn' ? 'warn' : 'bad'));
-    }
-    const hbEl = document.getElementById('heartbeat');
-    hbEl.textContent = hb.message || 'no data';
-    hbEl.className = 'v ' + (hb.level === 'ok' ? 'ok' : (hb.level === 'warn' ? 'warn' : 'bad'));
-    document.getElementById('contract').textContent = d.contract_id || '-';
-    document.getElementById('ts').textContent = d.now_utc;
-    renderOwnersList(d.contract_owners || []);
-    renderContractTasks(d.contract_tasks || [], new Set(d.active_inbox_tasks || []), new Set(d.done_inbox_tasks || []));
-    // Review queue banner
-    const reviewTasks = (d.contract_tasks || []).filter(t => ['review_requested','review_passed','review_failed'].includes(t.status));
-    renderReviewQueue(d.review_queue_count || 0, reviewTasks);
-    // Agent health pills (list view)
-    renderAgentHealthPills((d.agent_status||{}).agents||{});
-    // Refresh board if active
-    if (_currentView === 'board') loadBoardView();
-    document.getElementById('ledger').textContent = (d.ledger_tail || []).join('\\n');
-    document.getElementById('out').textContent = (d.out_tail || []).join('\\n');
-    document.getElementById('err').textContent = (d.err_tail || []).join('\\n');
-    document.getElementById('actionOut').textContent = lastActionText;
-
-    // Owner filter checkboxes
-    const ownerDiv = document.getElementById('ownerFilter');
-    const owners = Object.keys(d.inbox_owners || {}).sort();
-    if (owners.length && (knownOwners.join() !== owners.join())) {
-      knownOwners = owners;
-      rebuildOwnerCheckboxes();
-    }
-
-    // Inbox status counts (filtered by owner if active)
-    const counts = document.getElementById('counts');
-    counts.innerHTML = '';
-    let filteredCounts = d.inbox_counts || {};
-    if (selectedOwners.size > 0) {
-      // Recompute counts from owner-filtered items
-      filteredCounts = {};
-      const ownerParams = [...selectedOwners].map(o => 'owner=' + encodeURIComponent(o)).join('&');
-      try {
-        const allFiltered = await api('/api/inbox?' + ownerParams);
-        for (const item of allFiltered.items) {
-          const st = item.status || '';
-          filteredCounts[st] = (filteredCounts[st] || 0) + 1;
+    # Inbox events
+    for item in inbox_items(inbox_file):
+        ts_map = {
+            "created_at": "enqueued",
+            "launched_at": "launched",
+            "done_at": "done",
+            "failed_at": "failed",
+            "paused_at": "paused",
+            "stale_at": "stale",
+            "stopped_at": "stopped",
         }
-      } catch(e) {}
-    }
-    const keys = Object.keys(filteredCounts).sort();
-    if (!keys.length) { counts.textContent = 'no inbox rows'; selectedStatus = null; }
-    for (const k of keys) {
-      const el = document.createElement('span');
-      el.className = 'pill' + (k === selectedStatus ? ' sel' : '');
-      el.textContent = `${k}: ${filteredCounts[k]}`;
-      el.onclick = () => selectStatus(k);
-      counts.appendChild(el);
-    }
-    if (selectedStatus) await loadInboxDetail(selectedStatus);
+        for ts_key, event_type in ts_map.items():
+            ts = str(item.get(ts_key, "")).strip().strip("'")
+            if not ts:
+                continue
+            try:
+                dt = _datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                if dt.timestamp() < cutoff:
+                    continue
+            except (ValueError, TypeError):
+                continue
+            task = item.get("task", "?")
+            to = item.get("to", "?")
+            reason = item.get("pause_reason") or item.get("failed_reason") or ""
+            reason_str = f" — {reason.replace('_', ' ')}" if reason else ""
+            events.append({
+                "time": ts,
+                "type": event_type,
+                "message": f"{task} → {to}{reason_str}",
+            })
 
-  } catch (e) {
-    document.getElementById('meta').textContent = 'error: ' + e;
-  }
-}
+    # Ledger entries
+    if ledger_file.exists():
+        try:
+            for line in ledger_file.read_text(encoding="utf-8", errors="replace").splitlines():
+                m = _re.search(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z?)", line)
+                if not m:
+                    continue
+                ts = m.group(1)
+                try:
+                    dt = _datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    if dt.timestamp() < cutoff:
+                        continue
+                except (ValueError, TypeError):
+                    continue
+                # Determine type from content
+                line_lower = line.lower()
+                if "[gc]" in line_lower:
+                    etype = "gc"
+                elif "dispatch" in line_lower:
+                    etype = "dispatch"
+                elif "review" in line_lower:
+                    etype = "review"
+                else:
+                    etype = "ledger"
+                # Clean up the message
+                msg = _re.sub(r"^-\s*\d{4}-\d{2}-\d{2}T\S+\s*—?\s*", "", line).strip()
+                events.append({"time": ts, "type": etype, "message": msg})
+        except OSError:
+            pass
 
-function rebuildOwnerCheckboxes() {
-  const ownerDiv = document.getElementById('ownerFilter');
-  ownerDiv.innerHTML = '<span class=\"k\">filter by owner:</span> ';
-  for (const o of knownOwners) {
-    const lbl = document.createElement('label');
-    lbl.style.cssText = 'margin-right:12px;cursor:pointer;font-size:13px;';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = selectedOwners.size === 0 || selectedOwners.has(o);
-    cb.style.cssText = 'margin-right:4px;cursor:pointer;accent-color:var(--ok);';
-    cb.onchange = () => { toggleOwner(o, cb.checked); };
-    lbl.appendChild(cb);
-    lbl.appendChild(document.createTextNode(o));
-    ownerDiv.appendChild(lbl);
-  }
-}
+    events.sort(key=lambda e: e.get("time", ""), reverse=True)
+    return events[:limit]
 
-function toggleOwner(owner, checked) {
-  if (checked) {
-    selectedOwners.add(owner);
-    // If all are checked, clear the filter (show all)
-    if (selectedOwners.size >= knownOwners.length) selectedOwners.clear();
-  } else {
-    // If filter was empty (all shown), populate with all except unchecked
-    if (selectedOwners.size === 0) {
-      for (const o of knownOwners) { if (o !== owner) selectedOwners.add(o); }
-    } else {
-      selectedOwners.delete(owner);
-      if (selectedOwners.size === 0) selectedOwners.clear();
-    }
-  }
-  rebuildOwnerCheckboxes();
-  refresh();
-}
 
-async function selectStatus(k) {
-  selectedStatus = (selectedStatus === k) ? null : k;
-  if (!selectedStatus) {
-    document.getElementById('inboxDetail').style.display = 'none';
-    document.querySelectorAll('.pill').forEach(p => p.classList.remove('sel'));
-    return;
-  }
-  document.querySelectorAll('.pill').forEach(p => {
-    p.classList.toggle('sel', p.textContent.startsWith(k + ':'));
-  });
-  await loadInboxDetail(selectedStatus);
-}
-
-async function loadInboxDetail(status) {
-  try {
-    let url = '/api/inbox?status=' + encodeURIComponent(status);
-    if (selectedOwners.size > 0) {
-      url += '&' + [...selectedOwners].map(o => 'owner=' + encodeURIComponent(o)).join('&');
-    }
-    const d = await api(url);
-    const tbody = document.getElementById('inboxRows');
-    tbody.innerHTML = '';
-    if (!d.items.length) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = '<td colspan="8" style="color:var(--muted)">no items</td>';
-      tbody.appendChild(tr);
-    }
-    const now = new Date(d.now_utc);
-    for (const item of d.items) {
-      let timer = '';
-      const la = (item.launched_at || '').replace(/^'|'$/g, '');
-      if (la) {
-        const diff = Math.max(0, Math.floor((now - new Date(la)) / 1000));
-        const h = Math.floor(diff / 3600);
-        const m = Math.floor((diff % 3600) / 60);
-        const s = diff % 60;
-        timer = h > 0 ? `${h}h${m}m` : m > 0 ? `${m}m${s}s` : `${s}s`;
-      }
-      let btn = '';
-      const st = item.status || '';
-      const eid = (item.id || '').replace(/'/g, "\\\\'");
-      if (st === 'pending') btn = `<button onclick="act('pause_item:${eid}')" style="font-size:11px;padding:2px 6px">Pause</button>`;
-      else if (st === 'paused') btn = `<button onclick="act('resume_item:${eid}')" style="font-size:11px;padding:2px 6px">Resume</button>`;
-      else if (st === 'launched' || st === 'running') btn = `<button onclick="act('stop_item:${eid}')" style="font-size:11px;padding:2px 6px;color:var(--bad)">Stop</button>`;
-      else if (st === 'stale' || st === 'failed' || st === 'stopped') btn = `<button onclick="act('retry_item:${eid}')" style="font-size:11px;padding:2px 6px;color:var(--warn)">Retry</button>`;
-      const removeBtn = `<button onclick="removeItem('${eid}')" style="font-size:11px;padding:2px 6px;color:var(--bad)">Remove</button>`;
-      const taskEsc = (item.task||'').replace(/'/g, "\\\\'");
-      const agentEsc = (item.to||'').replace(/'/g, "\\\\'");
-      const viewBtn = `<button onclick="viewTaskReport('${taskEsc}','${agentEsc}')" style="font-size:11px;padding:2px 6px">View</button>`;
-      const actionCell = `${viewBtn} ${btn ? btn + ' ' : ''}${removeBtn}`;
-      const tr = document.createElement('tr');
-      const reason = item.pause_reason || item.failed_reason || item.stale_reason || item.stopped_reason || '';
-      const itemJson = JSON.stringify(item).replace(/'/g, '&#39;').replace(/"/g, '&quot;');
-      const reasonText = reason.replace(/_/g, ' ');
-      const reasonCell = reason ? `<span style="color:var(--warn);font-size:11px;cursor:pointer;text-decoration:underline dotted" title="Click for details" onclick="showInboxReason(JSON.parse(this.closest('tr').dataset.item))">${reasonText.length > 40 ? reasonText.slice(0,40) + '…' : reasonText}</span>` : (st !== 'done' ? `<span style="color:var(--muted);font-size:11px;cursor:pointer" onclick="showInboxReason(JSON.parse(this.closest('tr').dataset.item))">details</span>` : '');
-      tr.dataset.item = JSON.stringify(item);
-      tr.innerHTML = `<td>${item.id||''}</td><td>${item.task||''}</td><td>${item.to||''}</td><td>${item.priority||''}</td><td>${la}</td><td>${timer}</td><td>${reasonCell}</td><td>${actionCell}</td>`;
-      tbody.appendChild(tr);
-    }
-    document.getElementById('inboxDetail').style.display = 'block';
-  } catch(e) {}
-}
-
-async function act(action) {
-  const st = document.getElementById('actionStatus');
-  st.textContent = 'running ' + action + ' ...';
-  try {
-    const d = await api('/api/action', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-Superharness-Token': AUTH_TOKEN},
-      body: JSON.stringify({action})
-    });
-    lastActionText = (d.stdout || '') + (d.stderr ? ('\\n' + d.stderr) : '');
-    st.textContent = `ok: ${action} (exit=${d.exit_code})`;
-  } catch (e) {
-    st.textContent = 'error: ' + e;
-  }
-  await refresh();
-}
-
-let _liveLogInterval = null;
-
-async function viewTaskReport(taskId, agent) {
-  const card = document.getElementById('taskReportCard');
-  const meta = document.getElementById('taskReportMeta');
-  const body = document.getElementById('taskReportBody');
-  meta.textContent = `Loading report for task=${taskId} agent=${agent}...`;
-  body.textContent = '...';
-  card.style.display = 'block';
-  if (_liveLogInterval) { clearInterval(_liveLogInterval); _liveLogInterval = null; }
-  try {
-    const d = await api('/api/task-report?task=' + encodeURIComponent(taskId) + '&agent=' + encodeURIComponent(agent));
-    const _liveStatuses = new Set(['in_progress','todo','plan_approved','report_ready','review_requested']);
-    const isActive = _liveStatuses.has(d.contract_status);
-    if (isActive) {
-      try {
-        const logData = await api('/api/task-log?task=' + encodeURIComponent(taskId) + '&lines=100');
-        if (logData.log && !logData.log.startsWith('(no log')) {
-          const sdkBadge = logData.sdk_status ? ` &nbsp; <span style="color:var(--warn)">${logData.sdk_status}</span>` : '';
-          meta.innerHTML = `task=${taskId} &nbsp; agent=${agent} &nbsp; <span class="live-badge">LIVE ●</span> auto-refreshing${sdkBadge}`;
-          body.textContent = logData.log;
-          body.scrollTop = body.scrollHeight;
-          _liveLogInterval = setInterval(async () => {
-            try {
-              const fresh = await api('/api/task-log?task=' + encodeURIComponent(taskId) + '&lines=100');
-              if (fresh.log) { body.textContent = fresh.log; body.scrollTop = body.scrollHeight; }
-              const freshBadge = fresh.sdk_status ? ` &nbsp; <span style="color:var(--warn)">${fresh.sdk_status}</span>` : '';
-              meta.innerHTML = `task=${taskId} &nbsp; agent=${agent} &nbsp; <span class="live-badge">LIVE ●</span> auto-refreshing${freshBadge}`;
-            } catch(e) {}
-          }, 3000);
-          return;
-        }
-      } catch(e) {}
-    }
-    meta.textContent = `task=${taskId}  agent=${agent}  status=${d.contract_status || '-'}`;
-    let report = '';
-
-    // ── Contract Task ─────────────────────────────────────────────────────────
-    if (d.contract_status) {
-      report += '═══ CONTRACT TASK ═══════════════════════════════════════════\\n';
-      report += 'ID:      ' + taskId + '\\n';
-      if (d.contract_title)  report += 'Title:   ' + d.contract_title + '\\n';
-      if (d.contract_owner)  report += 'Owner:   ' + d.contract_owner + '\\n';
-      report += 'Status:  ' + d.contract_status + '\\n';
-      if (d.dispatch_model)
-        report += 'Model:   ' + d.dispatch_model +
-                  (d.dispatch_effort ? '  (effort: ' + d.dispatch_effort + ')' : '') +
-                  (d.dispatch_via    ? '  via ' + d.dispatch_via : '') + '\\n';
-      if (d.blocked_by && d.blocked_by !== 'none' && d.blocked_by !== '')
-        report += 'Blocked: ' + d.blocked_by + '\\n';
-      if (d.verified != null)
-        report += 'Verified: ' + (d.verified ? '✓ yes' : '✗ no') +
-                  (d.verified_by ? ' by ' + d.verified_by : '') +
-                  (d.verified_at ? ' at ' + d.verified_at : '') + '\\n';
-      if (d.tests_passed != null)
-        report += 'Tests passed: ' + (d.tests_passed ? '✓ yes' : '✗ no') + '\\n';
-
-      // Timestamps
-      const tsKeys = ['todo_at','plan_proposed_at','plan_approved_at','in_progress_at','report_ready_at','done_at','stopped_at'];
-      const tsLabels = {'todo_at':'Todo','plan_proposed_at':'Plan proposed','plan_approved_at':'Plan approved',
-                        'in_progress_at':'In progress','report_ready_at':'Report ready','done_at':'Done','stopped_at':'Stopped'};
-      const tsParts = tsKeys.filter(k => d[k]).map(k => tsLabels[k] + ': ' + d[k]);
-      if (tsParts.length) report += '\\nTimeline:\\n' + tsParts.map(s => '  ' + s).join('\\n') + '\\n';
-
-      // Acceptance criteria
-      if (d.acceptance_criteria && d.acceptance_criteria.length) {
-        report += '\\nAcceptance Criteria:\\n';
-        d.acceptance_criteria.forEach(c => { report += '  ✦ ' + c + '\\n'; });
-      }
-
-      // Test types
-      if (d.test_types && d.test_types.length)
-        report += '\\nTest Types: ' + d.test_types.join(', ') + '\\n';
-
-      // TDD block
-      if (d.tdd && Object.keys(d.tdd).length) {
-        report += '\\nTDD:\\n';
-        if (d.tdd.red)     report += '  RED:     ' + String(d.tdd.red).replace(/\\n/g,'\\n           ') + '\\n';
-        if (d.tdd.green)   report += '  GREEN:   ' + String(d.tdd.green).replace(/\\n/g,'\\n           ') + '\\n';
-        if (d.tdd.refactor)report += '  REFACTOR:' + String(d.tdd.refactor).replace(/\\n/g,'\\n           ') + '\\n';
-      }
-
-      // Outcomes
-      if (d.outcomes && d.outcomes.length) {
-        report += '\\nOutcomes:\\n';
-        d.outcomes.forEach(o => { report += '  • ' + o + '\\n'; });
-      }
-
-      // Summary
-      if (d.contract_summary) report += '\\nSummary: ' + d.contract_summary + '\\n';
-
-      report += '\\n';
-    }
-
-    // ── Discussion ────────────────────────────────────────────────────────────
-    if (d.discussion_topic) {
-      report += '═══ DISCUSSION ══════════════════════════════════════════════\\n';
-      report += 'Topic:  ' + d.discussion_topic + '\\n';
-      report += 'Status: ' + (d.discussion_status||'-') + '\\n';
-      report += 'Round:  ' + (d.discussion_round||'?') + '/' + (d.discussion_max_rounds||'?') + '\\n\\n';
-    }
-
-    // ── Handoff / Report ──────────────────────────────────────────────────────
-    if (d.handoff_outcome || d.handoff_context || d.handoff_summary || d.markdown_report) {
-      report += '═══ HANDOFF REPORT' + (d.handoff_date ? ' (' + d.handoff_date + ')' : '') + ' ════════════════════════\\n';
-      if (d.handoff_outcome)  report += '\\nOutcome:\\n' + d.handoff_outcome + '\\n';
-      if (d.handoff_context)  report += '\\nContext (for next session):\\n' + d.handoff_context + '\\n';
-      if (d.handoff_summary)  report += '\\nSummary: ' + d.handoff_summary + '\\n';
-      if (d.markdown_report)  report += '\\n' + d.markdown_report + '\\n';
-    }
-
-    if (d.discussion_position) report += '\\n═══ DISCUSSION POSITION (' + (d.discussion_agent||agent) + ') ═══════════════\\n' + d.discussion_position + '\\n';
-    if (d.discussion_verdict)  report += 'Verdict: ' + d.discussion_verdict + '\\n';
-
-    if (!report) report = '(no report data found for this task)';
-    body.textContent = report;
-  } catch (e) {
-    body.textContent = 'Error: ' + e;
-  }
-}
-
-async function removeItem(itemId) {
-  const ok = window.confirm(`Remove task item ${itemId} from inbox?`);
-  if (!ok) return;
-  await act('remove_item:' + itemId);
-}
-
-const PHASE_LABEL = {
-  todo:             ['⬜', 'todo',             'muted'],
-  plan_proposed:    ['📋', 'plan proposed',    'warn'],
-  plan_approved:    ['✅', 'plan approved',    'ok'],
-  in_progress:      ['🔄', 'in progress',      'warn'],
-  report_ready:     ['📝', 'report ready',     'warn'],
-  review_requested: ['🔍', 'review requested', 'warn'],
-  review_passed:    ['✅', 'review passed',    'ok'],
-  review_failed:    ['❌', 'review failed',    'bad'],
-  done:             ['✅', 'done',             'ok'],
-  failed:           ['❌', 'failed',           'bad'],
-  stopped:          ['⏹',  'stopped',          'muted'],
-};
-
-// Status filter pills — maps status group → list of statuses it covers
-const STATUS_GROUPS = [
-  { key: 'done',           label: '✅ done',           statuses: ['done'],                          color: 'var(--ok)' },
-  { key: 'stopped',        label: '⛔ disabled',        statuses: ['stopped'],                       color: 'var(--muted)' },
-  { key: 'review',         label: '🔍 review',          statuses: ['review_requested','review_passed','review_failed'], color: 'var(--warn)' },
-  { key: 'in_progress',    label: '🔄 in progress',     statuses: ['in_progress','launched','running'], color: '#4a9eff' },
-  { key: 'plan',           label: '📋 plan',            statuses: ['plan_proposed','plan_approved'], color: '#a78bfa' },
-  { key: 'todo',           label: '🕐 todo',            statuses: ['todo'],                          color: 'var(--muted)' },
-];
-// hidden groups — set of group keys currently hidden; done is hidden by default
-const _hiddenGroups = new Set(['done']);
-
-function _statusToGroup(st) {
-  for (const g of STATUS_GROUPS) {
-    if (g.statuses.includes(st)) return g.key;
-  }
-  return 'todo';
-}
-
-function renderTaskFilterPills(tasks) {
-  const el = document.getElementById('taskFilterPills');
-  if (!el) return;
-  // Count per group
-  const counts = {};
-  for (const t of tasks) {
-    const gk = _statusToGroup(t.status || 'todo');
-    counts[gk] = (counts[gk] || 0) + 1;
-  }
-  el.innerHTML = '';
-  for (const g of STATUS_GROUPS) {
-    const n = counts[g.key] || 0;
-    if (n === 0) continue;
-    const hidden = _hiddenGroups.has(g.key);
-    const pill = document.createElement('span');
-    pill.title = hidden ? `Show ${g.key}` : `Hide ${g.key}`;
-    pill.style.cssText = `cursor:pointer;font-size:11px;padding:2px 8px;border-radius:10px;border:1px solid ${g.color};color:${hidden ? 'var(--muted)' : g.color};background:${hidden ? 'transparent' : g.color+'22'};text-decoration:${hidden ? 'line-through' : 'none'};user-select:none`;
-    pill.textContent = `${g.label} ${n}`;
-    pill.onclick = () => {
-      if (_hiddenGroups.has(g.key)) _hiddenGroups.delete(g.key);
-      else _hiddenGroups.add(g.key);
-      refresh();
-    };
-    el.appendChild(pill);
-  }
-}
-
-function inferredWorkflow(task) {
-  if (task.workflow) return task.workflow;
-  const taskId = task.id || '';
-  if (taskId.startsWith('discuss-') && taskId.includes('/round-')) return 'discussion';
-  return 'quick';
-}
-
-function canEnqueueTask(task) {
-  const st = task.status || 'todo';
-  const workflow = inferredWorkflow(task);
-  if (workflow === 'implementation') return ['plan_approved', 'failed', 'stopped'].includes(st);
-  if (workflow === 'quick' || workflow === 'note') return ['todo', 'in_progress', 'failed', 'stopped'].includes(st);
-  return false;
-}
-
-function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
-  const el = document.getElementById('contractTaskList');
-  if (!tasks.length) { el.textContent = '(no tasks)'; return; }
-  el.innerHTML = '';
-  const sorted = [...tasks].reverse();
-  renderTaskFilterPills(sorted);
-  const visible = _hiddenGroups.size === 0 ? sorted : sorted.filter(t => !_hiddenGroups.has(_statusToGroup(t.status || 'todo')));
-  if (!visible.length) { el.textContent = '(no tasks match current filters)'; return; }
-  for (const t of visible) {
-    const st = t.status || 'todo';
-    const [icon, label, cls] = PHASE_LABEL[st] || ['?', st, 'muted'];
-    const row = document.createElement('div');
-    row.className = 'task-row';
-
-    const badge = `<span class="pill ${cls}" style="font-size:11px">${icon} ${label}</span>`;
-    const schedInfo = t.scheduled_after ? ` <span class="small" style="color:var(--warn)">⏳ after ${t.scheduled_after}</span>` : '';
-    const dueInfo = t.due_by ? ` <span class="small" style="color:${new Date(t.due_by) < new Date() ? 'var(--bad)' : 'var(--muted)'}">📅 due ${t.due_by}</span>` : '';
-    const depsInfo = (t.depends_on && t.depends_on.length) ? ` <span class="small" style="color:var(--muted)">🔗 ${t.depends_on.join(', ')}</span>` : '';
-    const reviewerInfo = (st === 'review_requested' && t.review_target) ? ` <span class="small" style="color:var(--warn)">👀 reviewer ${t.review_target}</span>` : '';
-    const title = `<span style="flex:1;min-width:120px">${t.id} <span class="small" style="color:var(--muted)">${t.title}</span>${schedInfo}${dueInfo}${depsInfo}</span>`;
-    const owner = `<span class="small" style="color:var(--muted)">${t.owner}</span>`;
-
-    const actionButtons = [];
-    const tid = t.id.replace(/'/g, "\\\\'");
-    const ownerEsc = (t.owner || '').replace(/'/g, "\\\\'");
-    // View Report button for any task with a handoff or in report_ready/done status
-    const viewReportBtn = `<button onclick="viewTaskReport('${tid}','${ownerEsc}')" style="font-size:11px;padding:2px 8px">View Report</button>`;
-    actionButtons.push(viewReportBtn);
-    const isEnqueued = activeInboxTasks.has(t.id);
-    const isDoneInbox = doneInboxTasks.has(t.id);
-    const canEnqueue = canEnqueueTask(t);
-    if (canEnqueue && isDoneInbox && !isEnqueued) {
-      actionButtons.push(`<button onclick="markTaskDone('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Done</button>`);
-    }
-    if (st === 'plan_proposed') {
-      actionButtons.push(`<button onclick="approvePlan('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Approve Plan</button>`);
-    } else if (st === 'report_ready') {
-      const isVerifyTask = tid.startsWith('verify.');
-      if (isVerifyTask) {
-        // Verify tasks are self-verifying — close is the primary action
-        actionButtons.push(`<button onclick="approveReport('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Close Without Review</button>`);
-        actionButtons.push(`<button onclick="requestReview('${tid}')" style="font-size:10px;padding:1px 6px;color:var(--muted);opacity:0.7" title="Request meta-review of this verification">Request Review</button>`);
-      } else {
-        actionButtons.push(`<button onclick="requestReview('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Request Review</button>`);
-        if (t.verified) {
-          actionButtons.push(`<button onclick="approveReport('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--muted)">Close Without Review</button>`);
-        } else {
-          actionButtons.push(`<button disabled title="Run verify before closing" style="font-size:11px;padding:2px 8px;opacity:0.45;cursor:not-allowed">Verify First</button>`);
-        }
-      }
-    } else if (st === 'review_requested') {
-      actionButtons.push(`<button onclick="cancelReview('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--muted)">Cancel Review</button>`);
-      actionButtons.push(`<button onclick="approveWithoutReview('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Approve Without Review</button>`);
-    } else if (st === 'review_failed') {
-      actionButtons.push(`<span class="small" style="color:var(--bad)">↩ review failed</span>`);
-      actionButtons.push(`<button onclick="enqueueTask('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Re-enqueue</button>`);
-    } else if (st === 'review_passed') {
-      actionButtons.push(`<button onclick="runClose('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Close</button>`);
-    }
-    if (st === 'stopped') {
-      actionButtons.push(`<button onclick="enableTask('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Re-queue</button>`);
-    } else if (st !== 'done' && isEnqueued) {
-      actionButtons.push(`<span class="pill" style="font-size:10px;background:var(--ok);color:#000;padding:1px 6px;cursor:default">queued</span>`);
-    } else if (st !== 'done' && canEnqueue) {
-      actionButtons.push(`<button onclick="enqueueTask('${tid}')" style="font-size:10px;padding:1px 6px;background:var(--muted);color:#fff;border-radius:10px">not queued</button>`);
-    }
-    actionButtons.push(`<button onclick="removeTask('${tid}')" style="font-size:11px;padding:2px 6px;color:var(--bad)">Remove</button>`);
-    row.innerHTML = `<div class="task-actions">${actionButtons.join(' ')}</div><div class="task-meta">${badge}${title}${reviewerInfo}${owner}</div>`;
-    el.appendChild(row);
-  }
-}
-
-async function disableTask(taskId) {
-  if (!window.confirm(`Disable task "${taskId}"? It will be set to stopped and hidden with done tasks.`)) return;
-  await act('disable_task:' + taskId);
-}
-async function enableTask(taskId) {
-  await act('enable_task:' + taskId);
-}
-async function removeTask(taskId) {
-  if (!window.confirm(`Remove task "${taskId}" from contract? This cannot be undone.`)) return;
-  await act('remove_task:' + taskId);
-}
-
-async function approvePlan(taskId) {
-  if (!window.confirm(`Approve plan for task "${taskId}"? The agent will proceed to implement.`)) return;
-  await act('approve_plan:' + taskId);
-}
-
-async function requestReview(taskId) {
-  const dlg = document.createElement('dialog');
-  dlg.style.cssText = 'background:var(--panel);color:var(--fg);border:1px solid var(--border);border-radius:8px;padding:20px;min-width:280px;';
-  dlg.innerHTML = `
-    <h3 style="margin:0 0 12px">Request review for "${taskId}"</h3>
-    <label style="display:block;margin-bottom:8px;font-size:13px;">Reviewer:</label>
-    <select id="reviewerSelect" style="width:100%;padding:6px 8px;font-size:14px;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:4px;">
-      <option value="codex-cli">codex-cli</option>
-      <option value="claude-code">claude-code</option>
-    </select>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
-      <button id="reviewCancel" style="padding:6px 16px;font-size:13px;">Cancel</button>
-      <button id="reviewConfirm" style="padding:6px 16px;font-size:13px;background:var(--ok);color:#000;border-radius:4px;">Request</button>
-    </div>`;
-  document.body.appendChild(dlg);
-  dlg.showModal();
-  const result = await new Promise(resolve => {
-    dlg.querySelector('#reviewConfirm').onclick = () => resolve(dlg.querySelector('#reviewerSelect').value);
-    dlg.querySelector('#reviewCancel').onclick = () => resolve(null);
-    dlg.addEventListener('close', () => resolve(null));
-  });
-  dlg.remove();
-  if (!result) return;
-  await act('request_review:' + taskId + ':' + result);
-}
-
-async function approveReport(taskId) {
-  if (!window.confirm(`Close task "${taskId}" without requesting review?`)) return;
-  await act('approve_report:' + taskId);
-}
-
-async function cancelReview(taskId) {
-  if (!window.confirm(`Cancel review for "${taskId}"? Task will return to report_ready.`)) return;
-  await act('cancel_review:' + taskId);
-}
-
-function humanize(s) { return (s || '').replace(/_/g, ' '); }
-
-function showInboxReason(item) {
-  const card = document.getElementById('inboxReasonCard');
-  const meta = document.getElementById('inboxReasonMeta');
-  const body = document.getElementById('inboxReasonBody');
-  const reason = humanize(item.pause_reason || item.failed_reason || item.stale_reason || item.stopped_reason || '(no reason recorded)');
-  const status = item.status || '?';
-  const statusColors = { paused: 'var(--warn)', failed: 'var(--bad)', stale: 'var(--warn)', stopped: 'var(--muted)' };
-  const color = statusColors[status] || 'var(--fg)';
-  meta.innerHTML = `<span style="color:${color};font-weight:bold">${status}</span> &middot; task: ${item.task || '-'} &middot; to: ${item.to || '-'} &middot; id: <span class="small">${item.id || '-'}</span>`;
-  const lines = [];
-  lines.push(`Status:    ${status}`);
-  lines.push(`Reason:    ${reason}`);
-  lines.push('');
-  lines.push(`Task:      ${item.task || '-'}`);
-  lines.push(`Agent:     ${item.to || '-'}`);
-  lines.push(`Priority:  ${item.priority || '-'}`);
-  lines.push(`Retries:   ${item.retry_count || 0} / ${item.max_retries || 3}`);
-  lines.push('');
-  if (item.created_at) lines.push(`Created:   ${item.created_at}`);
-  if (item.launched_at) lines.push(`Launched:  ${item.launched_at}`);
-  if (item.paused_at) lines.push(`Paused:    ${item.paused_at}`);
-  if (item.failed_at) lines.push(`Failed:    ${item.failed_at}`);
-  if (item.stale_at) lines.push(`Stale:     ${item.stale_at}`);
-  if (item.stopped_at) lines.push(`Stopped:   ${item.stopped_at}`);
-  if (item.done_at) lines.push(`Done:      ${item.done_at}`);
-  body.textContent = lines.join('\\n');
-  card.style.display = 'block';
-  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-}
-
-async function approveWithoutReview(taskId) {
-  if (!window.confirm(`Approve "${taskId}" without agent review and close it?`)) return;
-  await act('approve_without_review:' + taskId);
-}
-
-async function runClose(taskId) {
-  if (!window.confirm(`Close task "${taskId}"? This will run shux close.`)) return;
-  await act('close_task:' + taskId);
-}
-
-async function enqueueTask(taskId) {
-  const modal = document.getElementById('enqueueModal');
-  const titleEl = document.getElementById('enqueueModalTitle');
-  const targetEl = document.getElementById('enqueueTarget');
-  const instrEl = document.getElementById('enqueueInstructions');
-  titleEl.textContent = `Enqueue: ${taskId}`;
-  targetEl.value = 'claude-code';
-  instrEl.value = 'Loading task instructions...';
-  modal.dataset.taskId = taskId;
-  modal.style.display = 'block';
-  try {
-    const d = await api('/api/task-instructions?task=' + encodeURIComponent(taskId));
-    instrEl.value = d.instructions || '(no plan found for this task)';
-  } catch (e) {
-    instrEl.value = `Task: ${taskId}\n\n` +
-      `1. Read the task details from the contract and handoffs\n` +
-      `2. Propose a TDD plan (RED → GREEN → REFACTOR) and wait for user confirmation\n` +
-      `3. Implement only after user approves the plan\n` +
-      `4. Run tests after each phase — all tests must pass before marking done`;
-  }
-}
-
-async function submitEnqueue() {
-  const modal = document.getElementById('enqueueModal');
-  const taskId = modal.dataset.taskId;
-  const target = document.getElementById('enqueueTarget').value;
-  const instructions = document.getElementById('enqueueInstructions').value.trim();
-  modal.style.display = 'none';
-  if (!target || (target !== 'claude-code' && target !== 'codex-cli')) {
-    alert('Invalid target. Must be claude-code or codex-cli.');
-    return;
-  }
-  const st = document.getElementById('actionStatus');
-  st.textContent = 'enqueueing ' + taskId + ' ...';
-  try {
-    const d = await api('/api/action', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-Superharness-Token': AUTH_TOKEN},
-      body: JSON.stringify({action: 'enqueue_task:' + taskId + ':' + target, instructions})
-    });
-    st.textContent = `enqueued ${taskId} → ${target}`;
-  } catch (e) {
-    const msg = String(e);
-    if (msg.includes('already enqueued')) {
-      alert(`Task "${taskId}" is already in the inbox.`);
-    }
-    st.textContent = 'error: ' + msg;
-  }
-  await refresh();
-}
-
-function cancelEnqueue() {
-  document.getElementById('enqueueModal').style.display = 'none';
-}
-
-async function markTaskDone(taskId) {
-  if (!window.confirm(`Mark task "${taskId}" as done?`)) return;
-  await act('mark_done:' + taskId);
-}
-
-function renderOwnersList(owners) {
-  const el = document.getElementById('ownersList');
-  if (!owners || !owners.length) { el.textContent = '(no owners)'; return; }
-  el.innerHTML = '';
-  for (const o of owners) {
-    const pill = document.createElement('span');
-    pill.className = 'pill sel';
-    pill.innerHTML = o + (owners.length > 2 ? ' <span style="cursor:pointer;margin-left:4px;color:var(--bad)" onclick="removeOwner(\\'' + o.replace(/'/g, "\\\\'") + '\\')">×</span>' : '');
-    el.appendChild(pill);
-  }
-}
-
-async function addOwner() {
-  const input = document.getElementById('newOwnerInput');
-  const name = input.value.trim();
-  if (!name) return;
-  const st = document.getElementById('ownerStatus');
-  st.textContent = 'adding ' + name + '...';
-  try {
-    const d = await api('/api/owners', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-Superharness-Token': AUTH_TOKEN},
-      body: JSON.stringify({action: 'add', owner: name})
-    });
-    input.value = '';
-    st.textContent = d.note || 'added';
-    renderOwnersList(d.owners || []);
-    await refresh();
-  } catch (e) {
-    st.textContent = 'error: ' + e;
-  }
-}
-
-async function removeOwner(name) {
-  if (!window.confirm(`Remove owner "${name}" from contract? This removes all their tasks.`)) return;
-  const st = document.getElementById('ownerStatus');
-  st.textContent = 'removing ' + name + '...';
-  try {
-    const d = await api('/api/owners', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-Superharness-Token': AUTH_TOKEN},
-      body: JSON.stringify({action: 'remove', owner: name})
-    });
-    st.textContent = 'removed';
-    renderOwnersList(d.owners || []);
-    await refresh();
-  } catch (e) {
-    st.textContent = 'error: ' + e;
-  }
-}
-
-let _currentView = 'list';
-
-function setView(v) {
-  _currentView = v;
-  document.getElementById('listViewBtn').className = 'view-btn' + (v==='list' ? ' active' : '');
-  document.getElementById('boardViewBtn').className = 'view-btn' + (v==='board' ? ' active' : '');
-  document.getElementById('contractTaskList').style.display = v === 'list' ? '' : 'none';
-  document.getElementById('taskFilterPills').style.display = v === 'list' ? '' : 'none';
-  document.getElementById('boardViewCard').style.display = v === 'board' ? '' : 'none';
-  if (v === 'board') loadBoardView();
-}
-
-const BOARD_COL_LABELS = {
-  todo: {label:'⬜ todo', color:'var(--muted)'},
-  plan: {label:'📋 plan', color:'#a78bfa'},
-  in_progress: {label:'🔄 in progress', color:'#4a9eff'},
-  review: {label:'🔍 review', color:'var(--warn)'},
-  done: {label:'✅ done', color:'var(--ok)'},
-};
-
-async function loadBoardView() {
-  const el = document.getElementById('boardColumns');
-  if (!el) return;
-  try {
-    const d = await api('/api/board');
-    el.innerHTML = '';
-    for (const [col, meta] of Object.entries(BOARD_COL_LABELS)) {
-      const tasks = (d.columns || {})[col] || [];
-      const div = document.createElement('div');
-      div.className = 'board-col';
-      const header = `<div class="board-col-header"><span style="color:${meta.color}">${meta.label}</span><span class="board-col-count">${tasks.length}</span></div>`;
-      let rows = '';
-      for (const t of tasks) {
-        const st = t.status || '';
-        const [icon] = PHASE_LABEL[st] || ['?'];
-        const eid = (t.id || '').replace(/'/g, "\\'");
-        rows += `<div class="board-task" onclick="viewTaskReport('${eid}','${(t.owner||'').replace(/'/g,"\\'")}')">
-          <div class="bt-owner">${t.owner||''}</div>
-          <div class="bt-id">${icon} ${t.id||''}</div>
-          <div style="font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.title||''}</div>
-        </div>`;
-      }
-      div.innerHTML = header + (rows || '<div style="color:var(--muted);font-size:11px;text-align:center;padding:8px">empty</div>');
-      el.appendChild(div);
-    }
-    renderAgentHealthPills((d.agent_status||{}).agents||{});
-  } catch(e) {
-    el.textContent = 'Error loading board: ' + e;
-  }
-}
-
-function renderAgentHealthPills(agents) {
-  const el = document.getElementById('agentHealthPills');
-  if (!el) return;
-  el.innerHTML = '';
-  for (const [agent, info] of Object.entries(agents)) {
-    const lvl = (info.level || 'warn');
-    const color = lvl === 'ok' ? 'var(--ok)' : lvl === 'warn' ? 'var(--warn)' : 'var(--bad)';
-    const pill = document.createElement('span');
-    pill.className = 'agent-pill';
-    pill.style.cssText = `border-color:${color};color:${color}`;
-    pill.title = info.message || '';
-    pill.textContent = `${agent} ● ${lvl}`;
-    el.appendChild(pill);
-  }
-}
-
-function renderReviewQueue(reviewCount, reviewTasks) {
-  const banner = document.getElementById('reviewBanner');
-  const list = document.getElementById('reviewList');
-  if (!banner || !list) return;
-  if (!reviewCount) {
-    banner.style.display = 'none';
-    return;
-  }
-  banner.style.display = '';
-  list.innerHTML = '';
-  for (const t of (reviewTasks||[])) {
-    const st = t.status || '';
-    const [icon] = PHASE_LABEL[st] || ['?'];
-    const eid = (t.id||'').replace(/'/g,"\\'");
-    const a = document.createElement('div');
-    a.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:2px;';
-    a.innerHTML = `<span>${icon} <b>${t.id}</b> <span style="color:var(--muted)">${t.title||''}</span> <span style="color:var(--muted);font-size:11px">→ ${t.owner||''}</span></span>
-      <button onclick="viewTaskReport('${eid}','${(t.owner||'').replace(/'/g,"\\'")}'')" style="font-size:10px;padding:1px 6px">View</button>`;
-    list.appendChild(a);
-  }
-}
-
-async function refreshCosts() {
-  try {
-    const d = await api('/api/costs?top=20');
-    const s = d.summary || {};
-    document.getElementById('costSummary').textContent =
-      s.total_records ? `(${s.total_records} records · $${(s.total_cost_usd||0).toFixed(4)} total)` : '(no data)';
-    const tbody = document.getElementById('costRows');
-    if (!d.leaderboard || d.leaderboard.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);padding:4px 6px">no benchmark data yet</td></tr>';
-      return;
-    }
-    tbody.innerHTML = d.leaderboard.map(r => `<tr>
-      <td style="padding:2px 6px;font-family:monospace">${r.task_id}</td>
-      <td style="padding:2px 6px;text-align:right">$${r.total_cost_usd.toFixed(4)}</td>
-      <td style="padding:2px 6px;text-align:right">${r.total_tokens.toLocaleString()}</td>
-      <td style="padding:2px 6px;text-align:right">${r.dispatch_count}</td>
-      <td style="padding:2px 6px;text-align:right">${r.avg_duration_seconds}s</td>
-    </tr>`).join('');
-  } catch(e) {
-    document.getElementById('costSummary').textContent = '(error)';
-  }
-}
-
-refresh();
-refreshCosts();
-setInterval(refresh, 3000);
-setInterval(refreshCosts, 30000);
-</script>
-
-<div id="enqueueModal" onclick="if(event.target===this)cancelEnqueue()" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:999">
-  <div style="background:var(--panel);border:1px solid var(--line);border-radius:8px;max-width:600px;margin:80px auto;padding:20px;color:var(--text)">
-    <h3 id="enqueueModalTitle" style="margin:0 0 12px 0">Enqueue Task</h3>
-    <label style="font-size:12px;color:var(--muted)">Target agent:</label>
-    <select id="enqueueTarget" style="width:100%;padding:6px;margin:4px 0 12px 0;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:4px">
-      <option value="claude-code">claude-code</option>
-      <option value="codex-cli">codex-cli</option>
-    </select>
-    <label style="font-size:12px;color:var(--muted)">Instructions (TDD plan — edit or replace):</label>
-    <textarea id="enqueueInstructions" rows="12" style="width:100%;padding:8px;margin:4px 0 12px 0;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:4px;font-family:monospace;font-size:12px;resize:vertical"></textarea>
-    <div style="display:flex;gap:8px;justify-content:flex-end">
-      <button onclick="cancelEnqueue()" style="padding:6px 16px;background:var(--bg);color:var(--muted);border:1px solid var(--line);border-radius:4px;cursor:pointer">Cancel</button>
-      <button onclick="submitEnqueue()" style="padding:6px 16px;background:var(--ok);color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold">Accept &amp; Enqueue</button>
-    </div>
-  </div>
-</div>
-
-</body>
-</html>
-"""
+from datetime import datetime as _datetime
 
 
 def tail_lines(path: Path, n: int) -> list[str]:
@@ -2706,6 +1774,8 @@ class Handler(BaseHTTPRequestHandler):
                     "review_queue": review_queue(contract),
                     "board_columns": board_tasks(contract),
                     "budget": budget_signals(self.project_dir),
+                    "git_context": git_context(self.project_dir),
+                    "activity_feed": activity_feed(self.project_dir, inbox, ledger),
                     "ledger_tail": tail_lines(ledger, 18),
                     "out_tail": tail_lines(outlog, 16),
                     "err_tail": tail_lines(errlog, 16),
@@ -2753,7 +1823,22 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 text = task_instructions(self.project_dir, task_id)
-                self._json({"task": task_id, "instructions": text})
+                # Include task metadata for dispatch preview
+                task_meta = {}
+                contract_file = self.project_dir / ".superharness" / "contract.yaml"
+                if contract_file.exists():
+                    import yaml as _y
+                    doc = _y.safe_load(contract_file.read_text()) or {}
+                    for t in doc.get("tasks") or []:
+                        if isinstance(t, dict) and t.get("id") == task_id:
+                            task_meta = {
+                                "model": t.get("model", ""),
+                                "effort": t.get("effort", "medium"),
+                                "timeout_minutes": t.get("timeout_minutes"),
+                                "test_types": ", ".join(t.get("test_types") or []),
+                            }
+                            break
+                self._json({"task": task_id, "instructions": text, "task_meta": task_meta})
             except Exception as exc:
                 self._json({"error": str(exc)}, 500)
             return
@@ -2814,9 +1899,9 @@ class Handler(BaseHTTPRequestHandler):
                     {
                         "task_id": s.task_id,
                         "total_cost_usd": round(s.total_cost_usd, 4),
-                        "total_tokens": s.total_tokens,
-                        "dispatch_count": s.dispatch_count,
-                        "success_count": s.success_count,
+                        "total_tokens": 0,
+                        "dispatch_count": s.total_runs,
+                        "success_count": s.successes,
                         "avg_duration_seconds": round(s.avg_duration_seconds, 1),
                     }
                     for s in stats
