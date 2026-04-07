@@ -732,11 +732,11 @@ async function approvePlan(taskId) {
 
 async function requestReview(taskId) {
   const dlg = document.createElement('dialog');
-  dlg.style.cssText = 'background:var(--panel);color:var(--fg);border:1px solid var(--border);border-radius:8px;padding:20px;min-width:280px;';
+  dlg.style.cssText = 'background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:20px;min-width:280px;';
   dlg.innerHTML = `
     <h3 style="margin:0 0 12px">Request review for "${taskId}"</h3>
     <label style="display:block;margin-bottom:8px;font-size:13px;">Reviewer:</label>
-    <select id="reviewerSelect" style="width:100%;padding:6px 8px;font-size:14px;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:4px;">
+    <select id="reviewerSelect" style="width:100%;padding:6px 8px;font-size:14px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;">
       <option value="codex-cli">codex-cli</option>
       <option value="claude-code">claude-code</option>
     </select>
@@ -775,7 +775,7 @@ function showInboxReason(item) {
   const reason = humanize(item.pause_reason || item.failed_reason || item.stale_reason || item.stopped_reason || '(no reason recorded)');
   const status = item.status || '?';
   const statusColors = { paused: 'var(--warn)', failed: 'var(--bad)', stale: 'var(--warn)', stopped: 'var(--muted)' };
-  const color = statusColors[status] || 'var(--fg)';
+  const color = statusColors[status] || 'var(--text)';
   meta.innerHTML = `<span style="color:${color};font-weight:bold">${status}</span> &middot; task: ${item.task || '-'} &middot; to: ${item.to || '-'} &middot; id: <span class="small">${item.id || '-'}</span>`;
   const lines = [];
   lines.push(`Status:    ${status}`);
