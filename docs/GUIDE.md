@@ -27,6 +27,10 @@ Type these directly into Claude Code or Codex CLI — no terminal needed after f
 | `shux update` | Pull latest superharness (`git pull` in repo) + re-run init to refresh `CLAUDE.md`, `AGENTS.md`, templates |
 | `shux config get <key>` | Read a dot-path key from `profile.yaml` (e.g. `budget.daily_limit`) |
 | `shux config set <key> <value>` | Write a dot-path key to `profile.yaml` |
+| `shux inbox-gc` | Reconcile stale inbox items (stopped/failed/paused) against contract |
+| `shux worktree-gc` | Clean orphaned dispatch worktrees from `/tmp` |
+| `shux recap` | What happened in the last N hours — timeline of ledger, inbox, handoffs |
+| `shux notify-desktop` | Send a native macOS/Linux desktop notification |
 
 **Full session flow:** `shux onboard` (new project) → `shux doctor` → `shux contract` → `shux continue` → `shux verify <id>` → `shux close <id>`
 
@@ -502,11 +506,29 @@ shux dashboard-kill --port 8787   # kill only the one on a specific port
 
 Includes: watcher state, inbox counters, one-click queue actions, Enqueue modal with TDD instructions, Done button for inbox-completed tasks, optional Logdy log view.
 
+**Dashboard panels:**
+- **Git context** — current branch, dirty file count, and last commit in the header
+- **Activity feed** — live timeline of dispatch, gc, inbox, and ledger events (last 4 hours)
+- **Task dependency graph** — mermaid diagram of `blocked_by` relationships (press `g` to toggle)
+- **Inbox reason column** — shows `pause_reason`, `failed_reason` etc. in human-readable text; click for full details panel
+- **Dispatch preview** — enqueue modal shows model, effort, cost/MTok, and timeout before dispatch
+
+**Keyboard shortcuts:**
+| Key | Action |
+|-----|--------|
+| `r` | Refresh |
+| `g` | Toggle dependency graph |
+| `l` | List view |
+| `b` | Board view |
+| `?` | Show shortcut help |
+
 **Task action buttons:**
-- **Enqueue** (todo/failed/stopped) — opens modal with personalized TDD plan from `docs/plan*.md`, acceptance criteria from contract, and prior failure context. User reviews/edits instructions before dispatch.
-- **Enqueued** (disabled) — task already has an active inbox item
+- **not queued** (clickable) — opens enqueue modal with dispatch preview
+- **queued** (green pill) — task has an active inbox item
+- **Re-queue** (stopped) — re-enables task
+- **Request Review** — choose reviewer (claude-code or codex-cli) via dropdown
+- **Cancel Review** / **Approve Without Review** — for `review_requested` tasks
 - **Done** — inbox item completed; marks contract task as done
-- **Re-enqueue** (review_failed) — re-dispatch with corrective instructions
 
 **API endpoints:**
 - `GET /api/task-instructions?task=<id>` — personalized TDD instructions assembled from contract + plan docs
