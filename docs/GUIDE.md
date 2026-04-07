@@ -379,6 +379,29 @@ superharness normalize --project . --archive
 
 Archives `done` and `failed` items to `.superharness/inbox-archive.yaml`.
 
+**Clean orphaned dispatch worktrees:**
+```bash
+superharness worktree-gc --project .            # remove orphaned worktrees
+superharness worktree-gc --project . --dry-run  # preview without removing
+```
+
+Removes temporary worktrees left behind by dispatch (created in `/tmp/superharness-worktrees/`).
+
+**Session recap — what happened recently:**
+```bash
+superharness recap --project .              # last 4 hours (default)
+superharness recap --project . --hours 8    # last 8 hours
+```
+
+Summarizes ledger entries, inbox events, handoffs, and task changes in a timeline view.
+
+**Desktop notifications:**
+```bash
+superharness notify-desktop --message "Task done"
+```
+
+Sends a native macOS/Linux notification. Also fires automatically when a dispatched task completes or fails.
+
 ### Project Auto-Detection
 
 Most commands require `--project DIR`. To avoid repeating it:

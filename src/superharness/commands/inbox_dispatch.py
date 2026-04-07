@@ -575,6 +575,11 @@ def _do_dispatch(
             fail_reason = f"launcher exited with code {launcher_rc}"
         new_lock = _MkdirLock(inbox_file + ".lock.d")
         _mark_item_failed(inbox_file, item_id, fail_now, new_lock, reason=fail_reason)
+        try:
+            from superharness.commands.notify_desktop import notify_task_event
+            notify_task_event(item_task, "failed", item_to)
+        except Exception:
+            pass
 
         # Record failure pattern for next dispatch
         try:
@@ -660,6 +665,11 @@ def _do_dispatch(
             _elapsed = _time.time() - _launch_start
             if final_state == "done":
                 print(f"Inbox item updated: {item_id} -> done (reconciled from contract task status)")
+                try:
+                    from superharness.commands.notify_desktop import notify_task_event
+                    notify_task_event(item_task, "done", item_to)
+                except Exception:
+                    pass
                 try:
                     from superharness.engine.benchmark import record_dispatch
                     record_dispatch(exec_project, item_task, item_to, "done", _elapsed)
