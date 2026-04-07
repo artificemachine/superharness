@@ -1621,3 +1621,55 @@ If you're an agent picking this up:
   installed package. `shux install-hooks` and `shux onboard` no longer error
   with "Adapter hooks directory not found" after a `pip install` or
   `pipx install superharness` without a repo checkout.
+
+## [1.12.0] - 2026-04-07
+
+### Added
+- `task create` accepts new fields: `--effort` (low/medium/high/max),
+  `--test-types` (comma-separated), `--out-of-scope` (repeatable),
+  `--definition-of-done` (repeatable), `--context`, `--timeout-minutes`.
+- BDD plan phase flags: `--bdd-given`, `--bdd-when`, `--bdd-then`.
+- `ContractTask` schema: `effort`, `out_of_scope`, `definition_of_done`,
+  `context`, `timeout_minutes`, `progress_timeout_minutes` fields.
+- `Contract` schema: `default_definition_of_done` for project-level DoD
+  inheritance.
+- `tdd` field aliased to `plan` in schema — backward compatible, old
+  contracts with `tdd:` key still load.
+- `docs/GUIDE.md`: `task create` flags reference table and usage examples.
+
+### Changed
+- `development_method` no longer restricted to `tdd/bdd/sdd/none` — accepts
+  any string.
+
+## [1.13.0] - 2026-04-07
+
+### Added
+- `shux inbox-gc` command — reconciles stale inbox items (stopped/failed/
+  paused/stale) against contract; marks them done when the task is done.
+  Supports `--dry-run`. Writes ledger entries for each reconciled item.
+- Dashboard: reason column in inbox table — shows `pause_reason`,
+  `failed_reason`, `stale_reason`, `stopped_reason` in human-readable text.
+- Dashboard: clickable reason panel — click reason or "details" to open a
+  full details panel (status, reason, task, agent, retries, timestamps).
+- Dashboard: "Cancel Review" and "Approve Without Review" buttons for
+  tasks in `review_requested` status.
+- Dashboard: reviewer picker dropdown (claude-code / codex-cli) when
+  requesting a review.
+- Dashboard: unified queue flow — `not queued` (clickable) → `queued`
+  (pill) → `Re-queue` (for stopped tasks).
+
+### Fixed
+- Dirty worktree check now applies to all agents, not just codex-cli.
+  Previously claude-code dispatches failed and retried 3x instead of
+  pausing immediately.
+- `failed_reason` now recorded on inbox items when dispatch fails
+  (timeout or exit code).
+- "Approve Without Review" passes `--skip-verify` to close command,
+  preventing silent failure loop.
+- Runtime artifacts (`watcher.heartbeat.yaml`, `benchmark.jsonl`,
+  `onboarding.yaml`, `egg-info/`) added to `.gitignore` and removed
+  from git index — no more false dirty worktree from runtime files.
+- Dashboard `inferredWorkflow` default changed from `implementation` to
+  `quick` — tasks without explicit workflow now show correct action
+  buttons.
+- Dashboard API now returns `workflow` field for contract tasks.

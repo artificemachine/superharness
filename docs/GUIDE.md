@@ -284,12 +284,51 @@ superharness task create --project . --id task-id --title "Task title" --owner c
 # Create task with dependency
 superharness task create --project . --id test-task --title "Run tests" --owner codex-cli --dependency task-id
 
+# Create task with effort, test types, and context
+superharness task create --project . --id feat.search \
+  --title "Add search endpoint" --owner claude-code \
+  --effort high --test-types unit,integration \
+  --context "Read src/api/ first" \
+  --timeout-minutes 20
+
+# Create task with out-of-scope and definition-of-done
+superharness task create --project . --id feat.auth \
+  --title "Add OAuth2 auth" --owner claude-code \
+  --effort max \
+  --out-of-scope "no UI login page" \
+  --out-of-scope "do not modify user model" \
+  --definition-of-done "all tests pass" \
+  --definition-of-done "no new shipguard warnings"
+
+# Create task with BDD plan phases
+superharness task create --project . --id feat.checkout \
+  --title "Checkout flow" --owner claude-code \
+  --development-method bdd \
+  --bdd-given "user has items in cart" \
+  --bdd-when "user clicks checkout" \
+  --bdd-then "order created and email sent"
+
 # Update task status
 superharness task status --project . --id task-id --status in_progress --actor codex-cli
 
 # Delete task
 superharness task delete --project . --id task-id
 ```
+
+**`task create` flags:**
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--effort` | `low\|medium\|high\|max` | `medium` | Effort level — affects orchestrator split decisions and timeout defaults |
+| `--test-types` | comma-separated | none | Test types required (e.g. `unit,integration,e2e,security`) |
+| `--out-of-scope` | repeatable | none | Scope boundaries — orchestrator respects these |
+| `--definition-of-done` | repeatable | none | Explicit DoD (overrides contract-level `default_definition_of_done`) |
+| `--context` | string | none | Operator-authored context injected into dispatch prompt |
+| `--timeout-minutes` | int | auto | Task timeout (auto-derived from model + effort if not set) |
+| `--bdd-given` | string | none | BDD given phase |
+| `--bdd-when` | string | none | BDD when phase |
+| `--bdd-then` | string | none | BDD then phase |
+| `--development-method` | any string | none | Development method (accepts any value, not just tdd/bdd/sdd) |
 
 ### Inbox queue
 
@@ -322,6 +361,16 @@ superharness watch --project . --to both
 ```bash
 superharness recover --project . --timeout-minutes 20 --action stale
 ```
+
+**Reconcile stale inbox items (garbage collector):**
+```bash
+superharness inbox-gc --project .            # reconcile and fix
+superharness inbox-gc --project . --dry-run  # preview without changes
+```
+
+Finds inbox items in `stopped`, `failed`, `paused`, or `stale` status where the
+corresponding contract task is already `done`, and marks them as `done`. Writes a
+ledger entry for each reconciled item.
 
 **Normalize inbox (archive done/failed):**
 ```bash

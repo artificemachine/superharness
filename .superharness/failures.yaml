@@ -1,11 +1,25 @@
-# Cross-agent failure memory
-# Both Claude Code and Codex CLI read/write this file.
-# Format:
-#   - what: "brief description"
-#     why_failed: "root cause"
-#     date: YYYY-MM-DD
-#     agent: claude-code | codex-cli
-#     tech: "technology/library involved"
-#     severity: minor | major | critical
-#     promoted: false  # set true when added to CLAUDE.md/AGENTS.md "Do Not" section
-failures: []
+failures:
+- agent: claude-code
+  date: '2026-04-07T07:23:20Z'
+  error_snippet: "^D\b\bblocked: task 'feat.task-workflow-v2-phase1' status is 'review_requested'\
+    \ for workflow 'quick' (allowed: failed, in_progress, report_ready, stopped, todo)"
+  patterns:
+  - unknown
+  severity: minor
+  task: feat.task-workflow-v2-phase1
+- agent: claude-code
+  date: '2026-04-07T07:23:51Z'
+  error_snippet: "^D\b\bblocked: task 'feat.task-workflow-v2-phase1' status is 'review_requested'\
+    \ for workflow 'quick' (allowed: failed, in_progress, report_ready, stopped, todo)"
+  patterns:
+  - unknown
+  severity: minor
+  task: feat.task-workflow-v2-phase1
+- agent: claude-code
+  date: '2026-04-07T07:25:55Z'
+  error_snippet: "^D\b\bblocked: task 'feat.task-workflow-v2-phase1' status is 'review_requested'\
+    \ for workflow 'quick' (allowed: failed, in_progress, report_ready, stopped, todo)"
+  patterns:
+  - unknown
+  severity: minor
+  task: feat.task-workflow-v2-phase1

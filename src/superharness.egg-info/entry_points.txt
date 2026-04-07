@@ -1,3 +1,0 @@
-[console_scripts]
-shux = superharness.cli:main
-superharness = superharness.cli:main
