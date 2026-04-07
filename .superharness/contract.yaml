@@ -1343,5 +1343,77 @@ tasks:
   context: 'See session 2026-04-07 bug analysis: auto-commit bypasses 17-step /ship
     pipeline. Option 1 (auto-stash) is the safe interim. This task is intentionally
     blocked until auto-stash proves insufficient.'
+- id: feat.worktree-gc
+  title: shux worktree-gc — clean orphaned dispatch worktrees
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: quick
+  effort: low
+  summary: Implemented and tested
+- id: feat.dashboard-activity-feed
+  title: Dashboard live activity feed — timeline of events
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: quick
+  effort: medium
+  summary: Implemented and tested
+- id: feat.recap-command
+  title: shux recap — what happened in the last N hours
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: quick
+  effort: medium
+  summary: Implemented and tested
+- id: feat.dispatch-preview
+  title: 'Dashboard enqueue modal: estimated cost, model, timeout'
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: quick
+  effort: low
+  summary: Implemented and tested
+- id: feat.desktop-notifications
+  title: Native macOS notifications on task complete/fail
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: quick
+  effort: low
+  summary: Implemented
+- id: feat.dashboard-git-context
+  title: 'Dashboard header: branch, dirty count, last commit'
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: quick
+  effort: low
+  summary: Implemented
+- id: feat.task-dependency-graph
+  title: 'Dashboard: mermaid dependency graph from blocked_by'
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: quick
+  effort: medium
+  summary: Implemented
+- id: feat.dashboard-keyboard-shortcuts
+  title: 'Dashboard keyboard shortcuts: r/e/g/slash'
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: quick
+  effort: low
+  summary: Implemented
 decisions: []
 failures: []
