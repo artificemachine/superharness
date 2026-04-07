@@ -68,8 +68,19 @@ shux daemon stop       # stop the daemon
 shux daemon status     # show daemon running state and PID
 shux pack export       # bundle .superharness/ into a portable .tar.gz for handoff
 shux pack import       # restore a pack into a new project
+shux inbox-gc          # reconcile stale inbox items against contract
+shux worktree-gc       # clean orphaned dispatch worktrees
+shux recap             # what happened in the last N hours (timeline view)
+shux notify-desktop    # send a native desktop notification
 shux help              # show all shux shortcuts in the terminal
 ```
+
+**Dashboard features** (`shux dashboard`):
+- Activity feed — live timeline of dispatch, gc, and inbox events
+- Git context — branch, dirty file count, last commit in header
+- Task dependency graph — press `g` to toggle
+- Dispatch preview — model, effort, cost, timeout in enqueue modal
+- Keyboard shortcuts — `r` refresh, `g` graph, `l` list, `b` board, `?` help
 
 **That's it.** Steps 1 and 2 are one-time. From then on, `shux contract` starts every session.
 
