@@ -23,3 +23,94 @@ failures:
   - unknown
   severity: minor
   task: feat.task-workflow-v2-phase1
+- agent: claude-code
+  date: '2026-04-07T08:32:13Z'
+  error_snippet: "^D\b\b⚠ Preflight [WARN] task=feat.watcher-auto-gc\n  Suggestion:\
+    \ this task may benefit from parallel dispatch (n=2, mode=fanout)\n  ⚠ [no_tdd_red]\
+    \ No TDD red phase defined — agent will code without a failing test first.\n \
+    \     Add a tdd.red block describing which tests to write before implementing.\n\
+    \  Hint: consider `--fanout 2` or swarm mode for this task.\nProject: /Users/airm2max/DevOpsSec/superharness\n\
+    Contract: initial-setup\nTask: feat.watcher-auto-gc\nModel: sonnet (auto-classified)\n\
+    Effort: medium"
+  patterns:
+  - unknown
+  severity: minor
+  task: feat.watcher-auto-gc
+- agent: claude-code
+  date: '2026-04-07T08:33:57Z'
+  error_snippet: "^D\b\b⚠ Preflight [WARN] task=feat.watcher-auto-gc\n  Suggestion:\
+    \ this task may benefit from parallel dispatch (n=2, mode=fanout)\n  ⚠ [no_tdd_red]\
+    \ No TDD red phase defined — agent will code without a failing test first.\n \
+    \     Add a tdd.red block describing which tests to write before implementing.\n\
+    \  ⚠ [prior_failures] 1 prior failure(s) recorded — fix hints will be injected\
+    \ into context.\n  Hint: consider `--fanout 2` or swarm mode for this task.\n\
+    Project: /Users/airm2max/DevOpsSec/superharness\nContr"
+  patterns:
+  - unknown
+  severity: minor
+  task: feat.watcher-auto-gc
+- agent: claude-code
+  date: '2026-04-07T08:56:27Z'
+  error_snippet: "^D\b\b⚠ Preflight [WARN] task=feat.watcher-auto-gc\n  Suggestion:\
+    \ this task may benefit from parallel dispatch (n=2, mode=fanout)\n  ⚠ [no_tdd_red]\
+    \ No TDD red phase defined — agent will code without a failing test first.\n \
+    \     Add a tdd.red block describing which tests to write before implementing.\n\
+    \  ⚠ [prior_failures] 2 prior failure(s) recorded — fix hints will be injected\
+    \ into context.\n  Hint: consider `--fanout 2` or swarm mode for this task.\n\
+    Project: /Users/airm2max/DevOpsSec/superharness\nContr"
+  patterns:
+  - unknown
+  severity: minor
+  task: feat.watcher-auto-gc
+- agent: claude-code
+  date: '2026-04-07T09:04:20Z'
+  error_snippet: "^D\b\b⚠ Preflight [WARN] task=feat.task-lifecycle-ship\n  ⚠ [no_tdd_red]\
+    \ No TDD red phase defined — agent will code without a failing test first.\n \
+    \     Add a tdd.red block describing which tests to write before implementing.\n\
+    Project: /Users/airm2max/DevOpsSec/superharness\nContract: initial-setup\nTask:\
+    \ feat.task-lifecycle-ship\nModel: sonnet (auto-classified)\nEffort: high\nVia:\
+    \ sdk\n\nLaunching via SDK (model: sonnet)...\nBudget: $5.00\n\e[?25hFatal error\
+    \ in message reader: Command failed with exit code 1"
+  patterns:
+  - unknown
+  severity: minor
+  task: feat.task-lifecycle-ship
+- agent: claude-code
+  date: '2026-04-07T09:06:06Z'
+  error_snippet: "^D\b\b⚠ Preflight [WARN] task=feat.task-lifecycle-ship\n  ⚠ [no_tdd_red]\
+    \ No TDD red phase defined — agent will code without a failing test first.\n \
+    \     Add a tdd.red block describing which tests to write before implementing.\n\
+    \  ⚠ [prior_failures] 1 prior failure(s) recorded — fix hints will be injected\
+    \ into context.\nProject: /Users/airm2max/DevOpsSec/superharness\nContract: initial-setup\n\
+    Task: feat.task-lifecycle-ship\nModel: sonnet (auto-classified)\nEffort: high\n\
+    Via: sdk\n\nLaunching via SDK (model: so"
+  patterns:
+  - unknown
+  severity: minor
+  task: feat.task-lifecycle-ship
+- agent: claude-code
+  date: '2026-04-07T09:07:19Z'
+  error_snippet: "^D\b\b⚠ Preflight [WARN] task=feat.watcher-auto-gc\n  Suggestion:\
+    \ this task may benefit from parallel dispatch (n=2, mode=fanout)\n  ⚠ [no_tdd_red]\
+    \ No TDD red phase defined — agent will code without a failing test first.\n \
+    \     Add a tdd.red block describing which tests to write before implementing.\n\
+    \  ⚠ [prior_failures] 3 prior failure(s) recorded — fix hints will be injected\
+    \ into context.\n  Hint: consider `--fanout 2` or swarm mode for this task.\n\
+    Project: /Users/airm2max/DevOpsSec/superharness\nContr"
+  patterns:
+  - unknown
+  severity: minor
+  task: feat.watcher-auto-gc
+- agent: claude-code
+  date: '2026-04-07T09:29:03Z'
+  error_snippet: "^D\b\b⚠ Preflight [WARN] task=feat.task-lifecycle-ship\n  ⚠ [no_tdd_red]\
+    \ No TDD red phase defined — agent will code without a failing test first.\n \
+    \     Add a tdd.red block describing which tests to write before implementing.\n\
+    \  ⚠ [prior_failures] 2 prior failure(s) recorded — fix hints will be injected\
+    \ into context.\nProject: /Users/airm2max/DevOpsSec/superharness\nContract: initial-setup\n\
+    Task: feat.task-lifecycle-ship\nModel: sonnet (auto-classified)\nEffort: high\n\
+    Via: sdk\n\nLaunching via SDK (model: so"
+  patterns:
+  - unknown
+  severity: minor
+  task: feat.task-lifecycle-ship

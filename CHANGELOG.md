@@ -1673,3 +1673,21 @@ If you're an agent picking this up:
   `quick` — tasks without explicit workflow now show correct action
   buttons.
 - Dashboard API now returns `workflow` field for contract tasks.
+
+## [1.14.0] - 2026-04-07
+
+### Added
+- Worktree isolation: dispatch creates a temporary git worktree when main
+  worktree is dirty — agent runs in clean checkout, main untouched.
+- Watcher auto-gc: runs inbox GC every N cycles (default 5, configurable
+  via profile.yaml `gc_interval_cycles`).
+- `shux status` recognizes foreground watchers via heartbeat — no longer
+  shows `level=bad` when watcher is running in foreground mode.
+
+### Fixed
+- `SUPERHARNESS_CONFIRM_NON_INTERACTIVE` set automatically in spawn_env
+  for non-interactive dispatch — CLI fallback no longer aborts.
+- Inbox GC expanded to reconcile stale items for tasks past dispatch phase
+  (report_ready, review_requested, review_passed, review_failed).
+- Reason fields (pause_reason, failed_reason, etc.) cleared on forward
+  inbox transitions (pending/launched/running).

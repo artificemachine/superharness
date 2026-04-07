@@ -128,8 +128,49 @@ class _MkdirLock:
 
 
 # ---------------------------------------------------------------------------
-# Git dirty worktree detection
+# Git dirty worktree detection + worktree isolation
 # ---------------------------------------------------------------------------
+
+
+def _git_worktree_add(project_dir: str, task_id: str) -> str | None:
+    """Create a temporary git worktree for isolated dispatch. Returns worktree path or None."""
+    import tempfile
+    import uuid
+    worktree_dir = os.path.join(
+        tempfile.gettempdir(), "superharness-worktrees",
+        f"{task_id}-{uuid.uuid4().hex[:8]}",
+    )
+    os.makedirs(os.path.dirname(worktree_dir), exist_ok=True)
+    r = subprocess.run(
+        ["git", "-C", project_dir, "worktree", "add", "--detach", worktree_dir, "HEAD"],
+        capture_output=True, text=True, check=False,
+    )
+    if r.returncode != 0:
+        print(f"git worktree add failed: {r.stderr.strip()}", file=sys.stderr)
+        return None
+    # Symlink .superharness/ so the agent sees contract, inbox, handoffs
+    src_harness = os.path.join(project_dir, ".superharness")
+    dst_harness = os.path.join(worktree_dir, ".superharness")
+    if os.path.isdir(src_harness) and not os.path.exists(dst_harness):
+        os.symlink(src_harness, dst_harness)
+    return worktree_dir
+
+
+def _git_worktree_remove(project_dir: str, worktree_dir: str) -> bool:
+    """Remove a temporary git worktree. Returns True on success."""
+    # Remove .superharness symlink first (don't let git prune delete the real dir)
+    dst_harness = os.path.join(worktree_dir, ".superharness")
+    if os.path.islink(dst_harness):
+        os.unlink(dst_harness)
+    r = subprocess.run(
+        ["git", "-C", project_dir, "worktree", "remove", "--force", worktree_dir],
+        capture_output=True, text=True, check=False,
+    )
+    if r.returncode != 0:
+        print(f"git worktree remove failed: {r.stderr.strip()}", file=sys.stderr)
+        return False
+    return True
+
 
 def _has_dirty_worktree(project_dir: str) -> bool:
     try:
@@ -420,11 +461,18 @@ def _do_dispatch(
     if launcher_timeout == 0 and os.path.exists(contract_file):
         effective_timeout = _get_task_effort_timeout(contract_file, item_task)
 
-    # Dirty worktree pre-check (applies to all agents, not just codex-cli)
+    # Worktree isolation: if dirty, dispatch in a temporary worktree
+    worktree_dir = None
     if non_interactive and not print_only and _has_dirty_worktree(exec_project):
-        pause_now = _now_utc()
-        if _mark_item_paused_dirty(inbox_file, item_id, pause_now):
-            return 0
+        worktree_dir = _git_worktree_add(exec_project, item_task)
+        if worktree_dir:
+            print(f"Dispatching in worktree: {worktree_dir} (main worktree is dirty)")
+            exec_project = worktree_dir
+        else:
+            # Worktree creation failed — fall back to pause
+            pause_now = _now_utc()
+            if _mark_item_paused_dirty(inbox_file, item_id, pause_now):
+                return 0
 
     # Launch transition
     launch_now = _now_utc()
@@ -485,6 +533,8 @@ def _do_dispatch(
     # Pass log path to delegate so SDK runner's JSONL tailer writes to the same file
     spawn_env = os.environ.copy()
     spawn_env["SUPERHARNESS_LAUNCHER_LOG"] = task_log
+    if non_interactive:
+        spawn_env["SUPERHARNESS_CONFIRM_NON_INTERACTIVE"] = "YES"
 
     # Wrap in `script` to capture PTY output (bash launcher needs a terminal).
     # SUPERHARNESS_NO_PTY_WRAP=1 bypasses this for test/CI environments without a TTY.
@@ -508,6 +558,13 @@ def _do_dispatch(
         _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", str(proc.pid)])
         launcher_rc = proc.wait()
         _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", ""])
+
+    # Clean up worktree after agent completes
+    if worktree_dir:
+        if _git_worktree_remove(project_dir, worktree_dir):
+            print(f"Worktree removed: {worktree_dir}")
+        else:
+            print(f"Warning: worktree cleanup failed for {worktree_dir} — remove manually", file=sys.stderr)
 
     if launcher_rc != 0:
         fail_now = _now_utc()
