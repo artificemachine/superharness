@@ -168,14 +168,14 @@ def test_ui_polls_live_output_for_launched_task(tmp_path: Path):
     """Test that UI JavaScript polls for live output when task is launched."""
     import re
 
-    # Load monitor-ui HTML source
+    # Load dashboard HTML source (JS was extracted from dashboard-ui.py in PR #91)
     repo_root = Path(__file__).parent.parent.parent
-    monitor_script = repo_root / "src" / "superharness" / "scripts" / "dashboard-ui.py"
-    source = monitor_script.read_text()
+    dashboard_html = repo_root / "src" / "superharness" / "scripts" / "dashboard.html"
+    source = dashboard_html.read_text()
 
     # Extract JavaScript code
     js_match = re.search(r"<script>(.*?)</script>", source, re.DOTALL)
-    assert js_match, "Could not find <script> block in dashboard-ui.py"
+    assert js_match, "Could not find <script> block in dashboard.html"
     js_code = js_match.group(1)
 
     # Verify polling logic exists
