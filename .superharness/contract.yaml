@@ -1223,9 +1223,121 @@ tasks:
 - id: feat.always-on-dispatch
   title: 'always-on auto-dispatch: watcher enqueues plan_approved tasks automatically'
   owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: quick
+  verified: true
+  verified_at: '2026-04-06T19:14:41Z'
+  verified_by: claude-code
+  summary: Merged in cb1ae49
+- id: feat.task-workflow-v2-phase1
+  title: "Phase 1: Task fields — effort, test_types, plan, out_of_scope, definition_of_done,
+    context"
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: quick
+  development_method: tdd
+  acceptance_criteria:
+  - ContractTask has effort, test_types, out_of_scope, definition_of_done, 
+    context fields
+  - tdd field renamed to plan with alias for backward compat
+  - task create CLI accepts --effort, --test-types, --out-of-scope, 
+    --definition-of-done, --context
+  - Contract has default_definition_of_done inherited by tasks
+  - "No hardcoded development method enum — accept any string"
+  - 'Old contracts with tdd: key still load correctly'
+  tdd:
+    red: test_task_create_with_effort, test_plan_field_reads_old_tdd_alias, 
+      test_out_of_scope_written, test_context_field_written, 
+      test_contract_default_definition_of_done
+    green: Add fields to schemas.py, flags to task.py, validation in validate.py
+    refactor: Remove VALID_DEVELOPMENT_METHODS hardcoded enum
+  review_requested_at: '2026-04-07T07:42:22Z'
+  report_ready_at: '2026-04-07T07:42:26Z'
+  summary: Approved by operator without agent review
+- id: feat.inbox-gc
+  title: "shux inbox gc — reconcile stale inbox items against contract"
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: quick
+  development_method: tdd
+  acceptance_criteria:
+  - shux inbox gc --dry-run shows stale items without modifying
+  - shux inbox gc marks stopped/failed/stale inbox items as done when contract 
+    task is done
+  - Output shows count of reconciled items
+  - Ledger entry written for each reconciled item
+  effort: medium
+  test_types:
+  - unit
+  - integration
+  tdd:
+    red: test_gc_marks_stopped_inbox_done_when_task_done, 
+      test_gc_dry_run_no_changes, test_gc_skips_active_items
+    green: 'inbox gc command: scan inbox vs contract, archive orphaned entries'
+    refactor: extract reconcile logic to reusable function for watcher
+  review_requested_at: '2026-04-07T08:07:55Z'
+  report_ready_at: '2026-04-07T08:08:10Z'
+  summary: Approved by operator without agent review
+- id: feat.watcher-auto-gc
+  title: "Watcher auto-gc — periodic inbox reconciliation in watcher loop"
+  owner: claude-code
+  status: todo
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: feat.inbox-gc
+  workflow: quick
+  acceptance_criteria:
+  - Watcher runs inbox gc reconcile every N heartbeat cycles (configurable)
+  - Auto-marks stale inbox items done when contract task is done
+  - Logs reconciled items to ledger
+  - Configurable via profile.yaml gc_interval_cycles
+  effort: medium
+  test_types:
+  - unit
+  summary: Re-queued by operator
+- id: feat.dispatch-auto-stash
+  title: Auto-stash dirty worktree before dispatch, pop after
+  owner: claude-code
   status: todo
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: quick
+  development_method: tdd
+  acceptance_criteria:
+  - Watcher auto-stashes uncommitted changes before dispatch
+  - Stash is popped after agent completes (success or failure)
+  - If stash pop conflicts, worktree is left stashed with a warning
+  - Paused-dirty-worktree path removed — stash replaces it
+  effort: medium
+  test_types:
+  - unit
+  - integration
+  tdd:
+    red: test_dispatch_stashes_dirty_worktree, test_dispatch_pops_stash_after, 
+      test_stash_pop_on_failure
+    green: Watcher stashes before dispatch, pops after agent completes
+    refactor: Extract stash logic to reusable context manager
+- id: feat.task-lifecycle-ship
+  title: 'Ship step in task lifecycle — auto-commit after task approval (BLOCKED:
+    review pipeline bypass risk)'
+  owner: claude-code
+  status: todo
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: feat.dispatch-auto-stash
+  workflow: quick
+  acceptance_criteria:
+  - 'Design doc addressing: review pipeline bypass, mixed commits, concurrent agent
+    conflicts, hook failures'
+  - Requires feat.dispatch-auto-stash shipped first as interim solution
+  - Must not bypass security scan, tests, or doc sync
+  effort: high
+  context: 'See session 2026-04-07 bug analysis: auto-commit bypasses 17-step /ship
+    pipeline. Option 1 (auto-stash) is the safe interim. This task is intentionally
+    blocked until auto-stash proves insufficient.'
 decisions: []
 failures: []
