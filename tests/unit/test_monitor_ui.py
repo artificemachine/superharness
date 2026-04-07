@@ -1331,7 +1331,7 @@ def test_contract_tasks_returns_all_tasks(repo_root, tmp_path):
     ])
     tasks = m.contract_tasks(harness / "contract.yaml")
     assert len(tasks) == 3
-    assert tasks[0] == {"id": "a", "title": "A", "status": "todo", "owner": "claude-code", "review_target": "", "verified": False, "scheduled_after": "", "due_by": "", "depends_on": []}
+    assert tasks[0] == {"id": "a", "title": "A", "status": "todo", "owner": "claude-code", "review_target": "", "verified": False, "workflow": "", "scheduled_after": "", "due_by": "", "depends_on": []}
     assert tasks[1]["status"] == "plan_proposed"
     assert tasks[2]["verified"] is True
 
