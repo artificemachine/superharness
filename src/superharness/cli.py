@@ -266,6 +266,10 @@ def _is_dashboard_running(project_dir: str = None) -> tuple:
 def _run_dashboard(args):
     path = os.path.join(_SCRIPTS, "dashboard-ui.py")
     args_list = list(args)
+    if "--help" in args_list or "-h" in args_list:
+        result = subprocess.run([sys.executable, path] + args_list)
+        sys.exit(result.returncode)
+        return
     if "--project" not in args_list and "-p" not in args_list:
         args_list = ["--project", os.getcwd()] + args_list
     foreground = "--foreground" in args_list
@@ -654,3 +658,7 @@ def cmd_version():
 def cmd_help(ctx):
     """Show help message."""
     click.echo(ctx.parent.get_help())
+
+
+if __name__ == "__main__":
+    main()

@@ -304,6 +304,21 @@ class TestDashboardCommand:
                 mock_run.assert_called_once()
                 mock_exit.assert_called_once_with(0)
 
+    def test_run_dashboard_help_shows_script_help(self):
+        """_run_dashboard should forward --help to dashboard-ui.py instead of launching the app."""
+        with patch("superharness.cli.subprocess.run") as mock_run:
+            with patch("superharness.cli.sys.exit") as mock_exit:
+                with patch("superharness.cli._is_dashboard_running") as mock_is_running:
+                    mock_run.return_value = MagicMock(returncode=0)
+
+                    _run_dashboard(("--help",))
+
+                    mock_is_running.assert_not_called()
+                    mock_run.assert_called_once()
+                    call_args = mock_run.call_args[0][0]
+                    assert "--help" in call_args
+                    mock_exit.assert_called_once_with(0)
+
     def test_run_dashboard_injects_project_default(self):
         """_run_dashboard should inject --project if not provided."""
         with patch("superharness.cli._is_dashboard_running", return_value=(False, None)):

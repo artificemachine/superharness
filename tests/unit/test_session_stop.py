@@ -14,7 +14,12 @@ import pytest
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
-def _setup_project(tmp_path: Path, *, task_status: str = "in_progress") -> Path:
+def _setup_project(
+    tmp_path: Path,
+    *,
+    task_status: str = "in_progress",
+    task_owner: str = "claude-code",
+) -> Path:
     project = tmp_path / "proj"
     project.mkdir()
     harness = project / ".superharness"
@@ -24,7 +29,7 @@ def _setup_project(tmp_path: Path, *, task_status: str = "in_progress") -> Path:
         f"tasks:\n"
         f"  - id: feat-001\n"
         f"    title: Build feature one\n"
-        f"    owner: claude-code\n"
+        f"    owner: {task_owner}\n"
         f"    status: {task_status}\n"
     )
     (harness / "ledger.md").write_text("# Ledger\n\n")
@@ -195,10 +200,10 @@ _INBOX_HEADER = "# Delegation inbox\n# status: pending|launched|running|done|fai
 
 
 class TestSessionStopPausesTasks:
-    """session-stop.sh must pause active inbox items and revert in-progress contract tasks."""
+    """session-stop.sh must stop active Claude work and pause remaining Claude inbox items."""
 
-    def _make_inbox(self, harness: Path, items: list[dict]) -> Path:
-        inbox = harness / "inbox.json"
+    def _make_inbox(self, harness: Path, items: list[dict], *, filename: str = "inbox.yaml") -> Path:
+        inbox = harness / filename
         inbox.write_text(
             _INBOX_HEADER + yaml.dump(items, default_flow_style=False, allow_unicode=True)
         )
@@ -222,7 +227,7 @@ class TestSessionStopPausesTasks:
         project = _setup_project(tmp_path)
         harness = project / ".superharness"
         inbox = self._make_inbox(harness, [
-            {"id": "item-002", "to": "codex-cli", "task": "t2", "status": "launched",
+            {"id": "item-002", "to": "claude-code", "task": "t2", "status": "launched",
              "priority": 1, "retry_count": 0, "max_retries": 3, "created_at": "2026-01-01T00:00:00Z"},
         ])
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
@@ -235,9 +240,22 @@ class TestSessionStopPausesTasks:
         project = _setup_project(tmp_path)
         harness = project / ".superharness"
         inbox = self._make_inbox(harness, [
-            {"id": "item-003", "to": "codex-cli", "task": "t3", "status": "running",
+            {"id": "item-003", "to": "claude-code", "task": "t3", "status": "running",
              "priority": 1, "retry_count": 0, "max_retries": 3, "created_at": "2026-01-01T00:00:00Z"},
         ])
+        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
+        result = run_bash(script, cwd=project)
+        assert result.returncode == 0, result.stderr
+        loaded = yaml.safe_load(inbox.read_text())
+        assert loaded[0]["status"] == "paused"
+
+    def test_falls_back_to_legacy_inbox_json(self, repo_root: Path, tmp_path: Path) -> None:
+        project = _setup_project(tmp_path)
+        harness = project / ".superharness"
+        inbox = self._make_inbox(harness, [
+            {"id": "item-legacy", "to": "claude-code", "task": "t-json", "status": "pending",
+             "priority": 1, "retry_count": 0, "max_retries": 3, "created_at": "2026-01-01T00:00:00Z"},
+        ], filename="inbox.json")
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
         result = run_bash(script, cwd=project)
         assert result.returncode == 0, result.stderr
@@ -263,14 +281,40 @@ class TestSessionStopPausesTasks:
         result = run_bash(script, cwd=project)
         assert result.returncode == 0, result.stderr
 
-    def test_in_progress_contract_tasks_set_to_todo(self, repo_root: Path, tmp_path: Path) -> None:
+    def test_in_progress_contract_tasks_set_to_stopped(self, repo_root: Path, tmp_path: Path) -> None:
         project = _setup_project(tmp_path, task_status="in_progress")
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
         result = run_bash(script, cwd=project)
         assert result.returncode == 0, result.stderr
         contract = yaml.safe_load((project / ".superharness" / "contract.yaml").read_text())
         task = next(t for t in contract["tasks"] if t["id"] == "feat-001")
-        assert task["status"] == "todo", f"Expected todo, got {task['status']}"
+        assert task["status"] == "stopped", f"Expected stopped, got {task['status']}"
+        assert task["stopped_reason"] == "session_stopped"
+        assert "stopped_at" in task
+        assert "summary" in task
+
+    def test_in_progress_contract_task_writes_stop_handoff(self, repo_root: Path, tmp_path: Path) -> None:
+        project = _setup_project(tmp_path, task_status="in_progress")
+        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
+        result = run_bash(script, cwd=project)
+        assert result.returncode == 0, result.stderr
+        handoffs = sorted((project / ".superharness" / "handoffs").glob("feat-001-session-stop-*.yaml"))
+        assert len(handoffs) == 1, handoffs
+        handoff = yaml.safe_load(handoffs[0].read_text())
+        assert handoff["task"] == "feat-001"
+        assert handoff["status"] == "stopped"
+        assert handoff["from"] == "claude-code"
+        assert handoff["to"] == "owner"
+
+    def test_does_not_stop_other_agent_task(self, repo_root: Path, tmp_path: Path) -> None:
+        project = _setup_project(tmp_path, task_status="in_progress", task_owner="codex-cli")
+        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
+        result = run_bash(script, cwd=project)
+        assert result.returncode == 0, result.stderr
+        contract = yaml.safe_load((project / ".superharness" / "contract.yaml").read_text())
+        task = next(t for t in contract["tasks"] if t["id"] == "feat-001")
+        assert task["status"] == "in_progress"
+        assert "stopped_reason" not in task
 
     def test_todo_contract_tasks_not_touched(self, repo_root: Path, tmp_path: Path) -> None:
         project = _setup_project(tmp_path, task_status="todo")
@@ -283,11 +327,35 @@ class TestSessionStopPausesTasks:
     def test_ledger_records_paused_items(self, repo_root: Path, tmp_path: Path) -> None:
         project = _setup_project(tmp_path)
         harness = project / ".superharness"
-        self._make_inbox(harness, [{"id": "item-xyz", "status": "pending"}])
+        self._make_inbox(harness, [{"id": "item-xyz", "status": "pending", "to": "claude-code"}])
         script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
         run_bash(script, cwd=project)
         ledger = (harness / "ledger.md").read_text()
         assert "item-xyz" in ledger
+
+    def test_ledger_skips_inbox_task_stopped_when_no_matching_inbox_task(self, repo_root: Path, tmp_path: Path) -> None:
+        project = _setup_project(tmp_path, task_status="in_progress")
+        harness = project / ".superharness"
+        self._make_inbox(harness, [{"id": "item-xyz", "status": "pending", "to": "claude-code", "task": "other-task"}])
+        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
+        run_bash(script, cwd=project)
+        ledger = (harness / "ledger.md").read_text()
+        assert "session-stop: task stopped (feat-001)" in ledger
+        assert "session-stop: inbox task stopped (feat-001)" not in ledger
+
+    def test_pauses_only_claude_targeted_inbox_items(self, repo_root: Path, tmp_path: Path) -> None:
+        project = _setup_project(tmp_path)
+        harness = project / ".superharness"
+        inbox = self._make_inbox(harness, [
+            {"id": "item-claude", "to": "claude-code", "task": "t1", "status": "pending"},
+            {"id": "item-codex", "to": "codex-cli", "task": "t2", "status": "pending"},
+        ])
+        script = repo_root / "adapters" / "claude-code" / "hooks" / "session-stop.sh"
+        result = run_bash(script, cwd=project)
+        assert result.returncode == 0, result.stderr
+        loaded = yaml.safe_load(inbox.read_text())
+        assert loaded[0]["status"] == "paused"
+        assert loaded[1]["status"] == "pending"
 
     def test_monitor_not_killed_by_project_path(self, repo_root: Path) -> None:
         """Monitor dashboard must not be killed by project path either.
