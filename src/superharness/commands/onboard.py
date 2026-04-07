@@ -131,6 +131,9 @@ Every task follows: `todo → plan_proposed → plan_approved → in_progress �
 - `shux close <id>`        — mark a task done
 - `shux hygiene`           — validate protocol compliance
 - `shux recall "<words>"`  — search past handoffs and decisions
+- `shux recap`             — what happened in the last N hours
+- `shux inbox-gc`          — reconcile stale inbox items
+- `shux worktree-gc`       — clean orphaned dispatch worktrees
 
 ## Protocol
 - Keep `.superharness/` updated before stopping.
@@ -188,7 +191,7 @@ _GLOBAL_CLAUDE_MD_BLOCK = """
 - Use `shux close <id>` to mark a task done after verification.
 - If no `.superharness/` exists yet in this project, run `shux onboard`.
 
-Key commands: shux contract · shux delegate · shux doctor · shux dashboard · shux recall
+Key commands: shux contract · shux delegate · shux dashboard · shux recap · shux close
 """
 
 
@@ -419,12 +422,18 @@ def cmd_onboard(
     click.echo("  The flow:")
     click.echo("    task → delegate → agent works → handoff → verify → close")
     click.echo("")
-    click.echo("  5 commands to know:")
+    click.echo("  Core commands:")
     click.echo("    shux contract          view all tasks and their status")
     click.echo("    shux delegate <id>     hand a task to an agent")
     click.echo("    shux dashboard         open the browser dashboard")
     click.echo("    shux close <id>        mark a task done")
     click.echo("    shux doctor            check environment health")
+    click.echo("")
+    click.echo("  Maintenance:")
+    click.echo("    shux recap             what happened recently")
+    click.echo("    shux inbox-gc          clean stale inbox items")
+    click.echo("    shux worktree-gc       clean orphaned worktrees")
+    click.echo("    shux status            watcher + inbox health")
     click.echo("")
     click.echo("Setting up this project now...")
     click.echo("")

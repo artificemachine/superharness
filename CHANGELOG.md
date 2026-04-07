@@ -1716,3 +1716,14 @@ If you're an agent picking this up:
   mermaid join, review queue View button).
 - Cost leaderboard API crash: `TaskStats.total_tokens` mapped to
   `total_runs` / `successes`.
+
+## [1.15.1] - 2026-04-07
+
+### Changed
+- README: added new commands (inbox-gc, worktree-gc, recap, notify-desktop)
+  and dashboard features section.
+- GUIDE.md: agent shortcuts table updated; dashboard panels, keyboard
+  shortcuts, and action buttons documented.
+- `shux demo` and `shux onboard` intro blocks: split into "Core commands"
+  and "Maintenance" sections with new commands listed.
+- Onboard AGENTS.md template: added recap, inbox-gc, worktree-gc commands.
