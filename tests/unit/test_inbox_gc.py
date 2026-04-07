@@ -146,8 +146,23 @@ def test_gc_skips_active_items(tmp_path):
     assert items[0]["status"] == "pending"
 
 
-def test_gc_skips_items_for_non_done_tasks(tmp_path):
-    """GC does not touch inbox items when the contract task is not done."""
+def test_gc_skips_items_for_active_tasks(tmp_path):
+    """GC does not touch inbox items when the contract task is still in an active dispatch phase."""
+    from superharness.commands.inbox_gc import run_gc
+
+    project = _make_project(tmp_path,
+        tasks=[{"id": "t-1", "title": "test", "owner": "claude-code", "status": "in_progress"}],
+        inbox_items=[{
+            "id": "item-1", "task": "t-1", "to": "claude-code",
+            "status": "failed", "created_at": "2026-04-07T00:00:00Z",
+        }],
+    )
+    result = run_gc(project)
+    assert result["reconciled"] == 0
+
+
+def test_gc_reconciles_report_ready_tasks(tmp_path):
+    """GC reconciles inbox items when the contract task has moved past dispatch (report_ready)."""
     from superharness.commands.inbox_gc import run_gc
 
     project = _make_project(tmp_path,
@@ -158,7 +173,7 @@ def test_gc_skips_items_for_non_done_tasks(tmp_path):
         }],
     )
     result = run_gc(project)
-    assert result["reconciled"] == 0
+    assert result["reconciled"] == 1
 
 
 def test_gc_multiple_items_mixed(tmp_path):

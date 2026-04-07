@@ -358,6 +358,8 @@ def launch(file: str, id: str, now: str) -> int:
     item["retry_count"] = retry_count + 1
     item["status"] = "launched"
     item["launched_at"] = now
+    for rk in ("pause_reason", "failed_reason", "stale_reason", "stopped_reason"):
+        item.pop(rk, None)
     items[idx] = item
     _write_items(file, items)
     prio = _norm_priority(item.get("priority", 2))
@@ -376,6 +378,10 @@ def set_status(file: str, id: str, from_: str, to: str, now: str, stamp_key: str
     item["status"] = to
     if stamp_key and stamp_key.strip():
         item[stamp_key] = now
+    # Clear stale reason fields on forward transitions to active states
+    if to in ("pending", "launched", "running"):
+        for rk in ("pause_reason", "failed_reason", "stale_reason", "stopped_reason"):
+            item.pop(rk, None)
     items[idx] = item
     _write_items(file, items)
     return 0
