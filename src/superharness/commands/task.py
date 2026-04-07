@@ -37,7 +37,7 @@ VALID_ALL_STATUSES = {
     "done", "failed", "stopped",
 }
 VALID_WORKFLOWS = {"implementation", "quick", "discussion", "review", "approval", "note"}
-VALID_DEVELOPMENT_METHODS = {"tdd", "bdd", "sdd", "none"}
+VALID_EFFORTS = {"low", "medium", "high", "max"}
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 
@@ -144,6 +144,13 @@ def create(
     tdd_refactor: str = "",
     workflow: str = "quick",
     development_method: str = "",
+    effort: str = "medium",
+    test_types: Optional[list[str]] = None,
+    out_of_scope: Optional[list[str]] = None,
+    definition_of_done: Optional[list[str]] = None,
+    context: Optional[str] = None,
+    timeout_minutes: Optional[int] = None,
+    plan: Optional[dict] = None,
 ) -> int:
     _validate_token("task id", task_id)
     if dependency:
@@ -158,12 +165,9 @@ def create(
             f"workflow must be one of: {', '.join(sorted(VALID_WORKFLOWS))}",
             2,
         )
-    if development_method and development_method not in VALID_DEVELOPMENT_METHODS:
-        _abort(
-            "development_method must be one of: "
-            + ", ".join(sorted(VALID_DEVELOPMENT_METHODS)),
-            2,
-        )
+    # development_method accepts any string (no hardcoded enum)
+    if effort and effort not in VALID_EFFORTS:
+        _abort(f"effort must be one of: {', '.join(sorted(VALID_EFFORTS))}", 2)
 
     doc = _load_contract(contract_file)
     tasks = _get_tasks(doc, contract_file)
@@ -210,7 +214,22 @@ def create(
         task["dependency"] = dependency
     if criteria:
         task["acceptance_criteria"] = list(criteria)
-    if tdd_red or tdd_green or tdd_refactor:
+    if effort:
+        task["effort"] = effort
+    if test_types:
+        task["test_types"] = list(test_types)
+    if out_of_scope:
+        task["out_of_scope"] = list(out_of_scope)
+    if definition_of_done:
+        task["definition_of_done"] = list(definition_of_done)
+    if context:
+        task["context"] = context
+    if timeout_minutes is not None:
+        task["timeout_minutes"] = timeout_minutes
+    # Write as "tdd" key for backward compat (Pydantic reads via alias into plan field)
+    if plan:
+        task["tdd"] = dict(plan)
+    elif tdd_red or tdd_green or tdd_refactor:
         tdd: dict = {}
         if tdd_red:
             tdd["red"] = tdd_red
@@ -295,8 +314,8 @@ def status_update(
     if status == "plan_approved":
         ac = task.get("acceptance_criteria")
         ac_count = len(ac) if isinstance(ac, list) else 0
-        tdd = task.get("tdd")
-        has_tdd = bool(tdd and isinstance(tdd, dict))
+        plan = task.get("plan") or task.get("tdd")
+        has_plan = bool(plan and isinstance(plan, dict))
         if ac_count > 3:
             print(
                 f"⚠  Scope warning: task '{task_id}' has {ac_count} acceptance criteria (threshold: 3).\n"
@@ -383,6 +402,24 @@ def main(argv: list[str] | None = None) -> None:
                           help="Optional development method: tdd, bdd, sdd, none")
     p_create.add_argument("--criteria", action="append", default=[], metavar="CRITERION",
                           help="Acceptance criterion (repeat for multiple)")
+    p_create.add_argument("--effort", default="medium",
+                          help="Effort level: low, medium, high, max (default: medium)")
+    p_create.add_argument("--test-types", dest="test_types", default=None,
+                          help="Comma-separated test types (e.g. unit,integration,e2e)")
+    p_create.add_argument("--out-of-scope", dest="out_of_scope", action="append", default=[],
+                          help="Out of scope item (repeat for multiple)")
+    p_create.add_argument("--definition-of-done", dest="definition_of_done", action="append", default=[],
+                          help="Definition of done item (repeat for multiple)")
+    p_create.add_argument("--context", default=None,
+                          help="Operator-authored context string injected into dispatch prompt")
+    p_create.add_argument("--timeout-minutes", dest="timeout_minutes", type=int, default=None,
+                          help="Timeout in minutes for task execution")
+    p_create.add_argument("--bdd-given", dest="bdd_given", default="",
+                          help="BDD given phase")
+    p_create.add_argument("--bdd-when", dest="bdd_when", default="",
+                          help="BDD when phase")
+    p_create.add_argument("--bdd-then", dest="bdd_then", default="",
+                          help="BDD then phase")
 
     # delete
     p_delete = sub.add_parser("delete", add_help=True)
@@ -440,6 +477,20 @@ def main(argv: list[str] | None = None) -> None:
         if not owner:
             _abort("--owner is required (or set in profile.yaml)", 2)
         task_id = opts.task_id or f"t-{uuid.uuid4().hex[:6]}"
+        # Build plan dict from method-specific flags
+        plan = None
+        if opts.bdd_given or opts.bdd_when or opts.bdd_then:
+            plan = {}
+            if opts.bdd_given:
+                plan["given"] = opts.bdd_given
+            if opts.bdd_when:
+                plan["when"] = opts.bdd_when
+            if opts.bdd_then:
+                plan["then"] = opts.bdd_then
+        # Parse test_types from comma-separated string
+        test_types = None
+        if opts.test_types:
+            test_types = [t.strip() for t in opts.test_types.split(",") if t.strip()]
         rc = create(
             contract_file,
             task_id=task_id,
@@ -455,6 +506,13 @@ def main(argv: list[str] | None = None) -> None:
             tdd_refactor=opts.tdd_refactor,
             workflow=opts.workflow,
             development_method=opts.development_method,
+            effort=opts.effort,
+            test_types=test_types,
+            out_of_scope=opts.out_of_scope or None,
+            definition_of_done=opts.definition_of_done or None,
+            context=opts.context,
+            timeout_minutes=opts.timeout_minutes,
+            plan=plan,
         )
         sys.exit(rc)
 

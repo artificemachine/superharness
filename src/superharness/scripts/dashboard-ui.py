@@ -167,12 +167,18 @@ HTML = """<!doctype html>
       <pre id=\"taskReportBody\">-</pre>
     </div>
 
+    <div class=\"card report-scroll\" style=\"margin-top:10px; display:none;\" id=\"inboxReasonCard\">
+      <h2 style=\"position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;\">inbox item details <button onclick=\"document.getElementById('inboxReasonCard').style.display='none'\" style=\"font-size:11px;padding:2px 8px;float:right\">close</button></h2>
+      <div class=\"small\" id=\"inboxReasonMeta\" style=\"position:sticky;top:28px;background:var(--panel);padding-bottom:4px;z-index:1;\">-</div>
+      <pre id=\"inboxReasonBody\" style=\"white-space:pre-wrap;word-break:break-word;\">-</pre>
+    </div>
+
     <div class=\"card\" style=\"margin-top:10px;\">
       <h2>inbox status counts</h2>
       <div id=\"ownerFilter\" style=\"margin-bottom:8px;\"></div>
       <div id=\"counts\"></div>
       <div class=\"inbox-detail\" id=\"inboxDetail\" style=\"display:none\">
-        <table><thead><tr><th>id</th><th>task</th><th>to</th><th>priority</th><th>launched_at</th><th>timer</th><th></th></tr></thead>
+        <table><thead><tr><th>id</th><th>task</th><th>to</th><th>priority</th><th>launched_at</th><th>timer</th><th>reason</th><th></th></tr></thead>
         <tbody id=\"inboxRows\"></tbody></table>
       </div>
       <div class=\"actions\">
@@ -394,7 +400,7 @@ async function loadInboxDetail(status) {
     tbody.innerHTML = '';
     if (!d.items.length) {
       const tr = document.createElement('tr');
-      tr.innerHTML = '<td colspan="7" style="color:var(--muted)">no items</td>';
+      tr.innerHTML = '<td colspan="8" style="color:var(--muted)">no items</td>';
       tbody.appendChild(tr);
     }
     const now = new Date(d.now_utc);
@@ -421,7 +427,12 @@ async function loadInboxDetail(status) {
       const viewBtn = `<button onclick="viewTaskReport('${taskEsc}','${agentEsc}')" style="font-size:11px;padding:2px 6px">View</button>`;
       const actionCell = `${viewBtn} ${btn ? btn + ' ' : ''}${removeBtn}`;
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${item.id||''}</td><td>${item.task||''}</td><td>${item.to||''}</td><td>${item.priority||''}</td><td>${la}</td><td>${timer}</td><td>${actionCell}</td>`;
+      const reason = item.pause_reason || item.failed_reason || item.stale_reason || item.stopped_reason || '';
+      const itemJson = JSON.stringify(item).replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+      const reasonText = reason.replace(/_/g, ' ');
+      const reasonCell = reason ? `<span style="color:var(--warn);font-size:11px;cursor:pointer;text-decoration:underline dotted" title="Click for details" onclick="showInboxReason(JSON.parse(this.closest('tr').dataset.item))">${reasonText.length > 40 ? reasonText.slice(0,40) + '…' : reasonText}</span>` : (st !== 'done' ? `<span style="color:var(--muted);font-size:11px;cursor:pointer" onclick="showInboxReason(JSON.parse(this.closest('tr').dataset.item))">details</span>` : '');
+      tr.dataset.item = JSON.stringify(item);
+      tr.innerHTML = `<td>${item.id||''}</td><td>${item.task||''}</td><td>${item.to||''}</td><td>${item.priority||''}</td><td>${la}</td><td>${timer}</td><td>${reasonCell}</td><td>${actionCell}</td>`;
       tbody.appendChild(tr);
     }
     document.getElementById('inboxDetail').style.display = 'block';
@@ -636,7 +647,7 @@ function inferredWorkflow(task) {
   if (task.workflow) return task.workflow;
   const taskId = task.id || '';
   if (taskId.startsWith('discuss-') && taskId.includes('/round-')) return 'discussion';
-  return 'implementation';
+  return 'quick';
 }
 
 function canEnqueueTask(task) {
@@ -680,10 +691,6 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
     const canEnqueue = canEnqueueTask(t);
     if (canEnqueue && isDoneInbox && !isEnqueued) {
       actionButtons.push(`<button onclick="markTaskDone('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Done</button>`);
-    } else if (canEnqueue && isEnqueued) {
-      actionButtons.push(`<button disabled style="font-size:11px;padding:2px 8px;opacity:0.4;cursor:not-allowed" title="Already in inbox">Enqueued</button>`);
-    } else if (canEnqueue && !isEnqueued) {
-      actionButtons.push(`<button onclick="enqueueTask('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Enqueue</button>`);
     }
     if (st === 'plan_proposed') {
       actionButtons.push(`<button onclick="approvePlan('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Approve Plan</button>`);
@@ -701,6 +708,9 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
           actionButtons.push(`<button disabled title="Run verify before closing" style="font-size:11px;padding:2px 8px;opacity:0.45;cursor:not-allowed">Verify First</button>`);
         }
       }
+    } else if (st === 'review_requested') {
+      actionButtons.push(`<button onclick="cancelReview('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--muted)">Cancel Review</button>`);
+      actionButtons.push(`<button onclick="approveWithoutReview('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Approve Without Review</button>`);
     } else if (st === 'review_failed') {
       actionButtons.push(`<span class="small" style="color:var(--bad)">↩ review failed</span>`);
       actionButtons.push(`<button onclick="enqueueTask('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Re-enqueue</button>`);
@@ -708,9 +718,11 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
       actionButtons.push(`<button onclick="runClose('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Close</button>`);
     }
     if (st === 'stopped') {
-      actionButtons.push(`<button onclick="enableTask('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Enable</button>`);
-    } else if (st !== 'done') {
-      actionButtons.push(`<button onclick="disableTask('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--muted)">Disable</button>`);
+      actionButtons.push(`<button onclick="enableTask('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Re-queue</button>`);
+    } else if (st !== 'done' && isEnqueued) {
+      actionButtons.push(`<span class="pill" style="font-size:10px;background:var(--ok);color:#000;padding:1px 6px;cursor:default">queued</span>`);
+    } else if (st !== 'done' && canEnqueue) {
+      actionButtons.push(`<button onclick="enqueueTask('${tid}')" style="font-size:10px;padding:1px 6px;background:var(--muted);color:#fff;border-radius:10px">not queued</button>`);
     }
     actionButtons.push(`<button onclick="removeTask('${tid}')" style="font-size:11px;padding:2px 6px;color:var(--bad)">Remove</button>`);
     row.innerHTML = `<div class="task-actions">${actionButtons.join(' ')}</div><div class="task-meta">${badge}${title}${reviewerInfo}${owner}</div>`;
@@ -736,13 +748,76 @@ async function approvePlan(taskId) {
 }
 
 async function requestReview(taskId) {
-  if (!window.confirm(`Request review for task "${taskId}"?`)) return;
-  await act('request_review:' + taskId);
+  const dlg = document.createElement('dialog');
+  dlg.style.cssText = 'background:var(--panel);color:var(--fg);border:1px solid var(--border);border-radius:8px;padding:20px;min-width:280px;';
+  dlg.innerHTML = `
+    <h3 style="margin:0 0 12px">Request review for "${taskId}"</h3>
+    <label style="display:block;margin-bottom:8px;font-size:13px;">Reviewer:</label>
+    <select id="reviewerSelect" style="width:100%;padding:6px 8px;font-size:14px;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:4px;">
+      <option value="codex-cli">codex-cli</option>
+      <option value="claude-code">claude-code</option>
+    </select>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+      <button id="reviewCancel" style="padding:6px 16px;font-size:13px;">Cancel</button>
+      <button id="reviewConfirm" style="padding:6px 16px;font-size:13px;background:var(--ok);color:#000;border-radius:4px;">Request</button>
+    </div>`;
+  document.body.appendChild(dlg);
+  dlg.showModal();
+  const result = await new Promise(resolve => {
+    dlg.querySelector('#reviewConfirm').onclick = () => resolve(dlg.querySelector('#reviewerSelect').value);
+    dlg.querySelector('#reviewCancel').onclick = () => resolve(null);
+    dlg.addEventListener('close', () => resolve(null));
+  });
+  dlg.remove();
+  if (!result) return;
+  await act('request_review:' + taskId + ':' + result);
 }
 
 async function approveReport(taskId) {
   if (!window.confirm(`Close task "${taskId}" without requesting review?`)) return;
   await act('approve_report:' + taskId);
+}
+
+async function cancelReview(taskId) {
+  if (!window.confirm(`Cancel review for "${taskId}"? Task will return to report_ready.`)) return;
+  await act('cancel_review:' + taskId);
+}
+
+function humanize(s) { return (s || '').replace(/_/g, ' '); }
+
+function showInboxReason(item) {
+  const card = document.getElementById('inboxReasonCard');
+  const meta = document.getElementById('inboxReasonMeta');
+  const body = document.getElementById('inboxReasonBody');
+  const reason = humanize(item.pause_reason || item.failed_reason || item.stale_reason || item.stopped_reason || '(no reason recorded)');
+  const status = item.status || '?';
+  const statusColors = { paused: 'var(--warn)', failed: 'var(--bad)', stale: 'var(--warn)', stopped: 'var(--muted)' };
+  const color = statusColors[status] || 'var(--fg)';
+  meta.innerHTML = `<span style="color:${color};font-weight:bold">${status}</span> &middot; task: ${item.task || '-'} &middot; to: ${item.to || '-'} &middot; id: <span class="small">${item.id || '-'}</span>`;
+  const lines = [];
+  lines.push(`Status:    ${status}`);
+  lines.push(`Reason:    ${reason}`);
+  lines.push('');
+  lines.push(`Task:      ${item.task || '-'}`);
+  lines.push(`Agent:     ${item.to || '-'}`);
+  lines.push(`Priority:  ${item.priority || '-'}`);
+  lines.push(`Retries:   ${item.retry_count || 0} / ${item.max_retries || 3}`);
+  lines.push('');
+  if (item.created_at) lines.push(`Created:   ${item.created_at}`);
+  if (item.launched_at) lines.push(`Launched:  ${item.launched_at}`);
+  if (item.paused_at) lines.push(`Paused:    ${item.paused_at}`);
+  if (item.failed_at) lines.push(`Failed:    ${item.failed_at}`);
+  if (item.stale_at) lines.push(`Stale:     ${item.stale_at}`);
+  if (item.stopped_at) lines.push(`Stopped:   ${item.stopped_at}`);
+  if (item.done_at) lines.push(`Done:      ${item.done_at}`);
+  body.textContent = lines.join('\\n');
+  card.style.display = 'block';
+  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function approveWithoutReview(taskId) {
+  if (!window.confirm(`Approve "${taskId}" without agent review and close it?`)) return;
+  await act('approve_without_review:' + taskId);
 }
 
 async function runClose(taskId) {
@@ -1744,6 +1819,7 @@ def contract_tasks(contract_file: Path) -> list[dict]:
                 "owner": str(t.get("owner", "")),
                 "review_target": _review_target_for_owner(str(t.get("owner", ""))) if str(t.get("status", "todo")) == "review_requested" else "",
                 "verified": bool(t.get("verified", False)),
+                "workflow": str(t.get("workflow", "")),
                 "scheduled_after": str(t.get("scheduled_after", "")),
                 "due_by": str(t.get("due_by", "")),
                 "depends_on": t.get("depends_on", []) if isinstance(t.get("depends_on"), list) else [x.strip() for x in str(t.get("depends_on", "")).strip("[]").split(",") if x.strip()],
@@ -2338,7 +2414,9 @@ class Handler(BaseHTTPRequestHandler):
             return result, (200 if result.get("ok") else 500)
 
         if action.startswith("request_review:"):
-            task_id = action.split(":", 1)[1]
+            parts = action.split(":", 2)
+            task_id = parts[1] if len(parts) > 1 else ""
+            reviewer = parts[2] if len(parts) > 2 else ""
             if not task_id:
                 return ({"error": "missing task id"}, 400)
             harness_dir = self.project_dir / ".superharness"
@@ -2354,7 +2432,7 @@ class Handler(BaseHTTPRequestHandler):
                 if item.get("task") == task_id and item.get("status") in active_statuses:
                     return ({"error": f"task '{task_id}' already enqueued (item {item.get('id')}, status={item.get('status')})"}, 409)
 
-            target = _review_target_for_owner(str(task.get("owner", "")))
+            target = reviewer if reviewer in ("claude-code", "codex-cli") else _review_target_for_owner(str(task.get("owner", "")))
             enqueue_result = self._run_cmd(
                 [
                     sys.executable,
@@ -2389,6 +2467,54 @@ class Handler(BaseHTTPRequestHandler):
                 200,
             )
 
+        if action.startswith("cancel_review:"):
+            task_id = action.split(":", 1)[1]
+            if not task_id:
+                return ({"error": "missing task id"}, 400)
+            harness_dir = self.project_dir / ".superharness"
+            # Revert task status from review_requested back to report_ready
+            result = _set_task_status(harness_dir, task_id, "report_ready", from_status="review_requested")
+            if not result.get("ok"):
+                return result, 500
+            # Remove any pending/paused inbox items for this review
+            items = inbox_items(harness_dir / "inbox.yaml")
+            for item in items:
+                if item.get("task") == task_id and item.get("status") in ("pending", "paused", "launched"):
+                    self._run_cmd(
+                        [sys.executable, "-m", "superharness.engine.inbox", "remove",
+                         "--file", str(harness_dir / "inbox.yaml"), "--id", item.get("id", "")]
+                    )
+            return ({"ok": True, "stdout": f"Review cancelled for '{task_id}'. Status reverted to report_ready.", "status": "report_ready"}, 200)
+
+        if action.startswith("approve_without_review:"):
+            task_id = action.split(":", 1)[1]
+            if not task_id:
+                return ({"error": "missing task id"}, 400)
+            harness_dir = self.project_dir / ".superharness"
+            # Remove any pending/paused inbox items for this review
+            items = inbox_items(harness_dir / "inbox.yaml")
+            for item in items:
+                if item.get("task") == task_id and item.get("status") in ("pending", "paused", "launched"):
+                    self._run_cmd(
+                        [sys.executable, "-m", "superharness.engine.inbox", "remove",
+                         "--file", str(harness_dir / "inbox.yaml"), "--id", item.get("id", "")]
+                    )
+            # Revert to report_ready first (close command rejects review_requested)
+            revert = _set_task_status(harness_dir, task_id, "report_ready", from_status="review_requested")
+            if not revert.get("ok"):
+                return revert, 500
+            # Now close the task (skip-verify: operator is explicitly approving)
+            return self._run_cmd(
+                [
+                    sys.executable, "-m", "superharness.commands.close",
+                    "--project", str(self.project_dir),
+                    "--id", task_id,
+                    "--actor", "owner",
+                    "--summary", "Approved by operator without agent review",
+                    "--skip-verify",
+                ]
+            ), 200
+
         if action.startswith("approve_report:"):
             task_id = action.split(":", 1)[1]
             if not task_id:
@@ -2406,6 +2532,7 @@ class Handler(BaseHTTPRequestHandler):
                     "owner",
                     "--summary",
                     "Closed from dashboard without review request",
+                    "--skip-verify",
                 ]
             ), 200
 
