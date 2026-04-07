@@ -73,7 +73,7 @@ class Subtask(BaseModel):
 
 
 class ContractTask(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
 
     id: str
     title: str
@@ -84,7 +84,7 @@ class ContractTask(BaseModel):
     development_method: Optional[str] = None
     acceptance_criteria: Optional[list[str]] = None
     test_types: Optional[list[str]] = None
-    tdd: Optional[dict] = None
+    plan: Optional[dict] = Field(None, alias="tdd")
     blocked_by: Optional[str] = None
     dependency: Optional[str] = None
     summary: Optional[str] = None
@@ -97,6 +97,14 @@ class ContractTask(BaseModel):
     estimated_cost_usd: Optional[float] = None
     budget_usd: Optional[float] = None
 
+    # Phase 1: new task fields
+    effort: Optional[str] = "medium"
+    out_of_scope: Optional[list[str]] = None
+    definition_of_done: Optional[list[str]] = None
+    context: Optional[str] = None
+    timeout_minutes: Optional[int] = None
+    progress_timeout_minutes: Optional[int] = 10
+
 
 class Contract(BaseModel):
     model_config = ConfigDict(extra="allow")
@@ -106,6 +114,7 @@ class Contract(BaseModel):
     created_by: str
     status: Literal["draft", "active", "closed", "archived"]
     goal: Optional[str] = None
+    default_definition_of_done: Optional[list[str]] = None
     tasks: list[ContractTask] = []
     decisions: list[Any] = []
     failures: list[Any] = []

@@ -274,7 +274,7 @@ def _run_with_timeout(timeout_secs: int, cmd: list[str], inbox_file: str = "", i
 # mark_item_failed / paused
 # ---------------------------------------------------------------------------
 
-def _mark_item_failed(inbox_file: str, item_id: str, failed_at: str, lock: _MkdirLock) -> bool:
+def _mark_item_failed(inbox_file: str, item_id: str, failed_at: str, lock: _MkdirLock, reason: str = "") -> bool:
     if not lock.acquire_with_retry(50, 0.1):
         print(f"Failed to acquire inbox lock while marking failure for {item_id}", file=sys.stderr)
         return False
@@ -283,9 +283,11 @@ def _mark_item_failed(inbox_file: str, item_id: str, failed_at: str, lock: _Mkdi
         _set_inbox_status(inbox_file, item_id, "launched", "failed", failed_at, "failed_at")
         or _set_inbox_status(inbox_file, item_id, "running", "failed", failed_at, "failed_at")
     )
+    if ok and reason:
+        _set_inbox_field(inbox_file, item_id, "failed_reason", reason)
     lock.release()
     if ok:
-        print(f"Inbox item updated: {item_id} -> failed")
+        print(f"Inbox item updated: {item_id} -> failed{' (' + reason + ')' if reason else ''}")
     else:
         print(f"Failed to mark inbox item as failed for {item_id}", file=sys.stderr)
     return ok
@@ -418,8 +420,8 @@ def _do_dispatch(
     if launcher_timeout == 0 and os.path.exists(contract_file):
         effective_timeout = _get_task_effort_timeout(contract_file, item_task)
 
-    # Dirty worktree pre-check
-    if non_interactive and not print_only and item_to == "codex-cli" and _has_dirty_worktree(exec_project):
+    # Dirty worktree pre-check (applies to all agents, not just codex-cli)
+    if non_interactive and not print_only and _has_dirty_worktree(exec_project):
         pause_now = _now_utc()
         if _mark_item_paused_dirty(inbox_file, item_id, pause_now):
             return 0
@@ -510,9 +512,12 @@ def _do_dispatch(
     if launcher_rc != 0:
         fail_now = _now_utc()
         if launcher_rc == 124:
+            fail_reason = f"launcher timed out after {effective_timeout}s"
             print(f"Launcher timed out after {effective_timeout}s for {item_id}", file=sys.stderr)
+        else:
+            fail_reason = f"launcher exited with code {launcher_rc}"
         new_lock = _MkdirLock(inbox_file + ".lock.d")
-        _mark_item_failed(inbox_file, item_id, fail_now, new_lock)
+        _mark_item_failed(inbox_file, item_id, fail_now, new_lock, reason=fail_reason)
 
         # Record failure pattern for next dispatch
         try:
@@ -576,7 +581,7 @@ def _do_dispatch(
                 _set_inbox_field(inbox_file, item_id, "pause_reason", "awaiting_user_approval")
                 reconciled = 3
         else:
-            if item_to == "codex-cli" and _has_dirty_worktree(exec_project):
+            if _has_dirty_worktree(exec_project):
                 if (_set_inbox_status(inbox_file, item_id, "launched", "paused", reconcile_now, "paused_at")
                         or _set_inbox_status(inbox_file, item_id, "running", "paused", reconcile_now, "paused_at")):
                     _set_inbox_field(inbox_file, item_id, "pause_reason", DIRTY_WORKTREE_REASON)
