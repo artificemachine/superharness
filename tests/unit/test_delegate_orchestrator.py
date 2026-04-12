@@ -225,3 +225,32 @@ class TestOrchestrateMode:
         captured = capsys.readouterr()
         assert "T-42.1" in captured.out
         assert "T-42.2" in captured.out
+
+    def test_orchestrate_works_for_codex_cli(self, tmp_path):
+        """--orchestrate now works for codex-cli, not just claude-code."""
+        from superharness.commands.delegate import delegate
+
+        project = _setup_project(tmp_path)
+
+        with patch("superharness.commands.delegate.Orchestrator") as MockOrch:
+            mock_instance = MockOrch.return_value
+            mock_instance.decompose.return_value = MOCK_DECOMPOSITION
+
+            with patch("superharness.commands.delegate._launch_agent"):
+                with patch("superharness.commands.delegate.sdk_available", return_value=False):
+                    rc = delegate(
+                        project_dir=str(project),
+                        target="codex-cli",
+                        task_id="T-42",
+                        print_only=True,
+                        non_interactive=False,
+                        codex_bypass=False,
+                        orchestrate=True,
+                        no_auto_model=True,
+                    )
+
+        mock_instance.decompose.assert_called_once()
+        # owner in task_data should reflect the actual target
+        call_args = mock_instance.decompose.call_args[0][0]
+        assert call_args["owner"] == "codex-cli"
+        assert rc == 0

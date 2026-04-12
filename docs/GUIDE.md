@@ -217,12 +217,13 @@ shux config set budget.daily_limit 5.00    # block at $5/day
 shux config set budget.weekly_limit 20.00  # informational weekly cap shown in benchmark
 ```
 
-**Orchestrator mode** — Opus decomposes the task before dispatching:
+**Orchestrator mode** — Opus decomposes the task before dispatching (works for both `claude-code` and `codex-cli`):
 ```bash
 superharness delegate --to claude-code --task T-42 --orchestrate
+superharness delegate --to codex-cli --task T-42 --orchestrate
 # Opus analyzes T-42, breaks it into subtasks (e.g. T-42.1 standard, T-42.2 mini),
 # estimates cost, writes subtasks to contract.yaml, then dispatches each sub-agent
-# at the appropriate tier (Haiku/Sonnet/Opus).
+# at the appropriate tier. The decomposition owner is set to the actual dispatch target.
 ```
 
 **Shorthand by task id (auto-routes to task owner):**
@@ -573,6 +574,50 @@ superharness uninstall --project /path/to/project
 **Required env vars for unattended dispatch:**
 - `SUPERHARNESS_CONFIRM_NON_INTERACTIVE=YES`
 - `SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS=YES`
+
+### Agent Liveness (`shux agent-pulse`)
+
+Agents write a heartbeat signal while a task is in progress. The watcher reads
+this to detect stalled agents.
+
+```bash
+shux agent-pulse write --task T-1 --agent claude-code --status running
+shux agent-pulse read  --task T-1  # exits 2 if stale (>5 min since last write)
+shux agent-pulse clear --task T-1
+```
+
+Pulse file: `.superharness/agent-pulse.yaml`. Stale threshold: 5 minutes.
+
+### Auto-Dispatch (`shux auto-dispatch`)
+
+Scan all `todo` tasks in the contract, classify each via the model router (Haiku),
+and enqueue to the best agent:
+
+```bash
+shux auto-dispatch               # enqueue all eligible todo tasks
+shux auto-dispatch --dry-run     # preview without enqueuing
+shux auto-dispatch --effort-gate high   # flag high/max-effort tasks for --orchestrate
+shux auto-dispatch --agent codex-cli   # override target agent for all tasks
+```
+
+Tasks with `blocked_by` set are skipped. High-effort tasks print a decomposition
+suggestion but are still enqueued unless gated.
+
+### Scheduled Dispatch (`shux schedule`)
+
+Register cron-like schedules to automatically enqueue tasks at recurring intervals.
+Supports 5-field cron expressions (`minute hour dom month dow`).
+
+```bash
+shux schedule add T-1 --cron "0 9 * * 1"   # every Monday at 09:00
+shux schedule list                           # show all schedules with next-run time
+shux schedule remove T-1                     # remove a schedule
+shux schedule run                            # fire due schedules (called by watcher)
+shux schedule run --dry-run                  # preview without enqueuing
+```
+
+Schedules are stored in `.superharness/scheduled.yaml`. `enqueue_count` and
+`last_enqueued_at` are updated after each firing.
 
 ### Readiness Audits
 

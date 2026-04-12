@@ -27,6 +27,9 @@ class TaskStatus(str, Enum):
     done = "done"
     failed = "failed"
     blocked = "blocked"
+    # Phase 2: agent liveness signals
+    waiting_input = "waiting_input"   # agent paused, needs human response
+    paused = "paused"                 # agent suspended (e.g. budget gate)
 
 
 class InboxStatus(str, Enum):
@@ -97,6 +100,8 @@ class ContractTask(BaseModel):
     estimated_cost_usd: Optional[float] = None
     budget_usd: Optional[float] = None
 
+    model: Optional[str] = None
+
     # Phase 1: new task fields
     effort: Optional[str] = "medium"
     out_of_scope: Optional[list[str]] = None
@@ -140,6 +145,27 @@ class Handoff(BaseModel):
     acceptance: list[str] = []
     risks: list[str] = []
     artifacts: list[str] = []
+
+
+# ---------------------------------------------------------------------------
+# Agent Pulse (Phase 2 — agent liveness signaling)
+# ---------------------------------------------------------------------------
+
+
+class AgentPulse(BaseModel):
+    """Written by a running agent to .superharness/agent-pulse.yaml.
+
+    Allows the operator and morpheme to detect stale/zombie tasks and
+    surface "last seen X min ago" on in-progress nodes.
+    """
+    model_config = ConfigDict(extra="allow")
+
+    task_id: str
+    agent: str                          # claude-code | codex-cli | …
+    status: str = "running"             # running | waiting_input | paused
+    last_seen: str                      # ISO-8601 UTC timestamp
+    message: Optional[str] = None      # human-readable note (e.g. "waiting for approval on X")
+    pid: Optional[int] = None          # agent process PID if known
 
 
 # ---------------------------------------------------------------------------

@@ -35,8 +35,8 @@ def notify_task_event(task_id: str, status: str, agent: str = "") -> bool:
     """Send a notification for a task status change."""
     icons = {
         "done": "✅", "failed": "❌", "paused": "⏸",
-        "report_ready": "📝", "review_requested": "🔍",
-        "review_passed": "✅", "review_failed": "❌",
+        "waiting_input": "🤚", "report_ready": "📝",
+        "review_requested": "🔍", "review_passed": "✅", "review_failed": "❌",
     }
     icon = icons.get(status, "📋")
     title = f"{icon} superharness — {status.replace('_', ' ')}"
