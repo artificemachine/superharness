@@ -294,6 +294,80 @@ def cmd_list(discussions_dir: str) -> int:
     return 0
 
 
+def cmd_summary(discussions_dir: str, disc_id: str, handoff_dir: str) -> int:
+    """Write a handoff YAML summarising a concluded discussion (Phase 5).
+
+    Reads all round submissions, extracts verdicts and notes, and writes
+    a machine-readable handoff to .superharness/handoffs/ so the next agent
+    can load the outcome via `shux recall`.
+    """
+    disc_dir = os.path.join(discussions_dir, disc_id)
+    if not os.path.isdir(disc_dir):
+        _abort(f"Discussion not found: {disc_id}")
+
+    # Load discussion state via engine
+    result = _subprocess_run_capture(
+        [sys.executable, "-m", "superharness.engine.discussion", "status",
+         "--discussion-dir", disc_dir]
+    )
+    if result.returncode != 0:
+        print(result.stderr, file=sys.stderr)
+        return result.returncode
+
+    try:
+        d = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        print(f"discuss summary: could not parse discussion state", file=sys.stderr)
+        return 1
+
+    topic = d.get("topic", "unknown")
+    status = d.get("status", "unknown")
+    participants = d.get("participants") or []
+    rounds = d.get("rounds") or []
+
+    # Aggregate verdicts and notes across all rounds
+    verdicts: dict[str, list[str]] = {}
+    notes: list[str] = []
+    for r in rounds:
+        for sub in (r.get("submissions") or []):
+            agent = sub.get("agent", "unknown")
+            verdict = sub.get("verdict", "")
+            note = sub.get("note", "")
+            verdicts.setdefault(agent, []).append(verdict)
+            if note:
+                notes.append(f"{agent} (round {r.get('round', '?')}): {note}")
+
+    outcome_lines = [f"Topic: {topic}", f"Status: {status}",
+                     f"Participants: {', '.join(participants)}"]
+    for agent, vs in verdicts.items():
+        outcome_lines.append(f"  {agent}: {', '.join(vs)}")
+
+    now = _now_utc()
+    safe_id = disc_id.replace("/", "_").replace("..", "_")
+    filename = f"discuss.{safe_id}.summary-{now[:10]}.yaml"
+    os.makedirs(handoff_dir, exist_ok=True)
+    handoff_path = os.path.join(handoff_dir, filename)
+
+    content = (
+        f"task: discuss.{disc_id}\n"
+        f"phase: summary\n"
+        f"status: {status}\n"
+        f"from: discuss\n"
+        f"to: owner\n"
+        f"date: {now}\n"
+        f"outcome: |\n"
+        + "\n".join(f"  {line}" for line in outcome_lines) + "\n"
+    )
+    if notes:
+        content += "notes:\n" + "\n".join(f"  - |\n    {n}" for n in notes) + "\n"
+
+    with open(handoff_path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    print(f"Discussion summary written: {handoff_path}")
+    return 0
+
+
 def _subprocess_run_capture(cmd: list[str]) -> "subprocess.CompletedProcess":
     import subprocess
     return subprocess.run(cmd, capture_output=True, text=True, check=False)
@@ -351,6 +425,12 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("list", add_help=True)
     p.add_argument("--project", "-p", default=None)
 
+    # summary
+    p = sub.add_parser("summary", add_help=True,
+                       help="Write a handoff YAML from a concluded discussion")
+    p.add_argument("--project", "-p", default=None)
+    p.add_argument("--id", required=True, dest="disc_id")
+
     opts = parser.parse_args(argv)
     if not opts.subcmd:
         parser.print_help(sys.stderr)
@@ -404,6 +484,9 @@ def main(argv: list[str] | None = None) -> None:
 
     elif opts.subcmd == "list":
         rc = cmd_list(discussions_dir)
+
+    elif opts.subcmd == "summary":
+        rc = cmd_summary(discussions_dir, opts.disc_id, handoff_dir)
 
     else:
         _abort(f"Unknown discuss subcommand: {opts.subcmd}", 2)

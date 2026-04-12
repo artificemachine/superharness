@@ -168,6 +168,17 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
                 print(f"Warning: task '{id_}' has verified=true but status={status} (stuck)")
                 issues += 1
 
+    # Effort value validation
+    _VALID_EFFORTS = {"low", "medium", "high", "max"}
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        id_ = str(task.get("id", "")).strip()
+        effort = task.get("effort")
+        if effort is not None and str(effort) not in _VALID_EFFORTS:
+            print(f"Warning: task '{id_}' has invalid effort='{effort}' (expected: low/medium/high/max)")
+            issues += 1
+
     # Features.json validation
     features_file = os.path.join(harness_dir, "features.json")
     if os.path.isfile(features_file):
