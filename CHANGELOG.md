@@ -1737,3 +1737,63 @@ If you're an agent picking this up:
 - `shux dashboard --help` / `python -m superharness.cli dashboard --help` now
   prints help instead of silently exiting 0.
 - `cli.py`: added `if __name__ == "__main__"` guard for direct module invocation.
+
+## [1.16.0] - 2026-04-12
+
+### Added
+- `ContractTask`: formally declared `model: Optional[str] = None` field — previously
+  accepted via `extra="allow"` but not schema-visible. Morpheme adapter-payload and
+  model routing can now rely on this field being in the schema.
+- `shux hygiene`: validates `effort:` values on all tasks — warns and exits non-zero
+  when an invalid value (not in low/medium/high/max) is found in the contract.
+- `shux delegate --orchestrate`: extended to `codex-cli` target (was claude-code only).
+  Task decomposition owner is now set to the actual dispatch target.
+
+## [1.17.0] - 2026-04-12
+
+### Added
+- `AgentPulse` schema (`engine/schemas.py`): structured liveness signal written by
+  running agents to `.superharness/agent-pulse.yaml`. Fields: task_id, agent, status,
+  last_seen, message, pid.
+- `TaskStatus.waiting_input` and `TaskStatus.paused`: two new lifecycle states for
+  agents that need human input or are suspended. Both are visible to morpheme adapter-payload.
+- `shux agent-pulse` command: write/read/clear agent liveness signal.
+  - `agent-pulse write --task <id> [--agent claude-code] [--status running|waiting_input|paused] [--message "..."]`
+  - `agent-pulse read [--stale-minutes 10]` — exits 2 when pulse is stale
+  - `agent-pulse clear` — remove pulse on task completion
+
+## [1.18.0] - 2026-04-12
+
+### Added
+- `shux auto-dispatch` (Phase 3): scans all `todo` tasks in the contract, classifies each
+  via model router (Haiku), resolves best agent+model, enqueues to inbox.yaml.
+  Options: `--dry-run`, `--effort-gate high`, `--agent <override>`.
+  Blocked tasks (blocked_by set) are skipped. High-effort tasks are flagged for
+  `--orchestrate` decomposition.
+- `shux recover --dry-run` (Phase 4): preview stale launched items without mutating
+  inbox.yaml. Shows item ID, task ID, age, and PID. Exit code 0 (no-op).
+- `_run_with_timeout` threading fallback (Phase 4): SIGALRM-based timeout now falls
+  back to `threading.Timer` on Windows and any platform where SIGALRM is unavailable.
+  `preexec_fn=os.setsid` also guarded for Windows compatibility.
+- `waiting_input` desktop notification (Phase 5): `notify_task_event` now handles
+  `waiting_input` status with 🤚 icon. Triggered when inbox reconciler marks a task
+  paused due to `awaiting_user_approval`.
+- `shux discuss summary` (Phase 5): new subcommand that writes a machine-readable
+  handoff YAML from a concluded discussion. Output goes to `.superharness/handoffs/`
+  for recall via `shux recall`.
+
+## [1.19.0] - 2026-04-12
+
+### Added
+- `shux schedule` (Phase 5): cron-like scheduled task dispatch. Subcommands:
+  `add <task-id> --cron "H H * * *"`, `list`, `remove <task-id>`, `run [--dry-run]`.
+  Schedules stored in `.superharness/scheduled.yaml`. Supports 5-field cron
+  expressions with `*` and integer values. next_run advances on each firing.
+
+### Fixed
+- Zombie reconciler race (inbox.py `recover_launched`): the entire read-modify-write
+  cycle is now wrapped in `_inbox_lock`, preventing a concurrent dispatcher `claim()`
+  from clobbering stale-recovery writes.
+- PTY line-dropping under load: `script` command now uses `-F` (macOS) / `-f` (Linux)
+  flush flag, forcing output to be written immediately rather than buffered. Also adds
+  `PYTHONUNBUFFERED=1` to spawn_env for the Python launcher.
