@@ -782,12 +782,12 @@ def delegate(
     # -----------------------------------------------------------------------
     # Orchestrator mode: decompose task into subtasks before dispatch
     # -----------------------------------------------------------------------
-    if orchestrate and target == "claude-code":
+    if orchestrate and target in ("claude-code", "codex-cli"):
         orch = Orchestrator(project_dir=project_dir)
         task_data = {
             "id": task_id,
             "title": _get_task_title(contract_file, task_id) or task_id,
-            "owner": "claude-code",
+            "owner": target,
             "acceptance_criteria": _get_task_acceptance_criteria(contract_file, task_id),
         }
         decomposition = orch.decompose(task_data)

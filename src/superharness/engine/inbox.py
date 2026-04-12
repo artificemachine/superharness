@@ -477,7 +477,6 @@ def normalize(
 
 
 def recover_launched(file: str, now: str, timeout_minutes: int, action: str) -> int:
-    items = _load_items(file)
     try:
         now_time = datetime.fromisoformat(now.replace("Z", "+00:00"))
     except ValueError:
@@ -488,59 +487,65 @@ def recover_launched(file: str, now: str, timeout_minutes: int, action: str) -> 
     retried_count = 0
     failed_count = 0
 
-    for idx, item in enumerate(items):
-        if not isinstance(item, dict):
-            continue
-        if str(item.get("status", "")) != "launched":
-            continue
-        if _process_alive(item.get("pid")):
-            continue
-        launched_at = str(item.get("launched_at", ""))
-        if not launched_at:
-            continue
-        try:
-            launched_time = datetime.fromisoformat(launched_at.replace("Z", "+00:00"))
-        except ValueError:
-            item["status"] = "stale"
-            item["stale_at"] = now
-            item["stale_reason"] = "invalid_launched_at"
-            item.pop("pid", None)
-            item.pop("launched_at", None)
-            items[idx] = item
-            stale_count += 1
-            updated = True
-            continue
+    # Hold the flock for the entire read-modify-write cycle so a concurrent
+    # dispatcher's claim() cannot clobber our stale-recovery writes.
+    with _inbox_lock(file):
+        items = _load_items(file)
 
-        elapsed = (now_time - launched_time).total_seconds()
-        if elapsed < timeout_seconds:
-            continue
-
-        if action == "retry":
-            retry_count = int(item.get("retry_count", 0) or 0)
-            max_retries = int(item.get("max_retries", 3) or 3)
-            if retry_count >= max_retries:
-                item["status"] = "failed"
-                item["failed_at"] = now
-                item["failed_reason"] = "stale_timeout_exhausted"
-                failed_count += 1
-            else:
-                item["status"] = "pending"
+        for idx, item in enumerate(items):
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("status", "")) != "launched":
+                continue
+            if _process_alive(item.get("pid")):
+                continue
+            launched_at = str(item.get("launched_at", ""))
+            if not launched_at:
+                continue
+            try:
+                launched_time = datetime.fromisoformat(launched_at.replace("Z", "+00:00"))
+            except ValueError:
+                item["status"] = "stale"
                 item["stale_at"] = now
-                item["stale_reason"] = "stale_timeout_retry"
-                retried_count += 1
-        else:
-            item["status"] = "stale"
-            item["stale_at"] = now
-            item["stale_reason"] = "stale_timeout"
-            stale_count += 1
+                item["stale_reason"] = "invalid_launched_at"
+                item.pop("pid", None)
+                item.pop("launched_at", None)
+                items[idx] = item
+                stale_count += 1
+                updated = True
+                continue
 
-        item.pop("launched_at", None)
-        item.pop("pid", None)
-        items[idx] = item
-        updated = True
+            elapsed = (now_time - launched_time).total_seconds()
+            if elapsed < timeout_seconds:
+                continue
 
-    if updated:
-        _write_items(file, items)
+            if action == "retry":
+                retry_count = int(item.get("retry_count", 0) or 0)
+                max_retries = int(item.get("max_retries", 3) or 3)
+                if retry_count >= max_retries:
+                    item["status"] = "failed"
+                    item["failed_at"] = now
+                    item["failed_reason"] = "stale_timeout_exhausted"
+                    failed_count += 1
+                else:
+                    item["status"] = "pending"
+                    item["stale_at"] = now
+                    item["stale_reason"] = "stale_timeout_retry"
+                    retried_count += 1
+            else:
+                item["status"] = "stale"
+                item["stale_at"] = now
+                item["stale_reason"] = "stale_timeout"
+                stale_count += 1
+
+            item.pop("launched_at", None)
+            item.pop("pid", None)
+            items[idx] = item
+            updated = True
+
+        if updated:
+            _write_items(file, items)
+
     print(f"result=ok updated={1 if updated else 0} stale={stale_count} retried={retried_count} failed={failed_count}")
     return 0
 
@@ -795,8 +800,7 @@ def main(argv: list[str] | None = None) -> None:
             print("--action must be stale or retry", file=sys.stderr)
             sys.exit(1)
         tm = _strict_int(opts.timeout_minutes, "--timeout-minutes")
-        with _inbox_lock(opts.file):
-            rc = recover_launched(opts.file, opts.now, tm, opts.action)
+        rc = recover_launched(opts.file, opts.now, tm, opts.action)
         sys.exit(rc)
 
     elif cmd == "list_launched":

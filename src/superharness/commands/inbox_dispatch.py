@@ -283,28 +283,57 @@ def _set_inbox_status(inbox_file: str, item_id: str, from_: str, to: str, now: s
 
 def _run_with_timeout(timeout_secs: int, cmd: list[str], inbox_file: str = "", item_id: str = "",
                       env: dict | None = None, stdout=None, stderr=None) -> int:
-    """Run a command with a timeout; returns exit code (124 = timed out)."""
-    proc = subprocess.Popen(cmd, preexec_fn=os.setsid, env=env, stdout=stdout, stderr=stderr)
+    """Run a command with a timeout; returns exit code (124 = timed out).
+
+    Uses SIGALRM on POSIX (macOS/Linux). Falls back to a threading.Timer on
+    Windows and any platform where SIGALRM is unavailable (Phase 4 reliability).
+    """
+    _use_sigalrm = hasattr(signal, "SIGALRM")
+
+    # preexec_fn is POSIX-only; skip on Windows
+    preexec = os.setsid if hasattr(os, "setsid") else None
+    proc = subprocess.Popen(cmd, preexec_fn=preexec, env=env, stdout=stdout, stderr=stderr)
     if inbox_file and item_id:
         _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", str(proc.pid)])
+
     timed_out = [False]
 
-    def _on_alarm(signum: int, frame: object) -> None:
-        timed_out[0] = True
-        try:
-            os.killpg(proc.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
+    if _use_sigalrm:
+        def _on_alarm(signum: int, frame: object) -> None:
+            timed_out[0] = True
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)  # type: ignore[attr-defined]
+            except (ProcessLookupError, AttributeError):
+                pass
 
-    old_handler = signal.signal(signal.SIGALRM, _on_alarm)
-    signal.alarm(timeout_secs)
-    try:
-        rc = proc.wait()
-    finally:
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, old_handler)
-        if inbox_file and item_id:
-            _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", ""])
+        old_handler = signal.signal(signal.SIGALRM, _on_alarm)  # type: ignore[attr-defined]
+        signal.alarm(timeout_secs)  # type: ignore[attr-defined]
+        try:
+            rc = proc.wait()
+        finally:
+            signal.alarm(0)  # type: ignore[attr-defined]
+            signal.signal(signal.SIGALRM, old_handler)  # type: ignore[attr-defined]
+            if inbox_file and item_id:
+                _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", ""])
+    else:
+        # Windows / SIGALRM-unavailable fallback: threading.Timer
+        import threading
+
+        def _on_timer() -> None:
+            timed_out[0] = True
+            try:
+                proc.terminate()
+            except OSError:
+                pass
+
+        timer = threading.Timer(timeout_secs, _on_timer)
+        timer.start()
+        try:
+            rc = proc.wait()
+        finally:
+            timer.cancel()
+            if inbox_file and item_id:
+                _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", ""])
 
     if timed_out[0]:
         return 124
@@ -533,19 +562,24 @@ def _do_dispatch(
     # Pass log path to delegate so SDK runner's JSONL tailer writes to the same file
     spawn_env = os.environ.copy()
     spawn_env["SUPERHARNESS_LAUNCHER_LOG"] = task_log
+    # Force Python launcher to flush stdout/stderr immediately — prevents line-dropping
+    # when the process is wrapped in a PTY (script command) under load.
+    spawn_env["PYTHONUNBUFFERED"] = "1"
     if non_interactive:
         spawn_env["SUPERHARNESS_CONFIRM_NON_INTERACTIVE"] = "YES"
 
     # Wrap in `script` to capture PTY output (bash launcher needs a terminal).
+    # -F (macOS) / -f (Linux): flush output after each write, preventing line-dropping
+    # under load when the PTY kernel buffer fills.
     # SUPERHARNESS_NO_PTY_WRAP=1 bypasses this for test/CI environments without a TTY.
     import platform
     if os.environ.get("SUPERHARNESS_NO_PTY_WRAP", "").strip() in ("1", "true", "yes"):
         wrapped_args = launch_args
     elif platform.system() == "Darwin":
-        wrapped_args = ["script", "-q", task_log] + launch_args
+        wrapped_args = ["script", "-q", "-F", task_log] + launch_args
     else:
         import shlex
-        wrapped_args = ["script", "-q", "-c", shlex.join(launch_args), task_log]
+        wrapped_args = ["script", "-q", "-f", "-c", shlex.join(launch_args), task_log]
 
     # Spawn launcher
     import time as _time
@@ -660,6 +694,11 @@ def _do_dispatch(
             return 0
         if reconciled == 3:
             print(f"Inbox item updated: {item_id} -> paused (awaiting_user_approval)")
+            try:
+                from superharness.commands.notify_desktop import notify_task_event
+                notify_task_event(item_task, "waiting_input", item_to)
+            except Exception:
+                pass
             return 0
         if reconciled == 1:
             _elapsed = _time.time() - _launch_start

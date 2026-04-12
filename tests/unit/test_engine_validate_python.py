@@ -113,3 +113,35 @@ def test_validate_missing_protocol_dir(tmp_path: Path) -> None:
     r = _run_validate(["--project", str(project)])
     assert r.returncode == 1
     assert "Missing required path" in r.stderr
+
+
+def test_validate_invalid_effort_value(tmp_path: Path) -> None:
+    project = _write_project(
+        tmp_path,
+        tasks="  - id: bad-effort-task\n    status: in_progress\n    owner: claude-code\n    effort: extreme\n",
+    )
+    r = _run_validate(["--project", str(project)])
+    assert r.returncode == 1
+    assert "invalid effort='extreme'" in r.stdout
+
+
+def test_validate_valid_effort_values_pass(tmp_path: Path) -> None:
+    for effort in ("low", "medium", "high", "max"):
+        subdir = tmp_path / effort
+        subdir.mkdir()
+        project = _write_project(
+            subdir,
+            tasks=f"  - id: task-{effort}\n    status: todo\n    owner: claude-code\n    effort: {effort}\n",
+        )
+        r = _run_validate(["--project", str(project)])
+        assert r.returncode == 0, f"effort={effort!r} should be valid, got: {r.stdout}"
+
+
+def test_validate_null_effort_passes(tmp_path: Path) -> None:
+    # Tasks with no effort field should pass — effort is optional
+    project = _write_project(
+        tmp_path,
+        tasks="  - id: no-effort-task\n    status: todo\n    owner: claude-code\n",
+    )
+    r = _run_validate(["--project", str(project)])
+    assert r.returncode == 0
