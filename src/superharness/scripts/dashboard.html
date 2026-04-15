@@ -661,6 +661,38 @@ function canEnqueueTask(task) {
   return false;
 }
 
+// Fix 3: contextual next-action hint shown inline next to the status pill.
+// Returns "" when the current state has no clear prescribed next step for the user.
+function nextActionHint(task) {
+  const st = task.status || 'todo';
+  const workflow = inferredWorkflow(task);
+  if (st === 'todo' && workflow === 'implementation') return 'write plan → click Propose Plan';
+  if (st === 'plan_proposed')   return 'review plan handoff → click Approve Plan';
+  if (st === 'plan_approved')   return 'click not queued → dispatch';
+  if (st === 'report_ready')    return 'verify report → Request Review or Close';
+  if (st === 'review_requested') return 'awaiting reviewer';
+  if (st === 'review_passed')   return 'click Close to finalize';
+  if (st === 'review_failed')   return 'revise plan → Re-enqueue';
+  return '';
+}
+
+// Fix 1: explain why Enqueue is not available in the current state.
+function enqueueBlockReason(task) {
+  const st = task.status || 'todo';
+  const workflow = inferredWorkflow(task);
+  if (workflow === 'implementation' && st === 'todo') {
+    return 'Implementation tasks require an approved plan before dispatch. Click Propose Plan to author one.';
+  }
+  if (workflow === 'implementation' && st === 'plan_proposed') {
+    return 'Plan must be approved before dispatch. Click Approve Plan (or wait for owner review).';
+  }
+  if (st === 'done')            return 'Task is done — no further dispatch.';
+  if (st === 'in_progress')     return 'Task is already running.';
+  if (st === 'report_ready')    return 'Agent submitted a report — verify or request review before re-dispatching.';
+  if (st === 'review_requested') return 'Under review — cannot re-dispatch until review completes.';
+  return `Status '${st}' is not dispatchable for workflow '${workflow}'.`;
+}
+
 function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
   const el = document.getElementById('contractTaskList');
   if (!tasks.length) { el.textContent = '(no tasks)'; return; }
@@ -680,7 +712,9 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
     const dueInfo = t.due_by ? ` <span class="small" style="color:${new Date(t.due_by) < new Date() ? 'var(--bad)' : 'var(--muted)'}">📅 due ${t.due_by}</span>` : '';
     const depsInfo = (t.depends_on && t.depends_on.length) ? ` <span class="small" style="color:var(--muted)">🔗 ${t.depends_on.join(', ')}</span>` : '';
     const reviewerInfo = (st === 'review_requested' && t.review_target) ? ` <span class="small" style="color:var(--warn)">👀 reviewer ${t.review_target}</span>` : '';
-    const title = `<span style="flex:1;min-width:120px">${t.id} <span class="small" style="color:var(--muted)">${t.title}</span>${schedInfo}${dueInfo}${depsInfo}</span>`;
+    const hint = nextActionHint(t);
+    const hintInfo = hint ? ` <span class="small" style="color:var(--muted)">ℹ ${hint}</span>` : '';
+    const title = `<span style="flex:1;min-width:120px">${t.id} <span class="small" style="color:var(--muted)">${t.title}</span>${schedInfo}${dueInfo}${depsInfo}${hintInfo}</span>`;
     const owner = `<span class="small" style="color:var(--muted)">${t.owner}</span>`;
 
     const actionButtons = [];
@@ -726,6 +760,14 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
       actionButtons.push(`<span class="pill" style="font-size:10px;background:var(--ok);color:#000;padding:1px 6px;cursor:default">queued</span>`);
     } else if (st !== 'done' && canEnqueue) {
       actionButtons.push(`<button onclick="enqueueTask('${tid}')" style="font-size:10px;padding:1px 6px;background:var(--muted);color:#fff;border-radius:10px">not queued</button>`);
+    } else if (st === 'todo' && inferredWorkflow(t) === 'implementation') {
+      // Fix 2: implementation tasks need a plan before dispatch. Offer plan authoring here.
+      actionButtons.push(`<button onclick="proposePlan('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok);font-weight:bold">Propose Plan</button>`);
+      // Fix 1: also show a disabled Enqueue with tooltip so the gate is explicit.
+      actionButtons.push(`<button disabled title="${enqueueBlockReason(t).replace(/"/g,'&quot;')}" style="font-size:10px;padding:1px 6px;background:var(--bg);color:var(--muted);border:1px dashed var(--line);border-radius:10px;cursor:not-allowed">Enqueue ⛔</button>`);
+    } else if (st !== 'done') {
+      // Fix 1: any other non-dispatchable state — show disabled Enqueue with tooltip.
+      actionButtons.push(`<button disabled title="${enqueueBlockReason(t).replace(/"/g,'&quot;')}" style="font-size:10px;padding:1px 6px;background:var(--bg);color:var(--muted);border:1px dashed var(--line);border-radius:10px;cursor:not-allowed">Enqueue ⛔</button>`);
     }
     actionButtons.push(`<button onclick="removeTask('${tid}')" style="font-size:11px;padding:2px 6px;color:var(--bad)">Remove</button>`);
     row.innerHTML = `<div class="task-actions">${actionButtons.join(' ')}</div><div class="task-meta">${badge}${title}${reviewerInfo}${owner}</div>`;
@@ -897,6 +939,55 @@ async function submitEnqueue() {
 
 function cancelEnqueue() {
   document.getElementById('enqueueModal').style.display = 'none';
+}
+
+function proposePlan(taskId) {
+  const modal = document.getElementById('proposePlanModal');
+  modal.dataset.taskId = taskId;
+  document.getElementById('proposePlanTaskId').textContent = taskId;
+  for (const id of ['proposePlanSummary','proposePlanRed','proposePlanGreen','proposePlanRefactor','proposePlanRisks']) {
+    document.getElementById(id).value = '';
+  }
+  modal.style.display = 'block';
+}
+
+function cancelProposePlan() {
+  document.getElementById('proposePlanModal').style.display = 'none';
+}
+
+async function submitProposePlan() {
+  const modal = document.getElementById('proposePlanModal');
+  const taskId = modal.dataset.taskId;
+  const summary  = document.getElementById('proposePlanSummary').value.trim();
+  const red      = document.getElementById('proposePlanRed').value.trim();
+  const green    = document.getElementById('proposePlanGreen').value.trim();
+  const refactor = document.getElementById('proposePlanRefactor').value.trim();
+  const risks    = document.getElementById('proposePlanRisks').value.trim();
+  if (!summary && !red && !green && !refactor) {
+    alert('Provide at least a plan summary or one TDD phase before submitting.');
+    return;
+  }
+  modal.style.display = 'none';
+  const st = document.getElementById('actionStatus');
+  st.textContent = 'proposing plan for ' + taskId + ' ...';
+  try {
+    await api('/api/action', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-Superharness-Token': AUTH_TOKEN},
+      body: JSON.stringify({
+        action: 'propose_plan:' + taskId,
+        plan_summary: summary,
+        tdd_red: red,
+        tdd_green: green,
+        tdd_refactor: refactor,
+        risks: risks,
+      })
+    });
+    st.textContent = `plan proposed for ${taskId} — awaiting approval`;
+  } catch (e) {
+    st.textContent = 'error: ' + String(e);
+  }
+  await refresh();
 }
 
 async function markTaskDone(taskId) {
@@ -1209,6 +1300,27 @@ document.addEventListener('keydown', (e) => {
     <div style="display:flex;gap:8px;justify-content:flex-end">
       <button onclick="cancelEnqueue()" style="padding:6px 16px;background:var(--bg);color:var(--muted);border:1px solid var(--line);border-radius:4px;cursor:pointer">Cancel</button>
       <button onclick="submitEnqueue()" style="padding:6px 16px;background:var(--ok);color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold">Accept &amp; Enqueue</button>
+    </div>
+  </div>
+</div>
+
+<div id="proposePlanModal" onclick="if(event.target===this)cancelProposePlan()" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:999">
+  <div style="background:var(--panel);border:1px solid var(--line);border-radius:8px;max-width:680px;margin:40px auto;padding:20px;color:var(--text);max-height:90vh;overflow-y:auto">
+    <h3 style="margin:0 0 4px 0">Propose plan — <span id="proposePlanTaskId" style="color:var(--ok);font-family:monospace"></span></h3>
+    <p style="margin:0 0 12px 0;font-size:12px;color:var(--muted)">Implementation tasks need an approved plan before dispatch. Write the TDD cycle below; submit transitions this task to <code>plan_proposed</code>. Leave a field blank to defer it.</p>
+    <label style="font-size:12px;color:var(--muted)">Plan summary (scope &amp; approach):</label>
+    <textarea id="proposePlanSummary" rows="3" style="width:100%;padding:8px;margin:4px 0 10px 0;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:4px;font-family:monospace;font-size:12px;resize:vertical"></textarea>
+    <label style="font-size:12px;color:var(--bad)">RED — failing tests that define done:</label>
+    <textarea id="proposePlanRed" rows="3" style="width:100%;padding:8px;margin:4px 0 10px 0;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:4px;font-family:monospace;font-size:12px;resize:vertical"></textarea>
+    <label style="font-size:12px;color:var(--ok)">GREEN — minimal implementation to pass:</label>
+    <textarea id="proposePlanGreen" rows="3" style="width:100%;padding:8px;margin:4px 0 10px 0;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:4px;font-family:monospace;font-size:12px;resize:vertical"></textarea>
+    <label style="font-size:12px;color:var(--warn)">REFACTOR — cleanup after green:</label>
+    <textarea id="proposePlanRefactor" rows="3" style="width:100%;padding:8px;margin:4px 0 10px 0;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:4px;font-family:monospace;font-size:12px;resize:vertical"></textarea>
+    <label style="font-size:12px;color:var(--muted)">Risks &amp; open questions (optional):</label>
+    <textarea id="proposePlanRisks" rows="2" style="width:100%;padding:8px;margin:4px 0 12px 0;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:4px;font-family:monospace;font-size:12px;resize:vertical"></textarea>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="cancelProposePlan()" style="padding:6px 16px;background:var(--bg);color:var(--muted);border:1px solid var(--line);border-radius:4px;cursor:pointer">Cancel</button>
+      <button onclick="submitProposePlan()" style="padding:6px 16px;background:var(--ok);color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold">Submit plan</button>
     </div>
   </div>
 </div>
