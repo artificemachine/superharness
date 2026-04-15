@@ -1841,3 +1841,21 @@ If you're an agent picking this up:
 ### Fixed
 - Packaged watcher installer scripts now resolve correctly (prior release
   referenced development-only paths).
+
+## [1.22.0] - 2026-04-15
+
+### Added
+- Dashboard "Propose Plan" action — owner can author a TDD plan (summary +
+  RED/GREEN/REFACTOR + risks) directly in the UI for `todo + implementation`
+  tasks. Writes a `plan` handoff YAML under `.superharness/handoffs/` and
+  transitions the task to `plan_proposed`. No CLI context-switch needed.
+- New `/api/action` handler `propose_plan:<id>` accepting `plan_summary`,
+  `tdd_red`, `tdd_green`, `tdd_refactor`, `risks` fields.
+- Inline next-action hint (`ℹ next: ...`) shown next to every task in the
+  contract list, guiding the user through the lifecycle
+  (`todo → plan_proposed → plan_approved → in_progress → report_ready → done`).
+- Disabled "Enqueue ⛔" button with tooltip on any task whose current status
+  cannot be dispatched, explaining why and what to do instead.
+- 4 unit tests in `tests/unit/test_monitor_ui.py` covering
+  `_propose_plan_handoff` (happy path, non-todo rejection, blank-field
+  placeholder defaults, missing task).
