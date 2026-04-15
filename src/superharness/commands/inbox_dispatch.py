@@ -541,6 +541,8 @@ def _do_dispatch(
             task_status = cr.stdout.strip()
     if task_status == "review_requested":
         launch_args.append("--for-review")
+    if bool(item.get("plan_only", False)):
+        launch_args.append("--plan-only")
     if print_only:
         launch_args.append("--print-only")
     if non_interactive:
@@ -602,13 +604,28 @@ def _do_dispatch(
 
     if launcher_rc != 0:
         fail_now = _now_utc()
+        # Exit code 2 == permanent block (lifecycle gate rejected the task). Retrying
+        # will fail identically on every attempt, so mark retry_count=max_retries
+        # immediately to stop the watcher from burning its retry budget. See
+        # superharness.commands.delegate.EXIT_PERMANENT_BLOCK.
+        permanent_block = launcher_rc == 2
         if launcher_rc == 124:
             fail_reason = f"launcher timed out after {effective_timeout}s"
             print(f"Launcher timed out after {effective_timeout}s for {item_id}", file=sys.stderr)
+        elif permanent_block:
+            fail_reason = "permanent block (lifecycle gate) — not retryable"
+            print(f"Permanent block for {item_id}: lifecycle gate rejected. Not retrying.", file=sys.stderr)
         else:
             fail_reason = f"launcher exited with code {launcher_rc}"
         new_lock = _MkdirLock(inbox_file + ".lock.d")
         _mark_item_failed(inbox_file, item_id, fail_now, new_lock, reason=fail_reason)
+        if permanent_block:
+            # Push retry_count to max_retries so the watcher's next pass sees it as
+            # retry-exhausted and does not pick it up again.
+            _inbox_cmd([
+                "set_field", "--file", inbox_file, "--id", item_id,
+                "--key", "retry_count", "--value", str(item_max_retries),
+            ])
         try:
             from superharness.commands.notify_desktop import notify_task_event
             notify_task_event(item_task, "failed", item_to)

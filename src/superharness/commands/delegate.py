@@ -290,45 +290,19 @@ def _get_latest_handoff_task(handoff_dir: str, to: str) -> tuple[str, str]:
 
 _DISC_ROUND_RE = re.compile(r"^(discuss-[^/]+)/round-(\d+)$")
 
+# Thin re-exports so existing call sites in this module and any external
+# imports keep working. Canonical implementations live in engine.lifecycle.
+from superharness.engine.lifecycle import (  # noqa: E402
+    infer_workflow as _infer_workflow,
+    allowed_statuses_for_workflow as _allowed_statuses_for_workflow,
+    plan_only_allowed_statuses as _plan_only_allowed_statuses,
+)
 
-def _infer_workflow(task_id: str, task_obj: dict | None) -> str:
-    workflow = ""
-    if isinstance(task_obj, dict):
-        workflow = str(task_obj.get("workflow", "") or "").strip().lower()
-    if workflow:
-        return workflow
-    if _DISC_ROUND_RE.match(task_id):
-        return "discussion"
-    return "implementation"
-
-
-def _allowed_statuses_for_workflow(workflow: str, *, for_review: bool) -> set[str]:
-    if workflow == "implementation":
-        allowed = {
-            "plan_approved",
-            "in_progress",
-            "report_ready",
-            "review_passed",
-            "review_failed",
-            "pending_user_approval",
-        }
-        if for_review:
-            allowed.add("review_requested")
-        return allowed
-    if workflow == "quick":
-        return {"todo", "in_progress", "report_ready", "failed", "stopped"}
-    if workflow == "note":
-        return {"todo", "in_progress", "failed", "stopped"}
-    if workflow == "discussion":
-        return {"todo", "in_progress"}
-    if workflow == "review":
-        allowed = {"todo", "in_progress", "review_requested", "review_failed"}
-        if for_review:
-            allowed.add("review_passed")
-        return allowed
-    if workflow == "approval":
-        return {"pending_user_approval"}
-    return {"plan_approved", "in_progress"}
+# Exit-code contract for permanent-block launcher failures.
+# Callers (launcher / inbox dispatch) treat exit 2 as non-retryable so the
+# inbox doesn't waste its retry budget on a lifecycle violation that will
+# fail identically every time.
+EXIT_PERMANENT_BLOCK = 2
 
 
 # ---------------------------------------------------------------------------
@@ -553,6 +527,7 @@ def delegate(
     orchestrate: bool = False,
     skip_preflight: bool = False,
     force: bool = False,
+    plan_only: bool = False,
 ) -> int:
     project_dir = os.path.realpath(project_dir)
 
@@ -643,15 +618,22 @@ def delegate(
 
     # Gate 4: status lifecycle — dispatch is workflow-aware.
     # Terminal statuses (done/failed/stopped) pass through — reconcile handles them.
+    # --plan-only: relax the allowed set so the agent can propose a plan on a
+    # todo/implementation task without first needing plan_approved.
     _task_status = task_obj.get("status", "") if task_obj else ""
     _workflow = _infer_workflow(task_id, task_obj)
     _DISPATCH_TERMINAL_STATUSES = {"done", "failed", "stopped"}
-    _DISPATCH_ALLOWED_STATUSES = _allowed_statuses_for_workflow(_workflow, for_review=for_review)
+    if plan_only:
+        _DISPATCH_ALLOWED_STATUSES = _plan_only_allowed_statuses(_workflow)
+    else:
+        _DISPATCH_ALLOWED_STATUSES = _allowed_statuses_for_workflow(_workflow, for_review=for_review)
     if _task_status not in _DISPATCH_ALLOWED_STATUSES and _task_status not in _DISPATCH_TERMINAL_STATUSES:
         if _workflow == "implementation":
             print(
                 f"blocked: task '{task_id}' status is '{_task_status}' — "
-                f"plan must be approved before delegating (run: shux task status --id {task_id} --status plan_proposed)",
+                f"plan must be approved before delegating "
+                f"(run: shux task status --id {task_id} --status plan_proposed, "
+                f"or re-dispatch with --plan-only to let the agent propose the plan)",
                 file=sys.stderr,
             )
         else:
@@ -661,7 +643,8 @@ def delegate(
                 f"(allowed: {allowed})",
                 file=sys.stderr,
             )
-        return 1
+        # Permanent lifecycle block — non-retryable.
+        return EXIT_PERMANENT_BLOCK
 
     # -----------------------------------------------------------------------
     # Pre-flight analysis (fast, local-only)
@@ -820,6 +803,31 @@ def delegate(
             "\nThis is an automated non-interactive run. "
             "Do not ask for confirmation or approval. "
             "Proceed and apply all changes immediately."
+        )
+
+    if plan_only:
+        # Plan-only dispatch: agent must write a plan handoff and stop. No
+        # implementation code should be touched on this turn. The owner will
+        # review the plan and re-dispatch (without --plan-only) to execute.
+        auto_directive += (
+            "\n\n=== PLAN-ONLY MODE ===\n"
+            f"Your only job on this turn is to propose a TDD plan for task '{task_id}'.\n"
+            "1. Do NOT write, modify, or delete any source, test, or configuration file.\n"
+            "2. Write a plan handoff YAML to .superharness/handoffs/ with:\n"
+            f"   task: {task_id}\n"
+            "   phase: plan\n"
+            "   status: plan_proposed\n"
+            f"   from: {target}\n"
+            "   to: owner\n"
+            "   date: <ISO-8601 UTC timestamp>\n"
+            "   plan: <scope and approach — 1–3 short paragraphs>\n"
+            "   tdd:\n"
+            "     red: <the failing tests you will add first — specific names/locations>\n"
+            "     green: <the minimal implementation that will make them pass>\n"
+            "     refactor: <cleanup planned after green, or 'none'>\n"
+            "   risks: <open questions, unknowns, dependencies>\n"
+            "3. Run `shux task status --id " + task_id + " --status plan_proposed` to transition the task.\n"
+            "4. Stop. Do not proceed to implementation. The owner must review and approve the plan first.\n"
         )
 
     # Discussion-round detection
@@ -1123,6 +1131,12 @@ def main(argv: list[str] | None = None) -> None:
         "--force", action="store_true", default=False,
         help="Override budget block for this dispatch",
     )
+    parser.add_argument(
+        "--plan-only", action="store_true", default=False,
+        dest="plan_only",
+        help="Agent proposes a TDD plan and stops (no implementation). "
+             "Relaxes gate 4 so todo+implementation tasks are dispatchable.",
+    )
 
     opts = parser.parse_args(argv)
 
@@ -1158,6 +1172,7 @@ def main(argv: list[str] | None = None) -> None:
         orchestrate=opts.orchestrate,
         skip_preflight=opts.skip_preflight,
         force=opts.force,
+        plan_only=opts.plan_only,
     )
     sys.exit(rc)
 

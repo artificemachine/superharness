@@ -73,6 +73,10 @@ def test_claude_watcher_dispatch_smoke(repo_root: Path, tmp_path: Path) -> None:
         "id": "smoke-test-task",
         "title": "Smoke test task for watcher",
         "status": "todo",
+        # `workflow: quick` bypasses the implementation plan-phase gate so the
+        # smoke test can enqueue a todo task directly (implementation workflow
+        # requires plan_approved; quick accepts todo per engine.lifecycle).
+        "workflow": "quick",
         "owner": "claude-code",
         "project_path": str(project),
     })

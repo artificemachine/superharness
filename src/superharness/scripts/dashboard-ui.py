@@ -1556,6 +1556,65 @@ class Handler(BaseHTTPRequestHandler):
             )
             return result, (200 if result.get("ok") else 400)
 
+        if action.startswith("delegate_plan:"):
+            # Enqueue the task in plan-only mode so the agent proposes a TDD
+            # plan and stops. The watcher picks it up, dispatches with
+            # --plan-only, and the agent writes a plan handoff.
+            parts = action.split(":", 2)
+            task_id = parts[1] if len(parts) > 1 else ""
+            target  = parts[2] if len(parts) > 2 else ""
+            if not task_id:
+                return ({"error": "missing task id"}, 400)
+            harness_dir = self.project_dir / ".superharness"
+            task = _contract_task(harness_dir, task_id)
+            if not task:
+                return ({"error": f"task {task_id} not found"}, 404)
+            if not target:
+                target = str(task.get("owner", "") or "claude-code") or "claude-code"
+            if target not in ("claude-code", "codex-cli"):
+                return ({"error": f"invalid target '{target}' — must be claude-code or codex-cli"}, 400)
+            # Already-enqueued guard.
+            items = inbox_items(harness_dir / "inbox.yaml")
+            active = {"pending", "launched", "running", "paused"}
+            for item in items:
+                if item.get("task") == task_id and item.get("status") in active:
+                    return (
+                        {"error": f"task '{task_id}' already enqueued (item {item.get('id')}, status={item.get('status')})"},
+                        409,
+                    )
+            owner = str(task.get("owner", "") or "").strip()
+            force_reassign = bool(owner and owner != target)
+            enqueue_args = [
+                sys.executable, "-m", "superharness.commands.inbox_enqueue",
+                "--project", str(self.project_dir),
+                "--to", target,
+                "--task", task_id,
+                "--plan-only",
+            ]
+            if force_reassign:
+                enqueue_args.append("--force-reassign")
+            enqueue_result = self._run_cmd(enqueue_args, timeout=30)
+            if enqueue_result.get("exit_code") != 0:
+                return (
+                    {
+                        "error": "enqueue failed",
+                        "stdout": enqueue_result.get("stdout", ""),
+                        "stderr": enqueue_result.get("stderr", ""),
+                        "cmd": enqueue_result.get("cmd", ""),
+                    },
+                    500,
+                )
+            return (
+                {
+                    "ok": True,
+                    "task": task_id,
+                    "target": target,
+                    "mode": "plan-only",
+                    "stdout": enqueue_result.get("stdout", "").strip(),
+                },
+                200,
+            )
+
         if action.startswith("request_review:"):
             parts = action.split(":", 2)
             task_id = parts[1] if len(parts) > 1 else ""

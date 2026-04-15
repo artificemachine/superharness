@@ -176,3 +176,163 @@ def test_enqueue_rejects_invalid_custom_item_id(repo_root, tmp_path) -> None:
     assert result.returncode in (1, 2)
     combined = result.stdout + result.stderr
     assert "inbox id" in combined.lower() or "invalid" in combined.lower() or "match" in combined.lower()
+
+
+# ── gate parity: enqueue must mirror dispatch's workflow-aware gate ──────────
+
+def test_enqueue_rejects_todo_for_implementation(repo_root, tmp_path) -> None:
+    """todo + implementation workflow cannot be enqueued (dispatch would reject)."""
+    project = _setup_project(tmp_path, "proj-todo-impl")
+    _write_contract(
+        project,
+        [
+            "id: test-contract",
+            "tasks:",
+            "  - id: feat.wip",
+            "    status: todo",
+            "    workflow: implementation",
+            f"    project_path: '{project.resolve().as_posix()}'",
+        ],
+    )
+    r = _run_python(["--project", str(project), "--to", "claude-code", "--task", "feat.wip"])
+    assert r.returncode == 1
+    combined = r.stdout + r.stderr
+    assert "todo" in combined
+    assert "implementation" in combined
+    assert "--plan-only" in combined  # hint surfaces the escape hatch
+
+
+def test_enqueue_accepts_todo_for_quick_workflow(repo_root, tmp_path) -> None:
+    """todo is dispatchable for `quick` workflow — no plan required."""
+    project = _setup_project(tmp_path, "proj-todo-quick")
+    _write_contract(
+        project,
+        [
+            "id: test-contract",
+            "tasks:",
+            "  - id: chore.simple",
+            "    status: todo",
+            "    workflow: quick",
+            f"    project_path: '{project.resolve().as_posix()}'",
+        ],
+    )
+    r = _run_python(["--project", str(project), "--to", "claude-code", "--task", "chore.simple"])
+    assert r.returncode == 0, r.stderr
+    assert "Enqueued inbox item" in r.stdout
+
+
+def test_enqueue_accepts_todo_for_implementation_with_plan_only(repo_root, tmp_path) -> None:
+    """--plan-only relaxes the gate: todo + implementation becomes enqueueable."""
+    project = _setup_project(tmp_path, "proj-plan-only")
+    _write_contract(
+        project,
+        [
+            "id: test-contract",
+            "tasks:",
+            "  - id: feat.needs-plan",
+            "    status: todo",
+            "    workflow: implementation",
+            f"    project_path: '{project.resolve().as_posix()}'",
+        ],
+    )
+    r = _run_python([
+        "--project", str(project), "--to", "claude-code",
+        "--task", "feat.needs-plan", "--plan-only",
+    ])
+    assert r.returncode == 0, r.stderr
+    assert "plan-only" in r.stdout
+
+
+def test_enqueue_marks_item_plan_only_in_inbox(repo_root, tmp_path) -> None:
+    """Plan-only flag persists on the inbox item for the launcher to read."""
+    project = _setup_project(tmp_path, "proj-plan-only-flag")
+    _write_contract(
+        project,
+        [
+            "id: test-contract",
+            "tasks:",
+            "  - id: feat.needs-plan",
+            "    status: todo",
+            "    workflow: implementation",
+            f"    project_path: '{project.resolve().as_posix()}'",
+        ],
+    )
+    r = _run_python([
+        "--project", str(project), "--to", "claude-code",
+        "--task", "feat.needs-plan", "--plan-only",
+    ])
+    assert r.returncode == 0, r.stderr
+
+    import yaml
+    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
+    data = yaml.safe_load(inbox_text) or []
+    items = [x for x in data if isinstance(x, dict)]
+    assert len(items) == 1
+    assert items[0].get("plan_only") is True
+
+
+# ── owner-mismatch guard ─────────────────────────────────────────────────────
+
+def test_enqueue_blocks_owner_mismatch_by_default(repo_root, tmp_path) -> None:
+    project = _setup_project(tmp_path, "proj-owner-mismatch")
+    _write_contract(
+        project,
+        [
+            "id: test-contract",
+            "tasks:",
+            "  - id: feat.owned",
+            "    status: plan_approved",
+            "    workflow: implementation",
+            "    owner: codex-cli",
+            f"    project_path: '{project.resolve().as_posix()}'",
+        ],
+    )
+    r = _run_python(["--project", str(project), "--to", "claude-code", "--task", "feat.owned"])
+    assert r.returncode == 1
+    combined = r.stdout + r.stderr
+    assert "owned by 'codex-cli'" in combined
+    assert "not 'claude-code'" in combined
+    assert "--force-reassign" in combined
+
+
+def test_enqueue_allows_owner_mismatch_with_force_flag(repo_root, tmp_path) -> None:
+    project = _setup_project(tmp_path, "proj-owner-force")
+    _write_contract(
+        project,
+        [
+            "id: test-contract",
+            "tasks:",
+            "  - id: feat.owned",
+            "    status: plan_approved",
+            "    workflow: implementation",
+            "    owner: codex-cli",
+            f"    project_path: '{project.resolve().as_posix()}'",
+        ],
+    )
+    r = _run_python([
+        "--project", str(project), "--to", "claude-code",
+        "--task", "feat.owned", "--force-reassign",
+    ])
+    assert r.returncode == 0, r.stderr
+    # Warning printed to stderr, but enqueue still succeeds.
+    assert "reassigning" in r.stderr.lower()
+
+
+def test_enqueue_accepts_target_matching_owner(repo_root, tmp_path) -> None:
+    """No warning, no block when --to matches contract owner."""
+    project = _setup_project(tmp_path, "proj-owner-match")
+    _write_contract(
+        project,
+        [
+            "id: test-contract",
+            "tasks:",
+            "  - id: feat.owned",
+            "    status: plan_approved",
+            "    workflow: implementation",
+            "    owner: claude-code",
+            f"    project_path: '{project.resolve().as_posix()}'",
+        ],
+    )
+    r = _run_python(["--project", str(project), "--to", "claude-code", "--task", "feat.owned"])
+    assert r.returncode == 0, r.stderr
+    assert "reassigning" not in r.stderr.lower()

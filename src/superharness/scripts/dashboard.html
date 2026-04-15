@@ -666,7 +666,7 @@ function canEnqueueTask(task) {
 function nextActionHint(task) {
   const st = task.status || 'todo';
   const workflow = inferredWorkflow(task);
-  if (st === 'todo' && workflow === 'implementation') return 'write plan → click Propose Plan';
+  if (st === 'todo' && workflow === 'implementation') return 'click Delegate Plan (agent) or Propose Plan (you)';
   if (st === 'plan_proposed')   return 'review plan handoff → click Approve Plan';
   if (st === 'plan_approved')   return 'click not queued → dispatch';
   if (st === 'report_ready')    return 'verify report → Request Review or Close';
@@ -761,9 +761,11 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
     } else if (st !== 'done' && canEnqueue) {
       actionButtons.push(`<button onclick="enqueueTask('${tid}')" style="font-size:10px;padding:1px 6px;background:var(--muted);color:#fff;border-radius:10px">not queued</button>`);
     } else if (st === 'todo' && inferredWorkflow(t) === 'implementation') {
-      // Fix 2: implementation tasks need a plan before dispatch. Offer plan authoring here.
-      actionButtons.push(`<button onclick="proposePlan('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok);font-weight:bold">Propose Plan</button>`);
-      // Fix 1: also show a disabled Enqueue with tooltip so the gate is explicit.
+      // Fix 2 (v1.22): owner writes the plan inline.
+      actionButtons.push(`<button onclick="proposePlan('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok);font-weight:bold" title="Write the plan yourself and submit">Propose Plan</button>`);
+      // v1.23: agent writes the plan via --plan-only dispatch (gate-parity fix).
+      actionButtons.push(`<button onclick="delegatePlanToAgent('${tid}','${ownerEsc||'claude-code'}')" style="font-size:11px;padding:2px 8px;color:var(--warn)" title="Dispatch the owner agent to propose a plan (plan-only — no implementation)">Delegate Plan</button>`);
+      // Fix 1: disabled Enqueue with tooltip so the gate is explicit.
       actionButtons.push(`<button disabled title="${enqueueBlockReason(t).replace(/"/g,'&quot;')}" style="font-size:10px;padding:1px 6px;background:var(--bg);color:var(--muted);border:1px dashed var(--line);border-radius:10px;cursor:not-allowed">Enqueue ⛔</button>`);
     } else if (st !== 'done') {
       // Fix 1: any other non-dispatchable state — show disabled Enqueue with tooltip.
@@ -953,6 +955,24 @@ function proposePlan(taskId) {
 
 function cancelProposePlan() {
   document.getElementById('proposePlanModal').style.display = 'none';
+}
+
+async function delegatePlanToAgent(taskId, target) {
+  const agent = target || 'claude-code';
+  if (!window.confirm(`Dispatch ${agent} to propose a TDD plan for "${taskId}"? The agent will write a plan handoff and stop — it will not implement anything until you approve the plan.`)) return;
+  const st = document.getElementById('actionStatus');
+  st.textContent = 'delegating plan proposal for ' + taskId + ' to ' + agent + ' ...';
+  try {
+    await api('/api/action', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-Superharness-Token': AUTH_TOKEN},
+      body: JSON.stringify({action: 'delegate_plan:' + taskId + ':' + agent})
+    });
+    st.textContent = `${agent} enqueued for plan-only dispatch on ${taskId}`;
+  } catch (e) {
+    st.textContent = 'error: ' + String(e);
+  }
+  await refresh();
 }
 
 async function submitProposePlan() {
