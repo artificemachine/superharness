@@ -12,6 +12,13 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
+from superharness.engine.lifecycle import (
+    TERMINAL_STATUSES,
+    allowed_statuses_for_workflow,
+    infer_workflow,
+    plan_only_allowed_statuses,
+)
+
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 VALID_TARGETS = {"claude-code", "codex-cli"}
 
@@ -30,11 +37,21 @@ def _validate_token(name: str, value: str) -> None:
         _abort(f"{name} must match ^[A-Za-z0-9._-]+$", 2)
 
 
-ENQUEUE_BLOCKED_STATUSES = {"plan_proposed", "done"}
+def _validate_contract(
+    contract_file: str,
+    task_id: str,
+    project_dir: str,
+    target: str,
+    *,
+    plan_only: bool = False,
+    force_reassign: bool = False,
+) -> None:
+    """Validate task project_path, owner, and lifecycle status.
 
-
-def _validate_contract(contract_file: str, task_id: str, project_dir: str) -> None:
-    """Validate task project_path and lifecycle status against the running project_dir."""
+    The enqueue gate now mirrors the dispatch gate (`delegate._allowed_statuses_for_workflow`)
+    so tasks that dispatch would permanently reject never reach the inbox and
+    waste retry cycles. See `engine.lifecycle` for the canonical rule set.
+    """
     from superharness.engine.yaml_helpers import safe_load
 
     doc = safe_load(contract_file, dict)
@@ -48,14 +65,10 @@ def _validate_contract(contract_file: str, task_id: str, project_dir: str) -> No
         )
         return
 
-    status = str(task.get("status", ""))
-    if status in ENQUEUE_BLOCKED_STATUSES:
-        _abort(
-            f"blocked: task '{task_id}' status is '{status}' — cannot enqueue.\n"
-            f"  plan_proposed: approve the plan first (shux task status --id {task_id} --status plan_approved ...)\n"
-            f"  done: task is already closed."
-        )
-
+    # project_path checks come first — they indicate a broken contract that
+    # must be fixed before any dispatch can succeed. Status/workflow gate
+    # comes after so test fixtures that omit status still surface path
+    # mismatches first.
     task_path = str(task.get("project_path", "") or "")
     if not task_path:
         _abort(
@@ -85,6 +98,60 @@ def _validate_contract(contract_file: str, task_id: str, project_dir: str) -> No
             f"  expected: {project_dir}"
         )
 
+    # Workflow-aware status gate (parity with delegate.py gate 4).
+    status = str(task.get("status", ""))
+    workflow = infer_workflow(task_id, task)
+
+    # `done` is never re-enqueueable — closed work stays closed. `failed` and
+    # `stopped` are re-dispatchable (reconcile will pick them up after launch).
+    if status == "done":
+        _abort(
+            f"blocked: task '{task_id}' status is 'done' — cannot enqueue.\n"
+            f"  done: task is already closed."
+        )
+
+    if status:
+        if plan_only:
+            allowed = plan_only_allowed_statuses(workflow)
+        else:
+            allowed = allowed_statuses_for_workflow(workflow, for_review=False)
+        passthrough = {"failed", "stopped"}
+        if status not in allowed and status not in passthrough:
+            hint = ""
+            if workflow == "implementation" and status == "todo":
+                hint = (
+                    "\n  hint: implementation tasks need an approved plan before dispatch.\n"
+                    f"  Either author a plan (`shux task status --id {task_id} --status plan_proposed` "
+                    "with a plan handoff) and approve it,\n"
+                    f"  OR re-enqueue with `--plan-only` so the agent proposes the plan first."
+                )
+            elif status == "plan_proposed":
+                hint = (
+                    f"\n  plan_proposed: approve the plan first "
+                    f"(shux task status --id {task_id} --status plan_approved ...)"
+                )
+            _abort(
+                f"blocked: task '{task_id}' status is '{status}' — cannot enqueue "
+                f"for workflow '{workflow}'.\n"
+                f"  allowed at enqueue: {', '.join(sorted(allowed))}" + hint
+            )
+
+    # Owner-mismatch guard. Contract `owner` is the default dispatch target;
+    # when --to disagrees we block unless --force-reassign is set.
+    owner = str(task.get("owner", "") or "").strip()
+    if owner and owner != target:
+        if not force_reassign:
+            _abort(
+                f"blocked: task '{task_id}' is owned by '{owner}', not '{target}'.\n"
+                f"  To dispatch to a different agent, pass --force-reassign "
+                f"or update contract.yaml (owner field)."
+            )
+        print(
+            f"Warning: reassigning '{task_id}' from owner '{owner}' to '{target}' "
+            f"(--force-reassign was set).",
+            file=sys.stderr,
+        )
+
 
 def _check_watcher_health(project_dir: str) -> bool:
     """Check if the watcher launchd job is loaded for this project."""
@@ -109,6 +176,8 @@ def enqueue_cmd(
     item_id: str | None,
     priority: int,
     require_watcher: bool = False,
+    plan_only: bool = False,
+    force_reassign: bool = False,
 ) -> int:
     if not os.path.isdir(project_dir):
         _abort(f"Project directory does not exist: {project_dir}")
@@ -140,7 +209,14 @@ def enqueue_cmd(
 
     # Validate against contract if it exists
     if os.path.exists(contract_file):
-        _validate_contract(contract_file, task_id, project_dir)
+        _validate_contract(
+            contract_file,
+            task_id,
+            project_dir,
+            target,
+            plan_only=plan_only,
+            force_reassign=force_reassign,
+        )
 
     # Watcher health check
     if not _check_watcher_health(project_dir):
@@ -171,6 +247,7 @@ def enqueue_cmd(
             project=project_dir,
             priority=priority,
             created_at=created_at,
+            plan_only=plan_only,
         )
 
     if rc == 2:
@@ -184,6 +261,8 @@ def enqueue_cmd(
     print(f"  to: {target}")
     print(f"  task: {task_id}")
     print(f"  priority: {priority}")
+    if plan_only:
+        print(f"  mode: plan-only (agent proposes plan, does not implement)")
     print(f"  file: {inbox_file}")
     return 0
 
@@ -205,6 +284,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--id", default=None, dest="item_id", help="Optional inbox item id")
     parser.add_argument("--require-watcher", action="store_true", default=False,
                         help="Block enqueue if watcher is not loaded (default: warn only)")
+    parser.add_argument("--plan-only", action="store_true", default=False, dest="plan_only",
+                        help="Agent proposes a plan and stops; relaxes the enqueue gate for "
+                             "todo+implementation tasks")
+    parser.add_argument("--force-reassign", action="store_true", default=False, dest="force_reassign",
+                        help="Allow --to to differ from the contract 'owner' field (one-shot override, "
+                             "does not rewrite the contract)")
 
     opts = parser.parse_args(argv)
 
@@ -215,6 +300,8 @@ def main(argv: list[str] | None = None) -> None:
         item_id=opts.item_id,
         priority=opts.priority,
         require_watcher=opts.require_watcher,
+        plan_only=opts.plan_only,
+        force_reassign=opts.force_reassign,
     )
     sys.exit(rc)
 
