@@ -1343,6 +1343,9 @@ tasks:
   context: 'See session 2026-04-07 bug analysis: auto-commit bypasses 17-step /ship
     pipeline. Option 1 (auto-stash) is the safe interim. This task is intentionally
     blocked until auto-stash proves insufficient.'
+  verified: true
+  verified_at: '2026-04-10T15:14:11Z'
+  verified_by: claude-code
 - id: feat.worktree-gc
   title: shux worktree-gc — clean orphaned dispatch worktrees
   owner: claude-code
@@ -1415,5 +1418,25 @@ tasks:
   workflow: quick
   effort: low
   summary: Implemented
+- id: feat.morpheme-phase1-smoke
+  title: Morpheme Phase 1 smoke task
+  owner: codex-cli
+  status: report_ready
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: quick
+  development_method: none
+  acceptance_criteria:
+  - Morpheme can render a visible todo node from the live superharness project.
+  - The selected project name is obvious in the Morpheme header.
+  effort: medium
+  test_types:
+  - unit
+  context: Temporary smoke task to validate the live Morpheme integration 
+    against a real superharness project.
+  verified: true
+  verified_at: '2026-04-12T10:15:41Z'
+  verified_by: claude-code
+  report_ready_at: '2026-04-10T15:30:00Z'
 decisions: []
 failures: []
