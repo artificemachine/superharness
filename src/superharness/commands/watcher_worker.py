@@ -30,11 +30,17 @@ def main(argv: list[str] | None = None) -> None:
     if not (project_dir / ".superharness").is_dir():
         sys.exit(f"Missing .superharness in project: {project_dir}")
 
+    package_scripts_dir = Path(__file__).resolve().parent.parent / "scripts"
     root = Path(__file__).resolve().parent.parent.parent.parent
-    if not (project_dir / "scripts").is_dir():
-        scripts_dir = root / "scripts"
+    legacy_repo_scripts_dir = root / "scripts"
+    project_scripts_dir = project_dir / "scripts"
+
+    if project_scripts_dir.is_dir():
+        scripts_dir = project_scripts_dir
+    elif package_scripts_dir.is_dir():
+        scripts_dir = package_scripts_dir
     else:
-        scripts_dir = project_dir / "scripts"
+        scripts_dir = legacy_repo_scripts_dir
 
     worker_dir = Path(opts.worker).resolve() if opts.worker else (
         Path.home() / ".superharness-workers" / project_dir.name

@@ -44,6 +44,8 @@ def _ensure_python_with_yaml() -> None:
 
 HTML = (Path(__file__).parent / "dashboard.html").read_text()
 
+from superharness.engine.normalization import normalize_blocked_by as _normalize_blocked_by  # noqa: E402
+
 
 def git_context(project_dir: Path) -> dict:
     """Get current branch, dirty file count, and last commit."""
@@ -367,7 +369,7 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
                     result["contract_title"]    = t.get("title", "")
                     result["contract_owner"]    = t.get("owner", "")
                     result["contract_summary"]  = t.get("summary", "")
-                    result["blocked_by"]        = t.get("blocked_by", "")
+                    result["blocked_by"]        = _normalize_blocked_by(t.get("blocked_by", ""))
                     result["acceptance_criteria"] = t.get("acceptance_criteria") or []
                     result["test_types"]        = t.get("test_types") or []
                     result["tdd"]               = t.get("tdd") or {}
@@ -1078,7 +1080,7 @@ def board_view(contract_file: Path) -> dict:
             "status": st,
             "owner": str(t.get("owner", "")),
             "verified": bool(t.get("verified", False)),
-            "blocked_by": str(t.get("blocked_by", "") or ""),
+            "blocked_by": _normalize_blocked_by(t.get("blocked_by", "")),
         }
         columns[col].append(entry)
         if st in _REVIEW_QUEUE_STATUSES:
@@ -1796,6 +1798,37 @@ class Handler(BaseHTTPRequestHandler):
             if owner_filter:
                 items = [i for i in items if i.get("to") in owner_filter]
             self._json({"items": items, "status": status_filter, "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+            return
+
+        if p == "/api/adapter-preview":
+            # Adapter-payload preview: render todo nodes from the live project
+            contract = self.project_dir / ".superharness" / "contract.yaml"
+            project_name = self.project_dir.name
+            todo_tasks = []
+
+            if contract.exists():
+                try:
+                    import yaml
+                    doc = yaml.safe_load(contract.read_text()) or {}
+                    for task in doc.get("tasks", []):
+                        if isinstance(task, dict) and task.get("status") == "todo":
+                            todo_tasks.append({
+                                "id": task.get("id", ""),
+                                "title": task.get("title", ""),
+                                "owner": task.get("owner", ""),
+                                "effort": task.get("effort", "medium"),
+                                "blocked_by": _normalize_blocked_by(task.get("blocked_by")),
+                            })
+                except Exception as e:
+                    self._json({"error": str(e), "project": project_name, "tasks": []}, 500)
+                    return
+
+            self._json({
+                "project": project_name,
+                "project_path": str(self.project_dir),
+                "tasks": todo_tasks,
+                "count": len(todo_tasks),
+            })
             return
 
         if p == "/api/task-log":
