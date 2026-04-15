@@ -1859,3 +1859,57 @@ If you're an agent picking this up:
 - 4 unit tests in `tests/unit/test_monitor_ui.py` covering
   `_propose_plan_handoff` (happy path, non-todo rejection, blank-field
   placeholder defaults, missing task).
+
+## [1.23.0] - 2026-04-16
+
+### Added
+- `shux delegate --plan-only` — dispatch an agent in plan-only mode. The
+  agent writes a TDD plan handoff (`status: plan_proposed`) and stops; no
+  implementation code is touched. Closes the catch-22 where
+  `todo + implementation` tasks could not be delegated at all.
+- `shux inbox_enqueue --plan-only` — enqueue a task in plan-only mode (the
+  watcher forwards `--plan-only` to the launcher).
+- `shux inbox_enqueue --force-reassign` — opt-in override when `--to`
+  differs from the contract `owner` (one-shot, does not rewrite the
+  contract).
+- Dashboard **Delegate Plan** button on `todo + implementation` tasks —
+  enqueues a plan-only dispatch so the owner agent proposes the plan. Pairs
+  with the existing (v1.22.0) **Propose Plan** modal for owner-authored
+  plans.
+- `superharness.engine.lifecycle` — single source of truth for workflow
+  inference (`infer_workflow`), dispatch gate (`allowed_statuses_for_workflow`),
+  and plan-only relaxation (`plan_only_allowed_statuses`). `delegate.py` now
+  re-exports these as thin shims for one-release backward compat.
+- `EXIT_PERMANENT_BLOCK = 2` exit code contract for `shux delegate` when
+  gate 4 rejects a lifecycle-incompatible task. The inbox dispatcher treats
+  exit 2 as non-retryable: it bumps `retry_count` to `max_retries`
+  immediately so the watcher does not burn 3× retry cycles on a permanent
+  block.
+- `plan_only: true` field on inbox items for plan-only dispatches; inbox
+  dispatch forwards `--plan-only` to the launcher when the flag is set.
+
+### Changed
+- `shux inbox_enqueue` status gate is now workflow-aware — it rejects
+  upfront whatever `shux delegate` gate 4 would reject, instead of
+  accepting and then failing at dispatch time. Owner-mismatch now blocks by
+  default (use `--force-reassign` to override).
+- Hint text on enqueue rejection now points at `--plan-only` or the
+  Propose/Delegate Plan dashboard buttons.
+
+### Fixed
+- Retry exhaustion on permanent blocks. Previously a
+  `todo + implementation` task could be enqueued and then fail three
+  launcher cycles with identical lifecycle errors; now it is rejected at
+  enqueue, or, when dispatched, marked failed immediately without retries.
+- `scripts/inbox-deadline-check.sh` now passes `--force-reassign` when
+  swapping ownership on deadline miss — the new enqueue guard required it.
+
+### Tests
+- New `tests/unit/test_lifecycle.py` (12 tests) covering workflow
+  inference, allowed-status matrices, plan-only relaxation, terminal
+  status constants.
+- 8 new tests in `tests/unit/test_inbox_enqueue.py` covering workflow-aware
+  gate, plan-only acceptance, plan_only flag persistence, owner-mismatch
+  block + `--force-reassign` override, matching-target no-warn path.
+- 4 new tests in `tests/unit/test_delegate.py` covering exit 2 on
+  permanent block, plan-only relaxation, prompt-directive injection.

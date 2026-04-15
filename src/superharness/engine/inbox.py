@@ -299,6 +299,7 @@ def enqueue(
     created_at: str,
     retry_count: int = 0,
     max_retries: int = 3,
+    plan_only: bool = False,
 ) -> int:
     items = _load_items(file)
     if any(isinstance(x, dict) and str(x.get("id", "")) == str(id) for x in items):
@@ -330,6 +331,8 @@ def enqueue(
         "max_retries": int(max_retries),
         "created_at": str(created_at),
     }
+    if plan_only:
+        item["plan_only"] = True
     items.append(item)
     _write_items(file, items)
     print(f"result=enqueued id={id} priority={norm_p}")
