@@ -457,3 +457,71 @@ def test_delegate_via_sdk_print_only_falls_back_when_unavailable(repo_root, tmp_
     assert result.returncode == 0, result.stderr
     assert "SDK not available" in result.stderr and "falling back" in result.stderr.lower()
     assert "Via: cli" in result.stdout
+
+
+# ── gate 4 exit code + --plan-only ───────────────────────────────────────────
+
+def _setup_project_todo(tmp_path: Path) -> Path:
+    """Project with a single `todo` + `implementation` task."""
+    project = tmp_path / "proj_todo"
+    project.mkdir()
+    harness = project / ".superharness"
+    (harness / "handoffs").mkdir(parents=True, exist_ok=True)
+    (harness / "contract.yaml").write_text(
+        "id: test-contract\n"
+        "tasks:\n"
+        "  - id: feat.wip\n"
+        "    owner: claude-code\n"
+        "    status: todo\n"
+        "    workflow: implementation\n"
+        f"    project_path: '{project.as_posix()}'\n"
+    )
+    return project
+
+
+def test_delegate_returns_exit_2_on_permanent_lifecycle_block(tmp_path):
+    """Gate 4 rejection of a lifecycle-incompatible task returns exit 2 (non-retryable)."""
+    project = _setup_project_todo(tmp_path)
+    r = _run_delegate_py(
+        project,
+        args=["--to", "claude-code", "--project", str(project),
+              "--task", "feat.wip", "--print-only"],
+    )
+    assert r.returncode == 2, (r.returncode, r.stdout, r.stderr)
+    assert "plan must be approved" in r.stderr or "blocked" in r.stderr
+
+
+def test_delegate_plan_only_accepts_todo_implementation(tmp_path):
+    """--plan-only relaxes gate 4 for todo + implementation."""
+    project = _setup_project_todo(tmp_path)
+    r = _run_delegate_py(
+        project,
+        args=["--to", "claude-code", "--project", str(project),
+              "--task", "feat.wip", "--plan-only", "--print-only"],
+    )
+    assert r.returncode == 0, (r.returncode, r.stdout, r.stderr)
+
+
+def test_delegate_plan_only_injects_directive_into_prompt(tmp_path):
+    """The plan-only directive appears verbatim in the agent prompt."""
+    project = _setup_project_todo(tmp_path)
+    r = _run_delegate_py(
+        project,
+        args=["--to", "claude-code", "--project", str(project),
+              "--task", "feat.wip", "--plan-only", "--print-only"],
+    )
+    assert r.returncode == 0, r.stderr
+    assert "PLAN-ONLY MODE" in r.stdout
+    assert "Do NOT write, modify, or delete" in r.stdout
+    assert "plan_proposed" in r.stdout
+
+
+def test_delegate_without_plan_only_returns_exit_2_for_todo_impl(tmp_path):
+    """Without --plan-only the same task returns permanent-block exit code."""
+    project = _setup_project_todo(tmp_path)
+    r = _run_delegate_py(
+        project,
+        args=["--to", "claude-code", "--project", str(project),
+              "--task", "feat.wip"],
+    )
+    assert r.returncode == 2, (r.returncode, r.stderr)

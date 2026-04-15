@@ -168,12 +168,16 @@ deadline_context:
   stopped_at: "${NOW}"
 HANDOFF
 
-  # Re-enqueue for the other owner.
+  # Re-enqueue for the other owner. --force-reassign is required because the
+  # contract `owner` still names the agent that missed the deadline; this is a
+  # controlled handoff initiated by the deadline checker, not an accidental
+  # cross-agent dispatch.
   "$PYTHON3" -m superharness.commands.inbox_enqueue \
     --project "$project" \
     --to "$new_owner" \
     --task "$task_id" \
-    --priority "$priority"
+    --priority "$priority" \
+    --force-reassign
 
   # Append to ledger.
   if [ -f "$LEDGER_FILE" ]; then

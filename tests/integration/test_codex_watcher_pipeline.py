@@ -70,6 +70,9 @@ def test_codex_watcher_dispatch_smoke(repo_root: Path, tmp_path: Path) -> None:
             "id": "smoke-test-task",
             "title": "Smoke test task for watcher",
             "status": "todo",
+            # See sibling claude test for why `quick`: bypass the implementation
+            # plan-phase gate so a todo task is directly enqueueable.
+            "workflow": "quick",
             "owner": "codex-cli",
             "project_path": str(project),
         }
