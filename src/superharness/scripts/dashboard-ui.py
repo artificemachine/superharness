@@ -1090,6 +1090,62 @@ def board_view(contract_file: Path) -> dict:
     return {"columns": columns, "review_queue": review_queue, "totals": totals}
 
 
+def _propose_plan_handoff(
+    harness_dir: Path,
+    task_id: str,
+    *,
+    plan_summary: str,
+    tdd_red: str,
+    tdd_green: str,
+    tdd_refactor: str,
+    risks: str = "",
+    author: str = "owner",
+) -> dict:
+    """Write a plan handoff for a todo task and transition its status.
+
+    Used by the dashboard "Propose Plan" action so the owner can author a
+    plan inline without waiting for an agent. Requires the task to be in
+    'todo' status; transitions it to 'plan_proposed'.
+    """
+    import yaml  # noqa: F811
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    handoff_dir = harness_dir / "handoffs"
+    handoff_dir.mkdir(parents=True, exist_ok=True)
+
+    # Transition contract status todo -> plan_proposed
+    status_result = _set_task_status(harness_dir, task_id, "plan_proposed", from_status="todo")
+    if not status_result.get("ok"):
+        return status_result
+
+    safe_ts = now.replace(":", "-")
+    handoff_file = handoff_dir / f"{task_id}-plan-{safe_ts}-{author}.yaml"
+    doc = {
+        "task":   task_id,
+        "phase":  "plan",
+        "status": "plan_proposed",
+        "from":   author,
+        "to":     "owner",
+        "date":   now,
+        "plan":   plan_summary.strip() or "(plan body pending)",
+        "tdd": {
+            "red":      tdd_red.strip()      or "(red phase pending)",
+            "green":    tdd_green.strip()    or "(green phase pending)",
+            "refactor": tdd_refactor.strip() or "(refactor phase pending)",
+        },
+    }
+    if risks.strip():
+        doc["risks"] = risks.strip()
+
+    try:
+        handoff_file.write_text(yaml.dump(doc, default_flow_style=False, allow_unicode=True, sort_keys=False))
+    except Exception as exc:  # shipguard:ignore PY-007
+        # Roll back status transition so task doesn't sit in plan_proposed without a handoff.
+        _set_task_status(harness_dir, task_id, "todo", from_status="plan_proposed")
+        return {"ok": False, "error": f"failed to write handoff: {exc}"}
+
+    return {"ok": True, "task": task_id, "handoff": str(handoff_file.name), "status": "plan_proposed"}
+
+
 def _confirm_plan(harness_dir: Path, task_id: str) -> dict:
     """Confirm a plan_proposed task: set contract task to todo, update handoff."""
     import yaml  # noqa: F811
@@ -1482,6 +1538,23 @@ class Handler(BaseHTTPRequestHandler):
                 return ({"error": "missing task id"}, 400)
             result = _set_task_status(self.project_dir / ".superharness", task_id, "plan_approved", from_status="plan_proposed")
             return result, (200 if result.get("ok") else 500)
+
+        if action.startswith("propose_plan:"):
+            task_id = action.split(":", 1)[1]
+            if not task_id:
+                return ({"error": "missing task id"}, 400)
+            p = payload or {}
+            result = _propose_plan_handoff(
+                self.project_dir / ".superharness",
+                task_id,
+                plan_summary=str(p.get("plan_summary", "")),
+                tdd_red=str(p.get("tdd_red", "")),
+                tdd_green=str(p.get("tdd_green", "")),
+                tdd_refactor=str(p.get("tdd_refactor", "")),
+                risks=str(p.get("risks", "")),
+                author=str(p.get("author") or "owner"),
+            )
+            return result, (200 if result.get("ok") else 400)
 
         if action.startswith("request_review:"):
             parts = action.split(":", 2)
