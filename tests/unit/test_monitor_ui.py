@@ -2673,3 +2673,117 @@ def test_monitor_html_contains_board_and_review_queue_elements(repo_root, tmp_pa
     assert "reviewQueueList" in html or "reviewQueueCard" in html or "review queue" in html.lower()
     # Agent health element
     assert "agentHealthList" in html or "agentHealthCard" in html or "agent health" in html.lower()
+
+
+# ── propose_plan: author plan inline from dashboard ──────────────────────────
+
+def _setup_project_with_todo_task(tmp_path: Path) -> Path:
+    """Project with a single todo + implementation task."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    harness = project / ".superharness"
+    (harness / "handoffs").mkdir(parents=True, exist_ok=True)
+    (harness / "contract.yaml").write_text(
+        "id: test-contract\n"
+        "created: 2026-04-15\n"
+        "goal: Test\n"
+        "tasks:\n"
+        "  - id: feat.one\n"
+        "    title: One\n"
+        "    owner: claude-code\n"
+        "    status: todo\n"
+        "    workflow: implementation\n"
+    )
+    return project
+
+
+def test_propose_plan_transitions_status_and_writes_handoff(repo_root, tmp_path):
+    """_propose_plan_handoff transitions todo->plan_proposed and writes a handoff YAML."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project_with_todo_task(tmp_path)
+    harness = project / ".superharness"
+
+    result = module._propose_plan_handoff(
+        harness,
+        "feat.one",
+        plan_summary="Implement thing",
+        tdd_red="write failing test",
+        tdd_green="pass it",
+        tdd_refactor="cleanup",
+        risks="none",
+    )
+
+    assert result["ok"] is True, result
+    assert result["status"] == "plan_proposed"
+
+    # Contract status updated
+    import yaml
+    doc = yaml.safe_load((harness / "contract.yaml").read_text())
+    assert doc["tasks"][0]["status"] == "plan_proposed"
+    assert doc["tasks"][0]["plan_proposed_at"]
+
+    # Handoff file exists and contains TDD block
+    handoffs = list((harness / "handoffs").glob("feat.one-plan-*.yaml"))
+    assert len(handoffs) == 1
+    ho = yaml.safe_load(handoffs[0].read_text())
+    assert ho["task"] == "feat.one"
+    assert ho["phase"] == "plan"
+    assert ho["status"] == "plan_proposed"
+    assert ho["tdd"]["red"] == "write failing test"
+    assert ho["tdd"]["green"] == "pass it"
+    assert ho["tdd"]["refactor"] == "cleanup"
+    assert ho["risks"] == "none"
+
+
+def test_propose_plan_rejects_non_todo_task(repo_root, tmp_path):
+    """Cannot propose a plan on a task that is not in todo status."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project_with_todo_task(tmp_path)
+    harness = project / ".superharness"
+
+    # Move task to plan_approved
+    module._set_task_status(harness, "feat.one", "plan_approved")
+
+    result = module._propose_plan_handoff(
+        harness, "feat.one",
+        plan_summary="x", tdd_red="x", tdd_green="x", tdd_refactor="x",
+    )
+    assert result["ok"] is False
+    assert "expected 'todo'" in result["error"]
+
+    # No handoff written
+    assert not list((harness / "handoffs").glob("feat.one-plan-*.yaml"))
+
+
+def test_propose_plan_defaults_empty_tdd_fields_to_placeholder(repo_root, tmp_path):
+    """Blank fields become '(... pending)' placeholders so YAML stays valid."""
+    module = _load_monitor_module(repo_root)
+    project = _setup_project_with_todo_task(tmp_path)
+    harness = project / ".superharness"
+
+    result = module._propose_plan_handoff(
+        harness, "feat.one",
+        plan_summary="", tdd_red="", tdd_green="", tdd_refactor="",
+    )
+    assert result["ok"] is True
+
+    import yaml
+    handoffs = list((harness / "handoffs").glob("feat.one-plan-*.yaml"))
+    ho = yaml.safe_load(handoffs[0].read_text())
+    assert "pending" in ho["tdd"]["red"]
+    assert "pending" in ho["tdd"]["green"]
+    assert "pending" in ho["tdd"]["refactor"]
+    assert "risks" not in ho  # empty risks omitted
+
+
+def test_propose_plan_missing_task_returns_error(repo_root, tmp_path):
+    module = _load_monitor_module(repo_root)
+    project = _setup_project_with_todo_task(tmp_path)
+    harness = project / ".superharness"
+
+    result = module._propose_plan_handoff(
+        harness, "does.not.exist",
+        plan_summary="x", tdd_red="x", tdd_green="x", tdd_refactor="x",
+    )
+    assert result["ok"] is False
+    assert "not found" in result["error"]
