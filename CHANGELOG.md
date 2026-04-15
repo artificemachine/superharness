@@ -1797,3 +1797,47 @@ If you're an agent picking this up:
 - PTY line-dropping under load: `script` command now uses `-F` (macOS) / `-f` (Linux)
   flush flag, forcing output to be written immediately rather than buffered. Also adds
   `PYTHONUNBUFFERED=1` to spawn_env for the Python launcher.
+
+## [1.20.0] - 2026-04-12
+
+### Added
+- `shux adapter-payload --json [--project PATH]` — emits the full project state
+  as a stable JSON payload (schema v1.0) for consumption by Morpheme and other
+  adapters. Covers tasks (with `display_status`, `color`, `blocked_by`,
+  `acceptance_criteria`, `handoffs`), edges, ledger, failures, decisions, and
+  active inbox items. Spec: `docs/morpheme-adapter-spec.md`.
+- `docs/morpheme-adapter-spec.md` — complete adapter payload spec: annotated
+  JSON example, field reference for all 9 types, `display_status`/color mapping
+  table extracted from Morpheme's `rawParser.js`, migration plan, open questions.
+- 36 new unit tests in `tests/unit/test_adapter_payload.py`.
+- `waiting_input` and `paused` task status mapping in adapter-payload: both map to
+  Morpheme `paused` display state with amber `#f59e0b` color.
+- `agent_pulse` field in adapter-payload: reads `.superharness/agent-pulse.yaml` and
+  includes liveness signal (task_id, agent, status, last_seen, message, pid) in the
+  JSON output. Returns null when no pulse file exists or the file is corrupt.
+
+## [1.21.0] - 2026-04-15
+
+### Added
+- `subtasks[]` field in adapter-payload task output — full subtask list with
+  id, title, model_tier, owner, estimated_tokens, estimated_cost_usd, rationale.
+- `superharness.engine.normalization.normalize_blocked_by()` — single source of
+  truth for collapsing YAML null sentinels (`none`, `null`, `~`, `""`) to `[]`
+  across adapter-payload and dashboard.
+- Dashboard "Adapter preview" card — hidden by default, toggle button persists
+  state in localStorage; gates network polling on visibility.
+- 8 new sentinel-coverage tests in `tests/unit/test_adapter_payload.py`.
+
+### Changed
+- Dashboard HTTP API `blocked_by` shape normalized to `list[str]` (was scalar
+  string). JS consumers handle both shapes via `Array.isArray()` check.
+- Renamed `docs/morpheme-adapter-spec.md` → `docs/adapter-payload-spec.md` and
+  reframed the doc as a generic JSON contract (Morpheme is the reference
+  consumer, not the sole consumer).
+- Renamed `/api/morpheme` → `/api/adapter-preview` (dashboard internal endpoint).
+- Renamed Morpheme-branded dashboard CSS classes, element IDs, JS functions,
+  and localStorage key to generic `adapterPreview*` / `adapter-*` variants.
+
+### Fixed
+- Packaged watcher installer scripts now resolve correctly (prior release
+  referenced development-only paths).

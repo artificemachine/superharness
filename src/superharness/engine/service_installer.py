@@ -28,6 +28,21 @@ import sys
 from pathlib import Path
 
 
+def _resolve_script(scripts_dir: Path, script_name: str) -> Path:
+    """Resolve a watcher installer script from current or legacy layouts."""
+    candidate = scripts_dir / script_name
+    if candidate.is_file():
+        return candidate
+
+    package_scripts_dir = Path(__file__).resolve().parent.parent / "scripts"
+    candidate = package_scripts_dir / script_name
+    if candidate.is_file():
+        return candidate
+
+    repo_scripts_dir = Path(__file__).resolve().parent.parent.parent.parent / "scripts"
+    return repo_scripts_dir / script_name
+
+
 # ---------------------------------------------------------------------------
 # Backend detection
 # ---------------------------------------------------------------------------
@@ -66,7 +81,7 @@ def _install_launchd(
     to: str,
     codex_bypass: bool,
 ) -> bool:
-    script = scripts_dir / "install-launchd-inbox-watcher.sh"
+    script = _resolve_script(scripts_dir, "install-launchd-inbox-watcher.sh")
     if not script.is_file():
         print(f"Warning: launchd install script not found: {script}", file=sys.stderr)
         return False
@@ -90,7 +105,7 @@ def _install_launchd(
 
 
 def _uninstall_launchd(project_dir: Path, scripts_dir: Path) -> bool:
-    script = scripts_dir / "uninstall-launchd-inbox-watcher.sh"
+    script = _resolve_script(scripts_dir, "uninstall-launchd-inbox-watcher.sh")
     if not script.is_file():
         return False
     result = subprocess.run(["bash", str(script), "--project", str(project_dir)], check=False)
@@ -108,7 +123,7 @@ def _install_systemd(
     scripts_dir: Path,
     **_kwargs: object,
 ) -> bool:
-    script = scripts_dir / "install-systemd-inbox-watcher.sh"
+    script = _resolve_script(scripts_dir, "install-systemd-inbox-watcher.sh")
     if not script.is_file():
         print(
             "INFO: systemd install script not found. "
@@ -123,7 +138,7 @@ def _install_systemd(
 
 
 def _uninstall_systemd(project_dir: Path, scripts_dir: Path) -> bool:
-    script = scripts_dir / "uninstall-systemd-inbox-watcher.sh"
+    script = _resolve_script(scripts_dir, "uninstall-systemd-inbox-watcher.sh")
     if not script.is_file():
         return False
     result = subprocess.run(["bash", str(script), "--project", str(project_dir)], check=False)

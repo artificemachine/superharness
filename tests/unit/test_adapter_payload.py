@@ -1,0 +1,645 @@
+"""Tests for shux adapter-payload --json command."""
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+from tests.helpers import REPO_ROOT
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _run(args: list[str], cwd: str | None = None):
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    return subprocess.run(
+        [sys.executable, "-m", "superharness.commands.adapter_payload"] + args,
+        cwd=cwd or str(REPO_ROOT),
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+
+
+def _setup(tmp_path: Path, *, tasks: list[dict] | None = None) -> Path:
+    """Create a minimal .superharness/ project under tmp_path."""
+    project = tmp_path / "proj"
+    sh = project / ".superharness"
+    (sh / "handoffs").mkdir(parents=True)
+    (sh / "failures.yaml").write_text("failures: []\n")
+    (sh / "decisions.yaml").write_text("decisions: []\n")
+    (sh / "inbox.yaml").write_text("# inbox\n")
+    (sh / "ledger.md").write_text("# Ledger\n\n")
+
+    raw_tasks = tasks or [
+        {"id": "feat.one", "title": "Feature one", "owner": "claude-code", "status": "in_progress"},
+    ]
+    task_yaml = "\n".join(
+        f"  - id: {t['id']}\n    title: \"{t['title']}\"\n"
+        f"    owner: {t['owner']}\n    status: {t['status']}"
+        + (f"\n    dependency: {t['dependency']}" if "dependency" in t else "")
+        for t in raw_tasks
+    )
+    (sh / "contract.yaml").write_text(
+        f"id: test-contract\ngoal: Test goal\ncreated: 2026-01-01\n"
+        f"created_by: owner\nstatus: active\ntasks:\n{task_yaml}\n"
+    )
+    return project
+
+
+# ---------------------------------------------------------------------------
+# Schema structure
+# ---------------------------------------------------------------------------
+
+class TestSchema:
+    def test_schema_version_is_1_0(self, tmp_path):
+        project = _setup(tmp_path)
+        r = _run(["--project", str(project)])
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert d["schema_version"] == "1.0"
+
+    def test_top_level_keys_present(self, tmp_path):
+        project = _setup(tmp_path)
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        for key in ("schema_version", "contract_id", "goal", "tasks",
+                    "edges", "ledger", "failures", "decisions", "inbox"):
+            assert key in d, f"missing top-level key: {key}"
+
+    def test_contract_id_and_goal(self, tmp_path):
+        project = _setup(tmp_path)
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert d["contract_id"] == "test-contract"
+        assert d["goal"] == "Test goal"
+
+    def test_output_is_valid_json(self, tmp_path):
+        project = _setup(tmp_path)
+        r = _run(["--project", str(project)])
+        assert r.returncode == 0
+        json.loads(r.stdout)  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# Task fields
+# ---------------------------------------------------------------------------
+
+class TestTaskFields:
+    def test_task_required_fields(self, tmp_path):
+        project = _setup(tmp_path)
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        task = d["tasks"][0]
+        for f in ("id", "title", "status", "display_status", "color",
+                  "owner", "blocked_by", "acceptance_criteria", "handoffs"):
+            assert f in task, f"task missing field: {f}"
+
+    def test_task_id_and_title(self, tmp_path):
+        project = _setup(tmp_path)
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        task = d["tasks"][0]
+        assert task["id"] == "feat.one"
+        assert task["title"] == "Feature one"
+
+    def test_blocked_by_is_list(self, tmp_path):
+        project = _setup(tmp_path)
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert isinstance(d["tasks"][0]["blocked_by"], list)
+
+    def test_acceptance_criteria_is_list(self, tmp_path):
+        project = _setup(tmp_path)
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert isinstance(d["tasks"][0]["acceptance_criteria"], list)
+
+    def test_handoffs_is_list(self, tmp_path):
+        project = _setup(tmp_path)
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert isinstance(d["tasks"][0]["handoffs"], list)
+
+
+# ---------------------------------------------------------------------------
+# blocked_by normalization — YAML null sentinels must collapse to []
+# ---------------------------------------------------------------------------
+
+def _write_contract(project: Path, blocked_by_literal: str) -> None:
+    """Write a minimal contract.yaml with a single task carrying the given
+    `blocked_by:` YAML literal (passed verbatim, so callers can test `none`,
+    `null`, `~`, lists, etc.)."""
+    sh = project / ".superharness"
+    (sh / "handoffs").mkdir(parents=True, exist_ok=True)
+    (sh / "failures.yaml").write_text("failures: []\n")
+    (sh / "decisions.yaml").write_text("decisions: []\n")
+    (sh / "inbox.yaml").write_text("# inbox\n")
+    (sh / "ledger.md").write_text("# Ledger\n\n")
+    (sh / "contract.yaml").write_text(
+        "id: test-contract\ngoal: G\ncreated: 2026-01-01\n"
+        "created_by: owner\nstatus: active\n"
+        "tasks:\n"
+        "  - id: t1\n"
+        "    title: T\n"
+        "    owner: claude-code\n"
+        "    status: todo\n"
+        f"    blocked_by: {blocked_by_literal}\n"
+    )
+
+
+class TestBlockedByNormalization:
+    """blocked_by must collapse YAML null sentinels (none, null, ~, '') to []."""
+
+    def _blocked_by(self, tmp_path: Path, literal: str) -> list[str]:
+        project = tmp_path / f"proj_{abs(hash(literal)) % 10_000}"
+        project.mkdir()
+        _write_contract(project, literal)
+        r = _run(["--project", str(project)])
+        assert r.returncode == 0, r.stderr
+        return json.loads(r.stdout)["tasks"][0]["blocked_by"]
+
+    def test_literal_none_collapses_to_empty_list(self, tmp_path):
+        assert self._blocked_by(tmp_path, "none") == []
+
+    def test_literal_null_collapses_to_empty_list(self, tmp_path):
+        assert self._blocked_by(tmp_path, "null") == []
+
+    def test_literal_tilde_collapses_to_empty_list(self, tmp_path):
+        assert self._blocked_by(tmp_path, "~") == []
+
+    def test_empty_string_collapses_to_empty_list(self, tmp_path):
+        assert self._blocked_by(tmp_path, '""') == []
+
+    def test_empty_list_collapses_to_empty_list(self, tmp_path):
+        assert self._blocked_by(tmp_path, "[]") == []
+
+    def test_scalar_task_id_preserved(self, tmp_path):
+        assert self._blocked_by(tmp_path, "iter-0-red") == ["iter-0-red"]
+
+    def test_list_filters_null_sentinels(self, tmp_path):
+        assert self._blocked_by(tmp_path, "[none, iter-0, null]") == ["iter-0"]
+
+    def test_list_of_task_ids_preserved(self, tmp_path):
+        assert self._blocked_by(tmp_path, "[iter-0, iter-1]") == ["iter-0", "iter-1"]
+
+
+# ---------------------------------------------------------------------------
+# display_status + color mapping
+# ---------------------------------------------------------------------------
+
+class TestStatusMapping:
+    _cases = [
+        ("todo",             "pending",    "#6b7280"),
+        ("plan_proposed",    "pending",    "#c8922a"),
+        ("plan_approved",    "generating", "#4e8098"),
+        ("in_progress",      "generating", "#4e8098"),
+        ("report_ready",     "validating", "#8b5cf6"),
+        ("review_requested", "validating", "#8b5cf6"),
+        ("review_passed",    "validating", "#10b981"),
+        ("review_failed",    "failed",     "#ef4444"),
+        ("done",             "done",       "#10b981"),
+        ("failed",           "failed",     "#ef4444"),
+        ("stopped",          "failed",     "#ef4444"),
+    ]
+
+    def test_all_status_mappings(self, tmp_path):
+        for raw_status, expected_display, expected_color in self._cases:
+            project = _setup(tmp_path / raw_status, tasks=[
+                {"id": "t1", "title": "T", "owner": "claude-code", "status": raw_status},
+            ])
+            d = json.loads(_run(["--project", str(project)]).stdout)
+            task = d["tasks"][0]
+            assert task["display_status"] == expected_display, \
+                f"status={raw_status}: expected display_status={expected_display}, got {task['display_status']}"
+            assert task["color"] == expected_color, \
+                f"status={raw_status}: expected color={expected_color}, got {task['color']}"
+
+    def test_unknown_status_falls_back_to_pending(self, tmp_path):
+        """An unrecognized status should not crash — falls back to pending."""
+        project = _setup(tmp_path, tasks=[
+            {"id": "t1", "title": "T", "owner": "claude-code", "status": "some_future_status"},
+        ])
+        r = _run(["--project", str(project)])
+        assert r.returncode == 0
+        d = json.loads(r.stdout)
+        assert d["tasks"][0]["display_status"] == "pending"
+
+
+# ---------------------------------------------------------------------------
+# blocked_by normalization
+# ---------------------------------------------------------------------------
+
+class TestBlockedBy:
+    def test_dependency_scalar_normalized_to_list(self, tmp_path):
+        """YAML `dependency: t1` must become `blocked_by: ['t1']`."""
+        project = _setup(tmp_path, tasks=[
+            {"id": "t1", "title": "T1", "owner": "claude-code", "status": "done"},
+            {"id": "t2", "title": "T2", "owner": "claude-code", "status": "todo",
+             "dependency": "t1"},
+        ])
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        t2 = next(t for t in d["tasks"] if t["id"] == "t2")
+        assert t2["blocked_by"] == ["t1"]
+
+    def test_root_task_has_empty_blocked_by(self, tmp_path):
+        project = _setup(tmp_path)
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert d["tasks"][0]["blocked_by"] == []
+
+
+# ---------------------------------------------------------------------------
+# Edges
+# ---------------------------------------------------------------------------
+
+class TestEdges:
+    def test_root_task_gets_contract_edge(self, tmp_path):
+        project = _setup(tmp_path)
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert any(
+            e["source"] == "__contract__" and e["type"] == "contract"
+            for e in d["edges"]
+        )
+
+    def test_dependency_produces_dependency_edge(self, tmp_path):
+        project = _setup(tmp_path, tasks=[
+            {"id": "t1", "title": "T1", "owner": "claude-code", "status": "done"},
+            {"id": "t2", "title": "T2", "owner": "claude-code", "status": "todo",
+             "dependency": "t1"},
+        ])
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert any(
+            e["source"] == "t1" and e["target"] == "t2" and e["type"] == "dependency"
+            for e in d["edges"]
+        )
+
+    def test_edge_fields_present(self, tmp_path):
+        project = _setup(tmp_path)
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        for e in d["edges"]:
+            assert "source" in e and "target" in e and "type" in e
+
+
+# ---------------------------------------------------------------------------
+# Handoffs
+# ---------------------------------------------------------------------------
+
+class TestHandoffs:
+    def test_handoff_attached_to_correct_task(self, tmp_path):
+        project = _setup(tmp_path)
+        hf = project / ".superharness" / "handoffs" / "report-feat.one.yaml"
+        hf.write_text(
+            "task: feat.one\nphase: report\nstatus: report_ready\n"
+            "from: claude-code\nto: owner\ndate: 2026-04-10T10:00:00Z\n"
+            "outcome: Done.\nverified: false\n"
+        )
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        task = d["tasks"][0]
+        assert len(task["handoffs"]) == 1
+        h = task["handoffs"][0]
+        assert h["phase"] == "report"
+        assert h["from"] == "claude-code"
+        assert h["status"] == "report_ready"
+
+    def test_handoff_files_touched_alias(self, tmp_path):
+        """`files_touched` in YAML must appear as `files_changed` in payload."""
+        project = _setup(tmp_path)
+        hf = project / ".superharness" / "handoffs" / "report.yaml"
+        hf.write_text(
+            "task: feat.one\nphase: report\nstatus: report_ready\n"
+            "from: claude-code\nto: owner\ndate: 2026-04-10T10:00:00Z\n"
+            "files_touched:\n  - src/foo.py\n"
+        )
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        h = d["tasks"][0]["handoffs"][0]
+        assert "files_changed" in h
+        assert h["files_changed"] == ["src/foo.py"]
+
+    def test_handoff_without_task_field_ignored(self, tmp_path):
+        """YAML file with no `task:` key must not appear in any task's handoffs."""
+        project = _setup(tmp_path)
+        hf = project / ".superharness" / "handoffs" / "orphan.yaml"
+        hf.write_text("phase: report\nstatus: done\nfrom: owner\nto: owner\n")
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        total = sum(len(t["handoffs"]) for t in d["tasks"])
+        assert total == 0
+
+    def test_handoffs_sorted_oldest_first(self, tmp_path):
+        project = _setup(tmp_path)
+        sh = project / ".superharness" / "handoffs"
+        (sh / "b_report.yaml").write_text(
+            "task: feat.one\nphase: report\nstatus: report_ready\n"
+            "from: claude-code\nto: owner\ndate: 2026-04-12T10:00:00Z\n"
+        )
+        (sh / "a_plan.yaml").write_text(
+            "task: feat.one\nphase: plan\nstatus: plan_approved\n"
+            "from: owner\nto: claude-code\ndate: 2026-04-11T08:00:00Z\n"
+        )
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        hs = d["tasks"][0]["handoffs"]
+        assert len(hs) == 2
+        assert hs[0]["phase"] == "plan"   # older file (a_) comes first
+        assert hs[1]["phase"] == "report"
+
+
+# ---------------------------------------------------------------------------
+# Ledger
+# ---------------------------------------------------------------------------
+
+class TestLedger:
+    def test_ledger_entries_parsed(self, tmp_path):
+        project = _setup(tmp_path)
+        (project / ".superharness" / "ledger.md").write_text(
+            "# Ledger\n\n"
+            "- 2026-04-10T08:00:00Z — claude-code — modified: foo.py\n"
+            "2026-04-11T09:00:00Z session-stop: snapshot written\n"
+        )
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert len(d["ledger"]) == 2
+
+    def test_ledger_newest_first(self, tmp_path):
+        project = _setup(tmp_path)
+        (project / ".superharness" / "ledger.md").write_text(
+            "# Ledger\n\n"
+            "- 2026-04-10T08:00:00Z — claude-code — modified: foo.py\n"
+            "- 2026-04-11T09:00:00Z — claude-code — modified: bar.py\n"
+        )
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert d["ledger"][0]["timestamp"] > d["ledger"][1]["timestamp"]
+
+    def test_ledger_entry_fields(self, tmp_path):
+        project = _setup(tmp_path)
+        (project / ".superharness" / "ledger.md").write_text(
+            "# Ledger\n\n"
+            "- 2026-04-10T08:00:00Z — claude-code — modified: foo.py\n"
+        )
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        e = d["ledger"][0]
+        assert "timestamp" in e
+        assert "type" in e
+        assert "description" in e
+
+    def test_ledger_session_type(self, tmp_path):
+        project = _setup(tmp_path)
+        (project / ".superharness" / "ledger.md").write_text(
+            "# Ledger\n\n"
+            "2026-04-10T08:00:00Z session-stop: branch main\n"
+        )
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert d["ledger"][0]["type"] == "session"
+
+    def test_empty_ledger_returns_empty_list(self, tmp_path):
+        project = _setup(tmp_path)
+        (project / ".superharness" / "ledger.md").write_text("# Ledger\n\n")
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert d["ledger"] == []
+
+
+# ---------------------------------------------------------------------------
+# Failures / Decisions / Inbox
+# ---------------------------------------------------------------------------
+
+class TestFailures:
+    def test_failures_loaded(self, tmp_path):
+        project = _setup(tmp_path)
+        (project / ".superharness" / "failures.yaml").write_text(
+            "failures:\n"
+            "  - task: feat.one\n    severity: minor\n"
+            "    error_snippet: 'AssertionError'\n"
+            "    patterns: [unknown]\n    agent: claude-code\n"
+            "    date: '2026-04-09T00:00:00Z'\n"
+        )
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert len(d["failures"]) == 1
+        f = d["failures"][0]
+        assert f["task"] == "feat.one"
+        assert f["severity"] == "minor"
+
+    def test_empty_failures_returns_list(self, tmp_path):
+        project = _setup(tmp_path)
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert isinstance(d["failures"], list)
+
+
+class TestDecisions:
+    def test_decisions_loaded(self, tmp_path):
+        project = _setup(tmp_path)
+        (project / ".superharness" / "decisions.yaml").write_text(
+            "decisions:\n"
+            "  - id: ADR-001\n    what: Use JWT\n    why: Simple\n"
+            "    alternatives: [sessions]\n    status: accepted\n"
+            "    by: owner\n    date: '2026-04-10'\n"
+        )
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert len(d["decisions"]) == 1
+        assert d["decisions"][0]["id"] == "ADR-001"
+
+    def test_empty_decisions_returns_list(self, tmp_path):
+        project = _setup(tmp_path)
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert isinstance(d["decisions"], list)
+
+
+class TestInbox:
+    def test_active_inbox_items_included(self, tmp_path):
+        project = _setup(tmp_path)
+        (project / ".superharness" / "inbox.yaml").write_text(
+            "- id: inbox-001\n  task: feat.one\n  status: pending\n"
+            "  to: claude-code\n  priority: 2\n  retry_count: 0\n"
+            "  max_retries: 3\n  created_at: '2026-04-10T10:00:00Z'\n"
+        )
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert len(d["inbox"]) == 1
+        assert d["inbox"][0]["id"] == "inbox-001"
+
+    def test_done_inbox_items_excluded(self, tmp_path):
+        """Completed inbox items must not appear in the payload."""
+        project = _setup(tmp_path)
+        (project / ".superharness" / "inbox.yaml").write_text(
+            "- id: done-001\n  task: feat.one\n  status: done\n"
+            "  to: claude-code\n  priority: 2\n  retry_count: 0\n"
+            "  max_retries: 3\n  created_at: '2026-04-10T10:00:00Z'\n"
+        )
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert d["inbox"] == []
+
+    def test_all_active_statuses_included(self, tmp_path):
+        project = _setup(tmp_path)
+        (project / ".superharness" / "inbox.yaml").write_text(
+            "- id: i1\n  task: feat.one\n  status: pending\n  to: claude-code\n"
+            "  priority: 2\n  retry_count: 0\n  max_retries: 3\n  created_at: '2026-04-10T10:00:00Z'\n"
+            "- id: i2\n  task: feat.one\n  status: launched\n  to: claude-code\n"
+            "  priority: 2\n  retry_count: 0\n  max_retries: 3\n  created_at: '2026-04-10T10:00:00Z'\n"
+            "- id: i3\n  task: feat.one\n  status: running\n  to: claude-code\n"
+            "  priority: 2\n  retry_count: 0\n  max_retries: 3\n  created_at: '2026-04-10T10:00:00Z'\n"
+        )
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert len(d["inbox"]) == 3
+
+
+# ---------------------------------------------------------------------------
+# Error handling
+# ---------------------------------------------------------------------------
+
+class TestErrorHandling:
+    def test_missing_project_exits_nonzero(self, tmp_path):
+        r = _run(["--project", str(tmp_path / "nonexistent")])
+        assert r.returncode != 0
+
+    def test_missing_project_error_on_stderr(self, tmp_path):
+        r = _run(["--project", str(tmp_path / "nonexistent")])
+        assert "error" in r.stderr.lower()
+
+    def test_missing_project_nothing_on_stdout(self, tmp_path):
+        r = _run(["--project", str(tmp_path / "nonexistent")])
+        assert r.stdout.strip() == ""
+
+    def test_project_flag_overrides_cwd(self, tmp_path):
+        """--project PATH works even when cwd has no .superharness/."""
+        project = _setup(tmp_path)
+        r = _run(["--project", str(project)], cwd=str(tmp_path))
+        assert r.returncode == 0
+        d = json.loads(r.stdout)
+        assert d["schema_version"] == "1.0"
+
+
+# ---------------------------------------------------------------------------
+# Agent pulse
+# ---------------------------------------------------------------------------
+
+import yaml as _yaml
+
+
+class TestAgentPulsePayload:
+    def test_agent_pulse_null_when_absent(self, tmp_path):
+        """agent_pulse is null when no agent-pulse.yaml exists."""
+        project = _setup(tmp_path)
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert d["agent_pulse"] is None
+
+    def test_agent_pulse_present_when_file_exists(self, tmp_path):
+        """agent_pulse is populated when agent-pulse.yaml is present."""
+        project = _setup(tmp_path)
+        sh = project / ".superharness"
+        (sh / "agent-pulse.yaml").write_text(
+            _yaml.dump({
+                "task_id": "feat.one",
+                "agent": "claude-code",
+                "status": "running",
+                "last_seen": "2026-04-12T10:00:00Z",
+                "message": "compiling",
+                "pid": 42,
+            })
+        )
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        pulse = d["agent_pulse"]
+        assert pulse is not None
+        assert pulse["task_id"] == "feat.one"
+        assert pulse["agent"] == "claude-code"
+        assert pulse["status"] == "running"
+        assert pulse["pid"] == 42
+
+    def test_agent_pulse_null_on_corrupt_file(self, tmp_path):
+        """agent_pulse is null when agent-pulse.yaml is corrupt YAML."""
+        project = _setup(tmp_path)
+        sh = project / ".superharness"
+        (sh / "agent-pulse.yaml").write_text(":\t:\tinvalid{{{\n")
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert d["agent_pulse"] is None
+
+
+# ---------------------------------------------------------------------------
+# New status mapping (waiting_input / paused)
+# ---------------------------------------------------------------------------
+
+
+class TestNewStatusMapping:
+    def test_waiting_input_maps_to_paused(self, tmp_path):
+        """waiting_input status → display_status=paused, color=#f59e0b."""
+        project = _setup(tmp_path, tasks=[{
+            "id": "feat.wip", "title": "WIP", "owner": "claude-code",
+            "status": "waiting_input",
+        }])
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        task = next(t for t in d["tasks"] if t["id"] == "feat.wip")
+        assert task["display_status"] == "paused"
+        assert task["color"] == "#f59e0b"
+
+    def test_paused_maps_to_paused(self, tmp_path):
+        """paused status → display_status=paused, color=#f59e0b."""
+        project = _setup(tmp_path, tasks=[{
+            "id": "feat.paused", "title": "Paused", "owner": "claude-code",
+            "status": "paused",
+        }])
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        task = next(t for t in d["tasks"] if t["id"] == "feat.paused")
+        assert task["display_status"] == "paused"
+        assert task["color"] == "#f59e0b"
+
+
+# ---------------------------------------------------------------------------
+# Subtask decomposition
+# ---------------------------------------------------------------------------
+
+class TestSubtasks:
+    def _setup_with_subtasks(self, tmp_path: "Path") -> "Path":
+        project = tmp_path / "proj"
+        sh = project / ".superharness"
+        (sh / "handoffs").mkdir(parents=True)
+        (sh / "failures.yaml").write_text("failures: []\n")
+        (sh / "decisions.yaml").write_text("decisions: []\n")
+        (sh / "inbox.yaml").write_text("# inbox\n")
+        (sh / "ledger.md").write_text("# Ledger\n\n")
+        (sh / "contract.yaml").write_text(
+            "id: test-contract\ngoal: Test goal\ncreated: 2026-01-01\n"
+            "created_by: owner\nstatus: active\ntasks:\n"
+            "  - id: feat.parent\n    title: \"Parent task\"\n"
+            "    owner: claude-code\n    status: in_progress\n"
+            "    subtasks:\n"
+            "      - id: feat.parent.st1\n        title: \"Subtask one\"\n"
+            "        model_tier: mini\n        owner: claude-code\n"
+            "        estimated_tokens: 8000\n        estimated_cost_usd: 0.005\n"
+            "        rationale: \"Simple step\"\n"
+            "      - id: feat.parent.st2\n        title: \"Subtask two\"\n"
+            "        model_tier: standard\n        owner: claude-code\n"
+            "        estimated_tokens: 25000\n        estimated_cost_usd: 0.19\n"
+        )
+        return project
+
+    def test_subtasks_field_is_list(self, tmp_path):
+        project = self._setup_with_subtasks(tmp_path)
+        d = __import__('json').loads(__import__('subprocess').run(
+            [__import__('sys').executable, "-m", "superharness.commands.adapter_payload",
+             "--project", str(project)],
+            cwd=str(project), text=True, capture_output=True,
+            env={**__import__('os').environ, "PYTHONPATH": str(
+                __import__('pathlib').Path(__file__).parent.parent.parent / "src"
+            )}, check=False,
+        ).stdout)
+        task = next(t for t in d["tasks"] if t["id"] == "feat.parent")
+        assert isinstance(task["subtasks"], list)
+        assert len(task["subtasks"]) == 2
+
+    def test_subtask_fields_present(self, tmp_path):
+        project = self._setup_with_subtasks(tmp_path)
+        d = __import__('json').loads(__import__('subprocess').run(
+            [__import__('sys').executable, "-m", "superharness.commands.adapter_payload",
+             "--project", str(project)],
+            cwd=str(project), text=True, capture_output=True,
+            env={**__import__('os').environ, "PYTHONPATH": str(
+                __import__('pathlib').Path(__file__).parent.parent.parent / "src"
+            )}, check=False,
+        ).stdout)
+        task = next(t for t in d["tasks"] if t["id"] == "feat.parent")
+        st = task["subtasks"][0]
+        for f in ("id", "title", "model_tier", "owner", "estimated_tokens",
+                  "estimated_cost_usd", "rationale"):
+            assert f in st, f"subtask missing field: {f}"
+        assert st["id"] == "feat.parent.st1"
+        assert st["model_tier"] == "mini"
+
+    def test_task_without_subtasks_has_empty_list(self, tmp_path):
+        from tests.helpers import REPO_ROOT
+        project = _setup(tmp_path)
+        d = __import__('json').loads(_run(["--project", str(project)]).stdout)
+        task = d["tasks"][0]
+        assert "subtasks" in task
+        assert task["subtasks"] == []
