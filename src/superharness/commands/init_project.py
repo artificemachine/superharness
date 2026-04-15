@@ -409,7 +409,7 @@ def main(argv: list[str] | None = None) -> None:
                 print("Watcher: launchd inbox watcher is configured.")
             else:
                 print("Watcher: unable to auto-configure (non-fatal).")
-                print("  Run manually: bash scripts/ensure-launchd-inbox-watcher.sh --project .")
+                print("  Run manually: shux watcher-worker -p .")
                 if r.stderr.strip():
                     print(f"  Detail: {r.stderr.strip()[:200]}")
 

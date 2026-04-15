@@ -75,6 +75,7 @@ shux inbox-gc          # reconcile stale inbox items against contract
 shux worktree-gc       # clean orphaned dispatch worktrees
 shux recap             # what happened in the last N hours (timeline view)
 shux notify-desktop    # send a native desktop notification
+shux adapter-payload --json  # emit project state as stable JSON payload (schema v1.0) for Morpheme/adapters
 shux help              # show all shux shortcuts in the terminal
 ```
 

@@ -1,0 +1,77 @@
+task: feat.morpheme-phase1-smoke
+phase: report
+status: report_ready
+from: claude-code
+to: owner
+date: 2026-04-12T10:00:00Z
+
+outcome: |
+  Implemented shux adapter-payload --json (v1.16.0) — the stable JSON boundary
+  between superharness and Morpheme. Morpheme's adapter.js was already wired and
+  waiting for this command; it will now use the native path automatically instead
+  of falling back to rawParser.js.
+
+context: |
+  This is Phase 2 of the Morpheme integration. Phase 1 (feat.morpheme-phase1-smoke)
+  delivered the dashboard Morpheme card. Phase 2 moves all protocol knowledge
+  (status mapping, handoff parsing, ledger parsing) into superharness so Morpheme
+  becomes a pure renderer.
+
+  Key decisions made:
+  - Single file implementation (commands/adapter_payload.py) — no separate adapter/
+    package. Consistent with how all other commands are structured.
+  - Raw YAML dict loading (not Pydantic schema) — avoids ValidationError on statuses
+    not yet in the TaskStatus enum (e.g. review_requested, stopped).
+  - Ledger capped at 200 entries newest-first — prevents payload bloat on large projects.
+  - Inbox: active items only (pending/launched/running) — done/failed items excluded.
+  - dependency: (scalar) normalized to blocked_by: [] (array) in output.
+
+  Morpheme integration path (from adapter.js):
+    execSync('shux adapter-payload --json', { cwd: projectPath })
+  No --project flag — uses cwd. Our default --project "." handles this correctly.
+
+  Performance: 213ms (module), ~900ms (via shux wrapper / Click import chain).
+  Well within Morpheme's 10s execSync timeout.
+
+  Next on Morpheme side:
+  1. Run morpheme start against superharness project and verify native adapter path fires
+  2. Delete rawParser.js once verified
+  3. Simplify watchTargets.js
+  4. Merge PR #3 (explore/superharness-gallery) — decide v0.3.0 now or v0.4.0 with adapter
+
+outcomes:
+  - criterion: shux adapter-payload --json emits schema_version 1.0 payload
+    status: pass
+    detail: Verified — 73 tasks, 73 edges, 200 ledger entries, correct display_status/color
+  - criterion: display_status + color computed for all 11 lifecycle statuses
+    status: pass
+    detail: status_map covers todo through stopped including review_requested
+  - criterion: blocked_by normalized from YAML dependency scalar to list
+    status: pass
+    detail: dependency:"t1" → blocked_by:["t1"] verified in tests
+  - criterion: handoffs grouped by task, oldest first, files_touched alias resolved
+    status: pass
+    detail: 38 tasks have handoffs in live project; alias normalization tested
+  - criterion: ledger parsed (both line formats), newest first
+    status: pass
+    detail: dash format and bare format both handled; capped at 200
+  - criterion: failures/decisions/inbox loaded
+    status: pass
+    detail: inbox filters to active only; all three sources tested
+  - criterion: exits 0 on success, non-zero + stderr on missing project
+    status: pass
+    detail: error handling tested — stdout empty on failure
+
+files_changed:
+  - src/superharness/commands/adapter_payload.py
+  - src/superharness/cli.py
+  - docs/morpheme-adapter-spec.md
+  - tests/unit/test_adapter_payload.py
+  - pyproject.toml
+  - CHANGELOG.md
+
+tests_passed: true
+test_types:
+  - unit
+
+verified: false

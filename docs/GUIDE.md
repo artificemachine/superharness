@@ -31,6 +31,7 @@ Type these directly into Claude Code or Codex CLI — no terminal needed after f
 | `shux worktree-gc` | Clean orphaned dispatch worktrees from `/tmp` |
 | `shux recap` | What happened in the last N hours — timeline of ledger, inbox, handoffs |
 | `shux notify-desktop` | Send a native macOS/Linux desktop notification |
+| `shux adapter-payload --json` | Emit full project state as a stable JSON payload (schema v1.0) for any adapter consumer (Morpheme, TUIs, etc.). See `docs/adapter-payload-spec.md`. |
 
 **Full session flow:** `shux onboard` (new project) → `shux doctor` → `shux contract` → `shux continue` → `shux verify <id>` → `shux close <id>`
 

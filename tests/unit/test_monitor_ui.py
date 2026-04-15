@@ -2315,7 +2315,7 @@ def test_board_view_task_fields_are_complete(repo_root, tmp_path) -> None:
     assert task["status"] == "todo"
     assert task["owner"] == "claude-code"
     assert task["verified"] is False
-    assert task["blocked_by"] == ""
+    assert task["blocked_by"] == []
 
 
 # ── feat.monitor-operator-upgrade tests ──────────────────────────────────────

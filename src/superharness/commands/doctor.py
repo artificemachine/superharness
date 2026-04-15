@@ -148,7 +148,7 @@ def main(argv: list[str] | None = None) -> None:
             print(f"PASS watcher:{label} loaded")
         else:
             print(f"WARN watcher:{label} not loaded")
-            print("       The background watcher is required — would you like to install it? (run: bash scripts/install-launchd-inbox-watcher.sh --project .)")
+            print("       The background watcher is required — install it with: shux watcher-worker -p .")
             print("       Or use foreground mode instead: superharness watch --foreground --project .")
             warns += 1
     elif sys_platform == "Linux":
