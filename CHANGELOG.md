@@ -2012,3 +2012,30 @@ If you're an agent picking this up:
   "Cross-Repo Branch Link" sections marked RETIRED. Historical tables
   preserved for context. The paired branch on superharness will be synced
   once with v1.24.2, then deleted after Morpheme's UI consumption PR lands.
+
+## [1.24.3] - 2026-04-16
+
+### Fixed
+- **Windows CI hang**: `FakeServer.serve_forever()` in `test_monitor_ui.py` was
+  raising `KeyboardInterrupt` to stop the fake server. On Windows, a
+  programmatic `KeyboardInterrupt` escapes the test scope into pytest's signal
+  machinery (`threading.py Condition.wait`) and hangs the entire runner.
+  Changed all three stubs to `return` — the port-selection assertions rely on
+  `__init__` (which populates `call_log`), not on `serve_forever` behaviour.
+- **Windows errno for EADDRINUSE**: `dashboard-ui.py` port auto-find loop
+  checked `exc.errno in (48, 98)` (macOS / Linux only). Added `10048`
+  (WinSock `WSAEADDRINUSE`) and `errno.EADDRINUSE` (portable platform
+  constant) so the auto-find logic works correctly on Windows too.
+- **Windows CI hang (root cause)**: `_MkdirLock._pid_alive()` in
+  `inbox_dispatch.py` called `os.kill(pid, 0)` unconditionally. On Windows,
+  `os.kill(pid, 0)` maps to `GenerateConsoleCtrlEvent(CTRL_C_EVENT, pid)`,
+  which sends Ctrl+C to the entire process group. When the test
+  `TestStaleLockRecovery::test_fresh_lock_held_by_alive_pid_respected` called
+  `_pid_alive(os.getpid())`, it sent Ctrl+C to the pytest process group,
+  raising `KeyboardInterrupt` at `threading.py:327` mid-suite.
+  Fixed by adding the same Windows-safe ctypes path
+  (`OpenProcess`/`GetExitCodeProcess`) that `_process_alive()` in
+  `inbox.py` already used.
+- 2026-04-16 (v1.24.3): fix: Windows os.kill — complete sweep: inbox_watch.py zombie-reconcile inline and daemon.py _is_pid_alive() also patched with ctypes OpenProcess/GetExitCodeProcess Windows guard. All os.kill(pid,0) callers now Windows-safe.
+- 2026-04-16 (v1.24.3): fix: Windows pre-existing test failures — fake_bin .cmd, DEVNULL stdin, platform PATH, watcher.yaml as_posix, uninstall tmp_dir, skip execute-bit test on Windows, tempfile.gettempdir in uninstall test
+- 2026-04-16 (v1.24.3): fix: launch_agent Windows .cmd resolution — use shutil.which + cmd /c for .cmd/.bat wrappers; fix _run_delegate_py stdin=DEVNULL (NUL isatty True on Windows) → input=empty string

@@ -1448,13 +1448,13 @@ tasks:
   workflow: implementation
   development_method: tdd
   acceptance_criteria:
-  - Adapter manifests accept both legacy string tier values and new {id, label}
+  - Adapter manifests accept both legacy string tier values and new {id, label} 
     mapping form
   - 'resolve_model(owner, tier) returns {id, label} for known combos and {id: tier,
     label: tier} fallback for unknown owner/tier'
   - 'shux adapter-payload --json includes resolved_model: {id, label} on every task
     and subtask'
-  - model_tier string field remains in payload (backwards compat — Morpheme
+  - model_tier string field remains in payload (backwards compat — Morpheme 
     fallback)
   - schema_version bumped to 1.1 in both code and docs/adapter-payload-spec.md
   effort: medium
@@ -1462,12 +1462,12 @@ tasks:
   - unit
   out_of_scope:
   - Changing cost_estimator or auto_dispatch logic — they still reason in tiers
-  - Morpheme UI rendering of resolved_model.label — separate ticket on
+  - Morpheme UI rendering of resolved_model.label — separate ticket on 
     artificemachine/morpheme
   definition_of_done:
-  - shux adapter-payload --json output for a claude-code + standard-tier task
+  - shux adapter-payload --json output for a claude-code + standard-tier task 
     shows resolved_model.label = 'Sonnet 4.6'
-  - Legacy manifest form still loads and produces a valid (fallback-labelled)
+  - Legacy manifest form still loads and produces a valid (fallback-labelled) 
     resolved_model
   - Morpheme-facing schema doc describes the new field + bump
   context: "Paired branch: feat/superharness-integration-morpheme (same name on both
@@ -1484,9 +1484,9 @@ tasks:
       (legacy) or {id, label} mapping. Add resolve_model(owner, tier) helper in engine/adapter_registry.py.
       shux adapter-payload emits resolved_model: {id, label} on every task + subtask
       alongside existing model_tier string.'
-    refactor: Move tier parsing into adapter_registry.load_manifest so callers
-      always get normalized {id, label} structures. Bump adapter-payload
-      schema_version to 1.1. Document resolved_model field in
+    refactor: Move tier parsing into adapter_registry.load_manifest so callers 
+      always get normalized {id, label} structures. Bump adapter-payload 
+      schema_version to 1.1. Document resolved_model field in 
       docs/adapter-payload-spec.md.
   summary: "Shipped in v1.24.0 (feat) + v1.24.1 (packaging hotfix). PRs #100 and #101.
     Adapter-payload schema v1.1 now emits resolved_model {id, label} per task/subtask;
@@ -1497,5 +1497,50 @@ tasks:
   tests_passed: true
   done_at: '2026-04-16T01:00:00Z'
   done_by: claude-code
+- id: fix.windows-unit-test-hang
+  title: Investigate Windows-only unit test hang (KeyboardInterrupt ~70% through
+    suite)
+  owner: claude-code
+  status: todo
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: implementation
+  development_method: tdd
+  acceptance_criteria:
+  - Windows-latest CI Tests job completes in <5 minutes (previously hung at ~2 
+    min into a much longer run)
+  - Zero admin-overrides needed on main for Tests workflow
+  - If skipping tests, each skip carries an inline rationale comment
+  effort: medium
+  test_types:
+  - unit
+  out_of_scope:
+  - Rewriting the entire test harness for cross-platform parity — only fix the 
+    specific hang
+  - Adding Windows-specific CI runs beyond what already exists
+  definition_of_done:
+  - Three consecutive PR-CI runs on Windows complete without hang (not all 
+    required to pass — just not hang)
+  - Contract task shipped via PR with version bump 1.24.3 or similar
+  context: 'Observed on PR #102 (v1.24.2) after the benchmark-models flake fix landed.
+    Ubuntu + macOS now green on Tests workflow; Windows hangs at 69-73% with KeyboardInterrupt.
+    1063 tests already passed at hang point. Pre-existing issue that was previously
+    masked by the earlier benchmark flake (Windows was failing at that earlier test).
+    Fix lives in whichever test family runs in the 69-73% range of pytest alphabetical
+    order.'
+  tdd:
+    red: 'Reproduce the hang deterministically in CI on a minimal test selection.
+      Identify the offending test file(s) via pytest --collect-only then bisecting.
+      Likely candidates: anything using subprocess with long-lived processes, file
+      watchers, HTTP servers, or bash scripts (Windows has no bash by default). Target:
+      a test that fails hard with a clear error instead of hanging indefinitely.'
+    green: Either (a) pytest.mark.skipif(sys.platform == 'win32') on the 
+      identified test(s) with a clear comment explaining why, or (b) fix the 
+      underlying Windows-incompatible behavior (e.g. use pathlib.Path instead of
+      bash, platform-check before spawning subprocesses, etc.).
+    refactor: Add a CI matrix job that runs pytest with -x --timeout=30 on 
+      Windows so future hangs surface fast instead of consuming the full CI 
+      budget. Document the platform-specific skip pattern in docs/testing.md if 
+      it doesn't exist already.
 decisions: []
 failures: []
