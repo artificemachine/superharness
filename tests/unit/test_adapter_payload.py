@@ -57,12 +57,13 @@ def _setup(tmp_path: Path, *, tasks: list[dict] | None = None) -> Path:
 # ---------------------------------------------------------------------------
 
 class TestSchema:
-    def test_schema_version_is_1_0(self, tmp_path):
+    def test_schema_version_is_current(self, tmp_path):
         project = _setup(tmp_path)
         r = _run(["--project", str(project)])
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
-        assert d["schema_version"] == "1.0"
+        # 1.1: resolved_model {id,label} added per task + subtask
+        assert d["schema_version"] == "1.1"
 
     def test_top_level_keys_present(self, tmp_path):
         project = _setup(tmp_path)
@@ -498,7 +499,7 @@ class TestErrorHandling:
         r = _run(["--project", str(project)], cwd=str(tmp_path))
         assert r.returncode == 0
         d = json.loads(r.stdout)
-        assert d["schema_version"] == "1.0"
+        assert d["schema_version"] == "1.1"
 
 
 # ---------------------------------------------------------------------------
@@ -643,3 +644,101 @@ class TestSubtasks:
         task = d["tasks"][0]
         assert "subtasks" in task
         assert task["subtasks"] == []
+
+
+# ── feat.adapter-payload-resolved-model: per-task resolved_model ─────────────
+
+class TestResolvedModelField:
+    """Each task and subtask carries resolved_model: {id, label} alongside model_tier."""
+
+    def _setup_with_owner_and_tier(self, tmp_path: Path, owner: str, tier: str) -> Path:
+        project = tmp_path / "proj_resolved"
+        sh = project / ".superharness"
+        (sh / "handoffs").mkdir(parents=True)
+        (sh / "failures.yaml").write_text("failures: []\n")
+        (sh / "decisions.yaml").write_text("decisions: []\n")
+        (sh / "inbox.yaml").write_text("# inbox\n")
+        (sh / "ledger.md").write_text("# Ledger\n\n")
+        (sh / "contract.yaml").write_text(
+            "id: test-contract\ngoal: G\ncreated: 2026-01-01\n"
+            "created_by: owner\nstatus: active\n"
+            "tasks:\n"
+            f"  - id: feat.with-tier\n"
+            f"    title: T\n"
+            f"    owner: {owner}\n"
+            f"    status: in_progress\n"
+            f"    model_tier: {tier}\n"
+            "    subtasks:\n"
+            f"      - id: feat.with-tier.sub\n"
+            f"        title: sub\n"
+            f"        owner: {owner}\n"
+            f"        model_tier: {tier}\n"
+        )
+        return project
+
+    def test_task_has_resolved_model_id_and_label(self, tmp_path):
+        project = self._setup_with_owner_and_tier(tmp_path, "claude-code", "standard")
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        task = d["tasks"][0]
+        assert "resolved_model" in task
+        assert isinstance(task["resolved_model"], dict)
+        assert task["resolved_model"]["label"] == "Sonnet 4.6"
+        assert task["resolved_model"]["id"].startswith("claude-sonnet")
+
+    def test_task_keeps_model_tier_for_backwards_compat(self, tmp_path):
+        """model_tier string MUST stay in the payload (Morpheme fallback)."""
+        project = self._setup_with_owner_and_tier(tmp_path, "claude-code", "standard")
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        task = d["tasks"][0]
+        assert task.get("model_tier") == "standard"
+
+    def test_subtask_has_resolved_model(self, tmp_path):
+        project = self._setup_with_owner_and_tier(tmp_path, "claude-code", "max")
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        sub = d["tasks"][0]["subtasks"][0]
+        assert sub["resolved_model"]["label"].startswith("Opus")
+        assert sub["model_tier"] == "max"
+
+    def test_codex_cli_owner_resolves_to_codex_model(self, tmp_path):
+        project = self._setup_with_owner_and_tier(tmp_path, "codex-cli", "standard")
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        task = d["tasks"][0]
+        assert task["resolved_model"]["id"]
+        assert task["resolved_model"]["label"]
+        # codex tiers use gpt-* ids in the canonical mapping.
+        assert task["resolved_model"]["id"].startswith("gpt")
+
+    def test_unknown_owner_falls_back_to_tier_string(self, tmp_path):
+        project = self._setup_with_owner_and_tier(tmp_path, "weird-agent", "standard")
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        task = d["tasks"][0]
+        assert task["resolved_model"] == {"id": "standard", "label": "standard"}
+
+    def test_task_without_model_tier_omits_resolved_model_or_returns_empty(self, tmp_path):
+        """A task with no model_tier set must not crash — resolved_model may be omitted."""
+        project = tmp_path / "proj_no_tier"
+        sh = project / ".superharness"
+        (sh / "handoffs").mkdir(parents=True)
+        (sh / "failures.yaml").write_text("failures: []\n")
+        (sh / "decisions.yaml").write_text("decisions: []\n")
+        (sh / "inbox.yaml").write_text("# inbox\n")
+        (sh / "ledger.md").write_text("# Ledger\n\n")
+        (sh / "contract.yaml").write_text(
+            "id: c\ngoal: G\ncreated: 2026-01-01\ncreated_by: owner\nstatus: active\n"
+            "tasks:\n"
+            "  - id: feat.notier\n    title: T\n    owner: claude-code\n    status: todo\n"
+        )
+        r = _run(["--project", str(project)])
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        task = d["tasks"][0]
+        # resolved_model either absent or null/empty — no crash either way.
+        rm = task.get("resolved_model")
+        assert rm is None or rm == {} or (isinstance(rm, dict) and not rm.get("label"))
+
+
+class TestSchemaVersionBump:
+    def test_schema_version_bumped_to_1_1(self, tmp_path):
+        project = _setup(tmp_path)
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert d["schema_version"] == "1.1"
