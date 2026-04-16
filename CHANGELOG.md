@@ -1955,3 +1955,20 @@ If you're an agent picking this up:
   `resolved_model` emission on tasks + subtasks, backwards-compat
   `model_tier` retention, unknown-owner fallback, absent-tier handling,
   and schema_version bump.
+
+## [1.24.1] - 2026-04-16
+
+### Fixed
+- **Packaging regression**: `src/superharness/adapter_manifests/*.yaml` was
+  not declared in `[tool.setuptools.package-data]`, so the built wheel (and
+  therefore every installed copy) shipped without the manifests. Every
+  `resolve_model(owner, tier)` call silently fell back to
+  `{id: tier, label: tier}`. Only surfaced when `shux adapter-payload`
+  emitted `{id: "mini", label: "mini"}` instead of `Haiku 4.5` on a real
+  project.
+
+### Added
+- 4 packaging-regression tests in `tests/unit/test_adapter_registry.py`
+  (`TestManifestPackaging`) that will fail if the YAML manifests aren't
+  discoverable from the installed package — prevents this class of
+  silent-fallback bug from reaching a release again.

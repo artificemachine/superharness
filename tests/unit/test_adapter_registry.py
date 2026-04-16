@@ -320,3 +320,33 @@ class TestManifestNormalization:
         monkeypatch.setattr("superharness.engine.adapter_registry.MANIFEST_DIR", fake_dir)
         result = resolve_model("legacy-agent", "standard")
         assert result == {"id": "sonnet", "label": "sonnet"}
+
+
+# ── packaging regression: adapter manifests must ship in the wheel ───────────
+
+class TestManifestPackaging:
+    """Without these files, resolve_model() silently falls back to {id: tier, label: tier}
+    across every installed copy — caught only after a release in v1.24.0. Keep the
+    sentinel test here so future package-data trims don't re-break it."""
+
+    def test_builtin_adapters_are_discoverable_from_installed_layout(self):
+        """list_adapters() must find the YAML files from the package location."""
+        from superharness.engine import adapter_registry as reg
+        names = reg.list_adapters()
+        assert "claude-code" in names, names
+        assert "codex-cli" in names, names
+
+    def test_manifest_dir_lives_inside_superharness_package(self):
+        """MANIFEST_DIR resolves to a path inside the installed package, not the repo."""
+        from superharness.engine import adapter_registry as reg
+        import superharness
+        pkg_root = Path(superharness.__file__).parent
+        assert reg.MANIFEST_DIR.is_relative_to(pkg_root), (reg.MANIFEST_DIR, pkg_root)
+
+    def test_claude_code_manifest_yaml_file_exists_on_disk(self):
+        from superharness.engine import adapter_registry as reg
+        assert (reg.MANIFEST_DIR / "claude-code.yaml").is_file()
+
+    def test_codex_cli_manifest_yaml_file_exists_on_disk(self):
+        from superharness.engine import adapter_registry as reg
+        assert (reg.MANIFEST_DIR / "codex-cli.yaml").is_file()
