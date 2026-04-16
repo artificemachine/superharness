@@ -1421,7 +1421,7 @@ tasks:
 - id: feat.morpheme-phase1-smoke
   title: Morpheme Phase 1 smoke task
   owner: codex-cli
-  status: report_ready
+  status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: quick
@@ -1438,22 +1438,23 @@ tasks:
   verified_at: '2026-04-12T10:15:41Z'
   verified_by: claude-code
   report_ready_at: '2026-04-10T15:30:00Z'
+  summary: Closed from dashboard without review request
 - id: feat.adapter-payload-resolved-model
   title: Emit resolved model name (label + id) per task in adapter-payload
   owner: claude-code
-  status: todo
+  status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
   development_method: tdd
   acceptance_criteria:
-  - Adapter manifests accept both legacy string tier values and new {id, label} 
+  - Adapter manifests accept both legacy string tier values and new {id, label}
     mapping form
   - 'resolve_model(owner, tier) returns {id, label} for known combos and {id: tier,
     label: tier} fallback for unknown owner/tier'
   - 'shux adapter-payload --json includes resolved_model: {id, label} on every task
     and subtask'
-  - model_tier string field remains in payload (backwards compat — Morpheme 
+  - model_tier string field remains in payload (backwards compat — Morpheme
     fallback)
   - schema_version bumped to 1.1 in both code and docs/adapter-payload-spec.md
   effort: medium
@@ -1461,16 +1462,16 @@ tasks:
   - unit
   out_of_scope:
   - Changing cost_estimator or auto_dispatch logic — they still reason in tiers
-  - Morpheme UI rendering of resolved_model.label — separate ticket on 
-    celstnblacc/morpheme
+  - Morpheme UI rendering of resolved_model.label — separate ticket on
+    artificemachine/morpheme
   definition_of_done:
-  - shux adapter-payload --json output for a claude-code + standard-tier task 
+  - shux adapter-payload --json output for a claude-code + standard-tier task
     shows resolved_model.label = 'Sonnet 4.6'
-  - Legacy manifest form still loads and produces a valid (fallback-labelled) 
+  - Legacy manifest form still loads and produces a valid (fallback-labelled)
     resolved_model
   - Morpheme-facing schema doc describes the new field + bump
   context: "Paired branch: feat/superharness-integration-morpheme (same name on both
-    superharness and celstnblacc/morpheme, per cross-repo pairing policy in CLAUDE.md).
+    superharness and artificemachine/morpheme, per cross-repo pairing policy in CLAUDE.md).
     Morpheme currently renders model_tier badges (mini/standard/max) as a proxy for
     model identity; clients need the concrete human-facing model name (Haiku 4.5,
     Sonnet 4.6, gpt-5.3-codex). Tier→model mapping is authoritatively owned by superharness
@@ -1483,9 +1484,18 @@ tasks:
       (legacy) or {id, label} mapping. Add resolve_model(owner, tier) helper in engine/adapter_registry.py.
       shux adapter-payload emits resolved_model: {id, label} on every task + subtask
       alongside existing model_tier string.'
-    refactor: Move tier parsing into adapter_registry.load_manifest so callers 
-      always get normalized {id, label} structures. Bump adapter-payload 
-      schema_version to 1.1. Document resolved_model field in 
+    refactor: Move tier parsing into adapter_registry.load_manifest so callers
+      always get normalized {id, label} structures. Bump adapter-payload
+      schema_version to 1.1. Document resolved_model field in
       docs/adapter-payload-spec.md.
+  summary: "Shipped in v1.24.0 (feat) + v1.24.1 (packaging hotfix). PRs #100 and #101.
+    Adapter-payload schema v1.1 now emits resolved_model {id, label} per task/subtask;
+    claude-code and codex-cli manifests updated to {id, label} mapping form."
+  verified: true
+  verified_at: '2026-04-16T01:00:00Z'
+  verified_by: claude-code
+  tests_passed: true
+  done_at: '2026-04-16T01:00:00Z'
+  done_by: claude-code
 decisions: []
 failures: []

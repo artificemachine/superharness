@@ -74,18 +74,23 @@ Branch fate undecided — may merge into main or become a standalone module. Do 
 
 Reference: `superharness/protocol/spec.md`.
 
-## Cross-Repo Branch Link
+## Cross-Repo Branch Link — RETIRED (2026-04-16)
 
-**Active integration branch:**
+> The paired-branch convention is retired as of v1.24.2. See
+> `docs/morpheme-branch-policy.md` → "Retirement note" for rationale.
+>
+> **TL;DR**: adapter-payload schema stabilised at v1.1 (shipping on PyPI).
+> Superharness is the producer; Morpheme is a consumer. All superharness
+> work now lands on `main` via normal feature branches. Morpheme pins a
+> superharness version and upgrades like any other dependency.
+
+Historical pairing (preserved for context):
 
 | Repo | Branch | Purpose |
 |------|--------|---------|
 | `superharness` (this repo) | `feat/superharness-integration-morpheme` | `shux adapter-payload --json` command + spec |
-| `celstnblacc/morpheme` | `feat/superharness-integration-morpheme` | Adapter boundary, Phase 2 renderer work |
+| `artificemachine/morpheme` | `feat/superharness-integration-morpheme` | Adapter boundary, Phase 2 renderer work |
 
-These branches are paired for **Phase 2** work: implementing `shux adapter-payload --json` so Morpheme can
-consume a structured payload instead of reading raw `.superharness/` YAML itself.
-
-Adapter spec (what superharness must implement): `docs/morpheme-adapter-spec.md`
+Spec: `docs/adapter-payload-spec.md`. Model mappings: `docs/adapter-models.md`.
 
 Schema version: `1.0` — validated by `ADAPTER_SCHEMA_VERSION` in Morpheme's `adapter.js`.
