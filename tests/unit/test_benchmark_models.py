@@ -2,10 +2,23 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
+
+
+def _recent_timestamp(days_ago: int = 1) -> str:
+    """ISO UTC timestamp from N days ago.
+
+    Benchmark output filters to the last 7 days (see commands/benchmark.py).
+    Any hard-coded timestamp rolls out of that window after the fixture's
+    authoring date, making the test flaky. Generating the timestamp relative
+    to `now` keeps the fixture inside the window forever.
+    """
+    ts = datetime.now(timezone.utc) - timedelta(days=days_ago)
+    return ts.strftime("%Y-%m-%dT%H:%M:%S+00:00")
 
 
 @pytest.fixture
@@ -29,9 +42,11 @@ def test_benchmark_models_shows_usage(runner, project):
     """shux benchmark --models → table with Model column."""
     _write_benchmark(project, [
         {"task_id": "t1", "agent": "claude-code", "model": "claude-opus-4-6",
-         "cost_usd": 1.50, "duration_seconds": 120, "outcome": "done", "timestamp": "2026-04-06T10:00:00+00:00"},
+         "cost_usd": 1.50, "duration_seconds": 120, "outcome": "done",
+         "timestamp": _recent_timestamp(days_ago=1)},
         {"task_id": "t2", "agent": "claude-code", "model": "claude-sonnet-4-6",
-         "cost_usd": 0.30, "duration_seconds": 60, "outcome": "done", "timestamp": "2026-04-06T11:00:00+00:00"},
+         "cost_usd": 0.30, "duration_seconds": 60, "outcome": "done",
+         "timestamp": _recent_timestamp(days_ago=2)},
     ])
     from superharness.commands.benchmark import main as benchmark_main
     from io import StringIO

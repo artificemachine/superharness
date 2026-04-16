@@ -1972,3 +1972,43 @@ If you're an agent picking this up:
   (`TestManifestPackaging`) that will fail if the YAML manifests aren't
   discoverable from the installed package — prevents this class of
   silent-fallback bug from reaching a release again.
+
+## [1.24.2] - 2026-04-16
+
+### Fixed
+- `tests/unit/test_benchmark_models.py::test_benchmark_models_shows_usage`
+  no longer flakes. The fixture hard-coded a 2026-04-06 timestamp against
+  a 7-day filter in `commands/benchmark.py`, so every test run past that
+  date asserted against a "no dispatch data" fallback and failed CI.
+  Fixture now generates timestamps relative to `datetime.now(tz=utc)` via
+  a small `_recent_timestamp(days_ago=N)` helper. Verified stable across
+  three consecutive runs locally.
+- `scripts/inbox-deadline-check.sh` guidance updated — v1.23.0 added the
+  `--force-reassign` opt-in; the script was already using it (shipped in
+  1.23.0). Chore: no code change, just noting the dependency.
+
+### Changed
+- Paired Morpheme repo URL moved from `celstnblacc/morpheme` to
+  `artificemachine/morpheme`. Instruction + planning docs updated:
+  `CLAUDE.md`, `AGENTS.md`, `docs/morpheme-branch-policy.md`,
+  `docs/plan-session-cleanup-2026-04-16.md`. Superharness repo itself
+  (`celstnblacc/superharness`) unchanged.
+- Closed out contract task `feat.adapter-payload-resolved-model`
+  (delivered in v1.24.0 + v1.24.1). Wrote `done` handoff
+  `.superharness/handoffs/feat.adapter-payload-resolved-model-done-2026-04-16-claude-code.yaml`.
+  Removed the stale paused inbox item from that task's earlier auto-dispatch
+  attempt.
+- `src/superharness/adapters/claude-code/hooks/branch-guard.sh` — allow
+  `--force-with-lease` on feature branches (still blocks bare `--force`).
+  Pre-session drift that had been riding along in a stash; landed here
+  now so future sessions start with a clean tree.
+- `feat.morpheme-phase1-smoke` contract task marked `done` with summary.
+  Same pre-session drift as above.
+- **Retired the Morpheme paired-branch convention on the superharness side.**
+  Adapter-payload schema stabilised at v1.1 (shipping on PyPI). Future
+  work lands on `main` via regular feature branches; Morpheme consumes
+  releases like any other upstream dependency. `docs/morpheme-branch-policy.md`
+  gains a "Retirement note" section; `CLAUDE.md` and `AGENTS.md`
+  "Cross-Repo Branch Link" sections marked RETIRED. Historical tables
+  preserved for context. The paired branch on superharness will be synced
+  once with v1.24.2, then deleted after Morpheme's UI consumption PR lands.
