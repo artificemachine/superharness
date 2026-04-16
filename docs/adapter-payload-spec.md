@@ -44,7 +44,14 @@ Zero breaking changes. The fallback keeps working indefinitely until the command
 
 ---
 
-## Payload Schema (v1.0)
+## Payload Schema (v1.1)
+
+### Version history
+
+| Version | Date | Change |
+|---|---|---|
+| 1.0 | 2026-04-12 | Initial stable payload. |
+| 1.1 | 2026-04-16 | Added `model_tier` + `resolved_model: {id, label}` per task and subtask (backwards-compatible — 1.0 consumers ignore the new fields). |
 
 ### Annotated Example
 
@@ -52,9 +59,9 @@ The block below uses `//` comments for documentation. Strip them before parsing 
 
 ```jsonc
 {
-  // Required. Morpheme validates this === "1.0" before accepting the payload.
-  // Increment on any breaking field change and update Morpheme simultaneously.
-  "schema_version": "1.0",
+  // Required. Consumers should validate this >= "1.0". 1.1 adds
+  // resolved_model fields without breaking 1.0 clients.
+  "schema_version": "1.1",
 
   // From contract.yaml `id:` field
   "contract_id": "my-project",
@@ -294,6 +301,8 @@ Written by a running agent to `.superharness/agent-pulse.yaml` via `shux agent-p
 | `owner` | string | Agent or person responsible (`claude-code`, `codex-cli`, `owner`) |
 | `cost` | number? | Accumulated token cost in USD. `null` if untracked. |
 | `blocked_by` | string[] | IDs this task depends on. Normalized from YAML `dependency:` field (see note). |
+| `model_tier` | string? | Cost/capability bucket chosen by the orchestrator (`mini` \| `standard` \| `max` \| other). Null when unset. |
+| `resolved_model` | `{id, label}`? | Concrete model descriptor resolved from `(owner, model_tier)` via the adapter manifest. Absent when `model_tier` is empty/null. See **Resolved model** section below. |
 | `effort` | string? | `"low"` \| `"medium"` \| `"high"` \| `null` |
 | `acceptance_criteria` | string[] | List of acceptance criteria strings |
 | `handoffs` | Handoff[] | All handoffs for this task, oldest first |
@@ -301,6 +310,49 @@ Written by a running agent to `.superharness/agent-pulse.yaml` via `shux agent-p
 > **Normalization note:** `contract.yaml` stores task dependencies as `dependency: <task-id>` (a scalar string). The adapter normalizes this to `blocked_by: ["<task-id>"]` (an array). Tasks with multiple blockers may use a YAML sequence — normalize to array in both cases.
 >
 > **Null-sentinel collapse:** `blocked_by: none`, `blocked_by: null`, `blocked_by: ~`, `blocked_by: ""`, and `blocked_by: []` all normalize to the empty list `[]`. Inside a sequence, any null-sentinel items are filtered out (e.g. `[none, iter-0, null]` → `["iter-0"]`). This is enforced by `superharness.engine.normalization.normalize_blocked_by` and used by both `shux adapter-payload --json` and the shux dashboard renderer.
+
+---
+
+### Resolved model (v1.1+)
+
+Every task and subtask with a non-empty `model_tier` carries a `resolved_model` field of the shape:
+
+```json
+{
+  "id":    "claude-sonnet-4-6",
+  "label": "Sonnet 4.6"
+}
+```
+
+- **`id`** — the concrete model identifier used by SDK / API calls.
+- **`label`** — the human-facing name that UI clients render (badges, tooltips, cards).
+
+Resolution is a two-step lookup:
+
+1. Load the adapter manifest for the task's `owner` (e.g. `claude-code.yaml`).
+2. Look up `model_tier` in the manifest's `model_tiers` table.
+
+If the owner or tier is unknown, the payload falls back to `{id: <tier>, label: <tier>}` so clients always receive a well-formed object.
+
+**Manifest schema:** `model_tiers` entries accept two forms for backwards compatibility:
+
+```yaml
+# New form (preferred) — explicit id + label pair:
+model_tiers:
+  mini:     { id: claude-haiku-4-5-20251001, label: "Haiku 4.5"  }
+  standard: { id: claude-sonnet-4-6,         label: "Sonnet 4.6" }
+  max:      { id: claude-opus-4-6,           label: "Opus 4.6"   }
+
+# Legacy form — scalar string, shimmed to {id: val, label: val}:
+model_tiers:
+  standard: sonnet   # → {id: "sonnet", label: "sonnet"}
+```
+
+Both forms load via `superharness.engine.adapter_registry.load_manifest`, which always produces normalized `{id, label}` dicts. The canonical resolver is `resolve_model(owner, tier) -> {id, label}`.
+
+**Backwards compatibility:** `model_tier` string remains in the payload alongside `resolved_model`. Schema 1.0 consumers (e.g. Morpheme's pre-1.1 path) can ignore the new field and keep reading `model_tier` directly.
+
+**When to bump a model:** update `id` and `label` together in the adapter manifest. Consumers display `label`; `id` is only used for SDK dispatch. Do not bump `schema_version` for model bumps — only bump it when adding/removing fields or changing shapes.
 
 ---
 
