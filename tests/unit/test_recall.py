@@ -263,9 +263,12 @@ def test_recall_via_dispatcher(repo_root, tmp_path) -> None:
             """),
         }
     ])
-    result = run_cmd(
-        [SUPERHARNESS, "recall", "--project", str(project), "watcher"],
-        cwd=tmp_path,
-    )
+    # On Windows the `superharness` shim is a Bash script that can't be
+    # executed directly; call the Python entry point instead (same semantics).
+    if sys.platform == "win32":
+        cmd = [sys.executable, "-m", "superharness", "recall", "--project", str(project), "watcher"]
+    else:
+        cmd = [SUPERHARNESS, "recall", "--project", str(project), "watcher"]
+    result = run_cmd(cmd, cwd=tmp_path)
     assert result.returncode == 0, f"Dispatcher recall failed:\n{result.stderr}"
     assert "watcher" in result.stdout.lower()

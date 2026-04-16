@@ -100,7 +100,10 @@ def test_expand_path_only_adds_existing_dirs(tmp_path):
     from superharness.commands.delegate import _expand_path
     original_path = os.environ.get("PATH", "")
     try:
-        os.environ["PATH"] = "/usr/bin:/bin"
+        # /usr/bin:/bin don't exist on Windows; use a guaranteed-existing dir
+        # as the starting point so the assertion isn't tripped by the initial value.
+        initial = str(tmp_path) if sys.platform == "win32" else "/usr/bin:/bin"
+        os.environ["PATH"] = initial
         _expand_path()
         new_entries = os.environ["PATH"].split(os.pathsep)
         for entry in new_entries:

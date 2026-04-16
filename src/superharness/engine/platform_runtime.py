@@ -215,5 +215,16 @@ def launch_agent(cmd: list[str], *, cwd: str) -> int:
         Exit code of the launched process (0 = success).
     """
     expand_agent_path()
+    # On Windows, CreateProcess cannot execute .cmd/.bat script wrappers
+    # directly — only PE executables (.exe/.com).  Resolve through shutil.which
+    # (which honours PATHEXT) and prepend `cmd /c` for script files.
+    if sys.platform == "win32":
+        resolved = shutil.which(cmd[0])
+        if resolved:
+            ext = os.path.splitext(resolved)[1].lower()
+            if ext in (".cmd", ".bat"):
+                cmd = ["cmd", "/c", resolved] + list(cmd[1:])
+            else:
+                cmd = [resolved] + list(cmd[1:])
     result = subprocess.run(cmd, cwd=cwd, check=False)
     return result.returncode

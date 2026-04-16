@@ -10,6 +10,7 @@ dashboard. Tests have been updated accordingly.
 
 import sys
 
+import pytest
 
 from tests.helpers import REPO_ROOT
 
@@ -37,6 +38,7 @@ def _write_harness(project_dir, *, inbox_yaml: str | None = None):
     return sh_dir
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Unix execute-bit not meaningful on Windows NTFS")
 def test_status_script_is_executable(repo_root) -> None:
     """src/superharness/scripts/status.sh should still be executable (Bash wrapper kept)."""
     script = repo_root / "src" / "superharness" / "scripts" / "status.sh"
@@ -188,7 +190,8 @@ def test_status_reads_worker_project_heartbeat(repo_root, tmp_path) -> None:
     worker = tmp_path / "worker"
     (worker / ".superharness").mkdir(parents=True)
     (sh_dir / "watcher.yaml").write_text(
-        f'watcher_project: "{worker}"\ninterval_seconds: 30\n',
+        # Use as_posix() so Windows backslashes don't become YAML escape sequences.
+        f'watcher_project: "{worker.as_posix()}"\ninterval_seconds: 30\n',
         encoding="utf-8",
     )
     (sh_dir / "watcher.heartbeat").write_text("2026-01-01T00:00:00Z\n", encoding="utf-8")

@@ -1133,7 +1133,7 @@ def test_monitor_main_auto_finds_free_port(repo_root, tmp_path, monkeypatch) -> 
             self.server_address = addr
 
         def serve_forever(self):
-            raise KeyboardInterrupt
+            return  # immediately "stop" — port selection is already verified via call_log
 
         def server_close(self):
             pass
@@ -1172,7 +1172,7 @@ def test_monitor_main_skips_multiple_occupied_ports(repo_root, tmp_path, monkeyp
             self.server_address = addr
 
         def serve_forever(self):
-            raise KeyboardInterrupt
+            return  # immediately "stop" — port selection is already verified via call_log
 
         def server_close(self):
             pass
@@ -1251,7 +1251,7 @@ def test_monitor_main_linux_eaddrinuse(repo_root, tmp_path, monkeypatch) -> None
             self.server_address = addr
 
         def serve_forever(self):
-            raise KeyboardInterrupt
+            return  # immediately "stop" — port selection is already verified via call_log
 
         def server_close(self):
             pass

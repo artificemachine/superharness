@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import errno as _errno_mod
 import ipaddress
 import json
 import os
@@ -2334,7 +2335,7 @@ def main() -> int:
                 port = candidate
                 break
             except OSError as exc:
-                if exc.errno in (48, 98) or "address already in use" in str(exc).lower():
+                if exc.errno in (48, 98, 10048, _errno_mod.EADDRINUSE) or "address already in use" in str(exc).lower():
                     continue
                 raise
         else:
@@ -2343,7 +2344,7 @@ def main() -> int:
         try:
             server = ThreadingHTTPServer((args.host, port), Handler)
         except OSError as exc:
-            if exc.errno in (48, 98) or "address already in use" in str(exc).lower():
+            if exc.errno in (48, 98, 10048, _errno_mod.EADDRINUSE) or "address already in use" in str(exc).lower():
                 raise SystemExit(f"Port {port} is already in use") from None
             raise
     url = f"http://{args.host}:{port}"
