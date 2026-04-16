@@ -1,0 +1,56 @@
+task: feat.adapter-payload-resolved-model
+phase: report
+status: done
+from: claude-code
+to: owner
+date: 2026-04-16T01:00:00Z
+verified: true
+tests_passed: true
+
+outcome: |
+  Shipped. shux adapter-payload --json (schema v1.1) now emits
+  resolved_model {id, label} on every task and subtask. Adapter manifests
+  carry the new {id, label} mapping form (legacy string form still loads
+  via shim). Codex-cli manifest re-mapped to the quality-ranked picks
+  documented in docs/adapter-models.md.
+
+context: |
+  Landed in two releases on main:
+  - v1.24.0 (PR #100 / commit 8ea8989) — feature: resolved_model field,
+    engine.adapter_registry.resolve_model(owner, tier) helper, manifest
+    normalization, schema bump 1.0 → 1.1, docs/adapter-models.md and
+    docs/adapter-payload-spec.md updated.
+  - v1.24.1 (PR #101 / commit 42d45ec) — packaging hotfix: adapter_manifests/*.yaml
+    was missing from the built wheel so every installed copy fell back to
+    {id: tier, label: tier}. Added to pyproject.toml package-data plus 4
+    regression tests in tests/unit/test_adapter_registry.py::TestManifestPackaging.
+
+  Verified live on the superharness project:
+  shux adapter-payload --json | jq '.tasks[].subtasks[] | select(.model_tier != null) | .resolved_model'
+  returns {"id": "claude-haiku-4-5-20251001", "label": "Haiku 4.5"} for
+  claude-code mini subtasks.
+
+  Paired branch feat/superharness-integration-morpheme on
+  artificemachine/morpheme will consume resolved_model.label in a separate
+  session (out of scope for this delivery).
+
+outcomes:
+  - resolve_model(owner, tier) → {id, label} with fallback
+  - adapter manifests normalized to {id, label} (legacy shim preserved)
+  - shux adapter-payload --json schema v1.1 emits resolved_model per task + subtask
+  - claude-code manifest: Haiku 4.5 / Sonnet 4.6 / Opus 4.6
+  - codex-cli manifest: gpt-5.1-codex-mini / gpt-5.3-codex / gpt-5.4
+  - 16 new tests across test_adapter_registry and test_adapter_payload
+  - packaging regression caught + prevented by 4 new tests
+
+files_changed:
+  - src/superharness/engine/adapter_registry.py
+  - src/superharness/commands/adapter_payload.py
+  - src/superharness/adapter_manifests/claude-code.yaml
+  - src/superharness/adapter_manifests/codex-cli.yaml
+  - docs/adapter-payload-spec.md
+  - docs/adapter-models.md
+  - tests/unit/test_adapter_registry.py
+  - tests/unit/test_adapter_payload.py
+  - pyproject.toml
+  - CHANGELOG.md

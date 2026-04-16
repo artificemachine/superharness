@@ -29,14 +29,17 @@ EOF
   exit 0
 fi
 
-# Block force push
-if echo "$COMMAND" | grep -qE 'git\s+push\s+.*--force'; then
+# Block bare --force push (but allow --force-with-lease on feature branches)
+if echo "$COMMAND" | grep -qE 'git\s+push\s+.*--force-with-lease'; then
+  # --force-with-lease is safe on feature branches — allow it
+  true
+elif echo "$COMMAND" | grep -qE 'git\s+push\s+.*--force'; then
   cat <<EOF
 {
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
     "permissionDecision": "deny",
-    "permissionDecisionReason": "superharness: BLOCKED — force push is destructive. Review and use a safer approach."
+    "permissionDecisionReason": "superharness: BLOCKED — bare --force push is destructive. Use --force-with-lease instead."
   }
 }
 EOF
