@@ -8,10 +8,13 @@ capabilities:
   - file_editing
   - test_execution
   - multi_file_refactor
+# Each tier carries the concrete model id (used by SDKs / API calls) and a
+# human-facing label (rendered by Morpheme and other UI consumers).
+# Update both fields together when bumping a model.
 model_tiers:
-  mini: haiku
-  standard: sonnet
-  max: opus
+  mini:     { id: claude-haiku-4-5-20251001, label: "Haiku 4.5"  }
+  standard: { id: claude-sonnet-4-6,         label: "Sonnet 4.6" }
+  max:      { id: claude-opus-4-6,           label: "Opus 4.6"   }
 requires:
   bin: claude
   env: []

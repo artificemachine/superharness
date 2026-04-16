@@ -223,3 +223,100 @@ class TestDispatchUsesRegistry:
             )
         # Should return non-zero for unknown adapter
         assert rc != 0
+
+
+# ── feat.adapter-payload-resolved-model: resolve_model() helper ──────────────
+
+from superharness.engine.adapter_registry import resolve_model  # noqa: E402
+
+
+class TestResolveModel:
+    """resolve_model(owner, tier) -> {id, label} — single canonical resolver."""
+
+    def test_known_owner_known_tier_returns_id_and_label(self):
+        # claude-code/standard resolves to Sonnet 4.6 in the canonical mapping.
+        result = resolve_model("claude-code", "standard")
+        assert isinstance(result, dict)
+        assert "id" in result and "label" in result
+        # Don't pin the exact id here (it can rotate per release); pin the label
+        # which is the human-facing contract clients display.
+        assert result["label"] == "Sonnet 4.6"
+        assert result["id"].startswith("claude-sonnet")
+
+    def test_each_canonical_tier_resolves_for_claude_code(self):
+        for tier, expected_label_prefix in (
+            ("mini", "Haiku"),
+            ("standard", "Sonnet"),
+            ("max", "Opus"),
+        ):
+            result = resolve_model("claude-code", tier)
+            assert result["label"].startswith(expected_label_prefix), (tier, result)
+
+    def test_codex_cli_tiers_resolve(self):
+        # codex-cli tiers should also produce {id, label} after the manifest update.
+        result = resolve_model("codex-cli", "standard")
+        assert "id" in result and "label" in result
+        assert result["id"]  # non-empty
+        assert result["label"]  # non-empty
+
+    def test_unknown_owner_falls_back_to_tier_string(self):
+        result = resolve_model("nonexistent-agent", "standard")
+        assert result == {"id": "standard", "label": "standard"}
+
+    def test_unknown_tier_falls_back_to_tier_string(self):
+        result = resolve_model("claude-code", "ultra-mega-max")
+        assert result == {"id": "ultra-mega-max", "label": "ultra-mega-max"}
+
+    def test_empty_tier_falls_back_safely(self):
+        result = resolve_model("claude-code", "")
+        assert result == {"id": "", "label": ""}
+
+
+class TestManifestNormalization:
+    """load_manifest normalizes legacy string-form tiers to {id, label} mappings."""
+
+    def test_canonical_manifest_values_are_id_label_dicts(self):
+        m = load_manifest("claude-code")
+        # After the schema bump, every tier value is a dict with id + label.
+        for tier, value in m.model_tiers.items():
+            assert isinstance(value, dict), (tier, value)
+            assert "id" in value and "label" in value, (tier, value)
+            assert value["id"], (tier, value)
+            assert value["label"], (tier, value)
+
+    def test_legacy_string_form_in_manifest_shims_to_dict(self, tmp_path, monkeypatch):
+        """A manifest with legacy `standard: haiku` form must shim to {id, label}."""
+        # Build a fake manifest dir with a single legacy-form adapter.
+        fake_dir = tmp_path / "manifests"
+        fake_dir.mkdir()
+        (fake_dir / "legacy-agent.yaml").write_text(
+            "name: legacy-agent\n"
+            "version: '1'\n"
+            "type: native\n"
+            "launcher_script: noop.sh\n"
+            "model_tiers:\n"
+            "  mini: haiku\n"
+            "  standard: sonnet\n"
+            "  max: opus\n"
+        )
+        monkeypatch.setattr("superharness.engine.adapter_registry.MANIFEST_DIR", fake_dir)
+
+        m = load_manifest("legacy-agent")
+        assert m.model_tiers["mini"] == {"id": "haiku", "label": "haiku"}
+        assert m.model_tiers["standard"] == {"id": "sonnet", "label": "sonnet"}
+        assert m.model_tiers["max"] == {"id": "opus", "label": "opus"}
+
+    def test_resolve_model_works_with_legacy_string_form(self, tmp_path, monkeypatch):
+        fake_dir = tmp_path / "manifests"
+        fake_dir.mkdir()
+        (fake_dir / "legacy-agent.yaml").write_text(
+            "name: legacy-agent\n"
+            "version: '1'\n"
+            "type: native\n"
+            "launcher_script: noop.sh\n"
+            "model_tiers:\n"
+            "  standard: sonnet\n"
+        )
+        monkeypatch.setattr("superharness.engine.adapter_registry.MANIFEST_DIR", fake_dir)
+        result = resolve_model("legacy-agent", "standard")
+        assert result == {"id": "sonnet", "label": "sonnet"}

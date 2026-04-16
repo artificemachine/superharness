@@ -18,9 +18,10 @@ from typing import Any
 
 import yaml
 
+from superharness.engine.adapter_registry import resolve_model
 from superharness.engine.normalization import normalize_blocked_by
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 
 # ---------------------------------------------------------------------------
 # Status mapping  (extracted from Morpheme rawParser.js — superharness owns it)
@@ -302,6 +303,18 @@ def _blockers(task: dict) -> list[str]:
     return normalize_blocked_by(raw)
 
 
+def _resolved_model_for(owner: Any, tier: Any) -> dict[str, str] | None:
+    """Resolve {id, label} for an (owner, tier) pair, or None when no tier set.
+
+    Empty / missing tier → None so the payload field can be omitted entirely
+    rather than carrying a meaningless `{id: "", label: ""}`.
+    """
+    tier_str = str(tier or "").strip()
+    if not tier_str:
+        return None
+    return resolve_model(str(owner or ""), tier_str)
+
+
 def _build_tasks(raw_tasks: list, handoffs_by_task: dict) -> list[dict]:
     result = []
     for t in raw_tasks:
@@ -311,32 +324,49 @@ def _build_tasks(raw_tasks: list, handoffs_by_task: dict) -> list[dict]:
         raw_status = str(t.get("status", "todo"))
         display, color = _display_status(raw_status)
         raw_subtasks = t.get("subtasks") or []
-        subtasks = [
-            {
+        subtasks = []
+        for s in raw_subtasks:
+            if not isinstance(s, dict):
+                continue
+            sub_owner = s.get("owner", "")
+            sub_tier  = s.get("model_tier")
+            sub_entry = {
                 "id":                  s.get("id", ""),
                 "title":               s.get("title", ""),
-                "model_tier":          s.get("model_tier"),
-                "owner":               s.get("owner", ""),
+                "model_tier":          sub_tier,
+                "owner":               sub_owner,
                 "estimated_tokens":    s.get("estimated_tokens"),
                 "estimated_cost_usd":  s.get("estimated_cost_usd"),
                 "rationale":           s.get("rationale"),
             }
-            for s in raw_subtasks if isinstance(s, dict)
-        ]
-        result.append({
+            sub_resolved = _resolved_model_for(sub_owner, sub_tier)
+            if sub_resolved is not None:
+                sub_entry["resolved_model"] = sub_resolved
+            subtasks.append(sub_entry)
+
+        owner = t.get("owner", "")
+        tier  = t.get("model_tier")
+        entry: dict = {
             "id":                  task_id,
             "title":               t.get("title", ""),
             "status":              raw_status,
             "display_status":      display,
             "color":               color,
-            "owner":               t.get("owner", ""),
+            "owner":               owner,
             "cost":                t.get("estimated_cost_usd"),
             "blocked_by":          _blockers(t),
             "effort":              t.get("effort"),
             "acceptance_criteria": t.get("acceptance_criteria") or [],
             "handoffs":            handoffs_by_task.get(task_id, []),
             "subtasks":            subtasks,
-        })
+            # Backwards compat: keep `model_tier` string for clients on schema
+            # 1.0 (e.g. Morpheme falling back to its rawParser path).
+            "model_tier":          tier,
+        }
+        resolved = _resolved_model_for(owner, tier)
+        if resolved is not None:
+            entry["resolved_model"] = resolved
+        result.append(entry)
     return result
 
 

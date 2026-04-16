@@ -28,21 +28,53 @@ class AdapterValidationError(Exception):
     """Raised when an adapter is unsupported or misconfigured."""
 
 
+def _normalize_tier_value(value: Any) -> dict[str, str]:
+    """Normalize a manifest model_tier value to the canonical {id, label} form.
+
+    Accepts either:
+    - the new mapping form `{id: <model-id>, label: <human-name>}`
+    - the legacy string form `<model-id>` (label defaults to the same string)
+
+    Always returns a {id, label} dict with both keys present (never empty
+    unless the source value was empty).
+    """
+    if isinstance(value, dict):
+        tier_id = str(value.get("id", "") or "").strip()
+        label   = str(value.get("label", "") or "").strip()
+        if not label:
+            label = tier_id
+        return {"id": tier_id, "label": label}
+    text = str(value or "").strip()
+    return {"id": text, "label": text}
+
+
 @dataclass
 class AdapterManifest:
-    """Parsed adapter manifest."""
+    """Parsed adapter manifest.
+
+    `model_tiers` values are always normalized to `{id, label}` mappings by
+    `from_dict`, regardless of whether the source manifest used the legacy
+    string form (`standard: sonnet`) or the new mapping form
+    (`standard: {id: ..., label: ...}`).
+    """
     name: str
     version: str
     description: str
     adapter_type: str  # "native" | "external"
     launcher_script: str
     capabilities: list[str] = field(default_factory=list)
-    model_tiers: dict[str, str] = field(default_factory=dict)
+    # tier_name -> {"id": str, "label": str}
+    model_tiers: dict[str, dict[str, str]] = field(default_factory=dict)
     requires: dict[str, Any] = field(default_factory=dict)
     validation: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AdapterManifest":
+        raw_tiers = data.get("model_tiers") or {}
+        normalized_tiers = {
+            str(name): _normalize_tier_value(val)
+            for name, val in raw_tiers.items()
+        }
         return cls(
             name=str(data.get("name", "")),
             version=str(data.get("version", "1")),
@@ -50,7 +82,7 @@ class AdapterManifest:
             adapter_type=str(data.get("type", "native")),
             launcher_script=str(data.get("launcher_script", "")),
             capabilities=list(data.get("capabilities") or []),
-            model_tiers=dict(data.get("model_tiers") or {}),
+            model_tiers=normalized_tiers,
             requires=dict(data.get("requires") or {}),
             validation=dict(data.get("validation") or {}),
         )
@@ -141,6 +173,33 @@ def resolve_launcher(name: str, scripts_dir: str) -> str:
             f"Adapter '{name}' launcher script not found: {launcher_path}"
         )
     return launcher_path
+
+
+def resolve_model(owner: str, tier: str) -> dict[str, str]:
+    """Resolve `(owner, tier)` to a concrete `{id, label}` model descriptor.
+
+    The owner names an adapter (e.g. `claude-code`, `codex-cli`); the tier is
+    the cost/capability bucket the orchestrator chose (`mini`, `standard`,
+    `max`). Resolution walks the adapter manifest's `model_tiers` table.
+
+    Falls back to `{id: tier, label: tier}` when:
+    - the owner is unknown (no manifest)
+    - the tier is unknown for that owner
+    - the manifest fails to load for any reason
+
+    The fallback keeps adapter-payload output well-formed even when an
+    operator chooses an out-of-band tier name during a one-off dispatch.
+    """
+    try:
+        manifest = load_manifest(owner)
+    except AdapterValidationError:
+        return {"id": tier, "label": tier}
+
+    entry = manifest.model_tiers.get(tier)
+    if not entry:
+        return {"id": tier, "label": tier}
+    # entry is already normalized to {id, label} by AdapterManifest.from_dict
+    return {"id": entry["id"], "label": entry["label"]}
 
 
 def adapter_info(name: str) -> dict[str, Any]:
