@@ -57,6 +57,21 @@ def _read_lock_pid(lock_dir: str) -> int | None:
 def _pid_is_running(pid: int | None) -> bool:
     if pid is None:
         return False
+    if sys.platform == "win32":
+        import ctypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        handle = ctypes.windll.kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, pid
+        )
+        if not handle:
+            return False
+        try:
+            exit_code = ctypes.c_ulong(STILL_ACTIVE)
+            ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
+            return exit_code.value == STILL_ACTIVE
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
         return True
@@ -545,18 +560,17 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 1200) -> int:
         # Check 2: PID set but process dead → mark failed
         if pid:
             try:
-                os.kill(int(pid), 0)
-                continue  # process alive, skip
-            except (ProcessLookupError, ValueError):
+                pid_int = int(pid)
+            except ValueError:
+                pid_int = None
+            if not _pid_is_running(pid_int):
                 item["status"] = "failed"
                 item["failed_at"] = _now_utc()
                 item["pid"] = ""
                 reconciled += 1
                 changed = True
                 print(f"zombie-reconcile: {item_id} ({task_id}) → failed (pid {pid} dead)")
-                continue
-            except PermissionError:
-                continue  # process exists but we can't signal it
+            continue
 
         # Check 3: no PID + old → mark failed
         if launched_at:

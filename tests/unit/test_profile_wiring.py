@@ -25,7 +25,13 @@ def _run_delegate_py(cwd, args: list[str] | None = None, env: dict | None = None
             else:
                 merged[k] = v
     cmd = [sys.executable, "-m", "superharness.commands.delegate"] + (args or [])
-    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=merged, check=False)
+    # Pipe an empty string as stdin so sys.stdin.isatty() returns False in the
+    # subprocess on all platforms.  subprocess.DEVNULL does NOT work here:
+    # Windows treats NUL as a console device and isatty() returns True,
+    # causing _confirm_*_risk() to print the interactive prompt instead of the
+    # expected "Set <ENV>=YES" refusal message.
+    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=merged,
+                          check=False, input="")
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -66,10 +72,25 @@ def _fake_bin(tmp_path: Path, *names: str) -> Path:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     for name in names:
-        binary = bin_dir / name
-        binary.write_text("#!/bin/bash\nprintf '%s\\n' \"$@\"\n")
-        binary.chmod(0o755)
+        if sys.platform == "win32":
+            # .cmd extension is required for shutil.which() to find the fake
+            # binary on Windows (PATHEXT must include .CMD, which it does by default).
+            binary = bin_dir / f"{name}.cmd"
+            binary.write_text("@echo off\nexit /b 0\n")
+        else:
+            binary = bin_dir / name
+            binary.write_text("#!/bin/bash\nprintf '%s\\n' \"$@\"\n")
+            binary.chmod(0o755)
     return bin_dir
+
+
+def _make_path(bin_dir: Path) -> str:
+    """Return a PATH string with bin_dir prepended, platform-aware."""
+    # On Windows, prepend to the existing PATH (preserves PATHEXT and system dirs).
+    # On Unix, append the two standard system dirs so subprocess calls resolve.
+    if sys.platform == "win32":
+        return str(bin_dir) + os.pathsep + os.environ.get("PATH", "")
+    return f"{bin_dir}:/usr/bin:/bin"
 
 
 # ── delegate.sh: autonomy → env vars ─────────────────────────────────────────
@@ -84,7 +105,7 @@ def test_delegate_autonomous_sets_both_env_vars(repo_root, tmp_path) -> None:
         repo_root,
         args=["--to", "codex-cli", "--project", str(project), "--task", "task-1", "--non-interactive"],
         env={
-            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "PATH": _make_path(bin_dir),
             # Clear these so profile controls them
             "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": None,
             "SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS": None,
@@ -105,7 +126,7 @@ def test_delegate_supervised_sets_non_interactive_only(repo_root, tmp_path) -> N
         repo_root,
         args=["--to", "claude-code", "--project", str(project), "--task", "task-1", "--non-interactive", "--via", "cli"],
         env={
-            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "PATH": _make_path(bin_dir),
             "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": None,
             "SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS": None,
         },
@@ -126,7 +147,7 @@ def test_delegate_approval_gated_sets_no_env_vars(repo_root, tmp_path) -> None:
         repo_root,
         args=["--to", "codex-cli", "--project", str(project), "--task", "task-1", "--non-interactive"],
         env={
-            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "PATH": _make_path(bin_dir),
             "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": None,
             "SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS": None,
         },
@@ -146,7 +167,7 @@ def test_delegate_existing_env_not_overridden_by_profile(repo_root, tmp_path) ->
         repo_root,
         args=["--to", "codex-cli", "--project", str(project), "--task", "task-1", "--non-interactive"],
         env={
-            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "PATH": _make_path(bin_dir),
             "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
             "SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS": None,
         },

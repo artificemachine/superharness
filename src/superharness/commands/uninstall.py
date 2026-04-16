@@ -74,7 +74,11 @@ def main(argv: list[str] | None = None) -> None:
         action("wrapper symlink", wrapper, "file")
 
     # 4. Remove watcher lock files
-    for lockdir in sorted(glob.glob("/tmp/superharness-inbox-watch-*.lock")):
+    # Use platform_runtime.tmp_dir() so this works on Windows (AppData\Local\Temp)
+    # as well as Unix (/tmp or $TMPDIR).
+    from superharness.engine.platform_runtime import tmp_dir
+    lock_pattern = os.path.join(tmp_dir(), "superharness-inbox-watch-*.lock")
+    for lockdir in sorted(glob.glob(lock_pattern)):
         if os.path.isdir(lockdir):
             action("watcher lock", lockdir, "dir")
 
