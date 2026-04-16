@@ -1913,3 +1913,45 @@ If you're an agent picking this up:
   block + `--force-reassign` override, matching-target no-warn path.
 - 4 new tests in `tests/unit/test_delegate.py` covering exit 2 on
   permanent block, plan-only relaxation, prompt-directive injection.
+
+## [1.24.0] - 2026-04-16
+
+### Added
+- `resolved_model` field in `shux adapter-payload --json` — every task and
+  subtask now carries `{id, label}` alongside the existing `model_tier`
+  string. `id` is the concrete model identifier (e.g. `claude-sonnet-4-6`,
+  `gpt-5.3-codex`); `label` is the human-facing name (e.g. `Sonnet 4.6`,
+  `GPT-5.3 Codex`). Consumers render `label`; SDKs dispatch with `id`.
+- Canonical resolver `superharness.engine.adapter_registry.resolve_model(owner, tier)`
+  returns a normalized `{id, label}` dict. Falls back to
+  `{id: tier, label: tier}` when owner or tier is unknown so the payload
+  stays well-formed during one-off dispatches.
+- `docs/adapter-models.md` — centralized documentation of tier→model
+  mappings for all adapters, rationale per choice, and the procedure for
+  bumping a model.
+
+### Changed
+- Adapter manifest schema: `model_tiers` entries now accept the preferred
+  `{id, label}` mapping form. Legacy scalar-string form still loads and is
+  shimmed to `{id: <str>, label: <str>}` by `AdapterManifest.from_dict`, so
+  existing third-party adapter manifests keep working.
+- `src/superharness/adapter_manifests/claude-code.yaml` updated to explicit
+  `{id, label}` form with current Claude 4.5/4.6 models.
+- `src/superharness/adapter_manifests/codex-cli.yaml` updated to
+  codex-optimized tiers: `mini = gpt-5.1-codex-mini`, `standard = gpt-5.3-codex`,
+  `max = gpt-5.4`. Rationale + sources in `docs/adapter-models.md`.
+- Adapter-payload schema bumped to `1.1`. Backwards compatible — 1.0
+  consumers ignore the new `resolved_model` field; `model_tier` string
+  remains in the payload.
+- `docs/adapter-payload-spec.md` — new "Resolved model" section documenting
+  the field, manifest schema, and resolver semantics. Added version
+  history table.
+
+### Tests
+- 10 new tests in `tests/unit/test_adapter_registry.py` covering
+  `resolve_model` (known/unknown owner/tier, empty fallback) and manifest
+  normalization (legacy-string form shim, `{id, label}` normalization).
+- 6 new tests in `tests/unit/test_adapter_payload.py` covering
+  `resolved_model` emission on tasks + subtasks, backwards-compat
+  `model_tier` retention, unknown-owner fallback, absent-tier handling,
+  and schema_version bump.
