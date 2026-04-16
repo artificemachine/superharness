@@ -58,10 +58,11 @@ def test_uninstall_unknown_option(repo_root) -> None:
 
 
 def test_uninstall_all_removes_lock_dirs(repo_root, tmp_path) -> None:
-    # Create a fake lock in /tmp
     import hashlib
+    import tempfile
     fake_key = hashlib.sha1(b"/fake/project").hexdigest()
-    lock_dir = Path(f"/tmp/superharness-inbox-watch-{fake_key}.lock")
+    # Use the platform temp dir so the lock is where uninstall.py looks for it.
+    lock_dir = Path(tempfile.gettempdir()) / f"superharness-inbox-watch-{fake_key}.lock"
     lock_dir.mkdir(exist_ok=True)
 
     try:
