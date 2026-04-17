@@ -1072,11 +1072,8 @@ def delegate(
 # CLI
 # ---------------------------------------------------------------------------
 
-def main(argv: list[str] | None = None) -> None:
+def _build_parser() -> "argparse.ArgumentParser":
     import argparse
-
-    if argv is None:
-        argv = sys.argv[1:]
 
     class _CapUsage(argparse.HelpFormatter):
         def _format_usage(self, usage, actions, groups, prefix):
@@ -1088,7 +1085,7 @@ def main(argv: list[str] | None = None) -> None:
         formatter_class=_CapUsage,
         add_help=True,
     )
-    parser.add_argument("--to", required=True, dest="target",
+    parser.add_argument("--to", required=False, dest="target", default=None,
                         help="Target agent: claude-code or codex-cli")
     parser.add_argument("--project", "-p", default=None,
                         help="Project directory (default: current directory)")
@@ -1138,9 +1135,24 @@ def main(argv: list[str] | None = None) -> None:
         help="Agent proposes a TDD plan and stops (no implementation). "
              "Relaxes gate 4 so todo+implementation tasks are dispatchable.",
     )
+    parser.add_argument(
+        "--1m-context", action="store_true", default=False,
+        dest="context_1m",
+        help="Force max-1m tier (claude-opus-4-7[1m]) for this dispatch. "
+             "Implies effort=max. Use when prompt exceeds ~200K tokens.",
+    )
+    return parser
 
+
+def main(argv: list[str] | None = None) -> None:
+    if argv is None:
+        argv = sys.argv[1:]
+
+    parser = _build_parser()
     opts = parser.parse_args(argv)
 
+    if opts.target is None:
+        parser.error("--to is required")
     if opts.target not in ("claude-code", "codex-cli"):
         print("--to must be claude-code or codex-cli", file=sys.stderr)
         sys.exit(2)
