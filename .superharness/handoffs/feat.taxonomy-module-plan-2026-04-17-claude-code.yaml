@@ -1,0 +1,164 @@
+task: feat.taxonomy-module
+phase: plan
+status: plan_proposed
+from: claude-code
+to: owner
+date: 2026-04-17T00:00:00Z
+plan: |
+  Create `src/superharness/engine/taxonomy.py` as the single source of truth
+  for effort levels, model tier mapping, and classifier heuristics. Migrate
+  the seven sites that currently hold duplicate or inconsistent copies of
+  these constants to import from the new module.
+
+  Reference: `docs/plan-effort-taxonomy-opus47-morpheme.md` §7.2 (file-touch
+  enumeration) and §3.1.1 (`EFFORT_TO_TIER_VERSION` canonical mapping).
+
+  Pure refactor. No runtime behaviour change. Rule: existing test suite
+  must stay green after each migration step.
+
+  Exported constants:
+    - VALID_EFFORTS        = ("low", "medium", "high", "xhigh", "max")
+    - EFFORT_ORDER         = list form, ascending (for retry escalation)
+    - EFFORT_TO_TIER_VERSION  = dict effort -> (tier, version)
+    - DEFAULT_MODEL_PER_EFFORT = dict effort -> full model id
+    - DEFAULT_TIMEOUT_PER_EFFORT = dict effort -> minutes
+    - OPUS_KEYWORDS        = frozenset of title/context trigger words
+
+  Seven migration sites (IMPORT only; no semantic change yet):
+    1. `src/superharness/commands/task.py`          (VALID_EFFORTS literal)
+    2. `src/superharness/commands/delegate.py`      (choices list)
+    3. `src/superharness/commands/auto_dispatch.py` (effort_order + choices)
+    4. `src/superharness/engine/model_router.py`    (VALID_EFFORTS set)
+    5. `src/superharness/engine/validate.py`        (_VALID_EFFORTS set)
+    6. `src/superharness/engine/schemas.py`         (Profile.default_effort Literal)
+    7. `protocol/templates/profile.schema.yaml`     (values: list — YAML, not Python)
+
+  Scope boundaries:
+    - Add `xhigh` to the literal sets so downstream tests for sub-plans 2–7
+      can assert on it — but do NOT enable `xhigh` in any runtime dispatch
+      logic yet.
+    - Do NOT touch the adapter manifest (sub-plan 2's job).
+    - Do NOT touch classifier logic or heuristic dispatch (sub-plan 4's job).
+    - Do NOT touch the orchestrator prompt (sub-plan 5's job).
+
+tdd:
+  red: |
+    Create `tests/unit/test_taxonomy.py` with these failing assertions
+    (import error is expected — module does not exist yet):
+
+      - `VALID_EFFORTS == ("low","medium","high","xhigh","max")`
+      - `EFFORT_ORDER == ["low","medium","high","xhigh","max"]`
+      - `EFFORT_TO_TIER_VERSION["low"]    == ("standard", "*")`
+      - `EFFORT_TO_TIER_VERSION["xhigh"]  == ("max",      "4.6")`
+      - `EFFORT_TO_TIER_VERSION["max"]    == ("max",      "*")`
+      - `DEFAULT_MODEL_PER_EFFORT["low"]    == "claude-sonnet-4-6"`
+      - `DEFAULT_MODEL_PER_EFFORT["xhigh"]  == "claude-opus-4-6"`
+      - `DEFAULT_MODEL_PER_EFFORT["max"]    == "claude-opus-4-7"`
+      - `DEFAULT_TIMEOUT_PER_EFFORT["low"] == 10`
+      - `DEFAULT_TIMEOUT_PER_EFFORT["max"] == 30`
+      - `OPUS_KEYWORDS` is a frozenset containing at minimum:
+        "oauth", "migration", "security audit", "architecture", "irreversible"
+      - All keys of `EFFORT_TO_TIER_VERSION` equal `set(VALID_EFFORTS)`
+      - All keys of `DEFAULT_MODEL_PER_EFFORT` equal `set(VALID_EFFORTS)`
+
+    Run: `pytest tests/unit/test_taxonomy.py -q` — must FAIL on import.
+
+  green: |
+    Create `src/superharness/engine/taxonomy.py` with the six exported
+    constants exactly as asserted above. Use tuples and frozensets for
+    immutability; avoid mutable module-level state.
+
+    Run: `pytest tests/unit/test_taxonomy.py -q` — must PASS.
+    Do NOT migrate any call site yet.
+
+  refactor: |
+    Migrate each of the seven sites in order, one commit per site, with a
+    test-suite green check between each:
+
+      1. `commands/task.py` — delete local `VALID_EFFORTS`, import from
+         `superharness.engine.taxonomy`. Preserve existing help-text
+         content verbatim (already lists low/medium/high/max; append
+         `xhigh` if needed, do NOT remove `max`).
+      2. `commands/delegate.py` — replace hardcoded `choices=["low","medium","high"]`
+         list with `choices=list(VALID_EFFORTS)`. This widens what delegate
+         accepts; add a TODO note that runtime behaviour for `xhigh`/`max`
+         is sub-plan 4's job.
+      3. `commands/auto_dispatch.py` — replace `effort_order` + `choices`
+         literals with imports. Retry ladder now has 5 rungs instead of 4;
+         this is an intentional capability change (adds one retry step),
+         flagged in the CHANGELOG as a non-breaking extension.
+      4. `engine/model_router.py` — replace `VALID_EFFORTS = {"low","medium","high"}`
+         with import. This expands the classifier's accepted output space;
+         since the current prompt only instructs Haiku to reply with
+         `low|medium|high`, behaviour is unchanged until sub-plan 4
+         updates the prompt.
+      5. `engine/validate.py` — replace `_VALID_EFFORTS` set with import.
+         Warning message text stays identical.
+      6. `engine/schemas.py` — widen `Profile.default_effort` from
+         `Literal["low","medium","high"]` to a runtime-validated `str`
+         that checks `in VALID_EFFORTS` via a pydantic validator. Preserves
+         schema strictness without duplicating the effort list.
+      7. `protocol/templates/profile.schema.yaml` — YAML file, not Python.
+         Update the `values:` list for `default_effort` to
+         `[low, medium, high, xhigh, max]`. Source-of-truth note in a
+         YAML comment pointing back to `engine/taxonomy.py`.
+
+    After each migration:
+      - Run `pytest tests/ -q` — must stay fully green.
+      - Run `grep -rn "VALID_EFFORTS" src/` and confirm only
+        `engine/taxonomy.py` holds the literal; other sites only reference
+        it via import.
+
+    Add an entry to `CHANGELOG.md` under the current version section:
+      - `chore(taxonomy): central effort taxonomy module; adds xhigh effort
+         level (accepted but not yet wired to model selection — sub-plan 4)`
+
+risks: |
+  - `profile.schema.yaml` is YAML, not Python. Migration is a values-list
+    edit, not an import. The "single source of truth" invariant is
+    documented via comment, not enforced at runtime; future drift is
+    possible and will only be caught by a hygiene check (out of scope here).
+
+  - `engine/schemas.py` currently uses a `Literal[...]` type on
+    `Profile.default_effort`. Widening to runtime-validated `str` changes
+    the static type surface for any downstream pyright/mypy consumer.
+    Intended trade-off: one source of truth beats strict typing on a list
+    that changes yearly.
+
+  - `commands/delegate.py` and `engine/model_router.py` currently cap at
+    three levels (`low|medium|high`). Widening their accepted inputs to
+    five levels means a dispatch with `--effort xhigh` will succeed at the
+    CLI layer but fall through to legacy model selection in sub-plan 4
+    territory. Mitigation: emit a `TODO(sub-plan-4)` log line when
+    effort is `xhigh` or `max` and sub-plan 4 has not landed yet. Flag
+    in PR description so the operator knows the half-wired state.
+
+  - `auto_dispatch.py` retry ladder change is a behaviour extension
+    (one extra retry step). Technically an API surface change even
+    though it is additive; CHANGELOG entry is required.
+
+  - Sub-plan 4 depends on `OPUS_KEYWORDS` shape. If the keyword set
+    needs richer structure later (e.g. weighted scores, categories),
+    we will either extend the module or refactor the API then. YAGNI
+    for now — flat frozenset is the right starting point.
+
+acceptance_criteria:
+  - "File src/superharness/engine/taxonomy.py exists with the six exported constants."
+  - "File tests/unit/test_taxonomy.py passes."
+  - "All seven migration sites import from superharness.engine.taxonomy."
+  - "grep -rn VALID_EFFORTS src/ returns exactly one hit (taxonomy.py)."
+  - "Full test suite (pytest tests/ -q) passes."
+  - "CHANGELOG.md has a chore(taxonomy) entry."
+
+effort: medium
+test_types:
+  - unit
+
+out_of_scope:
+  - Adapter manifest changes (sub-plan 2)
+  - 1M context tier or auto-promotion logic (sub-plan 3)
+  - Classifier heuristics + Sonnet LLM fallback (sub-plan 4)
+  - Orchestrator decomposer prompt (sub-plan 5)
+  - Adapter-payload v1.2 fields (sub-plan 6)
+  - Morpheme node rendering (separate repo)
+  - Any behaviour change that routes `xhigh`/`max` to different models at runtime

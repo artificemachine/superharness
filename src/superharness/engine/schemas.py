@@ -9,7 +9,8 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from superharness.engine.taxonomy import VALID_EFFORTS
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +209,14 @@ class Profile(BaseModel):
     watcher: bool = False
     vault_path: Optional[str] = None
     default_model: Optional[Literal["mini", "standard", "max"]] = None
-    default_effort: Optional[Literal["low", "medium", "high"]] = None
+    default_effort: Optional[str] = None
+
+    @field_validator("default_effort")
+    @classmethod
+    def _validate_default_effort(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_EFFORTS:
+            raise ValueError(f"default_effort must be one of {VALID_EFFORTS}")
+        return v
 
 
 # ---------------------------------------------------------------------------

@@ -22,6 +22,7 @@ except ImportError:
     _RT_AVAILABLE = False
 
 import yaml
+from superharness.engine.taxonomy import VALID_EFFORTS
 
 # ---------------------------------------------------------------------------
 # Validation helpers
@@ -37,7 +38,6 @@ VALID_ALL_STATUSES = {
     "done", "failed", "stopped",
 }
 VALID_WORKFLOWS = {"implementation", "quick", "discussion", "review", "approval", "note"}
-VALID_EFFORTS = {"low", "medium", "high", "max"}
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 
