@@ -118,7 +118,7 @@ fields:
   default_effort:
     type: enum
     required: false
-    values: [low, medium, high]
+    values: [low, medium, high, xhigh, max]  # source of truth: engine/taxonomy.py VALID_EFFORTS
     default: medium
     description: >
       Default thinking effort when no task-level effort is set and
