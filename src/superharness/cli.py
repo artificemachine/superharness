@@ -13,6 +13,16 @@ import click
 
 from superharness import __version__
 
+# Model shorthand → full model ID used by `shux run --model <shorthand>`.
+# "opus" resolves to the current-generation max-tier model.
+MODEL_SHORTCUTS: dict[str, str] = {
+    "sonnet":    "claude-sonnet-4-6",
+    "haiku":     "claude-haiku-4-5-20251001",
+    "opus":      "claude-opus-4-7",
+    "opus-4-6":  "claude-opus-4-6",
+    "opus-4-7":  "claude-opus-4-7",
+}
+
 _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 _SCRIPTS = str(_importlib_resources.files("superharness").joinpath("scripts"))
 _ROOT = os.path.dirname(os.path.dirname(_PACKAGE_DIR))  # repo root (editable installs / shux update)
@@ -600,8 +610,7 @@ def cmd_run(args):
     # Resolve model shorthand
     model = opts.model
     if model:
-        shortcuts = {"sonnet": "claude-sonnet-4-6", "haiku": "claude-haiku-4-5-20251001", "opus": "claude-opus-4-6"}
-        model = shortcuts.get(model, model)
+        model = MODEL_SHORTCUTS.get(model, model)
 
     from superharness.engine.sdk_runner import sdk_available, SDKRunner
 
