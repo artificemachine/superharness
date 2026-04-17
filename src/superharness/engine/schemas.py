@@ -110,6 +110,8 @@ class ContractTask(BaseModel):
     context: Optional[str] = None
     timeout_minutes: Optional[int] = None
     progress_timeout_minutes: Optional[int] = 10
+    # Phase 3: 1M context opt-in; auto-promoted when effort=max AND tokens>200K
+    context_1m: Optional[bool] = None
 
 
 class Contract(BaseModel):
