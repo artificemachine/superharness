@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import yaml as _yaml
 
 from superharness.engine.yaml_helpers import safe_load
+from superharness.engine.taxonomy import VALID_EFFORTS as _VALID_EFFORTS
 
 HELP_TEXT = """\
 Usage:
@@ -169,14 +170,13 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
                 issues += 1
 
     # Effort value validation
-    _VALID_EFFORTS = {"low", "medium", "high", "max"}
     for task in tasks:
         if not isinstance(task, dict):
             continue
         id_ = str(task.get("id", "")).strip()
         effort = task.get("effort")
         if effort is not None and str(effort) not in _VALID_EFFORTS:
-            print(f"Warning: task '{id_}' has invalid effort='{effort}' (expected: low/medium/high/max)")
+            print(f"Warning: task '{id_}' has invalid effort='{effort}' (expected: {'/'.join(_VALID_EFFORTS)})")
             issues += 1
 
     # Features.json validation

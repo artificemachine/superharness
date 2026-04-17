@@ -1501,7 +1501,7 @@ tasks:
   title: Investigate Windows-only unit test hang (KeyboardInterrupt ~70% through
     suite)
   owner: claude-code
-  status: todo
+  status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
@@ -1542,5 +1542,67 @@ tasks:
       Windows so future hangs surface fast instead of consuming the full CI 
       budget. Document the platform-specific skip pattern in docs/testing.md if 
       it doesn't exist already.
+  summary: 'v1.24.3 shipped. Windows CI hang + 9 pre-existing Windows test failures
+    fixed. All CI green.'
+  verified: true
+  verified_at: '2026-04-16T13:21:46Z'
+  verified_by: claude-code
+- id: feat.taxonomy-module
+  title: Central effort taxonomy module + migrate 7 call sites
+  owner: claude-code
+  status: report_ready
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: implementation
+  development_method: tdd
+  plan_approved_at: '2026-04-17T00:00:00Z'
+  tests_passed: true
+  acceptance_criteria:
+  - engine/taxonomy.py exists with 6 exported constants
+  - tests/unit/test_taxonomy.py passes (including test_valid_efforts_single_source identity check)
+  - all 7 migration sites import from superharness.engine.taxonomy
+  - test_valid_efforts_single_source asserts task/model_router/validate VALID_EFFORTS is taxonomy.VALID_EFFORTS (object identity)
+  - pytest tests/ -q passes unchanged
+  - CHANGELOG.md has chore(taxonomy) entry
+  effort: medium
+  test_types:
+  - unit
+  out_of_scope:
+  - adapter manifest changes (sub-plan 2)
+  - 1M context tier or auto-promotion (sub-plan 3)
+  - classifier heuristics / Sonnet LLM fallback (sub-plan 4)
+  - orchestrator decomposer prompt (sub-plan 5)
+  - adapter-payload v1.2 fields (sub-plan 6)
+  context: 'Plan: docs/plan-effort-taxonomy-opus47-morpheme.md §7.2. Handoff: .superharness/handoffs/feat.taxonomy-module-plan-2026-04-17-claude-code.yaml'
+  tdd:
+    red: tests/unit/test_taxonomy.py with 14 assertions on the 6 constants; 
+      import fails until module is created
+    green: create src/superharness/engine/taxonomy.py with 6 constants; 
+      test_taxonomy.py passes; no call-site migration yet
+    refactor: migrate 7 sites one by one with pytest green gate between each; 
+      add CHANGELOG chore(taxonomy) entry
+- id: fix.dashboard-newline-rendering
+  title: Dashboard pre-blocks render real newlines (39 JS string literal fixes)
+  owner: claude-code
+  status: report_ready
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: quick
+  acceptance_criteria:
+  - grep -c "'\\\\n'" dashboard.html returns 0
+  - task report, ledger tail, task dependencies render multi-line content 
+    correctly after hard refresh
+  - CHANGELOG.md has a v1.24.4 fix entry
+  effort: low
+  context: Dashboard bug spotted during plan review of feat.taxonomy-module. Fix
+    is 1 file, 1 pattern, 39 replacements. Verified live via curl + browser 
+    hard-refresh at http://127.0.0.1:8787.
+  summary: 'Fix committed on branch fix/dashboard-newline-rendering (commit 84d8585).
+    39 JS string-literal replacements + paired regex fix. Grep verified 0 remaining
+    buggy occurrences. Dashboard tested via hard-refresh at http://127.0.0.1:8787
+    — task report, ledger tail, and task dependencies render multi-line content correctly.
+    CHANGELOG entry added under v1.24.4. Ready for review + merge. (Note: session-stop
+    hook marked the task stopped mid-flight; that was a false stop — work completed
+    cleanly.)'
 decisions: []
 failures: []

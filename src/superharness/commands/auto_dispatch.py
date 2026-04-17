@@ -14,6 +14,7 @@ import sys
 from typing import Optional
 
 import yaml
+from superharness.engine.taxonomy import VALID_EFFORTS, EFFORT_ORDER
 
 
 _VALID_AGENTS = ("claude-code", "codex-cli")
@@ -68,11 +69,10 @@ def _enqueue(project_dir: str, task_id: str, agent: str, priority: int = 5) -> b
 
 def _should_decompose(task: dict, effort_gate: str) -> bool:
     """Return True if the task effort meets or exceeds the decomposition gate."""
-    effort_order = ["low", "medium", "high", "max"]
     task_effort = str(task.get("effort") or "medium")
     try:
-        gate_idx = effort_order.index(effort_gate)
-        task_idx = effort_order.index(task_effort)
+        gate_idx = EFFORT_ORDER.index(effort_gate)
+        task_idx = EFFORT_ORDER.index(task_effort)
         return task_idx >= gate_idx
     except ValueError:
         return False
@@ -159,7 +159,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--dry-run", action="store_true", default=False,
                         help="Show what would be enqueued without making changes")
     parser.add_argument("--effort-gate", default="high",
-                        choices=["low", "medium", "high", "max"],
+                        choices=list(VALID_EFFORTS),
                         help="Effort threshold that flags a task for orchestrator decomposition "
                              "(default: high)")
     parser.add_argument("--agent", default=None, choices=list(_VALID_AGENTS),
