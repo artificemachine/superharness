@@ -13,6 +13,7 @@ from pathlib import Path
 
 from superharness.engine.sdk_runner import sdk_available, SDKRunner
 from superharness.engine.orchestrator import Orchestrator, DecompositionResult
+from superharness.engine.taxonomy import VALID_EFFORTS
 
 
 def _abort(msg: str, code: int = 1) -> None:
@@ -1107,7 +1108,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "--effort", default=None,
-        choices=["low", "medium", "high"],
+        choices=list(VALID_EFFORTS),
         help="Override thinking effort (low/medium/high)",
     )
     parser.add_argument(
