@@ -299,9 +299,9 @@ async function refresh() {
     if (_currentView === 'board') loadBoardView();
     renderDepGraph(d.contract_tasks || []);
     renderActivityFeed(d.activity_feed || []);
-    document.getElementById('ledger').textContent = (d.ledger_tail || []).join('\\n');
-    document.getElementById('out').textContent = (d.out_tail || []).join('\\n');
-    document.getElementById('err').textContent = (d.err_tail || []).join('\\n');
+    document.getElementById('ledger').textContent = (d.ledger_tail || []).join('\n');
+    document.getElementById('out').textContent = (d.out_tail || []).join('\n');
+    document.getElementById('err').textContent = (d.err_tail || []).join('\n');
     document.getElementById('actionOut').textContent = lastActionText;
 
     // Owner filter checkboxes
@@ -451,7 +451,7 @@ async function act(action) {
       headers: {'Content-Type': 'application/json', 'X-Superharness-Token': AUTH_TOKEN},
       body: JSON.stringify({action})
     });
-    lastActionText = (d.stdout || '') + (d.stderr ? ('\\n' + d.stderr) : '');
+    lastActionText = (d.stdout || '') + (d.stderr ? ('\n' + d.stderr) : '');
     st.textContent = `ok: ${action} (exit=${d.exit_code})`;
   } catch (e) {
     st.textContent = 'error: ' + e;
@@ -498,80 +498,80 @@ async function viewTaskReport(taskId, agent) {
 
     // ── Contract Task ─────────────────────────────────────────────────────────
     if (d.contract_status) {
-      report += '═══ CONTRACT TASK ═══════════════════════════════════════════\\n';
-      report += 'ID:      ' + taskId + '\\n';
-      if (d.contract_title)  report += 'Title:   ' + d.contract_title + '\\n';
-      if (d.contract_owner)  report += 'Owner:   ' + d.contract_owner + '\\n';
-      report += 'Status:  ' + d.contract_status + '\\n';
+      report += '═══ CONTRACT TASK ═══════════════════════════════════════════\n';
+      report += 'ID:      ' + taskId + '\n';
+      if (d.contract_title)  report += 'Title:   ' + d.contract_title + '\n';
+      if (d.contract_owner)  report += 'Owner:   ' + d.contract_owner + '\n';
+      report += 'Status:  ' + d.contract_status + '\n';
       if (d.dispatch_model)
         report += 'Model:   ' + d.dispatch_model +
                   (d.dispatch_effort ? '  (effort: ' + d.dispatch_effort + ')' : '') +
-                  (d.dispatch_via    ? '  via ' + d.dispatch_via : '') + '\\n';
+                  (d.dispatch_via    ? '  via ' + d.dispatch_via : '') + '\n';
       if (Array.isArray(d.blocked_by) ? d.blocked_by.length : (d.blocked_by && d.blocked_by !== 'none' && d.blocked_by !== ''))
-        report += 'Blocked: ' + (Array.isArray(d.blocked_by) ? d.blocked_by.join(', ') : d.blocked_by) + '\\n';
+        report += 'Blocked: ' + (Array.isArray(d.blocked_by) ? d.blocked_by.join(', ') : d.blocked_by) + '\n';
       if (d.verified != null)
         report += 'Verified: ' + (d.verified ? '✓ yes' : '✗ no') +
                   (d.verified_by ? ' by ' + d.verified_by : '') +
-                  (d.verified_at ? ' at ' + d.verified_at : '') + '\\n';
+                  (d.verified_at ? ' at ' + d.verified_at : '') + '\n';
       if (d.tests_passed != null)
-        report += 'Tests passed: ' + (d.tests_passed ? '✓ yes' : '✗ no') + '\\n';
+        report += 'Tests passed: ' + (d.tests_passed ? '✓ yes' : '✗ no') + '\n';
 
       // Timestamps
       const tsKeys = ['todo_at','plan_proposed_at','plan_approved_at','in_progress_at','report_ready_at','done_at','stopped_at'];
       const tsLabels = {'todo_at':'Todo','plan_proposed_at':'Plan proposed','plan_approved_at':'Plan approved',
                         'in_progress_at':'In progress','report_ready_at':'Report ready','done_at':'Done','stopped_at':'Stopped'};
       const tsParts = tsKeys.filter(k => d[k]).map(k => tsLabels[k] + ': ' + d[k]);
-      if (tsParts.length) report += '\\nTimeline:\\n' + tsParts.map(s => '  ' + s).join('\\n') + '\\n';
+      if (tsParts.length) report += '\nTimeline:\n' + tsParts.map(s => '  ' + s).join('\n') + '\n';
 
       // Acceptance criteria
       if (d.acceptance_criteria && d.acceptance_criteria.length) {
-        report += '\\nAcceptance Criteria:\\n';
-        d.acceptance_criteria.forEach(c => { report += '  ✦ ' + c + '\\n'; });
+        report += '\nAcceptance Criteria:\n';
+        d.acceptance_criteria.forEach(c => { report += '  ✦ ' + c + '\n'; });
       }
 
       // Test types
       if (d.test_types && d.test_types.length)
-        report += '\\nTest Types: ' + d.test_types.join(', ') + '\\n';
+        report += '\nTest Types: ' + d.test_types.join(', ') + '\n';
 
       // TDD block
       if (d.tdd && Object.keys(d.tdd).length) {
-        report += '\\nTDD:\\n';
-        if (d.tdd.red)     report += '  RED:     ' + String(d.tdd.red).replace(/\\n/g,'\\n           ') + '\\n';
-        if (d.tdd.green)   report += '  GREEN:   ' + String(d.tdd.green).replace(/\\n/g,'\\n           ') + '\\n';
-        if (d.tdd.refactor)report += '  REFACTOR:' + String(d.tdd.refactor).replace(/\\n/g,'\\n           ') + '\\n';
+        report += '\nTDD:\n';
+        if (d.tdd.red)     report += '  RED:     ' + String(d.tdd.red).replace(/\n/g,'\n           ') + '\n';
+        if (d.tdd.green)   report += '  GREEN:   ' + String(d.tdd.green).replace(/\n/g,'\n           ') + '\n';
+        if (d.tdd.refactor)report += '  REFACTOR:' + String(d.tdd.refactor).replace(/\n/g,'\n           ') + '\n';
       }
 
       // Outcomes
       if (d.outcomes && d.outcomes.length) {
-        report += '\\nOutcomes:\\n';
-        d.outcomes.forEach(o => { report += '  • ' + o + '\\n'; });
+        report += '\nOutcomes:\n';
+        d.outcomes.forEach(o => { report += '  • ' + o + '\n'; });
       }
 
       // Summary
-      if (d.contract_summary) report += '\\nSummary: ' + d.contract_summary + '\\n';
+      if (d.contract_summary) report += '\nSummary: ' + d.contract_summary + '\n';
 
-      report += '\\n';
+      report += '\n';
     }
 
     // ── Discussion ────────────────────────────────────────────────────────────
     if (d.discussion_topic) {
-      report += '═══ DISCUSSION ══════════════════════════════════════════════\\n';
-      report += 'Topic:  ' + d.discussion_topic + '\\n';
-      report += 'Status: ' + (d.discussion_status||'-') + '\\n';
-      report += 'Round:  ' + (d.discussion_round||'?') + '/' + (d.discussion_max_rounds||'?') + '\\n\\n';
+      report += '═══ DISCUSSION ══════════════════════════════════════════════\n';
+      report += 'Topic:  ' + d.discussion_topic + '\n';
+      report += 'Status: ' + (d.discussion_status||'-') + '\n';
+      report += 'Round:  ' + (d.discussion_round||'?') + '/' + (d.discussion_max_rounds||'?') + '\n\n';
     }
 
     // ── Handoff / Report ──────────────────────────────────────────────────────
     if (d.handoff_outcome || d.handoff_context || d.handoff_summary || d.markdown_report) {
-      report += '═══ HANDOFF REPORT' + (d.handoff_date ? ' (' + d.handoff_date + ')' : '') + ' ════════════════════════\\n';
-      if (d.handoff_outcome)  report += '\\nOutcome:\\n' + d.handoff_outcome + '\\n';
-      if (d.handoff_context)  report += '\\nContext (for next session):\\n' + d.handoff_context + '\\n';
-      if (d.handoff_summary)  report += '\\nSummary: ' + d.handoff_summary + '\\n';
-      if (d.markdown_report)  report += '\\n' + d.markdown_report + '\\n';
+      report += '═══ HANDOFF REPORT' + (d.handoff_date ? ' (' + d.handoff_date + ')' : '') + ' ════════════════════════\n';
+      if (d.handoff_outcome)  report += '\nOutcome:\n' + d.handoff_outcome + '\n';
+      if (d.handoff_context)  report += '\nContext (for next session):\n' + d.handoff_context + '\n';
+      if (d.handoff_summary)  report += '\nSummary: ' + d.handoff_summary + '\n';
+      if (d.markdown_report)  report += '\n' + d.markdown_report + '\n';
     }
 
-    if (d.discussion_position) report += '\\n═══ DISCUSSION POSITION (' + (d.discussion_agent||agent) + ') ═══════════════\\n' + d.discussion_position + '\\n';
-    if (d.discussion_verdict)  report += 'Verdict: ' + d.discussion_verdict + '\\n';
+    if (d.discussion_position) report += '\n═══ DISCUSSION POSITION (' + (d.discussion_agent||agent) + ') ═══════════════\n' + d.discussion_position + '\n';
+    if (d.discussion_verdict)  report += 'Verdict: ' + d.discussion_verdict + '\n';
 
     if (!report) report = '(no report data found for this task)';
     body.textContent = report;
@@ -857,7 +857,7 @@ function showInboxReason(item) {
   if (item.stale_at) lines.push(`Stale:     ${item.stale_at}`);
   if (item.stopped_at) lines.push(`Stopped:   ${item.stopped_at}`);
   if (item.done_at) lines.push(`Done:      ${item.done_at}`);
-  body.textContent = lines.join('\\n');
+  body.textContent = lines.join('\n');
   card.style.display = 'block';
   card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -1145,7 +1145,7 @@ function renderDepGraph(tasks) {
       }
     }
   }
-  const mermaid = lines.join('\\n');
+  const mermaid = lines.join('\n');
   pre.textContent = mermaid;
   card.style.display = 'block';
 }
@@ -1300,7 +1300,7 @@ document.addEventListener('keydown', (e) => {
     case 'l': setView('list'); break;
     case 'b': setView('board'); break;
     case '?': // show help
-      alert('Keyboard shortcuts:\\n\\n  r — refresh\\n  g — toggle dependency graph\\n  l — list view\\n  b — board view\\n  ? — this help');
+      alert('Keyboard shortcuts:\n\n  r — refresh\n  g — toggle dependency graph\n  l — list view\n  b — board view\n  ? — this help');
       break;
   }
 });
