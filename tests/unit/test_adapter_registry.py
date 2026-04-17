@@ -350,3 +350,42 @@ class TestManifestPackaging:
     def test_codex_cli_manifest_yaml_file_exists_on_disk(self):
         from superharness.engine import adapter_registry as reg
         assert (reg.MANIFEST_DIR / "codex-cli.yaml").is_file()
+
+
+class TestOpus47Adapter:
+    """feat.opus-47-adapter — manifest + pricing + CLI shortcut."""
+
+    def test_adapter_manifest_max_is_opus_47(self):
+        """max tier default model must be claude-opus-4-7 (not 4.6)."""
+        manifest = load_manifest("claude-code")
+        assert manifest.model_tiers["max"]["id"] == "claude-opus-4-7"
+
+    def test_pricing_includes_opus_47(self):
+        """MODEL_PRICING must contain a claude-opus-4-7 entry with positive rates."""
+        from superharness.engine.sdk_runner import MODEL_PRICING
+        assert "claude-opus-4-7" in MODEL_PRICING
+        assert MODEL_PRICING["claude-opus-4-7"]["input"] > 0
+        assert MODEL_PRICING["claude-opus-4-7"]["output"] > 0
+
+    def test_cli_shortcut_opus_resolves_to_4_7(self):
+        """'opus' model shortcut must resolve to claude-opus-4-7."""
+        from superharness.cli import MODEL_SHORTCUTS
+        assert MODEL_SHORTCUTS["opus"] == "claude-opus-4-7"
+
+    def test_1m_variant_in_manifest(self):
+        """max-1m tier must exist and map to claude-opus-4-7[1m]."""
+        manifest = load_manifest("claude-code")
+        assert "max-1m" in manifest.model_tiers
+        assert manifest.model_tiers["max-1m"]["id"] == "claude-opus-4-7[1m]"
+
+    def test_resolve_tier_version_max_default(self):
+        """resolve_tier_version('max') with no version returns claude-opus-4-7."""
+        manifest = load_manifest("claude-code")
+        entry = manifest.resolve_tier_version("max")
+        assert entry["id"] == "claude-opus-4-7"
+
+    def test_resolve_tier_version_max_pinned_4_6(self):
+        """resolve_tier_version('max', '4.6') returns claude-opus-4-6."""
+        manifest = load_manifest("claude-code")
+        entry = manifest.resolve_tier_version("max", "4.6")
+        assert entry["id"] == "claude-opus-4-6"

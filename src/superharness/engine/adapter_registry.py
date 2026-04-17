@@ -28,17 +28,22 @@ class AdapterValidationError(Exception):
     """Raised when an adapter is unsupported or misconfigured."""
 
 
-def _normalize_tier_value(value: Any) -> dict[str, str]:
+def _normalize_tier_value(value: Any, version: str = "*") -> dict[str, str]:
     """Normalize a manifest model_tier value to the canonical {id, label} form.
 
-    Accepts either:
-    - the new mapping form `{id: <model-id>, label: <human-name>}`
-    - the legacy string form `<model-id>` (label defaults to the same string)
+    Accepts three forms:
+    - versioned: `{versions: {"*": {id, label}, "4.6": {id, label}, ...}}`
+    - mapping:   `{id: <model-id>, label: <human-name>}`
+    - legacy:    `<model-id>` string (label defaults to the same string)
 
-    Always returns a {id, label} dict with both keys present (never empty
-    unless the source value was empty).
+    For versioned tiers, `version` selects the entry; falls back to `"*"`.
+    Always returns a `{id, label}` dict.
     """
     if isinstance(value, dict):
+        if "versions" in value:
+            versions = value["versions"]
+            entry = versions.get(version) or versions.get("*") or {}
+            return _normalize_tier_value(entry)
         tier_id = str(value.get("id", "") or "").strip()
         label   = str(value.get("label", "") or "").strip()
         if not label:
@@ -53,9 +58,9 @@ class AdapterManifest:
     """Parsed adapter manifest.
 
     `model_tiers` values are always normalized to `{id, label}` mappings by
-    `from_dict`, regardless of whether the source manifest used the legacy
-    string form (`standard: sonnet`) or the new mapping form
-    (`standard: {id: ..., label: ...}`).
+    `from_dict`, using the `"*"` (default) version when the tier uses the
+    versioned schema.  Call `resolve_tier_version(tier, version)` to select
+    a specific version (e.g. `"4.6"` for Opus 4.6 within the `max` tier).
     """
     name: str
     version: str
@@ -63,14 +68,29 @@ class AdapterManifest:
     adapter_type: str  # "native" | "external"
     launcher_script: str
     capabilities: list[str] = field(default_factory=list)
-    # tier_name -> {"id": str, "label": str}
+    # tier_name -> {"id": str, "label": str}  (default/"*" version resolved)
     model_tiers: dict[str, dict[str, str]] = field(default_factory=dict)
     requires: dict[str, Any] = field(default_factory=dict)
     validation: dict[str, Any] = field(default_factory=dict)
+    # raw tier data preserved for resolve_tier_version()
+    _raw_tier_data: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    def resolve_tier_version(self, tier: str, version: str = "*") -> dict[str, str]:
+        """Resolve a tier + version to {id, label}.
+
+        For versioned tiers (`{versions: {...}}`), looks up `version` then
+        falls back to `"*"`.  For flat tiers (legacy or mapping form), the
+        `version` parameter is ignored and the flat value is returned.
+        Returns `{id: "", label: ""}` if the tier is unknown.
+        """
+        raw = self._raw_tier_data.get(tier)
+        if raw is None:
+            return {"id": "", "label": ""}
+        return _normalize_tier_value(raw, version=version)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AdapterManifest":
-        raw_tiers = data.get("model_tiers") or {}
+        raw_tiers: dict[str, Any] = dict(data.get("model_tiers") or {})
         normalized_tiers = {
             str(name): _normalize_tier_value(val)
             for name, val in raw_tiers.items()
@@ -85,6 +105,7 @@ class AdapterManifest:
             model_tiers=normalized_tiers,
             requires=dict(data.get("requires") or {}),
             validation=dict(data.get("validation") or {}),
+            _raw_tier_data=raw_tiers,
         )
 
 
