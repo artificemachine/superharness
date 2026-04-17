@@ -8,13 +8,26 @@ capabilities:
   - file_editing
   - test_execution
   - multi_file_refactor
-# Each tier carries the concrete model id (used by SDKs / API calls) and a
-# human-facing label (rendered by Morpheme and other UI consumers).
-# Update both fields together when bumping a model.
+# model_tiers uses versioned entries: each tier has a `versions` map.
+# The `"*"` key is the default (resolved when no version is pinned).
+# EFFORT_TO_TIER_VERSION in engine/taxonomy.py drives effort→tier+version routing.
 model_tiers:
-  mini:     { id: claude-haiku-4-5-20251001, label: "Haiku 4.5"  }
-  standard: { id: claude-sonnet-4-6,         label: "Sonnet 4.6" }
-  max:      { id: claude-opus-4-6,           label: "Opus 4.6"   }
+  mini:
+    versions:
+      "*": { id: claude-haiku-4-5-20251001, label: "Haiku 4.5" }
+  standard:
+    versions:
+      "*":   { id: claude-sonnet-4-6, label: "Sonnet 4.6" }
+      "4.6": { id: claude-sonnet-4-6, label: "Sonnet 4.6" }
+      "4.5": { id: claude-sonnet-4-5, label: "Sonnet 4.5" }
+  max:
+    versions:
+      "*":   { id: claude-opus-4-7,   label: "Opus 4.7" }
+      "4.7": { id: claude-opus-4-7,   label: "Opus 4.7" }
+      "4.6": { id: claude-opus-4-6,   label: "Opus 4.6" }
+  max-1m:
+    versions:
+      "*": { id: "claude-opus-4-7[1m]", label: "Opus 4.7 (1M)" }
 requires:
   bin: claude
   env: []

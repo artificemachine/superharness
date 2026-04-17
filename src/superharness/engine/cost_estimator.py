@@ -10,9 +10,10 @@ from dataclasses import dataclass, field
 from superharness.engine.sdk_runner import MODEL_PRICING as PRICING
 
 _TIER_TO_MODEL: dict[str, str] = {
-    "mini": "claude-haiku-4-5-20251001",
+    "mini":     "claude-haiku-4-5-20251001",
     "standard": "claude-sonnet-4-6",
-    "max": "claude-opus-4-6",
+    "max":      "claude-opus-4-7",
+    "max-1m":   "claude-opus-4-7[1m]",
 }
 
 _DEFAULT_INPUT_RATIO = 0.6  # 60% input, 40% output
