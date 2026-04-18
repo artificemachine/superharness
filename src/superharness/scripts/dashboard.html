@@ -592,6 +592,7 @@ const PHASE_LABEL = {
   plan_approved:    ['✅', 'plan approved',    'ok'],
   in_progress:      ['🔄', 'in progress',      'warn'],
   report_ready:     ['📝', 'report ready',     'warn'],
+  pr_open:          ['🔀', 'pr open',           'ok'],
   review_requested: ['🔍', 'review requested', 'warn'],
   review_passed:    ['✅', 'review passed',    'ok'],
   review_failed:    ['❌', 'review failed',    'bad'],
@@ -604,6 +605,7 @@ const PHASE_LABEL = {
 const STATUS_GROUPS = [
   { key: 'done',           label: '✅ done',           statuses: ['done'],                          color: 'var(--ok)' },
   { key: 'stopped',        label: '⛔ disabled',        statuses: ['stopped'],                       color: 'var(--muted)' },
+  { key: 'pr_open',        label: '🔀 pr open',          statuses: ['pr_open'],                                         color: 'var(--ok)' },
   { key: 'review',         label: '🔍 review',          statuses: ['review_requested','review_passed','review_failed'], color: 'var(--warn)' },
   { key: 'in_progress',    label: '🔄 in progress',     statuses: ['in_progress','launched','running'], color: '#4a9eff' },
   { key: 'plan',           label: '📋 plan',            statuses: ['plan_proposed','plan_approved'], color: '#a78bfa' },

@@ -82,6 +82,22 @@ def test_plan_only_noop_for_non_implementation_workflows():
     assert plan_only_allowed_statuses("note") == allowed_statuses_for_workflow("note", for_review=False)
 
 
+# ── pr_open status ──────────────────────────────────────────────────────────
+
+def test_pr_open_in_implementation_allowed():
+    allowed = allowed_statuses_for_workflow("implementation", for_review=False)
+    assert "pr_open" in allowed
+
+
+def test_pr_open_not_in_quick_or_note():
+    assert "pr_open" not in allowed_statuses_for_workflow("quick", for_review=False)
+    assert "pr_open" not in allowed_statuses_for_workflow("note", for_review=False)
+
+
+def test_pr_open_not_in_plan_only():
+    assert "pr_open" not in plan_only_allowed_statuses("implementation")
+
+
 # ── TERMINAL_STATUSES ────────────────────────────────────────────────────────
 
 def test_terminal_statuses_cover_done_failed_stopped():
