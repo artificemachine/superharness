@@ -134,7 +134,7 @@ def test_contract_task_model_field_optional():
 def test_contract_task_status_enum_values():
     statuses = [
         "todo", "plan_proposed", "plan_approved", "in_progress",
-        "report_ready", "review_passed", "done", "failed", "blocked",
+        "report_ready", "review_passed", "pr_open", "done", "failed", "blocked",
     ]
     for s in statuses:
         task = ContractTask.model_validate({**VALID_TASK, "status": s})
