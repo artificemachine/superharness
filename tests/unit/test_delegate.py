@@ -582,3 +582,26 @@ def test_ship_on_complete_false_no_directive(tmp_path):
     )
     assert r.returncode == 0, r.stderr
     assert "SHIP-ON-COMPLETE" not in r.stdout
+
+
+def test_delegate_ship_on_complete_flag_overrides_contract(tmp_path):
+    """--ship-on-complete CLI flag injects directive even when contract field is false."""
+    project = _setup_project_todo(tmp_path)
+    # Use a plan_approved task without ship_on_complete in contract
+    (project / ".superharness" / "contract.yaml").write_text(
+        "id: test-contract\n"
+        "tasks:\n"
+        "  - id: feat.wip\n"
+        "    owner: claude-code\n"
+        "    status: plan_approved\n"
+        "    workflow: implementation\n"
+        "    ship_on_complete: false\n"
+        f"    project_path: '{project.as_posix()}'\n"
+    )
+    r = _run_delegate_py(
+        project,
+        args=["--to", "claude-code", "--project", str(project),
+              "--task", "feat.wip", "--ship-on-complete", "--print-only"],
+    )
+    assert r.returncode == 0, r.stderr
+    assert "SHIP-ON-COMPLETE" in r.stdout

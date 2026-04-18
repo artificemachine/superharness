@@ -151,6 +151,7 @@ def create(
     context: Optional[str] = None,
     timeout_minutes: Optional[int] = None,
     plan: Optional[dict] = None,
+    ship_on_complete: bool = False,
 ) -> int:
     _validate_token("task id", task_id)
     if dependency:
@@ -226,6 +227,8 @@ def create(
         task["context"] = context
     if timeout_minutes is not None:
         task["timeout_minutes"] = timeout_minutes
+    if ship_on_complete:
+        task["ship_on_complete"] = True
     # Write as "tdd" key for backward compat (Pydantic reads via alias into plan field)
     if plan:
         task["tdd"] = dict(plan)
@@ -420,6 +423,9 @@ def main(argv: list[str] | None = None) -> None:
                           help="BDD when phase")
     p_create.add_argument("--bdd-then", dest="bdd_then", default="",
                           help="BDD then phase")
+    p_create.add_argument("--ship-on-complete", dest="ship_on_complete",
+                          action="store_true", default=False,
+                          help="Agent must run /ship commit before report_ready; watcher validates PR URL")
 
     # delete
     p_delete = sub.add_parser("delete", add_help=True)
@@ -513,6 +519,7 @@ def main(argv: list[str] | None = None) -> None:
             context=opts.context,
             timeout_minutes=opts.timeout_minutes,
             plan=plan,
+            ship_on_complete=opts.ship_on_complete,
         )
         sys.exit(rc)
 
