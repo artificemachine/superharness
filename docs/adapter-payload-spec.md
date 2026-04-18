@@ -44,14 +44,15 @@ Zero breaking changes. The fallback keeps working indefinitely until the command
 
 ---
 
-## Payload Schema (v1.1)
+## Payload Schema (v1.2)
 
 ### Version history
 
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | 2026-04-12 | Initial stable payload. |
-| 1.1 | 2026-04-16 | Added `model_tier` + `resolved_model: {id, label}` per task and subtask (backwards-compatible — 1.0 consumers ignore the new fields). |
+| 1.1 | 2026-04-16 | Added `model_tier` + `resolved_model: {id, label}` per task and subtask (backwards-compatible). |
+| 1.2 | 2026-04-18 | Added `classifier`, `decomposer`, `retry` blocks per task. Additive — v1.1 consumers ignore the new fields. |
 
 ### Annotated Example
 
@@ -59,9 +60,9 @@ The block below uses `//` comments for documentation. Strip them before parsing 
 
 ```jsonc
 {
-  // Required. Consumers should validate this >= "1.0". 1.1 adds
-  // resolved_model fields without breaking 1.0 clients.
-  "schema_version": "1.1",
+  // Required. Consumers should validate this >= "1.0". 1.2 adds
+  // classifier/decomposer/retry blocks; 1.1 adds resolved_model.
+  "schema_version": "1.2",
 
   // From contract.yaml `id:` field
   "contract_id": "my-project",
@@ -303,7 +304,10 @@ Written by a running agent to `.superharness/agent-pulse.yaml` via `shux agent-p
 | `blocked_by` | string[] | IDs this task depends on. Normalized from YAML `dependency:` field (see note). |
 | `model_tier` | string? | Cost/capability bucket chosen by the orchestrator (`mini` \| `standard` \| `max` \| other). Null when unset. |
 | `resolved_model` | `{id, label}`? | Concrete model descriptor resolved from `(owner, model_tier)` via the adapter manifest. Absent when `model_tier` is empty/null. See **Resolved model** section below. |
-| `effort` | string? | `"low"` \| `"medium"` \| `"high"` \| `null` |
+| `effort` | string? | `"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"` \| `null` |
+| `classifier` | object | v1.2+. Pipeline classifier result. Always present; defaults when not set in YAML. See **Pipeline blocks (v1.2)** below. |
+| `decomposer` | object | v1.2+. Orchestrator decomposition result. Always present; defaults when not set in YAML. |
+| `retry` | object | v1.2+. Retry state. Always present; defaults to `{count: 0, escalation_history: []}`. |
 | `acceptance_criteria` | string[] | List of acceptance criteria strings |
 | `handoffs` | Handoff[] | All handoffs for this task, oldest first |
 
@@ -351,6 +355,40 @@ model_tiers:
 Both forms load via `superharness.engine.adapter_registry.load_manifest`, which always produces normalized `{id, label}` dicts. The canonical resolver is `resolve_model(owner, tier) -> {id, label}`.
 
 **Backwards compatibility:** `model_tier` string remains in the payload alongside `resolved_model`. Schema 1.0 consumers (e.g. Morpheme's pre-1.1 path) can ignore the new field and keep reading `model_tier` directly.
+
+---
+
+### Pipeline blocks (v1.2+)
+
+Three new objects are always present on each task entry. When the pipeline has not run (most existing tasks), they carry safe defaults.
+
+#### `classifier`
+
+| Field | Type | Description |
+|---|---|---|
+| `invoked` | bool | `true` when the classifier ran for this task |
+| `decided_by` | string? | `"heuristic"` or `"sonnet-4-6"` (LLM fallback) |
+| `heuristic_reason` | string? | Which rule fired (e.g. `"title matches OPUS_KEYWORDS"`) |
+| `cost_usd` | number? | Classifier cost. `null` for heuristic path (free); ~0.002 for LLM path. |
+| `duration_ms` | number? | Wall time in milliseconds. |
+
+#### `decomposer`
+
+| Field | Type | Description |
+|---|---|---|
+| `invoked` | bool | `true` when the Opus orchestrator decomposed this task |
+| `model` | string? | `"claude-opus-4-6"` (default) or `"claude-opus-4-7"` (fallback) |
+| `rationale` | string? | LLM-generated split rationale |
+| `cost_usd` | number? | Decomposer call cost in USD |
+| `duration_ms` | number? | Wall time in milliseconds |
+| `subtask_count` | integer | Number of subtasks generated (0 when not invoked) |
+
+#### `retry`
+
+| Field | Type | Description |
+|---|---|---|
+| `count` | integer | How many times this task has been retried (0 = never) |
+| `escalation_history` | string[] | Ordered list of models used in prior attempts (e.g. `["claude-sonnet-4-6", "claude-opus-4-6"]`) |
 
 **When to bump a model:** update `id` and `label` together in the adapter manifest. Consumers display `label`; `id` is only used for SDK dispatch. Do not bump `schema_version` for model bumps — only bump it when adding/removing fields or changing shapes.
 

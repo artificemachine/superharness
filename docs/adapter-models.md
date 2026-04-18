@@ -20,15 +20,24 @@ rules in `~/.claude/MODEL_SELECTION.md`:
 
 Source of truth: `src/superharness/adapter_manifests/claude-code.yaml`.
 
-| Tier | Model id | Label |
-|---|---|---|
-| `mini` | `claude-haiku-4-5-20251001` | Haiku 4.5 |
-| `standard` | `claude-sonnet-4-6` | Sonnet 4.6 |
-| `max` | `claude-opus-4-6` | Opus 4.6 |
+| Tier | Model id (default `*`) | Label | Notes |
+|---|---|---|---|
+| `mini` | `claude-haiku-4-5-20251001` | Haiku 4.5 | |
+| `standard` | `claude-sonnet-4-6` | Sonnet 4.6 | versioned: `4.6` pin available |
+| `max` | `claude-opus-4-7` | Opus 4.7 | versioned: `4.7` default, `4.6` pin available |
+| `max-1m` | `claude-opus-4-7[1m]` | Opus 4.7 (1M) | auto-promoted when effort=max AND tokens > 200K |
 
-**Rationale:** one model per tier from the current Claude family. Anthropic's
-published tier roles align 1:1 with the superharness tier semantics, so the
-mapping is direct.
+**Rationale:** one model per tier from the current Claude family. The `max` tier
+was promoted from Opus 4.6 → Opus 4.7 (2026-04-17) as 4.7 became the default
+flagship. The `max-1m` tier activates automatically when a max-effort task
+estimates more than 200 K input tokens (`should_use_1m_context()` in taxonomy.py).
+
+### Model bump log — claude-code
+
+| Date | Tier | Old model | New model | Reason |
+|---|---|---|---|---|
+| 2026-04-17 | `max` | `claude-opus-4-6` | `claude-opus-4-7` | Opus 4.7 is the current flagship |
+| 2026-04-17 | `max-1m` | (new) | `claude-opus-4-7[1m]` | 1M context tier for large prompts |
 
 ## codex-cli adapter
 
@@ -72,7 +81,7 @@ Alternatives considered but not chosen:
 
 ## How the mapping is consumed
 
-Every task and subtask in `shux adapter-payload --json` (schema v1.1+) carries:
+Every task and subtask in `shux adapter-payload --json` (schema v1.2+) carries:
 
 ```json
 {

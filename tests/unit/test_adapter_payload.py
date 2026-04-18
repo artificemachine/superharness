@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from tests.helpers import REPO_ROOT
 
 # ---------------------------------------------------------------------------
@@ -62,8 +64,8 @@ class TestSchema:
         r = _run(["--project", str(project)])
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
-        # 1.1: resolved_model {id,label} added per task + subtask
-        assert d["schema_version"] == "1.1"
+        # 1.2: classifier, decomposer, retry blocks added per task
+        assert d["schema_version"] == "1.2"
 
     def test_top_level_keys_present(self, tmp_path):
         project = _setup(tmp_path)
@@ -499,7 +501,7 @@ class TestErrorHandling:
         r = _run(["--project", str(project)], cwd=str(tmp_path))
         assert r.returncode == 0
         d = json.loads(r.stdout)
-        assert d["schema_version"] == "1.1"
+        assert d["schema_version"] == "1.2"
 
 
 # ---------------------------------------------------------------------------
@@ -738,7 +740,126 @@ class TestResolvedModelField:
 
 
 class TestSchemaVersionBump:
-    def test_schema_version_bumped_to_1_1(self, tmp_path):
+    def test_schema_version_bumped_to_1_2(self, tmp_path):
         project = _setup(tmp_path)
         d = json.loads(_run(["--project", str(project)]).stdout)
-        assert d["schema_version"] == "1.1"
+        assert d["schema_version"] == "1.2"
+
+
+# ---------------------------------------------------------------------------
+# Schema v1.2 — classifier / decomposer / retry blocks
+# ---------------------------------------------------------------------------
+
+def _setup_v12(tmp_path: Path, *, classifier: dict | None = None,
+               decomposer: dict | None = None, retry: dict | None = None) -> Path:
+    """Create a project whose single task carries v1.2 pipeline fields."""
+    project = tmp_path / "proj_v12"
+    sh = project / ".superharness"
+    (sh / "handoffs").mkdir(parents=True)
+    for f in ("failures.yaml", "decisions.yaml"):
+        (sh / f).write_text(f"{f.split('.')[0]}: []\n")
+    (sh / "inbox.yaml").write_text("# inbox\n")
+    (sh / "ledger.md").write_text("# Ledger\n\n")
+
+    import yaml as _yaml
+    task = {
+        "id": "feat.v12-task",
+        "title": "V1.2 test task",
+        "owner": "claude-code",
+        "status": "in_progress",
+    }
+    if classifier is not None:
+        task["classifier"] = classifier
+    if decomposer is not None:
+        task["decomposer"] = decomposer
+    if retry is not None:
+        task["retry"] = retry
+
+    (sh / "contract.yaml").write_text(
+        _yaml.dump({
+            "id": "c", "goal": "G", "created": "2026-01-01",
+            "created_by": "owner", "status": "active",
+            "tasks": [task],
+        })
+    )
+    return project
+
+
+class TestSchemaV12:
+    """adapter-payload v1.2: classifier, decomposer, retry blocks on each task."""
+
+    def test_schema_version_is_1_2(self, tmp_path):
+        """Schema version string must be '1.2'."""
+        project = _setup(tmp_path)
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert d["schema_version"] == "1.2"
+
+    def test_task_has_classifier_block(self, tmp_path):
+        """Every task carries a classifier block (defaults when not set in YAML)."""
+        project = _setup(tmp_path)
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        task = d["tasks"][0]
+        assert "classifier" in task
+        assert isinstance(task["classifier"], dict)
+        assert task["classifier"]["invoked"] is False
+
+    def test_task_has_decomposer_block(self, tmp_path):
+        """Every task carries a decomposer block (defaults when not set in YAML)."""
+        project = _setup(tmp_path)
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        task = d["tasks"][0]
+        assert "decomposer" in task
+        assert isinstance(task["decomposer"], dict)
+        assert task["decomposer"]["invoked"] is False
+
+    def test_task_has_retry_block(self, tmp_path):
+        """Every task carries a retry block with count=0 and empty history by default."""
+        project = _setup(tmp_path)
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        task = d["tasks"][0]
+        assert "retry" in task
+        assert task["retry"]["count"] == 0
+        assert task["retry"]["escalation_history"] == []
+
+    def test_classifier_block_invoked_when_set(self, tmp_path):
+        """When task.classifier is set in YAML, it is surfaced in the payload."""
+        project = _setup_v12(tmp_path, classifier={
+            "invoked": True,
+            "decided_by": "heuristic",
+            "heuristic_reason": "title matches OPUS_KEYWORDS",
+            "cost_usd": None,
+            "duration_ms": None,
+        })
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        clf = d["tasks"][0]["classifier"]
+        assert clf["invoked"] is True
+        assert clf["decided_by"] == "heuristic"
+        assert clf["heuristic_reason"] == "title matches OPUS_KEYWORDS"
+
+    def test_decomposer_block_with_data(self, tmp_path):
+        """When task.decomposer is set in YAML, all fields are surfaced."""
+        project = _setup_v12(tmp_path, decomposer={
+            "invoked": True,
+            "model": "claude-opus-4-6",
+            "rationale": "AC=6, complex task",
+            "cost_usd": 0.08,
+            "duration_ms": 4200,
+            "subtask_count": 3,
+        })
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        dec = d["tasks"][0]["decomposer"]
+        assert dec["invoked"] is True
+        assert dec["model"] == "claude-opus-4-6"
+        assert dec["subtask_count"] == 3
+        assert dec["cost_usd"] == pytest.approx(0.08)
+
+    def test_retry_block_with_count(self, tmp_path):
+        """retry.count is surfaced when set; escalation_history preserved."""
+        project = _setup_v12(tmp_path, retry={
+            "count": 2,
+            "escalation_history": ["sonnet-4-6", "opus-4-6"],
+        })
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        retry = d["tasks"][0]["retry"]
+        assert retry["count"] == 2
+        assert retry["escalation_history"] == ["sonnet-4-6", "opus-4-6"]
