@@ -25,6 +25,7 @@ class TaskStatus(str, Enum):
     in_progress = "in_progress"
     report_ready = "report_ready"
     review_passed = "review_passed"
+    pr_open = "pr_open"
     done = "done"
     failed = "failed"
     blocked = "blocked"
