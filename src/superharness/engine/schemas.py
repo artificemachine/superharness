@@ -113,6 +113,8 @@ class ContractTask(BaseModel):
     progress_timeout_minutes: Optional[int] = 10
     # Phase 3: 1M context opt-in; auto-promoted when effort=max AND tokens>200K
     context_1m: Optional[bool] = None
+    # Ship step: agent runs /ship commit before report_ready; watcher validates PR URL
+    ship_on_complete: bool = False
 
 
 class Contract(BaseModel):
