@@ -190,11 +190,147 @@ class TestOrchestratorPrompt:
     def test_decompose_prompt_includes_tier_definitions(self):
         orch = Orchestrator(project_dir="/tmp/test")
         prompt = orch._build_decompose_prompt(SAMPLE_TASK)
-        assert "mini" in prompt
-        assert "standard" in prompt
-        assert "max" in prompt
+        assert "sonnet-4-6" in prompt
+        assert "opus-4-6" in prompt
+        assert "opus-4-7" in prompt
+        assert "Haiku" not in prompt
 
     def test_decompose_prompt_requests_json(self):
         orch = Orchestrator(project_dir="/tmp/test")
         prompt = orch._build_decompose_prompt(SAMPLE_TASK)
         assert "json" in prompt.lower()
+
+
+# ---------------------------------------------------------------------------
+# Decomposer prompt v2 — 5-effort scale, Sonnet/Opus-only menu
+# ---------------------------------------------------------------------------
+
+SAMPLE_DECOMPOSITION_V2 = {
+    "should_split": True,
+    "rationale": "Three distinct subtasks with different concerns",
+    "subtasks": [
+        {
+            "id": "T-42.1",
+            "title": "Write rate limiter middleware",
+            "model": "sonnet-4-6",
+            "effort": "medium",
+            "timeout_minutes": 20,
+            "blocked_by": None,
+            "plan": {},
+            "estimated_tokens": 45000,
+        },
+        {
+            "id": "T-42.2",
+            "title": "Add Redis counter backend",
+            "model": "sonnet-4-6",
+            "effort": "low",
+            "timeout_minutes": 15,
+            "blocked_by": "T-42.1",
+            "plan": {},
+            "estimated_tokens": 12000,
+        },
+        {
+            "id": "T-42.3",
+            "title": "Write integration tests",
+            "model": "opus-4-6",
+            "effort": "xhigh",
+            "timeout_minutes": 30,
+            "blocked_by": "T-42.2",
+            "plan": {},
+            "estimated_tokens": 30000,
+        },
+    ],
+}
+
+
+class TestDecomposerPromptV2:
+    """Prompt v2: 5-effort scale, Sonnet/Opus-only executor menu, new task fields."""
+
+    def test_prompt_has_sonnet_opus_menu_not_haiku(self):
+        """Executor menu uses model IDs (sonnet-4-6/opus-4-6/opus-4-7), not Haiku."""
+        orch = Orchestrator(project_dir="/tmp/test")
+        prompt = orch._build_decompose_prompt(SAMPLE_TASK)
+        assert "sonnet-4-6" in prompt
+        assert "opus-4-6" in prompt
+        assert "Haiku" not in prompt
+
+    def test_prompt_includes_xhigh_effort_level(self):
+        """5-effort scale includes xhigh in the prompt."""
+        orch = Orchestrator(project_dir="/tmp/test")
+        prompt = orch._build_decompose_prompt(SAMPLE_TASK)
+        assert "xhigh" in prompt
+
+    def test_prompt_includes_should_split_field(self):
+        """Prompt instructs LLM to emit should_split field in JSON."""
+        orch = Orchestrator(project_dir="/tmp/test")
+        prompt = orch._build_decompose_prompt(SAMPLE_TASK)
+        assert "should_split" in prompt
+
+    def test_prompt_includes_development_method_field(self):
+        """Prompt template surfaces development_method when set."""
+        task = {**SAMPLE_TASK, "development_method": "tdd", "effort": "xhigh"}
+        orch = Orchestrator(project_dir="/tmp/test")
+        prompt = orch._build_decompose_prompt(task)
+        assert "tdd" in prompt.lower() or "development_method" in prompt.lower()
+
+    def test_prompt_includes_out_of_scope_content(self):
+        """out_of_scope list is embedded in the prompt."""
+        task = {**SAMPLE_TASK, "out_of_scope": ["UI changes", "billing logic"]}
+        orch = Orchestrator(project_dir="/tmp/test")
+        prompt = orch._build_decompose_prompt(task)
+        assert "UI changes" in prompt or "billing" in prompt
+
+    def test_parse_should_split_false_returns_single_subtask(self):
+        """should_split: false keeps the single subtask without further decomposition."""
+        decomp = {
+            "should_split": False,
+            "rationale": "Small scope, no split needed",
+            "subtasks": [
+                {
+                    "id": "T-42.1",
+                    "title": "Add rate limiting",
+                    "model": "sonnet-4-6",
+                    "effort": "high",
+                    "timeout_minutes": 25,
+                    "blocked_by": None,
+                    "plan": {},
+                    "estimated_tokens": 40000,
+                }
+            ],
+        }
+        orch = Orchestrator(project_dir="/tmp/test")
+        with patch.object(orch, "_call_orchestrator_model", return_value=json.dumps(decomp)):
+            result = orch.decompose(SAMPLE_TASK)
+        assert len(result.subtasks) == 1
+        assert result.subtasks[0]["id"] == "T-42.1"
+
+    def test_parse_model_field_synthesizes_model_tier(self):
+        """model:'sonnet-4-6' in v2 JSON → synthesized model_tier:'standard'."""
+        orch = Orchestrator(project_dir="/tmp/test")
+        with patch.object(orch, "_call_orchestrator_model", return_value=json.dumps(SAMPLE_DECOMPOSITION_V2)):
+            result = orch.decompose(SAMPLE_TASK)
+        assert result.subtasks[0]["model_tier"] == "standard"
+
+    def test_parse_opus_model_synthesizes_max_tier(self):
+        """model:'opus-4-6' in v2 JSON → synthesized model_tier:'max'."""
+        orch = Orchestrator(project_dir="/tmp/test")
+        with patch.object(orch, "_call_orchestrator_model", return_value=json.dumps(SAMPLE_DECOMPOSITION_V2)):
+            result = orch.decompose(SAMPLE_TASK)
+        assert result.subtasks[2]["model_tier"] == "max"
+
+    def test_parse_effort_preserved_in_subtask(self):
+        """effort field is preserved in the parsed subtask dict."""
+        orch = Orchestrator(project_dir="/tmp/test")
+        with patch.object(orch, "_call_orchestrator_model", return_value=json.dumps(SAMPLE_DECOMPOSITION_V2)):
+            result = orch.decompose(SAMPLE_TASK)
+        assert result.subtasks[2].get("effort") == "xhigh"
+
+    def test_decomposer_model_constant_is_opus_46(self):
+        """DECOMPOSER_MODEL is the Opus 4.6 full model ID."""
+        from superharness.engine.orchestrator import DECOMPOSER_MODEL
+        assert DECOMPOSER_MODEL == "claude-opus-4-6"
+
+    def test_decomposer_fallback_constant_is_opus_47(self):
+        """DECOMPOSER_FALLBACK escalates to Opus 4.7 when 4.6 is unavailable."""
+        from superharness.engine.orchestrator import DECOMPOSER_FALLBACK
+        assert DECOMPOSER_FALLBACK == "claude-opus-4-7"
