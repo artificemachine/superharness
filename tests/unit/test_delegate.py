@@ -525,3 +525,60 @@ def test_delegate_without_plan_only_returns_exit_2_for_todo_impl(tmp_path):
               "--task", "feat.wip"],
     )
     assert r.returncode == 2, (r.returncode, r.stderr)
+
+
+# ── ship_on_complete directive ────────────────────────────────────────────────
+
+def _setup_project_ship_on_complete(tmp_path: Path) -> Path:
+    """Project with a plan_approved + ship_on_complete task."""
+    project = tmp_path / "proj_ship"
+    project.mkdir()
+    harness = project / ".superharness"
+    (harness / "handoffs").mkdir(parents=True, exist_ok=True)
+    (harness / "contract.yaml").write_text(
+        "id: test-contract\n"
+        "tasks:\n"
+        "  - id: feat.ship-me\n"
+        "    owner: claude-code\n"
+        "    status: plan_approved\n"
+        "    workflow: implementation\n"
+        "    ship_on_complete: true\n"
+        f"    project_path: '{project.as_posix()}'\n"
+    )
+    return project
+
+
+def test_ship_on_complete_injects_directive_into_prompt(tmp_path):
+    """ship_on_complete: true adds a SHIP-ON-COMPLETE directive to the agent prompt."""
+    project = _setup_project_ship_on_complete(tmp_path)
+    r = _run_delegate_py(
+        project,
+        args=["--to", "claude-code", "--project", str(project),
+              "--task", "feat.ship-me", "--print-only"],
+    )
+    assert r.returncode == 0, r.stderr
+    assert "SHIP-ON-COMPLETE" in r.stdout
+    assert "ALLOW_PUSH=1" in r.stdout or "/ship commit" in r.stdout
+
+
+def test_ship_on_complete_false_no_directive(tmp_path):
+    """ship_on_complete: false (default) must NOT inject the ship directive."""
+    project = _setup_project_todo(tmp_path)
+    # Use a plan_approved variant (override status)
+    (project / ".superharness" / "contract.yaml").write_text(
+        "id: test-contract\n"
+        "tasks:\n"
+        "  - id: feat.wip\n"
+        "    owner: claude-code\n"
+        "    status: plan_approved\n"
+        "    workflow: implementation\n"
+        "    ship_on_complete: false\n"
+        f"    project_path: '{project.as_posix()}'\n"
+    )
+    r = _run_delegate_py(
+        project,
+        args=["--to", "claude-code", "--project", str(project),
+              "--task", "feat.wip", "--print-only"],
+    )
+    assert r.returncode == 0, r.stderr
+    assert "SHIP-ON-COMPLETE" not in r.stdout

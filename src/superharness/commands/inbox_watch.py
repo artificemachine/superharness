@@ -357,6 +357,70 @@ def auto_enqueue_approved(project_dir: str) -> int:
     return added
 
 
+_PR_URL_RE = __import__("re").compile(r"https://github\.com/[^/]+/[^/]+/pull/\d+")
+
+
+def _find_pr_url_in_handoff(handoff_dir: str, task_id: str) -> str | None:
+    """Return the first GitHub PR URL found in any handoff outcome for task_id."""
+    import glob as _glob
+    import yaml as _yaml
+
+    pattern = os.path.join(handoff_dir, f"*{task_id}*")
+    for path in sorted(_glob.glob(pattern)):
+        try:
+            doc = _yaml.safe_load(open(path, encoding="utf-8").read()) or {}
+            for item in doc.get("outcomes") or []:
+                m = _PR_URL_RE.search(str(item))
+                if m:
+                    return m.group(0)
+        except Exception:
+            continue
+    return None
+
+
+def _check_ship_on_complete_tasks(project_dir: str) -> None:
+    """For ship_on_complete tasks at report_ready with no PR URL, mark failed."""
+    import yaml as _yaml
+
+    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
+    if not os.path.isfile(contract_file):
+        return
+    try:
+        contract = _yaml.safe_load(open(contract_file, encoding="utf-8").read()) or {}
+    except Exception:
+        return
+
+    changed = False
+    tasks = contract.get("tasks") or []
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        if not task.get("ship_on_complete"):
+            continue
+        if task.get("status") != "report_ready":
+            continue
+        task_id = str(task.get("id", ""))
+        if not task_id:
+            continue
+        handoff_dir = os.path.join(project_dir, ".superharness", "handoffs")
+        pr_url = _find_pr_url_in_handoff(handoff_dir, task_id)
+        if not pr_url:
+            task["status"] = "failed"
+            changed = True
+            print(
+                f"ship_on_complete: task '{task_id}' reached report_ready without a PR URL "
+                f"in handoff outcomes — marking failed.",
+                file=sys.stderr,
+            )
+
+    if changed:
+        try:
+            with open(contract_file, "w", encoding="utf-8") as _f:
+                _f.write(_yaml.dump(contract, default_flow_style=False))
+        except Exception as e:
+            print(f"ship_on_complete: failed to write contract: {e}", file=sys.stderr)
+
+
 def run_once(
     project_dir: str,
     *,
@@ -438,6 +502,12 @@ def _run_scripts(
         run_hooks("on_watcher_tick", {"project_dir": project_dir}, Path(project_dir))
     except Exception as e:
         print(f"Warning: on_watcher_tick hook failed: {e}", file=sys.stderr)
+
+    # ship_on_complete guard: mark failed when report_ready has no PR URL
+    try:
+        _check_ship_on_complete_tasks(project_dir)
+    except Exception as e:
+        print(f"Warning: _check_ship_on_complete_tasks failed: {e}", file=sys.stderr)
 
     # Auto-enqueue plan_approved tasks when auto_dispatch=True in profile.yaml
     try:
