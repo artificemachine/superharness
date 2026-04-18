@@ -2048,3 +2048,4 @@ If you're an agent picking this up:
 - 2026-04-18 (v1.24.10): feat(adapter-payload): schema v1.2 — classifier/decomposer/retry blocks on each task; _build_classifier_block/_build_decomposer_block/_build_retry_block helpers; additive, v1.1 consumers unaffected
 - 2026-04-18 (v1.24.11): docs: GUIDE.md effort enum → 5-level (xhigh/max), remove Haiku classifier ref; adapter-models.md max→opus-4-7, max-1m tier, model bump log; adapter-payload-spec.md v1.2 version history, pipeline blocks section (classifier/decomposer/retry)
 - 2026-04-18 (v1.24.12): test: synod regression integration test — 4 tests covering enqueue gate parity (todo+implementation rejected before inbox.yaml written, --plan-only escape hatch, owner-mismatch block); reproduces 2026-04-15 synod failure where 3 wasted launcher cycles followed a silent accept
+- 2026-04-18 (v1.24.13): chore: archive enqueue/dispatch gate parity plan doc — mark implemented in docs/plan-enqueue-gate-parity.md
