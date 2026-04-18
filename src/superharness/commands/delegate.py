@@ -831,6 +831,21 @@ def delegate(
             "4. Stop. Do not proceed to implementation. The owner must review and approve the plan first.\n"
         )
 
+    # ship_on_complete: inject directive so the agent runs /ship commit before report_ready
+    _ship_on_complete = str(_get_task_field(contract_file, task_id, "ship_on_complete") or "").lower()
+    if _ship_on_complete in ("true", "1", "yes"):
+        auto_directive += (
+            "\n\n=== SHIP-ON-COMPLETE ===\n"
+            "This task has ship_on_complete: true.\n"
+            "After all acceptance criteria are met and BEFORE writing report_ready:\n"
+            "1. Run `ALLOW_PUSH=1 /ship commit` (non-interactive) inside this worktree.\n"
+            "2. If /ship commit exits non-zero, do NOT write report_ready.\n"
+            "   Instead write a failed handoff and exit.\n"
+            "3. Include the PR URL in your handoff outcomes list "
+            "(e.g. 'PR: https://github.com/org/repo/pull/N').\n"
+            "4. Only after /ship commit succeeds, set task status to report_ready.\n"
+        )
+
     # Discussion-round detection
     m = _DISC_ROUND_RE.match(task_id)
     discussion_id = m.group(1) if m else ""

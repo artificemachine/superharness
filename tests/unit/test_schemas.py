@@ -346,3 +346,17 @@ failures: []
         assert isinstance(result, Contract)
     finally:
         os.unlink(path)
+
+
+# ---------------------------------------------------------------------------
+# ship_on_complete field
+# ---------------------------------------------------------------------------
+
+def test_ship_on_complete_defaults_false():
+    task = ContractTask.model_validate(VALID_TASK)
+    assert task.ship_on_complete is False
+
+
+def test_ship_on_complete_accepts_true():
+    task = ContractTask.model_validate({**VALID_TASK, "ship_on_complete": True})
+    assert task.ship_on_complete is True
