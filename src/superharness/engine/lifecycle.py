@@ -44,6 +44,7 @@ def allowed_statuses_for_workflow(workflow: str, *, for_review: bool = False) ->
             "in_progress",
             "report_ready",
             "review_passed",
+            "pr_open",
             "review_failed",
             "pending_user_approval",
         }
