@@ -6,7 +6,6 @@ model names. Falls back to ("standard", "medium") on any failure.
 from __future__ import annotations
 
 import subprocess
-import warnings
 
 from superharness.engine.taxonomy import VALID_EFFORTS
 
@@ -16,7 +15,6 @@ MODEL_MAP: dict[str, dict[str, str]] = {
 }
 
 VALID_TIERS = {"mini", "standard", "max"}
-_HALF_WIRED_EFFORTS = {"xhigh", "max"}
 
 _FALLBACK_TIER = "standard"
 _FALLBACK_EFFORT = "medium"
@@ -81,13 +79,6 @@ def classify_task(
 
         tier = parts[0] if parts[0] in VALID_TIERS else _FALLBACK_TIER
         effort = parts[1] if parts[1] in VALID_EFFORTS else _FALLBACK_EFFORT
-        if effort in _HALF_WIRED_EFFORTS:
-            warnings.warn(
-                f"effort={effort} not yet wired to model selection "
-                "(TODO sub-plan-4 — falling back to high)",
-                stacklevel=2,
-            )
-            effort = "high"
         return tier, effort
 
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
