@@ -21,7 +21,7 @@ import yaml
 from superharness.engine.adapter_registry import resolve_model
 from superharness.engine.normalization import normalize_blocked_by
 
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
 
 # ---------------------------------------------------------------------------
 # Status mapping  (extracted from Morpheme rawParser.js — superharness owns it)
@@ -315,6 +315,48 @@ def _resolved_model_for(owner: Any, tier: Any) -> dict[str, str] | None:
     return resolve_model(str(owner or ""), tier_str)
 
 
+def _build_classifier_block(task: dict) -> dict:
+    """Build the v1.2 classifier block for a task."""
+    raw = task.get("classifier")
+    if isinstance(raw, dict):
+        return {
+            "invoked":          bool(raw.get("invoked", False)),
+            "decided_by":       raw.get("decided_by"),
+            "heuristic_reason": raw.get("heuristic_reason"),
+            "cost_usd":         raw.get("cost_usd"),
+            "duration_ms":      raw.get("duration_ms"),
+        }
+    return {"invoked": False, "decided_by": None, "heuristic_reason": None,
+            "cost_usd": None, "duration_ms": None}
+
+
+def _build_decomposer_block(task: dict) -> dict:
+    """Build the v1.2 decomposer block for a task."""
+    raw = task.get("decomposer")
+    if isinstance(raw, dict):
+        return {
+            "invoked":       bool(raw.get("invoked", False)),
+            "model":         raw.get("model"),
+            "rationale":     raw.get("rationale"),
+            "cost_usd":      raw.get("cost_usd"),
+            "duration_ms":   raw.get("duration_ms"),
+            "subtask_count": int(raw.get("subtask_count") or 0),
+        }
+    return {"invoked": False, "model": None, "rationale": None,
+            "cost_usd": None, "duration_ms": None, "subtask_count": 0}
+
+
+def _build_retry_block(task: dict) -> dict:
+    """Build the v1.2 retry block for a task."""
+    raw = task.get("retry")
+    if isinstance(raw, dict):
+        return {
+            "count":               int(raw.get("count") or 0),
+            "escalation_history":  list(raw.get("escalation_history") or []),
+        }
+    return {"count": 0, "escalation_history": []}
+
+
 def _build_tasks(raw_tasks: list, handoffs_by_task: dict) -> list[dict]:
     result = []
     for t in raw_tasks:
@@ -366,6 +408,9 @@ def _build_tasks(raw_tasks: list, handoffs_by_task: dict) -> list[dict]:
         resolved = _resolved_model_for(owner, tier)
         if resolved is not None:
             entry["resolved_model"] = resolved
+        entry["classifier"] = _build_classifier_block(t)
+        entry["decomposer"] = _build_decomposer_block(t)
+        entry["retry"]      = _build_retry_block(t)
         result.append(entry)
     return result
 

@@ -203,8 +203,9 @@ superharness delegate --to claude-code --project /path/to/project
 - `--task <TASK_ID>` — force a specific task (bypasses next-task logic)
 - `--print-only` — generate prompt text without launching the CLI
 - `--model <tier|name>` — override model (mini/standard/max or sonnet/opus/haiku/gpt-5.3-codex)
-- `--effort <low|medium|high>` — override thinking effort
-- `--no-auto-model` — skip Haiku auto-classification, use profile defaults
+- `--effort <low|medium|high|xhigh|max>` — override thinking effort
+- `--1m-context` — force max-1m tier (`claude-opus-4-7[1m]`); use when prompt exceeds ~200K tokens
+- `--no-auto-model` — skip automatic model classification, use profile defaults
 - `--orchestrate` — Opus orchestrator mode: decompose the task into subtasks, assign each a model tier (mini/standard/max), estimate cost, write subtasks to `contract.yaml`, then dispatch
 - `--force` — bypass a daily budget BLOCK and dispatch anyway (use sparingly)
 
@@ -325,7 +326,7 @@ superharness task delete --project . --id task-id
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--effort` | `low\|medium\|high\|max` | `medium` | Effort level — affects orchestrator split decisions and timeout defaults |
+| `--effort` | `low\|medium\|high\|xhigh\|max` | `medium` | Effort level — affects model selection, orchestrator split decisions, and timeout defaults |
 | `--test-types` | comma-separated | none | Test types required (e.g. `unit,integration,e2e,security`) |
 | `--out-of-scope` | repeatable | none | Scope boundaries — orchestrator respects these |
 | `--definition-of-done` | repeatable | none | Explicit DoD (overrides contract-level `default_definition_of_done`) |
@@ -591,8 +592,8 @@ Pulse file: `.superharness/agent-pulse.yaml`. Stale threshold: 5 minutes.
 
 ### Auto-Dispatch (`shux auto-dispatch`)
 
-Scan all `todo` tasks in the contract, classify each via the model router (Haiku),
-and enqueue to the best agent:
+Scan all `todo` tasks in the contract, classify each via the model classifier
+(heuristic stage then Sonnet fallback), and enqueue to the best agent:
 
 ```bash
 shux auto-dispatch               # enqueue all eligible todo tasks
