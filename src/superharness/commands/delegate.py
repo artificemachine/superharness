@@ -529,6 +529,7 @@ def delegate(
     skip_preflight: bool = False,
     force: bool = False,
     plan_only: bool = False,
+    ship_on_complete: bool = False,
 ) -> int:
     project_dir = os.path.realpath(project_dir)
 
@@ -832,8 +833,10 @@ def delegate(
         )
 
     # ship_on_complete: inject directive so the agent runs /ship commit before report_ready
-    _ship_on_complete = str(_get_task_field(contract_file, task_id, "ship_on_complete") or "").lower()
-    if _ship_on_complete in ("true", "1", "yes"):
+    _ship_on_complete = ship_on_complete or str(
+        _get_task_field(contract_file, task_id, "ship_on_complete") or ""
+    ).lower() in ("true", "1", "yes")
+    if _ship_on_complete:
         auto_directive += (
             "\n\n=== SHIP-ON-COMPLETE ===\n"
             "This task has ship_on_complete: true.\n"
@@ -1156,6 +1159,12 @@ def _build_parser() -> "argparse.ArgumentParser":
         help="Force max-1m tier (claude-opus-4-7[1m]) for this dispatch. "
              "Implies effort=max. Use when prompt exceeds ~200K tokens.",
     )
+    parser.add_argument(
+        "--ship-on-complete", action="store_true", default=False,
+        dest="ship_on_complete",
+        help="Override: inject SHIP-ON-COMPLETE directive for this dispatch even "
+             "if the contract task does not have ship_on_complete: true.",
+    )
     return parser
 
 
@@ -1201,6 +1210,7 @@ def main(argv: list[str] | None = None) -> None:
         skip_preflight=opts.skip_preflight,
         force=opts.force,
         plan_only=opts.plan_only,
+        ship_on_complete=opts.ship_on_complete,
     )
     sys.exit(rc)
 
