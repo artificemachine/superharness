@@ -443,3 +443,37 @@ def test_task_create_autogenerates_id(tmp_path: Path) -> None:
     task_id = tasks[0]["id"]
     assert task_id.startswith("t-"), f"Expected t-XXXXXX, got {task_id!r}"
     assert len(task_id) == 8, f"Expected t-XXXXXX (8 chars), got {task_id!r}"
+
+
+# ---------------------------------------------------------------------------
+# ship_on_complete flag
+# ---------------------------------------------------------------------------
+
+def test_task_create_ship_on_complete_writes_flag(tmp_path: Path) -> None:
+    project, contract = _make_contract(tmp_path)
+    result = _run_task([
+        "create", "--project", str(project),
+        "--id", "feat.ship-me",
+        "--title", "Ship me task",
+        "--owner", "claude-code",
+        "--ship-on-complete",
+    ])
+    assert result.returncode == 0, result.stderr
+    doc = yaml.safe_load(contract.read_text()) or {}
+    task = next(t for t in doc.get("tasks", []) if t["id"] == "feat.ship-me")
+    assert task.get("ship_on_complete") is True
+
+
+def test_task_create_ship_on_complete_defaults_absent(tmp_path: Path) -> None:
+    """Without --ship-on-complete the field is not written (stays schema default)."""
+    project, contract = _make_contract(tmp_path)
+    result = _run_task([
+        "create", "--project", str(project),
+        "--id", "feat.normal",
+        "--title", "Normal task",
+        "--owner", "claude-code",
+    ])
+    assert result.returncode == 0, result.stderr
+    doc = yaml.safe_load(contract.read_text()) or {}
+    task = next(t for t in doc.get("tasks", []) if t["id"] == "feat.normal")
+    assert not task.get("ship_on_complete")
