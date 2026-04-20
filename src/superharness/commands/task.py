@@ -50,7 +50,14 @@ def _validate_token(name: str, value: str) -> None:
         _abort(f"{name} must match ^[A-Za-z0-9._/-]+$", 2)
 
 
+_JSON_MODE = False
+_JSON_CTX: dict = {}
+
+
 def _abort(msg: str, code: int = 1) -> None:
+    if _JSON_MODE:
+        from superharness.utils.json_output import emit_error
+        emit_error(msg, exit_code=code, **_JSON_CTX)
     print(msg, file=sys.stderr)
     sys.exit(code)
 
@@ -442,6 +449,8 @@ def main(argv: list[str] | None = None) -> None:
     p_status.add_argument("--actor", required=True)
     p_status.add_argument("--reason", default="")
     p_status.add_argument("--summary", default="")
+    p_status.add_argument("--json", action="store_true", default=False,
+                          help="Emit machine-readable JSON on stdout instead of human text.")
 
     opts = parser.parse_args(argv)
     if not opts.subcmd:
@@ -528,11 +537,55 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(rc)
 
     elif opts.subcmd == "status":
+        global _JSON_MODE, _JSON_CTX
+        if getattr(opts, "json", False):
+            _JSON_MODE = True
+            _JSON_CTX = {"task_id": opts.task_id, "new_status": opts.status, "actor": opts.actor}
+
+        # Capture old status for the JSON payload
+        old_status = None
+        if _JSON_MODE:
+            try:
+                _doc = _load_contract(contract_file)
+                _tasks = _get_tasks(_doc, contract_file)
+                _t = next((t for t in _tasks if isinstance(t, dict) and str(t.get("id", "")) == opts.task_id), None)
+                if _t is not None:
+                    old_status = str(_t.get("status", ""))
+            except SystemExit:
+                raise
+            except Exception:
+                pass
+
         # Pre-validate before calling status_update so shell exit codes match
         if opts.status in ("failed", "stopped") and not opts.reason:
             _abort(f"error: --reason is required when status={opts.status}", 2)
         if opts.status in ("todo", "in_progress", "pending_user_approval", "done") and not opts.summary:
             _abort(f"error: --summary is required when status={opts.status}", 2)
+
+        # In JSON mode, temporarily suppress stdout prints from status_update
+        if _JSON_MODE:
+            import io
+            _orig_stdout = sys.stdout
+            sys.stdout = io.StringIO()
+            try:
+                rc = status_update(
+                    contract_file,
+                    task_id=opts.task_id,
+                    status=opts.status,
+                    actor=opts.actor,
+                    reason=opts.reason or "",
+                    summary=opts.summary or "",
+                )
+            finally:
+                sys.stdout = _orig_stdout
+            _sync_inbox_after_status(project_dir, opts.task_id, opts.status)
+            from superharness.utils.json_output import emit_json
+            emit_json({
+                "task_id": opts.task_id,
+                "old_status": old_status,
+                "new_status": opts.status,
+                "actor": opts.actor,
+            }, ok=(rc == 0), exit_code=rc)
 
         rc = status_update(
             contract_file,

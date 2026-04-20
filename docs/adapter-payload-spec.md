@@ -53,6 +53,7 @@ Zero breaking changes. The fallback keeps working indefinitely until the command
 | 1.0 | 2026-04-12 | Initial stable payload. |
 | 1.1 | 2026-04-16 | Added `model_tier` + `resolved_model: {id, label}` per task and subtask (backwards-compatible). |
 | 1.2 | 2026-04-18 | Added `classifier`, `decomposer`, `retry` blocks per task. Additive — v1.1 consumers ignore the new fields. |
+| 1.2 | 2026-04-20 | Added `status` to each subtask entry, resolved by inheritance: a subtask reports `status: done` whenever its parent task is in a terminal-done state (`done` or `review_passed`), unless the subtask carries an explicit non-pending status. Additive — existing v1.0/v1.1 consumers ignore the new field. |
 
 ### Annotated Example
 
@@ -316,6 +317,16 @@ Written by a running agent to `.superharness/agent-pulse.yaml` via `shux agent-p
 > **Null-sentinel collapse:** `blocked_by: none`, `blocked_by: null`, `blocked_by: ~`, `blocked_by: ""`, and `blocked_by: []` all normalize to the empty list `[]`. Inside a sequence, any null-sentinel items are filtered out (e.g. `[none, iter-0, null]` → `["iter-0"]`). This is enforced by `superharness.engine.normalization.normalize_blocked_by` and used by both `shux adapter-payload --json` and the shux dashboard renderer.
 
 ---
+
+### Subtask status (v1.2, 2026-04-20)
+
+Each entry in a task's `subtasks[]` carries a `status` field with the effective lifecycle state, resolved as follows:
+
+1. If the subtask's raw `status` in `contract.yaml` is set to anything other than `pending`, emit it as-is.
+2. Otherwise, if the parent task's `status` is a terminal-done state (`done` or `review_passed`), emit `"done"` (inheritance).
+3. Otherwise, emit `"pending"` (or the raw value if non-empty).
+
+This lets Morpheme and other adapters render accurate status badges without duplicating the state-machine rules client-side. Subtasks never individually flow through `in_progress` / `report_ready` — the parent closes them as a unit — so this resolution is sufficient to distinguish pending planning artifacts from work covered by a closed parent.
 
 ### Resolved model (v1.1+)
 

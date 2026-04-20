@@ -101,6 +101,42 @@ def search(project_dir: Path, terms: list[str], since_days: int | None = None) -
                 "snippets": snippets[:3],
             })
 
+    # --- Scan contract.yaml tasks + subtasks (title match) ---
+    contract_path = sh_dir / "contract.yaml"
+    if contract_path.exists():
+        try:
+            import yaml
+            cdoc = yaml.safe_load(contract_path.read_text(errors="replace")) or {}
+        except Exception:
+            cdoc = {}
+        if isinstance(cdoc, dict):
+            for t in (cdoc.get("tasks") or []):
+                if not isinstance(t, dict):
+                    continue
+                parent_status = str(t.get("status") or "")
+                _scan = [(t, None)]
+                for s in (t.get("subtasks") or []):
+                    if isinstance(s, dict):
+                        _scan.append((s, t))
+                for entry, parent in _scan:
+                    title = str(entry.get("title") or "").lower()
+                    tid = str(entry.get("id") or "")
+                    hay = f"{tid} {title}".lower()
+                    count = sum(1 for term in terms if term in hay)
+                    if count == 0:
+                        continue
+                    label_kind = "subtask" if parent is not None else "task"
+                    snippet = f"[{label_kind}] {entry.get('title', '')}"
+                    if parent is not None:
+                        snippet += f" (parent: {parent.get('id', '')}, status: {parent_status})"
+                    results.append({
+                        "date": None,
+                        "agent": str(entry.get("owner") or "unknown"),
+                        "task_id": tid,
+                        "count": count,
+                        "snippets": [snippet[:160]],
+                    })
+
     # --- Scan ledger.md ---
     ledger = sh_dir / "ledger.md"
     if ledger.exists():

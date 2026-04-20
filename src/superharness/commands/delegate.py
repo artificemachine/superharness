@@ -16,7 +16,14 @@ from superharness.engine.orchestrator import Orchestrator, DecompositionResult
 from superharness.engine.taxonomy import VALID_EFFORTS
 
 
+_JSON_MODE = False
+_JSON_CTX: dict = {}
+
+
 def _abort(msg: str, code: int = 1) -> None:
+    if _JSON_MODE:
+        from superharness.utils.json_output import emit_error
+        emit_error(msg, exit_code=code, **_JSON_CTX)
     print(msg, file=sys.stderr)
     sys.exit(code)
 
@@ -1165,6 +1172,11 @@ def _build_parser() -> "argparse.ArgumentParser":
         help="Override: inject SHIP-ON-COMPLETE directive for this dispatch even "
              "if the contract task does not have ship_on_complete: true.",
     )
+    parser.add_argument(
+        "--json", action="store_true", default=False,
+        help="Emit machine-readable JSON on stdout instead of human text. "
+             "Implies --print-only when no --via is forced.",
+    )
     return parser
 
 
@@ -1175,9 +1187,20 @@ def main(argv: list[str] | None = None) -> None:
     parser = _build_parser()
     opts = parser.parse_args(argv)
 
+    global _JSON_MODE, _JSON_CTX
+    if getattr(opts, "json", False):
+        _JSON_MODE = True
+        _JSON_CTX = {"task_id": opts.task, "to": opts.target}
+        # --json implies --print-only so we get a deterministic exit without
+        # launching an interactive agent.
+        opts.print_only = True
+
     if opts.target is None:
         parser.error("--to is required")
     if opts.target not in ("claude-code", "codex-cli"):
+        if _JSON_MODE:
+            from superharness.utils.json_output import emit_error
+            emit_error("--to must be claude-code or codex-cli", exit_code=2, **_JSON_CTX)
         print("--to must be claude-code or codex-cli", file=sys.stderr)
         sys.exit(2)
 
@@ -1193,6 +1216,46 @@ def main(argv: list[str] | None = None) -> None:
         os.environ.setdefault("SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS", "YES")
     elif autonomy == "supervised":
         os.environ.setdefault("SUPERHARNESS_CONFIRM_NON_INTERACTIVE", "YES")
+
+    if _JSON_MODE:
+        import io
+        _orig_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        try:
+            rc = delegate(
+                project_dir=project_dir,
+                target=opts.target,
+                task_id=opts.task,
+                print_only=opts.print_only,
+                non_interactive=opts.non_interactive,
+                codex_bypass=opts.codex_bypass,
+                for_review=opts.for_review,
+                model_override=opts.model or "",
+                effort_override=opts.effort or "",
+                no_auto_model=opts.no_auto_model,
+                via_sdk=True if opts.via == "sdk" else (False if opts.via == "cli" else None),
+                orchestrate=opts.orchestrate,
+                skip_preflight=opts.skip_preflight,
+                force=opts.force,
+                plan_only=opts.plan_only,
+                ship_on_complete=opts.ship_on_complete,
+            )
+            captured = sys.stdout.getvalue()
+        finally:
+            sys.stdout = _orig_stdout
+        prompt_text = ""
+        if "Generated prompt:" in captured:
+            prompt_text = captured.split("-----------------", 1)[-1].strip()
+        from superharness.utils.json_output import emit_json
+        emit_json({
+            "task_id": opts.task,
+            "to": opts.target,
+            "print_only": bool(opts.print_only),
+            "plan_only": bool(opts.plan_only),
+            "orchestrate": bool(opts.orchestrate),
+            "prompt": prompt_text,
+            "prompt_length": len(prompt_text),
+        }, ok=(rc == 0), exit_code=rc)
 
     rc = delegate(
         project_dir=project_dir,
