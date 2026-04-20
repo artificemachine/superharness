@@ -1,0 +1,10 @@
+closed_at: '2026-04-20T11:34:29Z'
+context: Morpheme can now author plan handoffs via CLI without touching .superharness/
+  directly. Supports inline or @file values, validates task existence, --force to
+  overwrite, --json for scripting.
+from: claude-code
+status: done
+summary: 'Shipped in v1.25.0 PR #115 — shux handoff write command for plan/report
+  YAML authoring'
+task: t-cdda83
+to: owner

@@ -1614,7 +1614,7 @@ tasks:
 - id: t-ba1c80
   title: Add --json output to task status, delegate, enqueue, verify, close
   owner: claude-code
-  status: todo
+  status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
@@ -1653,10 +1653,15 @@ tasks:
     refactor: Extract shared CLI result dataclass. Consolidate duplicate 
       error-to-stderr code paths. Update docs/GUIDE.md with --json examples per 
       command.
+  summary: 'Shipped in v1.25.0 PR #115 — --json on task status/enqueue/verify/close/delegate;
+    shared utils/json_output.py'
+  verified: true
+  verified_at: '2026-04-20T11:33:49Z'
+  verified_by: claude-code
 - id: t-cdda83
   title: shux handoff write — CLI surface for plan/report handoff authoring
   owner: claude-code
-  status: todo
+  status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: t-ba1c80
   workflow: implementation
@@ -1700,11 +1705,16 @@ tasks:
     refactor: Extract handoff schema into a single source of truth shared by 
       hygiene check, agent-side authoring, and this new command. Update 
       docs/adapter-payload-spec.md and GUIDE.md with handoff write examples.
+  summary: 'Shipped in v1.25.0 PR #115 — shux handoff write command for plan/report
+    YAML authoring'
+  verified: true
+  verified_at: '2026-04-20T11:33:51Z'
+  verified_by: claude-code
 - id: t-91b396
   title: 'Make subtasks first-class: visible in adapter-payload, shux contract, recall,
     context'
   owner: claude-code
-  status: todo
+  status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
@@ -1756,6 +1766,10 @@ tasks:
     refactor: Consolidate subtask lookup into a single helper. Ensure hygiene 
       check also iterates subtasks. Update docs/GUIDE.md with subtask visibility
       section.
-  summary: revert
+  summary: 'Shipped in v1.25.0 PR #115 — subtask resolver + adapter-payload status
+    + contract/recall/context visibility'
+  verified: true
+  verified_at: '2026-04-20T11:33:48Z'
+  verified_by: claude-code
 decisions: []
 failures: []

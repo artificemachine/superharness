@@ -1,0 +1,10 @@
+closed_at: '2026-04-20T11:34:12Z'
+context: Morpheme adapter can now render subtask status badges via adapter-payload
+  v1.2 and resolve nested IDs via shux context. See docs/adapter-payload-spec.md v1.2
+  section.
+from: claude-code
+status: done
+summary: 'Shipped in v1.25.0 PR #115 — subtask resolver + adapter-payload status +
+  contract/recall/context visibility'
+task: t-91b396
+to: owner
