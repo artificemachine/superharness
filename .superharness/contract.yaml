@@ -1771,5 +1771,28 @@ tasks:
   verified: true
   verified_at: '2026-04-20T11:33:48Z'
   verified_by: claude-code
+- id: superharness-next-action-payload
+  title: 'adapter-payload: add next_action per task (schema v1.3)'
+  owner: claude-code
+  status: plan_proposed
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: implementation
+  development_method: tdd
+  acceptance_criteria:
+  - adapter-payload emits next_action {recommended, legal[], reason} on every 
+    task when schema>=1.3
+  - absence of the field is still valid (consumers tolerate omission)
+  - legal set is derived from current status+workflow, matching 
+    delegate/enqueue/task-status guards
+  - recommended is one of legal or null
+  effort: medium
+  test_types:
+  - unit
+  out_of_scope:
+  - morpheme or other consumer UI changes
+  definition_of_done:
+  - pytest covers next_action matrix per status
+  - docs/adapter-payload-spec.md has a next_action (v1.3+) section
 decisions: []
 failures: []
