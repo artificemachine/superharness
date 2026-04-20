@@ -18,7 +18,14 @@ except ImportError:
 import yaml
 
 
+_JSON_MODE = False
+_JSON_CTX: dict = {}
+
+
 def _abort(msg: str, code: int = 1) -> None:
+    if _JSON_MODE:
+        from superharness.utils.json_output import emit_error
+        emit_error(msg, exit_code=code, **_JSON_CTX)
     print(msg, file=sys.stderr)
     sys.exit(code)
 
@@ -125,11 +132,35 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--method", required=True, help="How the task was verified (free text)")
     parser.add_argument("--result", required=True, choices=["pass", "fail"])
     parser.add_argument("--actor", default="claude-code")
+    parser.add_argument("--json", action="store_true", default=False,
+                        help="Emit machine-readable JSON on stdout instead of human text.")
 
     opts = parser.parse_args(argv)
 
     project_dir = os.path.realpath(opts.project or os.getcwd())
     contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
+
+    global _JSON_MODE, _JSON_CTX
+    if opts.json:
+        _JSON_MODE = True
+        _JSON_CTX = {"task_id": opts.task_id, "actor": opts.actor, "result": opts.result}
+
+    if _JSON_MODE:
+        import io
+        _orig_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        try:
+            rc = verify(contract_file, opts.task_id, opts.method, opts.result, opts.actor)
+        finally:
+            sys.stdout = _orig_stdout
+        from superharness.utils.json_output import emit_json
+        emit_json({
+            "task_id": opts.task_id,
+            "actor": opts.actor,
+            "method": opts.method,
+            "result": opts.result,
+            "verified": (opts.result == "pass"),
+        }, ok=(rc == 0), exit_code=rc)
 
     rc = verify(contract_file, opts.task_id, opts.method, opts.result, opts.actor)
     sys.exit(rc)
