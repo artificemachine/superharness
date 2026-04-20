@@ -70,7 +70,12 @@ def _is_delegate_candidate(task: dict) -> bool:
     return False
 
 
-def contract_today(project_dir: str, agent: str = "", include_subtasks: bool = False) -> int:
+def contract_today(
+    project_dir: str,
+    agent: str = "",
+    include_subtasks: bool = False,
+    include_archived: bool = False,
+) -> int:
     import yaml
 
     contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
@@ -88,6 +93,18 @@ def contract_today(project_dir: str, agent: str = "", include_subtasks: bool = F
     tasks = doc.get("tasks") or []
     if not isinstance(tasks, list):
         tasks = []
+
+    # Hide archived tasks unless --include-archived is set. Report the
+    # hidden count so the operator knows they exist.
+    archived_count = 0
+    if not include_archived:
+        filtered: list = []
+        for t in tasks:
+            if isinstance(t, dict) and str(t.get("status", "")) == "archived":
+                archived_count += 1
+                continue
+            filtered.append(t)
+        tasks = filtered
 
     rows_raw: list[list[str]] = []
     if include_subtasks:
@@ -143,6 +160,9 @@ def contract_today(project_dir: str, agent: str = "", include_subtasks: bool = F
         if idx < len(rows_raw) - 1:
             print(_hline("├", "┼", "┤", widths))
     print(_hline("└", "┴", "┘", widths))
+
+    if archived_count:
+        print(f"({archived_count} archived task(s) hidden — pass --include-archived to show)")
 
     # Pending user approvals
     handoff_dir = os.path.join(project_dir, ".superharness", "handoffs")
@@ -236,6 +256,10 @@ def main(argv: list[str] | None = None) -> None:
         "--include-subtasks", action="store_true",
         help="Also render orchestrator-decomposed subtasks nested under each parent",
     )
+    parser.add_argument(
+        "--include-archived", action="store_true",
+        help="Also render tasks with status: archived (hidden by default)",
+    )
 
     opts = parser.parse_args(argv)
     project_dir = os.path.realpath(opts.project or os.getcwd())
@@ -244,7 +268,12 @@ def main(argv: list[str] | None = None) -> None:
         print(f"Project directory does not exist: {project_dir}", file=sys.stderr)
         sys.exit(1)
 
-    rc = contract_today(project_dir, agent=opts.agent, include_subtasks=opts.include_subtasks)
+    rc = contract_today(
+        project_dir,
+        agent=opts.agent,
+        include_subtasks=opts.include_subtasks,
+        include_archived=opts.include_archived,
+    )
     sys.exit(rc)
 
 

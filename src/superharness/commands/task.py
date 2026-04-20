@@ -36,6 +36,8 @@ VALID_ALL_STATUSES = {
     "review_passed", "review_failed",
     "pending_user_approval",
     "done", "failed", "stopped",
+    # Soft-deleted done tasks; hidden from `shux contract` by default.
+    "archived",
 }
 VALID_WORKFLOWS = {"implementation", "quick", "discussion", "review", "approval", "note"}
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
@@ -257,6 +259,41 @@ def create(
     return 0
 
 
+def archive_done(contract_file: str, ids: list[str] | None = None) -> int:
+    """Flip every done task (or specific ids) to archived in one pass.
+
+    Bypasses the per-task actor/owner guard used by status_update, because
+    this is a bulk admin operation run by the operator (e.g. end-of-session
+    cleanup). Archived tasks remain in contract.yaml; renderers hide them
+    by default.
+    """
+    doc = _load_contract(contract_file)
+    tasks = _get_tasks(doc, contract_file)
+
+    targets = set(ids) if ids else None
+    flipped: list[str] = []
+    for t in tasks:
+        if not isinstance(t, dict):
+            continue
+        tid = str(t.get("id", ""))
+        if targets is not None and tid not in targets:
+            continue
+        if str(t.get("status", "")) != "done":
+            continue
+        t["status"] = "archived"
+        flipped.append(tid)
+
+    if not flipped:
+        print("No done tasks to archive.")
+        return 0
+
+    _write_contract(contract_file, doc)
+    print(f"Archived {len(flipped)} task(s):")
+    for tid in flipped:
+        print(f"  - {tid}")
+    return 0
+
+
 def delete(contract_file: str, task_id: str) -> int:
     _validate_token("task id", task_id)
 
@@ -439,6 +476,13 @@ def main(argv: list[str] | None = None) -> None:
     p_delete.add_argument("--project", "-p", default=None)
     p_delete.add_argument("--id", dest="task_id", required=True)
 
+    # archive-done: bulk-flip every done task to archived
+    p_archive = sub.add_parser("archive-done", add_help=True,
+                                help="Move every done task (or specific --id) to archived")
+    p_archive.add_argument("--project", "-p", default=None)
+    p_archive.add_argument("--id", action="append", dest="ids", default=None,
+                           help="Specific task id(s) to archive (repeat). Default: all done tasks.")
+
     # status
     p_status = sub.add_parser("status", add_help=True)
     p_status.add_argument("--project", "-p", default=None)
@@ -534,6 +578,10 @@ def main(argv: list[str] | None = None) -> None:
 
     elif opts.subcmd == "delete":
         rc = delete(contract_file, task_id=opts.task_id)
+        sys.exit(rc)
+
+    elif opts.subcmd == "archive-done":
+        rc = archive_done(contract_file, ids=opts.ids)
         sys.exit(rc)
 
     elif opts.subcmd == "status":
