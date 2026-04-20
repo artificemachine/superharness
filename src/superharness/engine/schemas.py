@@ -32,6 +32,10 @@ class TaskStatus(str, Enum):
     # Phase 2: agent liveness signals
     waiting_input = "waiting_input"   # agent paused, needs human response
     paused = "paused"                 # agent suspended (e.g. budget gate)
+    # Operator-initiated soft-delete: done tasks moved out of the active view
+    # while remaining in contract.yaml for history. Renderers hide archived by
+    # default; consumers (e.g. Morpheme) can still surface them behind a toggle.
+    archived = "archived"
 
 
 class InboxStatus(str, Enum):
