@@ -1774,7 +1774,7 @@ tasks:
 - id: superharness-next-action-payload
   title: 'adapter-payload: add next_action per task (schema v1.3)'
   owner: claude-code
-  status: plan_proposed
+  status: report_ready
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
@@ -1794,5 +1794,6 @@ tasks:
   definition_of_done:
   - pytest covers next_action matrix per status
   - docs/adapter-payload-spec.md has a next_action (v1.3+) section
+  summary: next_action field implemented; 96 tests pass; docs updated
 decisions: []
 failures: []

@@ -44,7 +44,7 @@ Zero breaking changes. The fallback keeps working indefinitely until the command
 
 ---
 
-## Payload Schema (v1.2)
+## Payload Schema (v1.3)
 
 ### Version history
 
@@ -54,6 +54,7 @@ Zero breaking changes. The fallback keeps working indefinitely until the command
 | 1.1 | 2026-04-16 | Added `model_tier` + `resolved_model: {id, label}` per task and subtask (backwards-compatible). |
 | 1.2 | 2026-04-18 | Added `classifier`, `decomposer`, `retry` blocks per task. Additive — v1.1 consumers ignore the new fields. |
 | 1.2 | 2026-04-20 | Added `status` to each subtask entry, resolved by inheritance: a subtask reports `status: done` whenever its parent task is in a terminal-done state (`done` or `review_passed`), unless the subtask carries an explicit non-pending status. Additive — existing v1.0/v1.1 consumers ignore the new field. |
+| 1.3 | 2026-04-20 | Added `next_action: {recommended, legal[], reason}` per task. Superharness owns the state machine; consumers render the single recommended CTA instead of duplicating transition logic. Additive — v1.2 consumers ignore the new field. |
 
 ### Annotated Example
 
@@ -61,9 +62,9 @@ The block below uses `//` comments for documentation. Strip them before parsing 
 
 ```jsonc
 {
-  // Required. Consumers should validate this >= "1.0". 1.2 adds
-  // classifier/decomposer/retry blocks; 1.1 adds resolved_model.
-  "schema_version": "1.2",
+  // Required. Consumers should validate this >= "1.0". 1.3 adds
+  // next_action; 1.2 adds classifier/decomposer/retry; 1.1 adds resolved_model.
+  "schema_version": "1.3",
 
   // From contract.yaml `id:` field
   "contract_id": "my-project",
@@ -309,6 +310,7 @@ Written by a running agent to `.superharness/agent-pulse.yaml` via `shux agent-p
 | `classifier` | object | v1.2+. Pipeline classifier result. Always present; defaults when not set in YAML. See **Pipeline blocks (v1.2)** below. |
 | `decomposer` | object | v1.2+. Orchestrator decomposition result. Always present; defaults when not set in YAML. |
 | `retry` | object | v1.2+. Retry state. Always present; defaults to `{count: 0, escalation_history: []}`. |
+| `next_action` | object | v1.3+. Recommended next move derived from `status`. Always present. See **next_action (v1.3+)** below. |
 | `acceptance_criteria` | string[] | List of acceptance criteria strings |
 | `handoffs` | Handoff[] | All handoffs for this task, oldest first |
 
@@ -402,6 +404,54 @@ Three new objects are always present on each task entry. When the pipeline has n
 | `escalation_history` | string[] | Ordered list of models used in prior attempts (e.g. `["claude-sonnet-4-6", "claude-opus-4-6"]`) |
 
 **When to bump a model:** update `id` and `label` together in the adapter manifest. Consumers display `label`; `id` is only used for SDK dispatch. Do not bump `schema_version` for model bumps — only bump it when adding/removing fields or changing shapes.
+
+---
+
+### `next_action` (v1.3+)
+
+Each task carries a `next_action` object that tells a consumer what to do next — derived by superharness from the task's current `status`. Consumers should render a single recommended CTA rather than duplicating the state machine.
+
+```jsonc
+"next_action": {
+  "recommended": "plan_proposed",  // one member of legal[], or null when terminal/waiting
+  "legal": ["plan_proposed"],      // all statuses the owner can transition to from here
+  "reason": "author a plan handoff before dispatch"  // short hint for the UI label
+}
+```
+
+#### Field reference
+
+| Field | Type | Description |
+|---|---|---|
+| `recommended` | `string \| null` | The single best next status. `null` when the agent is working (`in_progress`) or the task is terminal (`done`, `archived`). |
+| `legal` | `string[]` | All valid next statuses from this state. Empty for terminal states. |
+| `reason` | `string` | Short human-readable hint. Suitable as a tooltip or CTA sub-label. |
+
+#### Full mapping matrix
+
+| `status` | `recommended` | `legal` | `reason` |
+|---|---|---|---|
+| `todo` | `plan_proposed` | `[plan_proposed]` | author a plan handoff before dispatch |
+| `plan_proposed` | `plan_approved` | `[plan_approved, todo]` | review the plan; approve or send back to todo |
+| `plan_approved` | `in_progress` | `[in_progress, plan_proposed]` | dispatch to the agent |
+| `in_progress` | `null` | `[report_ready, pending_user_approval, stopped, failed]` | agent is working; wait for report_ready or pending_user_approval |
+| `pending_user_approval` | `in_progress` | `[in_progress, stopped]` | answer the agent question then resume |
+| `report_ready` | `review_passed` | `[review_passed, review_failed, review_requested]` | review diff and handoff, then mark passed or failed |
+| `review_requested` | `review_passed` | `[review_passed, review_failed]` | complete the review |
+| `review_passed` | `done` | `[done, review_failed]` | close the task |
+| `review_failed` | `plan_proposed` | `[plan_proposed, todo]` | revise the plan and re-propose |
+| `done` | `null` | `[]` | task is complete |
+| `failed` | `plan_proposed` | `[plan_proposed, todo, stopped]` | revise the plan and retry, or stop |
+| `stopped` | `in_progress` | `[in_progress, plan_proposed, todo]` | resume or reopen with a revised plan |
+| `blocked` | `null` | `[todo, plan_proposed]` | resolve the blocker first |
+| `waiting_input` | `null` | `[in_progress, pending_user_approval]` | waiting for external input |
+| `paused` | `in_progress` | `[in_progress, stopped]` | resume or stop |
+| `archived` | `null` | `[]` | task has been archived |
+| `pr_open` | `review_passed` | `[review_passed, review_failed]` | review and merge the open PR |
+
+**Invariant:** `recommended` is either `null` or a member of `legal`. Consumers can assert this. Unknown statuses return `recommended: null, legal: [], reason: "unknown status: <x>"` — always safe to render.
+
+**Subtask inheritance:** subtasks do not carry `next_action`. A subtask's lifecycle is managed by its parent task; the parent's `next_action` applies to the whole unit.
 
 ---
 

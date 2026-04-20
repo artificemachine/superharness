@@ -64,8 +64,8 @@ class TestSchema:
         r = _run(["--project", str(project)])
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
-        # 1.2: classifier, decomposer, retry blocks added per task
-        assert d["schema_version"] == "1.2"
+        # 1.3: next_action per task added
+        assert d["schema_version"] == "1.3"
 
     def test_top_level_keys_present(self, tmp_path):
         project = _setup(tmp_path)
@@ -501,7 +501,7 @@ class TestErrorHandling:
         r = _run(["--project", str(project)], cwd=str(tmp_path))
         assert r.returncode == 0
         d = json.loads(r.stdout)
-        assert d["schema_version"] == "1.2"
+        assert d["schema_version"] == "1.3"
 
 
 # ---------------------------------------------------------------------------
@@ -743,7 +743,7 @@ class TestSchemaVersionBump:
     def test_schema_version_bumped_to_1_2(self, tmp_path):
         project = _setup(tmp_path)
         d = json.loads(_run(["--project", str(project)]).stdout)
-        assert d["schema_version"] == "1.2"
+        assert d["schema_version"] == "1.3"
 
 
 # ---------------------------------------------------------------------------
@@ -788,11 +788,11 @@ def _setup_v12(tmp_path: Path, *, classifier: dict | None = None,
 class TestSchemaV12:
     """adapter-payload v1.2: classifier, decomposer, retry blocks on each task."""
 
-    def test_schema_version_is_1_2(self, tmp_path):
-        """Schema version string must be '1.2'."""
+    def test_schema_version_is_1_3(self, tmp_path):
+        """Schema version string must be '1.3'."""
         project = _setup(tmp_path)
         d = json.loads(_run(["--project", str(project)]).stdout)
-        assert d["schema_version"] == "1.2"
+        assert d["schema_version"] == "1.3"
 
     def test_task_has_classifier_block(self, tmp_path):
         """Every task carries a classifier block (defaults when not set in YAML)."""
@@ -863,3 +863,76 @@ class TestSchemaV12:
         retry = d["tasks"][0]["retry"]
         assert retry["count"] == 2
         assert retry["escalation_history"] == ["sonnet-4-6", "opus-4-6"]
+
+
+# ---------------------------------------------------------------------------
+# Schema v1.3 — next_action field
+# ---------------------------------------------------------------------------
+
+class TestNextActionInPayload:
+    """Every task in the adapter-payload must carry a next_action dict (schema v1.3)."""
+
+    def _task_with_status(self, tmp_path: Path, status: str) -> dict:
+        project = tmp_path / f"proj_{status}"
+        sh = project / ".superharness"
+        (sh / "handoffs").mkdir(parents=True)
+        for f, content in [
+            ("failures.yaml", "failures: []\n"),
+            ("decisions.yaml", "decisions: []\n"),
+            ("inbox.yaml", "# inbox\n"),
+            ("ledger.md", "# Ledger\n\n"),
+        ]:
+            (sh / f).write_text(content)
+        (sh / "contract.yaml").write_text(
+            "id: test-contract\ngoal: G\ncreated: 2026-01-01\n"
+            "created_by: owner\nstatus: active\n"
+            f"tasks:\n  - id: t1\n    title: T\n    owner: claude-code\n    status: {status}\n"
+        )
+        r = _run(["--project", str(project)])
+        assert r.returncode == 0, r.stderr
+        return json.loads(r.stdout)["tasks"][0]
+
+    def test_schema_version_is_1_3(self, tmp_path):
+        project = _setup(tmp_path)
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        assert d["schema_version"] == "1.3"
+
+    def test_next_action_present_on_every_task(self, tmp_path):
+        project = _setup(tmp_path, tasks=[
+            {"id": "feat.one", "title": "F", "owner": "claude-code", "status": "todo"},
+            {"id": "feat.two", "title": "G", "owner": "claude-code", "status": "in_progress"},
+        ])
+        d = json.loads(_run(["--project", str(project)]).stdout)
+        for task in d["tasks"]:
+            assert "next_action" in task, f"task {task['id']} missing next_action"
+
+    def test_next_action_shape(self, tmp_path):
+        task = self._task_with_status(tmp_path, "todo")
+        na = task["next_action"]
+        assert set(na.keys()) == {"recommended", "legal", "reason"}
+        assert isinstance(na["legal"], list)
+        assert isinstance(na["reason"], str)
+
+    def test_todo_recommends_plan_proposed(self, tmp_path):
+        na = self._task_with_status(tmp_path, "todo")["next_action"]
+        assert na["recommended"] == "plan_proposed"
+        assert "plan_proposed" in na["legal"]
+
+    def test_in_progress_recommended_is_null(self, tmp_path):
+        na = self._task_with_status(tmp_path, "in_progress")["next_action"]
+        assert na["recommended"] is None
+        assert len(na["legal"]) > 0
+
+    def test_done_is_terminal(self, tmp_path):
+        na = self._task_with_status(tmp_path, "done")["next_action"]
+        assert na["recommended"] is None
+        assert na["legal"] == []
+
+    def test_recommended_is_member_of_legal_or_null(self, tmp_path):
+        for status in ("todo", "plan_proposed", "plan_approved", "report_ready",
+                       "review_passed", "review_failed", "failed", "stopped"):
+            na = self._task_with_status(tmp_path, status)["next_action"]
+            if na["recommended"] is not None:
+                assert na["recommended"] in na["legal"], (
+                    f"status={status}: recommended not in legal"
+                )
