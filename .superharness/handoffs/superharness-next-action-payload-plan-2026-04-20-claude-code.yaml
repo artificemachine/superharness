@@ -1,0 +1,77 @@
+task: superharness-next-action-payload
+phase: plan
+status: plan_proposed
+from: claude-code
+to: owner
+date: '2026-04-20T12:05:26Z'
+plan: "Background\n  Morpheme (and any future consumer UI) currently reconstructs\
+  \ \"what is the\n  next valid move for a task in status X?\" client-side. This duplicates\
+  \ the\n  state machine that superharness enforces in delegate/enqueue/task-status,\n\
+  \  and produces a red rejection box when a user picks an illegal transition.\n\n\
+  \  Superharness is the authority on the state machine. The cleanest fix is to\n\
+  \  emit the recommendation directly in adapter-payload so consumers render a\n \
+  \ single correct CTA instead of all buttons + guesswork.\n\nScope\n  1. Schema v1.3\
+  \ additive change: each task (and subtask if applicable) in\n     adapter-payload\
+  \ gets an optional field:\n       next_action:\n         recommended: string | null\
+  \   # one of legal, or null if terminal\n         legal: [string, ...]         #\
+  \ legal next statuses\n         reason: string               # short hint, e.g.\
+  \ \"task is todo with\n                                      # no plan handoff;\
+  \ author plan first\"\n     Absence is allowed for 1.2 consumers; presence requires\
+  \ schema_version\n     to be \"1.3\" or higher.\n\n  2. Derivation lives in a single\
+  \ helper (next_action.py or similar) called\n     from the adapter-payload builder.\
+  \ It consumes the same status+workflow\n     facts that delegate/enqueue/task-status\
+  \ already key off; no duplicate\n     truth.\n\n  3. Mapping (initial, will refine\
+  \ per review):\n       todo                   -> recommended: plan_proposed,\n \
+  \                                reason: \"author a plan handoff before\n      \
+  \                           dispatch\"\n       plan_proposed          -> recommended:\
+  \ plan_approved,\n                                 reason: \"review and approve\
+  \ the plan\"\n       plan_approved          -> recommended: in_progress,\n     \
+  \                            reason: \"dispatch to the agent\"\n       in_progress\
+  \            -> recommended: null,\n                                 reason: \"\
+  agent is working; wait for\n                                 report_ready or pending_user_approval\"\
+  \n       pending_user_approval  -> recommended: in_progress,\n                 \
+  \                reason: \"answer the agent's question\"\n       report_ready  \
+  \         -> recommended: review_passed,\n                                 reason:\
+  \ \"review diff and verify\"\n       review_passed          -> recommended: done,\n\
+  \                                 reason: \"close the task\"\n       review_failed\
+  \          -> recommended: plan_proposed,\n                                 reason:\
+  \ \"revise the plan\"\n       failed                 -> recommended: plan_approved,\n\
+  \                                 reason: \"retry dispatch, or reopen\"\n      \
+  \ stopped                -> recommended: in_progress,\n                        \
+  \         reason: \"resume or reopen\"\n       done                   -> null (terminal)\n\
+  \n  4. Bump schema_version emitted by adapter-payload to \"1.3\" when the new\n\
+  \     field is present. Keep \"1.2\" emission available for consumers that\n   \
+  \  pin older schemas; decision: default to 1.3, let consumers opt out\n     via\
+  \ CLI flag if needed.\n\n  5. docs/adapter-payload-spec.md: add a \"next_action\
+  \ (v1.3+)\" section with\n     the field shape and the full mapping matrix.\n\n\
+  Non-goals\n  - Morpheme or any other consumer UI work.\n  - Changing what delegate/enqueue/task-status\
+  \ accept (only the guidance\n    emitted alongside).\n  - Adding a new `shux task\
+  \ transitions` subcommand; adapter-payload is\n    the natural carrier since consumers\
+  \ already subscribe to it.\n\nDownstream impact\n  - Morpheme will consume next_action\
+  \ in a parallel task\n    morpheme-next-step-presenter. Morpheme's CLAUDE.md already\
+  \ allows\n    schemas 1.1 and 1.2 and will extend to 1.3."
+tdd:
+  red: "pytest\n  - next_action(status=\"todo\", workflow=\"implementation\", has_plan=False)\n\
+    \    returns recommended=\"plan_proposed\", \"plan_proposed\" in legal,\n    reason\
+    \ mentions \"plan\".\n  - next_action(status=\"plan_proposed\", ...) recommends\
+    \ \"plan_approved\".\n  - next_action(status=\"done\", ...) returns recommended=null,\
+    \ legal=[].\n  - adapter-payload emit: every task in the fixture contract has\
+    \ a\n    next_action dict; schema_version == \"1.3\".\n  - adapter-payload emit:\
+    \ legal is always a subset of the global enum.\n  - adapter-payload emit: recommended\
+    \ is None or a member of legal.\n  - Terminal states (done, failed, stopped) surface\
+    \ the escape hatches\n    correctly in legal even if recommended is None for done."
+  green: "- Add superharness/next_action.py (or place in the existing lifecycle\n\
+    \  module) with a pure function returning a dataclass/dict.\n- Call from the adapter-payload\
+    \ builder for tasks and subtasks.\n- Update schema_version constant to \"1.3\"\
+    .\n- Keep the mapping data-driven (a dict at module top) so adding a\n  status\
+    \ in the future is a one-liner."
+  refactor: "- If delegate/enqueue/task-status currently hold guard tables inline,\n\
+    \  extract those to share with next_action so the two sources of truth\n  collapse\
+    \ to one.\n- No behavioural change in refactor."
+risks: "- Consumers pinned to schema 1.2 must tolerate unknown fields (strip or\n\
+  \  ignore). Morpheme already does; confirm with any other known consumer.\n- Mapping\
+  \ debate: \"failed -> plan_approved\" vs \"failed -> todo\" is a\n  policy call.\
+  \ Proposed draft is conservative (retry); change with owner.\n- Circular import\
+  \ risk if next_action lives in the same module as the\n  guard tables. Keep it a\
+  \ leaf module that both sides import from.\n- Subtasks: same rule as parent? Or\
+  \ inherit? Proposal: same rule by\n  default; revisit if a use case emerges."
