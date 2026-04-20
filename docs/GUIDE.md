@@ -244,9 +244,74 @@ superharness delegate mcp-docs --project /path/to/project --print-only
 
 ```bash
 superharness contract today --project /path/to/project
+
+# Also render orchestrator-decomposed subtasks, nested under each parent:
+superharness contract today --project /path/to/project --include-subtasks
 ```
 
-Prints all tasks with id, status, owner, and suggests the next task to work on.
+Prints all tasks with id, status, owner, and suggests the next task to work on. With `--include-subtasks`, subtasks are shown indented under their parent and their status is resolved by inheritance from the parent (a closed parent implies its subtasks are done).
+
+Subtask IDs (e.g. `parent.1`) are first-class elsewhere too:
+
+```bash
+# Resolve a subtask to its parent and surface parent's handoffs/ledger
+superharness context parent.1
+
+# Search by subtask title as well as handoff text
+superharness recall "specific keyword"
+```
+
+### Machine-readable JSON output
+
+For adapters and scripts that need to parse command results, the following commands accept `--json`. Each emits a single JSON object on stdout with at minimum `ok: true|false` and, on error, an `error` field. Human text is never mixed into the JSON line.
+
+```bash
+shux task status --id X --status in_progress --actor claude-code --summary "..." --json
+# → {"task_id":"X","old_status":"todo","new_status":"in_progress","actor":"claude-code","ok":true}
+
+shux enqueue --project . --to claude-code --task X --json
+# → {"task_id":"X","to":"claude-code","item_id":"...","priority":2,"plan_only":false,"ok":true}
+
+shux verify --id X --method "tests green" --result pass --json
+# → {"task_id":"X","actor":"claude-code","method":"tests green","result":"pass","verified":true,"ok":true}
+
+shux close --id X --actor claude-code --summary "done" --json
+# → {"task_id":"X","actor":"claude-code","closed":true,"ok":true}
+
+shux delegate --to claude-code --task X --json
+# → {"task_id":"X","to":"claude-code","print_only":true,"prompt":"...","prompt_length":1234,"ok":true}
+# (--json implies --print-only so dispatch never launches an interactive agent)
+```
+
+On error, exit code is non-zero and stdout is `{"error":"...","ok":false,...}`. See `tests/integration/test_cli_json_output.py` for the authoritative payload shapes.
+
+### Authoring handoffs from the CLI
+
+`shux handoff write` lets operators and adapter UIs (e.g. Morpheme) author plan and report handoff YAML without touching `.superharness/handoffs/` directly. This is the adapter-safe way to advance a task from `todo` to `plan_proposed` or from `in_progress` to `report_ready`.
+
+```bash
+# Plan phase (writes status: plan_proposed)
+shux handoff write --task X --phase plan --from claude-code --to owner \
+  --plan "Scope: add feature Y" \
+  --tdd-red "failing test def" \
+  --tdd-green "minimal impl" \
+  --tdd-refactor "cleanup"
+
+# Plan from files
+shux handoff write --task X --phase plan --from claude-code --to owner \
+  --plan @plan.md --tdd-red @red.md --tdd-green @green.md
+
+# Report phase (writes status: report_ready)
+shux handoff write --task X --phase report --from claude-code --to owner \
+  --outcome "Shipped X" --context "Next session: run Z" --tests-passed
+
+# JSON mode for scripting
+shux handoff write --task X --phase plan --from claude-code --to owner \
+  --plan "..." --tdd-red "..." --json
+# → {"task_id":"X","phase":"plan","path":".../t-handoff-plan-2026-04-20-claude-code.yaml","ok":true}
+```
+
+The command refuses to write if the task id is not in `contract.yaml` (subtask ids resolved via parent lookup). Use `--force` to overwrite an existing handoff file.
 
 ### Task lifecycle
 

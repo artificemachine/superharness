@@ -23,7 +23,14 @@ TOKEN_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 VALID_TARGETS = {"claude-code", "codex-cli"}
 
 
+_JSON_MODE = False
+_JSON_CTX: dict = {}
+
+
 def _abort(msg: str, code: int = 1) -> None:
+    if _JSON_MODE:
+        from superharness.utils.json_output import emit_error
+        emit_error(msg, exit_code=code, **_JSON_CTX)
     print(msg, file=sys.stderr)
     sys.exit(code)
 
@@ -290,8 +297,49 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--force-reassign", action="store_true", default=False, dest="force_reassign",
                         help="Allow --to to differ from the contract 'owner' field (one-shot override, "
                              "does not rewrite the contract)")
+    parser.add_argument("--json", action="store_true", default=False,
+                        help="Emit machine-readable JSON on stdout instead of human text.")
 
     opts = parser.parse_args(argv)
+
+    global _JSON_MODE, _JSON_CTX
+    if opts.json:
+        _JSON_MODE = True
+        _JSON_CTX = {"task_id": opts.task_id, "to": opts.target}
+
+    if _JSON_MODE:
+        import io
+        _orig_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        try:
+            rc = enqueue_cmd(
+                project_dir=opts.project,
+                target=opts.target,
+                task_id=opts.task_id,
+                item_id=opts.item_id,
+                priority=opts.priority,
+                require_watcher=opts.require_watcher,
+                plan_only=opts.plan_only,
+                force_reassign=opts.force_reassign,
+            )
+            captured = sys.stdout.getvalue()
+        finally:
+            sys.stdout = _orig_stdout
+        # Parse "id: <value>" from captured output
+        item_id_resolved = opts.item_id or ""
+        for line in captured.splitlines():
+            line = line.strip()
+            if line.startswith("id:"):
+                item_id_resolved = line.split(":", 1)[1].strip()
+                break
+        from superharness.utils.json_output import emit_json
+        emit_json({
+            "task_id": opts.task_id,
+            "to": opts.target,
+            "item_id": item_id_resolved,
+            "priority": opts.priority,
+            "plan_only": opts.plan_only,
+        }, ok=(rc == 0), exit_code=rc)
 
     rc = enqueue_cmd(
         project_dir=opts.project,

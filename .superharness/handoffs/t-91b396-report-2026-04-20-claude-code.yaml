@@ -1,0 +1,12 @@
+task: t-91b396
+phase: report
+status: report_ready
+from: claude-code
+to: owner
+date: '2026-04-20T11:09:31Z'
+outcome: Shipped subtask resolver + inheritance; adapter-payload emits status; shux
+  contract --include-subtasks; recall searches subtasks; context resolves nested IDs.
+  See tests/integration/test_subtask_visibility.py.
+context: Parent was moved back to todo for shipping with the other two tasks. All
+  210 regression tests pass.
+tests_passed: true

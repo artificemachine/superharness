@@ -20,7 +20,14 @@ except ImportError:
 import yaml
 
 
+_JSON_MODE = False
+_JSON_CTX: dict = {}
+
+
 def _abort(msg: str, code: int = 1) -> None:
+    if _JSON_MODE:
+        from superharness.utils.json_output import emit_error
+        emit_error(msg, exit_code=code, **_JSON_CTX)
     print(msg, file=sys.stderr)
     sys.exit(code)
 
@@ -193,13 +200,48 @@ def main(argv: list[str] | None = None) -> None:
         "--context", default="",
         help="What the next session needs to know (written to handoff YAML)",
     )
+    parser.add_argument("--json", action="store_true", default=False,
+                        help="Emit machine-readable JSON on stdout instead of human text.")
 
     opts = parser.parse_args(argv)
 
     project_dir = os.path.realpath(opts.project or os.getcwd())
     contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
+
+    global _JSON_MODE, _JSON_CTX
+    if opts.json:
+        _JSON_MODE = True
+        _JSON_CTX = {"task_id": opts.task_id, "actor": opts.actor}
+
     if not os.path.exists(contract_file):
         _abort(f"Missing contract file: {contract_file}")
+
+    if _JSON_MODE:
+        import io
+        _orig_stdout = sys.stdout
+        _orig_stderr = sys.stderr
+        sys.stdout = io.StringIO()
+        _err_buf = io.StringIO()
+        sys.stderr = _err_buf
+        try:
+            rc = close_task(
+                contract_file, opts.task_id, opts.actor, opts.summary,
+                skip_verify=opts.skip_verify,
+                context=opts.context,
+                force=opts.force,
+            )
+        finally:
+            sys.stdout = _orig_stdout
+            sys.stderr = _orig_stderr
+        payload: dict = {
+            "task_id": opts.task_id,
+            "actor": opts.actor,
+            "closed": (rc == 0),
+        }
+        if rc != 0:
+            payload["error"] = _err_buf.getvalue().strip() or "close failed"
+        from superharness.utils.json_output import emit_json
+        emit_json(payload, ok=(rc == 0), exit_code=rc)
 
     rc = close_task(
         contract_file, opts.task_id, opts.actor, opts.summary,

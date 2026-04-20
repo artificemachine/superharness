@@ -70,7 +70,7 @@ def _is_delegate_candidate(task: dict) -> bool:
     return False
 
 
-def contract_today(project_dir: str, agent: str = "") -> int:
+def contract_today(project_dir: str, agent: str = "", include_subtasks: bool = False) -> int:
     import yaml
 
     contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
@@ -89,15 +89,40 @@ def contract_today(project_dir: str, agent: str = "") -> int:
     if not isinstance(tasks, list):
         tasks = []
 
-    rows_raw = [
-        [
-            str(t.get("id", "")) if isinstance(t, dict) else "",
-            str(t.get("title", "")) if isinstance(t, dict) else "",
-            _status_label(str(t.get("status", "")) if isinstance(t, dict) else ""),
-            str(t.get("owner", "")) if isinstance(t, dict) else "",
+    rows_raw: list[list[str]] = []
+    if include_subtasks:
+        from superharness.engine.subtask import resolve_subtask_status
+
+        for t in tasks:
+            if not isinstance(t, dict):
+                continue
+            rows_raw.append([
+                str(t.get("id", "")),
+                str(t.get("title", "")),
+                _status_label(str(t.get("status", ""))),
+                str(t.get("owner", "")),
+            ])
+            parent_status = str(t.get("status", ""))
+            for s in (t.get("subtasks") or []):
+                if not isinstance(s, dict):
+                    continue
+                eff = resolve_subtask_status(s, parent_status)
+                rows_raw.append([
+                    "  └ " + str(s.get("id", "")),
+                    str(s.get("title", "")),
+                    _status_label(eff),
+                    str(s.get("owner", "")),
+                ])
+    else:
+        rows_raw = [
+            [
+                str(t.get("id", "")) if isinstance(t, dict) else "",
+                str(t.get("title", "")) if isinstance(t, dict) else "",
+                _status_label(str(t.get("status", "")) if isinstance(t, dict) else ""),
+                str(t.get("owner", "")) if isinstance(t, dict) else "",
+            ]
+            for t in tasks
         ]
-        for t in tasks
-    ]
 
     headers = ["ID", "Title", "Status", "Owner"]
     widths = [
@@ -184,6 +209,14 @@ def contract_today(project_dir: str, agent: str = "") -> int:
 def main(argv: list[str] | None = None) -> None:
     import argparse
 
+    # Windows consoles default to cp1252, which cannot encode the box-drawing
+    # characters and status emojis used in the table output. Reconfigure
+    # stdout to UTF-8 when possible.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+    except (AttributeError, ValueError, OSError):
+        pass
+
     if argv is None:
         argv = sys.argv[1:]
 
@@ -199,6 +232,10 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--project", "-p", default=None)
     parser.add_argument("--agent", default="")
+    parser.add_argument(
+        "--include-subtasks", action="store_true",
+        help="Also render orchestrator-decomposed subtasks nested under each parent",
+    )
 
     opts = parser.parse_args(argv)
     project_dir = os.path.realpath(opts.project or os.getcwd())
@@ -207,7 +244,7 @@ def main(argv: list[str] | None = None) -> None:
         print(f"Project directory does not exist: {project_dir}", file=sys.stderr)
         sys.exit(1)
 
-    rc = contract_today(project_dir, agent=opts.agent)
+    rc = contract_today(project_dir, agent=opts.agent, include_subtasks=opts.include_subtasks)
     sys.exit(rc)
 
 

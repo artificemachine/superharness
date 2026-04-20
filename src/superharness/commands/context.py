@@ -27,10 +27,27 @@ def _load_yaml_safe(path: Path) -> object:
 
 
 def _find_task(contract: dict, task_id: str) -> dict | None:
-    for t in (contract.get("tasks") or []):
-        if isinstance(t, dict) and str(t.get("id", "")) == task_id:
-            return t
-    return None
+    """Return a task dict by id. Also resolves subtask ids (e.g. "parent.1").
+
+    For a subtask, returns a shallow copy with two extra keys:
+      - "_parent_id": the owning top-level task id
+      - "_effective_status": status resolved via inheritance from parent
+    """
+    from superharness.engine.subtask import (
+        find_task_or_subtask,
+        resolve_subtask_status,
+    )
+    task, parent = find_task_or_subtask(contract, task_id)
+    if task is None:
+        return None
+    if parent is None:
+        return task
+    enriched = dict(task)
+    enriched["_parent_id"] = str(parent.get("id", ""))
+    enriched["_effective_status"] = resolve_subtask_status(
+        task, str(parent.get("status", ""))
+    )
+    return enriched
 
 
 def _find_active_task_id(contract: dict) -> str | None:
@@ -124,18 +141,31 @@ def task_context(project_dir: Path | str, task_id: str | None) -> str:
     if task is None:
         return f"Error: task '{task_id}' not found in contract."
 
+    parent_id = task.get("_parent_id")
+    is_subtask = bool(parent_id)
+    effective_status = task.get("_effective_status") or task.get("status", "unknown")
+
     sep = "═" * 44
+    header_kind = "Subtask" if is_subtask else "Context"
     lines = [
         sep,
-        f" Context: {task_id}  (owner: {task.get('owner', 'unknown')})",
+        f" {header_kind}: {task_id}  (owner: {task.get('owner', 'unknown')})",
         sep,
-        f"Status: {task.get('status', 'unknown')}",
-        f"Title:  {task.get('title', '')}",
     ]
+    if is_subtask:
+        lines.append(f"Parent: {parent_id}")
+        lines.append(f"Status: {effective_status}  (inherited from parent)")
+    else:
+        lines.append(f"Status: {task.get('status', 'unknown')}")
+    lines.append(f"Title:  {task.get('title', '')}")
+
+    # Handoffs/decisions/failures/ledger lookups use the parent id for subtasks
+    # (subtasks don't have their own handoffs; they inherit the parent's).
+    lookup_id = parent_id if is_subtask else task_id
 
     # Last handoff
     handoffs_dir = sh_dir / "handoffs"
-    handoff = _find_latest_handoff(handoffs_dir, task_id)
+    handoff = _find_latest_handoff(handoffs_dir, lookup_id)
     if handoff:
         date_raw = str(handoff.get("date", ""))[:10].strip()
         date_str = f" ({date_raw})" if date_raw else ""
@@ -159,7 +189,7 @@ def task_context(project_dir: Path | str, task_id: str | None) -> str:
     if decisions_path.exists():
         doc = _load_yaml_safe(decisions_path)
         decisions = (doc.get("decisions") or []) if isinstance(doc, dict) else []
-        relevant = _filter_entries(decisions, task_id)
+        relevant = _filter_entries(decisions, lookup_id)
         if relevant:
             lines.append("")
             lines.append("Decisions relevant to this task:")
@@ -174,7 +204,7 @@ def task_context(project_dir: Path | str, task_id: str | None) -> str:
     if failures_path.exists():
         doc = _load_yaml_safe(failures_path)
         failures = (doc.get("failures") or []) if isinstance(doc, dict) else []
-        relevant = _filter_entries(failures, task_id)
+        relevant = _filter_entries(failures, lookup_id)
         if relevant:
             lines.append("")
             lines.append("Failures relevant to this task:")
@@ -186,7 +216,7 @@ def task_context(project_dir: Path | str, task_id: str | None) -> str:
 
     # Ledger
     ledger_path = sh_dir / "ledger.md"
-    ledger_lines = _ledger_lines_for_task(ledger_path, task_id)
+    ledger_lines = _ledger_lines_for_task(ledger_path, lookup_id)
     if ledger_lines:
         lines.append("")
         lines.append("Recent ledger entries:")
@@ -210,6 +240,13 @@ def task_context(project_dir: Path | str, task_id: str | None) -> str:
 
 def main(argv: list[str] | None = None) -> None:
     import argparse
+
+    # Windows consoles default to cp1252, which cannot encode the box-drawing
+    # characters used in our output. Reconfigure stdout to UTF-8 when possible.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+    except (AttributeError, ValueError, OSError):
+        pass
 
     if argv is None:
         argv = sys.argv[1:]

@@ -365,6 +365,7 @@ def _build_tasks(raw_tasks: list, handoffs_by_task: dict) -> list[dict]:
         task_id    = t.get("id", "")
         raw_status = str(t.get("status", "todo"))
         display, color = _display_status(raw_status)
+        from superharness.engine.subtask import resolve_subtask_status
         raw_subtasks = t.get("subtasks") or []
         subtasks = []
         for s in raw_subtasks:
@@ -375,6 +376,7 @@ def _build_tasks(raw_tasks: list, handoffs_by_task: dict) -> list[dict]:
             sub_entry = {
                 "id":                  s.get("id", ""),
                 "title":               s.get("title", ""),
+                "status":              resolve_subtask_status(s, raw_status),
                 "model_tier":          sub_tier,
                 "owner":               sub_owner,
                 "estimated_tokens":    s.get("estimated_tokens"),

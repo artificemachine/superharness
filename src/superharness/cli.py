@@ -158,6 +158,8 @@ _cmd("pack",            "Export and import portable project state.",            
 _cmd("benchmark",       "Show dispatch cost and duration leaderboard.",            module="superharness.commands.benchmark")
 _cmd("diff",            "Preview agent changes for a task before closing.",        module="superharness.commands.diff")
 _cmd("adapter-payload", "Emit project state as stable JSON payload (schema v1.0).", module="superharness.commands.adapter_payload")
+_cmd("handoff-write",   "Author a plan or report handoff YAML (adapter-safe).",     module="superharness.commands.handoff_write")
+_cmd("handoff",         "Handoff subcommand group (write).",                        module="superharness.commands.handoff_write")
 
 # explain runs in-process (no subprocess) so CliRunner captures output correctly
 def _register_explain():
