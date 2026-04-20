@@ -19,9 +19,10 @@ from typing import Any
 import yaml
 
 from superharness.engine.adapter_registry import resolve_model
+from superharness.engine.next_action import next_action as _next_action
 from superharness.engine.normalization import normalize_blocked_by
 
-SCHEMA_VERSION = "1.2"
+SCHEMA_VERSION = "1.3"
 
 # ---------------------------------------------------------------------------
 # Status mapping  (extracted from Morpheme rawParser.js — superharness owns it)
@@ -410,9 +411,10 @@ def _build_tasks(raw_tasks: list, handoffs_by_task: dict) -> list[dict]:
         resolved = _resolved_model_for(owner, tier)
         if resolved is not None:
             entry["resolved_model"] = resolved
-        entry["classifier"] = _build_classifier_block(t)
-        entry["decomposer"] = _build_decomposer_block(t)
-        entry["retry"]      = _build_retry_block(t)
+        entry["classifier"]  = _build_classifier_block(t)
+        entry["decomposer"]  = _build_decomposer_block(t)
+        entry["retry"]       = _build_retry_block(t)
+        entry["next_action"] = _next_action(raw_status).as_dict()
         result.append(entry)
     return result
 
