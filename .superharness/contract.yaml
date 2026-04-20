@@ -1330,7 +1330,7 @@ tasks:
   title: "Ship step in task lifecycle — auto-commit after task approval (BLOCKED:
     review pipeline bypass risk)"
   owner: claude-code
-  status: todo
+  status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: feat.dispatch-auto-stash
   workflow: quick
@@ -1344,8 +1344,10 @@ tasks:
     pipeline. Option 1 (auto-stash) is the safe interim. This task is intentionally
     blocked until auto-stash proves insufficient.'
   verified: true
-  verified_at: '2026-04-10T15:14:11Z'
+  verified_at: '2026-04-18T18:43:20Z'
   verified_by: claude-code
+  summary: 'Design doc shipped in PR #111 / v1.24.14. All AC met: risk analysis, pr_open
+    status, ship_on_complete opt-in, 3-phase plan.'
 - id: feat.worktree-gc
   title: shux worktree-gc — clean orphaned dispatch worktrees
   owner: claude-code
@@ -1550,7 +1552,7 @@ tasks:
 - id: feat.taxonomy-module
   title: Central effort taxonomy module + migrate 7 call sites
   owner: claude-code
-  status: report_ready
+  status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
@@ -1559,9 +1561,11 @@ tasks:
   tests_passed: true
   acceptance_criteria:
   - engine/taxonomy.py exists with 6 exported constants
-  - tests/unit/test_taxonomy.py passes (including test_valid_efforts_single_source identity check)
+  - tests/unit/test_taxonomy.py passes (including 
+    test_valid_efforts_single_source identity check)
   - all 7 migration sites import from superharness.engine.taxonomy
-  - test_valid_efforts_single_source asserts task/model_router/validate VALID_EFFORTS is taxonomy.VALID_EFFORTS (object identity)
+  - test_valid_efforts_single_source asserts task/model_router/validate 
+    VALID_EFFORTS is taxonomy.VALID_EFFORTS (object identity)
   - pytest tests/ -q passes unchanged
   - CHANGELOG.md has chore(taxonomy) entry
   effort: medium
@@ -1581,10 +1585,15 @@ tasks:
       test_taxonomy.py passes; no call-site migration yet
     refactor: migrate 7 sites one by one with pytest green gate between each; 
       add CHANGELOG chore(taxonomy) entry
+  verified: true
+  verified_at: '2026-04-18T11:53:46Z'
+  verified_by: claude-code
+  summary: 'Shipped v1.24.5: engine/taxonomy.py, 7 call sites migrated, xhigh effort
+    level. PR #99.'
 - id: fix.dashboard-newline-rendering
   title: Dashboard pre-blocks render real newlines (39 JS string literal fixes)
   owner: claude-code
-  status: report_ready
+  status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: quick
@@ -1597,12 +1606,156 @@ tasks:
   context: Dashboard bug spotted during plan review of feat.taxonomy-module. Fix
     is 1 file, 1 pattern, 39 replacements. Verified live via curl + browser 
     hard-refresh at http://127.0.0.1:8787.
-  summary: 'Fix committed on branch fix/dashboard-newline-rendering (commit 84d8585).
-    39 JS string-literal replacements + paired regex fix. Grep verified 0 remaining
-    buggy occurrences. Dashboard tested via hard-refresh at http://127.0.0.1:8787
-    — task report, ledger tail, and task dependencies render multi-line content correctly.
-    CHANGELOG entry added under v1.24.4. Ready for review + merge. (Note: session-stop
-    hook marked the task stopped mid-flight; that was a false stop — work completed
-    cleanly.)'
+  summary: 'Shipped v1.24.4: 39 JS string literal \n fixes in dashboard.html. PR #103
+    area.'
+  verified: true
+  verified_at: '2026-04-18T11:53:47Z'
+  verified_by: claude-code
+- id: t-ba1c80
+  title: Add --json output to task status, delegate, enqueue, verify, close
+  owner: claude-code
+  status: todo
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: implementation
+  development_method: tdd
+  acceptance_criteria:
+  - shux task status --json emits {task_id, old_status, new_status, actor, 
+    timestamp, ok:bool}
+  - shux delegate --json emits {task_id, dispatched:bool, method, model, error?}
+  - shux enqueue --json emits {item_id, task_id, to, priority, ok:bool, error?}
+  - shux verify --json and shux close --json emit {task_id, ok:bool, error?}
+  - Errors return non-zero exit code AND valid JSON on stdout (not stderr) when 
+    --json is set
+  - Serializer reuses adapter-payload's JSON helpers; no ad-hoc json.dumps calls
+  effort: medium
+  test_types:
+  - unit
+  - integration
+  out_of_scope:
+  - contract, context, adapter-payload (already JSON-native)
+  - Streaming/NDJSON output
+  definition_of_done:
+  - All five commands support --json. Tests pass. GUIDE.md updated. Morpheme can
+    drop stderr scraping.
+  context: Morpheme adapter consumes shux CLI. Stderr scraping breaks on every 
+    release. This unblocks Morpheme TaskView write actions. See session 
+    2026-04-20 morpheme CLI audit.
+  tdd:
+    red: Write failing tests in tests/integration/test_cli_json_output.py that 
+      invoke each CLI subcommand with --json, assert stdout parses as JSON, 
+      assert schema keys present, assert exit code semantics (0 on ok, nonzero 
+      on error with error key).
+    green: Add --json flag to each command's argparse. Route success + error 
+      paths through a shared emit_json(payload, ok) helper in 
+      src/superharness/utils/json_output.py. Keep human output unchanged when 
+      --json is absent.
+    refactor: Extract shared CLI result dataclass. Consolidate duplicate 
+      error-to-stderr code paths. Update docs/GUIDE.md with --json examples per 
+      command.
+- id: t-cdda83
+  title: shux handoff write — CLI surface for plan/report handoff authoring
+  owner: claude-code
+  status: todo
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: t-ba1c80
+  workflow: implementation
+  development_method: tdd
+  acceptance_criteria:
+  - shux handoff write --task ID --phase {plan|report} --from AGENT --to TARGET 
+    accepts --plan @file, --tdd-red @file, --tdd-green @file, --tdd-refactor 
+    @file, --outcome @file, --context @file
+  - Writes YAML to .superharness/handoffs/<slug>.yaml matching the same schema 
+    that shux hygiene validates
+  - Refuses to write if schema invalid; exit nonzero with structured error
+  - Supports --json for machine consumption (depends on t-ba1c80)
+  - Does NOT mutate contract status — callers chain with shux task status
+  - Existing agent-side handoff authoring continues to work unchanged
+  effort: high
+  test_types:
+  - unit
+  - integration
+  out_of_scope:
+  - Editing existing handoffs (write-only, not edit)
+  - Auto-transitioning task status (caller chains commands)
+  - Non-YAML output formats
+  definition_of_done:
+  - Command ships. Schema is validated. Morpheme can author plan handoffs via 
+    CLI without touching .superharness/ directly. Hygiene check still passes on 
+    authored handoffs.
+  context: Morpheme adapter is read-only over data sources. Without this 
+    command, Morpheme TaskView cannot advance todo tasks through plan_proposed 
+    without violating adapter boundary. See session 2026-04-20 morpheme CLI 
+    audit. Depends on t-ba1c80 for --json support.
+  tdd:
+    red: 'tests/integration/test_handoff_write.py: invoke shux handoff write for a
+      plan phase, assert file exists under .superharness/handoffs/, assert YAML parses,
+      assert schema keys (task, phase, status, from, to, date, plan, tdd). Negative
+      tests: missing required field, invalid phase, nonexistent task — each must exit
+      nonzero without writing a file.'
+    green: Add src/superharness/commands/handoff_write.py. Reuse existing 
+      handoff schema (look in src/superharness/engine/ or scripts/). Wire into 
+      CLI dispatcher. Implement @file argument convention (read file if starts 
+      with @).
+    refactor: Extract handoff schema into a single source of truth shared by 
+      hygiene check, agent-side authoring, and this new command. Update 
+      docs/adapter-payload-spec.md and GUIDE.md with handoff write examples.
+- id: t-91b396
+  title: 'Make subtasks first-class: visible in adapter-payload, shux contract, recall,
+    context'
+  owner: claude-code
+  status: todo
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: implementation
+  development_method: tdd
+  acceptance_criteria:
+  - adapter-payload emits subtasks[] with inherited status (parent.status when 
+    subtask has no explicit status)
+  - adapter-payload schema bumped to v1.2, additive/non-breaking; 
+    docs/adapter-payload-spec.md updated
+  - shux contract --include-subtasks renders subtasks indented under parent with
+    resolved status
+  - shux recall KEYWORDS matches subtask titles, not just top-level tasks
+  - shux context SUBTASK_ID resolves nested IDs (e.g. verify.foo.1) and walks up
+    to parent for decisions/failures/ledger
+  - Status resolver prefers explicit subtask.status when present; falls back to 
+    parent.status otherwise (future-proof for per-subtask lifecycle)
+  effort: medium
+  test_types:
+  - unit
+  - integration
+  out_of_scope:
+  - Per-subtask dispatch/enqueue (option B from advice — defer)
+  - Per-subtask hygiene gates
+  - Editing subtasks via CLI (they are planning artifacts written by 
+    orchestrator)
+  definition_of_done:
+  - A fresh Claude Code session can ask 'status of 
+    verify.orchestrator-decompose.1' and get a correct answer without reading 
+    contract.yaml directly. Morpheme renders subtask status badges via 
+    adapter-payload. Existing top-level task behavior unchanged.
+  context: "Problem surfaced 2026-04-20: subtasks written by shux delegate --orchestrate
+    live in contract.yaml but have no status field. shux contract/recall/context don't
+    surface them, so agents claim they 'don't exist'. Morpheme renders them as status-less
+    nodes. Parent-close implicitly closes subtasks, so the fix is a resolver (inheritance),
+    not a data migration. See this session's audit of verify.orchestrator-decompose.1
+    for the failure mode."
+  tdd:
+    red: "tests/unit/test_subtask_status_resolver.py: resolver returns explicit status
+      when set, parent.status when not, handles nested (2+ level) subtasks. tests/integration/test_subtask_visibility.py:
+      (a) adapter-payload JSON contains subtasks with status, (b) shux contract --include-subtasks
+      prints subtask rows, (c) shux recall finds subtask by title keyword, (d) shux
+      context <subtask-id> returns parent's context block. All failing before implementation."
+    green: Add resolve_subtask_status() in src/superharness/engine/lifecycle.py 
+      or a new src/superharness/engine/subtask.py. Update adapter-payload 
+      serializer to call resolver. Extend shux contract renderer with 
+      --include-subtasks flag. Extend shux recall's search indexer. Extend shux 
+      context's task lookup to accept nested IDs and walk up via id.rsplit('.', 
+      1).
+    refactor: Consolidate subtask lookup into a single helper. Ensure hygiene 
+      check also iterates subtasks. Update docs/GUIDE.md with subtask visibility
+      section.
+  summary: revert
 decisions: []
 failures: []
