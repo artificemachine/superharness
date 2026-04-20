@@ -7,7 +7,7 @@ tasks:
 - id: feat.monitor-browser-open
   title: 'shux monitor: auto project detection + browser open'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   acceptance_criteria:
   - monitor-ui --project optional, defaults to cwd
@@ -24,7 +24,7 @@ tasks:
 - id: feat.test-type-command
   title: 'shux test-type: mandatory test types on contract tasks'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   acceptance_criteria:
   - superharness test-type --id <id> --set/--add/--remove/--show works
@@ -41,7 +41,7 @@ tasks:
 - id: mod.0-loader
   title: "Module loader (YAML → dataclass)"
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   acceptance_criteria:
   - 5 tests pass in test_module_loader.py
@@ -55,7 +55,7 @@ tasks:
 - id: mod.1-runner
   title: Module runner (lifecycle hooks)
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   dependency: mod.0-loader
   acceptance_criteria:
@@ -70,7 +70,7 @@ tasks:
 - id: mod.2-registry
   title: Registry + shux enhance CLI
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   dependency: mod.1-runner
   acceptance_criteria:
@@ -84,7 +84,7 @@ tasks:
 - id: mod.3-obsidian
   title: Obsidian module (vault integration)
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   dependency: mod.2-registry
   acceptance_criteria:
@@ -99,7 +99,7 @@ tasks:
 - id: mod.4-autoschedule
   title: Auto-schedule module (watcher tick)
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   dependency: mod.2-registry
   acceptance_criteria:
@@ -114,7 +114,7 @@ tasks:
 - id: mod.5-security
   title: Security module (shipguard gate)
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   dependency: mod.2-registry
   acceptance_criteria:
@@ -129,7 +129,7 @@ tasks:
 - id: mod.6-remember
   title: Remember module (context refresh)
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   dependency: mod.2-registry
   acceptance_criteria:
@@ -144,7 +144,7 @@ tasks:
 - id: mod.7-ntfy
   title: ntfy notification module
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   dependency: mod.2-registry
   acceptance_criteria:
@@ -158,7 +158,7 @@ tasks:
 - id: mod.8-ship
   title: Ship module (auto-commit on close)
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   dependency: mod.2-registry
   acceptance_criteria:
@@ -173,7 +173,7 @@ tasks:
 - id: mod.9-openclaw
   title: OpenClaw module (NemoClaw delegation)
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   dependency: mod.2-registry
   acceptance_criteria:
@@ -188,7 +188,7 @@ tasks:
 - id: mod.10-telegram
   title: Telegram + Discord modules
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   dependency: mod.2-registry
   acceptance_criteria:
@@ -203,7 +203,7 @@ tasks:
 - id: mod.11-doctor
   title: Doctor module health section
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   dependency: mod.2-registry
   acceptance_criteria:
@@ -218,7 +218,7 @@ tasks:
 - id: feat.auto-timeout
   title: 'Dispatcher auto-timeout: estimate from task effort/plan'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   acceptance_criteria:
   - Dispatcher reads effort estimate from contract/plan and sets proportional 
@@ -233,7 +233,7 @@ tasks:
 - id: feat.live-task-log
   title: Live agent output in View Report for launched tasks
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   acceptance_criteria:
   - View Report on launched task shows live terminal output from the agent
@@ -245,7 +245,7 @@ tasks:
 - id: feat.sdk-runner
   title: 'Agent SDK runner: replace subprocess claude CLI with Python SDK'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   acceptance_criteria:
   - Runner class uses claude_agent_sdk.Agent instead of subprocess, 5 tests pass
@@ -259,7 +259,7 @@ tasks:
 - id: feat.sdk-delegate
   title: 'Delegate --via sdk: dispatch tasks through Agent SDK'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   dependency: feat.sdk-runner
   acceptance_criteria:
@@ -275,7 +275,7 @@ tasks:
 - id: feat.sdk-streaming
   title: 'Live streaming: SDK responses stream to launcher-logs and monitor UI'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   dependency: feat.sdk-delegate
   acceptance_criteria:
@@ -291,7 +291,7 @@ tasks:
 - id: feat.sdk-session
   title: 'Session persistence: SDK maintains conversation across prompts'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   dependency: feat.sdk-runner
   acceptance_criteria:
@@ -306,7 +306,7 @@ tasks:
 - id: feat.sdk-budget
   title: 'Budget guard: SDK tracks tokens/cost and stops at limit'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   dependency: feat.sdk-runner
   acceptance_criteria:
@@ -321,7 +321,7 @@ tasks:
   title: Add blocked_by field + enforce plan/approve/review lifecycle on task 
     create
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   summary: "blocked_by field + full lifecycle gates on delegate and close — 19 tests,
     TDD complete"
@@ -332,7 +332,7 @@ tasks:
   title: "Monitor UI crashes silently — server dies after spawning, port 8787 becomes
     unreachable"
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   summary: 'Monitor crash fixed: HTTP probe + url_file race + crash detection + cross-platform
     timeout'
@@ -342,7 +342,7 @@ tasks:
 - id: bug.version-mismatch
   title: "CLI reports 1.0.0 but pip has 1.1.1 — hardcoded version string"
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   summary: 'Version strings aligned: README, AGENTS.md, validate.py vault path via
     env var'
@@ -353,7 +353,7 @@ tasks:
   title: "shux close rejects owner actor — owner should always be able to close any
     task"
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   summary: Close owner gate fixed + status lifecycle gate + --force escape hatch
   verified: true
@@ -362,7 +362,7 @@ tasks:
 - id: fix.corrupt-handoff
   title: "Fix corrupt YAML in feat.sdk-streaming-complete.yaml — multiple documents"
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   summary: "Corrupt handoff YAML fixed — single valid document"
   verified: true
@@ -371,7 +371,7 @@ tasks:
 - id: fix.hygiene-debt
   title: Backfill missing handoffs and verification records for 18 done tasks
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   summary: Task completed and verified
   review_requested_at: '2026-03-26T15:00:26Z'
@@ -381,7 +381,7 @@ tasks:
 - id: fix.uncommitted-work
   title: Triage and commit 15 dirty files from prior sessions
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   verified: true
   verified_at: '2026-03-26T12:15:31Z'
@@ -391,7 +391,7 @@ tasks:
 - id: verify.session-2026-03-26
   title: 'Verify: bug fixes, feat.task-dependencies, tdd block'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
@@ -424,7 +424,7 @@ tasks:
 - id: test.template-validation
   title: 'Test: full mandatory template validation'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
@@ -446,7 +446,7 @@ tasks:
   title: Watcher reports stale heartbeat / not-running state despite loaded 
     watcher
   owner: codex-cli
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
@@ -470,7 +470,7 @@ tasks:
 - id: ui.monitor-left-align-actions
   title: 'Monitor UI: left-align all task action buttons consistently'
   owner: codex-cli
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
@@ -494,7 +494,7 @@ tasks:
 - id: bug.monitor-plan-approved-no-action
   title: Monitor UI shows no action for plan_approved tasks
   owner: codex-cli
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
@@ -517,7 +517,7 @@ tasks:
 - id: ux.review-gated-close-flow
   title: 'Monitor UI: gate close behind explicit review or bypass path'
   owner: codex-cli
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
@@ -543,7 +543,7 @@ tasks:
 - id: bug.monitor-contract-render-empty
   title: Monitor UI shows empty contract fields despite populated /api/status
   owner: codex-cli
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
@@ -567,7 +567,7 @@ tasks:
   title: Monitor UI review actions change status only and do not perform real 
     review/close workflow
   owner: codex-cli
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
@@ -594,7 +594,7 @@ tasks:
   title: Monitor UI should reflect verification gate before offering close 
     bypass
   owner: codex-cli
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
@@ -618,7 +618,7 @@ tasks:
 - id: ui.monitor-show-reviewer
   title: Monitor UI should show assigned reviewer for review_requested tasks
   owner: codex-cli
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
@@ -643,7 +643,7 @@ tasks:
   title: Dispatcher rejects review_requested tasks because delegate still 
     requires plan_approved
   owner: codex-cli
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
@@ -668,7 +668,7 @@ tasks:
 - id: bug.monitor-close-owner-action
   title: Monitor close button executes close with the owner actor
   owner: codex-cli
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
@@ -696,7 +696,7 @@ tasks:
 - id: verify.orchestrator-decompose
   title: 'Verify: orchestrator decomposes a real task via Opus'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
@@ -772,7 +772,7 @@ tasks:
 - id: verify.cost-estimator-accuracy
   title: 'Verify: cost estimator matches sdk_runner actual spend'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
@@ -789,7 +789,7 @@ tasks:
 - id: verify.subtask-aggregator-e2e
   title: 'Verify: subtask aggregator writes results and promotes parent task'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
@@ -838,7 +838,7 @@ tasks:
 - id: verify.monitor-project-aware
   title: Verify project-aware monitor detection (v1.3.2)
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
@@ -865,7 +865,7 @@ tasks:
 - id: verify.monitor-kill-list-commands
   title: Verify shux monitor-kill and monitor-list commands (v1.3.1)
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
@@ -887,7 +887,7 @@ tasks:
 - id: verify.monitor-ui-done-hidden
   title: 'Verify monitor UI: done tasks hidden by default, verify button tweak (v1.3.1)'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
@@ -911,7 +911,7 @@ tasks:
   title: Verify orchestrator --orchestrate flag, subtask routing, cost estimates
     (v1.3.0)
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
@@ -939,7 +939,7 @@ tasks:
 - id: verify.sdk-runner-budget
   title: Verify SDKRunner budget enforcement and cost tracking (v1.3.0)
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   acceptance_criteria:
@@ -960,7 +960,7 @@ tasks:
 - id: feat.onboarding-command-first
   title: 'Onboarding: command-first shux help/demo + Windows docs'
   owner: codex-cli
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
@@ -978,7 +978,7 @@ tasks:
 - id: note.session-summary-next
   title: Session summary note for next run
   owner: codex-cli
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: feat.onboarding-command-first
   workflow: note
@@ -990,7 +990,7 @@ tasks:
 - id: feat.adapter-registry-v1
   title: Adapter registry v1 (manifest-driven agent routing)
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
@@ -1026,7 +1026,7 @@ tasks:
 - id: feat.heartbeat-contract-v1
   title: Heartbeat contract v1 (runtime-agnostic agent status)
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: feat.adapter-registry-v1
   workflow: implementation
@@ -1068,7 +1068,7 @@ tasks:
 - id: feat.monitor-operator-upgrade
   title: 'Monitor operator upgrade: board view, health, budget, review queue'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: feat.heartbeat-contract-v1
   workflow: implementation
@@ -1105,7 +1105,7 @@ tasks:
 - id: feat.module-sdk-v1
   title: Module SDK v1 (formalize extension manifests and hooks)
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: feat.adapter-registry-v1
   workflow: implementation
@@ -1135,7 +1135,7 @@ tasks:
 - id: feat.project-pack-export-import
   title: 'Project packs: export and import portable .superharness state'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: feat.module-sdk-v1
   workflow: implementation
@@ -1166,7 +1166,7 @@ tasks:
 - id: feat.parallel-checkout-safety
   title: Parallel checkout safety (atomic per-task claims for multi-agent work)
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: feat.project-pack-export-import
   workflow: implementation
@@ -1199,7 +1199,7 @@ tasks:
 - id: bug.sdk-live-log
   title: SDK dispatch produces no live logs in monitor UI
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: quick
@@ -1211,7 +1211,7 @@ tasks:
 - id: bug.noisy-lock-cleanup
   title: "Watcher lock not released on normal exit — orphan messages every cycle"
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: quick
@@ -1223,7 +1223,7 @@ tasks:
 - id: feat.always-on-dispatch
   title: 'always-on auto-dispatch: watcher enqueues plan_approved tasks automatically'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: quick
@@ -1235,7 +1235,7 @@ tasks:
   title: "Phase 1: Task fields — effort, test_types, plan, out_of_scope, definition_of_done,
     context"
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: quick
@@ -1261,7 +1261,7 @@ tasks:
 - id: feat.inbox-gc
   title: "shux inbox gc — reconcile stale inbox items against contract"
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: quick
@@ -1287,7 +1287,7 @@ tasks:
 - id: feat.watcher-auto-gc
   title: "Watcher auto-gc — periodic inbox reconciliation in watcher loop"
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: feat.inbox-gc
   workflow: quick
@@ -1305,7 +1305,7 @@ tasks:
 - id: feat.dispatch-auto-stash
   title: Auto-stash dirty worktree before dispatch, pop after
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: quick
@@ -1330,7 +1330,7 @@ tasks:
   title: "Ship step in task lifecycle — auto-commit after task approval (BLOCKED:
     review pipeline bypass risk)"
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: feat.dispatch-auto-stash
   workflow: quick
@@ -1351,7 +1351,7 @@ tasks:
 - id: feat.worktree-gc
   title: shux worktree-gc — clean orphaned dispatch worktrees
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: quick
@@ -1360,7 +1360,7 @@ tasks:
 - id: feat.dashboard-activity-feed
   title: Dashboard live activity feed — timeline of events
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: quick
@@ -1369,7 +1369,7 @@ tasks:
 - id: feat.recap-command
   title: shux recap — what happened in the last N hours
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: quick
@@ -1378,7 +1378,7 @@ tasks:
 - id: feat.dispatch-preview
   title: 'Dashboard enqueue modal: estimated cost, model, timeout'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: quick
@@ -1387,7 +1387,7 @@ tasks:
 - id: feat.desktop-notifications
   title: Native macOS notifications on task complete/fail
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: quick
@@ -1396,7 +1396,7 @@ tasks:
 - id: feat.dashboard-git-context
   title: 'Dashboard header: branch, dirty count, last commit'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: quick
@@ -1405,7 +1405,7 @@ tasks:
 - id: feat.task-dependency-graph
   title: 'Dashboard: mermaid dependency graph from blocked_by'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: quick
@@ -1414,7 +1414,7 @@ tasks:
 - id: feat.dashboard-keyboard-shortcuts
   title: 'Dashboard keyboard shortcuts: r/e/g/slash'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: quick
@@ -1423,7 +1423,7 @@ tasks:
 - id: feat.morpheme-phase1-smoke
   title: Morpheme Phase 1 smoke task
   owner: codex-cli
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: quick
@@ -1444,7 +1444,7 @@ tasks:
 - id: feat.adapter-payload-resolved-model
   title: Emit resolved model name (label + id) per task in adapter-payload
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
@@ -1503,7 +1503,7 @@ tasks:
   title: Investigate Windows-only unit test hang (KeyboardInterrupt ~70% through
     suite)
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
@@ -1552,7 +1552,7 @@ tasks:
 - id: feat.taxonomy-module
   title: Central effort taxonomy module + migrate 7 call sites
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
@@ -1593,7 +1593,7 @@ tasks:
 - id: fix.dashboard-newline-rendering
   title: Dashboard pre-blocks render real newlines (39 JS string literal fixes)
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: quick
@@ -1614,7 +1614,7 @@ tasks:
 - id: t-ba1c80
   title: Add --json output to task status, delegate, enqueue, verify, close
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
@@ -1661,7 +1661,7 @@ tasks:
 - id: t-cdda83
   title: shux handoff write — CLI surface for plan/report handoff authoring
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: t-ba1c80
   workflow: implementation
@@ -1714,7 +1714,7 @@ tasks:
   title: 'Make subtasks first-class: visible in adapter-payload, shux contract, recall,
     context'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
