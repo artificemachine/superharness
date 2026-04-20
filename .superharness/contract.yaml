@@ -1774,7 +1774,7 @@ tasks:
 - id: superharness-next-action-payload
   title: 'adapter-payload: add next_action per task (schema v1.3)'
   owner: claude-code
-  status: plan_approved
+  status: report_ready
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
@@ -1794,9 +1794,7 @@ tasks:
   definition_of_done:
   - pytest covers next_action matrix per status
   - docs/adapter-payload-spec.md has a next_action (v1.3+) section
-  summary: 'approved by owner review on PR #118; adopt revised mapping (failed→plan_proposed,
-    in_progress→null, add blocked/pr_open/waiting_input/paused/archived, subtasks
-    inherit, leaf module, no guard refactor)'
+  summary: next_action field implemented; 96 tests pass; docs updated
 - id: chore.collapse-guards-next-action
   title: Collapse delegate/enqueue/task-status guard tables into 
     engine/next_action.py
@@ -1816,5 +1814,6 @@ tasks:
   effort: medium
   context: 'Follow-up to superharness-next-action-payload (PR #118). Defer guard refactor
     to after next_action ships to minimize blast radius on the schema v1.3 PR.'
+
 decisions: []
 failures: []
