@@ -59,6 +59,7 @@ class SubtaskStatus(str, Enum):
     in_progress = "in_progress"
     done = "done"
     failed = "failed"
+    cancelled = "cancelled"
 
 
 # ---------------------------------------------------------------------------

@@ -73,12 +73,17 @@ class TestSubtask:
         with pytest.raises(ValidationError):
             Subtask.model_validate({**VALID_SUBTASK, "model_tier": "ultra"})
 
+    def test_cancelled_status_is_valid(self):
+        st = Subtask.model_validate({**VALID_SUBTASK, "status": "cancelled"})
+        assert st.status == SubtaskStatus.cancelled
+        assert st.status.value == "cancelled"
+
     def test_invalid_status_raises(self):
         with pytest.raises(ValidationError):
-            Subtask.model_validate({**VALID_SUBTASK, "status": "cancelled"})
+            Subtask.model_validate({**VALID_SUBTASK, "status": "retired"})
 
     def test_status_transitions(self):
-        for status in ("pending", "in_progress", "done", "failed"):
+        for status in ("pending", "in_progress", "done", "failed", "cancelled"):
             st = Subtask.model_validate({**VALID_SUBTASK, "status": status})
             assert st.status.value == status
 

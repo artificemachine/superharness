@@ -16,7 +16,8 @@ Type these directly into Claude Code or Codex CLI — no terminal needed after f
 | `shux delegate <task-id>` | Create task + enqueue in one step for watcher dispatch. Add `--force` to bypass budget block. |
 | `shux test-type <task-id>` | Set mandatory test types for a task (interactive prompt) |
 | `shux verify <task-id>` | Record verification result (pass/fail) before close |
-| `shux close <task-id>` | Mark task done (requires verify), append ledger, write handoff |
+| `shux close <task-id>` | Mark task done (requires verify), append ledger, write handoff. Add `--cancel-remaining --cancel-reason "..."` to bulk-cancel open subtasks and close atomically. `--force` bypasses all gates (logs warning). |
+| `shux subtask-cancel` | Cancel a subtask: `--task <id> --sub <sub-id> --reason "..."`. Writes a ledger entry. Cannot cancel already-done subtasks. |
 | `shux status` | Dashboard: contract, tasks, watcher state, profile |
 | `shux recall <keywords>` | Search past handoffs and ledger entries |
 | `shux demo` | Zero-config task lifecycle walkthrough in a temp directory — explains what superharness is and shows all 5 core commands before running |
@@ -494,6 +495,7 @@ superharness hygiene --project . --strict   # requires promotion alignment
 - Task status transitions (no invalid states)
 - Handoff files match done tasks
 - Ledger entries exist for completed work
+- Done tasks with open subtasks (pending/in_progress/failed) — use `shux subtask-cancel` to retire them
 - Decisions/failures promotion alignment (strict mode only)
 
 **Failure-memory promotion workflow:**

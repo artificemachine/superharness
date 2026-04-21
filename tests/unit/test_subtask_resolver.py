@@ -3,9 +3,30 @@ from __future__ import annotations
 
 from superharness.engine.subtask import (
     find_task_or_subtask,
+    is_subtask_resolved,
     iter_all_tasks,
     resolve_subtask_status,
 )
+
+
+class TestIsSubtaskResolved:
+    def test_done_is_resolved(self):
+        assert is_subtask_resolved("done") is True
+
+    def test_cancelled_is_resolved(self):
+        assert is_subtask_resolved("cancelled") is True
+
+    def test_pending_is_open(self):
+        assert is_subtask_resolved("pending") is False
+
+    def test_in_progress_is_open(self):
+        assert is_subtask_resolved("in_progress") is False
+
+    def test_failed_is_open(self):
+        assert is_subtask_resolved("failed") is False
+
+    def test_empty_string_is_open(self):
+        assert is_subtask_resolved("") is False
 
 
 class TestResolveSubtaskStatus:
@@ -44,6 +65,14 @@ class TestResolveSubtaskStatus:
 
     def test_none_parent_returns_pending_for_pending_subtask(self):
         assert resolve_subtask_status({"status": "pending"}, None) == "pending"
+
+    def test_explicit_cancelled_not_overridden_by_done_parent(self):
+        sub = {"id": "x.1", "status": "cancelled"}
+        assert resolve_subtask_status(sub, "done") == "cancelled"
+
+    def test_explicit_cancelled_not_overridden_by_in_progress_parent(self):
+        sub = {"id": "x.1", "status": "cancelled"}
+        assert resolve_subtask_status(sub, "in_progress") == "cancelled"
 
 
 class TestFindTaskOrSubtask:

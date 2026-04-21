@@ -94,7 +94,9 @@ def test_write_plan_handoff_from_file(project: Path, tmp_path: Path):
          "--task", "t-handoff", "--phase", "plan",
          "--from", "claude-code", "--to", "owner",
          "--plan", f"@{plan_file}",
-         "--tdd-red", "failing tests"],
+         "--tdd-red", "failing tests",
+         "--tdd-green", "minimal impl",
+         "--tdd-refactor", "cleanup"],
         project,
     )
     assert rc == 0, f"stderr: {err}"
@@ -183,7 +185,7 @@ def test_write_json_mode(project: Path):
          "--project", str(project),
          "--task", "t-handoff", "--phase", "plan",
          "--from", "claude-code", "--to", "owner",
-         "--plan", "p", "--tdd-red", "r",
+         "--plan", "p", "--tdd-red", "r", "--tdd-green", "g", "--tdd-refactor", "rf",
          "--json"],
         project,
     )
@@ -201,7 +203,7 @@ def test_write_refuses_overwrite_without_force(project: Path):
         "--project", str(project),
         "--task", "t-handoff", "--phase", "plan",
         "--from", "claude-code", "--to", "owner",
-        "--plan", "p", "--tdd-red", "r",
+        "--plan", "p", "--tdd-red", "r", "--tdd-green", "g", "--tdd-refactor", "rf",
         "--out", "fixed-name.yaml",
     ]
     rc1, *_ = _run(common, project)

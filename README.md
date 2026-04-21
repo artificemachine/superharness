@@ -45,7 +45,8 @@ shux continue          # resume active contract automatically
 shux delegate <id>     # create task + enqueue in one step (task must be plan_approved or later)
 shux test-type <id>    # set mandatory test types for a task
 shux verify <id>       # record verification result (pass/fail)
-shux close <id>        # mark done (task must be report_ready or review_passed); use --force to bypass
+shux close <id>        # mark done (task must be report_ready or review_passed); use --cancel-remaining --cancel-reason "..." to bulk-cancel open subtasks and close atomically; --force bypasses all gates
+shux subtask-cancel    # cancel a single subtask with a mandatory reason (--task <id> --sub <sub-id> --reason "...")
 shux task create       # create a task with --blocked-by, --tdd-red/green/refactor, --criteria flags
 shux task status       # update task lifecycle status (todo → plan_proposed → plan_approved → in_progress → report_ready → done)
 shux status            # dashboard: tasks, watcher, profile
@@ -276,6 +277,6 @@ CONFIRM_NON_INTERACTIVE=yes bash scripts/install-systemd-inbox-watcher.sh \
 
 ## Current Version
 
-Current version: **v1.1.1**
+Current version: **v1.29.0**
 
 See [CHANGELOG.md](CHANGELOG.md) for the full iteration log.
