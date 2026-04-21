@@ -158,7 +158,8 @@ def cmd_workflow(argv: list[str] | None = None) -> None:
                      opts.show])
 
     # Non-TTY, no flags → print current settings and exit
-    if not has_flags and not sys.stdin.isatty():
+    _stdin_is_tty = sys.stdin is not None and getattr(sys.stdin, "isatty", lambda: False)()
+    if not has_flags and not _stdin_is_tty:
         profile = _load_profile(project)
         eff = _effective(profile)
         if opts.json:
@@ -167,9 +168,18 @@ def cmd_workflow(argv: list[str] | None = None) -> None:
             _print_settings(eff)
         sys.exit(0)
 
-    # No flags, TTY → interactive
+    # No flags, TTY → interactive (EOFError = piped stdin on Windows despite isatty())
     if not has_flags:
-        _interactive(project)
+        try:
+            _interactive(project)
+        except EOFError:
+            profile = _load_profile(project)
+            eff = _effective(profile)
+            if opts.json:
+                print(json.dumps(eff))
+            else:
+                _print_settings(eff)
+            sys.exit(0)
         return
 
     # --show (with optional --json)
