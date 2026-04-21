@@ -444,6 +444,20 @@ def status_update(
                 _recursion_guard=True,
             )
 
+    # Subtask resolution gate for done transition
+    if status == "done":
+        try:
+            from superharness.engine.subtask_gate import (
+                evaluate_subtask_gate_from_disk,
+                format_gate_error,
+            )
+            _task_project_dir = os.path.dirname(os.path.dirname(os.path.abspath(contract_file)))
+            gate = evaluate_subtask_gate_from_disk(task, _task_project_dir)
+            if gate.enabled and gate.blocking:
+                _abort(format_gate_error(task_id, gate))
+        except ImportError:
+            pass
+
     # Warn about unverified acceptance criteria when marking done
     if status == "done":
         ac = task.get("acceptance_criteria")

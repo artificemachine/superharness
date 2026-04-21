@@ -72,6 +72,34 @@ def _write_contract(path: str, doc: object) -> None:
 _CLOSE_ALLOWED_STATUSES = {"report_ready", "review_passed"}
 
 
+def _cancel_open_subtasks(
+    task: dict,
+    actor: str,
+    reason: str,
+    now: str,
+    ledger_file: str,
+) -> None:
+    """Cancel every open subtask in-place and write ledger entries."""
+    from superharness.engine.subtask import is_subtask_resolved
+    task_id = str(task.get("id", ""))
+    for sub in (task.get("subtasks") or []):
+        if not isinstance(sub, dict):
+            continue
+        if is_subtask_resolved(str(sub.get("status", "pending"))):
+            continue
+        sub["status"] = "cancelled"
+        sub_id = str(sub.get("id", "?"))
+        line = (
+            f"- {now} — {actor} — SUBTASK_CANCEL: {sub_id} "
+            f"(parent={task_id}) — {reason}\n"
+        )
+        try:
+            with open(ledger_file, "a") as f:
+                f.write(line)
+        except OSError as e:
+            print(f"Warning: could not append to ledger: {e}", file=sys.stderr)
+
+
 def close_task(
     contract_file: str,
     task_id: str,
@@ -80,6 +108,8 @@ def close_task(
     skip_verify: bool = False,
     context: str = "",
     force: bool = False,
+    cancel_remaining: bool = False,
+    cancel_reason: str = "",
 ) -> int:
     doc = _load_contract(contract_file)
     tasks = doc.get("tasks")
@@ -109,6 +139,30 @@ def close_task(
             )
             return 1
 
+    # Subtask resolution gate
+    if not force:
+        try:
+            from superharness.engine.subtask_gate import (
+                evaluate_subtask_gate_from_disk,
+                format_gate_error,
+            )
+            project_dir = os.path.dirname(os.path.dirname(os.path.abspath(contract_file)))
+            gate = evaluate_subtask_gate_from_disk(task, project_dir)
+            if gate.enabled and gate.blocking:
+                if cancel_remaining:
+                    if not cancel_reason:
+                        print(
+                            "error: --cancel-remaining requires --cancel-reason",
+                            file=sys.stderr,
+                        )
+                        return 1
+                    # Will bulk-cancel below, after verification gate
+                else:
+                    print(format_gate_error(task_id, gate), file=sys.stderr)
+                    return 1
+        except ImportError:
+            pass
+
     # Verification gate
     if not skip_verify and not task.get("verified"):
         print(
@@ -120,6 +174,31 @@ def close_task(
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    # Bulk-cancel open subtasks when --cancel-remaining was requested
+    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(contract_file)))
+    ledger_file = os.path.join(project_dir, ".superharness", "ledger.md")
+    if cancel_remaining and cancel_reason:
+        _cancel_open_subtasks(task, actor, cancel_reason, now, ledger_file)
+
+    # Log force-bypass to ledger when used
+    if force:
+        try:
+            from superharness.engine.subtask_gate import evaluate_subtask_gate_from_disk
+            gate = evaluate_subtask_gate_from_disk(task, project_dir)
+            if gate.enabled and gate.blocking:
+                sub_ids = ", ".join(str(s.get("id", "?")) for s in gate.blocking)
+                force_line = (
+                    f"- {now} — {actor} — FORCE_CLOSE_WARNING: {task_id} — "
+                    f"gate bypassed with open subtasks: {sub_ids}\n"
+                )
+                try:
+                    with open(ledger_file, "a") as f:
+                        f.write(force_line)
+                except OSError:
+                    pass
+        except ImportError:
+            pass
+
     task["status"] = "done"
     if summary:
         task["summary"] = summary
@@ -127,8 +206,6 @@ def close_task(
     _write_contract(contract_file, doc)
 
     # Append ledger entry
-    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(contract_file)))
-    ledger_file = os.path.join(project_dir, ".superharness", "ledger.md")
     ledger_line = f"- {now} — {actor} — CLOSE: {task_id} — {summary}\n"
     try:
         with open(ledger_file, "a") as f:
@@ -200,6 +277,14 @@ def main(argv: list[str] | None = None) -> None:
         "--context", default="",
         help="What the next session needs to know (written to handoff YAML)",
     )
+    parser.add_argument(
+        "--cancel-remaining", action="store_true", default=False,
+        help="Cancel every open subtask with --cancel-reason, then close the task.",
+    )
+    parser.add_argument(
+        "--cancel-reason", default="",
+        help="Reason for bulk-cancelling open subtasks (required with --cancel-remaining).",
+    )
     parser.add_argument("--json", action="store_true", default=False,
                         help="Emit machine-readable JSON on stdout instead of human text.")
 
@@ -229,6 +314,8 @@ def main(argv: list[str] | None = None) -> None:
                 skip_verify=opts.skip_verify,
                 context=opts.context,
                 force=opts.force,
+                cancel_remaining=opts.cancel_remaining,
+                cancel_reason=opts.cancel_reason,
             )
         finally:
             sys.stdout = _orig_stdout
@@ -248,6 +335,8 @@ def main(argv: list[str] | None = None) -> None:
         skip_verify=opts.skip_verify,
         context=opts.context,
         force=opts.force,
+        cancel_remaining=opts.cancel_remaining,
+        cancel_reason=opts.cancel_reason,
     )
     sys.exit(rc)
 

@@ -11,6 +11,7 @@ import yaml as _yaml
 
 from superharness.engine.yaml_helpers import safe_load
 from superharness.engine.taxonomy import VALID_EFFORTS as _VALID_EFFORTS
+from superharness.engine.subtask import is_subtask_resolved
 
 HELP_TEXT = """\
 Usage:
@@ -151,6 +152,30 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
             print(f"Warning: task '{id_}' requires test types [{', '.join(str(t) for t in test_types)}] — verify evidence before close")
         if not task.get("verified"):
             print(f"Warning: task '{id_}' closed without verification record")
+            issues += 1
+
+    # Dangling subtask check: done parent with open subtasks
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        if str(task.get("status", "")) != "done":
+            continue
+        id_ = str(task.get("id", "")).strip()
+        subtasks = task.get("subtasks") or []
+        if not isinstance(subtasks, list):
+            continue
+        open_subs = [
+            str(s.get("id", "?"))
+            for s in subtasks
+            if isinstance(s, dict) and not is_subtask_resolved(str(s.get("status", "pending")))
+        ]
+        if open_subs:
+            print(
+                f"Warning: done task '{id_}' has {len(open_subs)} open subtask(s): "
+                f"{', '.join(open_subs)}. "
+                f"Run: shux subtask-cancel --task {id_} --sub <id> --reason \"...\" "
+                f"to retire them."
+            )
             issues += 1
 
     # Stuck-status check: verified=true but status != done
