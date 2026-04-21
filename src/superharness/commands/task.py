@@ -40,7 +40,34 @@ VALID_ALL_STATUSES = {
     "archived",
 }
 VALID_WORKFLOWS = {"implementation", "quick", "discussion", "review", "approval", "note"}
+VALID_AUTONOMY = {"ai_driven", "oversight", "hands_on"}
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
+
+
+def _load_policy_from_profile(project_path: str) -> tuple[str, bool]:
+    """Load (autonomy, require_tdd) defaults from project profile.yaml.
+
+    Returns the safe defaults (ai_driven, True) when profile.yaml is absent,
+    unreadable, or missing fields. Never raises.
+    """
+    profile_path = os.path.join(project_path, ".superharness", "profile.yaml")
+    if not os.path.exists(profile_path):
+        return ("ai_driven", True)
+    try:
+        import yaml as _yaml
+        with open(profile_path) as _f:
+            profile = _yaml.safe_load(_f) or {}
+    except Exception:
+        return ("ai_driven", True)
+    autonomy = str(profile.get("autonomy") or "ai_driven")
+    if autonomy not in VALID_AUTONOMY:
+        autonomy = "ai_driven"
+    wf = profile.get("workflow")
+    if isinstance(wf, dict) and "require_tdd" in wf:
+        require_tdd = bool(wf["require_tdd"])
+    else:
+        require_tdd = True
+    return (autonomy, require_tdd)
 
 
 def _validate_token(name: str, value: str) -> None:
@@ -161,6 +188,8 @@ def create(
     timeout_minutes: Optional[int] = None,
     plan: Optional[dict] = None,
     ship_on_complete: bool = False,
+    autonomy: Optional[str] = None,
+    require_tdd: Optional[bool] = None,
 ) -> int:
     _validate_token("task id", task_id)
     if dependency:
@@ -178,6 +207,18 @@ def create(
     # development_method accepts any string (no hardcoded enum)
     if effort and effort not in VALID_EFFORTS:
         _abort(f"effort must be one of: {', '.join(sorted(VALID_EFFORTS))}", 2)
+    if autonomy is not None and autonomy not in VALID_AUTONOMY:
+        _abort(
+            f"autonomy must be one of: {', '.join(sorted(VALID_AUTONOMY))}",
+            2,
+        )
+
+    # Stamp policy from profile when not explicitly overridden on CLI
+    profile_autonomy, profile_require_tdd = _load_policy_from_profile(project_path)
+    if autonomy is None:
+        autonomy = profile_autonomy
+    if require_tdd is None:
+        require_tdd = profile_require_tdd
 
     doc = _load_contract(contract_file)
     tasks = _get_tasks(doc, contract_file)
@@ -220,6 +261,8 @@ def create(
         task["workflow"] = workflow
     if development_method:
         task["development_method"] = development_method
+    task["autonomy"] = autonomy
+    task["require_tdd"] = bool(require_tdd)
     if dependency:
         task["dependency"] = dependency
     if criteria:
@@ -318,6 +361,7 @@ def status_update(
     actor: str,
     reason: str = "",
     summary: str = "",
+    _recursion_guard: bool = False,
 ) -> int:
     _validate_token("task id", task_id)
 
@@ -343,7 +387,7 @@ def status_update(
 
     dependency = str(task.get("dependency", "") or "")
 
-    if actor != owner:
+    if actor != owner and not _recursion_guard:
         _abort(f"forbidden: actor '{actor}' cannot update task '{task_id}' owned by '{owner}'")  # shipguard:ignore PY-007
 
     if dependency and status in ("in_progress", "done"):
@@ -387,6 +431,18 @@ def status_update(
         task.pop("summary", None)  # type: ignore[union-attr]
 
     _write_contract(contract_file, doc)
+
+    # Auto-approve hook: plan_proposed → plan_approved when task.autonomy=ai_driven
+    if status == "plan_proposed" and not _recursion_guard:
+        task_autonomy = str(task.get("autonomy") or "ai_driven")
+        if task_autonomy == "ai_driven":
+            print(f"Auto-approving task '{task_id}' (autonomy=ai_driven)")
+            status_update(
+                contract_file, task_id, "plan_approved",
+                actor="ai-autonomy",
+                summary="auto-approved per task autonomy setting",
+                _recursion_guard=True,
+            )
 
     # Warn about unverified acceptance criteria when marking done
     if status == "done":
@@ -470,6 +526,15 @@ def main(argv: list[str] | None = None) -> None:
     p_create.add_argument("--ship-on-complete", dest="ship_on_complete",
                           action="store_true", default=False,
                           help="Agent must run /ship commit before report_ready; watcher validates PR URL")
+    p_create.add_argument("--autonomy", default=None,
+                          choices=sorted(VALID_AUTONOMY),
+                          help="Override project autonomy (default: read from profile.yaml or ai_driven)")
+    p_create.add_argument("--require-tdd", dest="require_tdd",
+                          action="store_true", default=None,
+                          help="Force require_tdd=true on this task (default: read from profile)")
+    p_create.add_argument("--no-require-tdd", dest="require_tdd",
+                          action="store_false", default=None,
+                          help="Force require_tdd=false on this task")
 
     # delete
     p_delete = sub.add_parser("delete", add_help=True)
@@ -573,6 +638,8 @@ def main(argv: list[str] | None = None) -> None:
             timeout_minutes=opts.timeout_minutes,
             plan=plan,
             ship_on_complete=opts.ship_on_complete,
+            autonomy=opts.autonomy,
+            require_tdd=opts.require_tdd,
         )
         sys.exit(rc)
 

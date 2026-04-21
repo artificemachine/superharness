@@ -77,6 +77,37 @@ def _validate_id(name: str, value: str) -> None:
         _abort(f"{name} must match ^[A-Za-z0-9._-]+$", 2)
 
 
+_TDD_ENFORCED_WORKFLOWS = {"implementation", "review"}
+
+
+def _load_task_policy(contract_file: Path, task_id: str) -> tuple[bool, str]:
+    """Return (require_tdd, workflow) for the given task. Defaults: (True, 'quick')."""
+    if not contract_file.is_file() or yaml is None:
+        return (True, "quick")
+    try:
+        doc = yaml.safe_load(contract_file.read_text()) or {}
+    except Exception:
+        return (True, "quick")
+    task = None
+    try:
+        from superharness.engine.subtask import find_task_or_subtask
+        task, _ = find_task_or_subtask(doc, task_id)
+    except Exception:
+        for t in (doc.get("tasks") or []):
+            if isinstance(t, dict) and str(t.get("id", "")) == task_id:
+                task = t
+                break
+    if task is None:
+        return (True, "quick")
+    require_tdd = task.get("require_tdd")
+    if require_tdd is None:
+        require_tdd = True
+    else:
+        require_tdd = bool(require_tdd)
+    workflow = str(task.get("workflow") or "quick")
+    return (require_tdd, workflow)
+
+
 def _task_exists(contract_file: Path, task_id: str) -> bool:
     """Return True if task_id resolves in contract.yaml (top-level or subtask)."""
     if not contract_file.is_file() or yaml is None:
@@ -96,7 +127,11 @@ def _task_exists(contract_file: Path, task_id: str) -> bool:
         return False
 
 
-def _build_plan_handoff(args: argparse.Namespace) -> dict[str, Any]:
+def _build_plan_handoff(
+    args: argparse.Namespace,
+    require_tdd: bool = True,
+    workflow: str = "quick",
+) -> dict[str, Any]:
     plan_text = _read_value(args.plan).strip()
     tdd_red = _read_value(args.tdd_red).strip()
     tdd_green = _read_value(args.tdd_green).strip()
@@ -104,8 +139,16 @@ def _build_plan_handoff(args: argparse.Namespace) -> dict[str, Any]:
 
     if not plan_text:
         _abort("plan phase requires --plan", 2)
-    if not (tdd_red or tdd_green or tdd_refactor):
-        _abort("plan phase requires at least one of --tdd-red/--tdd-green/--tdd-refactor", 2)
+
+    tdd_enforced = require_tdd and workflow in _TDD_ENFORCED_WORKFLOWS
+    if tdd_enforced:
+        missing = [f for f, v in [("--tdd-red", tdd_red), ("--tdd-green", tdd_green), ("--tdd-refactor", tdd_refactor)] if not v]
+        if missing:
+            _abort(
+                f"error: {', '.join(missing)} required "
+                f"(task.require_tdd=true, workflow={workflow})",
+                2,
+            )
 
     payload: dict[str, Any] = {
         "task": args.task_id,
@@ -177,8 +220,10 @@ def write_handoff(
     if not _task_exists(contract_file, args.task_id):
         _abort(f"task '{args.task_id}' not found in contract", 1)
 
+    require_tdd, workflow = _load_task_policy(contract_file, args.task_id)
+
     if args.phase == "plan":
-        payload = _build_plan_handoff(args)
+        payload = _build_plan_handoff(args, require_tdd=require_tdd, workflow=workflow)
     elif args.phase == "report":
         payload = _build_report_handoff(args)
     else:
