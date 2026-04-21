@@ -22,7 +22,48 @@ from superharness.engine.adapter_registry import resolve_model
 from superharness.engine.next_action import next_action as _next_action
 from superharness.engine.normalization import normalize_blocked_by
 
-SCHEMA_VERSION = "1.3"
+SCHEMA_VERSION = "1.4"
+
+# ---------------------------------------------------------------------------
+# Project settings
+# ---------------------------------------------------------------------------
+
+def _default_project_settings() -> dict:
+    return {
+        "autonomy": "ai_driven",
+        "workflow": {
+            "default_preset": "implementation",
+            "require_tdd": True,
+        },
+    }
+
+
+def _load_project_settings(sh_dir: Path) -> dict:
+    """Load project_settings from profile.yaml with safe defaults."""
+    profile_path = sh_dir / "profile.yaml"
+    if not profile_path.exists():
+        return _default_project_settings()
+    try:
+        import yaml as _yaml
+        profile = _yaml.safe_load(profile_path.read_text()) or {}
+    except Exception:
+        return _default_project_settings()
+    defaults = _default_project_settings()
+    wf_raw = profile.get("workflow") or {}
+    return {
+        "autonomy": str(profile.get("autonomy") or defaults["autonomy"]),
+        "workflow": {
+            "default_preset": str(
+                wf_raw.get("default_preset") or defaults["workflow"]["default_preset"]
+            ),
+            "require_tdd": bool(
+                wf_raw.get("require_tdd", defaults["workflow"]["require_tdd"])
+                if "require_tdd" in wf_raw
+                else defaults["workflow"]["require_tdd"]
+            ),
+        },
+    }
+
 
 # ---------------------------------------------------------------------------
 # Status mapping  (extracted from Morpheme rawParser.js — superharness owns it)
@@ -411,10 +452,17 @@ def _build_tasks(raw_tasks: list, handoffs_by_task: dict) -> list[dict]:
         resolved = _resolved_model_for(owner, tier)
         if resolved is not None:
             entry["resolved_model"] = resolved
-        entry["classifier"]  = _build_classifier_block(t)
-        entry["decomposer"]  = _build_decomposer_block(t)
-        entry["retry"]       = _build_retry_block(t)
-        entry["next_action"] = _next_action(raw_status).as_dict()
+        entry["classifier"]         = _build_classifier_block(t)
+        entry["decomposer"]         = _build_decomposer_block(t)
+        entry["retry"]              = _build_retry_block(t)
+        entry["next_action"]        = _next_action(raw_status).as_dict()
+        # Schema v1.4 per-task policy fields
+        entry["workflow"]           = t.get("workflow") or None
+        entry["development_method"] = t.get("development_method") or None
+        raw_autonomy = t.get("autonomy")
+        entry["autonomy"]           = str(raw_autonomy) if raw_autonomy else "ai_driven"
+        raw_rtdd = t.get("require_tdd")
+        entry["require_tdd"]        = bool(raw_rtdd) if raw_rtdd is not None else True
         result.append(entry)
     return result
 
@@ -452,10 +500,12 @@ def build_payload(project_path: str) -> dict:
     raw_tasks         = raw_contract.get("tasks") or []
     handoffs_by_task  = _load_handoffs(sh_dir)
     tasks             = _build_tasks(raw_tasks, handoffs_by_task)
+    project_settings  = _load_project_settings(sh_dir)
 
     return {
-        "schema_version": SCHEMA_VERSION,
-        "contract_id":    raw_contract.get("id", ""),
+        "schema_version":   SCHEMA_VERSION,
+        "project_settings": project_settings,
+        "contract_id":      raw_contract.get("id", ""),
         "goal":           raw_contract.get("goal") or "",
         "tasks":          tasks,
         "edges":          _build_edges(tasks),
