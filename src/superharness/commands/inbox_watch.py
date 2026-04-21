@@ -298,11 +298,16 @@ def auto_enqueue_todo(project_dir: str) -> int:
             inbox_items = []
 
     _ACTIVE = {"pending", "launched", "running", "paused"}
-    active_tasks = {
-        str(item.get("task", ""))
-        for item in inbox_items
+    active_inbox_items = [
+        item for item in inbox_items
         if isinstance(item, dict) and str(item.get("status", "")) in _ACTIVE
-    }
+    ]
+    active_tasks = {str(item.get("task", "")) for item in active_inbox_items}
+
+    # Safety throttle: respect max_concurrent_tasks from profile
+    max_concurrent = int(profile.get("max_concurrent_tasks", 2))
+    if len(active_inbox_items) >= max_concurrent:
+        return 0
 
     try:
         from superharness.engine.inbox import _deps_satisfied
@@ -414,11 +419,16 @@ def auto_enqueue_approved(project_dir: str) -> int:
             inbox_items = []
 
     _ACTIVE = {"pending", "launched", "running", "paused"}
-    active_tasks = {
-        str(item.get("task", ""))
-        for item in inbox_items
+    active_inbox_items = [
+        item for item in inbox_items
         if isinstance(item, dict) and str(item.get("status", "")) in _ACTIVE
-    }
+    ]
+    active_tasks = {str(item.get("task", "")) for item in active_inbox_items}
+
+    # Safety throttle: respect max_concurrent_tasks from profile
+    max_concurrent = int(profile.get("max_concurrent_tasks", 2))
+    if len(active_inbox_items) >= max_concurrent:
+        return 0
 
     try:
         from superharness.engine.inbox import _deps_satisfied
