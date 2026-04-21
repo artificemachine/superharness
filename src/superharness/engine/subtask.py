@@ -6,6 +6,10 @@ the parent task's lifecycle covers them.
 
 This module provides:
 
+- is_subtask_resolved(status) → bool
+    True when a subtask status is terminal-resolved (done or cancelled).
+    False for open statuses (pending, in_progress, failed).
+
 - resolve_subtask_status(subtask, parent_status) → str
     Effective status for a subtask: explicit status if set and not the default
     "pending", otherwise inherited from the parent.
@@ -28,6 +32,21 @@ from typing import Iterator
 
 # Terminal parent statuses that imply subtasks are done by inheritance.
 _PARENT_DONE_STATUSES = frozenset({"done", "review_passed"})
+
+# Subtask statuses that are considered fully resolved (allow parent close).
+_RESOLVED_SUBTASK_STATUSES = frozenset({"done", "cancelled"})
+
+# Subtask statuses that are considered open (block parent close when gate is on).
+_OPEN_SUBTASK_STATUSES = frozenset({"pending", "in_progress", "failed"})
+
+
+def is_subtask_resolved(status: str) -> bool:
+    """Return True when a subtask status is terminal-resolved.
+
+    Resolved: done, cancelled  — allow parent close.
+    Open: pending, in_progress, failed  — block parent close when gate is on.
+    """
+    return str(status) in _RESOLVED_SUBTASK_STATUSES
 
 
 def resolve_subtask_status(subtask: dict, parent_status: str | None) -> str:
