@@ -112,7 +112,28 @@ def _git_changed_files(project_dir: Path) -> list[str] | None:
         return None
 
 
-def task_context(project_dir: Path | str, task_id: str | None) -> str:
+def _filter_failures(failures: list, task_id: str, failures_only: bool = False) -> list[dict]:
+    """Return failures strictly for the task_id.
+
+    If failures_only is True, filter out 'minor' severity entries (warnings).
+    """
+    relevant = []
+    for f in failures:
+        if not isinstance(f, dict):
+            continue
+        # Strict task match
+        if f.get("task") == task_id:
+            if failures_only and f.get("severity") == "minor":
+                continue
+            relevant.append(f)
+    return relevant
+
+
+def task_context(
+    project_dir: Path | str,
+    task_id: str | None,
+    failures_only: bool = False,
+) -> str:
     """Build and return a formatted context block for the given task."""
     project_dir = Path(project_dir).resolve()
     sh_dir = project_dir / ".superharness"
@@ -204,15 +225,17 @@ def task_context(project_dir: Path | str, task_id: str | None) -> str:
     if failures_path.exists():
         doc = _load_yaml_safe(failures_path)
         failures = (doc.get("failures") or []) if isinstance(doc, dict) else []
-        relevant = _filter_entries(failures, lookup_id)
+        relevant = _filter_failures(failures, lookup_id, failures_only)
         if relevant:
             lines.append("")
             lines.append("Failures relevant to this task:")
             for f in relevant[:5]:
                 if isinstance(f, dict):
                     date_s = str(f.get("date", ""))[:10]
-                    text = f.get("failure") or f.get("description") or str(f)
-                    lines.append(f"  - [{date_s}] {text}")
+                    sev = f.get("severity", "minor")
+                    patterns = ", ".join(f.get("patterns", []))
+                    text = f.get("failure") or f.get("description") or f.get("error_snippet") or str(f)
+                    lines.append(f"  - [{date_s}] ({sev}) {patterns}: {text}")
 
     # Ledger
     ledger_path = sh_dir / "ledger.md"
@@ -257,13 +280,17 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--project", "-p", default=None, help="Project directory (default: cwd)")
     parser.add_argument(
+        "--failures-only", action="store_true",
+        help="Only show major/critical failures (hide warnings/minor entries)",
+    )
+    parser.add_argument(
         "task_id", nargs="?", default=None,
         help="Task ID (default: auto-select first active task)",
     )
     opts = parser.parse_args(argv)
 
     project_dir = os.path.realpath(opts.project or os.getcwd())
-    output = task_context(project_dir, opts.task_id)
+    output = task_context(project_dir, opts.task_id, failures_only=opts.failures_only)
 
     if output.startswith("Error:"):
         print(output, file=sys.stderr)
