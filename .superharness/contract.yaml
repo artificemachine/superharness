@@ -1839,5 +1839,69 @@ tasks:
   effort: medium
   summary: 'delivered: shux workflow CLI, per-task stamping, auto-approve hook, TDD
     enforcement, schema v1.4. Merged as PR #122, released as v1.28.0.'
+- id: feat.headless.contract-watcher
+  title: 'Headless: Active Contract Watcher (todo -> self-enqueue)'
+  owner: claude-code
+  status: plan_approved
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: implementation
+  development_method: tdd
+  acceptance_criteria:
+  - Watcher worker scans contract.yaml for unblocked, ai_driven, todo tasks
+  - Watcher automatically enqueues eligible tasks into inbox.yaml
+  - Prevent double-enqueueing and respect max_concurrent_tasks throttle
+  - Logging/ledger entry for every auto-enqueue action
+  effort: medium
+  summary: 'auto-approved per task autonomy setting'
+- id: feat.headless.cascading-dispatch
+  title: 'Headless: Cascading Dispatch (dependency-resolution hook)'
+  owner: claude-code
+  status: todo
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: feat.headless.contract-watcher
+  workflow: implementation
+  development_method: tdd
+  acceptance_criteria:
+  - Task completion (done) triggers immediate scan for unblocked dependents
+  - Newly unblocked tasks are automatically moved to inbox if ai_driven
+  - Cycle detection to prevent infinite cascading loops
+  - Verified with tests covering multi-level dependency chains
+  effort: medium
+- id: feat.headless.auto-approve-policy
+  title: 'Headless: Policy-based Auto-Approval (plan -> approved)'
+  owner: claude-code
+  status: todo
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: implementation
+  development_method: tdd
+  acceptance_criteria:
+  - support auto_approve_plans: true in policy/profile.yaml
+  - Auto-approver validates plan format before advancing status
+  - Immediate re-enqueue for implementation after auto-approval
+  - Toggleable per-project or per-task
+  effort: medium
+- id: feat.headless.safety-throttle
+  title: 'Headless: Safety Gates & Throttling (Infinite Loop Kill-Switch)'
+  owner: claude-code
+  status: todo
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: feat.headless.contract-watcher
+  workflow: implementation
+  development_method: tdd
+  acceptance_criteria:
+  - Track "Actions per Hour" and "Total Session Cost" natively in the engine
+  - Automatic fallback to oversight mode if failure loop detected
+  - Hard limit on concurrent autonomous tasks
+  - Manual override (reset throttle) command available
+  effort: medium
+- id: feat.headless.test-auto-plan
+  title: 'Test Auto Planning'
+  owner: claude-code
+  status: plan_approved
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  summary: 'auto-approved per task autonomy setting'
 decisions: []
 failures: []
