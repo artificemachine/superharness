@@ -73,6 +73,7 @@
     .adapter-owner { color:var(--muted); }
     .adapter-effort { padding:2px 6px; border-radius:4px; background:var(--btn); color:var(--text); }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 </head>
 <body>
   <div class="wrap">
@@ -157,10 +158,13 @@
     <div class="card" style="margin-top:10px;display:none" id="depGraphCard">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
         <h2 style="margin:0">task dependencies</h2>
-        <button onclick="document.getElementById('depGraphCard').style.display='none'" style="font-size:11px;padding:2px 8px">hide</button>
+        <div>
+          <button id="depGraphModeBtn" onclick="toggleDepGraphMode()" style="font-size:11px;padding:2px 8px;margin-right:6px;">mode: visual</button>
+          <button onclick="document.getElementById('depGraphCard').style.display='none'" style="font-size:11px;padding:2px 8px">hide</button>
+        </div>
       </div>
-      <pre id="depGraphMermaid" style="font-size:11px;color:var(--muted);white-space:pre-wrap"></pre>
       <div id="depGraphRender"></div>
+      <pre id="depGraphAscii" style="font-size:11px;color:var(--muted);white-space:pre;display:none;background:var(--bg);padding:10px;border-radius:6px;border:1px solid var(--line);overflow-x:auto;"></pre>
     </div>
 
     <div class="card" style="margin-top:10px;">
@@ -599,10 +603,12 @@ const PHASE_LABEL = {
   done:             ['✅', 'done',             'ok'],
   failed:           ['❌', 'failed',           'bad'],
   stopped:          ['⏹',  'stopped',          'muted'],
+  archived:         ['📁', 'archived',         'muted'],
 };
 
 // Status filter pills — maps status group → list of statuses it covers
 const STATUS_GROUPS = [
+  { key: 'archived',       label: '📁 archived',       statuses: ['archived'],                      color: 'var(--muted)' },
   { key: 'done',           label: '✅ done',           statuses: ['done'],                          color: 'var(--ok)' },
   { key: 'stopped',        label: '⛔ disabled',        statuses: ['stopped'],                       color: 'var(--muted)' },
   { key: 'pr_open',        label: '🔀 pr open',          statuses: ['pr_open'],                                         color: 'var(--ok)' },
@@ -611,8 +617,8 @@ const STATUS_GROUPS = [
   { key: 'plan',           label: '📋 plan',            statuses: ['plan_proposed','plan_approved'], color: '#a78bfa' },
   { key: 'todo',           label: '🕐 todo',            statuses: ['todo'],                          color: 'var(--muted)' },
 ];
-// hidden groups — set of group keys currently hidden; done is hidden by default
-const _hiddenGroups = new Set(['done']);
+// hidden groups — set of group keys currently hidden; done and archived are hidden by default
+const _hiddenGroups = new Set(['done', 'archived']);
 
 function _statusToGroup(st) {
   for (const g of STATUS_GROUPS) {
@@ -756,24 +762,47 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
     } else if (st === 'review_passed') {
       actionButtons.push(`<button onclick="runClose('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Close</button>`);
     }
+    // Determine if task is blocked by unfinished dependencies
+    const blockers = (t.depends_on || []).filter(depId => {
+      const dep = tasks.find(x => x.id === depId);
+      return dep && dep.status !== 'done';
+    });
+    const isBlocked = blockers.length > 0;
+
     if (st === 'stopped') {
       actionButtons.push(`<button onclick="enableTask('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Re-queue</button>`);
     } else if (st !== 'done' && isEnqueued) {
       actionButtons.push(`<span class="pill" style="font-size:10px;background:var(--ok);color:#000;padding:1px 6px;cursor:default">queued</span>`);
-    } else if (st !== 'done' && canEnqueue) {
-      actionButtons.push(`<button onclick="enqueueTask('${tid}')" style="font-size:10px;padding:1px 6px;background:var(--muted);color:#fff;border-radius:10px">not queued</button>`);
-    } else if (st === 'todo' && inferredWorkflow(t) === 'implementation') {
-      // Fix 2 (v1.22): owner writes the plan inline.
-      actionButtons.push(`<button onclick="proposePlan('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok);font-weight:bold" title="Write the plan yourself and submit">Propose Plan</button>`);
-      // v1.23: agent writes the plan via --plan-only dispatch (gate-parity fix).
-      actionButtons.push(`<button onclick="delegatePlanToAgent('${tid}','${ownerEsc||'claude-code'}')" style="font-size:11px;padding:2px 8px;color:var(--warn)" title="Dispatch the owner agent to propose a plan (plan-only — no implementation)">Delegate Plan</button>`);
-      // Fix 1: disabled Enqueue with tooltip so the gate is explicit.
-      actionButtons.push(`<button disabled title="${enqueueBlockReason(t).replace(/"/g,'&quot;')}" style="font-size:10px;padding:1px 6px;background:var(--bg);color:var(--muted);border:1px dashed var(--line);border-radius:10px;cursor:not-allowed">Enqueue ⛔</button>`);
+    } else if (st === 'todo') {
+      const isImpl = inferredWorkflow(t) === 'implementation';
+      const blockHint = isBlocked ? `Blocked by: ${blockers.join(', ')}` : '';
+      
+      if (isImpl) {
+        if (isBlocked) {
+          actionButtons.push(`<button disabled title="${blockHint}" style="font-size:11px;padding:2px 8px;opacity:0.5;cursor:not-allowed">Propose Plan</button>`);
+          actionButtons.push(`<button disabled title="${blockHint}" style="font-size:11px;padding:2px 8px;opacity:0.5;cursor:not-allowed">Delegate Plan</button>`);
+        } else {
+          actionButtons.push(`<button onclick="proposePlan('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok);font-weight:bold" title="Write the plan yourself and submit">Propose Plan</button>`);
+          actionButtons.push(`<button onclick="delegatePlanToAgent('${tid}','${ownerEsc||'claude-code'}')" style="font-size:11px;padding:2px 8px;color:var(--warn)" title="Dispatch the owner agent to propose a plan (plan-only — no implementation)">Delegate Plan</button>`);
+        }
+      }
+
+      if (canEnqueue) {
+        if (isBlocked) {
+          actionButtons.push(`<button disabled title="${blockHint}" style="font-size:10px;padding:1px 6px;background:var(--bg);color:var(--muted);border:1px dashed var(--line);border-radius:10px;cursor:not-allowed">Enqueue ⛔</button>`);
+        } else {
+          actionButtons.push(`<button onclick="enqueueTask('${tid}')" style="font-size:10px;padding:1px 6px;background:var(--muted);color:#fff;border-radius:10px">Enqueue</button>`);
+        }
+      }
     } else if (st !== 'done') {
-      // Fix 1: any other non-dispatchable state — show disabled Enqueue with tooltip.
-      actionButtons.push(`<button disabled title="${enqueueBlockReason(t).replace(/"/g,'&quot;')}" style="font-size:10px;padding:1px 6px;background:var(--bg);color:var(--muted);border:1px dashed var(--line);border-radius:10px;cursor:not-allowed">Enqueue ⛔</button>`);
+      const blockHint = isBlocked ? `Blocked by: ${blockers.join(', ')}` : enqueueBlockReason(t).replace(/"/g,'&quot;');
+      actionButtons.push(`<button disabled title="${blockHint}" style="font-size:10px;padding:1px 6px;background:var(--bg);color:var(--muted);border:1px dashed var(--line);border-radius:10px;cursor:not-allowed">Enqueue ⛔</button>`);
     }
-    actionButtons.push(`<button onclick="removeTask('${tid}')" style="font-size:11px;padding:2px 6px;color:var(--bad)">Remove</button>`);
+    if (isBlocked) {
+       actionButtons.push(`<button disabled title="Cannot remove blocked task" style="font-size:11px;padding:2px 8px;opacity:0.5;cursor:not-allowed;color:var(--bad)">Remove</button>`);
+    } else {
+       actionButtons.push(`<button onclick="removeTask('${tid}')" style="font-size:11px;padding:2px 6px;color:var(--bad)">Remove</button>`);
+    }
     row.innerHTML = `<div class="task-actions">${actionButtons.join(' ')}</div><div class="task-meta">${badge}${title}${reviewerInfo}${owner}</div>`;
     el.appendChild(row);
   }
@@ -1120,36 +1149,162 @@ async function loadBoardView() {
   }
 }
 
-function renderDepGraph(tasks) {
-  const card = document.getElementById('depGraphCard');
-  const pre = document.getElementById('depGraphMermaid');
-  // Only show if there are non-done tasks with dependencies
-  const nonDone = tasks.filter(t => t.status !== 'done');
-  const hasDeps = nonDone.some(t => t.depends_on && t.depends_on.length > 0);
-  if (nonDone.length < 2 && !hasDeps) { card.style.display = 'none'; return; }
+let _depGraphMode = localStorage.getItem('shux.depGraph.mode') || 'visual';
 
-  const statusStyle = { todo: ':::todo', in_progress: ':::active', done: ':::done', report_ready: ':::review', review_requested: ':::review', failed: ':::failed' };
-  let lines = ['graph LR'];
-  lines.push('  classDef todo fill:#555,stroke:#777,color:#fff');
-  lines.push('  classDef active fill:#4a9eff,stroke:#2a7edf,color:#fff');
-  lines.push('  classDef done fill:#2ea043,stroke:#1e8033,color:#fff');
-  lines.push('  classDef review fill:#d29922,stroke:#b27d12,color:#fff');
-  lines.push('  classDef failed fill:#da3633,stroke:#ba1a1a,color:#fff');
-  for (const t of nonDone) {
-    const id = t.id.replace(/[^a-zA-Z0-9]/g, '_');
-    const shortId = t.id.length > 30 ? t.id.slice(0, 27) + '...' : t.id;
-    const cls = statusStyle[t.status] || ':::todo';
-    lines.push(`  ${id}["${shortId}"]${cls}`);
-    if (t.depends_on) {
-      for (const dep of t.depends_on) {
-        const depId = dep.replace(/[^a-zA-Z0-9]/g, '_');
-        lines.push(`  ${depId} --> ${id}`);
-      }
+function toggleDepGraphMode() {
+  _depGraphMode = (_depGraphMode === 'visual') ? 'ascii' : 'visual';
+  localStorage.setItem('shux.depGraph.mode', _depGraphMode);
+  refresh();
+}
+
+function generateAsciiTree(tasks) {
+  const visible = tasks.filter(t => t.status !== 'archived' && t.status !== 'done');
+  const taskMap = new Map(visible.map(t => [t.id, t]));
+  
+  // Find roots (tasks that no other visible task depends on)
+  const allDeps = new Set();
+  visible.forEach(t => (t.depends_on || []).forEach(d => allDeps.add(d)));
+  const roots = visible.filter(t => !allDeps.has(t.id));
+  
+  let output = '';
+  const seen = new Set();
+
+  function build(task, prefix = '', isLast = true) {
+    if (seen.has(task.id)) {
+      output += prefix + (isLast ? '└── ' : '├── ') + task.id + ' (circular!)\n';
+      return;
+    }
+    seen.add(task.id);
+    
+    const connector = prefix ? (isLast ? '└── ' : '├── ') : '';
+    const statusIcon = (PHASE_LABEL[task.status] || ['?'])[0];
+    output += prefix + connector + statusIcon + ' ' + task.id + '\n';
+    
+    const children = visible.filter(t => (t.depends_on || []).includes(task.id));
+    const newPrefix = prefix + (prefix ? (isLast ? '    ' : '│   ') : '');
+    
+    children.forEach((child, idx) => {
+      build(child, newPrefix, idx === children.length - 1);
+    });
+  }
+
+  roots.forEach((r, idx) => build(r, '', idx === roots.length - 1));
+  return output || '(no dependencies found)';
+}
+
+function wrapText(str, maxLen = 20) {
+  if (!str) return '';
+  const words = str.split(' ');
+  let lines = [];
+  let currentLine = '';
+  for (const word of words) {
+    if ((currentLine + word).length > maxLen) {
+      lines.push(currentLine.trim());
+      currentLine = word + ' ';
+    } else {
+      currentLine += word + ' ';
     }
   }
-  const mermaid = lines.join('\n');
-  pre.textContent = mermaid;
+  lines.push(currentLine.trim());
+  return lines.join('<br/>');
+}
+
+let _lastMermaid = '';
+async function renderDepGraph(tasks) {
+  const card = document.getElementById('depGraphCard');
+  const renderEl = document.getElementById('depGraphRender');
+  const asciiEl = document.getElementById('depGraphAscii');
+  const btn = document.getElementById('depGraphModeBtn');
+  if (!card || !renderEl || !asciiEl || !btn) return;
+
+  btn.textContent = 'mode: ' + _depGraphMode;
+
+  // Only show Active, Planned, or Failed tasks (hide Done and Archived)
+  const visible = tasks.filter(t => t.status !== 'done' && t.status !== 'archived');
+  const hasDeps = tasks.some(t => t.depends_on && t.depends_on.length > 0);
+  if (visible.length < 1 && !hasDeps) { card.style.display = 'none'; return; }
+  
+  if (_depGraphMode === 'ascii') {
+    renderEl.style.display = 'none';
+    asciiEl.style.display = 'block';
+    asciiEl.textContent = generateAsciiTree(tasks); // helper already filters archived, I'll update it for done too
+    card.style.display = 'block';
+    return;
+  }
+
+  renderEl.style.display = 'block';
+  asciiEl.style.display = 'none';
+
+  const statusStyle = { 
+    todo: ':::todo', 
+    plan_proposed: ':::plan',
+    plan_approved: ':::plan',
+    in_progress: ':::active', 
+    launched: ':::active',
+    running: ':::active',
+    report_ready: ':::review', 
+    review_requested: ':::review', 
+    review_passed: ':::review',
+    review_failed: ':::failed', 
+    failed: ':::failed',
+    stopped: ':::todo' 
+  };
+
+  let lines = ['graph LR'];
+  lines.push('  classDef todo fill:#555,stroke:#777,color:#fff,font-size:11px');
+  lines.push('  classDef plan fill:#a78bfa,stroke:#7c3aed,color:#fff,font-size:11px');
+  lines.push('  classDef active fill:#4a9eff,stroke:#2a7edf,color:#fff,font-size:11px');
+  lines.push('  classDef review fill:#d29922,stroke:#b27d12,color:#fff,font-size:11px');
+  lines.push('  classDef failed fill:#da3633,stroke:#ba1a1a,color:#fff,font-size:11px');
+  
+  const visibleIds = new Set(visible.map(t => t.id));
+
+  for (const t of visible) {
+    const id = (t.id || '').replace(/[^a-zA-Z0-9]/g, '_');
+    if (!id) continue;
+    
+    const displayLabel = t.title ? wrapText(t.title, 25) : t.id;
+    const cls = statusStyle[t.status] || ':::todo';
+    lines.push(`  ${id}["${displayLabel}"]${cls}`);
+
+    if (t.depends_on && t.depends_on.length > 0) {
+      let activeBlockers = 0;
+      for (const dep of t.depends_on) {
+        const depStr = String(dep).trim();
+        if (depStr === 'none' || !depStr) continue;
+        
+        if (visibleIds.has(depStr)) {
+          const depId = depStr.replace(/[^a-zA-Z0-9]/g, '_');
+          lines.push(`  ${depId} --> ${id}`);
+          activeBlockers++;
+        }
+      }
+      // If all dependencies are hidden (done), link to Contract root
+      if (activeBlockers === 0) {
+        lines.push(`  contract_root["Contract"]:::todo --> ${id}`);
+      }
+    } else {
+      // No dependencies defined
+      lines.push(`  contract_root["Contract"]:::todo --> ${id}`);
+    }
+  }
+  const mermaidCode = lines.join('\n');
+  if (mermaidCode === _lastMermaid) return;
+  _lastMermaid = mermaidCode;
   card.style.display = 'block';
+
+  if (typeof mermaid === 'undefined') {
+    renderEl.innerHTML = '<div class="small" style="padding:10px">Loading graph library...</div>';
+    return;
+  }
+
+  try {
+    const { svg } = await mermaid.render('graph-' + Math.floor(Math.random()*10000), mermaidCode);
+    renderEl.innerHTML = svg;
+  } catch (err) {
+    console.error('Mermaid render error:', err);
+    renderEl.innerHTML = `<pre style="font-size:10px;color:var(--bad);white-space:pre-wrap">${mermaidCode}</pre>`;
+  }
 }
 
 function renderActivityFeed(events) {
@@ -1305,6 +1460,14 @@ document.addEventListener('keydown', (e) => {
       alert('Keyboard shortcuts:\n\n  r — refresh\n  g — toggle dependency graph\n  l — list view\n  b — board view\n  ? — this help');
       break;
   }
+});
+
+// Initialize Mermaid
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+  securityLevel: 'loose',
+  flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' }
 });
 </script>
 

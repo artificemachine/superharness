@@ -217,6 +217,7 @@ def next_pending(file: str, target: str | None = None, contract_file: str | None
         "retry_count": int(best.get("retry_count", 0) or 0),
         "max_retries": int(best.get("max_retries", 3) or 3),
         "priority": best_prio,
+        "plan_only": bool(best.get("plan_only", False)),
     }
     print(json.dumps(out, separators=(", ", ": ")))
     return 0
@@ -284,6 +285,7 @@ def claim(file: str, now: str, target: str | None = None, contract_file: str | N
             "retry_count": item["retry_count"],
             "max_retries": max_retries,
             "priority": prio,
+            "plan_only": bool(item.get("plan_only", False)),
         }
         print(json.dumps(out, separators=(", ", ": ")))
         return 0

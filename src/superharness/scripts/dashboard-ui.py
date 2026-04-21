@@ -893,7 +893,7 @@ def contract_tasks(contract_file: Path) -> list[dict]:
                 "workflow": str(t.get("workflow", "")),
                 "scheduled_after": str(t.get("scheduled_after", "")),
                 "due_by": str(t.get("due_by", "")),
-                "depends_on": t.get("depends_on", []) if isinstance(t.get("depends_on"), list) else [x.strip() for x in str(t.get("depends_on", "")).strip("[]").split(",") if x.strip()],
+                "depends_on": (t.get("blocked_by") or t.get("depends_on") or []) if isinstance(t.get("blocked_by") or t.get("depends_on"), list) else [x.strip() for x in str(t.get("blocked_by") or t.get("depends_on") or "").strip("[]").split(",") if x.strip()],
             })
         return tasks
     except Exception:

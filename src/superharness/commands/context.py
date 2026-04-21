@@ -99,7 +99,7 @@ def _git_changed_files(project_dir: Path) -> list[str] | None:
         if r.returncode != 0:
             return None
         r2 = subprocess.run(
-            ["git", "-C", str(project_dir), "log", "--format=", "--name-only", "-10"],
+            ["git", "-C", str(project_dir), "log", "--format=", "--name-only", "-20"],
             capture_output=True, text=True,
         )
         files: set[str] = set()
@@ -107,7 +107,7 @@ def _git_changed_files(project_dir: Path) -> list[str] | None:
             stripped = line.strip()
             if stripped:
                 files.add(stripped)
-        return sorted(files)[:10]
+        return sorted(files)[:20]
     except (OSError, subprocess.SubprocessError, FileNotFoundError):
         return None
 
