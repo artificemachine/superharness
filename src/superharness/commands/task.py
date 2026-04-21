@@ -437,6 +437,38 @@ def _cascade_unblocked_tasks(contract_file: str, finished_task_id: str) -> None:
                 print(f"cascading-dispatch: task {tid} unblocked and enqueued (item {item_id}, plan_only={plan_only})")
 
 
+def _enqueue_for_implementation(contract_file: str, task_id: str) -> None:
+    """Instantly enqueue a plan_approved task for implementation."""
+    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(contract_file)))
+    inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    
+    doc = _load_contract(contract_file)
+    tasks = _get_tasks(doc, contract_file)
+    task = next((t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == task_id), None)
+    if not task:
+        return
+        
+    owner = str(task.get("owner", "claude-code"))
+    item_id = f"auto-impl-{uuid.uuid4().hex[:6]}"
+    
+    import subprocess
+    cmd = [
+        sys.executable, "-m", "superharness.engine.inbox", "enqueue",
+        "--file", inbox_file,
+        "--id", item_id,
+        "--to", owner,
+        "--task", task_id,
+        "--project", project_dir,
+        "--priority", "2",
+        "--created-at", now
+    ]
+    
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if result.returncode == 0:
+        print(f"auto-dispatch: task {task_id} enqueued for implementation (item {item_id})")
+
+
 def status_update(
     contract_file: str,
     task_id: str,
@@ -516,16 +548,37 @@ def status_update(
     _write_contract(contract_file, doc)
 
     # Auto-approve hook: plan_proposed → plan_approved when task.autonomy=ai_driven
+    # or when auto_approve_plans is true in profile.yaml
     if status == "plan_proposed" and not _recursion_guard:
+        # Load profile to check for global auto-approval policy
+        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(contract_file)))
+        profile_path = os.path.join(project_dir, ".superharness", "profile.yaml")
+        auto_approve = False
+        if os.path.exists(profile_path):
+            try:
+                import yaml as _yaml
+                with open(profile_path) as _f:
+                    profile = _yaml.safe_load(_f) or {}
+                    auto_approve = bool(profile.get("auto_approve_plans", False))
+            except Exception:
+                pass
+
         task_autonomy = str(task.get("autonomy") or "ai_driven")
-        if task_autonomy == "ai_driven":
-            print(f"Auto-approving task '{task_id}' (autonomy=ai_driven)")
+        if task_autonomy == "ai_driven" or auto_approve:
+            reason = "auto-approved per task autonomy setting" if task_autonomy == "ai_driven" else "auto-approved per project policy"
+            print(f"Auto-approving task '{task_id}' ({reason})")
             status_update(
                 contract_file, task_id, "plan_approved",
                 actor="ai-autonomy",
-                summary="auto-approved per task autonomy setting",
+                summary=reason,
                 _recursion_guard=True,
             )
+            
+            # Instant re-enqueue for implementation!
+            try:
+                _enqueue_for_implementation(contract_file, task_id)
+            except Exception as e:
+                print(f"Warning: auto-dispatch re-enqueue failed: {e}", file=sys.stderr)
 
     # Subtask resolution gate for done transition
     if status == "done":
