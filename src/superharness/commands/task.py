@@ -354,6 +354,89 @@ def delete(contract_file: str, task_id: str) -> int:
     return 0
 
 
+def _cascade_unblocked_tasks(contract_file: str, finished_task_id: str) -> None:
+    """Scan contract for tasks blocked by finished_task_id and enqueue them if unblocked."""
+    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(contract_file)))
+    profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
+    
+    # Check if auto_dispatch is enabled globally
+    if not os.path.exists(profile_file):
+        return
+    try:
+        import yaml as _yaml
+        with open(profile_file) as _f:
+            profile = _yaml.safe_load(_f) or {}
+        if not profile.get("auto_dispatch"):
+            return
+    except Exception:
+        return
+
+    doc = _load_contract(contract_file)
+    tasks = _get_tasks(doc, contract_file)
+    
+    # Map all tasks for quick status lookup
+    status_map = {str(t.get("id", "")): str(t.get("status", "")) for t in tasks if isinstance(t, dict)}
+    
+    # Find all tasks that were blocked by the finished task
+    dependents = []
+    for t in tasks:
+        if not isinstance(t, dict):
+            continue
+        blocked_by = _parse_blocked_by(t.get("blocked_by"))
+        if blocked_by == "none":
+            continue
+        ids = blocked_by if isinstance(blocked_by, list) else [blocked_by]
+        if finished_task_id in ids:
+            dependents.append(t)
+            
+    if not dependents:
+        return
+
+    # Check if each dependent is now fully unblocked
+    from superharness.engine.inbox import _deps_satisfied
+    inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    
+    for t in dependents:
+        tid = str(t.get("id", ""))
+        status = str(t.get("status", ""))
+        
+        # Only cascade to 'todo' or 'plan_approved' tasks
+        if status not in ("todo", "plan_approved"):
+            continue
+            
+        if _deps_satisfied(contract_file, tid):
+            # Instant enqueue!
+            owner = str(t.get("owner", "claude-code"))
+            autonomy = str(t.get("autonomy") or "ai_driven")
+            
+            # For todo tasks, only auto-enqueue if autonomous
+            if status == "todo" and autonomy != "autonomous" and profile.get("autonomy") != "autonomous":
+                continue
+
+            item_id = f"cascade-{uuid.uuid4().hex[:6]}"
+            plan_only = (status == "todo")
+            
+            # Call engine/inbox.py enqueue via subprocess
+            import subprocess
+            cmd = [
+                sys.executable, "-m", "superharness.engine.inbox", "enqueue",
+                "--file", inbox_file,
+                "--id", item_id,
+                "--to", owner,
+                "--task", tid,
+                "--project", project_dir,
+                "--priority", "2",
+                "--created-at", now
+            ]
+            if plan_only:
+                cmd.append("--plan-only")
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            if result.returncode == 0:
+                print(f"cascading-dispatch: task {tid} unblocked and enqueued (item {item_id}, plan_only={plan_only})")
+
+
 def status_update(
     contract_file: str,
     task_id: str,
@@ -465,6 +548,12 @@ def status_update(
             print(f"Warning: task '{task_id}' has acceptance criteria — verify before closing:", file=sys.stderr)
             for c in ac:
                 print(f"  - {c}", file=sys.stderr)
+
+        # Cascading Dispatch: instantly enqueue newly unblocked tasks
+        try:
+            _cascade_unblocked_tasks(contract_file, task_id)
+        except Exception as e:
+            print(f"Warning: cascading dispatch failed: {e}", file=sys.stderr)
 
         # Extract and persist skill for future dispatch context
         try:
