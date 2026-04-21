@@ -513,7 +513,7 @@ def status_update(
         if dep_task is None:
             _abort(f"task '{task_id}' dependency '{dependency}' not found")
         dep_status = str(dep_task.get("status", ""))
-        if dep_status != "done":
+        if dep_status not in ("done", "archived"):
             _abort(f"blocked: task '{task_id}' depends on '{dependency}' (status={dep_status})")
 
     # Scope guard: warn on plan_approved if task looks too large to dispatch as one unit

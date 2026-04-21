@@ -159,7 +159,7 @@ def _check_dependencies(task: dict, contract_file: str) -> list[PreflightCheck]:
     for dep_id in dep_ids:
         dep = tasks_by_id.get(dep_id)
         dep_status = dep.get("status", "not_found") if dep else "not_found"
-        if dep_status != "done":
+        if dep_status not in ("done", "archived"):
             checks.append(PreflightCheck(
                 id="blocked_dependency", level=LEVEL_BLOCK,
                 message=f"Blocked by '{dep_id}' (status: {dep_status}).",
