@@ -709,6 +709,7 @@ def main(argv: list[str] | None = None) -> None:
         parser.add_argument("--created-at", dest="created_at")
         parser.add_argument("--retry-count", dest="retry_count")
         parser.add_argument("--max-retries", dest="max_retries")
+        parser.add_argument("--plan-only", action="store_true", default=False)
         opts = parser.parse_args(rest)
         required = ["file", "id", "to", "task", "project", "priority", "created_at"]
         if not all(getattr(opts, k, None) for k in required):
@@ -723,6 +724,7 @@ def main(argv: list[str] | None = None) -> None:
             rc = enqueue(
                 opts.file, opts.id, opts.to, opts.task, opts.project,
                 prio, opts.created_at, retry_count, max_retries,
+                plan_only=opts.plan_only,
             )
         sys.exit(rc)
 
