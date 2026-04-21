@@ -2074,3 +2074,4 @@ If you're an agent picking this up:
 - 2026-04-21 (v1.29.0): chore(release): bump version to 1.29.0 — subtask-resolution-gate feature (cancelled status, shux subtask-cancel, hygiene dangling check, resolution gate).
 - 2026-04-21: feat(context-cleanup): improve shux context — strip ANSI codes from error_snippet in failures.yaml (at write time); scope failures to the current task (strict task matching); add --failures-only flag to filter out minor warnings; register shux context in the shux shortcuts list.
 - 2026-04-21 (v1.29.1): chore(release): bump version to 1.29.1 — publish shux context improvements (ANSI stripping, task scoping, --failures-only flag).
+- 2026-04-21 (v1.29.2): fix(discuss): prevent TypeError in cmd_summary when a participant verdict is None.
