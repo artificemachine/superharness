@@ -340,7 +340,8 @@ def cmd_summary(discussions_dir: str, disc_id: str, handoff_dir: str) -> int:
     outcome_lines = [f"Topic: {topic}", f"Status: {status}",
                      f"Participants: {', '.join(participants)}"]
     for agent, vs in verdicts.items():
-        outcome_lines.append(f"  {agent}: {', '.join(vs)}")
+        vs_str = ", ".join(str(v) for v in vs)
+        outcome_lines.append(f"  {agent}: {vs_str}")
 
     now = _now_utc()
     safe_id = disc_id.replace("/", "_").replace("..", "_")
