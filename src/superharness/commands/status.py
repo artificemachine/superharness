@@ -112,6 +112,7 @@ def _inbox_stats(inbox_file: str, handoff_dir: str, discussions_dir: str, retry_
     counts: dict = {}
     retry_high = 0
     retry_high_ids: list = []
+    failed_task_ids: list = []
 
     if os.path.isfile(inbox_file):
         items = safe_load(inbox_file, list) or []
@@ -119,8 +120,11 @@ def _inbox_stats(inbox_file: str, handoff_dir: str, discussions_dir: str, retry_
             if not isinstance(item, dict):
                 continue
             st = str(item.get("status", ""))
+            task_id = str(item.get("task", ""))
             if st:
                 counts[st] = counts.get(st, 0) + 1
+            if st == "failed" and task_id:
+                failed_task_ids.append(task_id)
             if st in active_statuses:
                 rc = int(item.get("retry_count") or 0)
                 if rc >= retry_threshold:
@@ -158,6 +162,7 @@ def _inbox_stats(inbox_file: str, handoff_dir: str, discussions_dir: str, retry_
         "counts": counts,
         "retry_high": retry_high,
         "retry_high_ids": retry_high_ids,
+        "failed_task_ids": failed_task_ids,
         "approvals_pending": approvals_pending,
         "discussion_counts": discussion_counts,
     }
@@ -231,14 +236,29 @@ def main(argv: list[str] | None = None) -> None:
           f"deadlock={dc.get('deadlock', 0)} closed={dc.get('closed', 0)}")
 
     issues = 0
+    issue_details = []
     if watcher_level == "bad":
         issues += 1
+        issue_details.append("watcher not loaded")
     if heartbeat_status in ("stale", "missing"):
         issues += 1
-    if c("failed") > 0 or c("stale") > 0 or stats["retry_high"] > 0:
+        issue_details.append(f"heartbeat {heartbeat_status}")
+    if c("failed") > 0:
         issues += 1
+        fids = ",".join(stats["failed_task_ids"][:3])
+        issue_details.append(f"{c('failed')} failed task(s) [{fids}]")
+    if c("stale") > 0:
+        issues += 1
+        issue_details.append(f"{c('stale')} stale task(s)")
+    if stats["retry_high"] > 0:
+        issues += 1
+        issue_details.append(f"{stats['retry_high']} tasks at retry limit")
 
-    print(f"summary: issues={issues}")
+    if issues > 0:
+        print(f"summary: issues={issues} ({'; '.join(issue_details)})")
+    else:
+        print("summary: ok")
+
     if opts.check and issues > 0:
         sys.exit(1)
 
