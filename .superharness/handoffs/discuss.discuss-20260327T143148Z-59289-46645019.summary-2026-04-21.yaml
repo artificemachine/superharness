@@ -1,0 +1,12 @@
+task: discuss.discuss-20260327T143148Z-59289-46645019
+phase: summary
+status: active
+from: discuss
+to: owner
+date: 2026-04-21T14:59:50Z
+outcome: |
+  Topic: Architecture Review Hardening Plan: prioritize R1-R5 implementation order, validate ownership split (claude-code: R1+R4 schema/repair, codex-cli: R2+R3+R5 locks/models/docs), agree on pydantic v2 as new dependency, and confirm TDD approach for concurrency-sensitive R2 lock changes
+  Status: active
+  Participants: claude-code, codex-cli
+    claude-code: None, agree
+    codex-cli: None, agree
