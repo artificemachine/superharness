@@ -1774,7 +1774,7 @@ tasks:
 - id: superharness-next-action-payload
   title: 'adapter-payload: add next_action per task (schema v1.3)'
   owner: claude-code
-  status: report_ready
+  status: done
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
@@ -1794,12 +1794,12 @@ tasks:
   definition_of_done:
   - pytest covers next_action matrix per status
   - docs/adapter-payload-spec.md has a next_action (v1.3+) section
-  summary: next_action field implemented; 96 tests pass; docs updated
+  summary: 'closed via Morpheme'
 - id: chore.collapse-guards-next-action
   title: Collapse delegate/enqueue/task-status guard tables into 
     engine/next_action.py
   owner: claude-code
-  status: todo
+  status: plan_approved
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: superharness-next-action-payload
   workflow: implementation
@@ -1815,5 +1815,29 @@ tasks:
   context: 'Follow-up to superharness-next-action-payload (PR #118). Defer guard refactor
     to after next_action ships to minimize blast radius on the schema v1.3 PR.'
 
+  summary: auto-approved per task autonomy setting
+- id: superharness-workflow-cmd
+  title: shux workflow + per-project autonomy (profile.yaml extension, schema 
+    v1.4)
+  owner: claude-code
+  status: done
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: implementation
+  development_method: tdd
+  acceptance_criteria:
+  - shux workflow interactive CLI walks through autonomy + default_preset + 
+    require_tdd
+  - profile.yaml schema extended with workflow section; backwards compatible
+  - task.py auto-approves plan_proposed when autonomy=ai_driven
+  - handoff_write.py enforces TDD fields when require_tdd=true 
+    (implementation/review only)
+  - adapter-payload schema v1.4 emits project_settings + per-task 
+    workflow/development_method
+  - pytest suite covers all new behavior; docs/adapter-payload-spec.md has v1.4 
+    section
+  effort: medium
+  summary: 'delivered: shux workflow CLI, per-task stamping, auto-approve hook, TDD
+    enforcement, schema v1.4. Merged as PR #122, released as v1.28.0.'
 decisions: []
 failures: []
