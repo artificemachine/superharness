@@ -554,6 +554,25 @@ shux benchmark --project . --models   # per-model 7-day cost breakdown table
 
 `--models` output shows: model name, call count, total tokens, total cost, % of weekly budget (if `budget.weekly_limit` is set in `profile.yaml`).
 
+### Task Context (`shux context`)
+
+Show all relevant context for a task to help an agent (or human) get up to speed:
+
+```bash
+shux context <task-id>
+shux context <task-id> --failures-only   # hide warnings, show only major/critical failures
+```
+
+Surfaces:
+- Task status and owner
+- Last handoff outcome and context
+- Decisions relevant to this task
+- Failures relevant to this task (scoped to this task ID)
+- Recent ledger entries for this task
+- Recently changed files in the git repository
+
+Failures are sanitized at write time to remove ANSI escape sequences for cleaner agent context.
+
 ### Doctor Checks
 
 ```bash
