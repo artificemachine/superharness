@@ -327,6 +327,9 @@ def get_failure_hints(project_dir: str, task_id: str) -> list[str]:
                 seen_pattern_ids.add(pid)
 
     hints = []
+    if "unknown" in seen_pattern_ids and not seen_pattern_ids.difference({"unknown"}):
+        hints.append("[unknown] An unclassified error occurred. Check the error_snippet in failures.yaml for details.")
+
     for pid in seen_pattern_ids:
         if pid == "unknown":
             continue

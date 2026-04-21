@@ -50,41 +50,39 @@ def _build_context_hint(project_dir: str, task: dict) -> str:
                 keywords.append(word)
 
     # Deduplicate, take top 10
-    seen = set()
+    seen_kw = set()
     unique_kw = []
     for kw in keywords:
-        if kw not in seen:
-            seen.add(kw)
+        if kw not in seen_kw:
+            seen_kw.add(kw)
             unique_kw.append(kw)
-    keywords = unique_kw[:10]
+    top_keywords = unique_kw[:10]
 
-    if not keywords:
-        return ""
+    # 1. Keywords & Source Files
+    if top_keywords:
+        src_dir = os.path.join(project_dir, "src")
+        if not os.path.isdir(src_dir):
+            src_dir = project_dir
 
-    # Find matching source files (quick grep, limit results)
-    src_dir = os.path.join(project_dir, "src")
-    if not os.path.isdir(src_dir):
-        src_dir = project_dir
+        relevant_files: set[str] = set()
+        for kw in top_keywords[:5]:  # limit to 5 greps
+            try:
+                r = subprocess.run(
+                    ["grep", "-rl", "--include=*.py", "-m", "3", kw, src_dir],
+                    capture_output=True, text=True, check=False, timeout=5,
+                )
+                for f in r.stdout.strip().splitlines()[:3]:
+                    if f:
+                        relevant_files.add(os.path.relpath(f, project_dir))
+            except Exception:
+                pass
 
-    relevant_files: set[str] = set()
-    for kw in keywords[:5]:  # limit to 5 greps
-        try:
-            r = subprocess.run(
-                ["grep", "-rl", "--include=*.py", "-m", "3", kw, src_dir],
-                capture_output=True, text=True, check=False, timeout=5,
-            )
-            for f in r.stdout.strip().splitlines()[:3]:
-                if f:
-                    relevant_files.add(os.path.relpath(f, project_dir))
-        except Exception:
-            pass
+        if relevant_files:
+            lines.append("\nRelevant source files (start here, don't explore from scratch):")
+            for f in sorted(relevant_files)[:10]:
+                lines.append(f"  - {f}")
 
-    if relevant_files:
-        lines.append("\nRelevant source files (start here, don't explore from scratch):")
-        for f in sorted(relevant_files)[:10]:
-            lines.append(f"  - {f}")
-
-    # Include recent git changes for context
+    # 2. Recent git changes
     try:
         r = subprocess.run(
             ["git", "diff", "--name-only", "HEAD~3"],
@@ -99,7 +97,7 @@ def _build_context_hint(project_dir: str, task: dict) -> str:
     except Exception:
         pass
 
-    # Inject similar-task skill hints from past completed work
+    # 3. Past skill hints
     try:
         from superharness.engine.skill_extractor import get_skill_hints
         skill_hints = get_skill_hints(project_dir, task)
@@ -110,7 +108,7 @@ def _build_context_hint(project_dir: str, task: dict) -> str:
     except Exception:
         pass
 
-    # Inject failure pattern hints from prior failed attempts
+    # 4. Failure pattern hints & System health (Self-healing)
     task_id = str(task.get("id", ""))
     if task_id:
         try:
@@ -120,6 +118,16 @@ def _build_context_hint(project_dir: str, task: dict) -> str:
                 lines.append("\nPrior failure hints (avoid repeating these mistakes):")
                 for h in hints:
                     lines.append(f"  - {h}")
+                
+                # Injection of system health context
+                try:
+                    from superharness.commands.doctor import get_doctor_summary
+                    health = get_doctor_summary(project_dir)
+                    if health:
+                        lines.append("\nCurrent system health (check for environmental blockers):")
+                        lines.append(health)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -614,7 +622,7 @@ def delegate(
         blockers = []
         for dep_id in _dep_id_set:
             dep_status = _get_task_field(contract_file, dep_id, "status")
-            if dep_status != "done":
+            if dep_status not in ("done", "archived"):
                 blockers.append(f"{dep_id} (status: {dep_status or 'not found'})")
         if blockers:
             print(
