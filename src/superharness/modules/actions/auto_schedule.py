@@ -113,7 +113,7 @@ def check_scheduled_tasks(context: dict[str, Any], settings: dict[str, Any]) -> 
             depends_on = task.get("depends_on")
             if depends_on:
                 dep_status = task_status_map.get(depends_on, "todo")
-                if dep_status != "done":
+                if dep_status not in ("done", "archived"):
                     logger.debug(f"Task {task_id} blocked by dependency {depends_on} (status={dep_status})")
                     continue
 

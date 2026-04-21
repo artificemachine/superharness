@@ -21,6 +21,46 @@ def _install_hint(dep: str) -> str:
     return hints.get(dep, "")
 
 
+def get_doctor_summary(project_dir: str) -> str:
+    """Run doctor checks internally and return a compact summary string."""
+    import io
+    from contextlib import redirect_stdout
+    
+    f = io.StringIO()
+    try:
+        with redirect_stdout(f):
+            # Run the main logic with no args
+            main(["--project", project_dir])
+    except SystemExit:
+        pass
+    except Exception as e:
+        return f"Error running doctor: {e}"
+        
+    raw = f.getvalue()
+    # Filter for FAIL/WARN lines and the summary
+    lines = []
+    for line in raw.splitlines():
+        if "FAIL" in line or "WARN" in line or "summary:" in line:
+            lines.append(line.strip())
+            
+    # Add git status check (crucial for autonomous retries)
+    try:
+        r = subprocess.run(
+            ["git", "-C", project_dir, "status", "--porcelain"],
+            capture_output=True, text=True, check=False, timeout=2
+        )
+        if r.stdout.strip():
+            count = len(r.stdout.strip().splitlines())
+            lines.insert(0, f"WARN git:working tree is dirty ({count} modified files)")
+    except Exception:
+        pass
+
+    if not lines:
+        return "System health: ok"
+        
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> None:
     import argparse
 
