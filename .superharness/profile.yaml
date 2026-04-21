@@ -1,0 +1,5 @@
+auto_dispatch: true
+autonomy: autonomous
+default_preset: implementation
+require_tdd: true
+gc_interval_cycles: 5
