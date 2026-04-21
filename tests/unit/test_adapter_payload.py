@@ -65,7 +65,7 @@ class TestSchema:
         assert r.returncode == 0, r.stderr
         d = json.loads(r.stdout)
         # 1.3: next_action per task added
-        assert d["schema_version"] == "1.3"
+        assert d["schema_version"] == "1.4"
 
     def test_top_level_keys_present(self, tmp_path):
         project = _setup(tmp_path)
@@ -501,7 +501,7 @@ class TestErrorHandling:
         r = _run(["--project", str(project)], cwd=str(tmp_path))
         assert r.returncode == 0
         d = json.loads(r.stdout)
-        assert d["schema_version"] == "1.3"
+        assert d["schema_version"] == "1.4"
 
 
 # ---------------------------------------------------------------------------
@@ -743,7 +743,7 @@ class TestSchemaVersionBump:
     def test_schema_version_bumped_to_1_2(self, tmp_path):
         project = _setup(tmp_path)
         d = json.loads(_run(["--project", str(project)]).stdout)
-        assert d["schema_version"] == "1.3"
+        assert d["schema_version"] == "1.4"
 
 
 # ---------------------------------------------------------------------------
@@ -792,7 +792,7 @@ class TestSchemaV12:
         """Schema version string must be '1.3'."""
         project = _setup(tmp_path)
         d = json.loads(_run(["--project", str(project)]).stdout)
-        assert d["schema_version"] == "1.3"
+        assert d["schema_version"] == "1.4"
 
     def test_task_has_classifier_block(self, tmp_path):
         """Every task carries a classifier block (defaults when not set in YAML)."""
@@ -895,7 +895,7 @@ class TestNextActionInPayload:
     def test_schema_version_is_1_3(self, tmp_path):
         project = _setup(tmp_path)
         d = json.loads(_run(["--project", str(project)]).stdout)
-        assert d["schema_version"] == "1.3"
+        assert d["schema_version"] == "1.4"
 
     def test_next_action_present_on_every_task(self, tmp_path):
         project = _setup(tmp_path, tasks=[
@@ -936,3 +936,108 @@ class TestNextActionInPayload:
                 assert na["recommended"] in na["legal"], (
                     f"status={status}: recommended not in legal"
                 )
+
+
+# ---------------------------------------------------------------------------
+# Schema v1.4 — project_settings + per-task autonomy/require_tdd (Iteration 5)
+# ---------------------------------------------------------------------------
+
+class TestSchemaV14:
+    """Adapter-payload schema v1.4 tests."""
+
+    @staticmethod
+    def _make_project(tmp_path, profile=None, tasks=None):
+        project = tmp_path / "proj"
+        sh = project / ".superharness"
+        sh.mkdir(parents=True)
+        for f, content in [
+            ("failures.yaml", "failures: []\n"),
+            ("decisions.yaml", "decisions: []\n"),
+            ("inbox.yaml", "# inbox\n"),
+            ("ledger.md", "# Ledger\n\n"),
+        ]:
+            (sh / f).write_text(content)
+        import yaml as _yaml
+        if profile is not None:
+            (sh / "profile.yaml").write_text(_yaml.dump(profile))
+        task_list = tasks or [
+            {"id": "t1", "title": "T", "owner": "claude-code", "status": "todo"}
+        ]
+        contract = {
+            "id": "test",
+            "goal": "G",
+            "tasks": task_list,
+        }
+        (sh / "contract.yaml").write_text(_yaml.dump(contract))
+        return project
+
+    @staticmethod
+    def _payload(project):
+        r = _run(["--project", str(project)])
+        assert r.returncode == 0, r.stderr
+        return json.loads(r.stdout)
+
+    def test_schema_version_is_1_4(self, tmp_path):
+        """Schema version must be 1.4 after this bump."""
+        project = self._make_project(tmp_path)
+        d = self._payload(project)
+        assert d["schema_version"] == "1.4"
+
+    def test_project_settings_block_present(self, tmp_path):
+        """Top-level project_settings key must exist."""
+        project = self._make_project(tmp_path)
+        d = self._payload(project)
+        assert "project_settings" in d
+
+    def test_project_settings_defaults_when_profile_absent(self, tmp_path):
+        """No profile.yaml → project_settings has safe defaults."""
+        project = self._make_project(tmp_path, profile=None)
+        ps = self._payload(project)["project_settings"]
+        assert ps["autonomy"] == "ai_driven"
+        assert ps["workflow"]["default_preset"] == "implementation"
+        assert ps["workflow"]["require_tdd"] is True
+
+    def test_project_settings_reflects_profile(self, tmp_path):
+        """profile.yaml values appear in project_settings."""
+        project = self._make_project(tmp_path, profile={
+            "autonomy": "oversight",
+            "workflow": {"default_preset": "quick", "require_tdd": False},
+        })
+        ps = self._payload(project)["project_settings"]
+        assert ps["autonomy"] == "oversight"
+        assert ps["workflow"]["default_preset"] == "quick"
+        assert ps["workflow"]["require_tdd"] is False
+
+    def test_task_emits_workflow_and_development_method(self, tmp_path):
+        """Task with workflow + development_method → both appear in payload."""
+        project = self._make_project(tmp_path, tasks=[{
+            "id": "t1", "title": "T", "owner": "claude-code", "status": "todo",
+            "workflow": "implementation",
+            "development_method": "tdd",
+        }])
+        task = self._payload(project)["tasks"][0]
+        assert task["workflow"] == "implementation"
+        assert task["development_method"] == "tdd"
+
+    def test_task_emits_autonomy_and_require_tdd(self, tmp_path):
+        """Task with stamped autonomy + require_tdd → both appear in payload."""
+        project = self._make_project(tmp_path, tasks=[{
+            "id": "t1", "title": "T", "owner": "claude-code", "status": "todo",
+            "autonomy": "oversight",
+            "require_tdd": False,
+        }])
+        task = self._payload(project)["tasks"][0]
+        assert task["autonomy"] == "oversight"
+        assert task["require_tdd"] is False
+
+    def test_pre_existing_task_defaults_when_unstamped(self, tmp_path):
+        """Task without autonomy/require_tdd → payload shows safe defaults."""
+        project = self._make_project(tmp_path, tasks=[{
+            "id": "t1", "title": "T", "owner": "claude-code", "status": "todo",
+            # no autonomy, no require_tdd, no workflow
+        }])
+        task = self._payload(project)["tasks"][0]
+        assert task["autonomy"] == "ai_driven"
+        assert task["require_tdd"] is True
+        assert task["workflow"] is None
+        assert task["development_method"] is None
