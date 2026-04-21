@@ -205,6 +205,24 @@ def _register_config():
 _register_config()
 
 
+def _register_workflow():
+    try:
+        import click as _click
+
+        @_click.command("workflow", context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
+        @_click.argument("args", nargs=-1, type=_click.UNPROCESSED)
+        def workflow_cmd(args):
+            """Read/write project-level workflow policy (autonomy, preset, require_tdd)."""
+            from superharness.commands.workflow_cmd import cmd_workflow
+            cmd_workflow(list(args))
+
+        main.add_command(workflow_cmd)
+    except Exception:
+        pass
+
+_register_workflow()
+
+
 def _find_dashboard_processes():
     """Return list of (pid, port, project_dir) for all running dashboard-ui.py processes."""
     import subprocess as _sp
