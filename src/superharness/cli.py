@@ -594,6 +594,7 @@ def cmd_shux():
   shux delegate <task-id>  ← create task + enqueue in one step for watcher dispatch
   shux verify <task-id>    ← record verification result (pass/fail) before close
   shux close <task-id>     ← mark task done, append ledger, write handoff (requires verify)
+  shux context <task-id>   ← show handoff, decisions, failures, and git context
   shux recall <keywords>   ← search past handoffs and ledger entries
   shux hygiene             ← validate protocol compliance (contract, handoffs, ledger)
   shux watch               ← start continuous watcher in foreground

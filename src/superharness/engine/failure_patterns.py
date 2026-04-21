@@ -231,6 +231,12 @@ def match_patterns(error_text: str) -> list[FailurePattern]:
     return matched
 
 
+def strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences from text."""
+    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    return ansi_escape.sub('', text)
+
+
 # ---------------------------------------------------------------------------
 # Storage — failures.yaml integration
 # ---------------------------------------------------------------------------
@@ -284,7 +290,7 @@ def record_failure(
         "agent": agent,
         "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "patterns": pattern_ids if pattern_ids else ["unknown"],
-        "error_snippet": error_text[:500].strip(),
+        "error_snippet": strip_ansi(error_text[:500]).strip(),
         "severity": max((p.severity for p in matched), default="minor",
                         key=lambda s: _sev_rank.get(s, 0)),
     }
