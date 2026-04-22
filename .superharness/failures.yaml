@@ -136,8 +136,52 @@ failures:
   task: feat.headless.test-auto-plan
 - agent: claude-code
   date: '2026-04-21T22:30:18Z'
-  error_snippet: 'Dummy failure for testing.'
+  error_snippet: Dummy failure for testing.
   patterns:
   - unknown
   severity: major
+  task: chore.collapse-guards-next-action
+- agent: claude-code
+  date: '2026-04-22T13:28:35Z'
+  error_snippet: "^D\b\bblocked: task 'chore.collapse-guards-next-action' depends\
+    \ on unfinished tasks:\n   - superharness-next-action-payload (status: archived)"
+  patterns:
+  - unknown
+  severity: minor
+  task: chore.collapse-guards-next-action
+- agent: claude-code
+  date: '2026-04-22T13:31:02Z'
+  error_snippet: "^D\b\bblocked: task 'chore.collapse-guards-next-action' depends\
+    \ on unfinished tasks:\n   - superharness-next-action-payload (status: archived)"
+  patterns:
+  - unknown
+  severity: minor
+  task: chore.collapse-guards-next-action
+- agent: gemini-cli
+  date: '2026-04-22T18:47:30Z'
+  error_snippet: "Unknown arguments: project, task, plan-only, planOnly\nUsage: gemini\
+    \ [options] [command]\n\nGemini CLI - Defaults to interactive mode. Use -p/--prompt\
+    \ for non-interactive (headless) mode.\n\nCommands:\n  gemini mcp            \
+    \       Manage MCP servers\n  gemini extensions <command>  Manage Gemini CLI extensions.\
+    \                                                                     [aliases:\
+    \ extension]\n  gemini skills <command>      Manage agent skills."
+  patterns:
+  - worktree_error
+  severity: major
+  task: verify.auto-dispatch.A
+- agent: claude-code
+  date: '2026-04-22T22:41:00Z'
+  error_snippet: "^D\b\bblocked: task 'chore.collapse-guards-next-action' depends\
+    \ on unfinished tasks:\n   - superharness-next-action-payload (status: archived)"
+  patterns:
+  - unknown
+  severity: minor
+  task: chore.collapse-guards-next-action
+- agent: claude-code
+  date: '2026-04-22T22:56:06Z'
+  error_snippet: "^D\b\bblocked: task 'chore.collapse-guards-next-action' depends\
+    \ on unfinished tasks:\n   - superharness-next-action-payload (status: archived)"
+  patterns:
+  - unknown
+  severity: minor
   task: chore.collapse-guards-next-action

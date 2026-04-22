@@ -29,7 +29,7 @@ from superharness.engine.next_action import ALL_STATUSES
 # Validation helpers
 # ---------------------------------------------------------------------------
 
-VALID_OWNERS = {"claude-code", "codex-cli"}
+VALID_OWNERS = {"claude-code", "codex-cli", "gemini-cli"}
 VALID_CREATE_STATUSES = {"todo", "in_progress", "pending_user_approval", "done"}
 VALID_WORKFLOWS = {"implementation", "quick", "discussion", "review", "approval", "note"}
 VALID_AUTONOMY = {"ai_driven", "oversight", "hands_on"}
@@ -188,7 +188,7 @@ def create(
         _validate_token("dependency id", dependency)
 
     if owner not in VALID_OWNERS:
-        _abort("owner must be claude-code or codex-cli", 2)
+        _abort(f"owner must be one of: {', '.join(sorted(VALID_OWNERS))}", 2)
     if status not in VALID_CREATE_STATUSES:
         _abort("status must be todo, in_progress, pending_user_approval, or done", 2)
     if workflow and workflow not in VALID_WORKFLOWS:
@@ -462,7 +462,9 @@ def _enqueue_for_implementation(contract_file: str, task_id: str) -> None:
 
 
 def set_owner(contract_file: str, task_id: str, new_owner: str) -> int:
-    """Update the owner of a task in the contract."""
+    """Update task owner and clean up any active inbox items for the old owner."""
+    import signal as _signal
+
     doc = _load_contract(contract_file)
     tasks = _get_tasks(doc, contract_file)
 
@@ -478,6 +480,77 @@ def set_owner(contract_file: str, task_id: str, new_owner: str) -> int:
     task["owner"] = new_owner
     _write_contract(contract_file, doc)
     print(f"Reassigned task '{task_id}': {old_owner} → {new_owner}")
+
+    # Scan inbox for active items that were dispatched to the old owner and cancel them.
+    harness_dir = os.path.dirname(contract_file)
+    project_dir = os.path.dirname(harness_dir)
+    inbox_file = os.path.join(harness_dir, "inbox.yaml")
+
+    if not os.path.exists(inbox_file):
+        return 0
+
+    from superharness.engine.inbox import _inbox_lock, _load_items, _write_items
+
+    ACTIVE = {"pending", "launched", "running"}
+    removed_ids: list[str] = []
+
+    with _inbox_lock(inbox_file):
+        items = _load_items(inbox_file)
+        keep = []
+        for item in items:
+            if not isinstance(item, dict):
+                keep.append(item)
+                continue
+            if str(item.get("task", "")) == task_id and item.get("status") in ACTIVE:
+                pid_str = item.get("pid")
+                if pid_str:
+                    try:
+                        os.kill(int(pid_str), _signal.SIGTERM)
+                        print(f"  stopped pid={pid_str} (item {item['id']})")
+                    except (ProcessLookupError, PermissionError, ValueError):
+                        pass
+                removed_ids.append(str(item["id"]))
+            else:
+                keep.append(item)
+        if removed_ids:
+            _write_items(inbox_file, keep)
+
+    if removed_ids:
+        print(f"  removed {len(removed_ids)} inbox item(s) for old owner '{old_owner}': {', '.join(removed_ids)}")
+
+    # Re-enqueue to the new owner when the task is dispatch-ready.
+    if removed_ids:
+        from superharness.engine.next_action import (
+            allowed_statuses_for_workflow,
+            plan_only_allowed_statuses,
+        )
+        from superharness.commands.inbox_enqueue import enqueue_cmd
+
+        task_status = str(task.get("status", ""))
+        task_workflow = str(task.get("workflow", "implementation"))
+        dispatch_ready = task_status in allowed_statuses_for_workflow(task_workflow)
+        plan_only_ready = task_status in plan_only_allowed_statuses(task_workflow)
+
+        if dispatch_ready or plan_only_ready:
+            plan_only = not dispatch_ready and plan_only_ready
+            try:
+                enqueue_cmd(
+                    project_dir=project_dir,
+                    task_id=task_id,
+                    target=new_owner,
+                    item_id=None,
+                    priority=2,
+                    plan_only=plan_only,
+                    force_reassign=True,
+                )
+                suffix = " (plan-only)" if plan_only else ""
+                print(f"  re-enqueued '{task_id}' to '{new_owner}'{suffix}")
+            except SystemExit as exc:
+                if exc.code != 0:
+                    print(f"  warning: re-enqueue failed — task is reassigned but not in inbox", file=sys.stderr)
+        else:
+            print(f"  task status '{task_status}' is not dispatch-ready — not re-enqueued")
+
     return 0
 
 
@@ -762,7 +835,7 @@ def main(argv: list[str] | None = None) -> None:
             # Prompt via stdin
             try:
                 if sys.stdin.isatty():
-                    sys.stderr.write("Task owner (claude-code|codex-cli): ")
+                    sys.stderr.write(f"Task owner ({'|'.join(sorted(VALID_OWNERS))}): ")
                     sys.stderr.flush()
                 owner = sys.stdin.readline().strip()
             except (EOFError, OSError):

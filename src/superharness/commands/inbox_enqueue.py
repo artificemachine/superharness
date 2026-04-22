@@ -20,7 +20,7 @@ from superharness.engine.next_action import (
 )
 
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._-]+$")
-VALID_TARGETS = {"claude-code", "codex-cli"}
+VALID_TARGETS = {"claude-code", "codex-cli", "gemini-cli"}
 
 
 _JSON_MODE = False
@@ -199,7 +199,8 @@ def enqueue_cmd(
     contract_file = os.path.join(harness_dir, "contract.yaml")
 
     if target not in VALID_TARGETS:
-        _abort("--to must be claude-code or codex-cli", 2)
+        _abort(f"--to must be one of: {', '.join(sorted(VALID_TARGETS))}", 2)
+
 
     if priority not in (1, 2, 3):
         _abort("--priority must be 1, 2, or 3", 2)
@@ -285,7 +286,7 @@ def main(argv: list[str] | None = None) -> None:
         description="Enqueue a task to the superharness inbox",
     )
     parser.add_argument("--project", "-p", required=True, help="Project directory containing .superharness/")
-    parser.add_argument("--to", required=True, dest="target", help="claude-code or codex-cli")
+    parser.add_argument("--to", required=True, dest="target", help=f"Target agent ({'|'.join(sorted(VALID_TARGETS))})")
     parser.add_argument("--task", "-t", required=True, dest="task_id", help="Task id from contract/handoff")
     parser.add_argument("--priority", type=int, default=2, help="Priority 1-3 (1 highest, default: 2)")
     parser.add_argument("--id", default=None, dest="item_id", help="Optional inbox item id")
