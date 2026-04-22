@@ -975,6 +975,27 @@ def delegate(
                     f"Contract id: {contract_id}."
                     f"{acceptance_criteria}{context_hint}{user_instructions}{auto_directive}"
                 )
+        elif target == "gemini-cli":
+            if latest_handoff:
+                prompt = (
+                    f"continue contract\n"
+                    f"Read the latest handoff addressed to gemini-cli and execute task {task_id}.\n"
+                    f"Use scope, commands, and acceptance criteria from the handoff.\n"
+                    f"Update .superharness/contract.yaml task status, append .superharness/ledger.md, "  # shipguard:ignore PY-007
+                    f"and refresh the handoff with outcomes.\n"
+                    f"Contract id: {contract_id}."
+                    f"{acceptance_criteria}{context_hint}{user_instructions}{auto_directive}"
+                )
+            else:
+                prompt = (
+                    f"continue contract\n"
+                    f"No handoff exists yet for task {task_id}.\n"
+                    f"Read .superharness/contract.yaml directly and execute task {task_id}.\n"
+                    f"Update .superharness/contract.yaml task status, append .superharness/ledger.md, "  # shipguard:ignore PY-007
+                    f"and create a new handoff with outcomes.\n"  # shipguard:ignore PY-007
+                    f"Contract id: {contract_id}."
+                    f"{acceptance_criteria}{context_hint}{user_instructions}{auto_directive}"
+                )
         else:  # codex-cli
             if latest_handoff:
                 prompt = (
@@ -1021,7 +1042,9 @@ def delegate(
     print(f"Effort: {resolved_effort}")
 
     # SDK vs CLI dispatch — auto-detect: use SDK if available, fall back to CLI
-    use_sdk = via_sdk if via_sdk is not None else sdk_available()
+    # Current limit: only claude-code supports the SDK runner
+    supports_sdk = (target == "claude-code")
+    use_sdk = via_sdk if via_sdk is not None else (sdk_available() and supports_sdk)
     if use_sdk and not sdk_available():
         print("⚠️  SDK not available — falling back to CLI", file=sys.stderr)
         use_sdk = False
@@ -1205,11 +1228,11 @@ def main(argv: list[str] | None = None) -> None:
 
     if opts.target is None:
         parser.error("--to is required")
-    if opts.target not in ("claude-code", "codex-cli"):
+    if opts.target not in ("claude-code", "codex-cli", "gemini-cli"):
         if _JSON_MODE:
             from superharness.utils.json_output import emit_error
-            emit_error("--to must be claude-code or codex-cli", exit_code=2, **_JSON_CTX)
-        print("--to must be claude-code or codex-cli", file=sys.stderr)
+            emit_error("--to must be one of: claude-code, codex-cli, gemini-cli", exit_code=2, **_JSON_CTX)
+        print("--to must be one of: claude-code, codex-cli, gemini-cli", file=sys.stderr)
         sys.exit(2)
 
     project_dir = os.path.realpath(opts.project or os.getcwd())
