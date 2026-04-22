@@ -36,4 +36,44 @@ resolve_python() {
 }
 
 PYTHON3="$(resolve_python)"
-exec "$PYTHON3" -m superharness.commands.delegate --to gemini-cli "$@"
+# Build Gemini CLI command
+GEMINI_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --project)
+      # Gemini uses the current working directory as the project root
+      # No explicit --project flag, but we should cd there
+      cd "$2"
+      shift 2
+      ;;
+    --task)
+      # Task ID is not directly supported by Gemini CLI positional args
+      # but we can pass it as context in the prompt
+      shift 2
+      ;;
+    --prompt)
+      GEMINI_ARGS+=("--prompt" "$2")
+      shift 2
+      ;;
+    --model)
+      GEMINI_ARGS+=("--model" "$2")
+      shift 2
+      ;;
+    --plan-only)
+      GEMINI_ARGS+=("--approval-mode" "plan")
+      shift
+      ;;
+    --non-interactive)
+      # Gemini uses --prompt to trigger headless mode
+      shift
+      ;;
+    *)
+      # Ignore other Superharness-specific flags for now
+      shift
+      ;;
+  esac
+done
+
+# Launch Gemini
+exec gemini "${GEMINI_ARGS[@]}"
