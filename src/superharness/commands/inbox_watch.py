@@ -676,9 +676,10 @@ def _run_scripts(
     # Dispatch
     targets = []
     if target == "both":
-        targets = ["claude-code", "codex-cli"]
+        targets = ["claude-code", "codex-cli", "gemini-cli"]
     else:
         targets = [target]
+
 
     for t in targets:
         _run_dispatch_cmd(
@@ -953,8 +954,8 @@ def main(argv: list[str] | None = None) -> None:
         except (ValueError, TypeError):
             _abort(f"{name} must be a positive integer", 2)
 
-    if opts.target not in ("both", "claude-code", "codex-cli"):
-        _abort("--to must be one of: both, claude-code, codex-cli", 2)
+    if opts.target not in ("both", "claude-code", "codex-cli", "gemini-cli"):
+        _abort("--to must be one of: both, claude-code, codex-cli, gemini-cli", 2)
 
     if opts.recover_action not in ("stale", "retry"):
         _abort("--recover-action must be one of: stale, retry", 2)
