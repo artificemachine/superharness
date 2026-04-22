@@ -11,12 +11,15 @@ capabilities:
 # Each tier carries the concrete model id and a human-facing label. Update
 # both together when bumping a model.
 model_tiers:
-  # mini — cheap + fast codex-optimized batch tier (matches Haiku role).
-  # standard — codex-optimized daily workhorse for coding tasks.
-  # max — latest frontier model for the hardest reasoning work.
-  mini:     { id: gpt-5.1-codex-mini, label: "GPT-5.1 Codex mini" }
-  standard: { id: gpt-5.3-codex,      label: "GPT-5.3 Codex"      }
-  max:      { id: gpt-5.4,            label: "GPT-5.4"            }
+  mini:
+    versions:
+      "*": { id: gpt-5.1-codex-mini, label: "GPT-5.1 Codex mini" }
+  standard:
+    versions:
+      "*": { id: gpt-5.3-codex,      label: "GPT-5.3 Codex"      }
+  max:
+    versions:
+      "*": { id: gpt-5.4,            label: "GPT-5.4"            }
 requires:
   bin: codex
   env: []
