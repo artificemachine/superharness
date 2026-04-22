@@ -2076,3 +2076,4 @@ If you're an agent picking this up:
 - 2026-04-21 (v1.29.1): chore(release): bump version to 1.29.1 — publish shux context improvements (ANSI stripping, task scoping, --failures-only flag).
 - 2026-04-21 (v1.29.2): fix(discuss): prevent TypeError in cmd_summary when a participant verdict is None.
 - 2026-04-23 (v1.30.0): feat(owner-reassign): shux task set-owner now atomically stops and removes active inbox items dispatched to the old owner (pending/launched/running), SIGTERMs any live process, and re-enqueues to the new owner when the task is dispatch-ready. Adds gemini-cli to VALID_TARGETS and VALID_OWNERS. Fixes manifest cache stale-fallback in delegate. Dashboard pre-block and classifier improvements.
+- 2026-04-23 (v1.30.1): fix(tests): update test assertions for gemini-cli owner validation message, full model IDs in orchestrator dispatch, and fix delegate.py auto-classify resolve_model dict extraction (adapter_registry returns {id,label}, not string).

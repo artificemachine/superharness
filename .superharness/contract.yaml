@@ -1936,5 +1936,20 @@ tasks:
   verified_at: '2026-04-22T22:40:55Z'
   verified_by: claude-code
   summary: Task completed and verified
+- id: feat.dashboard-auto-restart-on-upgrade
+  title: Dashboard auto-restart when installed version changes
+  owner: claude-code
+  status: todo
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: implementation
+  autonomy: ai_driven
+  require_tdd: true
+  acceptance_criteria:
+  - Daemon/monitor detects version mismatch between running process and 
+    installed package at each heartbeat
+  - Auto-restarts the dashboard process when mismatch detected
+  - Logs the restart with old and new version to ledger
+  effort: low
 decisions: []
 failures: []
