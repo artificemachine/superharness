@@ -23,6 +23,14 @@ MANIFEST_DIR = Path(__file__).parent.parent / "adapter_manifests"
 
 REGISTRY_VERSION = "1"
 
+# Internal cache for loaded manifests
+_manifest_cache: dict[str, AdapterManifest] = {}
+
+
+def clear_manifest_cache() -> None:
+    """Clear the internal adapter manifest cache."""
+    _manifest_cache.clear()
+
 
 class AdapterValidationError(Exception):
     """Raised when an adapter is unsupported or misconfigured."""
@@ -122,6 +130,9 @@ def load_manifest(name: str) -> AdapterManifest:
     Raises:
         AdapterValidationError: if the manifest does not exist or is malformed.
     """
+    if name in _manifest_cache:
+        return _manifest_cache[name]
+
     manifest_file = MANIFEST_DIR / f"{name}.yaml"
     if not manifest_file.exists():
         available = list_adapters()
@@ -137,7 +148,9 @@ def load_manifest(name: str) -> AdapterManifest:
     if not isinstance(data, dict):
         raise AdapterValidationError(f"Adapter manifest '{name}' is not a valid YAML dict")
 
-    return AdapterManifest.from_dict(data)
+    manifest = AdapterManifest.from_dict(data)
+    _manifest_cache[name] = manifest
+    return manifest
 
 
 def validate_adapter(name: str) -> AdapterManifest:
@@ -196,31 +209,23 @@ def resolve_launcher(name: str, scripts_dir: str) -> str:
     return launcher_path
 
 
-def resolve_model(owner: str, tier: str) -> dict[str, str]:
-    """Resolve `(owner, tier)` to a concrete `{id, label}` model descriptor.
+def resolve_model(owner: str, tier: str, version: str = "*") -> dict[str, str]:
+    """Resolve `(owner, tier, version)` to a concrete `{id, label}`.
 
-    The owner names an adapter (e.g. `claude-code`, `codex-cli`); the tier is
-    the cost/capability bucket the orchestrator chose (`mini`, `standard`,
-    `max`). Resolution walks the adapter manifest's `model_tiers` table.
+    Resolution walks the adapter manifest's `model_tiers` table using the
+    `resolve_tier_version` method.
 
     Falls back to `{id: tier, label: tier}` when:
     - the owner is unknown (no manifest)
     - the tier is unknown for that owner
     - the manifest fails to load for any reason
-
-    The fallback keeps adapter-payload output well-formed even when an
-    operator chooses an out-of-band tier name during a one-off dispatch.
     """
     try:
         manifest = load_manifest(owner)
     except AdapterValidationError:
         return {"id": tier, "label": tier}
 
-    entry = manifest.model_tiers.get(tier)
-    if not entry:
-        return {"id": tier, "label": tier}
-    # entry is already normalized to {id, label} by AdapterManifest.from_dict
-    return {"id": entry["id"], "label": entry["label"]}
+    return manifest.resolve_tier_version(tier, version=version)
 
 
 def adapter_info(name: str) -> dict[str, Any]:
