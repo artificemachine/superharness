@@ -12,6 +12,7 @@ from superharness.engine.taxonomy import VALID_EFFORTS
 MODEL_MAP: dict[str, dict[str, str]] = {
     "claude-code": {"mini": "haiku", "standard": "sonnet", "max": "opus"},
     "codex-cli": {"mini": "gpt-5.2", "standard": "gpt-5.3-codex", "max": "gpt-5.4"},
+    "gemini-cli": {"mini": "flash", "standard": "pro", "max": "ultra"},
 }
 
 VALID_TIERS = {"mini", "standard", "max"}
