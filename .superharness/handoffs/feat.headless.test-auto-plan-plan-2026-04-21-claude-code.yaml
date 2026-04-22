@@ -1,0 +1,57 @@
+task: feat.headless.test-auto-plan
+phase: plan
+status: plan_proposed
+from: claude-code
+to: owner
+date: 2026-04-21T21:40:31Z
+
+plan: |
+  The existing test_task_autonomy_hook.py covers the auto-approve hook in
+  isolation (plan_proposed → plan_approved for ai_driven tasks). What is
+  missing is an integration test for the full headless auto-planning pipeline:
+  a todo task receiving a plan handoff written by an agent, then automatically
+  advancing from plan_proposed to plan_approved without human intervention.
+
+  The new test file tests/integration/test_headless_auto_plan.py will exercise
+  this end-to-end flow using subprocess calls to the real CLI commands:
+  (1) create a todo task with autonomy=ai_driven and workflow=implementation,
+  (2) call handoff_write to write a plan handoff (simulating an agent),
+  (3) call task status --status plan_proposed,
+  (4) assert the task lands at plan_approved (auto-approve hook fired),
+  (5) assert the plan handoff YAML exists on disk with the correct fields,
+  (6) assert the ledger contains both the plan_proposed and auto-approval lines.
+
+  A second test will verify that the same flow with autonomy=oversight stops at
+  plan_proposed (human gate respected). A third test will verify the flow with
+  require_tdd=true rejects a plan handoff missing tdd-green/tdd-refactor fields,
+  blocking the pipeline before plan_proposed is even reached.
+
+tdd:
+  red: |
+    tests/integration/test_headless_auto_plan.py — three failing tests:
+    - test_ai_driven_plan_auto_approved: full pipeline todo→plan_approved
+    - test_oversight_plan_stays_proposed: autonomy=oversight blocks auto-advance
+    - test_tdd_gate_blocks_incomplete_plan: handoff_write rejects missing tdd fields
+    All three fail before implementation because no such test file exists yet.
+
+  green: |
+    No source changes required — the auto-approve hook in task.py and the
+    TDD gate in handoff_write.py are already implemented. Only the test file
+    needs to be created. The three tests pass once the file exists and the
+    subprocess calls are wired correctly to the live CLI commands.
+
+  refactor: |
+    Extract a shared _make_project() fixture and _run_handoff_write() helper
+    into a conftest.py or a local helper module to avoid duplication with
+    test_handoff_write.py. If the duplication is small (< 20 lines), inline it.
+
+risks: |
+  - handoff_write requires --tdd-green/--tdd-refactor when require_tdd=true and
+    workflow=implementation; the test fixture must include these or the plan step
+    will fail before reaching the auto-approve hook (desired for the third test,
+    must be avoided for the first two).
+  - The auto-approve hook fires synchronously inside task.py status_update();
+    no async or watcher involvement is needed for these tests.
+  - Windows CI: subprocess stdin TTY behaviour was fixed in v1.29.0 for
+    workflow_cmd; verify handoff_write has no similar issue (expect none, it
+    is fully flag-driven).

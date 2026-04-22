@@ -31,9 +31,30 @@
     .inbox-detail th { text-align:left; color:var(--muted); border-bottom:1px solid var(--line); padding:4px 8px; }
     .inbox-detail td { padding:4px 8px; border-bottom:1px solid var(--line); word-break:break-all; }
     .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
-    .task-row { display:flex; align-items:flex-start; gap:8px; padding:5px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; }
-    .task-actions { display:flex; align-items:flex-start; gap:4px; flex-wrap:wrap; justify-content:flex-start; flex:0 0 auto; }
-    .task-meta { display:flex; align-items:center; gap:8px; flex:1 1 280px; min-width:180px; flex-wrap:wrap; }
+    .task-row { display:flex; flex-direction:column; align-items:flex-start; padding:20px 0; border-bottom:1px solid var(--line); gap:12px; }
+    .task-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .task-actions button, .task-actions select, .task-actions .pill {
+      width: 140px;
+      height: 36px;
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      padding: 0 8px;
+      margin: 0;
+      text-align: center;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      border-radius: 6px;
+    }
+    .task-meta { flex:1; display:flex; flex-direction:column; gap:6px; min-width: 0; }
+    .task-title-line { display:flex; align-items:center; gap:12px; }
+    .task-desc-line { color:var(--text); font-size:13px; line-height:1.4; padding-left:12px; word-break:break-word; }
+    .task-meta-line { color:var(--muted); font-size:11px; padding-left:24px; display:flex; flex-wrap:wrap; gap:10px; }
+    .task-id { font-weight:bold; color:var(--text); font-size:16px; letter-spacing:-0.02em; }
+    .task-status-footer { width:100%; font-size:10px; color:var(--muted); margin-top:8px; font-style:italic; padding-left:2px; }
     button { background:var(--btn); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px 10px; cursor:pointer; }
     button:hover { background:var(--btn2); }
     .small { font-size:11px; color:var(--muted); }
@@ -77,7 +98,7 @@
 </head>
 <body>
   <div class="wrap">
-    <h1>superharness dashboard</h1>
+    <h1>superharness dashboard <span id="version" style="font-size:11px;color:var(--muted);font-weight:normal;margin-left:8px">...</span></h1>
     <div class="meta" id="meta">loading...</div>
     <div class="banner" id="approvalBanner" style="display:none">User approval required.</div>
     <div class="plan-banner" id="planBanner" style="display:none">Plan confirmation required.</div>
@@ -257,6 +278,7 @@ async function api(path, init) {
 async function refresh() {
   try {
     const d = await api('/api/status');
+    document.getElementById('version').textContent = 'v' + (d.version || 'unknown');
     document.getElementById('meta').textContent = `project: ${d.project} | refresh: ${d.refresh_seconds}s`;
     document.getElementById('label').textContent = d.label;
     const s = document.getElementById('state');
@@ -671,12 +693,15 @@ function canEnqueueTask(task) {
 
 // Fix 3: contextual next-action hint shown inline next to the status pill.
 // Returns "" when the current state has no clear prescribed next step for the user.
-function nextActionHint(task) {
+function nextActionHint(task, isBlocked) {
   const st = task.status || 'todo';
   const workflow = inferredWorkflow(task);
+  
+  if (isBlocked) return 'resolve blockers first';
+
   if (st === 'todo' && workflow === 'implementation') return 'click Delegate Plan (agent) or Propose Plan (you)';
   if (st === 'plan_proposed')   return 'review plan handoff → click Approve Plan';
-  if (st === 'plan_approved')   return 'click not queued → dispatch';
+  if (st === 'plan_approved')   return 'click Enqueue → dispatch';
   if (st === 'report_ready')    return 'verify report → Request Review or Close';
   if (st === 'review_requested') return 'awaiting reviewer';
   if (st === 'review_passed')   return 'click Close to finalize';
@@ -715,18 +740,39 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
     const row = document.createElement('div');
     row.className = 'task-row';
 
-    const badge = `<span class="pill ${cls}" style="font-size:11px">${icon} ${label}</span>`;
-    const schedInfo = t.scheduled_after ? ` <span class="small" style="color:var(--warn)">⏳ after ${t.scheduled_after}</span>` : '';
-    const dueInfo = t.due_by ? ` <span class="small" style="color:${new Date(t.due_by) < new Date() ? 'var(--bad)' : 'var(--muted)'}">📅 due ${t.due_by}</span>` : '';
-    const depsInfo = (t.depends_on && t.depends_on.length) ? ` <span class="small" style="color:var(--muted)">🔗 ${t.depends_on.join(', ')}</span>` : '';
-    const reviewerInfo = (st === 'review_requested' && t.review_target) ? ` <span class="small" style="color:var(--warn)">👀 reviewer ${t.review_target}</span>` : '';
-    const hint = nextActionHint(t);
-    const hintInfo = hint ? ` <span class="small" style="color:var(--muted)">ℹ ${hint}</span>` : '';
-    const title = `<span style="flex:1;min-width:120px">${t.id} <span class="small" style="color:var(--muted)">${t.title}</span>${schedInfo}${dueInfo}${depsInfo}${hintInfo}</span>`;
-    const owner = `<span class="small" style="color:var(--muted)">${t.owner}</span>`;
+    const badge = `<span class="pill ${cls}" style="font-size:11px;margin:0">${icon} ${label}</span>`;
+    const schedInfo = t.scheduled_after ? ` <span style="color:var(--warn)">⏳ after ${t.scheduled_after}</span>` : '';
+    const dueInfo = t.due_by ? ` <span style="color:${new Date(t.due_by) < new Date() ? 'var(--bad)' : 'var(--muted)'}">📅 due ${t.due_by}</span>` : '';
+    const depsInfo = (t.depends_on && t.depends_on.length) ? ` <span style="color:var(--muted)">🔗 ${t.depends_on.join(', ')}</span>` : '';
+    const tid = t.id.replace(/'/g, "\\\\'");
+    
+    // Determine if task is blocked by unfinished dependencies
+    const blockers = (t.depends_on || []).filter(depId => {
+      const dep = tasks.find(x => x.id === depId);
+      return dep && dep.status !== 'done' && dep.status !== 'archived';
+    });
+    const isBlocked = blockers.length > 0;
+
+    const reviewerInfo = (st === 'review_requested' && t.review_target) ? ` <span style="color:var(--warn)">👀 reviewer ${t.review_target}</span>` : '';
+    const hint = nextActionHint(t, isBlocked);
+    const hintInfo = hint ? `<div style="width:100%; color:var(--warn); font-size:11px; font-weight:bold; margin-bottom:6px; letter-spacing:0.02em;">ℹ ${hint}</div>` : '';
+    
+    // Single line layout
+    const title = `<div class="task-meta"><div class="task-desc-line"><span class="task-id">${t.id}</span> ${t.title}${schedInfo}${dueInfo}${depsInfo}${reviewerInfo}</div></div>`;
+    
+    // Select-based owner swap
+    const currentOwner = t.owner || 'unassigned';
+    const ownerDropdown = `
+      <select onchange="changeOwner('${tid}', this.value)" style="background:var(--btn);border:1px solid var(--line);color:var(--muted);font-size:11px;padding:2px 4px;border-radius:4px;cursor:pointer">
+        <option value="claude-code" ${currentOwner === 'claude-code' ? 'selected' : ''}>@claude-code</option>
+        <option value="codex-cli" ${currentOwner === 'codex-cli' ? 'selected' : ''}>@codex-cli</option>
+      </select>
+    `;
 
     const actionButtons = [];
-    const tid = t.id.replace(/'/g, "\\\\'");
+    actionButtons.push(ownerDropdown);
+    actionButtons.push(badge); // Status badge now sits with the buttons
+    
     const ownerEsc = (t.owner || '').replace(/'/g, "\\\\'");
     // View Report button for any task with a handoff or in report_ready/done status
     const viewReportBtn = `<button onclick="viewTaskReport('${tid}','${ownerEsc}')" style="font-size:11px;padding:2px 8px">View Report</button>`;
@@ -762,12 +808,6 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
     } else if (st === 'review_passed') {
       actionButtons.push(`<button onclick="runClose('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Close</button>`);
     }
-    // Determine if task is blocked by unfinished dependencies
-    const blockers = (t.depends_on || []).filter(depId => {
-      const dep = tasks.find(x => x.id === depId);
-      return dep && dep.status !== 'done';
-    });
-    const isBlocked = blockers.length > 0;
 
     if (st === 'stopped') {
       actionButtons.push(`<button onclick="enableTask('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Re-queue</button>`);
@@ -803,9 +843,14 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
     } else {
        actionButtons.push(`<button onclick="removeTask('${tid}')" style="font-size:11px;padding:2px 6px;color:var(--bad)">Remove</button>`);
     }
-    row.innerHTML = `<div class="task-actions">${actionButtons.join(' ')}</div><div class="task-meta">${badge}${title}${reviewerInfo}${owner}</div>`;
+    const statusDesc = `<div class="task-status-footer">${label} — ${t.summary || 'no recent updates'}</div>`;
+    row.innerHTML = `<div class="task-actions">${hintInfo}${actionButtons.join(' ')}${statusDesc}</div>${title}`;
     el.appendChild(row);
   }
+}
+
+async function changeOwner(taskId, newOwner) {
+  await act(`set_owner:${taskId}:${newOwner}`);
 }
 
 async function disableTask(taskId) {

@@ -1,0 +1,7 @@
+closed_at: '2026-04-18T11:53:52Z'
+from: claude-code
+status: done
+summary: 'Shipped v1.24.5: engine/taxonomy.py, 7 call sites migrated, xhigh effort
+  level. PR #99.'
+task: feat.taxonomy-module
+to: owner

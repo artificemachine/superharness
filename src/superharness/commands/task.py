@@ -461,6 +461,26 @@ def _enqueue_for_implementation(contract_file: str, task_id: str) -> None:
         print(f"auto-dispatch: task {task_id} enqueued for implementation (item {item_id})")
 
 
+def set_owner(contract_file: str, task_id: str, new_owner: str) -> int:
+    """Update the owner of a task in the contract."""
+    doc = _load_contract(contract_file)
+    tasks = _get_tasks(doc, contract_file)
+
+    task = next((t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == task_id), None)
+    if task is None:
+        _abort(f"task '{task_id}' not found")
+
+    old_owner = task.get("owner", "unknown")
+    if old_owner == new_owner:
+        print(f"Task '{task_id}' is already owned by '{new_owner}'")
+        return 0
+
+    task["owner"] = new_owner
+    _write_contract(contract_file, doc)
+    print(f"Reassigned task '{task_id}': {old_owner} → {new_owner}")
+    return 0
+
+
 def status_update(
     contract_file: str,
     task_id: str,
@@ -709,17 +729,18 @@ def main(argv: list[str] | None = None) -> None:
     p_status.add_argument("--json", action="store_true", default=False,
                           help="Emit machine-readable JSON on stdout instead of human text.")
 
+    # set-owner
+    p_owner = sub.add_parser("set-owner", help="Change the owner (agent) of a task")
+    p_owner.add_argument("--project", "-p", default=None)
+    p_owner.add_argument("--id", dest="task_id", required=True)
+    p_owner.add_argument("--owner", required=True, choices=list(VALID_OWNERS))
+
     opts = parser.parse_args(argv)
     if not opts.subcmd:
         parser.print_help(sys.stderr)
         sys.exit(2)
 
-    project_dir = opts.project or os.getcwd()
-    if not os.path.isabs(project_dir):
-        project_dir = os.path.realpath(project_dir)
-    else:
-        project_dir = os.path.realpath(project_dir)
-
+    project_dir = os.path.realpath(opts.project or os.getcwd())
     contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
     if not os.path.exists(contract_file):
         _abort(f"Missing contract file: {contract_file}")
@@ -860,6 +881,10 @@ def main(argv: list[str] | None = None) -> None:
         )
         # Sync inbox after status update
         _sync_inbox_after_status(project_dir, opts.task_id, opts.status)
+        sys.exit(rc)
+
+    elif opts.subcmd == "set-owner":
+        rc = set_owner(contract_file, opts.task_id, opts.owner)
         sys.exit(rc)
 
 

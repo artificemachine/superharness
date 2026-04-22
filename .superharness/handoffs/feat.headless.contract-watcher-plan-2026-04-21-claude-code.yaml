@@ -1,0 +1,79 @@
+task: feat.headless.contract-watcher
+phase: plan
+status: plan_proposed
+from: claude-code
+to: owner
+date: 2026-04-21T21:43:37Z
+
+plan: |
+  The function auto_enqueue_todo() already exists in inbox_watch.py (lines
+  257-364) and is called on every watcher tick. However it fails all four
+  acceptance criteria: (1) it filters by profile.autonomy == "autonomous"
+  instead of task-level autonomy == "ai_driven", so eligible tasks are never
+  seen; (2) max_concurrent_tasks throttle is not implemented — the function
+  enqueues unlimited tasks per tick; (3) ledger.md gets no entry — only a
+  print() to stdout; (4) there are zero unit tests for this function (all
+  existing tests in test_auto_dispatch.py target auto_enqueue_approved only).
+
+  The implementation changes are contained entirely within auto_enqueue_todo()
+  in inbox_watch.py: fix the eligibility filter to read task.autonomy (default
+  "ai_driven") instead of profile.autonomy; read profile.max_concurrent_tasks
+  and count currently active inbox items before enqueuing to enforce the cap;
+  append a dated ledger line for every task enqueued. A small private helper
+  _append_ledger_line(project_dir, line) will be extracted so it can be shared
+  with auto_enqueue_approved's future ledger support without duplication.
+
+  The new test file tests/unit/test_contract_watcher.py will cover all four
+  acceptance criteria with direct unit tests against auto_enqueue_todo(),
+  matching the structure of the existing test_auto_dispatch.py. No integration
+  or E2E tests are added in this task — the function is already wired into
+  _run_scripts() and exercised by the existing watcher integration tests.
+
+tdd:
+  red: |
+    New file: tests/unit/test_contract_watcher.py — 9 failing tests:
+    - test_todo_ai_driven_enqueued: ai_driven todo task is enqueued when auto_dispatch=True
+    - test_todo_hands_on_skipped: hands_on todo task is NOT enqueued
+    - test_todo_already_active_not_doubled: task already pending in inbox is skipped
+    - test_todo_blocked_by_not_enqueued: task with unresolved blocked_by is skipped
+    - test_todo_blocked_by_done_enqueued: task blocked_by done dep IS enqueued
+    - test_max_concurrent_throttle_respected: when active count >= max_concurrent_tasks, nothing new is enqueued
+    - test_max_concurrent_partial_fill: when 1 slot remains, only 1 task enqueued out of 3 eligible
+    - test_ledger_entry_written: ledger.md gets a dated line after each auto-enqueue
+    - test_no_ledger_entry_when_nothing_enqueued: ledger.md unchanged when 0 tasks eligible
+    All 9 fail before implementation because auto_enqueue_todo uses the wrong
+    filter (autonomy check always skips ai_driven tasks).
+
+  green: |
+    Modify auto_enqueue_todo() in src/superharness/commands/inbox_watch.py:
+    1. Replace `profile.get("autonomy") != "autonomous"` guard with only
+       `not profile.get("auto_dispatch")` — the per-task autonomy filter
+       replaces the profile-level autonomy check.
+    2. In the task loop, add: `task_autonomy = task.get("autonomy", "ai_driven")`
+       and skip if `task_autonomy not in ("ai_driven",)` (matching AC: "ai_driven todo tasks").
+    3. Read throttle: `max_concurrent = int(profile.get("max_concurrent_tasks", 0) or 0)`.
+       Before appending each item, check `len(active_tasks) + added >= max_concurrent`
+       when max_concurrent > 0 and break early.
+    4. After writing inbox, call `_append_ledger_line(project_dir, ...)` for each
+       enqueued task_id. Implement _append_ledger_line() as a private helper that
+       appends `- <ISO> — watcher — AUTO_ENQUEUE_TODO: <task_id> → <owner>` to
+       ledger.md if it exists.
+
+  refactor: |
+    Extract _append_ledger_line(project_dir, line) as a module-level private
+    helper. Reuse it in auto_enqueue_approved() to add ledger support there too
+    (bonus — aligns both functions). Update the docstring of auto_enqueue_todo()
+    to remove the outdated "autonomy=autonomous" requirement.
+
+risks: |
+  - The profile-level autonomy check removal: auto_enqueue_todo previously
+    required profile.autonomy == "autonomous" as a safety gate against running
+    in non-autonomous projects. The new design relies on task.autonomy instead,
+    so projects with auto_dispatch=True but no task.autonomy field will default
+    to "ai_driven" (the existing default everywhere else in the codebase). This
+    is intentional and consistent with how the auto-approve hook works.
+  - max_concurrent_tasks counts active inbox items globally, not per-agent.
+    If a project has both claude-code and codex-cli tasks, the cap applies to
+    the combined count. Verify this is the intended semantics vs. per-agent cap.
+  - ledger.md may not exist in all projects. The helper must silently skip
+    rather than fail — same pattern as other optional ledger appenders.
