@@ -94,3 +94,8 @@ Historical pairing (preserved for context):
 Spec: `docs/adapter-payload-spec.md`. Model mappings: `docs/adapter-models.md`.
 
 Schema version: `1.0` — validated by `ADAPTER_SCHEMA_VERSION` in Morpheme's `adapter.js`.
+## Runtime Environment
+- Claude Code uses the **Claude Agent SDK** (Python) for autonomous dispatch.
+- This allows bypassing permission prompts and inheriting session context (warm-start).
+- For manual troubleshooting, use `shux delegate --via cli`.
+- See `docs/CONCEPT-sdk-vs-cli.md` for details.
