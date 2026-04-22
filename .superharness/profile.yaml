@@ -3,3 +3,4 @@ autonomy: autonomous
 default_preset: implementation
 require_tdd: true
 gc_interval_cycles: 5
+auto_approve_plans: true

@@ -175,7 +175,7 @@ def _deps_satisfied(contract_file: str, task_id: str) -> bool:
             for t in tasks
             if isinstance(t, dict)
         }
-        return all(status_map.get(dep_id, "") == "done" for dep_id in dep_ids)
+        return all(status_map.get(dep_id, "") in ("done", "archived") for dep_id in dep_ids)
     except Exception:
         return True  # Fail open: don't block dispatch on read errors
 
