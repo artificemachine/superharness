@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat << 'USAGE'
 Usage:
-  install-launchd-inbox-watcher.sh --project DIR [--interval SEC] [--to claude-code|codex-cli|both] [--print-only] [--codex-bypass] [--recover-timeout-minutes N] [--recover-action stale|retry] [--launcher-timeout SECONDS] [--confirm-non-interactive yes|no] [--confirm-skip-permissions yes|no] [--confirm-codex-bypass yes|no] [--allow-protected-path]
+  install-launchd-inbox-watcher.sh --project DIR [--interval SEC] [--to TARGET|both] [--print-only] [--codex-bypass] [--recover-timeout-minutes N] [--recover-action stale|retry] [--launcher-timeout SECONDS] [--confirm-non-interactive yes|no] [--confirm-skip-permissions yes|no] [--confirm-codex-bypass yes|no] [--allow-protected-path]
 
 Options:
   -p, --project DIR   Project directory containing .superharness/ (required)
@@ -179,13 +179,7 @@ done
 
 [ -n "$PROJECT_DIR" ] || { echo "--project is required" >&2; exit 2; }
 PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd -P)"
-case "$TARGET" in
-  both|claude-code|codex-cli) ;;
-  *)
-    echo "--to must be one of: both, claude-code, codex-cli" >&2
-    exit 2
-    ;;
-esac
+# Validation: 'both' is always valid; others are validated by the watcher-worker command at runtime.
 
 case "$CONFIRM_NON_INTERACTIVE" in
   ""|yes|no) ;;
@@ -307,7 +301,7 @@ WATCHER="$SCRIPT_DIR/inbox-watch.sh"
 # launchd does not always inherit interactive shell PATH (nvm/homebrew/local bins).
 BASE_PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin"
 EXTRA_PATHS=""
-for bin in codex claude python3; do
+for bin in codex claude gemini python3; do
   if command -v "$bin" >/dev/null 2>&1; then
     dir="$(dirname "$(command -v "$bin")")"
     case ":$BASE_PATH:$EXTRA_PATHS:" in
