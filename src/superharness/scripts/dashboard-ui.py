@@ -19,6 +19,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from superharness import __version__
+
 
 def _ensure_python_with_yaml() -> None:
     """Re-exec into the repo venv if the current interpreter lacks PyYAML."""
@@ -1533,6 +1535,33 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 return ({"error": str(exc)}, 500)
 
+        if action.startswith("set_owner:"):
+            parts = action.split(":")
+            if len(parts) < 3:
+                return ({"error": "invalid action format"}, 400)
+            task_id = parts[1]
+            new_owner = parts[2]
+            harness_dir = self.project_dir / ".superharness"
+            contract_file = harness_dir / "contract.yaml"
+            try:
+                import yaml as _yaml
+                with open(contract_file) as _f:
+                    _contract = _yaml.safe_load(_f)
+                _tasks = _contract.get("tasks", [])
+                _found = False
+                for t in _tasks:
+                    if isinstance(t, dict) and t.get("id") == task_id:
+                        t["owner"] = new_owner
+                        _found = True
+                        break
+                if not _found:
+                    return ({"error": f"task '{task_id}' not found"}, 404)
+                with open(contract_file, "w") as _f:
+                    _yaml.safe_dump(_contract, _f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+                return {"ok": True, "task": task_id, "new_owner": new_owner}, 200
+            except Exception as exc:
+                return ({"error": str(exc)}, 500)
+
         if action.startswith("approve_plan:"):
             task_id = action.split(":", 1)[1]
             if not task_id:
@@ -1878,6 +1907,7 @@ class Handler(BaseHTTPRequestHandler):
             wcfg = watcher_config(self.project_dir)
             self._json(
                 {
+                    "version": __version__,
                     "project": str(self.project_dir),
                     "label": self.label,
                     "launchctl_state": state or ("loaded" if runtime.get("loaded") else ""),

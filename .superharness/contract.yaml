@@ -1774,7 +1774,7 @@ tasks:
 - id: superharness-next-action-payload
   title: 'adapter-payload: add next_action per task (schema v1.3)'
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
@@ -1815,12 +1815,12 @@ tasks:
   context: 'Follow-up to superharness-next-action-payload (PR #118). Defer guard refactor
     to after next_action ships to minimize blast radius on the schema v1.3 PR.'
 
-  summary: auto-approved per task autonomy setting
+  summary: Retrying with CLI fallback.
 - id: superharness-workflow-cmd
   title: shux workflow + per-project autonomy (profile.yaml extension, schema 
     v1.4)
   owner: claude-code
-  status: done
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
@@ -1842,7 +1842,7 @@ tasks:
 - id: feat.headless.contract-watcher
   title: 'Headless: Active Contract Watcher (todo -> self-enqueue)'
   owner: claude-code
-  status: plan_approved
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
@@ -1853,11 +1853,11 @@ tasks:
   - Prevent double-enqueueing and respect max_concurrent_tasks throttle
   - Logging/ledger entry for every auto-enqueue action
   effort: medium
-  summary: 'auto-approved per task autonomy setting'
+  summary: 'Implemented and verified autonomous contract watcher.'
 - id: feat.headless.cascading-dispatch
   title: 'Headless: Cascading Dispatch (dependency-resolution hook)'
   owner: claude-code
-  status: todo
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: feat.headless.contract-watcher
   workflow: implementation
@@ -1868,10 +1868,11 @@ tasks:
   - Cycle detection to prevent infinite cascading loops
   - Verified with tests covering multi-level dependency chains
   effort: medium
+  summary: Verified instant cascading enqueue hook.
 - id: feat.headless.auto-approve-policy
   title: 'Headless: Policy-based Auto-Approval (plan -> approved)'
   owner: claude-code
-  status: todo
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
@@ -1882,10 +1883,11 @@ tasks:
   - Immediate re-enqueue for implementation after auto-approval
   - Toggleable per-project or per-task
   effort: medium
+  summary: Implemented policy-based auto-approval and instant re-enqueue logic.
 - id: feat.headless.safety-throttle
   title: 'Headless: Safety Gates & Throttling (Infinite Loop Kill-Switch)'
   owner: claude-code
-  status: todo
+  status: archived
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: feat.headless.contract-watcher
   workflow: implementation
@@ -1896,12 +1898,6 @@ tasks:
   - Hard limit on concurrent autonomous tasks
   - Manual override (reset throttle) command available
   effort: medium
-- id: feat.headless.test-auto-plan
-  title: 'Test Auto Planning'
-  owner: claude-code
-  status: plan_approved
-  project_path: /Users/airm2max/DevOpsSec/superharness
-  blocked_by: none
-  summary: 'auto-approved per task autonomy setting'
+  summary: Implemented max_concurrent_tasks throttle.
 decisions: []
 failures: []

@@ -114,3 +114,30 @@ failures:
   - unknown
   severity: minor
   task: feat.task-lifecycle-ship
+- agent: claude-code
+  date: '2026-04-21T21:33:32Z'
+  error_snippet: 'blocked: task ''feat.headless.contract-watcher'' status is ''todo''
+    — plan must be approved before delegating (run: shux task status --id feat.headless.contract-watcher
+    --status plan_proposed, or re-dispatch with --plan-only to let the agent propose
+    the plan)'
+  patterns:
+  - unknown
+  severity: minor
+  task: feat.headless.contract-watcher
+- agent: claude-code
+  date: '2026-04-21T21:37:05Z'
+  error_snippet: 'blocked: task ''feat.headless.test-auto-plan'' status is ''todo''
+    — plan must be approved before delegating (run: shux task status --id feat.headless.test-auto-plan
+    --status plan_proposed, or re-dispatch with --plan-only to let the agent propose
+    the plan)'
+  patterns:
+  - unknown
+  severity: minor
+  task: feat.headless.test-auto-plan
+- agent: claude-code
+  date: '2026-04-21T22:30:18Z'
+  error_snippet: 'Dummy failure for testing.'
+  patterns:
+  - unknown
+  severity: major
+  task: chore.collapse-guards-next-action
