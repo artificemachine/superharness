@@ -23,6 +23,7 @@ except ImportError:
 
 import yaml
 from superharness.engine.taxonomy import VALID_EFFORTS
+from superharness.engine.next_action import ALL_STATUSES
 
 # ---------------------------------------------------------------------------
 # Validation helpers
@@ -30,15 +31,6 @@ from superharness.engine.taxonomy import VALID_EFFORTS
 
 VALID_OWNERS = {"claude-code", "codex-cli"}
 VALID_CREATE_STATUSES = {"todo", "in_progress", "pending_user_approval", "done"}
-VALID_ALL_STATUSES = {
-    "todo", "plan_proposed", "plan_approved",
-    "in_progress", "report_ready",
-    "review_passed", "review_failed",
-    "pending_user_approval",
-    "done", "failed", "stopped",
-    # Soft-deleted done tasks; hidden from `shux contract` by default.
-    "archived",
-}
 VALID_WORKFLOWS = {"implementation", "quick", "discussion", "review", "approval", "note"}
 VALID_AUTONOMY = {"ai_driven", "oversight", "hands_on"}
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
@@ -480,8 +472,8 @@ def status_update(
 ) -> int:
     _validate_token("task id", task_id)
 
-    if status not in VALID_ALL_STATUSES:
-        _abort(f"status must be one of: {', '.join(sorted(VALID_ALL_STATUSES))}", 2)
+    if status not in ALL_STATUSES:
+        _abort(f"status must be one of: {', '.join(sorted(ALL_STATUSES))}", 2)
 
     if status in ("failed", "stopped") and not reason:
         _abort(f"error: --reason is required when status={status}", 2)
@@ -708,9 +700,9 @@ def main(argv: list[str] | None = None) -> None:
     p_status = sub.add_parser("status", add_help=True)
     p_status.add_argument("--project", "-p", default=None)
     p_status.add_argument("--id", dest="task_id", required=True)
-    _valid_status_hint = "{" + "|".join(sorted(VALID_ALL_STATUSES)) + "}"
+    _valid_status_hint = "{" + "|".join(sorted(ALL_STATUSES)) + "}"
     p_status.add_argument("--status", required=True, metavar=_valid_status_hint,
-                          help=f"Lifecycle status. One of: {', '.join(sorted(VALID_ALL_STATUSES))}")
+                          help=f"Lifecycle status. One of: {', '.join(sorted(ALL_STATUSES))}")
     p_status.add_argument("--actor", required=True)
     p_status.add_argument("--reason", default="")
     p_status.add_argument("--summary", default="")
