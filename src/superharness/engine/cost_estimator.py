@@ -14,6 +14,9 @@ _TIER_TO_MODEL: dict[str, str] = {
     "standard": "claude-sonnet-4-6",
     "max":      "claude-opus-4-7",
     "max-1m":   "claude-opus-4-7[1m]",
+    "flash":    "flash",
+    "pro":      "pro",
+    "ultra":    "ultra",
 }
 
 _DEFAULT_INPUT_RATIO = 0.6  # 60% input, 40% output

@@ -125,6 +125,9 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
     "claude-opus-4-6":      {"input": 15.00, "output": 75.00},
     "claude-sonnet-4-6":    {"input": 3.00,  "output": 15.00},
     "claude-haiku-4-5-20251001": {"input": 0.25, "output": 1.25},
+    "flash":                {"input": 0.10,  "output": 0.40},
+    "pro":                  {"input": 1.25,  "output": 5.00},
+    "ultra":                {"input": 15.00, "output": 75.00},
 }
 # Keep private alias for backwards compat with internal callers
 _MODEL_PRICING = MODEL_PRICING
