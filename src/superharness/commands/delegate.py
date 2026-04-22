@@ -307,8 +307,8 @@ def _get_latest_handoff_task(handoff_dir: str, to: str) -> tuple[str, str]:
 _DISC_ROUND_RE = re.compile(r"^(discuss-[^/]+)/round-(\d+)$")
 
 # Thin re-exports so existing call sites in this module and any external
-# imports keep working. Canonical implementations live in engine.lifecycle.
-from superharness.engine.lifecycle import (  # noqa: E402
+# imports keep working. Canonical implementations live in engine.next_action.
+from superharness.engine.next_action import (  # noqa: E402
     infer_workflow as _infer_workflow,
     allowed_statuses_for_workflow as _allowed_statuses_for_workflow,
     plan_only_allowed_statuses as _plan_only_allowed_statuses,
