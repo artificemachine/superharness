@@ -1,0 +1,25 @@
+name: gemini-cli
+version: "1"
+description: "Gemini CLI — Google's AI coding agent (simulated via gemini command)"
+type: native
+launcher_script: delegate-to-gemini.sh
+capabilities:
+  - code_generation
+  - file_editing
+  - test_execution
+model_tiers:
+  mini:
+    versions:
+      "*": { id: gemini-2.0-flash, label: "Gemini 2.0 Flash" }
+  standard:
+    versions:
+      "*": { id: gemini-2.0-pro, label: "Gemini 2.0 Pro" }
+  max:
+    versions:
+      "*": { id: gemini-ultra, label: "Gemini Ultra" }
+requires:
+  bin: gemini
+  env: []
+validation:
+  check_bin: false # Don't block if not installed yet
+  check_env: false
