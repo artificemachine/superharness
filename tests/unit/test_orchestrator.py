@@ -132,7 +132,7 @@ class TestSubtaskDispatch:
             task_id="T-42",
             project_dir="/tmp/test",
         )
-        assert dispatch.model == "sonnet"
+        assert dispatch.model == "claude-sonnet-4-6"
         assert dispatch.tier == "standard"
 
     def test_dispatch_mini_uses_haiku(self):
@@ -141,7 +141,7 @@ class TestSubtaskDispatch:
             task_id="T-42",
             project_dir="/tmp/test",
         )
-        assert dispatch.model == "haiku"
+        assert dispatch.model == "claude-haiku-4-5-20251001"
         assert dispatch.tier == "mini"
 
     def test_dispatch_max_uses_opus(self):
@@ -151,7 +151,7 @@ class TestSubtaskDispatch:
             task_id="T-42",
             project_dir="/tmp/test",
         )
-        assert dispatch.model == "opus"
+        assert dispatch.model == "claude-opus-4-7"
         assert dispatch.tier == "max"
 
     def test_dispatch_includes_subtask_prompt(self):
