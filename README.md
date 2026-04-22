@@ -4,7 +4,32 @@
 
 superharness lets AI coding assistants work on the same project without stepping on each other. It provides a shared contract, queue-based delegation, and handoff/ledger state so tasks survive across sessions.
 
-> **AI agent installing this?** Read [`docs/INSTALL-AGENT.md`](docs/INSTALL-AGENT.md) — it tells you exactly what to detect, what to ask the user (just two questions), and how to set everything up without human terminal interaction.
+---
+
+## ⚡ 1-Minute Quickstart
+
+**Why use superharness?** 
+*   **Prevent Overlaps**: Different agents (Claude, Codex) won't edit the same files at the same time.
+*   **Persistent State**: If an agent crashes or hits a limit, the next one knows exactly where to pick up.
+*   **Headless Future**: The engine can autonomously move through a project roadmap without human intervention.
+
+### 1. Install
+```bash
+pipx install superharness
+```
+
+### 2. Initialize
+Inside your project:
+```bash
+shux onboard
+```
+
+### 3. Coordinate
+Talk to your agent (Claude/Codex) and use these four core phrases:
+*   `shux contract` — "What is the plan?"
+*   `shux delegate <task-id>` — "Start this task now."
+*   `shux verify <task-id>` — "I checked the work; it passes."
+*   `shux close <task-id>` — "Task finished; update the ledger."
 
 ---
 
