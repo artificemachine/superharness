@@ -1,7 +1,7 @@
-"""Tests for superharness.engine.lifecycle — canonical workflow/status helpers."""
+"""Tests for superharness.engine.next_action — canonical workflow/status helpers."""
 from __future__ import annotations
 
-from superharness.engine.lifecycle import (
+from superharness.engine.next_action import (
     TERMINAL_STATUSES,
     allowed_statuses_for_workflow,
     infer_workflow,

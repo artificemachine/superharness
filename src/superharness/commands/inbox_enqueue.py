@@ -12,7 +12,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-from superharness.engine.lifecycle import (
+from superharness.engine.next_action import (
     TERMINAL_STATUSES,
     allowed_statuses_for_workflow,
     infer_workflow,
