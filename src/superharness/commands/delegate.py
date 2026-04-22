@@ -718,11 +718,15 @@ def delegate(
     # 3. Auto-classification (if not fully resolved and not disabled)
     if not no_auto_model and (not resolved_model or not resolved_effort):
         try:
-            from superharness.engine.model_router import (
-                classify_task,
+            from superharness.engine.adapter_registry import (
+                clear_manifest_cache,
                 resolve_model as _resolve_model,
-                resolve_tier,
             )
+            from superharness.engine.model_router import classify_task, resolve_tier
+            
+            # Force reload of manifests (prevents stale "sonnet" fallback)
+            clear_manifest_cache()
+
             task_title = _get_task_title(contract_file, task_id)
             ac_for_classify = _get_task_acceptance_criteria(contract_file, task_id)
             previously_failed = _get_task_previously_failed(contract_file, task_id)

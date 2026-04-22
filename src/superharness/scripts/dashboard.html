@@ -47,7 +47,20 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      border-radius: 6px;
+      border-radius: 8px;
+      background: var(--btn);
+      border: 1px solid var(--line);
+      color: var(--text);
+      cursor: pointer;
+    }
+    .task-actions button:disabled, .task-actions select:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      border-style: dashed;
+    }
+    .task-actions button:hover:not(:disabled) {
+      background: var(--btn2);
+      border-color: var(--muted);
     }
     .task-meta { flex:1; display:flex; flex-direction:column; gap:6px; min-width: 0; }
     .task-title-line { display:flex; align-items:center; gap:12px; }
@@ -763,9 +776,10 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
     // Select-based owner swap
     const currentOwner = t.owner || 'unassigned';
     const ownerDropdown = `
-      <select onchange="changeOwner('${tid}', this.value)" style="background:var(--btn);border:1px solid var(--line);color:var(--muted);font-size:11px;padding:2px 4px;border-radius:4px;cursor:pointer">
+      <select onchange="changeOwner('${tid}', this.value)">
         <option value="claude-code" ${currentOwner === 'claude-code' ? 'selected' : ''}>@claude-code</option>
         <option value="codex-cli" ${currentOwner === 'codex-cli' ? 'selected' : ''}>@codex-cli</option>
+        <option value="gemini-cli" ${currentOwner === 'gemini-cli' ? 'selected' : ''}>@gemini-cli</option>
       </select>
     `;
 
@@ -775,73 +789,69 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
     
     const ownerEsc = (t.owner || '').replace(/'/g, "\\\\'");
     // View Report button for any task with a handoff or in report_ready/done status
-    const viewReportBtn = `<button onclick="viewTaskReport('${tid}','${ownerEsc}')" style="font-size:11px;padding:2px 8px">View Report</button>`;
+    const viewReportBtn = `<button onclick="viewTaskReport('${tid}','${ownerEsc}')">View Report</button>`;
     actionButtons.push(viewReportBtn);
     const isEnqueued = activeInboxTasks.has(t.id);
     const isDoneInbox = doneInboxTasks.has(t.id);
     const canEnqueue = canEnqueueTask(t);
     if (canEnqueue && isDoneInbox && !isEnqueued) {
-      actionButtons.push(`<button onclick="markTaskDone('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Done</button>`);
+      actionButtons.push(`<button onclick="markTaskDone('${tid}')" class="ok">Done</button>`);
     }
     if (st === 'plan_proposed') {
-      actionButtons.push(`<button onclick="approvePlan('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Approve Plan</button>`);
+      actionButtons.push(`<button onclick="approvePlan('${tid}')" class="ok">Approve Plan</button>`);
     } else if (st === 'report_ready') {
       const isVerifyTask = tid.startsWith('verify.');
       if (isVerifyTask) {
         // Verify tasks are self-verifying — close is the primary action
-        actionButtons.push(`<button onclick="approveReport('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Close Without Review</button>`);
-        actionButtons.push(`<button onclick="requestReview('${tid}')" style="font-size:10px;padding:1px 6px;color:var(--muted);opacity:0.7" title="Request meta-review of this verification">Request Review</button>`);
+        actionButtons.push(`<button onclick="approveReport('${tid}')" class="ok">Close Without Review</button>`);
+        actionButtons.push(`<button onclick="requestReview('${tid}')" style="opacity:0.7">Request Review</button>`);
       } else {
-        actionButtons.push(`<button onclick="requestReview('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Request Review</button>`);
+        actionButtons.push(`<button onclick="requestReview('${tid}')" class="warn">Request Review</button>`);
         if (t.verified) {
-          actionButtons.push(`<button onclick="approveReport('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--muted)">Close Without Review</button>`);
+          actionButtons.push(`<button onclick="approveReport('${tid}')">Close Without Review</button>`);
         } else {
-          actionButtons.push(`<button disabled title="Run verify before closing" style="font-size:11px;padding:2px 8px;opacity:0.45;cursor:not-allowed">Verify First</button>`);
+          actionButtons.push(`<button disabled title="Run verify before closing">Verify First</button>`);
         }
       }
     } else if (st === 'review_requested') {
-      actionButtons.push(`<button onclick="cancelReview('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--muted)">Cancel Review</button>`);
-      actionButtons.push(`<button onclick="approveWithoutReview('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Approve Without Review</button>`);
+      actionButtons.push(`<button onclick="cancelReview('${tid}')">Cancel Review</button>`);
+      actionButtons.push(`<button onclick="approveWithoutReview('${tid}')" class="ok">Approve Without Review</button>`);
     } else if (st === 'review_failed') {
-      actionButtons.push(`<span class="small" style="color:var(--bad)">↩ review failed</span>`);
-      actionButtons.push(`<button onclick="enqueueTask('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Re-enqueue</button>`);
+      actionButtons.push(`<span class="small" style="color:var(--bad); width:140px; text-align:center">↩ review failed</span>`);
+      actionButtons.push(`<button onclick="enqueueTask('${tid}')" class="warn">Re-enqueue</button>`);
     } else if (st === 'review_passed') {
-      actionButtons.push(`<button onclick="runClose('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok)">Close</button>`);
+      actionButtons.push(`<button onclick="runClose('${tid}')" class="ok">Close</button>`);
     }
 
     if (st === 'stopped') {
-      actionButtons.push(`<button onclick="enableTask('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--warn)">Re-queue</button>`);
+      actionButtons.push(`<button onclick="enableTask('${tid}')" class="warn">Re-queue</button>`);
     } else if (st !== 'done' && isEnqueued) {
-      actionButtons.push(`<span class="pill" style="font-size:10px;background:var(--ok);color:#000;padding:1px 6px;cursor:default">queued</span>`);
-    } else if (st === 'todo') {
-      const isImpl = inferredWorkflow(t) === 'implementation';
-      const blockHint = isBlocked ? `Blocked by: ${blockers.join(', ')}` : '';
-      
-      if (isImpl) {
-        if (isBlocked) {
-          actionButtons.push(`<button disabled title="${blockHint}" style="font-size:11px;padding:2px 8px;opacity:0.5;cursor:not-allowed">Propose Plan</button>`);
-          actionButtons.push(`<button disabled title="${blockHint}" style="font-size:11px;padding:2px 8px;opacity:0.5;cursor:not-allowed">Delegate Plan</button>`);
-        } else {
-          actionButtons.push(`<button onclick="proposePlan('${tid}')" style="font-size:11px;padding:2px 8px;color:var(--ok);font-weight:bold" title="Write the plan yourself and submit">Propose Plan</button>`);
-          actionButtons.push(`<button onclick="delegatePlanToAgent('${tid}','${ownerEsc||'claude-code'}')" style="font-size:11px;padding:2px 8px;color:var(--warn)" title="Dispatch the owner agent to propose a plan (plan-only — no implementation)">Delegate Plan</button>`);
-        }
-      }
-
+      actionButtons.push(`<span class="pill" style="background:var(--ok);color:#000;cursor:default">queued</span>`);
+    } else {
+      // Logic for Enqueue button (enabled or blocked)
+      const canEnqueue = canEnqueueTask(t);
       if (canEnqueue) {
         if (isBlocked) {
-          actionButtons.push(`<button disabled title="${blockHint}" style="font-size:10px;padding:1px 6px;background:var(--bg);color:var(--muted);border:1px dashed var(--line);border-radius:10px;cursor:not-allowed">Enqueue ⛔</button>`);
+          const blockHint = `Blocked by: ${blockers.join(', ')}`;
+          actionButtons.push(`<button disabled title="${blockHint}">Enqueue ⛔</button>`);
         } else {
-          actionButtons.push(`<button onclick="enqueueTask('${tid}')" style="font-size:10px;padding:1px 6px;background:var(--muted);color:#fff;border-radius:10px">Enqueue</button>`);
+          const currentOwnerEsc = (t.owner || 'claude-code').replace(/'/g, "\\\\'");
+          actionButtons.push(`<button onclick="enqueueTask('${tid}', '${currentOwnerEsc}')">Enqueue</button>`);
         }
+      } else if (st === 'todo' && inferredWorkflow(t) === 'implementation') {
+        // Special case for implementation todo: show disabled enqueue with specific hint
+        const blockHint = isBlocked ? `Blocked by: ${blockers.join(', ')}` : 'Plan must be approved before dispatch.';
+        actionButtons.push(`<button disabled title="${blockHint}">Enqueue ⛔</button>`);
+      } else if (st !== 'done' && st !== 'todo') {
+        // Any other non-dispatchable state (report_ready, review_requested)
+        const blockHint = isBlocked ? `Blocked by: ${blockers.join(', ')}` : enqueueBlockReason(t).replace(/"/g,'&quot;');
+        actionButtons.push(`<button disabled title="${blockHint}">Enqueue ⛔</button>`);
       }
-    } else if (st !== 'done') {
-      const blockHint = isBlocked ? `Blocked by: ${blockers.join(', ')}` : enqueueBlockReason(t).replace(/"/g,'&quot;');
-      actionButtons.push(`<button disabled title="${blockHint}" style="font-size:10px;padding:1px 6px;background:var(--bg);color:var(--muted);border:1px dashed var(--line);border-radius:10px;cursor:not-allowed">Enqueue ⛔</button>`);
     }
     if (isBlocked) {
-       actionButtons.push(`<button disabled title="Cannot remove blocked task" style="font-size:11px;padding:2px 8px;opacity:0.5;cursor:not-allowed;color:var(--bad)">Remove</button>`);
+       actionButtons.push(`<button disabled title="Cannot remove blocked task" class="bad">Remove</button>`);
     } else {
-       actionButtons.push(`<button onclick="removeTask('${tid}')" style="font-size:11px;padding:2px 6px;color:var(--bad)">Remove</button>`);
+       actionButtons.push(`<button onclick="removeTask('${tid}')" class="bad">Remove</button>`);
     }
     const statusDesc = `<div class="task-status-footer">${label} — ${t.summary || 'no recent updates'}</div>`;
     row.innerHTML = `<div class="task-actions">${hintInfo}${actionButtons.join(' ')}${statusDesc}</div>${title}`;
@@ -948,16 +958,22 @@ async function runClose(taskId) {
   await act('close_task:' + taskId);
 }
 
-async function enqueueTask(taskId) {
+async function enqueueTask(taskId, currentOwner) {
   const modal = document.getElementById('enqueueModal');
   const titleEl = document.getElementById('enqueueModalTitle');
   const targetEl = document.getElementById('enqueueTarget');
   const instrEl = document.getElementById('enqueueInstructions');
   const previewEl = document.getElementById('enqueuePreview');
+  
   titleEl.textContent = `Enqueue: ${taskId}`;
-  targetEl.value = 'claude-code';
   instrEl.value = 'Loading task instructions...';
   previewEl.innerHTML = 'Loading dispatch preview...';
+  
+  // Set the target agent immediately from the dashboard list
+  if (currentOwner) {
+    targetEl.value = currentOwner;
+  }
+  
   modal.dataset.taskId = taskId;
   modal.style.display = 'block';
   try {
@@ -965,13 +981,35 @@ async function enqueueTask(taskId) {
     instrEl.value = d.instructions || '(no plan found for this task)';
     // Build dispatch preview
     const task = (d.task_meta || {});
-    const model = task.model || 'sonnet';
+    // Fallback to API owner only if not passed or modal was opened differently
+    const agent = currentOwner || task.owner || 'claude-code';
+    targetEl.value = agent;
+    
+    let model = task.model;
+    if (!model) {
+        if (agent === 'gemini-cli') model = 'flash';
+        else if (agent === 'codex-cli') model = 'mini';
+        else model = 'sonnet';
+    }
+
     const effort = task.effort || 'medium';
     const timeout = task.timeout_minutes || '—';
-    const costs = { haiku: '$0.25/$1.25', sonnet: '$3/$15', opus: '$15/$75' };
+    const costs = { 
+        haiku: '$0.25/$1.25', sonnet: '$3/$15', opus: '$15/$75',
+        flash: '$0.10/$0.40', pro: '$1.25/$5.00', ultra: '$15/$75',
+        mini: '$0.15/$0.60'
+    };
+    const labels = {
+        flash: 'Gemini 2.0 Flash', pro: 'Gemini 2.0 Pro', ultra: 'Gemini Ultra',
+        sonnet: 'Claude 3.5 Sonnet', opus: 'Claude 3.5 Opus', haiku: 'Claude 3.5 Haiku',
+        mini: 'GPT-4o Mini'
+    };
+
     const cost = costs[model] || costs['sonnet'];
+    const modelLabel = labels[model] || model;
+
     previewEl.innerHTML = [
-      `<span style="color:var(--muted)">model:</span> <b>${model}</b> (${cost}/MTok)`,
+      `<span style="color:var(--muted)">model:</span> <b>${modelLabel}</b> (${cost}/MTok)`,
       `<span style="color:var(--muted)">effort:</span> <b>${effort}</b>`,
       `<span style="color:var(--muted)">timeout:</span> <b>${timeout}${timeout !== '—' ? 'min' : ''}</b>`,
       task.test_types ? `<span style="color:var(--muted)">tests:</span> ${task.test_types}` : '',
@@ -992,8 +1030,8 @@ async function submitEnqueue() {
   const target = document.getElementById('enqueueTarget').value;
   const instructions = document.getElementById('enqueueInstructions').value.trim();
   modal.style.display = 'none';
-  if (!target || (target !== 'claude-code' && target !== 'codex-cli')) {
-    alert('Invalid target. Must be claude-code or codex-cli.');
+  if (!target || (target !== 'claude-code' && target !== 'codex-cli' && target !== 'gemini-cli')) {
+    alert('Invalid target. Must be claude-code, codex-cli, or gemini-cli.');
     return;
   }
   const st = document.getElementById('actionStatus');
@@ -1523,7 +1561,9 @@ mermaid.initialize({
     <select id="enqueueTarget" style="width:100%;padding:6px;margin:4px 0 12px 0;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:4px">
       <option value="claude-code">claude-code</option>
       <option value="codex-cli">codex-cli</option>
+      <option value="gemini-cli">gemini-cli</option>
     </select>
+
     <div id="enqueuePreview" style="margin:0 0 12px 0;padding:8px;background:var(--bg);border:1px solid var(--line);border-radius:4px;font-size:11px;font-family:monospace;">Loading dispatch preview...</div>
     <label style="font-size:12px;color:var(--muted)">Instructions (TDD plan — edit or replace):</label>
     <textarea id="enqueueInstructions" rows="12" style="width:100%;padding:8px;margin:4px 0 12px 0;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:4px;font-family:monospace;font-size:12px;resize:vertical"></textarea>

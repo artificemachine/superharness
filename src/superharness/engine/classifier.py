@@ -13,17 +13,20 @@ import warnings
 
 from superharness.engine.taxonomy import EFFORT_ORDER, OPUS_KEYWORDS, VALID_EFFORTS
 
-_FALLBACK_MODEL = "claude-sonnet-4-6"
+_FALLBACK_TIER = "standard"
 _FALLBACK_EFFORT = "medium"
 
 _1M_TOKEN_THRESHOLD = 200_000
 
 _LOW_TITLE_PREFIXES = ("fix.typo", "docs:", "chore:")
 
-_LLM_MODEL_MAP: dict[str, str] = {
-    "sonnet-4-6": "claude-sonnet-4-6",
-    "opus-4-6":   "claude-opus-4-6",
-    "opus-4-7":   "claude-opus-4-7",
+_LLM_TIER_MAP: dict[str, str] = {
+    "mini":     "mini",
+    "standard": "standard",
+    "max":      "max",
+    "sonnet-4-6": "standard", # Backwards compat for older LLM prompts
+    "opus-4-6":   "max",
+    "opus-4-7":   "max",
 }
 
 _LLM_CLASSIFY_PROMPT = """\

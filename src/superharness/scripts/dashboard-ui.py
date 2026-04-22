@@ -1780,7 +1780,7 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts) < 3 or not parts[1] or not parts[2]:
                 return ({"error": "Missing task ID or target agent."}, 400)
             task_id, target = parts[1], parts[2]
-            if target not in ("claude-code", "codex-cli"):
+            if target not in ("claude-code", "codex-cli", "gemini-cli"):
                 return ({"error": f"invalid target: {target}"}, 400)
             # Block duplicate: reject if task already has an active/paused inbox item
             active_statuses = {"pending", "launched", "running", "paused"}
@@ -2028,6 +2028,9 @@ class Handler(BaseHTTPRequestHandler):
                     for t in doc.get("tasks") or []:
                         if isinstance(t, dict) and t.get("id") == task_id:
                             task_meta = {
+                                "owner": t.get("owner", "claude-code"),
+                                "status": t.get("status", "todo"),
+                                "workflow": t.get("workflow", "implementation"),
                                 "model": t.get("model", ""),
                                 "effort": t.get("effort", "medium"),
                                 "timeout_minutes": t.get("timeout_minutes"),

@@ -731,3 +731,16 @@
   status: failed
   task: chore.collapse-guards-next-action
   to: claude-code
+
+# normalized_at: 2026-04-22T18:43:31Z
+- created_at: '2026-04-22T15:20:03Z'
+  failed_at: '2026-04-22T18:33:41Z'
+  id: 20260422T152003Z-chore.collapse-guards-next-action-61236-1c3803
+  launched_at: '2026-04-22T18:29:02Z'
+  max_retries: 3
+  priority: 2
+  project: /Users/airm2max/DevOpsSec/superharness
+  retry_count: 1
+  status: failed
+  task: chore.collapse-guards-next-action
+  to: gemini-cli
