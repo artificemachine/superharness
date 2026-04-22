@@ -97,7 +97,7 @@ def test_task_create_validates_owner(tmp_path: Path) -> None:
         "--owner", "invalid-agent",
     ])
     assert r.returncode != 0
-    assert "owner must be claude-code or codex-cli" in r.stderr
+    assert "owner must be one of:" in r.stderr
 
 
 def test_task_create_validates_status(tmp_path: Path) -> None:

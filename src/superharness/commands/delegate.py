@@ -737,7 +737,8 @@ def delegate(
                 previously_failed=previously_failed,
             )
             if not resolved_model:
-                resolved_model = _resolve_model(target, classified_tier)
+                _m = _resolve_model(target, classified_tier)
+                resolved_model = _m.get("id", classified_tier) if isinstance(_m, dict) else _m
                 model_source = "auto-classified"
             if not resolved_effort:
                 resolved_effort = classified_effort
