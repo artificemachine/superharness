@@ -10,9 +10,21 @@ import subprocess
 from superharness.engine.taxonomy import VALID_EFFORTS
 
 MODEL_MAP: dict[str, dict[str, str]] = {
-    "claude-code": {"mini": "haiku", "standard": "sonnet", "max": "opus"},
-    "codex-cli": {"mini": "gpt-5.2", "standard": "gpt-5.3-codex", "max": "gpt-5.4"},
-    "gemini-cli": {"mini": "flash", "standard": "pro", "max": "ultra"},
+    "claude-code": {
+        "mini": "claude-haiku-4-5-20251001",
+        "standard": "claude-sonnet-4-6",
+        "max": "claude-opus-4-7"
+    },
+    "codex-cli": {
+        "mini": "gpt-5.1-codex-mini",
+        "standard": "gpt-5.3-codex",
+        "max": "gpt-5.4"
+    },
+    "gemini-cli": {
+        "mini": "gemini-2.0-flash",
+        "standard": "gemini-2.0-pro",
+        "max": "gemini-ultra"
+    },
 }
 
 VALID_TIERS = {"mini", "standard", "max"}
@@ -87,8 +99,10 @@ def classify_task(
 
 
 def resolve_model(target: str, tier: str) -> str:
-    """Map a tier to the agent's actual model name."""
-    return MODEL_MAP.get(target, {}).get(tier, "sonnet")
+    """Map a tier to the agent's actual model name via the adapter registry."""
+    from superharness.engine.adapter_registry import resolve_model as _resolve
+    res = _resolve(target, tier)
+    return res["id"]
 
 
 def resolve_tier(model_name: str) -> str | None:
