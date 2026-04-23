@@ -45,12 +45,13 @@ adapters/               → Claude Code hooks, Codex CLI templates
 
 | Module | Role |
 |--------|------|
-| `schemas.py` | Pydantic v2 models for all protocol YAML types (`ContractTask`, `Subtask`, `InboxItem`, etc.) |
-| `model_router.py` | Maps tier names (mini/standard/max) to agent-specific model IDs |
-| `cost_estimator.py` | Pre-flight token and cost estimation per subtask tier before dispatch |
-| `orchestrator.py` | Opus-level orchestrator: decomposes a task into subtasks, assigns model tiers, estimates cost |
-| `subtask_aggregator.py` | Records sub-agent results back to `contract.yaml`; sets parent task status on completion |
-| `sdk_runner.py` | Wraps `claude_agent_sdk.query()` for programmatic dispatch with token/cost tracking and budget guards |
+| `next_action.py` | **Core Heart**: Single source of truth for task state transitions and dispatch gates. |
+| `operator.py` | **Guardian**: Self-healing stack manager for background Watchers and Dashboards. |
+| `adapter_registry.py` | **Connector**: Registry of agent manifests (Claude, Codex, Gemini) with versioned model mapping. |
+| `schemas.py` | Pydantic v2 models for all protocol YAML types. |
+| `model_router.py` | Maps tier names (mini/standard/max) to agent-specific model IDs. |
+| `orchestrator.py` | Opus-level orchestrator: decomposes tasks into subtasks. |
+| `sdk_runner.py` | Wraps `claude_agent_sdk` for programmatic, headless Claude dispatch. |
 
 ---
 
