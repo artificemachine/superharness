@@ -197,3 +197,60 @@ failures:
   - timeout
   severity: major
   task: feat.dashboard-auto-restart-on-upgrade
+- agent: claude-code
+  date: '2026-04-23T13:20:56Z'
+  error_snippet: "^D\b\bUsage: delegate [-h] [--to TARGET] [--project PROJECT] [--task\
+    \ TASK]\n                [--print-only] [--non-interactive] [--codex-bypass]\n\
+    \                [--for-review] [--model MODEL]\n                [--effort {low,medium,high,xhigh,max}]\
+    \ [--no-auto-model]\n                [--via {cli,sdk}] [--orchestrate] [--skip-preflight]\
+    \ [--force]\n                [--plan-only] [--1m-context] [--ship-on-complete]\
+    \ [--json]\ndelegate: error: unrecognized arguments: --yolo"
+  patterns:
+  - unknown
+  severity: minor
+  task: chore.collapse-guards-next-action
+- agent: claude-code
+  date: '2026-04-23T13:41:07Z'
+  error_snippet: "timed out\n^D\b\b⚠ Preflight [WARN] task=feat.dashboard-auto-restart-on-upgrade\n\
+    \  ⚠ [no_tdd_red] No TDD red phase defined — agent will code without a failing\
+    \ test first.\n      Add a tdd.red block describing which tests to write before\
+    \ implementing.\n  ⚠ [prior_failures] 1 prior failure(s) recorded — fix hints\
+    \ will be injected into context.\nProject: /Users/airm2max/DevOpsSec/superharness\n\
+    Contract: initial-setup\nTask: feat.dashboard-auto-restart-on-upgrade\nModel:\
+    \ claude-sonnet-4-6 (auto-classified)\nEf"
+  patterns:
+  - timeout
+  severity: major
+  task: feat.dashboard-auto-restart-on-upgrade
+- agent: claude-code
+  date: '2026-04-23T15:53:22Z'
+  error_snippet: "timed out\n^D\b\b⚠ Preflight [WARN] task=feat.dashboard-auto-restart-on-upgrade\n\
+    \  ⚠ [no_tdd_red] No TDD red phase defined — agent will code without a failing\
+    \ test first.\n      Add a tdd.red block describing which tests to write before\
+    \ implementing.\n  ⚠ [dirty_worktree] Working tree has 15 uncommitted change(s).\n\
+    \      The agent may be confused by existing modifications. Consider committing\
+    \ first.\n  ⚠ [prior_failures] 2 prior failure(s) recorded — fix hints will be\
+    \ injected into context.\nProject: /Us"
+  patterns:
+  - timeout
+  - worktree_error
+  severity: major
+  task: feat.dashboard-auto-restart-on-upgrade
+- agent: claude-code
+  date: '2026-04-23T16:24:56Z'
+  error_snippet: "timed out\n\nduplicate\n\n\n\n---\n\nVerification\n\n\n\n1.pytesttests/unit/test_dashboard_autohealth_version.py-q—allREDtests\n\
+    \npassGREEN\n\n2.pytesttests/-q—noregressionsacrossfullsuite\n\n3.Manualsmoke:downgrade__version__in__init__.py,rundashboard,observe\n\
+    \nauto-restart\e[1"
+  patterns:
+  - timeout
+  severity: major
+  task: feat.dashboard-auto-restart-on-upgrade
+- agent: claude-code
+  date: '2026-04-23T16:34:36Z'
+  error_snippet: "^D\b\b\e7\e80;✳ Claude Code\a9;4;0;\a ▐▛███▜▌ClaudeCodev2.1.118\n\
+    \n▝▜█████▛▘Sonnet4.6withhigheffort·ClaudeMax\n\n ▘▘▝▝~/DevOpsSec/superharness\n\
+    \n\n\n─────────────────────────────"
+  patterns:
+  - unknown
+  severity: minor
+  task: feat.dashboard-auto-restart-on-upgrade

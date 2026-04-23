@@ -591,6 +591,12 @@ def task_log_content(project_dir: Path, task_id: str, agent: str, lines: int = 0
         result["log_file"] = str(log_file.relative_to(project_dir))
         try:
             content = log_file.read_text(errors="replace")
+            
+            # Strip ANSI escape sequences (e.g., [1C, [m)
+            import re
+            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+            content = ansi_escape.sub('', content)
+
             if lines > 0:
                 # Return only last N lines
                 all_lines = content.splitlines()
@@ -2031,7 +2037,11 @@ class Handler(BaseHTTPRequestHandler):
             inbox = self.project_dir / ".superharness" / "inbox.yaml"
             items = inbox_items(inbox)
             if status_filter:
-                items = [i for i in items if i.get("status") == status_filter]
+                if status_filter == "active":
+                    _ACTIVE = {"pending", "launched", "running", "paused"}
+                    items = [i for i in items if i.get("status") in _ACTIVE]
+                else:
+                    items = [i for i in items if i.get("status") == status_filter]
             if owner_filter:
                 items = [i for i in items if i.get("to") in owner_filter]
             self._json({"items": items, "status": status_filter, "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
@@ -2284,6 +2294,25 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"error": "not found"}, 404)
 
 
+def _get_installed_version() -> str:
+    """Return the installed package version, or 'unknown' if unavailable."""
+    try:
+        import importlib.metadata
+        return importlib.metadata.version("superharness")
+    except Exception:
+        return "unknown"
+
+
+def _append_ledger(project_dir: str, line: str) -> None:
+    """Append *line* to .superharness/ledger.md, creating the file if absent."""
+    ledger_path = os.path.join(project_dir, ".superharness", "ledger.md")
+    try:
+        with open(ledger_path, "a") as fh:
+            fh.write(line)
+    except Exception:
+        pass  # Ledger writes must never crash the watchdog
+
+
 def autohealth_check(port: int, host: str = "127.0.0.1", timeout: float = 2.0) -> bool:
     """Ping the dashboard server. Returns True if healthy, False otherwise."""
     import urllib.request
@@ -2324,6 +2353,16 @@ def autohealth_loop(
             stderr=subprocess.STDOUT,
         )
 
+    def _restart_proc(current_proc: subprocess.Popen) -> subprocess.Popen:
+        """Terminate *current_proc* (if alive) and start a fresh dashboard."""
+        if current_proc.poll() is None:
+            current_proc.terminate()
+            try:
+                current_proc.wait(timeout=5)
+            except Exception:
+                pass
+        return _start()
+
     def _shutdown(signum: int, frame: object) -> None:
         if proc and proc.poll() is None:
             proc.terminate()
@@ -2333,16 +2372,33 @@ def autohealth_loop(
     signal.signal(signal.SIGINT, _shutdown)
 
     proc = _start()
-    print(f"autohealth: started dashboard pid={proc.pid} port={port}")
+    running_version = _get_installed_version()
+    print(f"autohealth: started dashboard pid={proc.pid} port={port} version={running_version}")
 
     while restarts < max_restarts:
         time.sleep(interval)
+
+        # Version-mismatch check: restart when installed package was upgraded.
+        installed_version = _get_installed_version()
+        if installed_version != running_version:
+            restarts += 1
+            now_ts = dt.datetime.now(tz=dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            _append_ledger(
+                project_dir,
+                f"- {now_ts} — autohealth — auto-restart — version mismatch: "
+                f"{running_version} -> {installed_version}\n",
+            )
+            proc = _restart_proc(proc)
+            running_version = installed_version
+            print(
+                f"autohealth: restarted dashboard pid={proc.pid} "
+                f"(version upgrade: {running_version}, restart #{restarts})"
+            )
+            continue
+
         if proc.poll() is not None or not autohealth_check(port, host):
             restarts += 1
-            if proc.poll() is None:
-                proc.terminate()
-                proc.wait(timeout=5)
-            proc = _start()
+            proc = _restart_proc(proc)
             print(f"autohealth: restarted dashboard pid={proc.pid} (restart #{restarts})")
     print(f"autohealth: max restarts ({max_restarts}) reached, exiting")
 

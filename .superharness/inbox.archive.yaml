@@ -744,3 +744,32 @@
   status: failed
   task: chore.collapse-guards-next-action
   to: gemini-cli
+
+# normalized_at: 2026-04-23T15:00:40Z
+- created_at: '2026-04-23T11:11:18Z'
+  id: 20260423T111117Z-chore.collapse-guards-next-action-21619-e5c315
+  launched_at: '2026-04-23T13:48:53Z'
+  max_retries: 3
+  paused_at: '2026-04-23T14:30:16Z'
+  pid: '40099'
+  priority: 2
+  project: /Users/airm2max/DevOpsSec/superharness
+  resumed_at: '2026-04-23T11:29:13Z'
+  retry_count: 1
+  status: paused
+  task: chore.collapse-guards-next-action
+  to: claude-code
+
+# normalized_at: 2026-04-23T15:51:39Z
+- created_at: '2026-04-23T13:24:17Z'
+  failed_at: '2026-04-23T14:12:11Z'
+  failed_reason: permanent block (lifecycle gate) — not retryable
+  id: auto-849bc0
+  launched_at: '2026-04-23T14:11:37Z'
+  max_retries: 3
+  priority: 2
+  project: /Users/airm2max/DevOpsSec/superharness
+  retry_count: '3'
+  status: failed
+  task: chore.collapse-guards-next-action
+  to: claude-code

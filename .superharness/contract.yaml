@@ -1801,7 +1801,7 @@ tasks:
   title: Collapse delegate/enqueue/task-status guard tables into 
     engine/next_action.py
   owner: claude-code
-  status: plan_approved
+  status: report_ready
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
@@ -1816,7 +1816,11 @@ tasks:
   effort: medium
   context: 'Follow-up to superharness-next-action-payload (PR #118). Defer guard refactor
     to after next_action ships to minimize blast radius on the schema v1.3 PR.'
-  summary: Retrying with CLI fallback.
+  summary: Removed duplicate _DISC_ROUND_RE from delegate.py (now imported from 
+    next_action) and removed _DISC_ROUND_RE + _infer_workflow from 
+    contract_today.py (now uses next_action.infer_workflow). All 11 
+    collapse-guards tests pass; 7 pre-existing unrelated failures confirmed on 
+    main.
 - id: superharness-workflow-cmd
   title: shux workflow + per-project autonomy (profile.yaml extension, schema 
     v1.4)
@@ -1939,7 +1943,7 @@ tasks:
 - id: feat.dashboard-auto-restart-on-upgrade
   title: Dashboard auto-restart when installed version changes
   owner: claude-code
-  status: todo
+  status: plan_approved
   project_path: /Users/airm2max/DevOpsSec/superharness
   blocked_by: none
   workflow: implementation
@@ -1951,5 +1955,6 @@ tasks:
   - Auto-restarts the dashboard process when mismatch detected
   - Logs the restart with old and new version to ledger
   effort: low
+  summary: auto-approved per task autonomy setting
 decisions: []
 failures: []
