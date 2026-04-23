@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+_TEST_AUTH_TOKEN = "test-token"  # noqa: S105 shipguard:ignore test fixture, not a real credential
+
 
 def _load_monitor_module(repo_root: Path):
     script = repo_root / "src" / "superharness" / "scripts" / "dashboard-ui.py"
@@ -59,7 +61,7 @@ def _start_server(module, repo_root: Path, project: Path):
     module.Handler.refresh_seconds = 3
     module.Handler.scripts_dir = repo_root / "src" / "superharness" / "scripts"
     module.Handler.logdy_port = 8798
-    module.Handler.auth_token = "test-token"
+    module.Handler.auth_token = _TEST_AUTH_TOKEN
     module.Handler.logdy_process = None
     server = module.ThreadingHTTPServer(("127.0.0.1", 0), module.Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -69,7 +71,7 @@ def _start_server(module, repo_root: Path, project: Path):
     return server, thread, base_url
 
 
-def _request_json(method: str, url: str, payload: dict | None = None, base_url: str = "", token: str = "test-token"):
+def _request_json(method: str, url: str, payload: dict | None = None, base_url: str = "", token: str = _TEST_AUTH_TOKEN):
     body = None
     if payload is not None:
         body = json.dumps(payload).encode("utf-8")

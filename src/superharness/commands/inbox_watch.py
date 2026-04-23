@@ -473,8 +473,11 @@ def auto_enqueue_approved(project_dir: str) -> int:
     if added > 0:
         import yaml as _yaml
         try:
-            with open(inbox_file, "w", encoding="utf-8") as _f:
-                _f.write(_yaml.dump(inbox_items, default_flow_style=False))
+            from superharness.engine.inbox import _inbox_lock
+            with _inbox_lock(inbox_file):
+                with open(inbox_file, "w", encoding="utf-8") as _f:
+                    _f.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
+                    _yaml.dump(inbox_items, _f, default_flow_style=False, sort_keys=True)
         except Exception as e:
             print(f"auto-dispatch: failed to write inbox: {e}", file=sys.stderr)
             return 0
