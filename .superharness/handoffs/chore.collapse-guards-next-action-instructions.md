@@ -5,12 +5,6 @@ Task: Collapse delegate/enqueue/task-status guard tables into engine/next_action
 - No behaviour change: all existing reject/accept cases still behave identically (tests stay green)
 - Remove duplicate mapping tables from delegate._allowed_statuses_for_workflow and inbox_enqueue
 
-## Prior Attempt (FAILED)
-Status: failed
-No detailed report from previous attempt.
-
-Fix the issues above before proceeding.
-
 ## Process
 1. Read the task details and plan section above
 2. Propose a TDD plan (RED → GREEN → REFACTOR) and wait for user confirmation
