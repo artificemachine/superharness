@@ -99,10 +99,17 @@ def classify_task(
 
 
 def resolve_model(target: str, tier: str) -> str:
-    """Map a tier to the agent's actual model name via the adapter registry."""
+    """Map a tier to the agent's actual model name via the adapter registry.
+
+    Falls back to MODEL_MAP then claude-sonnet-4-6 when the registry returns
+    an empty id or the tier name itself (indicating an unknown adapter/tier).
+    """
     from superharness.engine.adapter_registry import resolve_model as _resolve
     res = _resolve(target, tier)
-    return res["id"]
+    model_id = res.get("id", "")
+    if not model_id or model_id == tier:
+        return MODEL_MAP.get(target, {}).get(tier, "claude-sonnet-4-6")
+    return model_id
 
 
 def resolve_tier(model_name: str) -> str | None:

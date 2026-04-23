@@ -198,7 +198,7 @@ def test_delegate_no_auto_model_uses_fallback(repo_root, tmp_path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert "Model: sonnet (fallback)" in result.stdout
+    assert "Model: claude-sonnet-4-6 (fallback)" in result.stdout
     assert "Effort: medium" in result.stdout
 
 
@@ -216,13 +216,13 @@ def test_delegate_task_level_model_field(repo_root, tmp_path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    # mini resolves to haiku for claude-code
-    assert "Model: haiku (task)" in result.stdout
+    # mini resolves to claude-haiku-4-5-20251001 for claude-code
+    assert "Model: claude-haiku-4-5-20251001 (task)" in result.stdout
     assert "Effort: low" in result.stdout
 
 
 def test_delegate_tier_name_resolves_to_agent_model(repo_root, tmp_path) -> None:
-    """Passing --model max resolves to opus for claude-code."""
+    """Passing --model max resolves to claude-opus-4-7 for claude-code."""
     project = _setup_project(tmp_path)
 
     result = _run_delegate_py(
@@ -236,11 +236,11 @@ def test_delegate_tier_name_resolves_to_agent_model(repo_root, tmp_path) -> None
     )
 
     assert result.returncode == 0, result.stderr
-    assert "Model: opus (manual)" in result.stdout
+    assert "Model: claude-opus-4-7 (manual)" in result.stdout
 
 
 def test_delegate_codex_tier_resolves_correctly(repo_root, tmp_path) -> None:
-    """Passing --model mini resolves to gpt-5.2 for codex-cli."""
+    """Passing --model mini resolves to gpt-5.1-codex-mini for codex-cli."""
     project = _setup_project(tmp_path)
 
     result = _run_delegate_py(
@@ -254,7 +254,7 @@ def test_delegate_codex_tier_resolves_correctly(repo_root, tmp_path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert "Model: gpt-5.2 (manual)" in result.stdout
+    assert "Model: gpt-5.1-codex-mini (manual)" in result.stdout
 
 
 # ---------------------------------------------------------------------------
