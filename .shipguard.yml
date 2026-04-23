@@ -14,6 +14,9 @@ disable_rules:
   # PY-007: false positive — f.write() in test_changelog_append_only.py triggers
   # sql-string-format rule; superharness has no SQL queries
   - PY-007
+  # PY-006: false positive in tests/e2e/test_dashboard_bugs.py — "test-token" is a
+  # dummy fixture value used to initialize a test HTTP server, not a real credential
+  - PY-006
 
 custom_rules_dirs: []
 

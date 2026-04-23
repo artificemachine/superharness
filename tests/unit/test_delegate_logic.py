@@ -24,15 +24,16 @@ def test_delegate_sdk_logic_claude_vs_others(tmp_path):
     # Mock SDK presence
     with patch("superharness.commands.delegate.sdk_available", return_value=True), \
          patch("superharness.commands.delegate.SDKRunner") as mock_runner, \
-         patch("superharness.commands.delegate._launch_agent") as mock_launch:
-        
+         patch("superharness.commands.delegate._launch_agent") as mock_launch, \
+         patch("superharness.commands.delegate._confirm_non_interactive_risk"):
+
         # 1. Claude-code SHOULD use SDK
         delegate(str(project_dir), "claude-code", "task-1", print_only=False, non_interactive=True, codex_bypass=False, skip_preflight=True)
         assert mock_runner.called, "SDKRunner should be called for claude-code"
-        
+
         mock_runner.reset_mock()
         mock_launch.reset_mock()
-        
+
         # 2. Gemini-cli should NOT use SDK
         delegate(str(project_dir), "gemini-cli", "task-2", print_only=False, non_interactive=True, codex_bypass=False, skip_preflight=True)
         assert not mock_runner.called, "SDKRunner should NOT be called for gemini-cli"
