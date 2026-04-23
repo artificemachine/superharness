@@ -21,3 +21,4 @@
   - Standardize all agent manifests (Claude, Codex, Gemini) with versioned model tiers.
   - Add Structured Trace Ledger (.superharness/trace.jsonl) for AI-driven self-improvement.
   - Finalize engine refactor collapsing duplicate guard tables into next_action.py.
+- 2026-04-23 (v1.32.0): feat(headless-engine): Registry-driven autonomous engine + Superharness Operator.
