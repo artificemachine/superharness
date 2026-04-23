@@ -24,3 +24,4 @@
 - 2026-04-23 (v1.32.0): feat(headless-engine): Registry-driven autonomous engine + Superharness Operator.
 - 2026-04-23 (v1.33.0): feat(headless-engine): Finalized autonomous engine + Guardian (Manual Sync Release).
 - 2026-04-23 (v1.33.1): fix(engine): Multi-project port smartness and non-blocking file reads.
+- 2026-04-23 (v1.33.2): fix(engine): Multi-project port smartness and stability release.
