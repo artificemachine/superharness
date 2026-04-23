@@ -22,15 +22,15 @@ from superharness.engine.model_router import (
 
 class TestResolveModel:
     @pytest.mark.parametrize("tier,expected", [
-        ("mini", "haiku"),
-        ("standard", "sonnet"),
-        ("max", "opus"),
+        ("mini", "claude-haiku-4-5-20251001"),
+        ("standard", "claude-sonnet-4-6"),
+        ("max", "claude-opus-4-7"),
     ])
     def test_claude_code_tiers(self, tier, expected):
         assert resolve_model("claude-code", tier) == expected
 
     @pytest.mark.parametrize("tier,expected", [
-        ("mini", "gpt-5.2"),
+        ("mini", "gpt-5.1-codex-mini"),
         ("standard", "gpt-5.3-codex"),
         ("max", "gpt-5.4"),
     ])
@@ -38,10 +38,10 @@ class TestResolveModel:
         assert resolve_model("codex-cli", tier) == expected
 
     def test_unknown_target_returns_sonnet(self):
-        assert resolve_model("unknown-agent", "standard") == "sonnet"
+        assert resolve_model("unknown-agent", "standard") == "claude-sonnet-4-6"
 
     def test_unknown_tier_returns_sonnet(self):
-        assert resolve_model("claude-code", "nonexistent") == "sonnet"
+        assert resolve_model("claude-code", "nonexistent") == "claude-sonnet-4-6"
 
 
 # ---------------------------------------------------------------------------

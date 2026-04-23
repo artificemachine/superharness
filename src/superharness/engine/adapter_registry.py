@@ -89,11 +89,11 @@ class AdapterManifest:
         For versioned tiers (`{versions: {...}}`), looks up `version` then
         falls back to `"*"`.  For flat tiers (legacy or mapping form), the
         `version` parameter is ignored and the flat value is returned.
-        Returns `{id: "", label: ""}` if the tier is unknown.
+        Returns `{id: tier, label: tier}` if the tier is unknown (pass-through).
         """
         raw = self._raw_tier_data.get(tier)
         if raw is None:
-            return {"id": "", "label": ""}
+            return {"id": tier, "label": tier}
         return _normalize_tier_value(raw, version=version)
 
     @classmethod

@@ -98,7 +98,7 @@ def test_enqueue_validates_target(tmp_path: Path) -> None:
         "--task", "my-task",
     ])
     assert r.returncode == 2
-    assert "must be claude-code or codex-cli" in r.stderr
+    assert "must be one of:" in r.stderr
 
 
 def test_enqueue_validates_task_token(tmp_path: Path) -> None:
