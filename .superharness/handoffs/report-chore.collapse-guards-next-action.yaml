@@ -1,0 +1,49 @@
+task: chore.collapse-guards-next-action
+phase: report
+status: report_ready
+from: claude-code
+to: owner
+date: "2026-04-23T14:10:00Z"
+
+outcome: |
+  Collapsed all duplicate guard-table definitions into engine/next_action.py
+  as the single source of truth. No logic was changed — only ownership moved.
+
+context: |
+  Two files still had local copies of lifecycle-related definitions:
+
+  delegate.py (line 307):
+    _DISC_ROUND_RE = re.compile(r"^(discuss-[^/]+)/round-(\d+)$")
+    → Removed. Now imported from engine.next_action in the existing re-export block.
+
+  contract_today.py (lines 8-13, 52-59):
+    import re
+    _DISC_ROUND_RE = re.compile(r"^discuss-[^/]+/round-\d+$")
+    def _infer_workflow(task: dict) -> str: ...
+    → Both removed. `import re` dropped. _is_delegate_candidate now calls
+      next_action.infer_workflow(str(task.get("id", "")), task) directly via
+      the module-level alias `_infer_workflow_na`.
+
+  inbox_enqueue.py and task.py were already importing from next_action — no
+  changes needed there.
+
+  11 new regression tests were added to tests/unit/test_collapse_guards.py
+  covering both the structural guarantee (no local re.compile in these files)
+  and full behavioural coverage of _is_delegate_candidate.
+
+  7 pre-existing test failures exist on main (test_dispatch_dequeue,
+  test_inbox_dispatch, test_delegate non-interactive) — confirmed by stash
+  verification. None are related to this change.
+
+outcomes:
+  - Removed local _DISC_ROUND_RE from delegate.py; imported from next_action
+  - Removed local _DISC_ROUND_RE and _infer_workflow from contract_today.py
+  - Replaced contract_today._is_delegate_candidate call site to use next_action.infer_workflow
+  - Added 11 tests in tests/unit/test_collapse_guards.py (RED proven, all 11 GREEN)
+  - 2007 tests pass, 7 pre-existing failures unaffected
+
+tests_passed: true
+pre_existing_failures: 7
+pre_existing_failure_note: >
+  All 7 failing tests use --yolo as a delegate flag (unrecognized argument).
+  Confirmed pre-existing by git stash verification on main branch.
