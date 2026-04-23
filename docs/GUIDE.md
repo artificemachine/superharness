@@ -18,6 +18,9 @@ Type these directly into Claude Code or Codex CLI — no terminal needed after f
 | `shux verify <task-id>` | Record verification result (pass/fail) before close |
 | `shux close <task-id>` | Mark task done (requires verify), append ledger, write handoff. Add `--cancel-remaining --cancel-reason "..."` to bulk-cancel open subtasks and close atomically. `--force` bypasses all gates (logs warning). |
 | `shux subtask-cancel` | Cancel a subtask: `--task <id> --sub <sub-id> --reason "..."`. Writes a ledger entry. Cannot cancel already-done subtasks. |
+| `shux operator start` | **Guardian**: Start the self-healing stack (Watcher + Dashboard + Guardian) |
+| `shux operator check` | Check health of the Guardian and Watcher heartbeat |
+| `shux delegate --yolo` | **Headless**: Launch agent with automatic permission bypass (Claude/Gemini/Codex) |
 | `shux status` | Dashboard: contract, tasks, watcher state, profile |
 | `shux recall <keywords>` | Search past handoffs and ledger entries |
 | `shux demo` | Zero-config task lifecycle walkthrough in a temp directory — explains what superharness is and shows all 5 core commands before running |

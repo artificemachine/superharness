@@ -24,12 +24,17 @@ Inside your project:
 shux onboard
 ```
 
-### 3. Coordinate
-Talk to your agent (Claude/Codex) and use these four core phrases:
-*   `shux contract` — "What is the plan?"
-*   `shux delegate <task-id>` — "Start this task now."
-*   `shux verify <task-id>` — "I checked the work; it passes."
-*   `shux close <task-id>` — "Task finished; update the ledger."
+### 3. Coordinate (The Guardian Workflow)
+Superharness now features a self-healing **Operator** that manages your entire background stack.
+
+```bash
+# 1. Start the stack (Watcher + Dashboard + Guardian)
+shux operator start --port 8787
+
+# 2. Open the UI
+open http://localhost:8787
+```
+Once the Operator is active, tasks will move through the lifecycle (**Planning → Approval → Implementation**) automatically based on your project policy.
 
 ---
 
