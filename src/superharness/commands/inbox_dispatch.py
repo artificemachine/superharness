@@ -389,6 +389,24 @@ def _mark_item_paused_dirty(inbox_file: str, item_id: str, paused_at: str) -> bo
 
 
 # ---------------------------------------------------------------------------
+# Cost extraction helper
+# ---------------------------------------------------------------------------
+
+def _read_context_cache_cost(project_dir: str, task_id: str) -> float:
+    """Read cost_usd from the context-cache snapshot written by delegate after SDK dispatch."""
+    try:
+        import yaml
+        cache_path = os.path.join(project_dir, ".superharness", "context-cache", f"{task_id}.yaml")
+        if not os.path.isfile(cache_path):
+            return 0.0
+        with open(cache_path, encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+        return float(data.get("cost_usd", 0.0))
+    except Exception:
+        return 0.0
+
+
+# ---------------------------------------------------------------------------
 # Main dispatch logic
 # ---------------------------------------------------------------------------
 
@@ -746,14 +764,16 @@ def _do_dispatch(
                     pass
                 try:
                     from superharness.engine.benchmark import record_dispatch
-                    record_dispatch(exec_project, item_task, item_to, "done", _elapsed)
+                    _cost = _read_context_cache_cost(exec_project, item_task)
+                    record_dispatch(exec_project, item_task, item_to, "done", _elapsed, cost_usd=_cost)
                 except Exception:
                     pass
                 return 0
             print(f"Inbox item updated: {item_id} -> failed (non-interactive launch exited without done/failed)")
             try:
                 from superharness.engine.benchmark import record_dispatch
-                record_dispatch(exec_project, item_task, item_to, "failed", _elapsed)
+                _cost = _read_context_cache_cost(exec_project, item_task)
+                record_dispatch(exec_project, item_task, item_to, "failed", _elapsed, cost_usd=_cost)
             except Exception:
                 pass
             return 1

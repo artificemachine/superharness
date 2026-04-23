@@ -23,8 +23,8 @@
     .report-scroll::-webkit-scrollbar-thumb:hover { background:#4a6fa5; }
     .logs { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
     .meta { margin:8px 0 12px; color:var(--muted); font-size:12px; }
-    .pill { display:inline-block; border:1px solid var(--line); border-radius:999px; padding:2px 8px; margin-right:6px; margin-top:4px; font-size:13px; cursor:pointer; user-select:none; }
-    .pill:hover { background:var(--btn); }
+    .pill { display:inline-block; background:var(--btn); border:1px solid var(--line); border-radius:6px; padding:3px 10px; margin-right:6px; margin-top:4px; font-size:12px; cursor:pointer; user-select:none; }
+    .pill:hover { background:var(--btn2); border-color:var(--muted); }
     .pill.sel { background:var(--btn2); border-color:#4a6fa5; color:#fff; }
     .inbox-detail { margin-top:10px; overflow-x:auto; }
     .inbox-detail table { width:100%; border-collapse:collapse; font-size:12px; }
@@ -93,7 +93,7 @@
     .review-banner b { color:#fff; }
     .review-list { margin-top:6px; font-size:12px; line-height:1.8; }
     .agent-health-pills { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
-    .agent-pill { display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--line); }
+    .agent-pill { display:inline-flex; align-items:center; gap:6px; font-size:11px; padding:4px 10px; border-radius:6px; background:var(--btn); border:1px solid var(--line); }
     .live-badge { display:inline-block; font-size:10px; padding:1px 6px; border-radius:999px; background:#ef444422; color:var(--bad); border:1px solid var(--bad); animation:pulse 1.5s ease-in-out infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
     .view-toggle { display:flex; gap:6px; margin-bottom:8px; align-items:center; }
@@ -107,7 +107,6 @@
     .adapter-owner { color:var(--muted); }
     .adapter-effort { padding:2px 6px; border-radius:4px; background:var(--btn); color:var(--text); }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 </head>
 <body>
   <div class="wrap">
@@ -120,12 +119,12 @@
       <div class="review-list" id="reviewList"></div>
     </div>
 
-    <div class="grid">
-      <div class="card"><div class="k">watcher label</div><div class="v" id="label">-</div></div>
-      <div class="card"><div class="k">watcher state</div><div class="v" id="state">-</div></div>
-      <div class="card"><div class="k">contract id</div><div class="v" id="contract">-</div></div>
-      <div class="card"><div class="k">git</div><div class="v" id="gitContext" style="font-size:12px">-</div></div>
-      <div class="card"><div class="k">last refresh (UTC)</div><div class="v" id="ts">-</div></div>
+    <div class="card" style="margin-top:0;padding:10px 14px;display:grid;grid-template-columns:100px 1fr;gap:4px 12px;align-items:baseline;">
+      <span class="k">label</span>     <span class="v" id="label"      style="margin-top:0">-</span>
+      <span class="k">state</span>     <span class="v" id="state"      style="margin-top:0">-</span>
+      <span class="k">contract</span>  <span class="v" id="contract"   style="margin-top:0">-</span>
+      <span class="k">git</span>       <span          id="gitContext" style="font-size:12px">-</span>
+      <span class="k">refreshed</span> <span class="v" id="ts"         style="margin-top:0;font-size:11px;color:var(--muted)">-</span>
     </div>
     <div class="card" style="margin-top:10px;">
       <h2>watcher control</h2>
@@ -173,7 +172,10 @@
     </div>
 
     <div class="card" style="margin-top:10px;">
-      <h2>inbox status counts</h2>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <h2 style="margin:0">inbox dispatch queue</h2>
+        <span class="small" id="inboxQueueNote" style="color:var(--muted);font-size:11px;">active tasks only</span>
+      </div>
       <div id="ownerFilter" style="margin-bottom:8px;"></div>
       <div id="counts"></div>
       <div class="inbox-detail" id="inboxDetail" style="display:none">
@@ -183,43 +185,19 @@
       <div class="actions">
         <button onclick="act('dispatch_print_codex')">Dispatch preview codex</button>
         <button onclick="act('dispatch_print_claude')">Dispatch preview claude</button>
-        <button onclick="act('recover_retry')">Recover stale -> retry</button>
+        <button onclick="act('recover_retry')">Recover stale → retry</button>
         <button onclick="act('normalize_stale')">Normalize stale</button>
+        <button onclick="clearResolvedInbox()" id="clearResolvedBtn" style="display:none">Clear resolved</button>
       </div>
       <div class="status" id="actionStatus">ready</div>
     </div>
 
-    <div class="card" style="margin-top:10px;display:none" id="depGraphCard">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-        <h2 style="margin:0">task dependencies</h2>
-        <div>
-          <button id="depGraphModeBtn" onclick="toggleDepGraphMode()" style="font-size:11px;padding:2px 8px;margin-right:6px;">mode: visual</button>
-          <button onclick="document.getElementById('depGraphCard').style.display='none'" style="font-size:11px;padding:2px 8px">hide</button>
-        </div>
-      </div>
-      <div id="depGraphRender"></div>
-      <pre id="depGraphAscii" style="font-size:11px;color:var(--muted);white-space:pre;display:none;background:var(--bg);padding:10px;border-radius:6px;border:1px solid var(--line);overflow-x:auto;"></pre>
-    </div>
-
-    <div class="card" style="margin-top:10px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-        <h2 style="margin:0">activity feed</h2>
-        <span class="small" id="activityCount" style="color:var(--muted)"></span>
-      </div>
-      <div id="activityFeed" style="max-height:200px;overflow-y:auto;font-size:12px;font-family:monospace;"></div>
-    </div>
-
-    <div style="margin-top:10px;display:flex;justify-content:flex-end;">
-      <span class="view-btn" id="adapterPreviewToggleBtn" onclick="toggleAdapterPreview()" style="cursor:pointer;font-size:11px;">Adapter preview: off</span>
-    </div>
-    <div class="card" style="margin-top:10px;display:none;" id="adapterPreviewCard">
+    <div class="card" style="margin-top:10px;" id="taskOverviewCard">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <h2 style="margin:0">Adapter preview — <span id="adapterPreviewProject" style="color:var(--ok);font-weight:bold;">-</span></h2>
-        <span class="small" id="adapterPreviewCount" style="color:var(--muted)">-</span>
+        <h2 style="margin:0">task overview</h2>
+        <span class="small" id="taskOverviewCount" style="color:var(--muted)">-</span>
       </div>
-      <div id="adapterPreviewNodes" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-top:8px;">
-        <div style="color:var(--muted);font-size:12px;">loading...</div>
-      </div>
+      <div id="depGraphRender" style="overflow-x:auto;min-height:60px;"></div>
     </div>
 
     <div class="card" style="margin-top:10px;">
@@ -248,19 +226,43 @@
       <div class="small" id="ownerStatus" style="margin-top:4px;"></div>
     </div>
 
-    <div class="logs">
-      <div class="card"><h2>ledger tail</h2><pre id="ledger">-</pre></div>
-      <div class="card"><h2>action output</h2><pre id="actionOut">-</pre></div>
+    <div class="card" style="margin-top:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <h2 style="margin:0">activity feed</h2>
+        <span class="small" id="activityCount" style="color:var(--muted)"></span>
+      </div>
+      <div id="activityFeed" style="max-height:200px;overflow-y:auto;font-size:12px;font-family:monospace;"></div>
     </div>
 
-    <div class="logs">
-      <div class="card"><h2>watcher out.log tail</h2><pre id="out">-</pre></div>
-      <div class="card"><h2>watcher err.log tail</h2><pre id="err">-</pre></div>
+    <div class="card" style="margin-top:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="togglePanel('ledgerBody',this)">
+        <h2 style="margin:0">ledger tail</h2><span style="color:var(--muted);font-size:11px">▸</span>
+      </div>
+      <div id="ledgerBody" style="display:none;margin-top:8px;max-height:200px;overflow-y:auto"><pre id="ledger">-</pre></div>
     </div>
-
-    <div class="logs">
-      <div class="card" style="flex:1;">
-        <h2>dispatch cost leaderboard <span id="costSummary" style="font-weight:normal;font-size:0.85em;"></span></h2>
+    <div class="card" style="margin-top:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="togglePanel('actionOutBody',this)">
+        <h2 style="margin:0">action output</h2><span style="color:var(--muted);font-size:11px">▸</span>
+      </div>
+      <div id="actionOutBody" style="display:none;margin-top:8px;max-height:200px;overflow-y:auto"><pre id="actionOut">-</pre></div>
+    </div>
+    <div class="card" style="margin-top:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="togglePanel('outBody',this)">
+        <h2 style="margin:0">watcher out.log tail</h2><span style="color:var(--muted);font-size:11px">▸</span>
+      </div>
+      <div id="outBody" style="display:none;margin-top:8px;max-height:200px;overflow-y:auto"><pre id="out">-</pre></div>
+    </div>
+    <div class="card" style="margin-top:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="togglePanel('errBody',this)">
+        <h2 style="margin:0">watcher err.log tail</h2><span style="color:var(--muted);font-size:11px">▸</span>
+      </div>
+      <div id="errBody" style="display:none;margin-top:8px;max-height:200px;overflow-y:auto"><pre id="err">-</pre></div>
+    </div>
+    <div class="card" style="margin-top:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="togglePanel('costBody',this)">
+        <h2 style="margin:0">dispatch cost leaderboard <span id="costSummary" style="font-weight:normal;font-size:0.85em;color:var(--muted)"></span></h2><span style="color:var(--muted);font-size:11px">▸</span>
+      </div>
+      <div id="costBody" style="display:none;margin-top:8px;max-height:300px;overflow-y:auto">
         <table id="costTable" style="width:100%;border-collapse:collapse;font-size:0.85em;">
           <thead><tr style="text-align:left;">
             <th style="padding:2px 6px;">task</th>
@@ -275,6 +277,30 @@
     </div>
   </div>
 <script>
+// Single source of truth for known agents — extended from API data on first refresh.
+let KNOWN_AGENTS = ['claude-code', 'codex-cli', 'gemini-cli'];
+
+// Map each agent to the default model shown in the enqueue dialog.
+const AGENT_MODEL_DEFAULTS = {
+  'claude-code': 'sonnet',
+  'codex-cli':   'mini',
+  'gemini-cli':  'flash',
+};
+
+// Statuses that are considered "live" (auto-refresh task report).
+const LIVE_STATUSES = new Set(['in_progress', 'todo', 'plan_approved', 'report_ready', 'review_requested']);
+
+// Statuses that trigger the review-queue banner.
+const REVIEW_STATUSES = ['review_requested', 'review_passed', 'review_failed'];
+
+function togglePanel(bodyId, header) {
+  const body = document.getElementById(bodyId);
+  const arrow = header.querySelector('span:last-child');
+  const open = body.style.display === 'none';
+  body.style.display = open ? '' : 'none';
+  if (arrow) arrow.textContent = open ? '▾' : '▸';
+}
+
 let lastActionText = '-';
 let selectedStatus = null;
 let selectedOwners = new Set();
@@ -327,16 +353,24 @@ async function refresh() {
       const dirty = gc.dirty_count > 0 ? ` <span style="color:var(--warn)">${gc.dirty_count} dirty</span>` : ' <span style="color:var(--ok)">clean</span>';
       gitEl.innerHTML = `<b>${gc.branch}</b>${dirty} · <span style="color:var(--muted)">${(gc.last_commit||'').slice(0,50)}</span>`;
     }
-    renderOwnersList(d.contract_owners || []);
-    renderContractTasks(d.contract_tasks || [], new Set(d.active_inbox_tasks || []), new Set(d.done_inbox_tasks || []));
+    // Extend KNOWN_AGENTS from live API data so dynamically added agents appear everywhere.
+    KNOWN_AGENTS = [...new Set([...KNOWN_AGENTS, ...(d.all_task_owners || [])])];
+    renderOwnersList(d.contract_owners || [], d.all_task_owners || []);
+    renderContractTasks(d.contract_tasks || [], new Set(d.active_inbox_tasks || []), new Set(d.done_inbox_tasks || []), new Set(d.paused_inbox_tasks || []), new Set(d.failed_inbox_tasks || []));
+    // Show/hide "Clear resolved" button — visible when resolved tasks have inbox items
+    const allInboxTaskIds = new Set([...(d.active_inbox_tasks||[]), ...(d.paused_inbox_tasks||[]), ...(d.failed_inbox_tasks||[]), ...(d.done_inbox_tasks||[])]);
+    const activeContractIds = new Set((d.contract_tasks||[]).filter(t => t.status !== 'done' && t.status !== 'archived').map(t => t.id));
+    const hasResolved = [...allInboxTaskIds].some(id => !activeContractIds.has(id));
+    const clearBtn = document.getElementById('clearResolvedBtn');
+    if (clearBtn) clearBtn.style.display = hasResolved ? '' : 'none';
     // Review queue banner
-    const reviewTasks = (d.contract_tasks || []).filter(t => ['review_requested','review_passed','review_failed'].includes(t.status));
+    const reviewTasks = (d.contract_tasks || []).filter(t => REVIEW_STATUSES.includes(t.status));
     renderReviewQueue(d.review_queue_count || 0, reviewTasks);
     // Agent health pills (list view)
     renderAgentHealthPills((d.agent_status||{}).agents||{});
     // Refresh board if active
     if (_currentView === 'board') loadBoardView();
-    renderDepGraph(d.contract_tasks || []);
+    renderTaskOverview(d.contract_tasks || []);
     renderActivityFeed(d.activity_feed || []);
     document.getElementById('ledger').textContent = (d.ledger_tail || []).join('\n');
     document.getElementById('out').textContent = (d.out_tail || []).join('\n');
@@ -510,7 +544,7 @@ async function viewTaskReport(taskId, agent) {
   if (_liveLogInterval) { clearInterval(_liveLogInterval); _liveLogInterval = null; }
   try {
     const d = await api('/api/task-report?task=' + encodeURIComponent(taskId) + '&agent=' + encodeURIComponent(agent));
-    const _liveStatuses = new Set(['in_progress','todo','plan_approved','report_ready','review_requested']);
+    const _liveStatuses = LIVE_STATUSES;
     const isActive = _liveStatuses.has(d.contract_status);
     if (isActive) {
       try {
@@ -678,7 +712,7 @@ function renderTaskFilterPills(tasks) {
     const hidden = _hiddenGroups.has(g.key);
     const pill = document.createElement('span');
     pill.title = hidden ? `Show ${g.key}` : `Hide ${g.key}`;
-    pill.style.cssText = `cursor:pointer;font-size:11px;padding:2px 8px;border-radius:10px;border:1px solid ${g.color};color:${hidden ? 'var(--muted)' : g.color};background:${hidden ? 'transparent' : g.color+'22'};text-decoration:${hidden ? 'line-through' : 'none'};user-select:none`;
+    pill.style.cssText = `cursor:pointer;font-size:11px;padding:3px 10px;border-radius:6px;border:1px solid ${hidden ? 'var(--line)' : g.color};color:${hidden ? 'var(--muted)' : g.color};background:${hidden ? 'var(--btn)' : g.color+'18'};text-decoration:${hidden ? 'line-through' : 'none'};user-select:none`;
     pill.textContent = `${g.label} ${n}`;
     pill.onclick = () => {
       if (_hiddenGroups.has(g.key)) _hiddenGroups.delete(g.key);
@@ -699,9 +733,17 @@ function inferredWorkflow(task) {
 function canEnqueueTask(task) {
   const st = task.status || 'todo';
   const workflow = inferredWorkflow(task);
-  if (workflow === 'implementation') return ['plan_approved', 'failed', 'stopped'].includes(st);
+  // implementation: todo dispatches the agent to WRITE the plan; plan_approved dispatches to implement.
+  if (workflow === 'implementation') return ['todo', 'plan_approved', 'failed', 'stopped'].includes(st);
   if (workflow === 'quick' || workflow === 'note') return ['todo', 'in_progress', 'failed', 'stopped'].includes(st);
   return false;
+}
+
+function enqueueButtonLabel(task) {
+  const st = task.status || 'todo';
+  const workflow = inferredWorkflow(task);
+  if (workflow === 'implementation' && st === 'todo') return 'Dispatch Plan';
+  return 'Enqueue';
 }
 
 // Fix 3: contextual next-action hint shown inline next to the status pill.
@@ -712,9 +754,9 @@ function nextActionHint(task, isBlocked) {
   
   if (isBlocked) return 'resolve blockers first';
 
-  if (st === 'todo' && workflow === 'implementation') return 'click Delegate Plan (agent) or Propose Plan (you)';
+  if (st === 'todo' && workflow === 'implementation') return 'click Dispatch Plan — agent will write a plan for your approval';
   if (st === 'plan_proposed')   return 'review plan handoff → click Approve Plan';
-  if (st === 'plan_approved')   return 'click Enqueue → dispatch';
+  if (st === 'plan_approved')   return 'ready — click Enqueue to dispatch';
   if (st === 'report_ready')    return 'verify report → Request Review or Close';
   if (st === 'review_requested') return 'awaiting reviewer';
   if (st === 'review_passed')   return 'click Close to finalize';
@@ -739,7 +781,7 @@ function enqueueBlockReason(task) {
   return `Status '${st}' is not dispatchable for workflow '${workflow}'.`;
 }
 
-function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
+function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks, pausedInboxTasks = new Set(), failedInboxTasks = new Set()) {
   const el = document.getElementById('contractTaskList');
   if (!tasks.length) { el.textContent = '(no tasks)'; return; }
   el.innerHTML = '';
@@ -767,32 +809,41 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
     const isBlocked = blockers.length > 0;
 
     const reviewerInfo = (st === 'review_requested' && t.review_target) ? ` <span style="color:var(--warn)">👀 reviewer ${t.review_target}</span>` : '';
-    const hint = nextActionHint(t, isBlocked);
+    const isEnqueued = activeInboxTasks.has(t.id);
+    const isDoneInbox = doneInboxTasks.has(t.id);
+    const isPausedInbox = pausedInboxTasks.has(t.id);
+    const isFailedInbox = failedInboxTasks.has(t.id);
+    let hint = '';
+    if (isEnqueued) {
+      hint = '';
+    } else if (isPausedInbox) {
+      hint = 'dispatch paused — click Resume to retry';
+    } else if (isFailedInbox) {
+      hint = 'dispatch failed — click Retry to re-dispatch';
+    } else {
+      hint = nextActionHint(t, isBlocked);
+    }
     const hintInfo = hint ? `<div style="width:100%; color:var(--warn); font-size:11px; font-weight:bold; margin-bottom:6px; letter-spacing:0.02em;">ℹ ${hint}</div>` : '';
-    
+
     // Single line layout
     const title = `<div class="task-meta"><div class="task-desc-line"><span class="task-id">${t.id}</span> ${t.title}${schedInfo}${dueInfo}${depsInfo}${reviewerInfo}</div></div>`;
-    
+
     // Select-based owner swap
     const currentOwner = t.owner || 'unassigned';
     const ownerDropdown = `
       <select onchange="changeOwner('${tid}', this.value)">
-        <option value="claude-code" ${currentOwner === 'claude-code' ? 'selected' : ''}>@claude-code</option>
-        <option value="codex-cli" ${currentOwner === 'codex-cli' ? 'selected' : ''}>@codex-cli</option>
-        <option value="gemini-cli" ${currentOwner === 'gemini-cli' ? 'selected' : ''}>@gemini-cli</option>
+        ${KNOWN_AGENTS.map(a => `<option value="${a}" ${currentOwner === a ? 'selected' : ''}>@${a}</option>`).join('')}
       </select>
     `;
 
     const actionButtons = [];
     actionButtons.push(ownerDropdown);
     actionButtons.push(badge); // Status badge now sits with the buttons
-    
+
     const ownerEsc = (t.owner || '').replace(/'/g, "\\\\'");
     // View Report button for any task with a handoff or in report_ready/done status
     const viewReportBtn = `<button onclick="viewTaskReport('${tid}','${ownerEsc}')">View Report</button>`;
     actionButtons.push(viewReportBtn);
-    const isEnqueued = activeInboxTasks.has(t.id);
-    const isDoneInbox = doneInboxTasks.has(t.id);
     const canEnqueue = canEnqueueTask(t);
     if (canEnqueue && isDoneInbox && !isEnqueued) {
       actionButtons.push(`<button onclick="markTaskDone('${tid}')" class="ok">Done</button>`);
@@ -818,7 +869,7 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
       actionButtons.push(`<button onclick="approveWithoutReview('${tid}')" class="ok">Approve Without Review</button>`);
     } else if (st === 'review_failed') {
       actionButtons.push(`<span class="small" style="color:var(--bad); width:140px; text-align:center">↩ review failed</span>`);
-      actionButtons.push(`<button onclick="enqueueTask('${tid}')" class="warn">Re-enqueue</button>`);
+      actionButtons.push(`<button onclick="enqueueTask('${tid}', '', 'Re-enqueue')" class="warn">Re-enqueue</button>`);
     } else if (st === 'review_passed') {
       actionButtons.push(`<button onclick="runClose('${tid}')" class="ok">Close</button>`);
     }
@@ -826,24 +877,26 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
     if (st === 'stopped') {
       actionButtons.push(`<button onclick="enableTask('${tid}')" class="warn">Re-queue</button>`);
     } else if (st !== 'done' && isEnqueued) {
-      actionButtons.push(`<span class="pill" style="background:var(--ok);color:#000;cursor:default">queued</span>`);
+      actionButtons.push(`<span class="pill" style="background:var(--btn);border-color:var(--ok);color:var(--ok);cursor:default">⚡ queued</span>`);
+    } else if (st !== 'done' && pausedInboxTasks.has(t.id)) {
+      actionButtons.push(`<span class="pill" style="background:var(--btn);border-color:var(--warn);color:var(--warn);cursor:default">⏸ paused</span>`);
+      actionButtons.push(`<button onclick="act('resume_task:${tid}')">Resume</button>`);
+    } else if (st !== 'done' && failedInboxTasks.has(t.id)) {
+      actionButtons.push(`<span class="pill" style="background:var(--btn);border-color:var(--bad);color:var(--bad);cursor:default">✗ failed</span>`);
+      actionButtons.push(`<button onclick="act('retry_task:${tid}')">Retry</button>`);
     } else {
       // Logic for Enqueue button (enabled or blocked)
       const canEnqueue = canEnqueueTask(t);
+      const btnLabel = enqueueButtonLabel(t);
       if (canEnqueue) {
         if (isBlocked) {
           const blockHint = `Blocked by: ${blockers.join(', ')}`;
-          actionButtons.push(`<button disabled title="${blockHint}">Enqueue ⛔</button>`);
+          actionButtons.push(`<button disabled title="${blockHint}">${btnLabel} ⛔</button>`);
         } else {
-          const currentOwnerEsc = (t.owner || 'claude-code').replace(/'/g, "\\\\'");
-          actionButtons.push(`<button onclick="enqueueTask('${tid}', '${currentOwnerEsc}')">Enqueue</button>`);
+          const currentOwnerEsc = (t.owner || KNOWN_AGENTS[0]).replace(/'/g, "\\\\'");
+          actionButtons.push(`<button onclick="enqueueTask('${tid}', '${currentOwnerEsc}', '${btnLabel}')">${btnLabel}</button>`);
         }
-      } else if (st === 'todo' && inferredWorkflow(t) === 'implementation') {
-        // Special case for implementation todo: show disabled enqueue with specific hint
-        const blockHint = isBlocked ? `Blocked by: ${blockers.join(', ')}` : 'Plan must be approved before dispatch.';
-        actionButtons.push(`<button disabled title="${blockHint}">Enqueue ⛔</button>`);
       } else if (st !== 'done' && st !== 'todo') {
-        // Any other non-dispatchable state (report_ready, review_requested)
         const blockHint = isBlocked ? `Blocked by: ${blockers.join(', ')}` : enqueueBlockReason(t).replace(/"/g,'&quot;');
         actionButtons.push(`<button disabled title="${blockHint}">Enqueue ⛔</button>`);
       }
@@ -857,6 +910,11 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks) {
     row.innerHTML = `<div class="task-actions">${hintInfo}${actionButtons.join(' ')}${statusDesc}</div>${title}`;
     el.appendChild(row);
   }
+}
+
+async function clearResolvedInbox() {
+  const result = await act('clear_resolved_inbox');
+  await refresh();
 }
 
 async function changeOwner(taskId, newOwner) {
@@ -887,8 +945,7 @@ async function requestReview(taskId) {
     <h3 style="margin:0 0 12px">Request review for "${taskId}"</h3>
     <label style="display:block;margin-bottom:8px;font-size:13px;">Reviewer:</label>
     <select id="reviewerSelect" style="width:100%;padding:6px 8px;font-size:14px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;">
-      <option value="codex-cli">codex-cli</option>
-      <option value="claude-code">claude-code</option>
+      ${KNOWN_AGENTS.map(a => `<option value="${a}">${a}</option>`).join('')}
     </select>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
       <button id="reviewCancel" style="padding:6px 16px;font-size:13px;">Cancel</button>
@@ -958,14 +1015,16 @@ async function runClose(taskId) {
   await act('close_task:' + taskId);
 }
 
-async function enqueueTask(taskId, currentOwner) {
+async function enqueueTask(taskId, currentOwner, modalTitle) {
   const modal = document.getElementById('enqueueModal');
   const titleEl = document.getElementById('enqueueModalTitle');
   const targetEl = document.getElementById('enqueueTarget');
   const instrEl = document.getElementById('enqueueInstructions');
   const previewEl = document.getElementById('enqueuePreview');
   
-  titleEl.textContent = `Enqueue: ${taskId}`;
+  // Populate agent options from KNOWN_AGENTS so new agents appear automatically.
+  targetEl.innerHTML = KNOWN_AGENTS.map(a => `<option value="${a}">${a}</option>`).join('');
+  titleEl.textContent = `${modalTitle || 'Enqueue'}: ${taskId}`;
   instrEl.value = 'Loading task instructions...';
   previewEl.innerHTML = 'Loading dispatch preview...';
   
@@ -985,12 +1044,7 @@ async function enqueueTask(taskId, currentOwner) {
     const agent = currentOwner || task.owner || 'claude-code';
     targetEl.value = agent;
     
-    let model = task.model;
-    if (!model) {
-        if (agent === 'gemini-cli') model = 'flash';
-        else if (agent === 'codex-cli') model = 'mini';
-        else model = 'sonnet';
-    }
+    let model = task.model || AGENT_MODEL_DEFAULTS[agent] || 'sonnet';
 
     const effort = task.effort || 'medium';
     const timeout = task.timeout_minutes || '—';
@@ -1029,11 +1083,11 @@ async function submitEnqueue() {
   const taskId = modal.dataset.taskId;
   const target = document.getElementById('enqueueTarget').value;
   const instructions = document.getElementById('enqueueInstructions').value.trim();
-  modal.style.display = 'none';
-  if (!target || (target !== 'claude-code' && target !== 'codex-cli' && target !== 'gemini-cli')) {
-    alert('Invalid target. Must be claude-code, codex-cli, or gemini-cli.');
+  if (!target || !KNOWN_AGENTS.includes(target)) {
+    alert(`Invalid target. Must be one of: ${KNOWN_AGENTS.join(', ')}.`);
     return;
   }
+  modal.style.display = 'none';
   const st = document.getElementById('actionStatus');
   st.textContent = 'enqueueing ' + taskId + ' ...';
   try {
@@ -1042,12 +1096,16 @@ async function submitEnqueue() {
       headers: {'Content-Type': 'application/json', 'X-Superharness-Token': AUTH_TOKEN},
       body: JSON.stringify({action: 'enqueue_task:' + taskId + ':' + target, instructions})
     });
-    st.textContent = `enqueued ${taskId} → ${target}`;
+    if (d.exit_code !== 0) {
+      const errMsg = (d.stderr || d.stdout || 'unknown error').split('\n')[0];
+      alert(`Enqueue failed: ${errMsg}`);
+      st.textContent = 'error: ' + errMsg;
+    } else {
+      st.textContent = `enqueued ${taskId} → ${target}`;
+    }
   } catch (e) {
     const msg = String(e);
-    if (msg.includes('already enqueued')) {
-      alert(`Task "${taskId}" is already in the inbox.`);
-    }
+    alert(`Enqueue error: ${msg}`);
     st.textContent = 'error: ' + msg;
   }
   await refresh();
@@ -1072,7 +1130,7 @@ function cancelProposePlan() {
 }
 
 async function delegatePlanToAgent(taskId, target) {
-  const agent = target || 'claude-code';
+  const agent = target || KNOWN_AGENTS[0];
   if (!window.confirm(`Dispatch ${agent} to propose a TDD plan for "${taskId}"? The agent will write a plan handoff and stop — it will not implement anything until you approve the plan.`)) return;
   const st = document.getElementById('actionStatus');
   st.textContent = 'delegating plan proposal for ' + taskId + ' to ' + agent + ' ...';
@@ -1129,15 +1187,24 @@ async function markTaskDone(taskId) {
   await act('mark_done:' + taskId);
 }
 
-function renderOwnersList(owners) {
+function renderOwnersList(activeOwners, allOwners) {
   const el = document.getElementById('ownersList');
-  if (!owners || !owners.length) { el.textContent = '(no owners)'; return; }
   el.innerHTML = '';
-  for (const o of owners) {
+  const activeSet = new Set(activeOwners || []);
+  // Merge: all known (from tasks+inbox history) + guarantee core defaults always present
+  const universe = [...new Set([...KNOWN_AGENTS, ...(allOwners || []), ...(activeOwners || [])])];
+  if (!universe.length) { el.textContent = '(no owners)'; return; }
+  for (const o of universe) {
+    const active = activeSet.has(o);
     const pill = document.createElement('span');
-    pill.className = 'pill sel';
+    pill.className = 'pill' + (active ? ' sel' : '');
+    pill.style.opacity = active ? '1' : '0.35';
+    pill.title = active ? `${o} — active` : `${o} — no active tasks`;
     const oEsc = o.replace(/'/g, "\\\\'");
-    pill.innerHTML = o + (owners.length > 2 ? ` <span style="cursor:pointer;margin-left:4px;color:var(--bad)" onclick="removeOwner('${oEsc}')">×</span>` : '');
+    const removeBtn = active && activeOwners.length > 2
+      ? ` <span style="cursor:pointer;margin-left:4px;color:var(--bad)" onclick="removeOwner('${oEsc}')">×</span>`
+      : '';
+    pill.innerHTML = o + removeBtn;
     el.appendChild(pill);
   }
 }
@@ -1232,162 +1299,155 @@ async function loadBoardView() {
   }
 }
 
-let _depGraphMode = localStorage.getItem('shux.depGraph.mode') || 'visual';
+function renderTaskGraph(tasks) {
+  const container = document.getElementById('depGraphRender');
+  if (!container) return;
 
-function toggleDepGraphMode() {
-  _depGraphMode = (_depGraphMode === 'visual') ? 'ascii' : 'visual';
-  localStorage.setItem('shux.depGraph.mode', _depGraphMode);
-  refresh();
-}
-
-function generateAsciiTree(tasks) {
-  const visible = tasks.filter(t => t.status !== 'archived' && t.status !== 'done');
-  const taskMap = new Map(visible.map(t => [t.id, t]));
-  
-  // Find roots (tasks that no other visible task depends on)
-  const allDeps = new Set();
-  visible.forEach(t => (t.depends_on || []).forEach(d => allDeps.add(d)));
-  const roots = visible.filter(t => !allDeps.has(t.id));
-  
-  let output = '';
-  const seen = new Set();
-
-  function build(task, prefix = '', isLast = true) {
-    if (seen.has(task.id)) {
-      output += prefix + (isLast ? '└── ' : '├── ') + task.id + ' (circular!)\n';
-      return;
-    }
-    seen.add(task.id);
-    
-    const connector = prefix ? (isLast ? '└── ' : '├── ') : '';
-    const statusIcon = (PHASE_LABEL[task.status] || ['?'])[0];
-    output += prefix + connector + statusIcon + ' ' + task.id + '\n';
-    
-    const children = visible.filter(t => (t.depends_on || []).includes(task.id));
-    const newPrefix = prefix + (prefix ? (isLast ? '    ' : '│   ') : '');
-    
-    children.forEach((child, idx) => {
-      build(child, newPrefix, idx === children.length - 1);
-    });
-  }
-
-  roots.forEach((r, idx) => build(r, '', idx === roots.length - 1));
-  return output || '(no dependencies found)';
-}
-
-function wrapText(str, maxLen = 20) {
-  if (!str) return '';
-  const words = str.split(' ');
-  let lines = [];
-  let currentLine = '';
-  for (const word of words) {
-    if ((currentLine + word).length > maxLen) {
-      lines.push(currentLine.trim());
-      currentLine = word + ' ';
-    } else {
-      currentLine += word + ' ';
-    }
-  }
-  lines.push(currentLine.trim());
-  return lines.join('<br/>');
-}
-
-let _lastMermaid = '';
-async function renderDepGraph(tasks) {
-  const card = document.getElementById('depGraphCard');
-  const renderEl = document.getElementById('depGraphRender');
-  const asciiEl = document.getElementById('depGraphAscii');
-  const btn = document.getElementById('depGraphModeBtn');
-  if (!card || !renderEl || !asciiEl || !btn) return;
-
-  btn.textContent = 'mode: ' + _depGraphMode;
-
-  // Only show Active, Planned, or Failed tasks (hide Done and Archived)
-  const visible = tasks.filter(t => t.status !== 'done' && t.status !== 'archived');
-  const hasDeps = tasks.some(t => t.depends_on && t.depends_on.length > 0);
-  if (visible.length < 1 && !hasDeps) { card.style.display = 'none'; return; }
-  
-  if (_depGraphMode === 'ascii') {
-    renderEl.style.display = 'none';
-    asciiEl.style.display = 'block';
-    asciiEl.textContent = generateAsciiTree(tasks); // helper already filters archived, I'll update it for done too
-    card.style.display = 'block';
-    return;
-  }
-
-  renderEl.style.display = 'block';
-  asciiEl.style.display = 'none';
-
-  const statusStyle = { 
-    todo: ':::todo', 
-    plan_proposed: ':::plan',
-    plan_approved: ':::plan',
-    in_progress: ':::active', 
-    launched: ':::active',
-    running: ':::active',
-    report_ready: ':::review', 
-    review_requested: ':::review', 
-    review_passed: ':::review',
-    review_failed: ':::failed', 
-    failed: ':::failed',
-    stopped: ':::todo' 
+  const STATUS_COLOR = {
+    todo: '#6b7280', plan_proposed: '#a78bfa', plan_approved: '#7c3aed',
+    in_progress: '#4a9eff', launched: '#4a9eff', running: '#4a9eff',
+    report_ready: '#d29922', review_requested: '#d29922', review_passed: '#22c55e',
+    review_failed: '#da3633', failed: '#da3633', stopped: '#6b7280', done: '#22c55e',
   };
 
-  let lines = ['graph LR'];
-  lines.push('  classDef todo fill:#555,stroke:#777,color:#fff,font-size:11px');
-  lines.push('  classDef plan fill:#a78bfa,stroke:#7c3aed,color:#fff,font-size:11px');
-  lines.push('  classDef active fill:#4a9eff,stroke:#2a7edf,color:#fff,font-size:11px');
-  lines.push('  classDef review fill:#d29922,stroke:#b27d12,color:#fff,font-size:11px');
-  lines.push('  classDef failed fill:#da3633,stroke:#ba1a1a,color:#fff,font-size:11px');
-  
-  const visibleIds = new Set(visible.map(t => t.id));
+  const CARD_W = 220, CARD_H = 130, H_GAP = 90, V_GAP = 44, PAD = 16;
+  const CONTRACT_W = 88, CONTRACT_H = 44;
 
+  const visible = tasks.filter(t => t.status !== 'archived' && t.status !== 'done');
+  if (!visible.length) { container.innerHTML = ''; return; }
+
+  const taskMap = new Map(visible.map(t => [t.id, t]));
+
+  // Build real edges from depends_on
+  const realEdges = [];
+  const inDegree = new Map(visible.map(t => [t.id, 0]));
   for (const t of visible) {
-    const id = (t.id || '').replace(/[^a-zA-Z0-9]/g, '_');
-    if (!id) continue;
-    
-    const displayLabel = t.title ? wrapText(t.title, 25) : t.id;
-    const cls = statusStyle[t.status] || ':::todo';
-    lines.push(`  ${id}["${displayLabel}"]${cls}`);
-
-    if (t.depends_on && t.depends_on.length > 0) {
-      let activeBlockers = 0;
-      for (const dep of t.depends_on) {
-        const depStr = String(dep).trim();
-        if (depStr === 'none' || !depStr) continue;
-        
-        if (visibleIds.has(depStr)) {
-          const depId = depStr.replace(/[^a-zA-Z0-9]/g, '_');
-          lines.push(`  ${depId} --> ${id}`);
-          activeBlockers++;
-        }
+    for (const dep of (t.depends_on || [])) {
+      if (dep && dep !== 'none' && taskMap.has(dep)) {
+        realEdges.push({ from: dep, to: t.id });
+        inDegree.set(t.id, (inDegree.get(t.id) || 0) + 1);
       }
-      // If all dependencies are hidden (done), link to Contract root
-      if (activeBlockers === 0) {
-        lines.push(`  contract_root["Contract"]:::todo --> ${id}`);
-      }
-    } else {
-      // No dependencies defined
-      lines.push(`  contract_root["Contract"]:::todo --> ${id}`);
     }
   }
-  const mermaidCode = lines.join('\n');
-  if (mermaidCode === _lastMermaid) return;
-  _lastMermaid = mermaidCode;
-  card.style.display = 'block';
 
-  if (typeof mermaid === 'undefined') {
-    renderEl.innerHTML = '<div class="small" style="padding:10px">Loading graph library...</div>';
-    return;
+  // Topological layer assignment (longest path)
+  const layer = new Map(visible.map(t => [t.id, 0]));
+  const rem = new Map(inDegree);
+  const queue = visible.filter(t => (inDegree.get(t.id) || 0) === 0).map(t => t.id);
+  let qi = 0;
+  while (qi < queue.length) {
+    const id = queue[qi++];
+    for (const e of realEdges.filter(e => e.from === id)) {
+      const next = (layer.get(id) || 0) + 1;
+      if (next > (layer.get(e.to) || 0)) layer.set(e.to, next);
+      rem.set(e.to, (rem.get(e.to) || 1) - 1);
+      if (rem.get(e.to) === 0) queue.push(e.to);
+    }
+  }
+  for (const t of visible) if (!layer.has(t.id)) layer.set(t.id, 0);
+
+  // Group task columns (offset by 1 to leave room for Contract node at col 0)
+  const maxLayer = Math.max(...[...layer.values()]);
+  const cols = Array.from({ length: maxLayer + 1 }, () => []);
+  for (const t of visible) cols[layer.get(t.id) || 0].push(t);
+
+  // Position task cards — col 0 starts after the contract node
+  const pos = new Map();
+  const maxColH = Math.max(...cols.map(c => c.length * (CARD_H + V_GAP) - V_GAP), CONTRACT_H);
+  const taskColStartX = PAD + CONTRACT_W + H_GAP;
+
+  for (let ci = 0; ci < cols.length; ci++) {
+    const col = cols[ci];
+    const colH = col.length * (CARD_H + V_GAP) - V_GAP;
+    const startY = PAD + (maxColH - colH) / 2;
+    for (let ni = 0; ni < col.length; ni++) {
+      const x = taskColStartX + ci * (CARD_W + H_GAP);
+      const y = startY + ni * (CARD_H + V_GAP);
+      pos.set(col[ni].id, { x, y });
+    }
   }
 
-  try {
-    const { svg } = await mermaid.render('graph-' + Math.floor(Math.random()*10000), mermaidCode);
-    renderEl.innerHTML = svg;
-  } catch (err) {
-    console.error('Mermaid render error:', err);
-    renderEl.innerHTML = `<pre style="font-size:10px;color:var(--bad);white-space:pre-wrap">${mermaidCode}</pre>`;
+  // Contract root position (vertically centered)
+  const contractX = PAD, contractY = PAD + (maxColH - CONTRACT_H) / 2;
+  const contractCY = contractY + CONTRACT_H / 2;
+
+  const svgW = taskColStartX + cols.length * (CARD_W + H_GAP) - H_GAP + PAD;
+  const svgH = PAD + maxColH + PAD;
+
+  // Root tasks = those in layer 0 (they'll get a Contract → task edge)
+  const rootIds = new Set(cols[0].map(t => t.id));
+
+  // Collect all edges to draw: contract→root + real dep edges
+  const allEdges = [];
+  for (const id of rootIds) allEdges.push({ fromX: contractX + CONTRACT_W, fromY: contractCY, toId: id, color: '#4a6fa5' });
+  for (const e of realEdges) {
+    const fp = pos.get(e.from);
+    if (!fp) continue;
+    const toColor = STATUS_COLOR[taskMap.get(e.to)?.status] || '#6b7280';
+    allEdges.push({ fromX: fp.x + CARD_W, fromY: fp.y + CARD_H / 2, toId: e.to, color: toColor });
   }
+
+  const markerColors = { blue: '#4a9eff', purple: '#a78bfa', gray: '#4a6fa5', yellow: '#d29922', red: '#da3633' };
+  const pickMarker = c => c.includes('4a9e') ? 'blue' : c.includes('a78b') ? 'purple' : c.includes('d299') ? 'yellow' : c.includes('da36') ? 'red' : 'gray';
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" style="display:block">
+  <defs>
+    ${Object.entries(markerColors).map(([k,c]) =>
+      `<marker id="arr-${k}" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="${c}"/></marker>`
+    ).join('\n    ')}
+  </defs>`;
+
+  // Contract root node (plain SVG rect)
+  svg += `
+  <rect x="${contractX}" y="${contractY}" width="${CONTRACT_W}" height="${CONTRACT_H}"
+    rx="8" fill="#161b22" stroke="#4a6fa5" stroke-width="1.5"/>
+  <text x="${contractX + CONTRACT_W/2}" y="${contractY + CONTRACT_H/2 - 4}" text-anchor="middle"
+    font-size="11" fill="#94a3b8" font-family="monospace">contract</text>
+  <text x="${contractX + CONTRACT_W/2}" y="${contractY + CONTRACT_H/2 + 9}" text-anchor="middle"
+    font-size="10" fill="#64748b" font-family="system-ui">root</text>`;
+
+  // Draw all edges (before foreignObjects so cards appear on top)
+  for (const e of allEdges) {
+    const tp = pos.get(e.toId);
+    if (!tp) continue;
+    const x1 = e.fromX, y1 = e.fromY;
+    const x2 = tp.x, y2 = tp.y + CARD_H / 2;
+    const cx = (x1 + x2) / 2;
+    const mk = pickMarker(e.color);
+    svg += `\n  <path d="M${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2}"
+    stroke="${e.color}" stroke-width="1.5" stroke-dasharray="5,3" fill="none" opacity="0.7"
+    marker-end="url(#arr-${mk})"/>`;
+  }
+
+  // Draw task cards as foreignObject
+  for (const t of visible) {
+    const p = pos.get(t.id);
+    if (!p) continue;
+    const color = STATUS_COLOR[t.status] || '#6b7280';
+    const [icon, label] = PHASE_LABEL[t.status] || ['?', t.status];
+    const title = (t.title || t.id).length > 46 ? (t.title || t.id).slice(0, 43) + '…' : (t.title || t.id);
+    svg += `
+  <foreignObject x="${p.x}" y="${p.y}" width="${CARD_W}" height="${CARD_H}">
+    <div xmlns="http://www.w3.org/1999/xhtml" style="width:${CARD_W}px;height:${CARD_H}px;box-sizing:border-box;overflow:hidden;background:#0d1117;border:1.5px solid ${color};border-radius:10px;padding:10px 12px;font-family:system-ui,sans-serif;box-shadow:0 0 10px ${color}44;">
+      <div style="font-size:10px;color:#475569;font-family:monospace;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.id}</div>
+      <div style="font-size:12px;font-weight:600;line-height:1.3;margin-bottom:8px;color:#f1f5f9;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;">${title}</div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;">
+        <span style="font-size:10px;padding:2px 7px;border-radius:5px;background:${color}18;color:${color};border:1px solid ${color}50;white-space:nowrap;">${icon} ${label}</span>
+        <span style="font-size:10px;padding:2px 7px;border-radius:5px;background:#131c2e;border:1px solid #1e293b;color:#64748b;white-space:nowrap;">@${t.owner||'unassigned'}</span>
+      </div>
+    </div>
+  </foreignObject>`;
+  }
+
+  svg += '\n</svg>';
+  container.innerHTML = svg;
+}
+
+function renderTaskOverview(tasks) {
+  const countEl = document.getElementById('taskOverviewCount');
+  const visible = tasks.filter(t => t.status !== 'archived');
+  if (countEl) countEl.textContent = `${visible.length} task${visible.length === 1 ? '' : 's'}`;
+  renderTaskGraph(tasks);
 }
 
 function renderActivityFeed(events) {
@@ -1470,59 +1530,10 @@ async function refreshCosts() {
   }
 }
 
-async function refreshAdapterPreview() {
-  try {
-    const d = await api('/api/adapter-preview');
-    document.getElementById('adapterPreviewProject').textContent = d.project || '-';
-    document.getElementById('adapterPreviewCount').textContent = `${d.count || 0} todo task${d.count === 1 ? '' : 's'}`;
-
-    const container = document.getElementById('adapterPreviewNodes');
-    if (!d.tasks || d.tasks.length === 0) {
-      container.innerHTML = '<div style="color:var(--muted);font-size:12px;">No todo tasks found</div>';
-      return;
-    }
-
-    container.innerHTML = d.tasks.map(task => `
-      <div class="adapter-node">
-        <div class="adapter-id">${task.id || ''}</div>
-        <div class="adapter-title">${task.title || '(untitled)'}</div>
-        <div class="adapter-meta">
-          <span class="adapter-owner">@${task.owner || 'unassigned'}</span>
-          <span class="adapter-effort">${task.effort || 'medium'}</span>
-        </div>
-        ${(Array.isArray(task.blocked_by) ? task.blocked_by.length : task.blocked_by) ? `<div style="font-size:10px;color:var(--warn);margin-top:4px;">⚠ blocked by ${Array.isArray(task.blocked_by) ? task.blocked_by.join(', ') : task.blocked_by}</div>` : ''}
-      </div>
-    `).join('');
-  } catch (err) {
-    console.error('Adapter preview refresh error:', err);
-    document.getElementById('adapterPreviewNodes').innerHTML = '<div style="color:var(--bad);font-size:12px;">Error loading adapter-preview data</div>';
-  }
-}
-
-function _adapterPreviewVisible() {
-  return localStorage.getItem('shux.adapterPreview.visible') === '1';
-}
-function toggleAdapterPreview() {
-  const next = !_adapterPreviewVisible();
-  localStorage.setItem('shux.adapterPreview.visible', next ? '1' : '0');
-  applyAdapterPreviewVisibility();
-  if (next) refreshAdapterPreview();
-}
-function applyAdapterPreviewVisibility() {
-  const card = document.getElementById('adapterPreviewCard');
-  const btn  = document.getElementById('adapterPreviewToggleBtn');
-  const on = _adapterPreviewVisible();
-  if (card) card.style.display = on ? '' : 'none';
-  if (btn)  btn.textContent = 'Adapter preview: ' + (on ? 'on' : 'off');
-}
-applyAdapterPreviewVisibility();
-
 refresh();
 refreshCosts();
-if (_adapterPreviewVisible()) refreshAdapterPreview();
 setInterval(refresh, 3000);
 setInterval(refreshCosts, 30000);
-setInterval(() => { if (_adapterPreviewVisible()) refreshAdapterPreview(); }, 5000);
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
@@ -1533,25 +1544,14 @@ document.addEventListener('keydown', (e) => {
 
   switch (e.key) {
     case 'r': refresh(); break;
-    case 'g': // toggle dep graph
-      const gc = document.getElementById('depGraphCard');
-      gc.style.display = gc.style.display === 'none' ? 'block' : 'none';
-      break;
     case 'l': setView('list'); break;
     case 'b': setView('board'); break;
     case '?': // show help
-      alert('Keyboard shortcuts:\n\n  r — refresh\n  g — toggle dependency graph\n  l — list view\n  b — board view\n  ? — this help');
+      alert('Keyboard shortcuts:\n\n  r — refresh\n  l — list view\n  b — board view\n  ? — this help');
       break;
   }
 });
 
-// Initialize Mermaid
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'dark',
-  securityLevel: 'loose',
-  flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' }
-});
 </script>
 
 <div id="enqueueModal" onclick="if(event.target===this)cancelEnqueue()" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:999">
@@ -1559,9 +1559,6 @@ mermaid.initialize({
     <h3 id="enqueueModalTitle" style="margin:0 0 12px 0">Enqueue Task</h3>
     <label style="font-size:12px;color:var(--muted)">Target agent:</label>
     <select id="enqueueTarget" style="width:100%;padding:6px;margin:4px 0 12px 0;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:4px">
-      <option value="claude-code">claude-code</option>
-      <option value="codex-cli">codex-cli</option>
-      <option value="gemini-cli">gemini-cli</option>
     </select>
 
     <div id="enqueuePreview" style="margin:0 0 12px 0;padding:8px;background:var(--bg);border:1px solid var(--line);border-radius:4px;font-size:11px;font-family:monospace;">Loading dispatch preview...</div>

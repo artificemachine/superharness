@@ -2101,7 +2101,7 @@ def test_html_uses_workflow_aware_enqueue_rules(repo_root) -> None:
     assert "function inferredWorkflow(task)" in html
     assert "function canEnqueueTask(task)" in html
     assert "workflow === 'implementation'" in html
-    assert "['plan_approved', 'failed', 'stopped'].includes(st)" in html
+    assert "['todo', 'plan_approved', 'failed', 'stopped'].includes(st)" in html
     assert "workflow === 'quick' || workflow === 'note'" in html
     assert "const canEnqueue = canEnqueueTask(t);" in html
 
