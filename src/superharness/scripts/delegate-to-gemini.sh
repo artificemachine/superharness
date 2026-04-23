@@ -63,27 +63,27 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --prompt)
-      GEMINI_ARGS+=("--prompt" "$2")
+      # Pass the prompt as a positional argument at the end
+      PROMPT="$2"
       shift 2
       ;;
-    --model)
-      GEMINI_ARGS+=("--model" "$2")
-      shift 2
+    --yolo)
+      GEMINI_ARGS+=("-y")
+      shift
       ;;
     --plan-only)
       GEMINI_ARGS+=("--approval-mode" "plan")
       shift
       ;;
     --non-interactive)
-      # Gemini uses --prompt to trigger headless mode
+      # Non-interactive mode in Gemini CLI is triggered by providing a prompt
       shift
       ;;
     *)
-      # Ignore other Superharness-specific flags for now
       shift
       ;;
   esac
 done
 
-# Launch Gemini
-exec gemini "${GEMINI_ARGS[@]}"
+# Launch Gemini with the prompt as the final argument
+exec gemini "${GEMINI_ARGS[@]}" "$PROMPT"
