@@ -1,7 +1,6 @@
 {
-  "pid": 57417,
-  "project": "/Users/airm2max/DevOpsSec/superharness",
-  "interval": 30,
-  "log_out": "/Users/airm2max/DevOpsSec/superharness/.superharness/launcher-logs/daemon.out.log",
-  "log_err": "/Users/airm2max/DevOpsSec/superharness/.superharness/launcher-logs/daemon.err.log"
+  "operator_pid": 21817,
+  "dashboard_port": 8787,
+  "started_at": 1776962649.2852569,
+  "project": "/Users/airm2max/DevOpsSec/superharness"
 }

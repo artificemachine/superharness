@@ -410,7 +410,13 @@ async function refresh() {
       el.onclick = () => selectStatus(k);
       counts.appendChild(el);
     }
-    if (selectedStatus) await loadInboxDetail(selectedStatus);
+    
+    // Default behavior: show active items if no specific status is selected
+    if (selectedStatus) {
+      await loadInboxDetail(selectedStatus);
+    } else {
+      await loadInboxDetail('active');
+    }
 
   } catch (e) {
     document.getElementById('meta').textContent = 'error: ' + e;
@@ -547,16 +553,18 @@ async function viewTaskReport(taskId, agent) {
     const _liveStatuses = LIVE_STATUSES;
     const isActive = _liveStatuses.has(d.contract_status);
     if (isActive) {
+      // Show LIVE badge immediately for active statuses
+      meta.innerHTML = `task=${taskId} &nbsp; agent=${agent} &nbsp; <span class="live-badge">LIVE ●</span> auto-refreshing`;
       try {
-        const logData = await api('/api/task-log?task=' + encodeURIComponent(taskId) + '&lines=100');
-        if (logData.log && !logData.log.startsWith('(no log')) {
+        const logData = await api('/api/task-log?task=' + encodeURIComponent(taskId) + '&agent=' + encodeURIComponent(agent) + '&lines=100');
+        if (logData.exists) {
           const sdkBadge = logData.sdk_status ? ` &nbsp; <span style="color:var(--warn)">${logData.sdk_status}</span>` : '';
           meta.innerHTML = `task=${taskId} &nbsp; agent=${agent} &nbsp; <span class="live-badge">LIVE ●</span> auto-refreshing${sdkBadge}`;
           body.textContent = logData.log;
           body.scrollTop = body.scrollHeight;
           _liveLogInterval = setInterval(async () => {
             try {
-              const fresh = await api('/api/task-log?task=' + encodeURIComponent(taskId) + '&lines=100');
+              const fresh = await api('/api/task-log?task=' + encodeURIComponent(taskId) + '&agent=' + encodeURIComponent(agent) + '&lines=100');
               if (fresh.log) { body.textContent = fresh.log; body.scrollTop = body.scrollHeight; }
               const freshBadge = fresh.sdk_status ? ` &nbsp; <span style="color:var(--warn)">${fresh.sdk_status}</span>` : '';
               meta.innerHTML = `task=${taskId} &nbsp; agent=${agent} &nbsp; <span class="live-badge">LIVE ●</span> auto-refreshing${freshBadge}`;

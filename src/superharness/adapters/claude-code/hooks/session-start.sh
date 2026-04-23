@@ -36,7 +36,8 @@ try:
 except: pass
 " 2>/dev/null || true)
   if [ -n "$ACTIVE_TASK" ]; then
-    TASK_CONTEXT=$(superharness context --project "$PROJECT_DIR" "$ACTIVE_TASK" 2>/dev/null || true)
+    # Use python -m to bypass entrypoint issues
+    TASK_CONTEXT=$(python3 -m superharness.cli context --project "$PROJECT_DIR" "$ACTIVE_TASK" 2>/dev/null || true)
   fi
   if [ -z "$TASK_CONTEXT" ]; then
     TASK_CONTEXT="Active contract found at .superharness/contract.yaml — run: shux context"

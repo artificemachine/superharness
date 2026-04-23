@@ -141,9 +141,9 @@ class Operator:
             with open(self.heartbeat_file, "r") as f:
                 data = yaml.safe_load(f)
             
-            ts = data.get("timestamp")
+            ts = data.get("timestamp") or data.get("last_seen")
             if not ts:
-                return HealthStatus(False, "watcher", "Invalid heartbeat data")
+                return HealthStatus(False, "watcher", "Invalid heartbeat data (missing timestamp)")
 
             from datetime import datetime, timezone
             hb_dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))

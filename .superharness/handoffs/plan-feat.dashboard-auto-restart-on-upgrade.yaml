@@ -1,0 +1,82 @@
+task: feat.dashboard-auto-restart-on-upgrade
+phase: plan
+status: plan_proposed
+from: claude-code
+to: owner
+date: "2026-04-23T13:30:00Z"
+
+plan: |
+  The `autohealth_loop` function in `scripts/dashboard-ui.py` already handles
+  liveness-based restarts (dead process or failed HTTP health-check). We need
+  to extend it with a *version-mismatch* restart: at each heartbeat the loop
+  should compare the installed package version (via `importlib.metadata`) with
+  the version that was current when the dashboard subprocess was launched.
+  When a mismatch is detected the loop terminates the running subprocess and
+  starts a fresh one, then logs a structured ledger line.
+
+  The version stamp will be captured once at startup using `superharness.__version__`
+  (already imported at the top of `dashboard-ui.py`). On each poll the loop
+  re-reads the installed version via `importlib.metadata.version("superharness")`
+  (a cheap call, no subprocess). If the two strings differ, the loop triggers
+  a restart, writes a ledger line, and resets the stamp to the new version.
+
+  The ledger write uses a simple file-append to `.superharness/ledger.md`,
+  matching the existing format used throughout the codebase.
+
+tdd:
+  red: |
+    New file: tests/unit/test_dashboard_autohealth_version.py
+
+    Test 1 — test_autohealth_detects_version_mismatch_and_restarts:
+      * Mock `importlib.metadata.version` to return "1.0.0" initially, then
+        "1.1.0" on the second call (simulating an upgrade mid-run).
+      * Use a fake subprocess.Popen with poll() always returning None (alive).
+      * Run autohealth_loop for two iterations (use threading + Event or
+        monkeypatch time.sleep to control iteration count).
+      * Assert: the first proc was terminated (proc.terminate called) and a
+        second proc was started.
+      * Assert: ledger.md contains a line with "auto-restart" and both
+        version strings "1.0.0" and "1.1.0".
+
+    Test 2 — test_autohealth_no_restart_when_version_unchanged:
+      * Mock `importlib.metadata.version` to always return "1.0.0".
+      * Run two iterations.
+      * Assert: only one proc was ever started (no extra Popen calls beyond
+        the first start).
+
+    Test 3 — test_autohealth_version_mismatch_logged_to_ledger:
+      * Focus purely on the ledger write: call the internal helper directly
+        with old="0.9.0" and new="1.0.0" and verify ledger line format.
+
+  green: |
+    In `scripts/dashboard-ui.py`:
+    1. Add a helper function `_get_installed_version() -> str` that calls
+       `importlib.metadata.version("superharness")` and returns "unknown" on
+       PackageNotFoundError.
+    2. Add a helper `_append_ledger(project_dir: str, line: str) -> None` that
+       opens `.superharness/ledger.md` in append mode and writes the line.
+    3. In `autohealth_loop`:
+       a. Before the loop, capture `running_version = _get_installed_version()`.
+       b. Inside each iteration, call `installed_version = _get_installed_version()`.
+       c. If `installed_version != running_version`, log via `_append_ledger`
+          with format:
+          `- {ISO_UTC} — auto-restart — version mismatch: {running_version} -> {installed_version}`
+          then terminate and restart the proc (same restart path as liveness),
+          and set `running_version = installed_version`.
+
+  refactor: |
+    Extract the proc-terminate+restart sequence into a private `_restart_proc`
+    helper to avoid repeating the same 4-line pattern for liveness vs version
+    mismatch. Update both call sites to use the helper.
+
+risks: |
+  - `importlib.metadata.version` is fast but reads from the installed package
+    metadata on disk. On a hot reload (e.g. pip install --upgrade), there may
+    be a brief window where the metadata is partially written. This is
+    acceptable for a heartbeat-based check.
+  - The version stamp is a simple string comparison. Pre-release version
+    suffixes (e.g. 1.0.0a1 vs 1.0.0) will trigger a restart as intended.
+  - On Windows `proc.terminate()` sends SIGTERM equivalent; the existing
+    liveness path already handles this correctly.
+  - No interaction with the watcher heartbeat YAML is needed — the
+    autohealth_loop is entirely within the dashboard process.
