@@ -578,6 +578,9 @@ def _do_dispatch(
         launch_args.append("--for-review")
     if bool(item.get("plan_only", False)):
         launch_args.append("--plan-only")
+    elif non_interactive:
+        # Implementation tasks in autonomous mode need YOLO permissions
+        launch_args.append("--yolo")
     
     if print_only:
         launch_args.append("--print-only")
