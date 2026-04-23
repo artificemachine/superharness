@@ -185,3 +185,15 @@ failures:
   - unknown
   severity: minor
   task: chore.collapse-guards-next-action
+- agent: claude-code
+  date: '2026-04-22T23:27:28Z'
+  error_snippet: "timed out\n^D\b\b⚠ Preflight [WARN] task=feat.dashboard-auto-restart-on-upgrade\n\
+    \  ⚠ [no_tdd_red] No TDD red phase defined — agent will code without a failing\
+    \ test first.\n      Add a tdd.red block describing which tests to write before\
+    \ implementing.\nProject: /Users/airm2max/.superharness-workers/superharness\n\
+    Contract: initial-setup\nTask: feat.dashboard-auto-restart-on-upgrade\nModel:\
+    \ claude-sonnet-4-6 (auto-classified)\nEffort: low\nVia: cli\n\nLaunching Claude..."
+  patterns:
+  - timeout
+  severity: major
+  task: feat.dashboard-auto-restart-on-upgrade

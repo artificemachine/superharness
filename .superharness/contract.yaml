@@ -1803,7 +1803,7 @@ tasks:
   owner: claude-code
   status: plan_approved
   project_path: /Users/airm2max/DevOpsSec/superharness
-  blocked_by: superharness-next-action-payload
+  blocked_by: none
   workflow: implementation
   development_method: tdd
   acceptance_criteria:
