@@ -20,13 +20,15 @@ _1M_TOKEN_THRESHOLD = 200_000
 
 _LOW_TITLE_PREFIXES = ("fix.typo", "docs:", "chore:")
 
-_LLM_TIER_MAP: dict[str, str] = {
-    "mini":     "mini",
-    "standard": "standard",
-    "max":      "max",
-    "sonnet-4-6": "standard", # Backwards compat for older LLM prompts
-    "opus-4-6":   "max",
-    "opus-4-7":   "max",
+_FALLBACK_MODEL = "claude-sonnet-4-6"
+
+_LLM_MODEL_MAP: dict[str, str] = {
+    "sonnet-4-6": "claude-sonnet-4-6",
+    "opus-4-6":   "claude-opus-4-6",
+    "opus-4-7":   "claude-opus-4-7",
+    "mini":       "claude-haiku-4-5-20251001",
+    "standard":   "claude-sonnet-4-6",
+    "max":        "claude-opus-4-7",
 }
 
 _LLM_CLASSIFY_PROMPT = """\
