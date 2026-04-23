@@ -43,3 +43,4 @@ json
 .serena/
 
 .token-budget
+.superharness/failures.yaml
