@@ -80,3 +80,22 @@ def test_agent_lifecycle_compatibility(agent_name, tmp_path):
         assert "test-task" in output
     finally:
         sys.stdout = _orig_stdout
+
+def test_prevent_duplicate_task_different_agents(tmp_path):
+    """Verify that the engine blocks enqueuing the same task to different agents."""
+    from superharness.engine.inbox import enqueue
+    inbox_file = str(tmp_path / "inbox.yaml")
+    
+    # 1. Enqueue task-1 for claude-code
+    rc = enqueue(
+        file=inbox_file, id="item-1", to="claude-code", task="task-1",
+        project="/tmp", priority=2, created_at="2026-04-23T12:00:00Z"
+    )
+    assert rc == 0
+    
+    # 2. Try to enqueue same task-1 for gemini-cli (SHOULD FAIL)
+    rc = enqueue(
+        file=inbox_file, id="item-2", to="gemini-cli", task="task-1",
+        project="/tmp", priority=2, created_at="2026-04-23T12:05:00Z"
+    )
+    assert rc == 2 # 2 is the 'duplicate_task' error code
