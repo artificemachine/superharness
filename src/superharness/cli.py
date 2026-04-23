@@ -732,5 +732,23 @@ def operator_start(project, port):
     op.monitor_and_recover()
 
 
+@operator.command(name="install")
+@click.option("--project", "-p", default=".", help="Project directory")
+def operator_install(project):
+    """Install the Guardian as a persistent system service."""
+    from pathlib import Path
+    import subprocess
+    
+    project_dir = Path(project).resolve()
+    script_path = Path(__file__).parent / "scripts" / "install-operator-service.sh"
+    
+    if not script_path.exists():
+        # Handle installed environment path
+        script_path = Path(sys.prefix) / "lib" / "python3.11" / "site-packages" / "superharness" / "scripts" / "install-operator-service.sh"
+
+    click.echo(f"Installing Superharness service for {project_dir}...")
+    subprocess.run(["bash", str(script_path), str(project_dir)], check=True)
+
+
 if __name__ == "__main__":
     main()

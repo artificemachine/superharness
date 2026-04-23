@@ -1,8 +1,4 @@
-"""Superharness Operator — the guardian of the autonomous engine.
-
-Monitors system health, manages component lifecycles (Watcher/Dashboard),
-and resolves resource conflicts automatically.
-"""
+"""Superharness Operator - Guardian of the autonomous engine."""
 from __future__ import annotations
 
 import json
@@ -31,19 +27,24 @@ class Operator:
     def __init__(self, project_dir: str | Path):
         self.project_dir = Path(project_dir).resolve()
         self.harness_dir = self.project_dir / ".superharness"
-        self.heartbeat_file = self.harness_dir / "agent-pulse.yaml"
+        self.heartbeat_file = self.harness_dir / "watcher.heartbeat"
         self.processes: dict[str, subprocess.Popen] = {}
         self._stopping = False
 
     def start_stack(self, dashboard_port: int = 8787):
-        """Start the full Superharness stack (Watcher + Dashboard)."""
+        """Start the full Superharness stack."""
+        from superharness.engine.trace import trace_event
         actual_port = self._find_available_port(dashboard_port)
         
-        print(f"Operator: Starting stack for {self.project_dir}")
+        if actual_port != dashboard_port:
+            trace_event(self.project_dir, "port_arbitration", {
+                "requested": dashboard_port,
+                "assigned": actual_port,
+                "reason": "port_busy"
+            })
+
         self._spawn_watcher()
         self._spawn_dashboard(actual_port)
-        
-        # Persist daemon metadata
         self._write_daemon_info(actual_port)
 
     def _find_available_port(self, start_port: int) -> int:
@@ -77,12 +78,8 @@ class Operator:
             "--project", str(self.project_dir),
             "--interval", "15"
         ]
-        print("Operator: Spawning Watcher...")
         self.processes["watcher"] = subprocess.Popen(
-            cmd, 
-            stdout=subprocess.DEVNULL, 
-            stderr=subprocess.DEVNULL,
-            start_new_session=True
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
         )
 
     def _spawn_dashboard(self, port: int):
@@ -92,24 +89,23 @@ class Operator:
             "--port", str(port),
             "--project", str(self.project_dir)
         ]
-        print(f"Operator: Spawning Dashboard on port {port}...")
         self.processes["dashboard"] = subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL, 
-            stderr=subprocess.DEVNULL,
-            start_new_session=True
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
         )
 
     def monitor_and_recover(self, poll_interval: int = 5):
         """Loop forever, restarting any crashed components."""
+        from superharness.engine.trace import trace_event
         try:
             while not self._stopping:
                 for name, proc in list(self.processes.items()):
                     if proc.poll() is not None:
-                        print(f"Operator: WARNING - {name} crashed (exit code {proc.returncode}). Recovering...")
+                        exit_code = proc.returncode
+                        trace_event(self.project_dir, "process_recovery", {
+                            "component": name, "exit_code": exit_code, "action": "restart"
+                        })
                         if name == "watcher": self._spawn_watcher()
                         elif name == "dashboard": self._spawn_dashboard(8787)
-                
                 time.sleep(poll_interval)
         except KeyboardInterrupt:
             self.stop_all()
@@ -117,68 +113,59 @@ class Operator:
     def stop_all(self):
         """Gracefully terminate all managed processes."""
         self._stopping = True
-        print("\nOperator: Shutting down stack...")
         for name, proc in self.processes.items():
-            print(f"Operator: Stopping {name}...")
             proc.terminate()
             try:
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 proc.kill()
         self.processes.clear()
-        
-        # Clean up daemon info
         daemon_file = self.harness_dir / "daemon.pid.json"
         if daemon_file.exists():
             daemon_file.unlink()
 
-    def check_watcher_health(self, stale_threshold_sec: int = 60) -> HealthStatus:
-        """Check if the background watcher is alive based on its heartbeat."""
-        if not self.heartbeat_file.exists():
-            return HealthStatus(False, "watcher", "Heartbeat file missing")
+    def check_watcher_health(self, stale_threshold_sec: int = 120) -> HealthStatus:
+        """Check if the background watcher is alive."""
+        hb_yaml = self.harness_dir / "watcher.heartbeat.yaml"
+        hb_txt = self.harness_dir / "watcher.heartbeat"
+        if hb_yaml.exists():
+            try:
+                import yaml
+                data = yaml.safe_load(hb_yaml.read_text())
+                ts_str = data.get("written_at")
+                if ts_str: return self._check_ts_age(ts_str, "watcher (yaml)", stale_threshold_sec)
+            except Exception: pass
+        if hb_txt.exists():
+            try:
+                ts_str = hb_txt.read_text().strip()
+                if ts_str: return self._check_ts_age(ts_str, "watcher (txt)", stale_threshold_sec)
+            except Exception: pass
+        return HealthStatus(False, "watcher", "Heartbeat missing")
 
+    def _check_ts_age(self, ts_str: str, label: str, threshold: int) -> HealthStatus:
+        """Helper to parse ISO timestamp and check age."""
+        from datetime import datetime, timezone
         try:
-            with open(self.heartbeat_file, "r") as f:
-                data = yaml.safe_load(f)
-            
-            ts = data.get("timestamp") or data.get("last_seen")
-            if not ts:
-                return HealthStatus(False, "watcher", "Invalid heartbeat data (missing timestamp)")
-
-            from datetime import datetime, timezone
-            hb_dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            hb_dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
             hb_ts = hb_dt.timestamp()
-            now = time.time()
-            diff = now - hb_ts
-
-            if diff > stale_threshold_sec:
-                return HealthStatus(
-                    False, 
-                    "watcher", 
-                    f"Watcher heartbeat is stale ({int(diff)}s ago)",
-                    last_heartbeat=hb_ts
-                )
-            
-            return HealthStatus(True, "watcher", "Watcher is healthy", last_heartbeat=hb_ts)
-
+            diff = time.time() - hb_ts
+            if diff > threshold:
+                return HealthStatus(False, "watcher", f"Watcher stale ({int(diff)}s ago)", last_heartbeat=hb_ts)
+            return HealthStatus(True, "watcher", f"Watcher healthy ({label})", last_heartbeat=hb_ts)
         except Exception as e:
-            return HealthStatus(False, "watcher", f"Error reading heartbeat: {str(e)}")
+            return HealthStatus(False, "watcher", f"Error: {str(e)}")
 
     def check_resource_conflicts(self) -> list[HealthStatus]:
-        """Check for zombie processes or locked resources."""
+        """Check for zombie processes."""
         conflicts = []
         lock_file = self.harness_dir / "inbox.lock"
-        
         if lock_file.exists():
             try:
                 pid = int(lock_file.read_text().strip())
                 if not self._is_pid_alive(pid):
-                    conflicts.append(HealthStatus(
-                        False, "lock", f"Stale lock detected (PID {pid} is dead)"
-                    ))
+                    conflicts.append(HealthStatus(False, "lock", f"Stale lock (PID {pid} dead)"))
             except Exception:
-                conflicts.append(HealthStatus(False, "lock", "Malformed lock file"))
-        
+                conflicts.append(HealthStatus(False, "lock", "Malformed lock"))
         return conflicts
 
     def _is_pid_alive(self, pid: int) -> bool:
@@ -190,22 +177,14 @@ class Operator:
             return False
 
     def get_summary(self) -> dict[str, Any]:
-        """Get a full health report of the Superharness stack."""
+        """Get full health report."""
         watcher = self.check_watcher_health()
         conflicts = self.check_resource_conflicts()
-        
         return {
             "project": str(self.project_dir),
             "healthy": watcher.is_healthy and len(conflicts) == 0,
             "components": {
-                "watcher": {
-                    "ok": watcher.is_healthy,
-                    "message": watcher.message,
-                    "last_pulse": watcher.last_heartbeat
-                },
-                "conflicts": [
-                    {"component": c.component, "message": c.message} 
-                    for c in conflicts
-                ]
+                "watcher": {"ok": watcher.is_healthy, "message": watcher.message, "last_pulse": watcher.last_heartbeat},
+                "conflicts": [{"component": c.component, "message": c.message} for c in conflicts]
             }
         }
