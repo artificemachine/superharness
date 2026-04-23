@@ -695,5 +695,42 @@ def cmd_help(ctx):
     click.echo(ctx.parent.get_help())
 
 
+@main.group()
+def operator():
+    """Manage the Superharness stack (Watcher, Dashboard, and Health)."""
+    pass
+
+
+@operator.command(name="check")
+@click.option("--project", "-p", default=".", help="Project directory")
+def operator_check(project):
+    """Check the health of the Superharness stack."""
+    from superharness.engine.operator import Operator
+    op = Operator(project)
+    summary = op.get_summary()
+    
+    click.echo(f"Project: {summary['project']}")
+    click.echo(f"Overall Health: {'✅ OK' if summary['healthy'] else '❌ ISSUES'}")
+    
+    w = summary['components']['watcher']
+    click.echo(f"  Watcher: {'✅' if w['ok'] else '❌'} {w['message']}")
+    
+    for c in summary['components']['conflicts']:
+        click.echo(f"  Conflict: ⚠️ {c['message']}")
+
+
+@operator.command(name="start")
+@click.option("--project", "-p", default=".", help="Project directory")
+@click.option("--port", default=8787, help="Dashboard port")
+def operator_start(project, port):
+    """Start the Superharness Guardian (Watcher + Dashboard)."""
+    from superharness.engine.operator import Operator
+    op = Operator(project)
+    
+    click.echo("🛡️  Superharness Guardian active.")
+    op.start_stack(dashboard_port=port)
+    op.monitor_and_recover()
+
+
 if __name__ == "__main__":
     main()
