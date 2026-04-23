@@ -13,3 +13,11 @@
 - 2026-04-23 (v1.30.3): fix(watcher): auto_enqueue_approved now holds _inbox_lock before writing inbox.yaml, matching the pattern in auto_enqueue_todo and preventing inbox corruption under concurrent launchd cycles.
 - 2026-04-23 (v1.31.0): feat(dashboard): collapsible bottom panels, unified status card (grid label/value layout), consistent 6px pill buttons, KNOWN_AGENTS single source of truth, all_task_owners API field, resume/retry inbox actions, plan-only dispatch for implementation+todo tasks, suppressed misleading hint text, fix PY-006 false positive in test fixture
 - 2026-04-23 (v1.31.0): fix(gemini-sh): add --help/-h fast-path to delegate-to-gemini.sh so CI entrypoint contract test passes without gemini binary installed
+- 2026-04-23: feat(headless-engine): Registry-driven autonomous engine + Superharness Operator (v1.31.0).
+  - Implement Superharness Operator (Guardian) for self-healing stack management.
+  - Add native Gemini CLI support via adapter manifests and launchers.
+  - Enforce "Exclusive Task Ownership" in inbox to prevent double-dispatch race conditions.
+  - Overhaul Dashboard UI with agent-aware terminal streaming and active filtering.
+  - Standardize all agent manifests (Claude, Codex, Gemini) with versioned model tiers.
+  - Add Structured Trace Ledger (.superharness/trace.jsonl) for AI-driven self-improvement.
+  - Finalize engine refactor collapsing duplicate guard tables into next_action.py.
