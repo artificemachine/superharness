@@ -277,8 +277,26 @@ def _is_dashboard_running(project_dir: str = None) -> tuple:
     If project_dir is None, falls back to checking any dashboard on port 8787.
     """
     import urllib.request
+    import json
     if project_dir is not None:
         real_proj = os.path.realpath(project_dir)
+        
+        # Priority 1: Check daemon.pid.json for the actual port this project is using
+        daemon_file = os.path.join(real_proj, ".superharness", "daemon.pid.json")
+        if os.path.exists(daemon_file):
+            try:
+                with open(daemon_file, "r") as f:
+                    info = json.load(f)
+                    port = info.get("dashboard_port")
+                    if port:
+                        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/status")
+                        with urllib.request.urlopen(req, timeout=1) as resp:
+                            if resp.status == 200:
+                                return True, port
+            except Exception:
+                pass
+
+        # Priority 2: Fallback to process scanning
         for pid, port, proj in _find_dashboard_processes():
             if proj and os.path.realpath(proj) == real_proj and port:
                 try:

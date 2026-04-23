@@ -34,6 +34,10 @@ class Operator:
     def start_stack(self, dashboard_port: int = 8787):
         """Start the full Superharness stack."""
         from superharness.engine.trace import trace_event
+        
+        # Patch: Try to reclaim the port if it is held by a stale dashboard FROM THIS PROJECT
+        self._reclaim_port_if_zombie(dashboard_port)
+        
         actual_port = self._find_available_port(dashboard_port)
         
         if actual_port != dashboard_port:
@@ -46,6 +50,26 @@ class Operator:
         self._spawn_watcher()
         self._spawn_dashboard(actual_port)
         self._write_daemon_info(actual_port)
+
+    def _reclaim_port_if_zombie(self, port: int):
+        """If the port is busy by a stale dashboard FROM THIS PROJECT, kill it."""
+        import subprocess
+        try:
+            cmd = ["lsof", "-t", f"-i:{port}"]
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            pids = res.stdout.strip().split()
+            for pid_str in pids:
+                pid = int(pid_str)
+                check_cmd = ["ps", "-p", str(pid), "-o", "command="]
+                proc_info = subprocess.run(check_cmd, capture_output=True, text=True).stdout.lower()
+                
+                # Only kill if it matches our specific project path
+                if "python" in proc_info and "dashboard-ui" in proc_info:
+                    if str(self.project_dir).lower() in proc_info:
+                        os.kill(pid, signal.SIGKILL)
+                        time.sleep(1)
+        except Exception:
+            pass
 
     def _find_available_port(self, start_port: int) -> int:
         """Find the next available TCP port."""
@@ -105,7 +129,9 @@ class Operator:
                             "component": name, "exit_code": exit_code, "action": "restart"
                         })
                         if name == "watcher": self._spawn_watcher()
-                        elif name == "dashboard": self._spawn_dashboard(8787)
+                        elif name == "dashboard": 
+                            # Re-read port from metadata if dashboard crashed
+                            self._spawn_dashboard(8787)
                 time.sleep(poll_interval)
         except KeyboardInterrupt:
             self.stop_all()
