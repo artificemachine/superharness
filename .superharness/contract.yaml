@@ -1958,3 +1958,15 @@ tasks:
   summary: auto-approved per task autonomy setting
 decisions: []
 failures: []
+- id: feat.autonomous-peer-review
+  title: 'Autonomous Peer Review: Agents can verify and close tasks'
+  owner: gemini-cli
+  status: todo
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  acceptance_criteria:
+  - 'Engine: Detect report_ready status and auto-enqueue a peer for review'
+  - 'Reasoning: Reviewer must use a higher or equal model tier than the author'
+  - 'Logic: Reviewer agent can issue a "LGTM" signal to trigger shux close'
+  - 'Cross-Pollination: Ensure the reviewer is a different agent than the author'
+  - 'Dashboard: Show "Reviewing..." state in the activity feed'
