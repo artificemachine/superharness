@@ -304,11 +304,10 @@ def _get_latest_handoff_task(handoff_dir: str, to: str) -> tuple[str, str]:
 # Discussion round context helpers
 # ---------------------------------------------------------------------------
 
-_DISC_ROUND_RE = re.compile(r"^(discuss-[^/]+)/round-(\d+)$")
-
 # Thin re-exports so existing call sites in this module and any external
 # imports keep working. Canonical implementations live in engine.next_action.
 from superharness.engine.next_action import (  # noqa: E402
+    _DISC_ROUND_RE,
     infer_workflow as _infer_workflow,
     allowed_statuses_for_workflow as _allowed_statuses_for_workflow,
     plan_only_allowed_statuses as _plan_only_allowed_statuses,
@@ -1156,6 +1155,8 @@ def _build_parser() -> "argparse.ArgumentParser":
                         help="Print the generated prompt without launching the agent")
     parser.add_argument("--non-interactive", action="store_true", default=False,
                         help="Launch agent without live supervision (requires confirmation or env var)")
+    parser.add_argument("--yolo", action="store_true", default=False,
+                        help="Dangerously skip permissions and apply changes without asking")
     parser.add_argument("--codex-bypass", action="store_true", default=False,
                         help="Codex only: use --dangerously-bypass-approvals-and-sandbox")
     parser.add_argument("--for-review", action="store_true", default=False,
