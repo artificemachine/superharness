@@ -47,6 +47,15 @@ def _ensure_python_with_yaml() -> None:
 
 HTML = (Path(__file__).parent / "dashboard.html").read_text()
 
+# Registry of known agent names — add new agents here as the ecosystem grows.
+KNOWN_AGENTS: list[str] = ["claude-code", "codex-cli", "gemini-cli"]
+
+# Inbox item statuses that mean "still in flight or queued" (not terminal).
+INBOX_ACTIVE_STATUSES: frozenset[str] = frozenset({"pending", "launched", "running", "paused"})
+
+# Inbox item statuses considered terminal / done.
+INBOX_TERMINAL_STATUSES: frozenset[str] = frozenset({"done", "failed", "stale", "stopped"})
+
 from superharness.engine.normalization import normalize_blocked_by as _normalize_blocked_by  # noqa: E402
 
 
@@ -1240,7 +1249,7 @@ def watcher_config(project_dir: Path) -> dict:
                 cfg_map["launcher_timeout_seconds"] = int(raw_val)
         elif line.startswith("target:"):
             val = line.split(":", 1)[1].strip().strip("'\"")
-            if val in {"both", "claude-code", "codex-cli"}:
+            if val in {"both"} | set(KNOWN_AGENTS):
                 cfg_map["target"] = val
         elif line.startswith("codex_bypass:"):
             cfg_map["codex_bypass"] = line.split(":", 1)[1].strip().lower() == "true"
@@ -1493,6 +1502,32 @@ class Handler(BaseHTTPRequestHandler):
             return self._run_cmd(["bash", recover, "--project", str(self.project_dir), "--action", "retry", "--timeout-minutes", "20"]), 200
         if action == "normalize_stale":
             return self._run_cmd(["bash", normalize, "--project", str(self.project_dir), "--archive", "--drop-status", "stale"]), 200
+        if action == "clear_resolved_inbox":
+            inbox = self.project_dir / ".superharness" / "inbox.yaml"
+            contract = self.project_dir / ".superharness" / "contract.yaml"
+            if not inbox.exists():
+                return {"ok": True, "removed": 0}, 200
+            # Load active task IDs from contract (non-done, non-archived)
+            c_tasks = contract_tasks(contract)
+            active_task_ids = {
+                t["id"] for t in c_tasks
+                if t.get("status") not in ("done", "archived")
+                and t.get("id")
+            }
+            items = inbox_items(inbox)
+            kept = [
+                item for item in items
+                if item.get("task") in active_task_ids
+                or item.get("status") in ("pending", "launched", "running")
+            ]
+            removed = len(items) - len(kept)
+            if removed > 0:
+                import yaml as _yaml
+                with open(inbox, "w", encoding="utf-8") as fh:
+                    fh.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
+                    for item in kept:
+                        _yaml.dump([item], fh, default_flow_style=False, allow_unicode=True, sort_keys=True)
+            return {"ok": True, "removed": removed}, 200
         if action.startswith("confirm_plan:"):
             task_id = action.split(":", 1)[1]
             if not task_id:
@@ -1601,11 +1636,11 @@ class Handler(BaseHTTPRequestHandler):
                 return ({"error": f"task {task_id} not found"}, 404)
             if not target:
                 target = str(task.get("owner", "") or "claude-code") or "claude-code"
-            if target not in ("claude-code", "codex-cli"):
-                return ({"error": f"invalid target '{target}' — must be claude-code or codex-cli"}, 400)
+            if target not in KNOWN_AGENTS:
+                return ({"error": f"invalid target '{target}' — must be one of {KNOWN_AGENTS}"}, 400)
             # Already-enqueued guard.
             items = inbox_items(harness_dir / "inbox.yaml")
-            active = {"pending", "launched", "running", "paused"}
+            active = INBOX_ACTIVE_STATUSES
             for item in items:
                 if item.get("task") == task_id and item.get("status") in active:
                     return (
@@ -1659,7 +1694,7 @@ class Handler(BaseHTTPRequestHandler):
                 return ({"error": f"task {task_id} is {task.get('status')!r}, expected 'report_ready'"}, 400)
 
             items = inbox_items(harness_dir / "inbox.yaml")
-            active_statuses = {"pending", "launched", "running", "paused"}
+            active_statuses = INBOX_ACTIVE_STATUSES
             for item in items:
                 if item.get("task") == task_id and item.get("status") in active_statuses:
                     return ({"error": f"task '{task_id}' already enqueued (item {item.get('id')}, status={item.get('status')})"}, 409)
@@ -1780,10 +1815,10 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts) < 3 or not parts[1] or not parts[2]:
                 return ({"error": "Missing task ID or target agent."}, 400)
             task_id, target = parts[1], parts[2]
-            if target not in ("claude-code", "codex-cli", "gemini-cli"):
-                return ({"error": f"invalid target: {target}"}, 400)
+            if target not in KNOWN_AGENTS:
+                return ({"error": f"invalid target: {target} — must be one of {KNOWN_AGENTS}"}, 400)
             # Block duplicate: reject if task already has an active/paused inbox item
-            active_statuses = {"pending", "launched", "running", "paused"}
+            active_statuses = INBOX_ACTIVE_STATUSES
             items = inbox_items(self.project_dir / ".superharness" / "inbox.yaml")
             for item in items:
                 if item.get("task") == task_id and item.get("status") in active_statuses:
@@ -1794,11 +1829,18 @@ class Handler(BaseHTTPRequestHandler):
                 instructions_file = self.project_dir / ".superharness" / "handoffs" / f"{task_id}-instructions.md"
                 instructions_file.parent.mkdir(parents=True, exist_ok=True)
                 instructions_file.write_text(instructions, encoding="utf-8")
-            return self._run_cmd(
-                [sys.executable, "-m", "superharness.commands.inbox_enqueue",
-                 "--project", str(self.project_dir),
-                 "--to", target, "--task", task_id, "--priority", "2"]
-            ), 200
+            # Detect implementation+todo: agent must propose a plan first.
+            tasks = contract_tasks(self.project_dir / ".superharness" / "contract.yaml")
+            task_meta = next((t for t in tasks if t.get("id") == task_id), {})
+            from superharness.commands.inbox_enqueue import infer_workflow as _infer_wf
+            _workflow = _infer_wf(task_id, task_meta)
+            _plan_only = _workflow == "implementation" and task_meta.get("status") == "todo"
+            cmd = [sys.executable, "-m", "superharness.commands.inbox_enqueue",
+                   "--project", str(self.project_dir),
+                   "--to", target, "--task", task_id, "--priority", "2"]
+            if _plan_only:
+                cmd.append("--plan-only")
+            return self._run_cmd(cmd), 200
 
         if action.startswith("close_task:"):
             task_id = action.split(":", 1)[1]
@@ -1840,6 +1882,21 @@ class Handler(BaseHTTPRequestHandler):
         if action.startswith("resume_item:"):
             item_id = action.split(":", 1)[1]
             return self._run_cmd(inbox_py + ["set_status", "--file", inbox_file, "--id", item_id, "--from", "paused", "--to", "pending", "--now", now, "--stamp-key", "resumed_at"]), 200
+        if action.startswith("resume_task:"):
+            task_id = action.split(":", 1)[1]
+            items = inbox_items(self.project_dir / ".superharness" / "inbox.yaml")
+            target = next((i for i in items if i.get("task") == task_id and i.get("status") == "paused"), None)
+            if not target:
+                return ({"error": f"no paused inbox item found for task: {task_id}"}, 404)
+            return self._run_cmd(inbox_py + ["set_status", "--file", inbox_file, "--id", target["id"], "--from", "paused", "--to", "pending", "--now", now, "--stamp-key", "resumed_at"]), 200
+        if action.startswith("retry_task:"):
+            task_id = action.split(":", 1)[1]
+            items = inbox_items(self.project_dir / ".superharness" / "inbox.yaml")
+            target = next((i for i in items if i.get("task") == task_id and i.get("status") in ("stale", "failed", "stopped")), None)
+            if not target:
+                return ({"error": f"no failed/stale inbox item found for task: {task_id}"}, 404)
+            from_status = target.get("status", "failed")
+            return self._run_cmd(inbox_py + ["set_status", "--file", inbox_file, "--id", target["id"], "--from", from_status, "--to", "pending", "--now", now, "--stamp-key", "retried_at"]), 200
         if action.startswith("retry_item:"):
             item_id = action.split(":", 1)[1]
             items = inbox_items(self.project_dir / ".superharness" / "inbox.yaml")
@@ -1920,9 +1977,26 @@ class Handler(BaseHTTPRequestHandler):
                     "contract_id": contract_id(contract),
                     "contract_tasks": contract_tasks(contract),
                     "contract_owners": contract_owners(contract),
+                    "all_task_owners": list(set(KNOWN_AGENTS) | {
+                        t.get("owner") for t in (contract_tasks(contract) or [])
+                        if isinstance(t, dict) and t.get("owner")
+                    } | {
+                        item.get("to") for item in inbox_items(inbox)
+                        if item.get("to")
+                    }),
                     "active_inbox_tasks": list({
                         item.get("task") for item in inbox_items(inbox)
-                        if item.get("status") in ("pending", "launched", "running", "paused")
+                        if item.get("status") in ("pending", "launched", "running")
+                        and item.get("task")
+                    }),
+                    "paused_inbox_tasks": list({
+                        item.get("task") for item in inbox_items(inbox)
+                        if item.get("status") == "paused"
+                        and item.get("task")
+                    }),
+                    "failed_inbox_tasks": list({
+                        item.get("task") for item in inbox_items(inbox)
+                        if item.get("status") in ("failed", "stale")
                         and item.get("task")
                     }),
                     "done_inbox_tasks": list({

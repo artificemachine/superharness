@@ -16,6 +16,8 @@ SH_DIR="$PROJECT_DIR/.superharness"
 # Only act in superharness-initialized projects
 [ -d "$SH_DIR" ] || exit 0
 
+PYTHON="${SUPERHARNESS_PYTHON:-python3}"
+
 PROGRESS_FILE="$SH_DIR/session-progress.md"
 TIMESTAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%SZ")"
 
@@ -31,7 +33,7 @@ if command -v superharness >/dev/null 2>&1; then
 fi
 if [ -z "$TASK_CONTEXT" ]; then
   # Fallback: inline Python to extract minimal task info
-  TASK_CONTEXT=$(python3 -c "
+  TASK_CONTEXT=$("$PYTHON" -c "
 import sys
 try:
     import yaml
@@ -97,14 +99,14 @@ fi
 
 # --- Stop active Claude-owned tasks and write handoffs ---
 STOPPED_TASK_IDS=""
-if [ -f "$SH_DIR/contract.yaml" ] && command -v python3 >/dev/null 2>&1; then
+if [ -f "$SH_DIR/contract.yaml" ] && command -v "$PYTHON" >/dev/null 2>&1; then
   export SH_SESSION_STOP_TIMESTAMP="$TIMESTAMP"
   export SH_SESSION_STOP_HARNESS_DIR="$SH_DIR"
   export SH_SESSION_STOP_TASK_CONTEXT="$TASK_CONTEXT"
   export SH_SESSION_STOP_BRANCH="${GIT_BRANCH:-}"
   export SH_SESSION_STOP_GIT_STATUS="${GIT_STATUS:-}"
   export SH_SESSION_STOP_GIT_LOG="${GIT_LOG:-}"
-  STOPPED_TASK_IDS="$(python3 - <<'PY'
+  STOPPED_TASK_IDS="$("$PYTHON" - <<'PY'
 import io
 import os
 import sys
@@ -204,8 +206,8 @@ fi
 for TASK_ID in $STOPPED_TASK_IDS; do
   [ -z "$TASK_ID" ] && continue
   _ledger "$TIMESTAMP session-stop: task stopped ($TASK_ID)"
-  if [ -n "$INBOX_FILE" ] && command -v python3 >/dev/null 2>&1; then
-    SYNC_RESULT="$(python3 -m superharness.engine.inbox sync_task_status \
+  if [ -n "$INBOX_FILE" ] && command -v "$PYTHON" >/dev/null 2>&1; then
+    SYNC_RESULT="$("$PYTHON" -m superharness.engine.inbox sync_task_status \
       --file "$INBOX_FILE" --task "$TASK_ID" --to stopped --now "$TIMESTAMP" 2>/dev/null || true)"
     case "$SYNC_RESULT" in
       *"synced=0"*) ;;
@@ -215,10 +217,10 @@ for TASK_ID in $STOPPED_TASK_IDS; do
 done
 
 # --- Pause any remaining active Claude-targeted inbox items ---
-if [ -n "$INBOX_FILE" ] && command -v python3 >/dev/null 2>&1; then
+if [ -n "$INBOX_FILE" ] && command -v "$PYTHON" >/dev/null 2>&1; then
   NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%SZ")"
   export SH_SESSION_STOP_INBOX_FILE="$INBOX_FILE"
-  PAUSABLE_IDS="$(python3 - <<'PY'
+  PAUSABLE_IDS="$("$PYTHON" - <<'PY'
 import os
 import sys
 import yaml
@@ -240,13 +242,13 @@ PY
 )" || true
   for ITEM_ID in $PAUSABLE_IDS; do
     [ -z "$ITEM_ID" ] && continue
-    python3 -m superharness.engine.inbox set_status \
+    "$PYTHON" -m superharness.engine.inbox set_status \
       --file "$INBOX_FILE" --id "$ITEM_ID" \
       --from pending --to paused --now "$NOW" --stamp-key paused_at 2>/dev/null || \
-    python3 -m superharness.engine.inbox set_status \
+    "$PYTHON" -m superharness.engine.inbox set_status \
       --file "$INBOX_FILE" --id "$ITEM_ID" \
       --from launched --to paused --now "$NOW" --stamp-key paused_at 2>/dev/null || \
-    python3 -m superharness.engine.inbox set_status \
+    "$PYTHON" -m superharness.engine.inbox set_status \
       --file "$INBOX_FILE" --id "$ITEM_ID" \
       --from running --to paused --now "$NOW" --stamp-key paused_at 2>/dev/null || true
     _ledger "$TIMESTAMP session-stop: inbox item paused ($ITEM_ID)"

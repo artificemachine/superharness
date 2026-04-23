@@ -36,6 +36,16 @@ resolve_python() {
 }
 
 PYTHON3="$(resolve_python)"
+
+# Fast-path: print usage and exit before touching gemini binary
+for arg in "$@"; do
+  if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
+    echo "Usage: delegate-to-gemini.sh [--project DIR] [--task ID] [--prompt TEXT] [--model MODEL] [--plan-only] [--non-interactive]"
+    echo "Delegates a superharness task to the Gemini CLI agent."
+    exit 0
+  fi
+done
+
 # Build Gemini CLI command
 GEMINI_ARGS=()
 
