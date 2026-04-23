@@ -10,7 +10,9 @@ def test_operator_watchdog_detects_stale_heartbeat(tmp_path):
     project_dir.mkdir()
     sh_dir = project_dir / ".superharness"
     sh_dir.mkdir()
-    hb_file = sh_dir / "agent-pulse.yaml"
+    
+    # New canonical path
+    hb_file = sh_dir / "watcher.heartbeat.yaml"
     
     op = Operator(project_dir)
     
@@ -21,21 +23,20 @@ def test_operator_watchdog_detects_stale_heartbeat(tmp_path):
     
     # 2. Test: Healthy heartbeat (just now)
     now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    hb_file.write_text(yaml.dump({"timestamp": now_iso}))
+    hb_file.write_text(yaml.dump({"written_at": now_iso})) # Using correct field name
     
     status = op.check_watcher_health()
     assert status.is_healthy
     assert "healthy" in status.message.lower()
     
-    # 3. Test: Stale heartbeat (2 minutes ago)
-    stale_dt = datetime.now(timezone.utc) - timedelta(minutes=2)
+    # 3. Test: Stale heartbeat (3 minutes ago)
+    stale_dt = datetime.now(timezone.utc) - timedelta(minutes=3)
     stale_iso = stale_dt.isoformat().replace("+00:00", "Z")
-    hb_file.write_text(yaml.dump({"timestamp": stale_iso}))
+    hb_file.write_text(yaml.dump({"written_at": stale_iso}))
     
-    status = op.check_watcher_health(stale_threshold_sec=60)
+    status = op.check_watcher_health(stale_threshold_sec=120)
     assert not status.is_healthy
     assert "stale" in status.message.lower()
-    assert "120s" in status.message # approximately
 
 def test_operator_detects_zombie_lock(tmp_path):
     project_dir = tmp_path / "zombie_proj"

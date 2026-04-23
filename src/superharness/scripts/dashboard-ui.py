@@ -203,30 +203,28 @@ def watcher_runtime(label: str) -> dict:
 
 
 def inbox_items(inbox_file: Path) -> list[dict]:
+    """Read inbox items using a proper YAML parser with non-blocking file access."""
     if not inbox_file.exists():
         return []
-    items: list[dict] = []
-    current: dict = {}
-    for raw in inbox_file.read_text(encoding="utf-8", errors="replace").splitlines():
-        line = raw.strip()
-        if line.startswith("#"):
-            continue
-        if raw.startswith("- "):
-            if current:
-                items.append(current)
-            current = {}
-            kv = line[2:]
-            if ":" in kv:
-                k, _, v = kv.partition(":")
-                current[k.strip()] = v.strip()
-        elif ":" in line and current:
-            k, _, v = line.partition(":")
-            k = k.strip()
-            if k and k not in current:
-                current[k] = v.strip()
-    if current:
-        items.append(current)
-    return items
+    try:
+        import fcntl
+        import yaml
+        with open(inbox_file, "r", encoding="utf-8", errors="replace") as f:
+            try:
+                # Try to get a shared lock without blocking
+                fcntl.flock(f, fcntl.LOCK_SH | fcntl.LOCK_NB)
+                content = f.read()
+                fcntl.flock(f, fcntl.LOCK_UN)
+            except (OSError, IOError):
+                # If locked, just read the raw file (good enough for UI)
+                f.seek(0)
+                content = f.read()
+        
+        items = yaml.safe_load(content)
+        return items if isinstance(items, list) else []
+    except Exception:
+        # Fallback if YAML is being written at this exact moment
+        return []
 
 
 def inbox_counts(inbox_file: Path) -> dict[str, int]:
