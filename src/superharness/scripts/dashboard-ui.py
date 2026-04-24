@@ -207,19 +207,25 @@ def inbox_items(inbox_file: Path) -> list[dict]:
     if not inbox_file.exists():
         return []
     try:
-        import fcntl
         import yaml
+        # fcntl is POSIX-only; on Windows fall back to a plain read (good
+        # enough for the UI and avoids silently returning [] on import error).
+        try:
+            import fcntl  # type: ignore[import-not-found]
+        except ImportError:
+            fcntl = None  # type: ignore[assignment]
         with open(inbox_file, "r", encoding="utf-8", errors="replace") as f:
-            try:
-                # Try to get a shared lock without blocking
-                fcntl.flock(f, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            if fcntl is not None:
+                try:
+                    fcntl.flock(f, fcntl.LOCK_SH | fcntl.LOCK_NB)
+                    content = f.read()
+                    fcntl.flock(f, fcntl.LOCK_UN)
+                except (OSError, IOError):
+                    f.seek(0)
+                    content = f.read()
+            else:
                 content = f.read()
-                fcntl.flock(f, fcntl.LOCK_UN)
-            except (OSError, IOError):
-                # If locked, just read the raw file (good enough for UI)
-                f.seek(0)
-                content = f.read()
-        
+
         items = yaml.safe_load(content)
         return items if isinstance(items, list) else []
     except Exception:
