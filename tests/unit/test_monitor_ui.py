@@ -275,6 +275,55 @@ def test_monitor_action_watcher_start_installs_and_kickstarts(repo_root, tmp_pat
     assert kickstart_call[:3] == ["launchctl", "kickstart", "-k"]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="launchctl/os.getuid not available on Windows")
+def test_monitor_action_watcher_start_prefers_project_runtime_and_src(repo_root, tmp_path, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    (project / "src" / "superharness").mkdir(parents=True, exist_ok=True)
+    (project / ".superharness" / "watcher.yaml").write_text(
+        "\n".join(
+            [
+                f'watcher_project: "{project}"',
+                'python_executable: "/tmp/project-python"',
+                "interval_seconds: 15",
+                "launcher_timeout_seconds: 900",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    calls: list[list[str]] = []
+
+    def fake_run_cmd(self, args, timeout=30):  # noqa: ANN001, ANN202
+        calls.append(args)
+        return {"exit_code": 0, "stdout": "ok", "stderr": "", "cmd": " ".join(args)}
+
+    monkeypatch.setattr(module.Handler, "_run_cmd", fake_run_cmd)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json(
+            "POST",
+            base_url + "/api/action",
+            payload={"action": "watcher_start"},
+            headers={
+                "Origin": base_url,
+                "Referer": base_url + "/",
+                "Content-Type": "application/json",
+                "X-Superharness-Token": module.Handler.auth_token,
+            },
+        )
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    assert payload["exit_code"] == 0
+    install_call = calls[0]
+    assert install_call[0] == "/usr/bin/env"
+    assert any(part.startswith("PYTHONPATH=") and str(project / "src") in part for part in install_call)
+    assert "/tmp/project-python" in install_call
+
+
 def test_monitor_main_rejects_non_loopback_host(repo_root, tmp_path) -> None:
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
@@ -474,6 +523,15 @@ def test_monitor_watcher_health_branches(repo_root) -> None:
         now,
     )
     assert not_loaded["level"] == "bad"
+
+    foreground_ok = module.watcher_health(
+        {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0},
+        [],
+        now,
+        heartbeat={"level": "ok", "message": "Heartbeat OK (3s ago)."},
+    )
+    assert foreground_ok["level"] == "ok"
+    assert "foreground" in foreground_ok["message"].lower() or "manual" in foreground_ok["message"].lower()
 
     idle_ok = module.watcher_health(
         {"loaded": True, "state": "not running", "last_exit_code": "0", "run_interval_seconds": 15},
@@ -985,6 +1043,55 @@ def test_monitor_status_includes_heartbeat(repo_root, tmp_path, monkeypatch) -> 
     assert status == 200
     assert "heartbeat" in payload
     assert payload["heartbeat"]["level"] in ("ok", "warn")
+
+
+def test_monitor_status_reports_foreground_when_heartbeat_ok_and_launchd_missing(repo_root, tmp_path, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    monkeypatch.setattr(
+        module,
+        "watcher_runtime",
+        lambda label: {"loaded": False, "state": "", "last_exit_code": "", "run_interval_seconds": 0},
+    )
+    monkeypatch.setattr(
+        module,
+        "heartbeat_health",
+        lambda project_dir: {"level": "ok", "message": "Heartbeat OK (2s ago).", "age_seconds": 2},
+    )
+    monkeypatch.setattr(module, "contract_id", lambda path: "demo")
+    monkeypatch.setattr(module.shutil, "which", lambda name: None)
+
+    server, thread, base_url = _start_server(module, repo_root, project)
+    try:
+        status, payload = _request_json("GET", base_url + "/api/status")
+    finally:
+        _stop_server(server, thread)
+
+    assert status == 200
+    assert payload["launchctl_state"] == "foreground"
+    assert payload["watcher_health"]["level"] == "ok"
+    assert "foreground" in payload["watcher_health"]["message"].lower()
+
+
+def test_version_sanity_warns_when_dashboard_drifts_from_checkout(repo_root, tmp_path, monkeypatch) -> None:
+    module = _load_monitor_module(repo_root)
+    project = _setup_project(tmp_path)
+    (project / "src" / "superharness").mkdir(parents=True, exist_ok=True)
+    (project / "src" / "superharness" / "__init__.py").write_text('__version__ = "9.9.9"\n', encoding="utf-8")
+    worker = tmp_path / "worker"
+    (worker / "src" / "superharness").mkdir(parents=True, exist_ok=True)
+    (worker / "src" / "superharness" / "__init__.py").write_text('__version__ = "9.9.9"\n', encoding="utf-8")
+    (project / ".superharness" / "watcher.yaml").write_text(
+        f'watcher_project: "{worker}"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "_get_installed_version", lambda: "1.34.1")
+
+    sanity = module.version_sanity(project)
+
+    assert sanity["level"] == "warn"
+    assert sanity["project_version"] == "9.9.9"
+    assert any("dashboard process" in issue for issue in sanity["issues"])
 
 
 def test_monitor_action_stop_item_not_found(repo_root, tmp_path, monkeypatch) -> None:
