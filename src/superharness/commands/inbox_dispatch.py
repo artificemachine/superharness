@@ -335,13 +335,22 @@ def _run_with_timeout(timeout_secs: int, cmd: list[str], inbox_file: str = "", i
             except (ProcessLookupError, AttributeError):
                 pass
 
-        old_handler = signal.signal(signal.SIGALRM, _on_alarm)  # type: ignore[attr-defined]
+        def _on_term(signum: int, frame: object) -> None:
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)  # type: ignore[attr-defined]
+            except (ProcessLookupError, AttributeError):
+                pass
+            sys.exit(1)
+
+        old_alarm = signal.signal(signal.SIGALRM, _on_alarm)  # type: ignore[attr-defined]
+        old_term = signal.signal(signal.SIGTERM, _on_term)
         signal.alarm(timeout_secs)  # type: ignore[attr-defined]
         try:
             rc = proc.wait()
         finally:
             signal.alarm(0)  # type: ignore[attr-defined]
-            signal.signal(signal.SIGALRM, old_handler)  # type: ignore[attr-defined]
+            signal.signal(signal.SIGALRM, old_alarm)  # type: ignore[attr-defined]
+            signal.signal(signal.SIGTERM, old_term)
             if inbox_file and item_id:
                 _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", ""])
     else:

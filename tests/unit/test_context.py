@@ -89,6 +89,33 @@ class TestContextCommand:
         assert result.returncode == 0, result.stderr
         assert "atomic rename" in result.stdout.lower()
 
+    def test_context_shows_blocker_failures(self, tmp_path):
+        """Context output must include entries from failures.yaml for blocking tasks."""
+        project = _setup_project(tmp_path)
+        # feat-002 is blocked by feat-001
+        (project / ".superharness" / "contract.yaml").write_text(
+            "id: test-contract\ntasks:\n"
+            "  - id: feat-001\n"
+            "    status: done\n"
+            "  - id: feat-002\n"
+            "    blocked_by: feat-001\n"
+            "    status: in_progress\n"
+        )
+        (project / ".superharness" / "failures.yaml").write_text(
+            "failures:\n"
+            "  - date: '2026-03-09'\n"
+            "    task: feat-001\n"
+            "    failure: blocker failure context\n"
+            "  - date: '2026-03-10'\n"
+            "    task: other-task\n"
+            "    failure: unrelated failure\n"
+        )
+        result = _run_cmd(["--project", str(project), "feat-002"])
+        assert result.returncode == 0, result.stderr
+        assert "blocker failure context" in result.stdout.lower()
+        assert "unrelated failure" not in result.stdout.lower()
+        assert "[feat-001]" in result.stdout  # Should show which task the failure belonged to if not current
+
     def test_context_shows_ledger_entries(self, tmp_path):
         """Context output must include recent ledger lines mentioning the task."""
         project = _setup_project(tmp_path)

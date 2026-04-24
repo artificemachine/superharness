@@ -112,17 +112,18 @@ def _git_changed_files(project_dir: Path) -> list[str] | None:
         return None
 
 
-def _filter_failures(failures: list, task_id: str, failures_only: bool = False) -> list[dict]:
-    """Return failures strictly for the task_id.
+def _filter_failures(failures: list, task_ids: list[str], failures_only: bool = False) -> list[dict]:
+    """Return failures strictly for the set of task_ids.
 
     If failures_only is True, filter out 'minor' severity entries (warnings).
     """
     relevant = []
+    id_set = set(task_ids)
     for f in failures:
         if not isinstance(f, dict):
             continue
-        # Strict task match
-        if f.get("task") == task_id:
+        # Check if the failure belongs to any of the requested IDs
+        if f.get("task") in id_set:
             if failures_only and f.get("severity") == "minor":
                 continue
             relevant.append(f)
@@ -225,7 +226,17 @@ def task_context(
     if failures_path.exists():
         doc = _load_yaml_safe(failures_path)
         failures = (doc.get("failures") or []) if isinstance(doc, dict) else []
-        relevant = _filter_failures(failures, lookup_id, failures_only)
+        
+        # Build set of relevant task IDs (self + blockers)
+        relevant_ids = [lookup_id]
+        blocked_by = task.get("blocked_by") or task.get("depends_on")
+        if blocked_by and str(blocked_by).lower() != "none":
+            if isinstance(blocked_by, str):
+                relevant_ids.extend([d.strip() for d in blocked_by.split(",") if d.strip()])
+            elif isinstance(blocked_by, list):
+                relevant_ids.extend([str(d).strip() for d in blocked_by if d])
+        
+        relevant = _filter_failures(failures, relevant_ids, failures_only)
         if relevant:
             lines.append("")
             lines.append("Failures relevant to this task:")
@@ -234,8 +245,9 @@ def task_context(
                     date_s = str(f.get("date", ""))[:10]
                     sev = f.get("severity", "minor")
                     patterns = ", ".join(f.get("patterns", []))
+                    task_label = f" [{f.get('task')}]" if f.get("task") != lookup_id else ""
                     text = f.get("failure") or f.get("description") or f.get("error_snippet") or str(f)
-                    lines.append(f"  - [{date_s}] ({sev}) {patterns}: {text}")
+                    lines.append(f"  - [{date_s}] ({sev}){task_label} {patterns}: {text}")
 
     # Ledger
     ledger_path = sh_dir / "ledger.md"

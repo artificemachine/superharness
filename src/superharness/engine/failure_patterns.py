@@ -232,9 +232,13 @@ def match_patterns(error_text: str) -> list[FailurePattern]:
 
 
 def strip_ansi(text: str) -> str:
-    """Remove ANSI escape sequences from text."""
-    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-    return ansi_escape.sub('', text)
+    """Remove ANSI escape sequences and terminal noise (BEL, BS) from text."""
+    # Standard ANSI escape sequences (CSI, OSC, etc)
+    ansi_escape = re.compile(r'(?:\x1B[@-Z\\-_]|[\x80-\x9F]|\x1B\[[0-?]*[ -/]*[@-~])')
+    text = ansi_escape.sub('', text)
+    # Also strip BEL, BS, and other common terminal noise
+    text = re.sub(r'[\x07\x08]', '', text)
+    return text
 
 
 # ---------------------------------------------------------------------------

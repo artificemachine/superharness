@@ -101,7 +101,7 @@ def _start_daemon(project_dir: Path, interval: int) -> None:
         sys.executable, "-m", "superharness.commands.inbox_watch",
         "--project", str(project_dir),
         "--interval", str(interval),
-        "--loop",
+        "--foreground",
     ]
 
     out_f = open(str(out_log), "a")
@@ -143,8 +143,18 @@ def _stop_daemon(project_dir: Path) -> None:
         _state_file(project_dir).unlink(missing_ok=True)
         return
     try:
-        os.kill(pid, _signal.SIGTERM)
-        click.echo(f"daemon: sent SIGTERM to pid={pid}")
+        if hasattr(os, "killpg"):
+            try:
+                pgid = os.getpgid(pid)
+                os.killpg(pgid, _signal.SIGTERM)
+                click.echo(f"daemon: sent SIGTERM to process group {pgid}")
+            except OSError:
+                # Fallback to single PID if PGID lookup fails
+                os.kill(pid, _signal.SIGTERM)
+                click.echo(f"daemon: sent SIGTERM to pid={pid} (pgid lookup failed)")
+        else:
+            os.kill(pid, _signal.SIGTERM)
+            click.echo(f"daemon: sent SIGTERM to pid={pid}")
     except Exception as exc:
         click.echo(f"daemon: could not stop pid={pid}: {exc}", err=True)
         sys.exit(1)
