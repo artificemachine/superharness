@@ -43,3 +43,11 @@
 - 2026-04-24 (iter-8): fix(schemas): make Subtask planning fields optional (model_tier, owner, estimated_tokens, estimated_cost_usd), Contract.id optional, ContractTask.title optional, blocked_by accepts list — fixes remaining CI failures.
 - 2026-04-24 (v1.34.0): fix(__init__): sync __version__ to 1.34.0 — was missed in version bump commit.
 - 2026-04-24 (v1.34.1): chore(release): bump version to 1.34.1 — patch to align pyproject.toml and __init__.__version__.
+- 2026-04-24 (v1.34.2): chore(release): bump version to 1.34.2 — fix daemon crash, context filtering, and ANSI noise.
+  - Fix `shux daemon start` crash by replacing `--loop` with `--foreground` in `daemon.py`.
+  - Add `--loop` alias to `inbox_watch.py` for backward compatibility.
+  - Improve `shux context` to include failures from blocking tasks.
+  - Enhance `strip_ansi` to remove BEL, BS, and more complex terminal noise.
+  - Fix "unbound variable" error in `delegate-to-gemini.sh`.
+  - Add "Recover failed tasks" button to Dashboard UI.
+  - Ensure daemon inherits PYTHONPATH to use local source when available.
