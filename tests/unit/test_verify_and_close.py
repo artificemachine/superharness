@@ -28,6 +28,9 @@ def _setup_project(tmp_path: Path, task_status: str = "report_ready", verified: 
 
     task_yaml = (
         f"id: test-contract\n"
+        f"created: '2026-01-01T00:00:00Z'\n"
+        f"created_by: owner\n"
+        f"status: active\n"
         f"tasks:\n"
         f"  - id: feat-001\n"
         f"    title: Build feature one\n"

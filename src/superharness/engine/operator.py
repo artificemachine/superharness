@@ -14,6 +14,8 @@ from typing import Any
 
 import yaml
 
+_OPERATOR_STATE_FILE = ".superharness/operator-state.json"
+
 
 @dataclass
 class HealthStatus:
@@ -91,8 +93,8 @@ class Operator:
             "started_at": time.time(),
             "project": str(self.project_dir)
         }
-        daemon_file = self.harness_dir / "daemon.pid.json"
-        with open(daemon_file, "w") as f:
+        op_file = self.project_dir / _OPERATOR_STATE_FILE
+        with open(op_file, "w") as f:
             json.dump(info, f, indent=2)
 
     def _spawn_watcher(self):
@@ -146,9 +148,9 @@ class Operator:
             except subprocess.TimeoutExpired:
                 proc.kill()
         self.processes.clear()
-        daemon_file = self.harness_dir / "daemon.pid.json"
-        if daemon_file.exists():
-            daemon_file.unlink()
+        op_file = self.project_dir / _OPERATOR_STATE_FILE
+        if op_file.exists():
+            op_file.unlink()
 
     def check_watcher_health(self, stale_threshold_sec: int = 120) -> HealthStatus:
         """Check if the background watcher is alive."""

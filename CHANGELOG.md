@@ -30,3 +30,14 @@
 - 2026-04-24 (v1.33.3): fix(engine): inbox duplicate check allows same-task-different-agent for discussion round tasks (regression from 92a2f32).
 - 2026-04-24 (v1.33.3): fix(monitor): dashboard inbox reader no longer returns empty on Windows (fcntl import was Unix-only).
 - 2026-04-24 (v1.33.3): fix(dispatch): --print-only now short-circuits before spawning the launcher (fixes CI flake where missing claude/codex binary marked items as failed).
+- 2026-04-24 (iter-0): fix(foundation): daemon module target, TaskStatus enum gaps, fail-open scope, .gitignore runtime leaks, contract YAML corruption, dispatch log path sanitization for task IDs containing `/`; add regression test and three review docs + defense plan.
+- 2026-04-24 (iter-1): feat(contract): add `shux contract --validate` / `shux contract validate` — exits 0 on clean schema, non-zero with structured error list; supports --json output for CI.
+- 2026-04-24 (iter-2): refactor(contract): centralize _write_contract into engine/contract_io.py — warn-only Pydantic validation on every write; atomic temp-file + fsync pattern; migrate task.py, close.py, verify.py, test_type.py, subtask_cancel.py.
+- 2026-04-24 (iter-3): chore(schema): add live-contract compliance test (intentional RED — 1 drift: task 85 AC_DICT) + drift audit report.
+- 2026-04-24 (iter-4): fix(contract-data): task feat.headless.auto-approve-policy acceptance_criteria[0] was a YAML dict, converted to quoted string; compliance test now green.
+- 2026-04-24 (iter-5): feat(contract): promote write_contract to strict enforcement (Layer 3a) — raises ContractValidationError on schema violation; SUPERHARNESS_SCHEMA_ENFORCEMENT=warn escape hatch for emergencies; update test fixture to include required contract-level fields.
+- 2026-04-24 (iter-6): fix(watcher): add _reconcile_paused_dead_pids — paused inbox items with dead launcher pids now transition to failed on next watcher tick; prevents permanent agent lane blocks after single dispatch crash.
+- 2026-04-24 (iter-7): fix(daemon): split daemon.pid.json into daemon-state.json (daemon.py) and operator-state.json (operator.py) — eliminates key collision; update cli.py dashboard port lookup and onboard.py gitignore entries.
+- 2026-04-24 (v1.34.0): chore(release): bump version to 1.34.0 — defense hardening iterations 0-7 (Layer 2 + 3a, paused-pid reconciliation, PID schema split).
+- 2026-04-24 (v1.34.0): fix(contract-io): lazy pydantic import in contract_io — degrades gracefully in minimal CI environments without pydantic; fixes E2E test suite breakage.
+- 2026-04-24 (iter-8): fix(schemas): make Subtask planning fields optional (model_tier, owner, estimated_tokens, estimated_cost_usd), Contract.id optional, ContractTask.title optional, blocked_by accepts list — fixes remaining CI failures.

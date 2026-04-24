@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-import tempfile
 
 try:
     from ruamel.yaml import YAML as RuamelYAML
@@ -22,6 +21,7 @@ except ImportError:
     _RT_AVAILABLE = False
 
 import yaml
+from superharness.engine.contract_io import write_contract as _write_contract
 
 HELP_TEXT = """\
 Usage:
@@ -97,28 +97,6 @@ def _load_contract(path: str) -> object:
     with open(path, "r") as f:
         doc = yaml.safe_load(f)
     return doc if doc is not None else {}
-
-
-def _write_contract(path: str, doc: object) -> None:
-    dir_ = os.path.dirname(os.path.abspath(path))
-    base = os.path.basename(path)
-    fd, tmp_path = tempfile.mkstemp(prefix=base, suffix=".tmp", dir=dir_)
-    try:
-        with os.fdopen(fd, "w") as f:
-            if _RT_AVAILABLE:
-                rt = RuamelYAML()
-                rt.preserve_quotes = True
-                rt.default_flow_style = False
-                rt.dump(doc, f)
-            else:
-                f.write(yaml.dump(doc, default_flow_style=False, allow_unicode=True))
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_path, path)
-        tmp_path = None
-    finally:
-        if tmp_path is not None and os.path.exists(tmp_path):
-            os.unlink(tmp_path)
 
 
 def _find_task(tasks: list, task_id: str) -> dict | None:
