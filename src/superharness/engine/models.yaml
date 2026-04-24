@@ -1,0 +1,39 @@
+model_map:
+  claude-code:
+    mini: haiku
+    standard: sonnet
+    max: opus
+  codex-cli:
+    mini: gpt-5.2
+    standard: gpt-5.3-codex
+    max: gpt-5.4
+  gemini-cli:
+    mini: flash
+    standard: pro
+    max: ultra
+
+pricing:
+  claude-opus-4-7:
+    input: 15.00
+    output: 75.00
+  claude-opus-4-7[1m]:
+    input: 15.00
+    output: 75.00
+  claude-opus-4-6:
+    input: 15.00
+    output: 75.00
+  claude-sonnet-4-6:
+    input: 3.00
+    output: 15.00
+  claude-haiku-4-5-20251001:
+    input: 0.25
+    output: 1.25
+  flash:
+    input: 0.10
+    output: 0.40
+  pro:
+    input: 1.25
+    output: 5.00
+  ultra:
+    input: 15.00
+    output: 75.00

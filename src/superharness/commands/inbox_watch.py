@@ -974,6 +974,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--launcher-timeout", default="0")
     parser.add_argument("--lock-stale-minutes", default="30")
     parser.add_argument("--foreground", "-f", action="store_true", default=False)
+    parser.add_argument("--loop", action="store_true", default=False,
+                        help="Run in a foreground loop (alias for --foreground)")
     parser.add_argument("--interval", "-i", default="30")
     parser.add_argument("--once", action="store_true", default=False,
                         help="Run a single cycle and exit (same as single-cycle / launchd mode)")
@@ -1013,7 +1015,7 @@ def main(argv: list[str] | None = None) -> None:
     rc = watch(
         project_dir=opts.project,
         target=opts.target,
-        foreground=opts.foreground,
+        foreground=opts.foreground or opts.loop,
         interval=interval,
         print_only=opts.print_only,
         non_interactive=opts.non_interactive,

@@ -185,3 +185,23 @@ class TestGetFailureHints:
         hints = get_failure_hints(str(tmp_path), "fix-task")
         # import_error has a remediation
         assert any("pip install" in h for h in hints)
+
+
+class TestStripAnsi:
+    def test_strip_ansi_basic(self) -> None:
+        from superharness.engine.failure_patterns import strip_ansi
+        text = "\x1b[31mError:\x1b[0m critical failure"
+        assert strip_ansi(text) == "Error: critical failure"
+
+    def test_strip_ansi_complex(self) -> None:
+        from superharness.engine.failure_patterns import strip_ansi
+        # Contains multiple sequences, including movements and styles
+        text = "\x1b[1;32mSUCCESS\x1b[0m \x1b[34m[task-123]\x1b[0m \x1b[K"
+        assert strip_ansi(text).strip() == "SUCCESS [task-123]"
+
+    def test_strip_terminal_noise(self) -> None:
+        from superharness.engine.failure_patterns import strip_ansi
+        # BEL (\x07) and BS (\x08)
+        text = "Loading...\x07\x08\x08\x08Done"
+        assert strip_ansi(text) == "Loading...Done"
+
