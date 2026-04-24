@@ -119,6 +119,8 @@ class BudgetExceededError(Exception):
     pass
 
 
+from superharness.engine.config_loader import load_yaml_config
+
 MODEL_PRICING: dict[str, dict[str, float]] = {
     "claude-opus-4-7":      {"input": 15.00, "output": 75.00},
     "claude-opus-4-7[1m]":  {"input": 15.00, "output": 75.00},
@@ -132,10 +134,33 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
 # Keep private alias for backwards compat with internal callers
 _MODEL_PRICING = MODEL_PRICING
 
+_cached_pricing: dict[str, dict[str, float]] | None = None
 
-def _calculate_cost(model: str | None, input_tokens: int, output_tokens: int) -> float:
+
+def _load_pricing(project_dir: str | None = None) -> dict[str, dict[str, float]]:
+    """Load pricing from bundled YAML or project override."""
+    global _cached_pricing
+    if _cached_pricing is not None and project_dir is None:
+        return _cached_pricing
+
+    config = load_yaml_config(
+        bundled_pkg="superharness",
+        bundled_filename="engine/models.yaml",
+        project_dir=project_dir,
+        project_filename="models.yaml",
+        fallback={"pricing": MODEL_PRICING}
+    )
+    pricing = config.get("pricing", MODEL_PRICING)
+    
+    if project_dir is None:
+        _cached_pricing = pricing
+    return pricing
+
+
+def _calculate_cost(model: str | None, input_tokens: int, output_tokens: int, project_dir: str | None = None) -> float:
     """Calculate cost in USD for given token usage."""
-    pricing = _MODEL_PRICING.get(model or "", _MODEL_PRICING["claude-sonnet-4-6"])
+    pricing_map = _load_pricing(project_dir)
+    pricing = pricing_map.get(model or "", pricing_map.get("claude-sonnet-4-6", MODEL_PRICING["claude-sonnet-4-6"]))
     return (input_tokens / 1_000_000) * pricing["input"] + (output_tokens / 1_000_000) * pricing["output"]
 
 

@@ -48,6 +48,7 @@ done
 
 # Build Gemini CLI command
 GEMINI_ARGS=()
+PROMPT=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
