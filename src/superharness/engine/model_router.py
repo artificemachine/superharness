@@ -8,22 +8,23 @@ from __future__ import annotations
 import subprocess
 
 from superharness.engine.taxonomy import VALID_EFFORTS
+from superharness.engine.config_loader import load_yaml_config
 
 MODEL_MAP: dict[str, dict[str, str]] = {
     "claude-code": {
-        "mini": "claude-haiku-4-5-20251001",
-        "standard": "claude-sonnet-4-6",
-        "max": "claude-opus-4-7"
+        "mini": "haiku",
+        "standard": "sonnet",
+        "max": "opus"
     },
     "codex-cli": {
-        "mini": "gpt-5.1-codex-mini",
+        "mini": "gpt-5.2",
         "standard": "gpt-5.3-codex",
         "max": "gpt-5.4"
     },
     "gemini-cli": {
-        "mini": "gemini-2.0-flash",
-        "standard": "gemini-2.0-pro",
-        "max": "gemini-ultra"
+        "mini": "flash",
+        "standard": "pro",
+        "max": "ultra"
     },
 }
 
@@ -31,6 +32,29 @@ VALID_TIERS = {"mini", "standard", "max"}
 
 _FALLBACK_TIER = "standard"
 _FALLBACK_EFFORT = "medium"
+
+_cached_map: dict[str, dict[str, str]] | None = None
+
+
+def _load_model_map(project_dir: str | None = None) -> dict[str, dict[str, str]]:
+    """Load model map from bundled YAML or project override."""
+    global _cached_map
+    if _cached_map is not None and project_dir is None:
+        return _cached_map
+
+    config = load_yaml_config(
+        bundled_pkg="superharness",
+        bundled_filename="engine/models.yaml",
+        project_dir=project_dir,
+        project_filename="models.yaml",
+        fallback={"model_map": MODEL_MAP}
+    )
+    mmap = config.get("model_map", MODEL_MAP)
+    
+    if project_dir is None:
+        _cached_map = mmap
+    return mmap
+
 
 _CLASSIFY_PROMPT = """\
 You are a model router. Given a task, reply with exactly two words: <tier> <effort>
@@ -98,17 +122,22 @@ def classify_task(
         return _FALLBACK_TIER, _FALLBACK_EFFORT
 
 
-def resolve_model(target: str, tier: str) -> str:
-    """Map a tier to the agent's actual model name via the adapter registry.
+def resolve_model(target: str, tier: str, project_dir: str | None = None) -> str:
+    """Map a tier to the agent's actual model name via YAML config or adapter registry.
 
-    Falls back to MODEL_MAP then claude-sonnet-4-6 when the registry returns
-    an empty id or the tier name itself (indicating an unknown adapter/tier).
+    1. Check _load_model_map (bundled or project override).
+    2. Fall back to adapter registry.
+    3. Fall back to MODEL_MAP then sonnet.
     """
+    mmap = _load_model_map(project_dir)
+    if target in mmap and tier in mmap[target]:
+        return mmap[target][tier]
+
     from superharness.engine.adapter_registry import resolve_model as _resolve
     res = _resolve(target, tier)
     model_id = res.get("id", "")
     if not model_id or model_id == tier:
-        return MODEL_MAP.get(target, {}).get(tier, "claude-sonnet-4-6")
+        return mmap.get(target, {}).get(tier, MODEL_MAP.get(target, {}).get(tier, "claude-sonnet-4-6"))
     return model_id
 
 
