@@ -7,6 +7,7 @@ import errno as _errno_mod
 import ipaddress
 import json
 import os
+import re
 import secrets
 import shlex
 import shutil  # noqa: F401 — patched by tests to mock agent CLI detection
@@ -200,6 +201,62 @@ def watcher_runtime(label: str) -> dict:
     except Exception:
         return info
     return info
+
+
+def _read_source_version(project_dir: Path) -> str:
+    init_py = project_dir / "src" / "superharness" / "__init__.py"
+    if not init_py.exists():
+        return "unknown"
+    try:
+        match = re.search(
+            r"""^__version__\s*=\s*['"]([^'"]+)['"]""",
+            init_py.read_text(encoding="utf-8", errors="replace"),
+            re.MULTILINE,
+        )
+        return match.group(1) if match else "unknown"
+    except Exception:
+        return "unknown"
+
+
+def version_sanity(project_dir: Path) -> dict:
+    wcfg = watcher_config(project_dir)
+    watcher_project = Path(str(wcfg.get("watcher_project", str(project_dir))))
+    project_version = _read_source_version(project_dir)
+    worker_copy_version = _read_source_version(watcher_project)
+    dashboard_version = __version__
+    installed_version = _get_installed_version()
+    issues: list[str] = []
+
+    if project_version != "unknown" and dashboard_version != project_version:
+        if installed_version == dashboard_version:
+            issues.append(
+                f"dashboard process is using installed package {dashboard_version}, "
+                f"but project checkout is {project_version}"
+            )
+        else:
+            issues.append(
+                f"dashboard process version {dashboard_version} does not match "
+                f"project checkout {project_version}"
+            )
+
+    if (
+        project_version != "unknown"
+        and worker_copy_version != "unknown"
+        and worker_copy_version != project_version
+    ):
+        issues.append(
+            f"watcher worker copy is {worker_copy_version}, but project checkout is {project_version}"
+        )
+
+    return {
+        "level": "ok" if not issues else "warn",
+        "dashboard_version": dashboard_version,
+        "installed_version": installed_version,
+        "project_version": project_version,
+        "worker_copy_version": worker_copy_version,
+        "watcher_project": str(watcher_project),
+        "issues": issues,
+    }
 
 
 def inbox_items(inbox_file: Path) -> list[dict]:
@@ -729,7 +786,7 @@ def parse_utc_timestamp(raw: str) -> dt.datetime | None:
         return None
 
 
-def watcher_health(runtime: dict, items: list[dict], now_utc: str) -> dict:
+def watcher_health(runtime: dict, items: list[dict], now_utc: str, heartbeat: dict | None = None) -> dict:
     now_dt = parse_utc_timestamp(now_utc)
     state = runtime.get("state", "")
     loaded = bool(runtime.get("loaded", False))
@@ -739,6 +796,26 @@ def watcher_health(runtime: dict, items: list[dict], now_utc: str) -> dict:
     pending_count = len(pending_items)
     stale_count = sum(1 for x in items if x.get("status", "") == "stale")
     failed_count = sum(1 for x in items if x.get("status", "") == "failed")
+
+    if not loaded and heartbeat and heartbeat.get("level") == "ok":
+        if stale_count > 0 or failed_count > 0:
+            return {
+                "level": "warn",
+                "message": (
+                    "Watcher running in foreground/manual mode "
+                    f"(heartbeat active), but backlog issues exist (stale={stale_count}, failed={failed_count})."
+                ),
+                "pending_count": pending_count,
+                "stale_count": stale_count,
+                "failed_count": failed_count,
+            }
+        return {
+            "level": "ok",
+            "message": "Watcher running in foreground/manual mode (heartbeat active).",
+            "pending_count": pending_count,
+            "stale_count": stale_count,
+            "failed_count": failed_count,
+        }
 
     if not loaded:
         return {
@@ -1229,6 +1306,7 @@ def watcher_config(project_dir: Path) -> dict:
         "launcher_timeout_seconds": 900,
         "target": "both",
         "codex_bypass": False,
+        "python_executable": sys.executable,
     }
     cfg = project_dir / ".superharness" / "watcher.yaml"
     if not cfg.exists():
@@ -1263,6 +1341,10 @@ def watcher_config(project_dir: Path) -> dict:
                 cfg_map["target"] = val
         elif line.startswith("codex_bypass:"):
             cfg_map["codex_bypass"] = line.split(":", 1)[1].strip().lower() == "true"
+        elif line.startswith("python_executable:"):
+            val = line.split(":", 1)[1].strip().strip("'\"")
+            if val:
+                cfg_map["python_executable"] = val
     return cfg_map
 
 
@@ -1459,8 +1541,9 @@ class Handler(BaseHTTPRequestHandler):
         install_watcher = str(self.scripts_dir / "install-launchd-inbox-watcher.sh")
 
         if action in {"watcher_start", "watcher_restart"}:
+            watcher_python = str(wcfg.get("python_executable") or sys.executable)
             install_args = [
-                sys.executable,
+                watcher_python,
                 "-m",
                 "superharness.commands.watcher_worker",
                 "--project",
@@ -1478,6 +1561,13 @@ class Handler(BaseHTTPRequestHandler):
                 "--to",
                 str(wcfg.get("target", "both")),
             ]
+            project_src = self.project_dir / "src"
+            if project_src.is_dir() and os.name != "nt":
+                existing_pythonpath = os.environ.get("PYTHONPATH", "").strip()
+                pythonpath = str(project_src)
+                if existing_pythonpath:
+                    pythonpath = f"{pythonpath}{os.pathsep}{existing_pythonpath}"
+                install_args = ["/usr/bin/env", f"PYTHONPATH={pythonpath}"] + install_args
             if bool(wcfg.get("codex_bypass", False)):
                 install_args.append("--codex-bypass")
             install_result = self._run_cmd(install_args, timeout=120)
@@ -1992,18 +2082,21 @@ class Handler(BaseHTTPRequestHandler):
             state = str(runtime.get("state", ""))
             items = inbox_items(inbox)
             wcfg = watcher_config(self.project_dir)
+            heartbeat = heartbeat_health(self.project_dir)
+            sanity = version_sanity(self.project_dir)
             self._json(
                 {
                     "version": __version__,
                     "project": str(self.project_dir),
                     "label": self.label,
-                    "launchctl_state": state or ("loaded" if runtime.get("loaded") else ""),
-                    "watcher_health": watcher_health(runtime, items, now_utc),
-                    "heartbeat": heartbeat_health(self.project_dir),
+                    "launchctl_state": state or ("loaded" if runtime.get("loaded") else ("foreground" if heartbeat.get("level") == "ok" else "")),
+                    "watcher_health": watcher_health(runtime, items, now_utc, heartbeat=heartbeat),
+                    "heartbeat": heartbeat,
                     "agent_status": _agent_status_health(self.project_dir),
                     "watcher_runtime": runtime,
                     "watcher_project": str(wcfg.get("watcher_project", str(self.project_dir))),
                     "watcher_config": wcfg,
+                    "version_sanity": sanity,
                     "contract_id": contract_id(contract),
                     "contract_tasks": contract_tasks(contract),
                     "contract_owners": contract_owners(contract),
