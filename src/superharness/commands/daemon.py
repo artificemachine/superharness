@@ -20,7 +20,7 @@ from pathlib import Path
 import click
 
 
-_DAEMON_STATE_FILE = ".superharness/daemon.pid.json"
+_DAEMON_STATE_FILE = ".superharness/daemon-state.json"
 
 
 def _state_file(project_dir: Path) -> Path:
@@ -98,7 +98,7 @@ def _start_daemon(project_dir: Path, interval: int) -> None:
     err_log = log_dir / "daemon.err.log"
 
     cmd = [
-        sys.executable, "-m", "superharness.commands.watch",
+        sys.executable, "-m", "superharness.commands.inbox_watch",
         "--project", str(project_dir),
         "--interval", str(interval),
         "--loop",

@@ -28,10 +28,10 @@ def test_operator_arbitrates_conflicting_port(tmp_path):
         op.start_stack(dashboard_port=base_port)
         
         # 4. Verify it chose base_port + 1 instead
-        daemon_file = sh_dir / "daemon.pid.json"
-        assert daemon_file.exists()
-        
-        info = json.loads(daemon_file.read_text())
+        op_file = sh_dir / "operator-state.json"
+        assert op_file.exists()
+
+        info = json.loads(op_file.read_text())
         assert info["dashboard_port"] == base_port + 1
         
         # Cleanup

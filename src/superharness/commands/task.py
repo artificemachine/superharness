@@ -7,22 +7,19 @@ from __future__ import annotations
 import os
 import re
 import sys
-import tempfile
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
+import yaml
+from superharness.engine.contract_io import write_contract as _write_contract
+from superharness.engine.taxonomy import VALID_EFFORTS
+
 try:
     from ruamel.yaml import YAML as RuamelYAML
-    _rt = RuamelYAML()
-    _rt.preserve_quotes = True
-    _rt.default_flow_style = False
     _RT_AVAILABLE = True
 except ImportError:
     _RT_AVAILABLE = False
-
-import yaml
-from superharness.engine.taxonomy import VALID_EFFORTS
 from superharness.engine.next_action import ALL_STATUSES
 
 # ---------------------------------------------------------------------------
@@ -105,29 +102,6 @@ def _load_contract(path: str) -> object:
         if doc is None:
             doc = {}
         return doc
-
-
-def _write_contract(path: str, doc: object) -> None:
-    """Atomically write contract.yaml."""
-    dir_ = os.path.dirname(os.path.abspath(path))
-    base = os.path.basename(path)
-    fd, tmp_path = tempfile.mkstemp(prefix=base, suffix=".tmp", dir=dir_)
-    try:
-        with os.fdopen(fd, "w") as f:
-            if _RT_AVAILABLE:
-                rt = RuamelYAML()
-                rt.preserve_quotes = True
-                rt.default_flow_style = False
-                rt.dump(doc, f)
-            else:
-                f.write(yaml.dump(doc, default_flow_style=False, allow_unicode=True))
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_path, path)
-        tmp_path = None
-    finally:
-        if tmp_path is not None and os.path.exists(tmp_path):
-            os.unlink(tmp_path)
 
 
 def _get_tasks(doc: object, path: str) -> list:

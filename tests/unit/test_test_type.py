@@ -15,7 +15,8 @@ def _write_project(tmp_path: Path, *, tasks: str = "") -> Path:
     harness = project / ".superharness"
     harness.mkdir()
     (harness / "contract.yaml").write_text(
-        f"id: test\ntasks:\n{tasks}"
+        "id: test\ncreated: '2026-01-01T00:00:00Z'\ncreated_by: owner\nstatus: active\n"
+        f"tasks:\n{tasks}"
         "decisions: []\nfailures: []\n"
     )
     return project
@@ -46,7 +47,7 @@ def test_requires_id() -> None:
 def test_set_types(tmp_path: Path) -> None:
     project = _write_project(
         tmp_path,
-        tasks="  - id: t1\n    status: active\n    owner: claude-code\n",
+        tasks="  - id: t1\n    title: Task\n    status: todo\n    owner: claude-code\n",
     )
     r = _run(["--id", "t1", "--set", "unit", "--set", "e2e", "-p", str(project)])
     assert r.returncode == 0
@@ -63,7 +64,7 @@ def test_set_types(tmp_path: Path) -> None:
 def test_add_type(tmp_path: Path) -> None:
     project = _write_project(
         tmp_path,
-        tasks="  - id: t1\n    status: active\n    owner: claude-code\n    test_types:\n      - unit\n",
+        tasks="  - id: t1\n    title: Task\n    status: todo\n    owner: claude-code\n    test_types:\n      - unit\n",
     )
     r = _run(["--id", "t1", "--add", "smoke", "-p", str(project)])
     assert r.returncode == 0
@@ -79,7 +80,7 @@ def test_add_type(tmp_path: Path) -> None:
 def test_add_no_duplicate(tmp_path: Path) -> None:
     project = _write_project(
         tmp_path,
-        tasks="  - id: t1\n    status: active\n    owner: claude-code\n    test_types:\n      - unit\n",
+        tasks="  - id: t1\n    title: Task\n    status: todo\n    owner: claude-code\n    test_types:\n      - unit\n",
     )
     r = _run(["--id", "t1", "--add", "unit", "-p", str(project)])
     assert r.returncode == 0
@@ -93,7 +94,7 @@ def test_add_no_duplicate(tmp_path: Path) -> None:
 def test_remove_type(tmp_path: Path) -> None:
     project = _write_project(
         tmp_path,
-        tasks="  - id: t1\n    status: active\n    owner: claude-code\n    test_types:\n      - unit\n      - e2e\n",
+        tasks="  - id: t1\n    title: Task\n    status: todo\n    owner: claude-code\n    test_types:\n      - unit\n      - e2e\n",
     )
     r = _run(["--id", "t1", "--remove", "e2e", "-p", str(project)])
     assert r.returncode == 0
@@ -107,7 +108,7 @@ def test_remove_type(tmp_path: Path) -> None:
 def test_show_types(tmp_path: Path) -> None:
     project = _write_project(
         tmp_path,
-        tasks="  - id: t1\n    status: active\n    owner: claude-code\n    test_types:\n      - unit\n      - smoke\n",
+        tasks="  - id: t1\n    title: Task\n    status: todo\n    owner: claude-code\n    test_types:\n      - unit\n      - smoke\n",
     )
     r = _run(["--id", "t1", "--show", "-p", str(project)])
     assert r.returncode == 0
@@ -118,7 +119,7 @@ def test_show_types(tmp_path: Path) -> None:
 def test_show_empty(tmp_path: Path) -> None:
     project = _write_project(
         tmp_path,
-        tasks="  - id: t1\n    status: active\n    owner: claude-code\n",
+        tasks="  - id: t1\n    title: Task\n    status: todo\n    owner: claude-code\n",
     )
     r = _run(["--id", "t1", "--show", "-p", str(project)])
     assert r.returncode == 0
@@ -128,7 +129,7 @@ def test_show_empty(tmp_path: Path) -> None:
 def test_task_not_found(tmp_path: Path) -> None:
     project = _write_project(
         tmp_path,
-        tasks="  - id: t1\n    status: active\n    owner: claude-code\n",
+        tasks="  - id: t1\n    title: Task\n    status: todo\n    owner: claude-code\n",
     )
     r = _run(["--id", "nonexistent", "--show", "-p", str(project)])
     assert r.returncode != 0
@@ -138,7 +139,7 @@ def test_task_not_found(tmp_path: Path) -> None:
 def test_remove_all_clears_field(tmp_path: Path) -> None:
     project = _write_project(
         tmp_path,
-        tasks="  - id: t1\n    status: active\n    owner: claude-code\n    test_types:\n      - unit\n",
+        tasks="  - id: t1\n    title: Task\n    status: todo\n    owner: claude-code\n    test_types:\n      - unit\n",
     )
     r = _run(["--id", "t1", "--remove", "unit", "-p", str(project)])
     assert r.returncode == 0
@@ -159,7 +160,7 @@ def test_all_requires_id_or_all() -> None:
 def test_all_and_id_mutually_exclusive(tmp_path: Path) -> None:
     project = _write_project(
         tmp_path,
-        tasks="  - id: t1\n    status: active\n    owner: claude-code\n",
+        tasks="  - id: t1\n    title: Task\n    status: todo\n    owner: claude-code\n",
     )
     r = _run(["--id", "t1", "--all", "--show", "-p", str(project)])
     assert r.returncode != 0
@@ -170,8 +171,8 @@ def test_all_set_applies_to_all_tasks(tmp_path: Path) -> None:
     project = _write_project(
         tmp_path,
         tasks=(
-            "  - id: t1\n    status: active\n    owner: claude-code\n"
-            "  - id: t2\n    status: active\n    owner: claude-code\n"
+            "  - id: t1\n    title: Task\n    status: todo\n    owner: claude-code\n"
+            "  - id: t2\n    title: Task\n    status: todo\n    owner: claude-code\n"
         ),
     )
     r = _run(["--all", "--set", "unit", "--set", "smoke", "-p", str(project)])
@@ -189,8 +190,8 @@ def test_all_show(tmp_path: Path) -> None:
     project = _write_project(
         tmp_path,
         tasks=(
-            "  - id: t1\n    status: active\n    owner: claude-code\n    test_types:\n      - unit\n"
-            "  - id: t2\n    status: active\n    owner: claude-code\n"
+            "  - id: t1\n    title: Task\n    status: todo\n    owner: claude-code\n    test_types:\n      - unit\n"
+            "  - id: t2\n    title: Task\n    status: todo\n    owner: claude-code\n"
         ),
     )
     r = _run(["--all", "--show", "-p", str(project)])
@@ -205,8 +206,8 @@ def test_all_add_preserves_existing(tmp_path: Path) -> None:
     project = _write_project(
         tmp_path,
         tasks=(
-            "  - id: t1\n    status: active\n    owner: claude-code\n    test_types:\n      - unit\n"
-            "  - id: t2\n    status: active\n    owner: claude-code\n    test_types:\n      - e2e\n"
+            "  - id: t1\n    title: Task\n    status: todo\n    owner: claude-code\n    test_types:\n      - unit\n"
+            "  - id: t2\n    title: Task\n    status: todo\n    owner: claude-code\n    test_types:\n      - e2e\n"
         ),
     )
     r = _run(["--all", "--add", "smoke", "-p", str(project)])

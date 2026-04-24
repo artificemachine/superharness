@@ -88,7 +88,8 @@ class TestSubtask:
             assert st.status.value == status
 
     def test_missing_required_field_raises(self):
-        incomplete = {"id": "T-42.1", "title": "test"}
+        # id is still required — omitting it must raise
+        incomplete = {"title": "test", "model_tier": "standard"}
         with pytest.raises(ValidationError):
             Subtask.model_validate(incomplete)
 

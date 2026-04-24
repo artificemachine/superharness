@@ -24,11 +24,17 @@ class TaskStatus(str, Enum):
     plan_approved = "plan_approved"
     in_progress = "in_progress"
     report_ready = "report_ready"
+    # Review lifecycle — treated as canonical by engine/next_action.py.
+    # Kept in sync so validators don't reject legitimate in-flight states.
+    pending_user_approval = "pending_user_approval"
+    review_requested = "review_requested"
     review_passed = "review_passed"
+    review_failed = "review_failed"
     pr_open = "pr_open"
     done = "done"
     failed = "failed"
     blocked = "blocked"
+    stopped = "stopped"
     # Phase 2: agent liveness signals
     waiting_input = "waiting_input"   # agent paused, needs human response
     paused = "paused"                 # agent suspended (e.g. budget gate)
@@ -72,10 +78,10 @@ class Subtask(BaseModel):
 
     id: str
     title: str
-    model_tier: ModelTier
-    owner: str
-    estimated_tokens: int
-    estimated_cost_usd: float
+    model_tier: Optional[ModelTier] = None
+    owner: Optional[str] = None
+    estimated_tokens: Optional[int] = None
+    estimated_cost_usd: Optional[float] = None
     status: SubtaskStatus = SubtaskStatus.pending
     actual_tokens: Optional[int] = None
     actual_cost_usd: Optional[float] = None
@@ -86,7 +92,7 @@ class ContractTask(BaseModel):
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
     id: str
-    title: str
+    title: Optional[str] = None
     owner: str
     status: TaskStatus
     project_path: Optional[str] = None
@@ -95,7 +101,7 @@ class ContractTask(BaseModel):
     acceptance_criteria: Optional[list[str]] = None
     test_types: Optional[list[str]] = None
     plan: Optional[dict] = Field(None, alias="tdd")
-    blocked_by: Optional[str] = None
+    blocked_by: Optional[Union[str, list[str]]] = None
     dependency: Optional[str] = None
     summary: Optional[str] = None
     verified: Optional[bool] = None
@@ -125,10 +131,10 @@ class ContractTask(BaseModel):
 class Contract(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    id: str
-    created: Union[str, date, datetime]
-    created_by: str
-    status: Literal["draft", "active", "closed", "archived"]
+    id: Optional[str] = None
+    created: Optional[Union[str, date, datetime]] = None
+    created_by: Optional[str] = None
+    status: Optional[Literal["draft", "active", "closed", "archived"]] = None
     goal: Optional[str] = None
     default_definition_of_done: Optional[list[str]] = None
     tasks: list[ContractTask] = []
