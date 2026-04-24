@@ -106,6 +106,13 @@ def _start_daemon(project_dir: Path, interval: int) -> None:
 
     out_f = open(str(out_log), "a")
     err_f = open(str(err_log), "a")
+    env = os.environ.copy()
+    if "PYTHONPATH" not in env:
+        # Ensure local src is in PYTHONPATH if we're running from source
+        src_root = project_dir / "src"
+        if src_root.exists():
+            env["PYTHONPATH"] = str(src_root)
+
     try:
         proc = subprocess.Popen(
             cmd,
@@ -113,6 +120,7 @@ def _start_daemon(project_dir: Path, interval: int) -> None:
             stderr=err_f,
             start_new_session=True,
             cwd=str(project_dir),
+            env=env,
         )
     finally:
         out_f.close()
