@@ -694,6 +694,10 @@ shux auto-dispatch --agent codex-cli   # override target agent for all tasks
 Tasks with `blocked_by` set are skipped. High-effort tasks print a decomposition
 suggestion but are still enqueued unless gated.
 
+Auto-dispatch enqueues `todo` tasks in `--plan-only` mode: the agent proposes a
+plan and stops. Approve the plan (`shux task status --id <id> --status
+plan_approved`) to release the task into the normal dispatch flow.
+
 ### Scheduled Dispatch (`shux schedule`)
 
 Register cron-like schedules to automatically enqueue tasks at recurring intervals.

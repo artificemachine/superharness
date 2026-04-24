@@ -95,6 +95,31 @@ class TestAutoDispatch:
         mock_enqueue.assert_not_called()
         assert rc == 0
 
+    def test_enqueue_uses_valid_priority(self, tmp_path):
+        """Regression: auto_dispatch._enqueue must pass a priority accepted by
+        inbox_enqueue (1, 2, or 3). Prior to this test the default was 5, which
+        caused `shux auto-dispatch` to fail with '--priority must be 1, 2, or 3'."""
+        from superharness.commands.auto_dispatch import _enqueue
+
+        project = _make_project(tmp_path, tasks=[
+            {"id": "T-PRI", "title": "pri task", "owner": "claude-code",
+             "status": "todo", "effort": "low",
+             "project_path": str(tmp_path / "proj")},
+        ])
+        # The engine inbox expects a YAML list, not a dict. Remove the
+        # dict-form inbox the helper writes so enqueue() creates a fresh one.
+        (project / ".superharness" / "inbox.yaml").unlink()
+        ok = _enqueue(str(project), "T-PRI", "claude-code")
+        assert ok is True
+        inbox_items = yaml.safe_load(
+            (project / ".superharness" / "inbox.yaml").read_text()
+        ) or []
+        assert len(inbox_items) == 1
+        assert inbox_items[0]["priority"] in (1, 2, 3)
+        # auto-dispatch picks up todo tasks — plan_only must be set so the
+        # implementation workflow gate accepts the enqueue.
+        assert inbox_items[0].get("plan_only") is True
+
     def test_agent_override(self, tmp_path):
         from superharness.commands.auto_dispatch import run_auto_dispatch
 

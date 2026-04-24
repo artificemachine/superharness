@@ -47,6 +47,9 @@ def _lock_dir(project: Path) -> Path:
 def _run_watch(project: Path, args: list[str] | None = None) -> subprocess.CompletedProcess:
     env = os.environ.copy()
     env["SUPERHARNESS_CONFIRM_NON_INTERACTIVE"] = "YES"
+    # Skip PTY wrapping — CI runners have no TTY and `script` sometimes
+    # fails opaquely, turning the launched item into "status: failed".
+    env["SUPERHARNESS_NO_PTY_WRAP"] = "1"
     return subprocess.run(
         [PYTHON, "-m", "superharness.commands.inbox_watch",
          "--project", str(project)] + (args or []),
