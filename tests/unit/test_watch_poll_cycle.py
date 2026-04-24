@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from unittest.mock import MagicMock
 
 from superharness.engine.platform_runtime import watcher_lock_path
 
@@ -177,3 +178,36 @@ def test_watch_calls_dispatch_for_pending_items(tmp_path: Path) -> None:
     assert r.returncode == 0, r.stderr
     text = inbox.read_text()
     assert "status: launched" in text
+
+
+def test_run_dispatch_cmd_uses_background_process_for_python_dispatch(monkeypatch, tmp_path: Path) -> None:
+    from superharness.commands import inbox_watch
+
+    popen = MagicMock(return_value=MagicMock(pid=1234))
+
+    def fail_run(*args, **kwargs):  # noqa: ANN001, ANN202
+        raise AssertionError("default python dispatch path must not block via subprocess.run")
+
+    monkeypatch.delenv("DISPATCH", raising=False)
+    monkeypatch.setattr(inbox_watch.subprocess, "Popen", popen)
+    monkeypatch.setattr(inbox_watch.subprocess, "run", fail_run)
+
+    inbox_watch._run_dispatch_cmd(
+        project_dir=str(tmp_path),
+        target="codex-cli",
+        print_only=False,
+        non_interactive=True,
+        codex_bypass=False,
+        launcher_timeout=900,
+    )
+
+    args = popen.call_args.args[0]
+    kwargs = popen.call_args.kwargs
+    assert args[:3] == [sys.executable, "-m", "superharness.commands.inbox_dispatch"]
+    assert "--project" in args and str(tmp_path) in args
+    assert "--to" in args and "codex-cli" in args
+    assert "--non-interactive" in args
+    assert "--launcher-timeout" in args and "900" in args
+    assert kwargs["start_new_session"] is True
+    assert kwargs["stdout"] is subprocess.DEVNULL
+    assert kwargs["stderr"] is subprocess.DEVNULL
