@@ -50,16 +50,31 @@ def _classify_task(task: dict, project_dir: str) -> tuple[str, str]:
         return "claude-code", "standard"
 
 
-def _enqueue(project_dir: str, task_id: str, agent: str, priority: int = 5) -> bool:
-    """Enqueue a task into inbox.yaml. Returns True on success."""
+def _enqueue(
+    project_dir: str,
+    task_id: str,
+    agent: str,
+    priority: int = 2,
+    plan_only: bool = True,
+) -> bool:
+    """Enqueue a task into inbox.yaml. Returns True on success.
+
+    auto-dispatch operates on `todo` tasks, which are not valid at enqueue for
+    the implementation workflow. Default to `plan_only=True` so the agent
+    proposes a plan first; the operator then approves and the task re-enters
+    the normal dispatch flow.
+    """
     try:
         from superharness.commands.inbox_enqueue import main as enqueue_main
-        enqueue_main([
+        argv = [
             "--project", project_dir,
             "--task", task_id,
             "--to", agent,
             "--priority", str(priority),
-        ])
+        ]
+        if plan_only:
+            argv.append("--plan-only")
+        enqueue_main(argv)
         return True
     except SystemExit as e:
         return e.code == 0

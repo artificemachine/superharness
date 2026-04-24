@@ -78,6 +78,9 @@ def _run_dispatch(project: Path, args: list[str] | None = None, bin_dir: Path | 
         env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
     # Always allow non-interactive in tests
     env["SUPERHARNESS_CONFIRM_NON_INTERACTIVE"] = "YES"
+    # Skip PTY wrapping — CI runners have no TTY and `script` sometimes
+    # fails opaquely, turning the launched item into "status: failed".
+    env["SUPERHARNESS_NO_PTY_WRAP"] = "1"
     if extra_env:
         env.update(extra_env)
     return subprocess.run(

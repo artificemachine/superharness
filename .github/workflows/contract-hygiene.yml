@@ -61,8 +61,14 @@ jobs:
 
       - name: Validate decisions and failures YAML
         if: steps.check_harness.outputs.has_harness == 'true'
+        # failures.yaml is gitignored runtime state (removed from tracking in
+        # #130); only validate it when present.
         run: |
           echo "Validating decisions.yaml and failures.yaml..."
           python3 -c "import yaml; yaml.safe_load(open('.superharness/decisions.yaml').read())"
-          python3 -c "import yaml; yaml.safe_load(open('.superharness/failures.yaml').read())"
+          if [ -f .superharness/failures.yaml ]; then
+            python3 -c "import yaml; yaml.safe_load(open('.superharness/failures.yaml').read())"
+          else
+            echo "  (failures.yaml absent — skipping)"
+          fi
           echo "✓ decisions.yaml and failures.yaml are valid"

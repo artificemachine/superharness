@@ -25,3 +25,8 @@
 - 2026-04-23 (v1.33.0): feat(headless-engine): Finalized autonomous engine + Guardian (Manual Sync Release).
 - 2026-04-23 (v1.33.1): fix(engine): Multi-project port smartness and non-blocking file reads.
 - 2026-04-23 (v1.33.2): fix(engine): Multi-project port smartness and stability release.
+- 2026-04-24 (v1.33.3): fix(auto-dispatch): enqueue with valid priority (2) and plan-only mode so todo tasks pass the workflow gate (regressed in 1.33.0).
+- 2026-04-24 (v1.33.3): fix(ci): contract-hygiene tolerates gitignored failures.yaml; add --help fast-path to delegate-to-claude/codex scripts.
+- 2026-04-24 (v1.33.3): fix(engine): inbox duplicate check allows same-task-different-agent for discussion round tasks (regression from 92a2f32).
+- 2026-04-24 (v1.33.3): fix(monitor): dashboard inbox reader no longer returns empty on Windows (fcntl import was Unix-only).
+- 2026-04-24 (v1.33.3): fix(dispatch): --print-only now short-circuits before spawning the launcher (fixes CI flake where missing claude/codex binary marked items as failed).

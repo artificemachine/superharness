@@ -95,18 +95,23 @@ def test_enqueue_duplicate_task_rejected_when_launched(tmp_path: Path) -> None:
     assert "duplicate_task" in r.stdout
 
 
-def test_enqueue_same_task_different_agent_allowed(tmp_path: Path) -> None:
-    """Same task can be enqueued for a different agent (discussion dispatch use case)."""
+def test_enqueue_same_discussion_round_different_agent_allowed(tmp_path: Path) -> None:
+    """Discussion round tasks (`.../round-N`) allow one entry per participant.
+
+    Non-round tasks are covered by
+    tests/integration/test_multi_agent_support.py::test_prevent_duplicate_task_different_agents,
+    which asserts the opposite (strict single-agent ownership).
+    """
     f = _inbox_file(tmp_path)
+    task_id = "disc-42/round-1"
     _run_inbox("enqueue", [
         "--file", str(f), "--id", "first-id", "--to", "claude-code",
-        "--task", "my-task", "--project", "/p", "--priority", "1",
+        "--task", task_id, "--project", "/p", "--priority", "1",
         "--created-at", "2026-01-01T00:00:00Z",
     ])
-    # Same task but different target — must be allowed (multi-agent discussion)
     r = _run_inbox("enqueue", [
         "--file", str(f), "--id", "second-id", "--to", "codex-cli",
-        "--task", "my-task", "--project", "/p", "--priority", "1",
+        "--task", task_id, "--project", "/p", "--priority", "1",
         "--created-at", "2026-01-01T00:00:01Z",
     ])
     assert r.returncode == 0
