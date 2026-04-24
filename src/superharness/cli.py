@@ -116,6 +116,9 @@ def _cmd(name: str, help_text: str, module: str | None = None, script: str | Non
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def cmd_contract(args):
     """Show active contract summary."""
+    if "--validate" in args or (args and args[0] == "validate"):
+        _run_module("superharness.commands.contract_validate", args[1:] if args and args[0] == "validate" else args)
+        return
     # Drop legacy 'today' subcommand token for backward compatibility
     filtered = tuple(a for a in args if a not in ("today", "help"))
     _run_module("superharness.commands.contract_today", filtered)
@@ -281,8 +284,8 @@ def _is_dashboard_running(project_dir: str = None) -> tuple:
     if project_dir is not None:
         real_proj = os.path.realpath(project_dir)
         
-        # Priority 1: Check daemon.pid.json for the actual port this project is using
-        daemon_file = os.path.join(real_proj, ".superharness", "daemon.pid.json")
+        # Priority 1: Check operator-state.json for the actual port this project is using
+        daemon_file = os.path.join(real_proj, ".superharness", "operator-state.json")
         if os.path.exists(daemon_file):
             try:
                 with open(daemon_file, "r") as f:

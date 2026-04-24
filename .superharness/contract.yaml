@@ -1883,7 +1883,7 @@ tasks:
   workflow: implementation
   development_method: tdd
   acceptance_criteria:
-  - support auto_approve_plans: true in policy/profile.yaml
+  - "support auto_approve_plans: true in policy/profile.yaml"
   - Auto-approver validates plan format before advancing status
   - Immediate re-enqueue for implementation after auto-approval
   - Toggleable per-project or per-task
@@ -1956,8 +1956,6 @@ tasks:
   - Logs the restart with old and new version to ledger
   effort: low
   summary: auto-approved per task autonomy setting
-decisions: []
-failures: []
 - id: feat.autonomous-peer-review
   title: 'Autonomous Peer Review: Agents can verify and close tasks'
   owner: gemini-cli
@@ -1970,3 +1968,27 @@ failures: []
   - 'Logic: Reviewer agent can issue a "LGTM" signal to trigger shux close'
   - 'Cross-Pollination: Ensure the reviewer is a different agent than the author'
   - 'Dashboard: Show "Reviewing..." state in the activity feed'
+- id: discuss-20260424T115728Z-84915-223275561/round-1
+  title: 'Discussion round 1: Superharness review synthesis: blocking defects, root
+    causes, and fix order from codex/gemini/claude reviews of docs/*_superharness_review.md'
+  owner: claude-code
+  status: in_progress
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: discussion
+  autonomy: ai_driven
+  require_tdd: true
+  effort: medium
+- id: discuss-20260424T122121Z-14343-131172417/round-1
+  title: 'Discussion round 1: Superharness review synthesis: blocking defects, root
+    causes, and fix order from docs/*_superharness_review.md'
+  owner: claude-code
+  status: in_progress
+  project_path: /Users/airm2max/DevOpsSec/superharness
+  blocked_by: none
+  workflow: discussion
+  autonomy: ai_driven
+  require_tdd: true
+  effort: medium
+decisions: []
+failures: []

@@ -33,7 +33,8 @@ _STEPS = ["detect", "init", "global_claude", "git_track", "doctor", "task", "del
 _INNER_GITIGNORE_ENTRIES = [
     "watcher-env.yaml",
     "launcher-logs/",
-    "daemon.pid.json",
+    "daemon-state.json",
+    "operator-state.json",
     "onboarding.yaml",
 ]
 

@@ -23,3 +23,8 @@ contracts/
 review-lenses/
 benchmark.jsonl
 onboarding.yaml
+daemon.pid.json
+daemon-state.json
+operator-state.json
+trace.jsonl
+*.lock.d/
