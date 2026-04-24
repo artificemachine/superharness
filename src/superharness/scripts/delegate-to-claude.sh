@@ -37,6 +37,15 @@ resolve_python() {
 
 PYTHON3="$(resolve_python)"
 
+# Fast-path: print usage and exit before touching claude binary
+for arg in "$@"; do
+  if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
+    echo "Usage: delegate-to-claude.sh [--project DIR] [--task ID] [--prompt TEXT] [--model MODEL] [--plan-only] [--non-interactive]"
+    echo "Delegates a superharness task to the Claude Code CLI agent."
+    exit 0
+  fi
+done
+
 # Build Claude CLI command
 CLAUDE_ARGS=()
 PROMPT=""

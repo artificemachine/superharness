@@ -36,4 +36,14 @@ resolve_python() {
 }
 
 PYTHON3="$(resolve_python)"
+
+# Fast-path: print usage and exit before touching codex binary
+for arg in "$@"; do
+  if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
+    echo "Usage: delegate-to-codex.sh [--project DIR] [--task ID] [--prompt TEXT] [--model MODEL] [--plan-only] [--non-interactive]"
+    echo "Delegates a superharness task to the Codex CLI agent."
+    exit 0
+  fi
+done
+
 exec "$PYTHON3" -m superharness.commands.delegate --to codex-cli "$@"

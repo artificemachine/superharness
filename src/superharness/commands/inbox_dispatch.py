@@ -622,16 +622,22 @@ def _do_dispatch(
         import shlex
         wrapped_args = ["script", "-q", "-f", "-c", shlex.join(launch_args), task_log]
 
-    # Spawn launcher
-    import time as _time
-    _launch_start = _time.time()
-    if effective_timeout > 0:
-        launcher_rc = _run_with_timeout(effective_timeout, wrapped_args, inbox_file=inbox_file, item_id=item_id,
-                                        env=spawn_env)
+    # Spawn launcher. --print-only short-circuits here: the caller only wants
+    # to see the dispatch decision, not actually invoke the underlying agent
+    # CLI (which may not be installed in test/CI environments).
+    if print_only:
+        launcher_rc = 0
+        print(f"[print-only] would launch: {' '.join(launch_args)}")
     else:
-        proc = subprocess.Popen(wrapped_args, preexec_fn=os.setsid, env=spawn_env)
-        _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", str(proc.pid)])
-        launcher_rc = proc.wait()
+        import time as _time
+        _launch_start = _time.time()
+        if effective_timeout > 0:
+            launcher_rc = _run_with_timeout(effective_timeout, wrapped_args, inbox_file=inbox_file, item_id=item_id,
+                                            env=spawn_env)
+        else:
+            proc = subprocess.Popen(wrapped_args, preexec_fn=os.setsid, env=spawn_env)
+            _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", str(proc.pid)])
+            launcher_rc = proc.wait()
         _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", ""])
 
     # Clean up worktree after agent completes

@@ -310,9 +310,13 @@ def enqueue(
     # Block duplicate active entries for the same task ID.
     # A task can only have one active delegation in the inbox at a time,
     # regardless of which agent is assigned. This prevents race conditions.
+    # Exception: discussion round tasks (`.../round-N`) legitimately need one
+    # entry per participant, so match on (task, to) for those.
+    is_discussion_round = "/round-" in str(task)
     existing = next(
         (x for x in items if isinstance(x, dict)
          and str(x.get("task", "")) == str(task)
+         and (not is_discussion_round or str(x.get("to", "")) == str(to))
          and x.get("status") in ("pending", "launched", "running", "paused")),
         None,
     )
