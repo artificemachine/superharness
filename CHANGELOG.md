@@ -41,3 +41,5 @@
 - 2026-04-24 (v1.34.0): chore(release): bump version to 1.34.0 — defense hardening iterations 0-7 (Layer 2 + 3a, paused-pid reconciliation, PID schema split).
 - 2026-04-24 (v1.34.0): fix(contract-io): lazy pydantic import in contract_io — degrades gracefully in minimal CI environments without pydantic; fixes E2E test suite breakage.
 - 2026-04-24 (iter-8): fix(schemas): make Subtask planning fields optional (model_tier, owner, estimated_tokens, estimated_cost_usd), Contract.id optional, ContractTask.title optional, blocked_by accepts list — fixes remaining CI failures.
+- 2026-04-24 (v1.34.0): fix(__init__): sync __version__ to 1.34.0 — was missed in version bump commit.
+- 2026-04-24 (v1.34.1): chore(release): bump version to 1.34.1 — patch to align pyproject.toml and __init__.__version__.
