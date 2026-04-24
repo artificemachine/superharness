@@ -257,7 +257,19 @@ def _run_dispatch_cmd(
     if launcher_timeout > 0:
         args += ["--launcher-timeout", str(launcher_timeout)]
 
-    subprocess.run(args, check=False, env=env)
+    if print_only:
+        subprocess.run(args, check=False, env=env)
+        return
+
+    # Keep the watcher loop responsive: dispatch owns its own lifecycle and may
+    # wait on long-running agent work, so the watcher should not block on it.
+    subprocess.Popen(
+        args,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
 
 
 def _run_scripts_heartbeat(project_dir: str) -> None:
