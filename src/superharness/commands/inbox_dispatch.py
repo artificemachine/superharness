@@ -30,6 +30,18 @@ def _abort(msg: str, code: int = 1) -> None:
     sys.exit(code)
 
 
+def _safe_task_id_for_path(task_id: str) -> str:
+    """Sanitize a task id for use in a single-file path component.
+
+    Task ids such as `discuss-<uuid>/round-N` contain `/` which would make
+    `os.path.join(dir, f"{task_id}-...")` resolve into a nonexistent
+    subdirectory, silently breaking log writes (script(1) exits 1).
+
+    Mirrors `superharness.commands.discuss.cmd_summary` safe_id handling.
+    """
+    return task_id.replace("/", "_").replace("..", "_")
+
+
 # ---------------------------------------------------------------------------
 # Lock helpers (mkdir-based, same semantics as shell version)
 # ---------------------------------------------------------------------------
@@ -593,12 +605,13 @@ def _do_dispatch(
     launcher_log_dir = os.path.join(project_dir, ".superharness", "launcher-logs")
     os.makedirs(launcher_log_dir, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    task_log = os.path.join(launcher_log_dir, f"{item_task}-{item_to}-{timestamp}.log")
+    safe_item_task = _safe_task_id_for_path(item_task)
+    task_log = os.path.join(launcher_log_dir, f"{safe_item_task}-{item_to}-{timestamp}.log")
 
     # Rotate old logs (keep last 5 per task+agent)
     from pathlib import Path
     from superharness.commands.delegate import _rotate_launcher_logs
-    _rotate_launcher_logs(Path(launcher_log_dir), item_task, item_to, keep=5)
+    _rotate_launcher_logs(Path(launcher_log_dir), safe_item_task, item_to, keep=5)
 
     # Pass log path to delegate so SDK runner's JSONL tailer writes to the same file
     spawn_env = os.environ.copy()

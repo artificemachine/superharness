@@ -83,6 +83,33 @@ def _pid_is_running(pid: int | None) -> bool:
         return False
 
 
+def _reconcile_paused_dead_pids(inbox: list) -> bool:
+    """Transition paused items whose launcher pid is dead to failed.
+
+    Returns True if any item was changed.
+    Called on every watcher tick so dead-pid lanes are unblocked within one interval.
+    Only acts on items with status=paused AND a recorded pid.
+    Items without a pid are left alone (ambiguous — may be paused by operator, not by crash).
+    """
+    changed = False
+    for item in inbox:
+        if item.get("status") != "paused":
+            continue
+        raw_pid = item.get("pid")
+        if not raw_pid:
+            continue
+        try:
+            pid = int(raw_pid)
+        except (ValueError, TypeError):
+            continue
+        if not _pid_is_running(pid):
+            item["status"] = "failed"
+            item["failed_reason"] = f"launcher pid {pid} disappeared"
+            item["failed_at"] = _now_utc()
+            changed = True
+    return changed
+
+
 def _heartbeat_age_seconds(project_dir: str) -> int | None:
     hb_file = os.path.join(project_dir, ".superharness", "watcher.heartbeat")
     if not os.path.isfile(hb_file):
@@ -654,6 +681,21 @@ def _run_scripts(
         _reconcile_zombies(project_dir)
     except Exception as e:
         print(f"Warning: zombie reconciliation failed: {e}", file=sys.stderr)
+
+    # Reconcile paused items whose launcher pid is dead (Finding #7)
+    try:
+        import yaml as _yaml
+        from superharness.engine.inbox import _inbox_lock
+        _inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
+        if os.path.exists(_inbox_file):
+            with open(_inbox_file, encoding="utf-8") as _f:
+                _inbox_items = _yaml.safe_load(_f.read()) or []
+            if _reconcile_paused_dead_pids(_inbox_items):
+                with _inbox_lock(_inbox_file):
+                    with open(_inbox_file, "w", encoding="utf-8") as _f:
+                        _yaml.dump(_inbox_items, _f)
+    except Exception as e:
+        print(f"Warning: paused-pid reconciliation failed: {e}", file=sys.stderr)
 
     # Inbox GC: reconcile stale items against contract
     try:

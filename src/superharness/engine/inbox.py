@@ -16,6 +16,8 @@ from contextlib import contextmanager
 from datetime import datetime
 from typing import Iterator
 
+import yaml
+
 from superharness.engine.yaml_helpers import safe_load_normalized
 
 import yaml
@@ -176,8 +178,15 @@ def _deps_satisfied(contract_file: str, task_id: str) -> bool:
             if isinstance(t, dict)
         }
         return all(status_map.get(dep_id, "") in ("done", "archived") for dep_id in dep_ids)
-    except Exception:
-        return True  # Fail open: don't block dispatch on read errors
+    except (OSError, yaml.YAMLError) as e:
+        # Fail open ONLY on file I/O and YAML parse errors — the original intent.
+        # Logic bugs (TypeError, KeyError, AttributeError) must surface, not
+        # silently green-light dispatch of a task whose dependency state is unknown.
+        import logging
+        logging.getLogger(__name__).warning(
+            "deps_satisfied: fail-open due to contract read error: %s", e,
+        )
+        return True
 
 
 # ---------------------------------------------------------------------------

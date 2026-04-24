@@ -36,8 +36,12 @@ def _setup_project(tmp_path: Path) -> Path:
         "\n".join(
             [
                 "id: test-contract",
+                "created: '2026-01-01T00:00:00Z'",
+                "created_by: owner",
+                "status: active",
                 "tasks:",
                 "  - id: existing-task",
+                "    title: Existing task",
                 "    owner: codex-cli",
                 "    status: plan_approved",
                 f"    project_path: '{project.as_posix()}'",
