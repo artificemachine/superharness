@@ -1510,6 +1510,26 @@ class Handler(BaseHTTPRequestHandler):
             return self._run_cmd(["bash", dispatch, "--project", str(self.project_dir), "--to", "claude-code", "--print-only"]), 200
         if action == "recover_retry":
             return self._run_cmd(["bash", recover, "--project", str(self.project_dir), "--action", "retry", "--timeout-minutes", "20"]), 200
+        if action == "recover_failed":
+            inbox = self.project_dir / ".superharness" / "inbox.yaml"
+            if not inbox.exists():
+                return {"ok": True, "recovered": 0}, 200
+            items = inbox_items(inbox)
+            recovered = 0
+            for item in items:
+                if item.get("status") == "failed":
+                    item["status"] = "pending"
+                    item.pop("failed_at", None)
+                    item.pop("failed_reason", None)
+                    item["pid"] = ""
+                    recovered += 1
+            if recovered > 0:
+                import yaml as _yaml
+                with open(inbox, "w", encoding="utf-8") as fh:
+                    fh.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
+                    for item in items:
+                        _yaml.dump([item], fh, default_flow_style=False, allow_unicode=True, sort_keys=True)
+            return {"ok": True, "recovered": recovered}, 200
         if action == "normalize_stale":
             return self._run_cmd(["bash", normalize, "--project", str(self.project_dir), "--archive", "--drop-status", "stale"]), 200
         if action == "clear_resolved_inbox":
