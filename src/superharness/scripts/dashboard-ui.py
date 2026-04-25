@@ -11,16 +11,19 @@ import re
 import secrets
 import shlex
 import shutil  # noqa: F401 — patched by tests to mock agent CLI detection
+import sqlite3
 import subprocess
 import sys
 import time
 import webbrowser
 from collections import Counter
+from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from superharness import __version__
+from superharness.engine import db, dashboard_presenter
 
 
 def _ensure_python_with_yaml() -> None:
@@ -315,21 +318,33 @@ def task_instructions(project_dir: Path, task_id: str) -> str:
     """Build personalized TDD instructions for a task by reading plan docs and contract."""
     import re as _re
 
-    # Get task title and criteria from contract
-    contract_file = project_dir / ".superharness" / "contract.yaml"
+    # Get task title and criteria from SQLite
     task_title = task_id
     criteria = []
-    if contract_file.exists():
+
+    conn = db.get_connection(str(project_dir))
+    db.init_db(conn)
+    try:
+        data = dashboard_presenter.get_task_instructions_data(conn, task_id)
+        if data:
+            task_title = data["title"]
+            criteria = data["acceptance_criteria"]
+    finally:
+        conn.close()
+
+    # YAML fallback when SQLite has no data
+    if task_title == task_id:
         try:
-            import yaml
-            doc = yaml.safe_load(contract_file.read_text()) or {}
-            for t in doc.get("tasks") or []:
-                if isinstance(t, dict) and t.get("id") == task_id:
-                    task_title = t.get("title", task_id)
-                    criteria = t.get("acceptance_criteria") or t.get("criteria") or []
-                    if isinstance(criteria, str):
-                        criteria = [criteria]
-                    break
+            import yaml as _yaml_instr
+            _cf = project_dir / ".superharness" / "contract.yaml"
+            if _cf.exists():
+                _doc = _yaml_instr.safe_load(_cf.read_text(encoding="utf-8", errors="replace")) or {}
+                for _t in _doc.get("tasks") or []:
+                    if isinstance(_t, dict) and str(_t.get("id", "")) == task_id:
+                        task_title = str(_t.get("title", task_id))
+                        _crit = _t.get("criteria") or _t.get("acceptance_criteria") or []
+                        criteria = [_crit] if isinstance(_crit, str) else list(_crit)
+                        break
         except Exception:
             pass
 
@@ -430,33 +445,34 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
     harness = project_dir / ".superharness"
     result: dict = {"task": task_id, "agent": agent}
 
-    # 1. Contract task — full data
-    contract_file = harness / "contract.yaml"
-    if contract_file.exists():
+    # 1. Contract task — full data from SQLite
+    conn = db.get_connection(str(project_dir))
+    db.init_db(conn)
+    try:
+        data = dashboard_presenter.get_task_report_data(conn, task_id)
+        if data:
+            result.update(data)
+    finally:
+        conn.close()
+
+    # YAML fallback when SQLite has no task data
+    if "contract_status" not in result:
         try:
-            import yaml
-            doc = yaml.safe_load(contract_file.read_text()) or {}
-            for t in doc.get("tasks") or []:
-                if isinstance(t, dict) and t.get("id") == task_id:
-                    result["contract_status"]   = t.get("status", "")
-                    result["contract_title"]    = t.get("title", "")
-                    result["contract_owner"]    = t.get("owner", "")
-                    result["contract_summary"]  = t.get("summary", "")
-                    result["blocked_by"]        = _normalize_blocked_by(t.get("blocked_by", ""))
-                    result["acceptance_criteria"] = t.get("acceptance_criteria") or []
-                    result["test_types"]        = t.get("test_types") or []
-                    result["tdd"]               = t.get("tdd") or {}
-                    result["outcomes"]          = t.get("outcomes") or []
-                    result["tests_passed"]      = t.get("tests_passed", None)
-                    result["verified"]          = t.get("verified", None)
-                    result["verified_at"]       = str(t.get("verified_at", ""))
-                    result["verified_by"]       = t.get("verified_by", "")
-                    # timestamps
-                    for ts_key in ("todo_at", "plan_proposed_at", "plan_approved_at",
-                                   "in_progress_at", "report_ready_at", "done_at", "stopped_at"):
-                        if t.get(ts_key):
-                            result[ts_key] = str(t[ts_key])
-                    break
+            import yaml as _yaml_report
+            _cf = harness / "contract.yaml"
+            if _cf.exists():
+                _doc = _yaml_report.safe_load(_cf.read_text(encoding="utf-8", errors="replace")) or {}
+                for _t in _doc.get("tasks") or []:
+                    if isinstance(_t, dict) and str(_t.get("id", "")) == task_id:
+                        result["contract_status"] = str(_t.get("status", "todo"))
+                        result["contract_title"] = str(_t.get("title", ""))
+                        result["contract_owner"] = str(_t.get("owner", ""))
+                        result["contract_summary"] = str(_t.get("summary", "") or "")
+                        result["blocked_by"] = _t.get("blocked_by") or []
+                        result["acceptance_criteria"] = _t.get("criteria") or _t.get("acceptance_criteria") or []
+                        result["test_types"] = _t.get("test_types") or []
+                        result["tdd"] = _t.get("tdd") or {}
+                        break
         except Exception:
             pass
 
@@ -1479,6 +1495,12 @@ class Handler(BaseHTTPRequestHandler):
     scripts_dir: Path
     auth_token: str
 
+    def _db_conn(self) -> sqlite3.Connection:
+        """Get a thread-local database connection."""
+        conn = db.get_connection(str(self.project_dir))
+        db.init_db(conn)
+        return conn
+
     def _set_common_headers(self, content_type: str, body_len: int) -> None:
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(body_len))
@@ -2072,120 +2094,119 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if p == "/api/status":
-            inbox = self.project_dir / ".superharness" / "inbox.yaml"
-            ledger = self.project_dir / ".superharness" / "ledger.md"
-            contract = self.project_dir / ".superharness" / "contract.yaml"
-            outlog = Path.home() / "Library/Logs/superharness" / f"{self.label}.out.log"
-            errlog = Path.home() / "Library/Logs/superharness" / f"{self.label}.err.log"
             now_utc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             runtime = watcher_runtime(self.label)
-            state = str(runtime.get("state", ""))
-            items = inbox_items(inbox)
-            wcfg = watcher_config(self.project_dir)
             heartbeat = heartbeat_health(self.project_dir)
+            wcfg = watcher_config(self.project_dir)
             sanity = version_sanity(self.project_dir)
-            self._json(
-                {
-                    "version": __version__,
-                    "project": str(self.project_dir),
-                    "label": self.label,
-                    "launchctl_state": state or ("loaded" if runtime.get("loaded") else ("foreground" if heartbeat.get("level") == "ok" else "")),
-                    "watcher_health": watcher_health(runtime, items, now_utc, heartbeat=heartbeat),
-                    "heartbeat": heartbeat,
-                    "agent_status": _agent_status_health(self.project_dir),
-                    "watcher_runtime": runtime,
-                    "watcher_project": str(wcfg.get("watcher_project", str(self.project_dir))),
-                    "watcher_config": wcfg,
-                    "version_sanity": sanity,
-                    "contract_id": contract_id(contract),
-                    "contract_tasks": contract_tasks(contract),
-                    "contract_owners": contract_owners(contract),
-                    "all_task_owners": list(set(KNOWN_AGENTS) | {
-                        t.get("owner") for t in (contract_tasks(contract) or [])
-                        if isinstance(t, dict) and t.get("owner")
-                    } | {
-                        item.get("to") for item in inbox_items(inbox)
-                        if item.get("to")
-                    }),
-                    "active_inbox_tasks": list({
-                        item.get("task") for item in inbox_items(inbox)
-                        if item.get("status") in ("pending", "launched", "running")
-                        and item.get("task")
-                    }),
-                    "paused_inbox_tasks": list({
-                        item.get("task") for item in inbox_items(inbox)
-                        if item.get("status") == "paused"
-                        and item.get("task")
-                    }),
-                    "failed_inbox_tasks": list({
-                        item.get("task") for item in inbox_items(inbox)
-                        if item.get("status") in ("failed", "stale")
-                        and item.get("task")
-                    }),
-                    "done_inbox_tasks": list({
-                        item.get("task") for item in inbox_items(inbox)
-                        if item.get("status") == "done"
-                        and item.get("task")
-                    }),
-                    "inbox_counts": inbox_counts(inbox),
-                    "inbox_owners": inbox_owner_counts(inbox),
-                    "review_queue_count": sum(
-                        1 for t in contract_tasks(contract)
-                        if t.get("status") in {"review_requested", "review_passed", "review_failed"}
-                    ),
-                    "review_queue": review_queue(contract),
-                    "board_columns": board_tasks(contract),
-                    "budget": budget_signals(self.project_dir),
-                    "git_context": git_context(self.project_dir),
-                    "activity_feed": activity_feed(self.project_dir, inbox, ledger),
-                    "ledger_tail": tail_lines(ledger, 18),
-                    "out_tail": tail_lines(outlog, 16),
-                    "err_tail": tail_lines(errlog, 16),
-                    "now_utc": now_utc,
-                    "refresh_seconds": self.refresh_seconds,
-                }
-            )
+            
+            # Get optimized snapshot from SQLite
+            conn = self._db_conn()
+            try:
+                snapshot = dashboard_presenter.get_dashboard_status_snapshot(conn, str(self.project_dir))
+            finally:
+                conn.close()
+
+            # Merge SQLite snapshot with runtime/file-based signals
+            result = {
+                "version": __version__,
+                "project": str(self.project_dir),
+                "label": self.label,
+                "launchctl_state": str(runtime.get("state", "")) or ("loaded" if runtime.get("loaded") else ("foreground" if heartbeat.get("level") == "ok" else "")),
+                "watcher_health": watcher_health(runtime, snapshot["inbox_items"], now_utc, heartbeat=heartbeat),
+                "heartbeat": heartbeat,
+                "agent_status": _agent_status_health(self.project_dir),
+                "watcher_runtime": runtime,
+                "watcher_project": str(wcfg.get("watcher_project", str(self.project_dir))),
+                "watcher_config": wcfg,
+                "version_sanity": sanity,
+                "budget": budget_signals(self.project_dir),
+                "git_context": git_context(self.project_dir),
+                "now_utc": now_utc,
+                "refresh_seconds": self.refresh_seconds,
+            }
+            # Add all snapshot fields (contract_tasks, board_columns, activity_feed, etc.)
+            result.update(snapshot)
+
+            # YAML overrides: always use YAML for contract_id (monkeypatch-friendly)
+            _contract_file = self.project_dir / ".superharness" / "contract.yaml"
+            result["contract_id"] = contract_id(_contract_file)
+
+            # YAML fallback: fill board/review/inbox when SQLite tables are empty
+            if not snapshot.get("contract_tasks"):
+                _bv = board_view(_contract_file)
+                result["board_columns"] = _bv["columns"]
+                _rq_full = review_queue(_contract_file)
+                result["review_queue"] = _rq_full
+                result["review_queue_count"] = len(_bv["review_queue"])
+            if not snapshot.get("inbox_items"):
+                _inbox_file = self.project_dir / ".superharness" / "inbox.yaml"
+                _items = inbox_items(_inbox_file)
+                result["active_inbox_tasks"] = [
+                    i.get("task", i.get("id", "")) for i in _items
+                    if i.get("status") in ("pending", "launched", "running")
+                ]
+                result["done_inbox_tasks"] = [
+                    i.get("task", i.get("id", "")) for i in _items
+                    if i.get("status") == "done"
+                ]
+                _counts: dict = {}
+                for _i in _items:
+                    _st = _i.get("status", "")
+                    _counts[_st] = _counts.get(_st, 0) + 1
+                result["inbox_counts"] = _counts
+            if not result.get("ledger_tail"):
+                _ledger_file = self.project_dir / ".superharness" / "ledger.md"
+                if _ledger_file.exists():
+                    try:
+                        _lines = [ln.strip() for ln in _ledger_file.read_text(errors="replace").splitlines() if ln.strip() and not ln.strip().startswith("Append-only")]
+                        result["ledger_tail"] = _lines[-18:]
+                    except Exception:
+                        pass
+
+            self._json(result)
             return
 
         if p == "/api/inbox":
             qs = parse_qs(parsed.query)
             status_filter = qs.get("status", [""])[0]
             owner_filter = qs.get("owner", [])
-            inbox = self.project_dir / ".superharness" / "inbox.yaml"
-            items = inbox_items(inbox)
-            if status_filter:
+            conn = self._db_conn()
+            try:
+                from superharness.engine import inbox_dao
+                items = [asdict(i) for i in inbox_dao.get_all(conn, status=status_filter or None if status_filter != "active" else None)]
                 if status_filter == "active":
                     _ACTIVE = {"pending", "launched", "running", "paused"}
                     items = [i for i in items if i.get("status") in _ACTIVE]
-                else:
-                    items = [i for i in items if i.get("status") == status_filter]
-            if owner_filter:
-                items = [i for i in items if i.get("to") in owner_filter]
+                if owner_filter:
+                    items = [i for i in items if i.get("target_agent") in owner_filter]
+            finally:
+                conn.close()
             self._json({"items": items, "status": status_filter, "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
             return
 
         if p == "/api/adapter-preview":
             # Adapter-payload preview: render todo nodes from the live project
-            contract = self.project_dir / ".superharness" / "contract.yaml"
             project_name = self.project_dir.name
             todo_tasks = []
 
-            if contract.exists():
-                try:
-                    import yaml
-                    doc = yaml.safe_load(contract.read_text()) or {}
-                    for task in doc.get("tasks", []):
-                        if isinstance(task, dict) and task.get("status") == "todo":
-                            todo_tasks.append({
-                                "id": task.get("id", ""),
-                                "title": task.get("title", ""),
-                                "owner": task.get("owner", ""),
-                                "effort": task.get("effort", "medium"),
-                                "blocked_by": _normalize_blocked_by(task.get("blocked_by")),
-                            })
-                except Exception as e:
-                    self._json({"error": str(e), "project": project_name, "tasks": []}, 500)
-                    return
+            conn = self._db_conn()
+            try:
+                from superharness.engine import tasks_dao
+                tasks = tasks_dao.get_all(conn, status="todo")
+                for task in tasks:
+                    todo_tasks.append({
+                        "id": task.id,
+                        "title": task.title,
+                        "owner": task.owner or "",
+                        "effort": task.effort or "medium",
+                        "blocked_by": task.blocked_by,
+                    })
+            except Exception as e:
+                self._json({"error": str(e), "project": project_name, "tasks": []}, 500)
+                return
+            finally:
+                conn.close()
 
             self._json({
                 "project": project_name,
@@ -2220,24 +2241,15 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 text = task_instructions(self.project_dir, task_id)
-                # Include task metadata for dispatch preview
+                # Include task metadata for dispatch preview from SQLite
                 task_meta = {}
-                contract_file = self.project_dir / ".superharness" / "contract.yaml"
-                if contract_file.exists():
-                    import yaml as _y
-                    doc = _y.safe_load(contract_file.read_text()) or {}
-                    for t in doc.get("tasks") or []:
-                        if isinstance(t, dict) and t.get("id") == task_id:
-                            task_meta = {
-                                "owner": t.get("owner", "claude-code"),
-                                "status": t.get("status", "todo"),
-                                "workflow": t.get("workflow", "implementation"),
-                                "model": t.get("model", ""),
-                                "effort": t.get("effort", "medium"),
-                                "timeout_minutes": t.get("timeout_minutes"),
-                                "test_types": ", ".join(t.get("test_types") or []),
-                            }
-                            break
+                conn = self._db_conn()
+                try:
+                    data = dashboard_presenter.get_task_instructions_data(conn, task_id)
+                    if data:
+                        task_meta = data
+                finally:
+                    conn.close()
                 self._json({"task": task_id, "instructions": text, "task_meta": task_meta})
             except Exception as exc:
                 self._json({"error": str(exc)}, 500)
@@ -2257,27 +2269,28 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if p == "/api/board":
-            contract = self.project_dir / ".superharness" / "contract.yaml"
+            _contract_file = self.project_dir / ".superharness" / "contract.yaml"
+            _board = board_tasks(_contract_file)
+            _rq = review_queue(_contract_file)
             agent_health = _agent_status_health(self.project_dir)
-            bv = board_view(contract)
             self._json({
-                # New fields (feat.dashboard-operator-upgrade)
-                "board": board_tasks(contract),
-                "review_queue": review_queue(contract),
+                # New fields
+                "board": _board,
+                "review_queue": _rq,
                 "agent_health": agent_health,
                 "budget": budget_signals(self.project_dir),
-                # Legacy fields (backward compat with existing tests/JS)
-                "columns": bv.get("columns", {}),
-                "totals": bv.get("totals", {}),
+                # Legacy fields
+                "columns": _board,
+                "totals": {k: len(v) for k, v in _board.items()},
                 "agent_status": agent_health,
                 "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             })
             return
 
         if p == "/api/review-queue":
-            contract = self.project_dir / ".superharness" / "contract.yaml"
+            _contract_file = self.project_dir / ".superharness" / "contract.yaml"
             self._json({
-                "queue": review_queue(contract),
+                "queue": review_queue(_contract_file),
                 "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             })
             return

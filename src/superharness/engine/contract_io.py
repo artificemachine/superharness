@@ -56,6 +56,70 @@ def _validate(doc: object) -> None:
             ) from exc
 
 
+def _task_row_from_dict(
+    t: dict,
+    project_dir: str,
+    now: str,
+) -> "TaskRow":
+    from superharness.engine.tasks_dao import TaskRow
+    task_id = str(t.get("id", ""))
+    return TaskRow(
+        id=task_id,
+        title=str(t.get("title") or task_id),
+        owner=t.get("owner") or None,
+        status=str(t.get("status") or "todo"),
+        effort=t.get("effort"),
+        project_path=project_dir,
+        development_method=t.get("development_method"),
+        acceptance_criteria=list(t.get("acceptance_criteria") or []),
+        test_types=list(t.get("test_types") or []),
+        out_of_scope=list(t.get("out_of_scope") or []),
+        definition_of_done=list(t.get("definition_of_done") or []),
+        context=t.get("context"),
+        tdd=t.get("tdd"),
+        version=int(t.get("version") or 1),
+        created_at=str(t.get("created_at") or now),
+        blocked_by=list(t.get("blocked_by") or []),
+    )
+
+
+def _sqlite_sync_tasks(path: str, doc: object) -> None:
+    """Upsert all tasks from a freshly-written contract into SQLite. Never raises.
+
+    Also recurses into nested subtasks so orchestrator decompositions stay in sync (B2).
+    """
+    try:
+        if not isinstance(doc, dict):
+            return
+        tasks = doc.get("tasks") or []
+        if not tasks:
+            return
+        # Derive project_dir from contract path: <project_dir>/.superharness/contract.yaml
+        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(path)))
+        from datetime import datetime, timezone
+        from superharness.engine.db import get_connection, init_db, transaction
+        from superharness.engine import tasks_dao
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            with transaction(conn):
+                for t in tasks:
+                    if not isinstance(t, dict):
+                        continue
+                    if not str(t.get("id", "")):
+                        continue
+                    tasks_dao.upsert(conn, _task_row_from_dict(t, project_dir, now))
+                    for st in t.get("subtasks") or []:
+                        if isinstance(st, dict) and str(st.get("id", "")):
+                            tasks_dao.upsert(conn, _task_row_from_dict(st, project_dir, now))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
 def write_contract(path: str, doc: object) -> None:
     _validate(doc)
 
@@ -75,6 +139,7 @@ def write_contract(path: str, doc: object) -> None:
             os.fsync(f.fileno())
         os.replace(tmp, path)
         tmp = None
+        _sqlite_sync_tasks(path, doc)
     finally:
         if tmp is not None and os.path.exists(tmp):
             os.unlink(tmp)

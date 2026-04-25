@@ -51,3 +51,16 @@
   - Fix "unbound variable" error in `delegate-to-gemini.sh`.
   - Add "Recover failed tasks" button to Dashboard UI.
   - Ensure daemon inherits PYTHONPATH to use local source when available.
+- 2026-04-25: feat(engine): add yaml_sync.py + parity.py (dual-write queue and drift detection) with 69 db unit tests; fix inbox_dao.get_stale and watcher_singleton stale-check for SQLite Z-suffix incompatibility
+- 2026-04-25: feat(engine): iter 5+6 — wire _sqlite_tick into watcher (per-cycle drain+heartbeat) and _sqlite_mirror_dispatch into inbox_dispatch (launched/failed/done/paused dual-write + ledger trace)
+- 2026-04-25: feat(engine): iter 7+8 — orchestrator SQLite ledger+subtask upsert in delegate.py; contract_io.write_contract auto-syncs all tasks to SQLite on every write
+- 2026-04-25: feat(engine): iter 10+11 — watcher SQLite singleton acquire/release/heartbeat; dispatch review_dao outcome recording for agent performance tracking
+- 2026-04-25: fix(parity): close Gate 2 blockers B1-B5 and findings F6-F7 — parity covers handoffs/failures/decisions, subtask flattening in YAML+SQLite sync, heal_parity idempotency dedup, YAML-to-SQLite healing, doctor parity wiring, mismatched field detection, FK check
+- 2026-04-25: fix(parity): Gate 2 review-found regressions — doctor checked wrong sqlite filename (state.sqlite vs state.sqlite3, dead-code), orchestrator subtasks lacked status field causing F6 mismatched drift, no CLI surface for heal_parity. Added shux heal-parity command.
+- 2026-04-25: fix(dashboard): Option A YAML fallbacks — /api/status, /api/board, /api/review-queue and task_report/task_instructions read from YAML when SQLite tables are empty; all 117 test_monitor_ui tests pass
+- 2026-04-25: fix(parity): heal_tasks_mismatched idempotency — normalize status/title to write-time values before sig comparison; fix test_parity_covers_handoffs to insert task before handoff (FK correctness)
+- 2026-04-25: fix(watcher): auto-heal parity on every drain cycle (F9); write-guard on .superharness/ perms; session-stop hook kills MCP children; model_router deep-merge + project override; model config tests R3
+- 2026-04-25: feat(watcher): auto-close report_ready tasks with tests_passed=true — full autonomous pipeline (todo→plan→approved→in_progress→done) with no manual intervention
+- 2026-04-25: feat(watcher): auto-retry failed inbox items with retries remaining — permanent failures (retry_count >= max_retries) surface in dashboard for operator review
+
+- 2026-04-25 (v1.20.0): feat(sqlite-migration): fix all 10 SQLite dual-write bugs (B1-B10) + add state_reader/archive_yaml/backup_state; all _sqlite_mirror_* helpers fixed (missing kwargs, FK violations, wrong retry sig, stale version fetch, YAML dedup bypass); yaml_sync acquires _inbox_lock on both enqueue and update paths; inbox_dao.set_retry widened to str|None; _auto_retry_failed delegates to SQLite-only path; removed 5 debug prints from inbox_watch; gemini launcher PATH-resolved; 22 new tests in test_sqlite_mirrors.py.
