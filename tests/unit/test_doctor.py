@@ -156,3 +156,39 @@ def test_doctor_warns_nonexistent_hooks_path(repo_root, tmp_path) -> None:
            capture_output=True, check=True)
     result = _run_python(["--project", str(project)])
     assert "WARN git:core.hooksPath=/nonexistent/hooks/dir" in result.stdout
+
+
+def test_doctor_parity_section_runs_when_db_present(repo_root, tmp_path) -> None:
+    """B5: doctor's parity section must execute when state.sqlite3 exists.
+
+    Verifies the wiring isn't dead code — the actual filename is state.sqlite3
+    (not state.sqlite), and the section either reports PASS parity or FAIL parity.
+    """
+    import sys as _sys
+    project = _write_project(tmp_path)
+
+    # Create state.sqlite3 with schema (mimics shux migrate / first watcher tick)
+    _sys.path.insert(0, str(REPO_ROOT / "src"))
+    try:
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(str(project))
+        try:
+            init_db(conn)
+            conn.commit()
+        finally:
+            conn.close()
+    finally:
+        _sys.path.pop(0)
+
+    result = _run_python(["--project", str(project)])
+    # Must NOT report "state.sqlite not found" — that means dead-code path
+    assert "state.sqlite not found" not in result.stdout, (
+        f"Doctor parity section is dead code (wrong filename). Got:\n{result.stdout}"
+    )
+    assert "state.sqlite3 not found" not in result.stdout, (
+        f"Doctor cannot find state.sqlite3 even though it was created. Got:\n{result.stdout}"
+    )
+    # Must include either PASS parity (clean) or FAIL parity (drift surfaced)
+    assert "parity:" in result.stdout, (
+        f"Doctor produced no parity output. Got:\n{result.stdout}"
+    )

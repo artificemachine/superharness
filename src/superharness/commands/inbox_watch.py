@@ -18,6 +18,170 @@ def _now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _yaml_writes_enabled(project_dir: str) -> bool:
+    """Return False when STATE_BACKEND=sqlite_only (post-archive mode)."""
+    env = os.environ.get("STATE_BACKEND", "").strip().lower()
+    if env == "sqlite_only":
+        return False
+    if env in ("yaml_only", "dual"):
+        return True
+    try:
+        import yaml as _yaml
+        profile_path = os.path.join(project_dir, ".superharness", "profile.yaml")
+        if os.path.exists(profile_path):
+            with open(profile_path, encoding="utf-8") as f:
+                profile = _yaml.safe_load(f) or {}
+            return str(profile.get("state_backend", "")).strip().lower() != "sqlite_only"
+    except Exception:
+        pass
+    return True
+
+
+def _ensure_task_in_sqlite(conn, task_id: str, project_dir: str, now: str) -> None:
+    """Upsert a minimal task row if it is not yet in SQLite. Never raises."""
+    try:
+        from superharness.engine import tasks_dao
+        if tasks_dao.get(conn, task_id) is not None:
+            return
+        import yaml as _yaml
+        contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
+        if not os.path.exists(contract_file):
+            return
+        with open(contract_file, encoding="utf-8") as _f:
+            doc = _yaml.safe_load(_f) or {}
+        td = next(
+            (t for t in (doc.get("tasks") or []) if isinstance(t, dict) and t.get("id") == task_id),
+            None,
+        )
+        if td is None:
+            return
+        row = tasks_dao.TaskRow(
+            id=task_id,
+            title=str(td.get("title", task_id)),
+            owner=td.get("owner"),
+            status=str(td.get("status", "todo")),
+            effort=td.get("effort"),
+            project_path=td.get("project_path"),
+            development_method=td.get("development_method"),
+            acceptance_criteria=td.get("acceptance_criteria") or [],
+            test_types=td.get("test_types") or [],
+            out_of_scope=td.get("out_of_scope") or [],
+            definition_of_done=td.get("definition_of_done") or [],
+            context=td.get("context"),
+            tdd=td.get("tdd"),
+            version=1,
+            created_at=td.get("created_at") or now,
+            blocked_by=td.get("blocked_by") or [],
+        )
+        tasks_dao.upsert(conn, row)
+    except Exception:
+        pass
+
+
+def _sqlite_mirror_inbox_enqueue(project_dir: str, items: list[dict], now: str) -> None:
+    """Mirror new inbox items to SQLite. Never raises."""
+    try:
+        from superharness.engine.db import get_connection, init_db, transaction
+        from superharness.engine import inbox_dao, ledger_dao, yaml_sync
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            with transaction(conn):
+                for item in items:
+                    task_id = str(item.get("task", item.get("task_id", "")))
+                    _ensure_task_in_sqlite(conn, task_id, project_dir, now)
+                    inbox_dao.enqueue(
+                        conn,
+                        id=str(item["id"]),
+                        task_id=task_id,
+                        target_agent=str(item.get("to", item.get("target_agent", ""))),
+                        priority=int(item.get("priority", 2)),
+                        max_retries=int(item.get("max_retries", 3)),
+                        project_path=item.get("project", item.get("project_path")),
+                        plan_only=bool(item.get("plan_only", False)),
+                        now=item.get("created_at", now),
+                    )
+                    yaml_sync.enqueue_op(
+                        conn,
+                        op_type="enqueue_inbox",
+                        payload=item,
+                        now=now,
+                    )
+                ledger_dao.record(
+                    conn, agent="watcher", action="auto_enqueue",
+                    details={"count": len(items)}, now=now,
+                )
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
+def _sqlite_mirror_inbox_retry(project_dir: str, retried_items: list[dict], now: str) -> None:
+    """Mirror inbox retry resets to SQLite. Never raises.
+
+    Each entry in retried_items must have 'id' and 'retry_count'.
+    """
+    try:
+        from superharness.engine.db import get_connection, init_db, transaction
+        from superharness.engine import inbox_dao, ledger_dao, yaml_sync
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            with transaction(conn):
+                for item in retried_items:
+                    item_id = str(item["id"])
+                    retry_count = int(item.get("retry_count", 0))
+                    inbox_dao.set_retry(conn, item_id, retry_count, None, now)
+                    yaml_sync.enqueue_op(
+                        conn,
+                        op_type="update_inbox",
+                        payload={"id": item_id, "status": "pending"},
+                        now=now,
+                    )
+                ledger_dao.record(
+                    conn, agent="watcher", action="auto_retry",
+                    details={"ids": [i["id"] for i in retried_items]}, now=now,
+                )
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
+def _sqlite_mirror_task_status(
+    project_dir: str, task_id: str, status: str, now: str, extra: dict | None = None
+) -> None:
+    """Mirror a task status change to SQLite. Never raises."""
+    try:
+        from superharness.engine.db import get_connection, init_db, transaction
+        from superharness.engine import tasks_dao, ledger_dao, yaml_sync
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            with transaction(conn):
+                task = tasks_dao.get(conn, task_id)
+                if task is None:
+                    return
+                changes: dict = {"status": status, **(extra or {})}
+                payload: dict = {"id": task_id, **changes}
+                tasks_dao.update(conn, task_id, task.version, changes=changes)
+                yaml_sync.enqueue_op(
+                    conn,
+                    op_type="update_task_status",
+                    payload=payload,
+                    now=now,
+                )
+                ledger_dao.record(
+                    conn, agent="watcher", action="task_status_change",
+                    task_id=task_id, details={"status": status}, now=now,
+                )
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
 def _abort(msg: str, code: int = 1) -> None:
     print(msg, file=sys.stderr)
     sys.exit(code)
@@ -248,6 +412,11 @@ def _run_dispatch_cmd(
 
     args = [sys.executable, "-m", "superharness.commands.inbox_dispatch",
             "--project", project_dir, "--to", target]
+
+    # Ensure spawned process uses the same source as the watcher
+    src_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    env["PYTHONPATH"] = f"{src_dir}{os.pathsep}{env.get('PYTHONPATH', '')}".strip(os.pathsep)
+
     if print_only:
         args.append("--print-only")
     if non_interactive:
@@ -261,15 +430,8 @@ def _run_dispatch_cmd(
         subprocess.run(args, check=False, env=env)
         return
 
-    # Keep the watcher loop responsive: dispatch owns its own lifecycle and may
-    # wait on long-running agent work, so the watcher should not block on it.
-    subprocess.Popen(
-        args,
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    subprocess.Popen(args, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     start_new_session=True)
 
 
 def _run_scripts_heartbeat(project_dir: str) -> None:
@@ -329,14 +491,22 @@ def auto_enqueue_todo(project_dir: str) -> int:
         return 0
 
     inbox_items: list[dict] = []
-    if os.path.exists(inbox_file):
+    if not _yaml_writes_enabled(project_dir):
+        # Post-archive (sqlite_only): read active items from SQLite for correct dedup
+        try:
+            from superharness.engine.state_reader import get_inbox_items
+            inbox_items = get_inbox_items(project_dir)
+        except Exception:
+            inbox_items = []
+    elif os.path.exists(inbox_file):
         try:
             import yaml as _yaml
-            inbox_items = _yaml.safe_load(open(inbox_file, encoding="utf-8").read()) or []
+            with open(inbox_file, encoding="utf-8") as _f:
+                inbox_items = _yaml.safe_load(_f) or []
         except Exception:
             inbox_items = []
 
-    _ACTIVE = {"pending", "launched", "running", "paused"}
+    _ACTIVE = {"pending", "launched", "running", "paused", "failed", "stopped"}
     active_inbox_items = [
         item for item in inbox_items
         if isinstance(item, dict) and str(item.get("status", "")) in _ACTIVE
@@ -355,6 +525,7 @@ def auto_enqueue_todo(project_dir: str) -> int:
 
     added = 0
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    new_item_ids: set[str] = set()
 
     for task in tasks:
         if not isinstance(task, dict):
@@ -362,13 +533,13 @@ def auto_enqueue_todo(project_dir: str) -> int:
         # Only target 'todo' tasks for auto-planning
         if task.get("status") != "todo":
             continue
-        
+
         task_id = str(task.get("id", ""))
         if not task_id:
             continue
         if task_id in active_tasks:
             continue
-            
+
         # Respect dependencies
         if _deps_satisfied is not None:
             if not _deps_satisfied(contract_file, task_id):
@@ -390,20 +561,24 @@ def auto_enqueue_todo(project_dir: str) -> int:
         }
         inbox_items.append(new_item)
         active_tasks.add(task_id)
+        new_item_ids.add(item_id)
         added += 1
         print(f"auto-dispatch: enqueued todo {task_id} for planning → {owner} (item {item_id})")
 
     if added > 0:
         import yaml as _yaml
-        try:
-            from superharness.engine.inbox import _inbox_lock
-            with _inbox_lock(inbox_file):
-                with open(inbox_file, "w", encoding="utf-8") as _f:
-                    _f.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
-                    _yaml.dump(inbox_items, _f, default_flow_style=False, sort_keys=True)
-        except Exception as e:
-            print(f"auto-dispatch: failed to write inbox: {e}", file=sys.stderr)
-            return 0
+        new_items = [i for i in inbox_items if i.get("id") in new_item_ids]
+        if _yaml_writes_enabled(project_dir):
+            try:
+                from superharness.engine.inbox import _inbox_lock
+                with _inbox_lock(inbox_file):
+                    with open(inbox_file, "w", encoding="utf-8") as _f:
+                        _f.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
+                        _yaml.dump(inbox_items, _f, default_flow_style=False, sort_keys=True)
+            except Exception as e:
+                print(f"auto-dispatch: failed to write inbox: {e}", file=sys.stderr)
+                return 0
+        _sqlite_mirror_inbox_enqueue(project_dir, new_items, now)
 
     return added
 
@@ -450,14 +625,22 @@ def auto_enqueue_approved(project_dir: str) -> int:
         return 0
 
     inbox_items: list[dict] = []
-    if os.path.exists(inbox_file):
+    if not _yaml_writes_enabled(project_dir):
+        # Post-archive (sqlite_only): read active items from SQLite for correct dedup
+        try:
+            from superharness.engine.state_reader import get_inbox_items
+            inbox_items = get_inbox_items(project_dir)
+        except Exception:
+            inbox_items = []
+    elif os.path.exists(inbox_file):
         try:
             import yaml as _yaml
-            inbox_items = _yaml.safe_load(open(inbox_file, encoding="utf-8").read()) or []
+            with open(inbox_file, encoding="utf-8") as _f:
+                inbox_items = _yaml.safe_load(_f) or []
         except Exception:
             inbox_items = []
 
-    _ACTIVE = {"pending", "launched", "running", "paused"}
+    _ACTIVE = {"pending", "launched", "running", "paused", "failed", "stopped"}
     active_inbox_items = [
         item for item in inbox_items
         if isinstance(item, dict) and str(item.get("status", "")) in _ACTIVE
@@ -476,6 +659,7 @@ def auto_enqueue_approved(project_dir: str) -> int:
 
     added = 0
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    new_item_ids: set[str] = set()
 
     for task in tasks:
         if not isinstance(task, dict):
@@ -506,20 +690,24 @@ def auto_enqueue_approved(project_dir: str) -> int:
         }
         inbox_items.append(new_item)
         active_tasks.add(task_id)
+        new_item_ids.add(item_id)
         added += 1
         print(f"auto-dispatch: enqueued {task_id} → {owner} (item {item_id})")
 
     if added > 0:
         import yaml as _yaml
-        try:
-            from superharness.engine.inbox import _inbox_lock
-            with _inbox_lock(inbox_file):
-                with open(inbox_file, "w", encoding="utf-8") as _f:
-                    _f.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
-                    _yaml.dump(inbox_items, _f, default_flow_style=False, sort_keys=True)
-        except Exception as e:
-            print(f"auto-dispatch: failed to write inbox: {e}", file=sys.stderr)
-            return 0
+        new_items = [i for i in inbox_items if i.get("id") in new_item_ids]
+        if _yaml_writes_enabled(project_dir):
+            try:
+                from superharness.engine.inbox import _inbox_lock
+                with _inbox_lock(inbox_file):
+                    with open(inbox_file, "w", encoding="utf-8") as _f:
+                        _f.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
+                        _yaml.dump(inbox_items, _f, default_flow_style=False, sort_keys=True)
+            except Exception as e:
+                print(f"auto-dispatch: failed to write inbox: {e}", file=sys.stderr)
+                return 0
+        _sqlite_mirror_inbox_enqueue(project_dir, new_items, now)
 
     return added
 
@@ -545,9 +733,268 @@ def _find_pr_url_in_handoff(handoff_dir: str, task_id: str) -> str | None:
     return None
 
 
+def _trigger_auto_review(project_dir: str, task_id: str, reviewers: list[str]) -> bool:
+    """Transition task to review_requested and enqueue multiple reviewers."""
+    from superharness.engine.contract_io import write_contract
+    import yaml as _yaml
+    import subprocess
+    
+    # 1. Enqueue each reviewer first (while task is still in report_ready)
+    success_count = 0
+    enqueued = []
+    import time
+    for target in reviewers:
+        try:
+            cmd = [
+                sys.executable, "-m", "superharness.commands.inbox_enqueue",
+                "--project", project_dir,
+                "--to", target,
+                "--task", task_id,
+                "--priority", "1",
+                "--force-reassign",
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            if result.returncode == 0:
+                success_count += 1
+                enqueued.append(target)
+            else:
+                print(f"auto-review: failed to enqueue {task_id} for {target}: {result.stdout.strip()} {result.stderr.strip()}", file=sys.stderr)
+            # Small sleep to ensure file-based inbox lock settles
+            time.sleep(0.1)
+        except Exception as e:
+            print(f"auto-review: error enqueuing {task_id} for {target}: {e}", file=sys.stderr)
+            
+    if success_count == 0:
+        return False
+
+    # 2. Update contract status to review_requested
+    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
+    try:
+        with open(contract_file, encoding="utf-8") as f:
+            doc = _yaml.safe_load(f.read()) or {}
+        
+        found = False
+        for t in doc.get("tasks", []):
+            if isinstance(t, dict) and t.get("id") == task_id:
+                t["status"] = "review_requested"
+                t["review_requested_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                found = True
+                break
+        
+        if found:
+            write_contract(contract_file, doc)
+        else:
+            print(f"auto-review: task {task_id} not found in contract during status update", file=sys.stderr)
+            return False
+    except Exception as e:
+        print(f"auto-review: failed to update contract for {task_id}: {e}", file=sys.stderr)
+        return False
+        
+    print(f"auto-review: triggered reviews for {task_id} via {', '.join(enqueued)}")
+    return True
+
+
+def _auto_close_report_ready(project_dir: str) -> None:
+    """Auto-close report_ready tasks whose latest report handoff has tests_passed: true.
+
+    Only runs when auto_close: true in profile.yaml (defaults to autonomy=autonomous).
+    Calls close_task(skip_verify=True) with actor='watcher'.
+    """
+    import glob
+    import yaml as _yaml
+
+    profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
+    profile: dict = {}
+    if os.path.isfile(profile_file):
+        try:
+            with open(profile_file, encoding="utf-8") as _f:
+                profile = _yaml.safe_load(_f.read()) or {}
+        except Exception:
+            return
+
+    # Require explicit opt-in OR autonomy=autonomous
+    auto_close = profile.get("auto_close", profile.get("autonomy") == "autonomous")
+    if not auto_close:
+        return
+
+    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
+    if not os.path.isfile(contract_file):
+        return
+
+    try:
+        with open(contract_file, encoding="utf-8") as _f:
+            doc = _yaml.safe_load(_f.read()) or {}
+    except Exception:
+        return
+
+    handoffs_dir = os.path.join(project_dir, ".superharness", "handoffs")
+    tasks = doc.get("tasks") or []
+
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        if str(task.get("status", "")) != "report_ready":
+            continue
+        task_id = str(task.get("id", ""))
+        if not task_id:
+            continue
+
+        # Find the latest report handoff for this task
+        pattern = os.path.join(handoffs_dir, f"*{task_id}*report*")
+        candidates = sorted(glob.glob(pattern), reverse=True)
+        # Also check phase=report handoffs not named with "report"
+        pattern2 = os.path.join(handoffs_dir, f"*{task_id}*.yaml")
+        for path in sorted(glob.glob(pattern2), reverse=True):
+            if path not in candidates:
+                candidates.append(path)
+
+        handoff: dict = {}
+        for path in candidates:
+            try:
+                with open(path, encoding="utf-8") as _f:
+                    h = _yaml.safe_load(_f.read()) or {}
+                if str(h.get("task", "")) == task_id and h.get("phase") == "report":
+                    handoff = h
+                    break
+            except Exception:
+                continue
+
+        if not handoff:
+            continue
+        if not handoff.get("tests_passed"):
+            continue
+
+        # NEW: Auto-review logic (Human-in-the-loop bypass)
+        budget_cfg = profile.get("budget", {})
+        auto_review_all = bool(budget_cfg.get("auto_review_all", False))
+        threshold = float(budget_cfg.get("auto_review_usd_threshold", 0.0))
+        cost_usd = float(handoff.get("cost_usd", 0.0))
+        peer_reviewers = profile.get("peer_reviewers", [])
+
+        if peer_reviewers and (auto_review_all or (threshold > 0 and cost_usd <= threshold)):
+            if _trigger_auto_review(project_dir, task_id, peer_reviewers):
+                continue  # Task moved to review_requested, skip auto-close
+
+        # All gates passed — auto-close
+        try:
+            from superharness.commands.close import close_task
+            summary = str(handoff.get("outcome") or "Auto-closed by watcher: tests_passed=true")
+            summary = summary.split("\n")[0][:120]
+            actor = str(task.get("owner") or "owner")
+            rc = close_task(
+                contract_file=contract_file,
+                task_id=task_id,
+                actor=actor,
+                summary=summary,
+                skip_verify=True,
+            )
+            if rc == 0:
+                print(f"auto-close: closed '{task_id}' (tests_passed=true, actor={actor})")
+            else:
+                print(f"auto-close: close_task returned {rc} for '{task_id}'", file=sys.stderr)
+        except Exception as exc:
+            print(f"auto-close: failed for '{task_id}': {exc}", file=sys.stderr)
+
+
+def _auto_retry_failed(project_dir: str) -> None:
+    """Auto-retry failed inbox items that have retries remaining.
+
+    Runs when auto_retry: true in profile.yaml (or autonomy=autonomous).
+    Items with retry_count >= max_retries are left as failed — permanent
+    failures surface in the dashboard for operator review.
+    """
+    import yaml as _yaml
+    from superharness.engine.inbox import _inbox_lock
+
+    profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
+    profile: dict = {}
+    if os.path.isfile(profile_file):
+        try:
+            with open(profile_file, encoding="utf-8") as _f:
+                profile = _yaml.safe_load(_f.read()) or {}
+        except Exception:
+            return
+
+    auto_retry = profile.get("auto_retry", profile.get("autonomy") == "autonomous")
+    if not auto_retry:
+        return
+
+    if not _yaml_writes_enabled(project_dir):
+        # Post-archive (sqlite_only): reset failed items directly in SQLite
+        _auto_retry_failed_sqlite(project_dir)
+        return
+
+    inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
+    if not os.path.isfile(inbox_file):
+        return
+
+    try:
+        with _inbox_lock(inbox_file):
+            with open(inbox_file, encoding="utf-8") as _f:
+                items = _yaml.safe_load(_f.read()) or []
+
+            changed = False
+            retried_items: list[dict] = []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                if item.get("status") != "failed":
+                    continue
+                retry_count = int(item.get("retry_count", 0) or 0)
+                max_retries = int(item.get("max_retries", 3) or 3)
+                if retry_count >= max_retries:
+                    # Exhausted — leave as failed, visible in dashboard
+                    continue
+                item["status"] = "pending"
+                item.pop("failed_at", None)
+                item.pop("failed_reason", None)
+                retried_items.append({"id": str(item.get("id", "")), "retry_count": retry_count})
+                task_id = item.get("task", item.get("id", "?"))
+                print(
+                    f"auto-retry: re-queued '{task_id}' "
+                    f"(attempt {retry_count + 1}/{max_retries})"
+                )
+                changed = True
+
+            if changed:
+                with open(inbox_file, "w", encoding="utf-8") as _f:
+                    _yaml.dump(items, _f, default_flow_style=False, allow_unicode=True)
+    except Exception as exc:
+        print(f"auto-retry: error: {exc}", file=sys.stderr)
+        return
+
+    if retried_items:
+        _sqlite_mirror_inbox_retry(project_dir, retried_items, _now_utc())
+
+
+def _auto_retry_failed_sqlite(project_dir: str) -> None:
+    """Reset failed SQLite inbox items that still have retries remaining. Never raises."""
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import inbox_dao
+        now = _now_utc()
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            failed = inbox_dao.get_all(conn, status="failed")
+            for row in failed:
+                if row.retry_count < row.max_retries:
+                    inbox_dao.set_retry(conn, row.id, row.retry_count, None, now)
+                    print(
+                        f"auto-retry (sqlite): re-queued '{row.task_id}' "
+                        f"(attempt {row.retry_count + 1}/{row.max_retries})"
+                    )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as exc:
+        print(f"auto-retry (sqlite): error: {exc}", file=sys.stderr)
+
+
 def _check_ship_on_complete_tasks(project_dir: str) -> None:
     """For ship_on_complete tasks at report_ready with no PR URL, mark failed."""
     import yaml as _yaml
+    from superharness.engine.contract_io import write_contract
 
     contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
     if not os.path.isfile(contract_file):
@@ -557,7 +1004,8 @@ def _check_ship_on_complete_tasks(project_dir: str) -> None:
     except Exception:
         return
 
-    changed = False
+    now = _now_utc()
+    failed_ids: list[str] = []
     tasks = contract.get("tasks") or []
     for task in tasks:
         if not isinstance(task, dict):
@@ -573,19 +1021,20 @@ def _check_ship_on_complete_tasks(project_dir: str) -> None:
         pr_url = _find_pr_url_in_handoff(handoff_dir, task_id)
         if not pr_url:
             task["status"] = "failed"
-            changed = True
+            failed_ids.append(task_id)
             print(
                 f"ship_on_complete: task '{task_id}' reached report_ready without a PR URL "
                 f"in handoff outcomes — marking failed.",
                 file=sys.stderr,
             )
 
-    if changed:
+    if failed_ids:
         try:
-            with open(contract_file, "w", encoding="utf-8") as _f:
-                _f.write(_yaml.dump(contract, default_flow_style=False))
+            write_contract(contract_file, contract)
         except Exception as e:
             print(f"ship_on_complete: failed to write contract: {e}", file=sys.stderr)
+        for task_id in failed_ids:
+            _sqlite_mirror_task_status(project_dir, task_id, "failed", now)
 
 
 def run_once(
@@ -637,6 +1086,70 @@ def _run_gc_if_due(project_dir: str, cycle_count: int) -> bool:
     return result.get("reconciled", 0) >= 0
 
 
+def _sqlite_singleton_acquire(project_dir: str) -> None:
+    """Acquire the SQLite watcher singleton lease. Never raises."""
+    try:
+        import socket
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import watcher_singleton
+        now = _now_utc()
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            watcher_singleton.acquire(
+                conn, pid=os.getpid(), hostname=socket.gethostname(), now=now
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
+def _sqlite_singleton_release(project_dir: str) -> None:
+    """Release the SQLite watcher singleton lease. Never raises."""
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import watcher_singleton
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            watcher_singleton.release(conn, os.getpid())
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
+def _sqlite_tick(project_dir: str, now: str) -> None:
+    """Run SQLite-side per-tick operations: drain yaml_sync queue + record heartbeat.
+
+    Never raises. Silently skipped if SQLite backend is not initialised yet.
+    """
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import yaml_sync, ledger_dao, watcher_singleton, parity
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            yaml_sync.drain(conn, project_dir)
+            # F9: auto-heal drift after every drain so the soak stays clean
+            try:
+                report = parity.check_parity(conn, project_dir)
+                if not report.healthy:
+                    parity.heal_parity(conn, project_dir, report)
+            except Exception:
+                pass
+            ledger_dao.record(conn, agent="watcher", action="tick", now=now)
+            watcher_singleton.heartbeat(conn, os.getpid(), now)
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
 def _run_scripts(
     project_dir: str,
     *,
@@ -649,6 +1162,9 @@ def _run_scripts(
     recover_action: str,
 ) -> None:
     script_dir = _find_scripts_dir()
+
+    # SQLite tick: drain dual-write queue + record heartbeat
+    _sqlite_tick(project_dir, _now_utc())
 
     # Worker sync
     _sync_worker_copy(project_dir)
@@ -669,6 +1185,18 @@ def _run_scripts(
         run_hooks("on_watcher_tick", {"project_dir": project_dir}, Path(project_dir))
     except Exception as e:
         print(f"Warning: on_watcher_tick hook failed: {e}", file=sys.stderr)
+
+    # Auto-retry failed inbox items that still have retries remaining
+    try:
+        _auto_retry_failed(project_dir)
+    except Exception as e:
+        print(f"Warning: auto_retry_failed failed: {e}", file=sys.stderr)
+
+    # Auto-close report_ready tasks with tests_passed: true in their handoff
+    try:
+        _auto_close_report_ready(project_dir)
+    except Exception as e:
+        print(f"Warning: auto_close_report_ready failed: {e}", file=sys.stderr)
 
     # ship_on_complete guard: mark failed when report_ready has no PR URL
     try:
@@ -889,6 +1417,8 @@ def watch(
     harness_dir = os.path.join(project_dir, ".superharness")
     if not os.path.isdir(harness_dir):
         _abort(f"Not a superharness project (missing .superharness/): {project_dir}")
+    if not os.access(harness_dir, os.W_OK):
+        _abort(f"error: .superharness/ is not writable — check permissions: {harness_dir}")
 
     lock_dir = _lock_dir_path(project_dir)
 
@@ -905,7 +1435,11 @@ def watch(
         print(f"Watcher already running for project: {project_dir}")
         return 0
 
+    # Acquire SQLite singleton lease alongside filesystem lock
+    _sqlite_singleton_acquire(project_dir)
+
     def _on_exit(signum: int = 0, frame: object = None) -> None:
+        _sqlite_singleton_release(project_dir)
         _release_watcher_lock(lock_dir)
         if signum:
             sys.exit(0)
@@ -937,6 +1471,7 @@ def watch(
             def _stop(signum: int, frame: object) -> None:
                 running[0] = False
                 print("\nWatcher stopped.")
+                _sqlite_singleton_release(project_dir)
                 _release_watcher_lock(lock_dir)
                 sys.exit(0)
 

@@ -12,12 +12,12 @@ from superharness.engine.config_loader import load_yaml_config
 
 MODEL_MAP: dict[str, dict[str, str]] = {
     "claude-code": {
-        "mini": "haiku",
-        "standard": "sonnet",
-        "max": "opus"
+        "mini": "claude-haiku-4-5-20251001",
+        "standard": "claude-sonnet-4-6",
+        "max": "claude-opus-4-7"
     },
     "codex-cli": {
-        "mini": "gpt-5.2",
+        "mini": "gpt-5.1-codex-mini",
         "standard": "gpt-5.3-codex",
         "max": "gpt-5.4"
     },
@@ -34,13 +34,18 @@ _FALLBACK_TIER = "standard"
 _FALLBACK_EFFORT = "medium"
 
 _cached_map: dict[str, dict[str, str]] | None = None
+_cached_project_maps: dict[str, dict[str, dict[str, str]]] = {}
 
 
 def _load_model_map(project_dir: str | None = None) -> dict[str, dict[str, str]]:
     """Load model map from bundled YAML or project override."""
-    global _cached_map
-    if _cached_map is not None and project_dir is None:
-        return _cached_map
+    global _cached_map, _cached_project_maps
+    if project_dir is None:
+        if _cached_map is not None:
+            return _cached_map
+    else:
+        if project_dir in _cached_project_maps:
+            return _cached_project_maps[project_dir]
 
     config = load_yaml_config(
         bundled_pkg="superharness",
@@ -50,9 +55,11 @@ def _load_model_map(project_dir: str | None = None) -> dict[str, dict[str, str]]
         fallback={"model_map": MODEL_MAP}
     )
     mmap = config.get("model_map", MODEL_MAP)
-    
+
     if project_dir is None:
         _cached_map = mmap
+    else:
+        _cached_project_maps[project_dir] = mmap
     return mmap
 
 

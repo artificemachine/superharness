@@ -329,22 +329,88 @@ def _write_subtasks_to_contract(
     task_id: str,
     decomposition: DecompositionResult,
 ) -> None:
-    """Write orchestrator decomposition subtasks into contract.yaml."""
+    """Write orchestrator decomposition subtasks into contract.yaml.
+
+    Normalises each subtask with explicit defaults (status, owner) so YAML
+    matches what SQLite will store — prevents F6 mismatched drift after sync.
+    """
     import yaml
 
     with open(contract_file) as f:
         doc = yaml.safe_load(f) or {}
 
+    normalised: list[dict] = []
+    for st in decomposition.subtasks:
+        if not isinstance(st, dict):
+            continue
+        st = dict(st)
+        st.setdefault("status", "pending")
+        st.setdefault("owner", "claude-code")
+        normalised.append(st)
+
     tasks = doc.get("tasks") or []
     for t in tasks:
         if isinstance(t, dict) and str(t.get("id", "")) == task_id:
-            t["subtasks"] = decomposition.subtasks
+            t["subtasks"] = normalised
             t["estimated_cost_usd"] = round(decomposition.total_estimated_cost_usd, 4)
             t["budget_usd"] = round(decomposition.recommended_budget_usd, 4)
             break
 
     with open(contract_file, "w") as f:
         yaml.safe_dump(doc, f, default_flow_style=False, sort_keys=False)
+
+
+def _sqlite_mirror_orchestrate(
+    project_dir: str,
+    task_id: str,
+    subtasks: list[dict],
+) -> None:
+    """Record orchestration event + upsert subtasks to SQLite. Never raises."""
+    try:
+        from datetime import datetime, timezone
+        from superharness.engine.db import get_connection, init_db, transaction
+        from superharness.engine import tasks_dao, ledger_dao
+        from superharness.engine.tasks_dao import TaskRow
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            with transaction(conn):
+                ledger_dao.record(
+                    conn, task_id=task_id, agent="orchestrator",
+                    action="decompose",
+                    details={"subtask_count": len(subtasks)},
+                    now=now,
+                )
+                for st in subtasks:
+                    st_id = str(st.get("id", ""))
+                    if not st_id:
+                        continue
+                    # Default status="pending" matches Subtask schema and YAML normalisation
+                    # in _write_subtasks_to_contract — keeps parity hash aligned (F6).
+                    row = TaskRow(
+                        id=st_id,
+                        title=str(st.get("title", st_id)),
+                        owner=str(st.get("owner", "claude-code")),
+                        status=str(st.get("status") or "pending"),
+                        effort=st.get("effort"),
+                        project_path=project_dir,
+                        development_method=None,
+                        acceptance_criteria=[],
+                        test_types=[],
+                        out_of_scope=[],
+                        definition_of_done=[],
+                        context=None,
+                        tdd=None,
+                        version=1,
+                        created_at=now,
+                        blocked_by=list(st.get("blocked_by") or []),
+                    )
+                    tasks_dao.upsert(conn, row)
+        finally:
+            conn.close()
+    except Exception:
+        pass
 
 
 def _get_round_context(disc_dir: str, round_: int, agent: str) -> dict:
@@ -796,8 +862,9 @@ def delegate(
         }
         decomposition = orch.decompose(task_data)
 
-        # Write subtasks to contract
+        # Write subtasks to contract + mirror to SQLite
         _write_subtasks_to_contract(contract_file, task_id, decomposition)
+        _sqlite_mirror_orchestrate(project_dir, task_id, decomposition.subtasks)
 
         # Print decomposition summary
         print()

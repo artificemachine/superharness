@@ -27,6 +27,102 @@ _JSON_MODE = False
 _JSON_CTX: dict = {}
 
 
+def _ensure_task_in_sqlite(conn, task_id: str, project_dir: str, now: str) -> None:
+    """Upsert a minimal task row if it is not yet in SQLite. Never raises."""
+    try:
+        from superharness.engine import tasks_dao
+        import yaml as _yaml
+        if tasks_dao.get(conn, task_id) is not None:
+            return
+        contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
+        if not os.path.exists(contract_file):
+            return
+        with open(contract_file, encoding="utf-8") as _f:
+            doc = _yaml.safe_load(_f) or {}
+        td = next(
+            (t for t in (doc.get("tasks") or []) if isinstance(t, dict) and t.get("id") == task_id),
+            None,
+        )
+        if td is None:
+            return
+        row = tasks_dao.TaskRow(
+            id=task_id,
+            title=str(td.get("title", task_id)),
+            owner=td.get("owner"),
+            status=str(td.get("status", "todo")),
+            effort=td.get("effort"),
+            project_path=td.get("project_path"),
+            development_method=td.get("development_method"),
+            acceptance_criteria=td.get("acceptance_criteria") or [],
+            test_types=td.get("test_types") or [],
+            out_of_scope=td.get("out_of_scope") or [],
+            definition_of_done=td.get("definition_of_done") or [],
+            context=td.get("context"),
+            tdd=td.get("tdd"),
+            version=1,
+            created_at=td.get("created_at") or now,
+            blocked_by=td.get("blocked_by") or [],
+        )
+        tasks_dao.upsert(conn, row)
+    except Exception:
+        pass
+
+
+def _sqlite_mirror_enqueue(
+    *,
+    project_dir: str,
+    item_id: str,
+    task_id: str,
+    target: str,
+    priority: int,
+    plan_only: bool,
+    created_at: str,
+) -> None:
+    """Mirror a YAML enqueue to SQLite. Never raises."""
+    try:
+        from superharness.engine.db import get_connection, init_db, transaction
+        from superharness.engine import inbox_dao, ledger_dao, yaml_sync
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            item = {
+                "id": item_id,
+                "task": task_id,
+                "to": target,
+                "status": "pending",
+                "priority": priority,
+                "retry_count": 0,
+                "max_retries": 3,
+                "created_at": created_at,
+                "project": project_dir,
+                "plan_only": plan_only,
+            }
+            with transaction(conn):
+                _ensure_task_in_sqlite(conn, task_id, project_dir, created_at)
+                inbox_dao.enqueue(
+                    conn,
+                    id=item_id,
+                    task_id=task_id,
+                    target_agent=target,
+                    priority=priority,
+                    max_retries=3,
+                    project_path=project_dir,
+                    plan_only=plan_only,
+                    now=created_at,
+                )
+                yaml_sync.enqueue_op(
+                    conn, op_type="enqueue_inbox", payload=item, now=created_at
+                )
+                ledger_dao.record(
+                    conn, agent="inbox_enqueue", action="enqueued",
+                    task_id=task_id, now=created_at,
+                )
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
 def _abort(msg: str, code: int = 1) -> None:
     if _JSON_MODE:
         from superharness.utils.json_output import emit_error
@@ -121,7 +217,7 @@ def _validate_contract(
         if plan_only:
             allowed = plan_only_allowed_statuses(workflow)
         else:
-            allowed = allowed_statuses_for_workflow(workflow, for_review=False)
+            allowed = allowed_statuses_for_workflow(workflow, for_review=True)
         passthrough = {"failed", "stopped"}
         if status not in allowed and status not in passthrough:
             hint = ""
@@ -185,6 +281,8 @@ def enqueue_cmd(
     require_watcher: bool = False,
     plan_only: bool = False,
     force_reassign: bool = False,
+    model_override: str = "",
+    effort_override: str = "",
 ) -> int:
     if not os.path.isdir(project_dir):
         _abort(f"Project directory does not exist: {project_dir}")
@@ -256,6 +354,8 @@ def enqueue_cmd(
             priority=priority,
             created_at=created_at,
             plan_only=plan_only,
+            model_override=model_override,
+            effort_override=effort_override,
         )
 
     if rc == 2:
@@ -264,6 +364,17 @@ def enqueue_cmd(
     if rc != 0:
         _abort(f"Failed to enqueue inbox item: {inbox_file}")
 
+    # Mirror to SQLite — never blocks the CLI on failure
+    _sqlite_mirror_enqueue(
+        project_dir=project_dir,
+        item_id=item_id,
+        task_id=task_id,
+        target=target,
+        priority=priority,
+        plan_only=plan_only,
+        created_at=created_at,
+    )
+
     print("Enqueued inbox item:")
     print(f"  id: {item_id}")
     print(f"  to: {target}")
@@ -271,6 +382,10 @@ def enqueue_cmd(
     print(f"  priority: {priority}")
     if plan_only:
         print(f"  mode: plan-only (agent proposes plan, does not implement)")
+    if model_override:
+        print(f"  model override: {model_override}")
+    if effort_override:
+        print(f"  effort override: {effort_override}")
     print(f"  file: {inbox_file}")
     return 0
 
@@ -298,6 +413,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--force-reassign", action="store_true", default=False, dest="force_reassign",
                         help="Allow --to to differ from the contract 'owner' field (one-shot override, "
                              "does not rewrite the contract)")
+    parser.add_argument("--model", default="", help="Override model/tier for this dispatch")
+    parser.add_argument("--effort", default="", help="Override effort for this dispatch")
     parser.add_argument("--json", action="store_true", default=False,
                         help="Emit machine-readable JSON on stdout instead of human text.")
 
@@ -322,6 +439,8 @@ def main(argv: list[str] | None = None) -> None:
                 require_watcher=opts.require_watcher,
                 plan_only=opts.plan_only,
                 force_reassign=opts.force_reassign,
+                model_override=opts.model,
+                effort_override=opts.effort,
             )
             captured = sys.stdout.getvalue()
         finally:
@@ -340,6 +459,8 @@ def main(argv: list[str] | None = None) -> None:
             "item_id": item_id_resolved,
             "priority": opts.priority,
             "plan_only": opts.plan_only,
+            "model_override": opts.model,
+            "effort_override": opts.effort,
         }, ok=(rc == 0), exit_code=rc)
 
     rc = enqueue_cmd(
@@ -351,6 +472,8 @@ def main(argv: list[str] | None = None) -> None:
         require_watcher=opts.require_watcher,
         plan_only=opts.plan_only,
         force_reassign=opts.force_reassign,
+        model_override=opts.model,
+        effort_override=opts.effort,
     )
     sys.exit(rc)
 

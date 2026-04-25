@@ -69,7 +69,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --yolo)
-      GEMINI_ARGS+=("-y")
+      GEMINI_ARGS+=("-y" "--skip-trust")
       shift
       ;;
     --plan-only)
@@ -78,6 +78,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --non-interactive)
       # Non-interactive mode in Gemini CLI is triggered by providing a prompt
+      GEMINI_ARGS+=("--skip-trust")
       shift
       ;;
     *)
@@ -87,4 +88,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Launch Gemini with the prompt as the final argument
-exec gemini "${GEMINI_ARGS[@]}" "$PROMPT"
+{
+  printf "y\n" | exec gemini "${GEMINI_ARGS[@]}" "$PROMPT"
+} || {
+  echo "Gemini launch failed with exit code $?" >> /tmp/shux-launcher-error.log
+  exit 1
+}
