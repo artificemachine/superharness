@@ -16,11 +16,7 @@ Type these directly into Claude Code or Codex CLI — no terminal needed after f
 | `shux delegate <task-id>` | Create task + enqueue in one step for watcher dispatch. Add `--force` to bypass budget block. |
 | `shux test-type <task-id>` | Set mandatory test types for a task (interactive prompt) |
 | `shux verify <task-id>` | Record verification result (pass/fail) before close |
-| `shux close <task-id>` | Mark task done (requires verify), append ledger, write handoff. Add `--cancel-remaining --cancel-reason "..."` to bulk-cancel open subtasks and close atomically. `--force` bypasses all gates (logs warning). |
-| `shux subtask-cancel` | Cancel a subtask: `--task <id> --sub <sub-id> --reason "..."`. Writes a ledger entry. Cannot cancel already-done subtasks. |
-| `shux operator start` | **Guardian**: Start the self-healing stack (Watcher + Dashboard + Guardian) |
-| `shux operator check` | Check health of the Guardian and Watcher heartbeat |
-| `shux delegate --yolo` | **Headless**: Launch agent with automatic permission bypass (Claude/Gemini/Codex) |
+| `shux close <task-id>` | Mark task done (requires verify), append ledger, write handoff |
 | `shux status` | Dashboard: contract, tasks, watcher state, profile |
 | `shux recall <keywords>` | Search past handoffs and ledger entries |
 | `shux demo` | Zero-config task lifecycle walkthrough in a temp directory — explains what superharness is and shows all 5 core commands before running |
@@ -35,7 +31,6 @@ Type these directly into Claude Code or Codex CLI — no terminal needed after f
 | `shux worktree-gc` | Clean orphaned dispatch worktrees from `/tmp` |
 | `shux recap` | What happened in the last N hours — timeline of ledger, inbox, handoffs |
 | `shux notify-desktop` | Send a native macOS/Linux desktop notification |
-| `shux adapter-payload --json` | Emit full project state as a stable JSON payload (schema v1.0) for any adapter consumer (Morpheme, TUIs, etc.). See `docs/adapter-payload-spec.md`. |
 
 **Full session flow:** `shux onboard` (new project) → `shux doctor` → `shux contract` → `shux continue` → `shux verify <id>` → `shux close <id>`
 
@@ -207,9 +202,8 @@ superharness delegate --to claude-code --project /path/to/project
 - `--task <TASK_ID>` — force a specific task (bypasses next-task logic)
 - `--print-only` — generate prompt text without launching the CLI
 - `--model <tier|name>` — override model (mini/standard/max or sonnet/opus/haiku/gpt-5.3-codex)
-- `--effort <low|medium|high|xhigh|max>` — override thinking effort
-- `--1m-context` — force max-1m tier (`claude-opus-4-7[1m]`); use when prompt exceeds ~200K tokens
-- `--no-auto-model` — skip automatic model classification, use profile defaults
+- `--effort <low|medium|high>` — override thinking effort
+- `--no-auto-model` — skip Haiku auto-classification, use profile defaults
 - `--orchestrate` — Opus orchestrator mode: decompose the task into subtasks, assign each a model tier (mini/standard/max), estimate cost, write subtasks to `contract.yaml`, then dispatch
 - `--force` — bypass a daily budget BLOCK and dispatch anyway (use sparingly)
 
@@ -248,74 +242,9 @@ superharness delegate mcp-docs --project /path/to/project --print-only
 
 ```bash
 superharness contract today --project /path/to/project
-
-# Also render orchestrator-decomposed subtasks, nested under each parent:
-superharness contract today --project /path/to/project --include-subtasks
 ```
 
-Prints all tasks with id, status, owner, and suggests the next task to work on. With `--include-subtasks`, subtasks are shown indented under their parent and their status is resolved by inheritance from the parent (a closed parent implies its subtasks are done).
-
-Subtask IDs (e.g. `parent.1`) are first-class elsewhere too:
-
-```bash
-# Resolve a subtask to its parent and surface parent's handoffs/ledger
-superharness context parent.1
-
-# Search by subtask title as well as handoff text
-superharness recall "specific keyword"
-```
-
-### Machine-readable JSON output
-
-For adapters and scripts that need to parse command results, the following commands accept `--json`. Each emits a single JSON object on stdout with at minimum `ok: true|false` and, on error, an `error` field. Human text is never mixed into the JSON line.
-
-```bash
-shux task status --id X --status in_progress --actor claude-code --summary "..." --json
-# → {"task_id":"X","old_status":"todo","new_status":"in_progress","actor":"claude-code","ok":true}
-
-shux enqueue --project . --to claude-code --task X --json
-# → {"task_id":"X","to":"claude-code","item_id":"...","priority":2,"plan_only":false,"ok":true}
-
-shux verify --id X --method "tests green" --result pass --json
-# → {"task_id":"X","actor":"claude-code","method":"tests green","result":"pass","verified":true,"ok":true}
-
-shux close --id X --actor claude-code --summary "done" --json
-# → {"task_id":"X","actor":"claude-code","closed":true,"ok":true}
-
-shux delegate --to claude-code --task X --json
-# → {"task_id":"X","to":"claude-code","print_only":true,"prompt":"...","prompt_length":1234,"ok":true}
-# (--json implies --print-only so dispatch never launches an interactive agent)
-```
-
-On error, exit code is non-zero and stdout is `{"error":"...","ok":false,...}`. See `tests/integration/test_cli_json_output.py` for the authoritative payload shapes.
-
-### Authoring handoffs from the CLI
-
-`shux handoff write` lets operators and adapter UIs (e.g. Morpheme) author plan and report handoff YAML without touching `.superharness/handoffs/` directly. This is the adapter-safe way to advance a task from `todo` to `plan_proposed` or from `in_progress` to `report_ready`.
-
-```bash
-# Plan phase (writes status: plan_proposed)
-shux handoff write --task X --phase plan --from claude-code --to owner \
-  --plan "Scope: add feature Y" \
-  --tdd-red "failing test def" \
-  --tdd-green "minimal impl" \
-  --tdd-refactor "cleanup"
-
-# Plan from files
-shux handoff write --task X --phase plan --from claude-code --to owner \
-  --plan @plan.md --tdd-red @red.md --tdd-green @green.md
-
-# Report phase (writes status: report_ready)
-shux handoff write --task X --phase report --from claude-code --to owner \
-  --outcome "Shipped X" --context "Next session: run Z" --tests-passed
-
-# JSON mode for scripting
-shux handoff write --task X --phase plan --from claude-code --to owner \
-  --plan "..." --tdd-red "..." --json
-# → {"task_id":"X","phase":"plan","path":".../t-handoff-plan-2026-04-20-claude-code.yaml","ok":true}
-```
-
-The command refuses to write if the task id is not in `contract.yaml` (subtask ids resolved via parent lookup). Use `--force` to overwrite an existing handoff file.
+Prints all tasks with id, status, owner, and suggests the next task to work on.
 
 ### Task lifecycle
 
@@ -395,7 +324,7 @@ superharness task delete --project . --id task-id
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--effort` | `low\|medium\|high\|xhigh\|max` | `medium` | Effort level — affects model selection, orchestrator split decisions, and timeout defaults |
+| `--effort` | `low\|medium\|high\|max` | `medium` | Effort level — affects orchestrator split decisions and timeout defaults |
 | `--test-types` | comma-separated | none | Test types required (e.g. `unit,integration,e2e,security`) |
 | `--out-of-scope` | repeatable | none | Scope boundaries — orchestrator respects these |
 | `--definition-of-done` | repeatable | none | Explicit DoD (overrides contract-level `default_definition_of_done`) |
@@ -498,7 +427,6 @@ superharness hygiene --project . --strict   # requires promotion alignment
 - Task status transitions (no invalid states)
 - Handoff files match done tasks
 - Ledger entries exist for completed work
-- Done tasks with open subtasks (pending/in_progress/failed) — use `shux subtask-cancel` to retire them
 - Decisions/failures promotion alignment (strict mode only)
 
 **Failure-memory promotion workflow:**
@@ -556,25 +484,6 @@ shux benchmark --project . --models   # per-model 7-day cost breakdown table
 ```
 
 `--models` output shows: model name, call count, total tokens, total cost, % of weekly budget (if `budget.weekly_limit` is set in `profile.yaml`).
-
-### Task Context (`shux context`)
-
-Show all relevant context for a task to help an agent (or human) get up to speed:
-
-```bash
-shux context <task-id>
-shux context <task-id> --failures-only   # hide warnings, show only major/critical failures
-```
-
-Surfaces:
-- Task status and owner
-- Last handoff outcome and context
-- Decisions relevant to this task
-- Failures relevant to this task (scoped to this task ID)
-- Recent ledger entries for this task
-- Recently changed files in the git repository
-
-Failures are sanitized at write time to remove ANSI escape sequences for cleaner agent context.
 
 ### Doctor Checks
 
@@ -681,8 +590,8 @@ Pulse file: `.superharness/agent-pulse.yaml`. Stale threshold: 5 minutes.
 
 ### Auto-Dispatch (`shux auto-dispatch`)
 
-Scan all `todo` tasks in the contract, classify each via the model classifier
-(heuristic stage then Sonnet fallback), and enqueue to the best agent:
+Scan all `todo` tasks in the contract, classify each via the model router (Haiku),
+and enqueue to the best agent:
 
 ```bash
 shux auto-dispatch               # enqueue all eligible todo tasks
@@ -693,10 +602,6 @@ shux auto-dispatch --agent codex-cli   # override target agent for all tasks
 
 Tasks with `blocked_by` set are skipped. High-effort tasks print a decomposition
 suggestion but are still enqueued unless gated.
-
-Auto-dispatch enqueues `todo` tasks in `--plan-only` mode: the agent proposes a
-plan and stops. Approve the plan (`shux task status --id <id> --status
-plan_approved`) to release the task into the normal dispatch flow.
 
 ### Scheduled Dispatch (`shux schedule`)
 
@@ -711,8 +616,9 @@ shux schedule run                            # fire due schedules (called by wat
 shux schedule run --dry-run                  # preview without enqueuing
 ```
 
-Schedules are stored in `.superharness/scheduled.yaml`. `enqueue_count` and
-`last_enqueued_at` are updated after each firing.
+Schedules are stored in `.superharness/scheduled.yaml`. The watcher calls
+`schedule run` on each tick. `enqueue_count` and `last_enqueued_at` are updated
+after each firing.
 
 ### Readiness Audits
 

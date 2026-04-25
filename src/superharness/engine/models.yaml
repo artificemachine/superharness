@@ -1,10 +1,10 @@
 model_map:
   claude-code:
-    mini: haiku
-    standard: sonnet
-    max: opus
+    mini: claude-haiku-4-5-20251001
+    standard: claude-sonnet-4-6
+    max: claude-opus-4-7
   codex-cli:
-    mini: gpt-5.2
+    mini: gpt-5.1-codex-mini
     standard: gpt-5.3-codex
     max: gpt-5.4
   gemini-cli:

@@ -409,6 +409,73 @@ def _mark_item_paused_dirty(inbox_file: str, item_id: str, paused_at: str) -> bo
     return False
 
 
+def _sqlite_record_review(
+    project_dir: str,
+    owner: str,
+    task_type: str,
+    duration_s: float,
+    score: float,
+    failed: bool,
+    now: str,
+) -> None:
+    """Record dispatch outcome in review_dao for agent performance tracking. Never raises."""
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import review_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            review_dao.record(
+                conn, owner=owner, task_type=task_type,
+                duration_s=duration_s, score=score, failed=failed, now=now,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
+def _sqlite_mirror_dispatch(
+    project_dir: str,
+    item_id: str,
+    task_id: str,
+    agent: str,
+    to_status: str,
+    now: str,
+    *,
+    reason: str = "",
+) -> None:
+    """Mirror inbox dispatch status change to SQLite. Never raises."""
+    try:
+        from superharness.engine.db import get_connection, init_db, transaction
+        from superharness.engine import inbox_dao, ledger_dao, yaml_sync
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            with transaction(conn):
+                ledger_dao.record(
+                    conn, agent=agent, action=f"dispatch_{to_status}",
+                    task_id=task_id, now=now,
+                )
+                for _from in ("pending", "launched", "running"):
+                    if inbox_dao.update_status(
+                        conn, item_id,
+                        from_status=_from, to_status=to_status,
+                        now=now, reason=reason or None,
+                    ):
+                        break
+                yaml_sync.enqueue_op(
+                    conn, op_type="update_inbox",
+                    payload={"id": item_id, "status": to_status},
+                    now=now,
+                )
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Cost extraction helper
 # ---------------------------------------------------------------------------
@@ -583,6 +650,7 @@ def _do_dispatch(
     m = re.search(r"retry_count=(\d+)", lr.stdout)
     new_retry_count = int(m.group(1)) if m else item_retry_count
     print(f"Inbox item updated: {item_id} -> launched (priority={item_priority}, retries={new_retry_count}/{item_max_retries})")
+    _sqlite_mirror_dispatch(project_dir, item_id, item_task, item_to, "launched", launch_now)
 
     # Build launcher args
     launch_args = ["bash", launcher, "--project", exec_project, "--task", item_task]
@@ -686,6 +754,7 @@ def _do_dispatch(
             fail_reason = f"launcher exited with code {launcher_rc}"
         new_lock = _MkdirLock(inbox_file + ".lock.d")
         _mark_item_failed(inbox_file, item_id, fail_now, new_lock, reason=fail_reason)
+        _sqlite_mirror_dispatch(project_dir, item_id, item_task, item_to, "failed", fail_now, reason=fail_reason)
         if permanent_block:
             # Push retry_count to max_retries so the watcher's next pass sees it as
             # retry-exhausted and does not pick it up again.
@@ -724,6 +793,11 @@ def _do_dispatch(
                             _time.time() - _launch_start)
         except Exception:
             pass
+
+        _sqlite_record_review(
+            project_dir, owner=item_to, task_type="dispatch",
+            duration_s=_time.time() - _launch_start, score=0.0, failed=True, now=fail_now,
+        )
 
         return 1
 
@@ -773,6 +847,10 @@ def _do_dispatch(
 
         new_lock.release()
 
+        if reconciled > 0:
+            _r_status = "paused" if reconciled in (2, 3) else ("done" if final_state == "done" else "failed")
+            _sqlite_mirror_dispatch(project_dir, item_id, item_task, item_to, _r_status, reconcile_now)
+
         if reconciled == 2:
             print(f"Inbox item updated: {item_id} -> paused ({DIRTY_WORKTREE_REASON})")
             return 0
@@ -799,6 +877,10 @@ def _do_dispatch(
                     record_dispatch(exec_project, item_task, item_to, "done", _elapsed, cost_usd=_cost)
                 except Exception:
                     pass
+                _sqlite_record_review(
+                    project_dir, owner=item_to, task_type="dispatch",
+                    duration_s=_elapsed, score=1.0, failed=False, now=reconcile_now,
+                )
                 return 0
             print(f"Inbox item updated: {item_id} -> failed (non-interactive launch exited without done/failed)")
             try:
@@ -807,6 +889,10 @@ def _do_dispatch(
                 record_dispatch(exec_project, item_task, item_to, "failed", _elapsed, cost_usd=_cost)
             except Exception:
                 pass
+            _sqlite_record_review(
+                project_dir, owner=item_to, task_type="dispatch",
+                duration_s=_elapsed, score=0.0, failed=True, now=reconcile_now,
+            )
             return 1
 
     return 0

@@ -97,6 +97,45 @@ def test_write_is_atomic(tmp_path, monkeypatch):
     assert tmp_files == [], f"Stale tmp files left behind: {tmp_files}"
 
 
+def test_write_contract_syncs_subtasks_to_sqlite(tmp_path):
+    """Subtasks nested under a parent task in contract.yaml are upserted to SQLite (B2 fix)."""
+    import sqlite3 as _sqlite3
+    from superharness.engine.contract_io import write_contract
+    from superharness.engine.db import get_connection, init_db
+
+    sh_dir = tmp_path / ".superharness"
+    sh_dir.mkdir()
+    path = str(sh_dir / "contract.yaml")
+
+    doc = {
+        "id": "test-sub", "created": "2026-01-01T00:00:00Z",
+        "created_by": "claude-code", "status": "active",
+        "tasks": [
+            {
+                "id": "parent", "title": "Parent", "owner": "claude-code",
+                "status": "todo",
+                "subtasks": [
+                    {"id": "sub1", "title": "Sub One", "owner": "claude-code", "status": "pending"},
+                    {"id": "sub2", "title": "Sub Two", "owner": "claude-code", "status": "pending"},
+                ],
+            }
+        ],
+        "decisions": [], "failures": [],
+    }
+    write_contract(path, doc)
+
+    conn = get_connection(str(tmp_path))
+    init_db(conn)
+    try:
+        ids = {r[0] for r in conn.execute("SELECT id FROM tasks").fetchall()}
+    finally:
+        conn.close()
+
+    assert "parent" in ids, "parent task must be in SQLite"
+    assert "sub1" in ids, "sub1 must be upserted to SQLite"
+    assert "sub2" in ids, "sub2 must be upserted to SQLite"
+
+
 def test_all_command_modules_do_not_define_write_contract_locally():
     """No command module should define _write_contract locally after centralization."""
     commands_dir = pathlib.Path("src/superharness/commands")
