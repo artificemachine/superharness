@@ -65,3 +65,4 @@
 
 - 2026-04-25 (v1.20.0): feat(sqlite-migration): fix all 10 SQLite dual-write bugs (B1-B10) + add state_reader/archive_yaml/backup_state; all _sqlite_mirror_* helpers fixed (missing kwargs, FK violations, wrong retry sig, stale version fetch, YAML dedup bypass); yaml_sync acquires _inbox_lock on both enqueue and update paths; inbox_dao.set_retry widened to str|None; _auto_retry_failed delegates to SQLite-only path; removed 5 debug prints from inbox_watch; gemini launcher PATH-resolved; 22 new tests in test_sqlite_mirrors.py.
 - 2026-04-26 (v1.35.0): chore(release): restore version progression after branch merge regressed 1.34.3→1.20.0; bump to 1.35.0 so B1-B10 SQLite dual-write fixes (state_reader, archive_yaml, backup_state) are reachable via pip install superharness.
+- 2026-04-26 (v1.35.0): fix(version): sync __version__ in __init__.py to 1.35.0 (was stuck at 1.34.3).
