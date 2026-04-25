@@ -1,5 +1,7 @@
 auto_dispatch: true
 autonomy: autonomous
+auto_close: true
+auto_retry: true
 default_preset: implementation
 require_tdd: true
 gc_interval_cycles: 5

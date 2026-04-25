@@ -1,0 +1,516 @@
+# SQLite Ledger Migration — Task Contract Entries
+#
+# Ready to merge into .superharness/contract.yaml when iteration 1 starts.
+# Task IDs use the `sqlite-<N>-<slug>` prefix. Review gates use `sqlite-review-<N>-<slug>`.
+#
+# Owners:
+#   gemini-cli    — greenfield, bounded scope iterations
+#   claude-code   — integration, cross-cutting, and code-continuity iterations
+#                   (run review gates with /model claude-opus-4-7 + /effort max)
+#
+# Ordering: every task is blocked by its predecessor. Review gates are hard
+# gates — nothing downstream starts until the review task is `done`.
+#
+# Spec: docs/specs/state-backend-interfaces.md
+# Plan: docs/plans/sqlite-ledger-migration.md
+
+tasks:
+
+  # ------------------------------------------------------------
+  # Iteration 1 — DB init, WAL, versioning framework
+  # ------------------------------------------------------------
+  - id: sqlite-1-schema
+    title: "Initialize state.sqlite3 — WAL, PRAGMA user_version, schema migrations framework"
+    owner: gemini-cli
+    status: todo
+    effort: medium
+    project_path: <project-root>
+    development_method: tdd
+    test_types: [unit]
+    blocked_by: []
+    acceptance_criteria:
+      - "src/superharness/engine/db.py exists with get_connection(), init_db(), CURRENT_SCHEMA_VERSION"
+      - "src/superharness/engine/state_errors.py defines the StateError hierarchy from spec §2"
+      - "All 9 core tables created per schema in docs/plans/sqlite-ledger-migration.md"
+      - "PRAGMA journal_mode returns 'wal' after init"
+      - "PRAGMA user_version returns 1 after init"
+      - "schema_migrations table has one row for version 1"
+      - "SQLite version check rejects <3.35 with ConnectionError"
+      - "init_db() is idempotent — running twice produces identical schema"
+      - "All tests in tests/unit/db/test_init.py pass"
+    out_of_scope:
+      - "DAO implementation (belongs to sqlite-3-daos)"
+      - "Migration logic (belongs to sqlite-2-migration)"
+      - "YAML sync queue worker (belongs to sqlite-4-dualwrite)"
+    definition_of_done:
+      - "All acceptance criteria met"
+      - "mypy --strict passes on new modules"
+      - "No existing tests regress"
+    tdd:
+      red: |
+        Write tests/unit/db/test_init.py covering:
+        - DB file created at correct path
+        - All tables exist (via sqlite_master query)
+        - PRAGMA values correct
+        - SQLite version rejection
+        - Idempotency
+      green: |
+        Implement db.py and state_errors.py to make all tests pass.
+      refactor: |
+        Extract migration-registration helper so iteration N migrations are
+        one-line additions.
+
+  # ------------------------------------------------------------
+  # Iteration 2 — Migration bridge
+  # ------------------------------------------------------------
+  - id: sqlite-2-migration
+    title: "Migrate existing YAML state to state.sqlite3 — idempotent, recoverable, worker-aware"
+    owner: gemini-cli
+    status: todo
+    effort: high
+    project_path: <project-root>
+    development_method: tdd
+    test_types: [unit, integration]
+    blocked_by: [sqlite-1-schema]
+    acceptance_criteria:
+      - "src/superharness/engine/migrate_yaml.py implements migrate_all_to_sqlite() per spec §12"
+      - "MigrationReport dataclass returned with per-source counts"
+      - "Clean project (inbox + contract + handoffs + failures + decisions) migrates 1:1"
+      - "Running migration twice produces identical DB state (idempotency)"
+      - "Corrupt YAML in one source file does not block migration of others — error logged to ledger"
+      - "Orphaned handoffs (task_id not in contract) recorded but not imported"
+      - "Worker directory at ~/.superharness-workers/<name>/.superharness/ is detected and migrated if not symlinked"
+      - "Existing reviews.db from phi4-mini harness merged into review_store table"
+      - "10k-task fixture migrates in <10s"
+      - "All tests in tests/unit/db/test_migration.py pass"
+    out_of_scope:
+      - "Wiring migration into watcher boot (belongs to sqlite-4-dualwrite)"
+    definition_of_done:
+      - "All acceptance criteria met"
+      - "Three test fixtures committed: state-small (10 tasks), state-large (10k), state-corrupt"
+    tdd:
+      red: |
+        Write tests/unit/db/test_migration.py covering:
+        - Round-trip equivalence (YAML → DB → compare)
+        - Idempotency (run twice)
+        - Corrupt-file recovery
+        - Orphan handling
+        - Worker dir handling
+        - reviews.db merging
+        - Large dataset perf (<10s for 10k rows)
+      green: |
+        Implement migrate_yaml.py — one parser function per source file.
+      refactor: |
+        Extract _safe_parse(path) helper — wraps yaml.safe_load with error
+        capture to ledger. Used by every parser.
+
+  # ------------------------------------------------------------
+  # Iteration 3 — DAOs + atomic claim + watcher singleton
+  # ------------------------------------------------------------
+  - id: sqlite-3-daos
+    title: "Implement all DAO modules per spec — atomic claim, optimistic concurrency, singleton lease"
+    owner: gemini-cli
+    status: todo
+    effort: high
+    project_path: <project-root>
+    development_method: tdd
+    test_types: [unit]
+    blocked_by: [sqlite-2-migration]
+    acceptance_criteria:
+      - "inbox_dao.py implements enqueue, get, get_all, claim_next, update_status, mark_heartbeat, get_stale, set_retry"
+      - "tasks_dao.py implements upsert, get, get_all, update (with ConcurrencyError on version mismatch), set_dependencies, get_unblocked"
+      - "handoffs_dao.py is append-only (no update/delete) — get_history orders by created_at ASC"
+      - "failures_dao.py, decisions_dao.py, ledger_dao.py follow the shape in spec §7"
+      - "review_dao.py absorbs review_store functionality — rank_owners() orders by (fail_rate, avg_duration)"
+      - "watcher_singleton.py: acquire raises SingletonConflict when fresh lease exists; allows takeover when stale"
+      - "Concurrency test: two threads calling claim_next simultaneously → only one row claimed"
+      - "transaction() context manager is reentrant — nested calls no-op"
+      - "All tests in tests/unit/db/test_*_dao.py and test_watcher_singleton.py pass"
+    out_of_scope:
+      - "yaml_sync.py (belongs to sqlite-4-dualwrite)"
+      - "parity.py (belongs to sqlite-5-parity)"
+      - "Wiring into watcher/dispatcher (belongs to sqlite-4-dualwrite)"
+    definition_of_done:
+      - "All signatures in docs/specs/state-backend-interfaces.md exactly match implementation"
+      - "mypy --strict passes on all new modules"
+      - "Docstring on every public function"
+    tdd:
+      red: |
+        One test file per DAO. Each tests every public function including
+        edge cases (empty results, NULL columns, concurrency conflicts).
+      green: |
+        Implement each DAO to satisfy its test file.
+      refactor: |
+        Shared _row_to_dataclass helper per DAO. transaction() context
+        manager extracted to db.py.
+
+  # ------------------------------------------------------------
+  # Review gate 1 — schema + DAOs (Opus max)
+  # ------------------------------------------------------------
+  - id: sqlite-review-1-schema-dao
+    title: "Opus review: schema + DAO implementation before dual-write wiring"
+    owner: claude-code
+    status: todo
+    effort: medium
+    project_path: <project-root>
+    development_method: none
+    test_types: [review]
+    blocked_by: [sqlite-3-daos]
+    acceptance_criteria:
+      - "Run /model claude-opus-4-7 + /effort max before reviewing"
+      - "Verify schema matches docs/plans/sqlite-ledger-migration.md exactly"
+      - "Verify DAO signatures match docs/specs/state-backend-interfaces.md exactly"
+      - "Confirm blocked_by is many-to-many (task_dependencies table), not TEXT field"
+      - "Confirm handoffs is row-per-event, not column-per-phase"
+      - "Confirm tasks.version optimistic concurrency is enforced"
+      - "Confirm atomic claim uses UPDATE...WHERE...RETURNING, not SELECT-then-UPDATE"
+      - "Confirm watcher_singleton supports stale takeover"
+      - "Confirm all JSON-encoded fields decode back to correct Python types"
+      - "Confirm no sqlite3.Error leaks to callers"
+      - "Confirm tests include concurrency scenarios (multi-threaded claim)"
+      - "Review findings documented in .superharness/handoffs/sqlite-review-1-*.yaml"
+    definition_of_done:
+      - "Review findings written as review handoff"
+      - "If findings exist: tasks sqlite-1/2/3 status moved to review_failed, fixes required"
+      - "If clean: this task marked done, iteration 4 unblocked"
+    context: |
+      First of three hard review gates. Everything downstream depends on the
+      schema and DAO correctness. Do not approve if any H-issue from plan v3
+      Section "Four remaining high-severity issues" is not resolved.
+
+  # ------------------------------------------------------------
+  # Iteration 4 — Dual-write wiring (watcher + dispatcher)
+  # ------------------------------------------------------------
+  - id: sqlite-4-dualwrite
+    title: "Dual-write: SQLite authoritative, YAML via yaml_sync_queue — watcher + dispatcher"
+    owner: claude-code
+    status: todo
+    effort: high
+    project_path: <project-root>
+    development_method: tdd
+    test_types: [unit, integration]
+    blocked_by: [sqlite-review-1-schema-dao]
+    acceptance_criteria:
+      - "src/superharness/engine/yaml_sync.py implements enqueue_op(), drain(), one handler per op_type"
+      - "Every state write in inbox_watch.py goes through SQLite + enqueue_op in same transaction"
+      - "Every state write in inbox_dispatch.py goes through SQLite + enqueue_op in same transaction"
+      - "STATE_BACKEND env var controls path: yaml_only | dual | sqlite_only (dual is default for this iteration)"
+      - "Watcher tick calls yaml_sync.drain() at the end of _run_scripts"
+      - "yaml_sync.drain() handles failures gracefully — marks row failed, records to ledger"
+      - "Dashboard and all read paths still read from YAML in this iteration (read cutover is iter 8)"
+      - "All tests in tests/unit/test_dual_write.py and tests/integration/test_watcher_dual_write.py pass"
+    out_of_scope:
+      - "Read-path changes (iter 8)"
+      - "CLI command updates (iter 6)"
+      - "Parity checking (iter 5)"
+    definition_of_done:
+      - "All acceptance criteria met"
+      - "No existing watcher/dispatcher tests regress"
+      - "STATE_BACKEND=yaml_only still works as full rollback path"
+    tdd:
+      red: |
+        Write tests asserting: every delegate/dispatch/close operation writes
+        to both SQLite and yaml_sync_queue inside one transaction.
+      green: |
+        Thread SQLite + queue writes through every mutation site in
+        inbox_watch.py and inbox_dispatch.py.
+      refactor: |
+        Extract write_inbox_op(), write_task_op(), append_handoff_op()
+        functions that do the SQLite + queue insert atomically. Every call
+        site uses these two functions only.
+
+  # ------------------------------------------------------------
+  # Iteration 5 — Parity monitoring (hard gate)
+  # ------------------------------------------------------------
+  - id: sqlite-5-parity
+    title: "Parity checker — detect SQLite/YAML drift, heal via sync queue, block cutover until 0"
+    owner: claude-code
+    status: todo
+    effort: high
+    project_path: <project-root>
+    development_method: tdd
+    test_types: [unit, integration]
+    blocked_by: [sqlite-4-dualwrite]
+    acceptance_criteria:
+      - "src/superharness/engine/parity.py implements check_parity() and heal_parity() per spec §11"
+      - "Identical state → ParityReport.healthy=True"
+      - "Manually mutated YAML → drift detected, per-table counts accurate"
+      - "heal_parity re-enqueues sync ops for only_in_db drifts"
+      - "only_in_yaml drifts are flagged but NOT auto-healed (requires human review)"
+      - "Watcher tick calls check_parity every N cycles (configurable, default 10)"
+      - "shux doctor command shows drift counts and yaml_sync_queue lag"
+      - "Drift > threshold for M consecutive ticks → ledger alert with action='parity_alert'"
+      - "All tests in tests/unit/test_parity.py pass"
+    out_of_scope:
+      - "CLI command updates (iter 6)"
+      - "Cutover logic (iter 8)"
+    definition_of_done:
+      - "All acceptance criteria met"
+      - "24h soak test on the superharness repo itself shows 0 drift — documented in handoff"
+    tdd:
+      red: |
+        Tests for: clean parity, artificial drift, drift heal, only_in_yaml
+        non-healing, doctor integration.
+      green: |
+        Implement parity.py + hook into watcher + update doctor.
+      refactor: |
+        One parity check function per table (composable). Report aggregates.
+    context: |
+      This is a HARD GATE. Iterations 6+ cannot start until parity stays at 0
+      for 24 hours of real-world operation. Parity bug = silent corruption at
+      cutover.
+
+  # ------------------------------------------------------------
+  # Review gate 2 — parity system
+  # ------------------------------------------------------------
+  - id: sqlite-review-2-parity
+    title: "Opus review: parity monitoring correctness + 24h soak validation"
+    owner: claude-code
+    status: todo
+    effort: medium
+    project_path: <project-root>
+    development_method: none
+    test_types: [review]
+    blocked_by: [sqlite-5-parity]
+    acceptance_criteria:
+      - "Run /model claude-opus-4-7 + /effort max"
+      - "Verify parity detects every class of drift: missing rows, mismatched fields, orphaned FKs"
+      - "Verify heal_parity is idempotent and safe to call during active writes"
+      - "Verify yaml_sync_queue.drain() handles partial-failure retries correctly"
+      - "Verify transaction boundaries: SQLite write + queue enqueue commit together or not at all"
+      - "Verify 24h soak log from sqlite-5-parity shows 0 drift"
+      - "Verify shux doctor output is accurate under artificial drift injection"
+      - "Review findings documented in .superharness/handoffs/sqlite-review-2-*.yaml"
+    definition_of_done:
+      - "Review handoff written"
+      - "If findings exist: sqlite-4 or sqlite-5 reopened"
+      - "If clean: iterations 6+ unblocked"
+    context: |
+      The parity layer is the load-bearing safety net. If it is buggy, the
+      cutover in iter 8 silently corrupts state. This review is the last chance
+      to catch drift-detection bugs before real load.
+
+  # ------------------------------------------------------------
+  # Iteration 6 — CLI command porting
+  # ------------------------------------------------------------
+  - id: sqlite-6-cli-port
+    title: "Port all state-touching CLI commands to dual-write path"
+    owner: claude-code
+    status: todo
+    effort: xhigh
+    project_path: <project-root>
+    development_method: tdd
+    test_types: [unit, integration]
+    blocked_by: [sqlite-review-2-parity]
+    acceptance_criteria:
+      - "Write-path commands updated: contract, delegate, close, verify, task (create/set-owner/set-status), discuss, recover, inbox_enqueue, inbox_recover, subtask_cancel"
+      - "Read-path commands updated (still reading YAML, but routed through new read helpers for iter 8 swap): status, recall, contract_today, doctor, monitor"
+      - "hygiene command extended to check SQLite/YAML parity"
+      - "Every write command has a test asserting both backends updated"
+      - "No CLI behavior regressions on existing integration tests"
+      - "STATE_BACKEND=yaml_only still runs all commands via YAML-only path"
+    out_of_scope:
+      - "Dashboard changes (iter 9)"
+      - "Flipping reads to SQLite (iter 8)"
+    definition_of_done:
+      - "Full CLI audit matrix filled in: every command × every state file = covered"
+      - "All tests pass on STATE_BACKEND=dual and STATE_BACKEND=yaml_only"
+    tdd:
+      red: |
+        Per-command integration test asserting parity after each operation.
+      green: |
+        Each command refactored to call write_*_op() functions from iter 4.
+      refactor: |
+        Centralize read helpers (get_inbox_items, get_tasks) so iter 8 is a
+        one-line backend switch.
+
+  # ------------------------------------------------------------
+  # Iteration 7 — Stress test + rollback rehearsal
+  # ------------------------------------------------------------
+  - id: sqlite-7-stress-rollback
+    title: "Concurrency stress test + rollback rehearsal + backup/restore commands"
+    owner: claude-code
+    status: todo
+    effort: high
+    project_path: <project-root>
+    development_method: tdd
+    test_types: [integration, e2e]
+    blocked_by: [sqlite-6-cli-port]
+    acceptance_criteria:
+      - "50 concurrent processes × 30 min × random ops (delegate/dispatch/close/recover) → 0 corrupt rows, 0 deadlocks"
+      - "Chaos test: SIGKILL random worker mid-write → WAL recovery restores last committed state"
+      - "Large-dataset perf: 10k tasks, get_pending p99 < 100ms"
+      - "Cross-platform: tests pass on macOS AND Linux"
+      - "Rollback rehearsal: flip STATE_BACKEND from dual to yaml_only mid-flight → operations continue, state consistent"
+      - "Flip back to dual → parity re-converges within 60s"
+      - "shux backup state command implemented (SQLite online backup API)"
+      - "shux restore state --from <path> command implemented"
+      - "All tests in tests/integration/test_stress.py and test_rollback.py pass"
+    out_of_scope:
+      - "Read cutover (iter 8)"
+    definition_of_done:
+      - "Stress test report committed to docs/benchmarks/sqlite-stress-<date>.md"
+      - "Rollback procedure documented in docs/GUIDE.md"
+
+  # ------------------------------------------------------------
+  # Review gate 3 — cutover readiness
+  # ------------------------------------------------------------
+  - id: sqlite-review-3-cutover-ready
+    title: "Opus review: cutover readiness — last gate before SQLite becomes source of truth"
+    owner: claude-code
+    status: todo
+    effort: medium
+    project_path: <project-root>
+    development_method: none
+    test_types: [review]
+    blocked_by: [sqlite-7-stress-rollback]
+    acceptance_criteria:
+      - "Run /model claude-opus-4-7 + /effort max"
+      - "Verify stress test report shows acceptable p99 latencies"
+      - "Verify 7-day real-world soak on superharness repo itself completed"
+      - "Verify parity has stayed at 0 across the soak period"
+      - "Verify rollback rehearsal actually tested both directions"
+      - "Verify backup/restore commands work on a populated DB"
+      - "Verify every CLI write command is covered in iter 6"
+      - "Confirm release notes draft includes YAML deprecation notice"
+      - "Review findings documented"
+    definition_of_done:
+      - "Review handoff written"
+      - "If any concern: cutover blocked, remediation assigned"
+      - "If approved: iteration 8 unblocked"
+    context: |
+      After iteration 8, reads flip to SQLite. Rollback is still possible (YAML
+      still dual-written) but costly — any bug in iter 4/5/6 that escaped
+      earlier gates now affects real reads. This is the point-of-no-return
+      minus one.
+
+  # ------------------------------------------------------------
+  # Iteration 8 — Read-path cutover
+  # ------------------------------------------------------------
+  - id: sqlite-8-read-cutover
+    title: "Flip read-path to SQLite; YAML remains dual-written for rollback"
+    owner: claude-code
+    status: todo
+    effort: medium
+    project_path: <project-root>
+    development_method: tdd
+    test_types: [unit, integration]
+    blocked_by: [sqlite-review-3-cutover-ready]
+    acceptance_criteria:
+      - "All read functions (get_inbox, get_contract, get_handoffs) source from SQLite"
+      - "Write SQLite + manually diverge YAML → reads return SQLite state"
+      - "Parity checker continues running in background"
+      - "STATE_BACKEND=dual now reads SQLite, writes to both"
+      - "STATE_BACKEND=yaml_only still supported as emergency rollback"
+      - "No user-facing behavior change in happy path (commands output identical results)"
+    out_of_scope:
+      - "YAML archival (iter 10)"
+    definition_of_done:
+      - "All acceptance criteria met"
+      - "CHANGELOG entry: cutover announcement"
+
+  # ------------------------------------------------------------
+  # Iteration 9 — Dashboard optimization
+  # ------------------------------------------------------------
+  - id: sqlite-9-dashboard
+    title: "Dashboard streams from SQLite — p99 < 10ms, zero YAML reads"
+    owner: gemini-cli
+    status: todo
+    effort: medium
+    project_path: <project-root>
+    development_method: tdd
+    test_types: [unit, integration]
+    blocked_by: [sqlite-8-read-cutover]
+    acceptance_criteria:
+      - "dashboard-ui.py replaces all yaml.safe_load(inbox/contract) with SQL via DAO layer"
+      - "/api/status p99 < 10ms on 1k-task fixture"
+      - "Zero YAML file opens during a /api/status poll (verified via lsof or equivalent)"
+      - "Frontend JavaScript unchanged — dict shape from SQL matches existing contract"
+      - "All existing dashboard tests pass"
+    out_of_scope:
+      - "Pushing updates via SSE (optional future work)"
+    definition_of_done:
+      - "Latency benchmark committed"
+
+  # ------------------------------------------------------------
+  # Iteration 10 — YAML archival + external compat
+  # ------------------------------------------------------------
+  - id: sqlite-10-yaml-archival
+    title: "Archive YAML state; add shux export yaml compat command; release notes"
+    owner: claude-code
+    status: todo
+    effort: medium
+    project_path: <project-root>
+    development_method: tdd
+    test_types: [integration]
+    blocked_by: [sqlite-9-dashboard]
+    acceptance_criteria:
+      - "shux archive-yaml command renames inbox.yaml, contract.yaml, handoffs/*.yaml, failures.yaml, decisions.yaml to *.yaml.bak-<ts>"
+      - "After archive, dual-write is disabled — SQLite is sole backend"
+      - "yaml_sync_queue table drained then dropped via schema migration v2"
+      - "shux export yaml command generates snapshot YAML from current SQLite state (compat for external scripts)"
+      - "CHANGELOG entry documents breaking change and compat migration path"
+      - "Release notes section drafted in docs/release-notes/v2.0.0.md"
+      - "All YAML write paths removed from code (deletion, not deprecation)"
+    out_of_scope:
+      - "phi4-mini harness deletion (iter 11)"
+    definition_of_done:
+      - "Migration test: archive a populated project, confirm SQLite still functional, YAML files renamed"
+      - "mypy --strict passes after YAML write code deletion"
+
+  # ------------------------------------------------------------
+  # Iteration 11 — phi4-mini disposition
+  # ------------------------------------------------------------
+  - id: sqlite-11-phi4-disposition
+    title: "Delete phi4-mini health advisor; repurpose routing advisor as SQL-driven"
+    owner: claude-code
+    status: todo
+    effort: medium
+    project_path: <project-root>
+    development_method: tdd
+    test_types: [unit]
+    blocked_by: [sqlite-10-yaml-archival]
+    acceptance_criteria:
+      - "src/superharness/harness/watcher_advisor.py DELETED (replaced by SQL liveness)"
+      - "src/superharness/harness/fallback.py DELETED (rules replaced by SQL-deterministic)"
+      - "src/superharness/commands/inbox_watch.py::_run_health_check DELETED"
+      - "src/superharness/harness/review_store.py reduced to thin facade over review_dao"
+      - "src/superharness/harness/orchestrator_advisor.py repurposed: advise() queries review_dao.rank_owners(), phi4-mini call path removed"
+      - "advise_failover stays (deterministic, no model call)"
+      - "src/superharness/harness/owner_registry.py kept (CLI availability check still useful)"
+      - "install-launchd-ollama.sh and install-launchd-orchestrator.sh marked deprecated or removed"
+      - "harness.yaml harness_model block emits deprecation warning, ignored"
+      - "All tests in tests/unit/harness/ either deleted or rewritten to test new SQL-driven behavior"
+      - "CHANGELOG: phi4-mini dependency removed"
+    out_of_scope:
+      - "Ollama install docs (can stay for users who want local LLMs for other purposes)"
+    definition_of_done:
+      - "Code deletion PR shows net-negative LOC"
+      - "No references to phi4-mini or OllamaHarnessClient remain"
+
+  # ------------------------------------------------------------
+  # Final ship review
+  # ------------------------------------------------------------
+  - id: sqlite-ship-review
+    title: "Opus ship review: entire migration — merge to main gate"
+    owner: claude-code
+    status: todo
+    effort: medium
+    project_path: <project-root>
+    development_method: none
+    test_types: [review]
+    blocked_by: [sqlite-11-phi4-disposition]
+    acceptance_criteria:
+      - "Run /model claude-opus-4-7 + /effort max"
+      - "Run /ultrareview on the full branch for multi-agent diligence"
+      - "Verify version bump is correct (2.0.0 — breaking change due to YAML archival)"
+      - "Verify CHANGELOG is append-only and complete"
+      - "Verify all iteration handoffs are in .superharness/handoffs/"
+      - "Verify release notes cover YAML deprecation, shux export yaml usage, rollback plan"
+      - "Verify no dead code from phi4-mini era remains"
+      - "Verify docs/plans/sqlite-ledger-migration.md is marked [SHIPPED] with final commit SHA"
+      - "Verify the superharness repo itself has been running dual-write stably for 14 days (soak evidence)"
+      - "Sign off in .superharness/handoffs/sqlite-ship-review-*.yaml"
+    definition_of_done:
+      - "Approved review handoff"
+      - "PR ready to merge to main"

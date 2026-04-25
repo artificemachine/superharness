@@ -259,4 +259,15 @@ fi
 # The hook now stops active Claude-owned work and pauses remaining Claude-targeted
 # inbox items, so the watcher won't dispatch orphaned jobs next cycle.
 
+# Kill MCP children spawned for this Claude session.
+# Global kill (not tty-scoped) because the tty is gone by the time this runs.
+# Safe for single-operator dev MacBook.
+pkill -TERM -f "serena start-mcp-server" 2>/dev/null || true
+pkill -TERM -f "KotlinLanguageServer" 2>/dev/null || true
+pkill -TERM -f "kotlin_language_server" 2>/dev/null || true
+pkill -TERM -f "voice-toolkit" 2>/dev/null || true
+pkill -TERM -f "token-diet-mcp" 2>/dev/null || true
+pkill -TERM -f "tilth mcp" 2>/dev/null || true
+pkill -TERM -f "nemoclaw-mcp-server" 2>/dev/null || true
+
 exit 0
