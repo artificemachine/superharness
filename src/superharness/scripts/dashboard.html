@@ -380,15 +380,19 @@ async function refresh() {
     if (_currentView === 'board') loadBoardView();
     renderTaskOverview(d.contract_tasks || []);
     renderActivityFeed(d.activity_feed || []);
-    // Parity panel
+    // Parity panel — badge reflects mismatched=0 (Gate 2 criteria), not healthy (Gate 3 strict)
     const pr = d.parity || {};
     const badge = document.getElementById('parityBadge');
-    if (pr.healthy === true) {
-      badge.textContent = 'healthy'; badge.style.background = 'var(--ok)'; badge.style.color = '#fff';
-    } else if (pr.healthy === false) {
+    const totalMismatched = (pr.drift || []).reduce((s, r) => s + (r.mismatched || 0), 0);
+    const totalOnlyInYaml = (pr.drift || []).reduce((s, r) => s + (r.only_in_yaml || 0), 0);
+    if (pr.error) {
+      badge.textContent = 'error'; badge.style.background = 'var(--bad,#c0392b)'; badge.style.color = '#fff';
+    } else if (pr.healthy == null) {
+      badge.textContent = '...'; badge.style.background = 'var(--btn)'; badge.style.color = 'var(--muted)';
+    } else if (totalMismatched > 0 || totalOnlyInYaml > 0) {
       badge.textContent = 'drift'; badge.style.background = 'var(--bad,#c0392b)'; badge.style.color = '#fff';
     } else {
-      badge.textContent = pr.error ? 'error' : '...'; badge.style.background = 'var(--btn)'; badge.style.color = 'var(--muted)';
+      badge.textContent = 'ok'; badge.style.background = 'var(--ok)'; badge.style.color = '#fff';
     }
     document.getElementById('stateBackend').textContent = d.state_backend || 'dual';
     document.getElementById('paritySyncLag').textContent = pr.yaml_sync_lag ?? '-';
@@ -396,7 +400,7 @@ async function refresh() {
     const driftRows = (pr.drift || []).filter(r => r.only_in_db > 0 || r.only_in_yaml > 0 || r.mismatched > 0);
     document.getElementById('parityDrift').textContent = driftRows.length
       ? driftRows.map(r => `${r.table.padEnd(12)} only_in_db=${r.only_in_db}  only_in_yaml=${r.only_in_yaml}  mismatched=${r.mismatched}`).join('\n')
-      : (pr.healthy === true ? 'all tables in sync' : (pr.error || '-'));
+      : 'mismatched=0  all tables in sync';
 
     document.getElementById('ledger').textContent = (d.ledger_tail || []).join('\n');
     document.getElementById('out').textContent = (d.out_tail || []).join('\n');

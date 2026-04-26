@@ -311,6 +311,8 @@ def enqueue(
     retry_count: int = 0,
     max_retries: int = 3,
     plan_only: bool = False,
+    model_override: str = "",
+    effort_override: str = "",
 ) -> int:
     items = _load_items(file)
     if any(isinstance(x, dict) and str(x.get("id", "")) == str(id) for x in items):
@@ -346,6 +348,10 @@ def enqueue(
     }
     if plan_only:
         item["plan_only"] = True
+    if model_override:
+        item["model_override"] = model_override
+    if effort_override:
+        item["effort_override"] = effort_override
     items.append(item)
     _write_items(file, items)
     print(f"result=enqueued id={id} priority={norm_p}")
