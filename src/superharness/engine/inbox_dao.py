@@ -27,6 +27,9 @@ class InboxRow:
     failed_at: str | None
     done_at: str | None
 
+_ACTIVE_STATUSES = ("pending", "launched", "running", "paused")
+
+
 def enqueue(
     conn: sqlite3.Connection,
     *,
@@ -39,7 +42,21 @@ def enqueue(
     plan_only: bool = False,
     now: str,
 ) -> InboxRow:
-    """Insert a new inbox row with status='pending'."""
+    """Insert a new inbox row with status='pending'.
+
+    Raises StateError if an active row already exists for (task_id, target_agent)
+    to mirror the dedup guard on the YAML side.
+    """
+    placeholders = ",".join("?" * len(_ACTIVE_STATUSES))
+    existing = conn.execute(
+        f"SELECT id FROM inbox WHERE task_id=? AND target_agent=? AND status IN ({placeholders}) LIMIT 1",
+        (task_id, target_agent, *_ACTIVE_STATUSES),
+    ).fetchone()
+    if existing:
+        raise StateError(
+            f"Duplicate rejected: active inbox row already exists for task '{task_id}' "
+            f"→ '{target_agent}' (id={existing['id']})"
+        )
     try:
         cursor = conn.execute(
             """

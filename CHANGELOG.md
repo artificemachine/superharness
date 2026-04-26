@@ -67,3 +67,9 @@
 - 2026-04-26 (v1.35.0): chore(release): restore version progression after branch merge regressed 1.34.3→1.20.0; bump to 1.35.0 so B1-B10 SQLite dual-write fixes (state_reader, archive_yaml, backup_state) are reachable via pip install superharness.
 - 2026-04-26 (v1.35.0): fix(version): sync __version__ in __init__.py to 1.35.0 (was stuck at 1.34.3).
 - 2026-04-26 (v1.35.1): chore(release): bump to 1.35.1 to publish __version__ string fix.
+- 2026-04-26: fix(parity): scope _check_inbox to active statuses only — terminal rows (failed/stopped/done) are archived from inbox.yaml by design and must not count as drift; inbox drift 108→5.
+- 2026-04-26: fix(inbox_dao): add dedup guard to enqueue() — blocks duplicate active rows for same (task_id, target_agent), mirroring the existing YAML-side guard.
+- 2026-04-26: feat(dashboard): add SQLite parity panel to dashboard — shows healthy badge, backend mode, per-table drift counts, yaml_sync_lag, fk_violations; refreshes on every /api/status poll.
+- 2026-04-26: feat(soak): add soak-monitor.py — polls parity every N seconds, writes structured YAML log, revised pass criteria (mismatched=0, lag<5, fk=0), prints summary with pass rate.
+- 2026-04-26: chore(soak): commit Gate 2 soak log for remote agent confirmation at 06:45 UTC 2026-04-27
+- 2026-04-26 (v1.36.0): feat(release): bump to v1.36.0 — parity panel, inbox dedup guard, _check_inbox active-only scope, Gate 2 soak monitor

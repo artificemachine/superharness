@@ -179,13 +179,20 @@ def _check_tasks(conn: sqlite3.Connection, project_dir: str) -> TableDrift:
     return TableDrift(table="tasks", only_in_db=only_db, only_in_yaml=only_yaml, mismatched=mismatched)
 
 
+_INBOX_ACTIVE_STATUSES = ("pending", "launched", "running", "paused")
+
+
 def _check_inbox(conn: sqlite3.Connection, project_dir: str) -> TableDrift:
     inbox_path = os.path.join(project_dir, ".superharness", "inbox.yaml")
     yaml_map = {i["id"]: i for i in _load_yaml_list(inbox_path) if "id" in i}
 
     try:
+        # Only compare active rows — failed/stopped/done are archived out of
+        # inbox.yaml by design and must not count as drift.
+        placeholders = ",".join("?" * len(_INBOX_ACTIVE_STATUSES))
         db_rows = conn.execute(
-            "SELECT id, status, target_agent, task_id FROM inbox"
+            f"SELECT id, status, target_agent, task_id FROM inbox WHERE status IN ({placeholders})",
+            _INBOX_ACTIVE_STATUSES,
         ).fetchall()
     except sqlite3.Error as exc:
         logger.warning("parity inbox: db read failed: %s", exc)
