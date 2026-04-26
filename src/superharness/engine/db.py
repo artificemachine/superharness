@@ -11,7 +11,7 @@ from superharness.engine.state_errors import ConnectionError, SchemaError
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -260,6 +260,55 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
     """)
     conn.execute("CREATE INDEX idx_yaml_sync_pending ON yaml_sync_queue(status, created_at)")
 
+def _migration_v2(conn: sqlite3.Connection) -> None:
+    """Add parent_id to tasks, discussions tables, and yaml_sync_queue dedup index."""
+
+    # F10: parent_id distinguishes top-level tasks from subtasks in the same table.
+    # Subtasks have parent_id = their parent task id; top-level tasks have parent_id IS NULL.
+    conn.execute("ALTER TABLE tasks ADD COLUMN parent_id TEXT REFERENCES tasks(id)")
+    conn.execute("CREATE INDEX idx_tasks_parent ON tasks(parent_id)")
+
+    # Discussions — persistent store for multi-agent discuss sessions.
+    conn.execute("""
+        CREATE TABLE discussions (
+            id          TEXT PRIMARY KEY,
+            task_id     TEXT,
+            topic       TEXT NOT NULL,
+            owners      TEXT NOT NULL DEFAULT '[]',
+            status      TEXT NOT NULL DEFAULT 'active',
+            consensus   TEXT,
+            created_at  TEXT NOT NULL,
+            closed_at   TEXT,
+            FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
+        )
+    """)
+    conn.execute("CREATE INDEX idx_discussions_task   ON discussions(task_id)")
+    conn.execute("CREATE INDEX idx_discussions_status ON discussions(status)")
+
+    conn.execute("""
+        CREATE TABLE discussion_rounds (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            discussion_id   TEXT    NOT NULL,
+            round_number    INTEGER NOT NULL,
+            agent           TEXT    NOT NULL,
+            content         TEXT,
+            verdict         TEXT,
+            created_at      TEXT    NOT NULL,
+            FOREIGN KEY (discussion_id) REFERENCES discussions(id) ON DELETE CASCADE
+        )
+    """)
+    conn.execute("CREATE INDEX idx_disc_rounds_disc ON discussion_rounds(discussion_id, round_number)")
+
+    # F8: UNIQUE partial index on yaml_sync_queue prevents duplicate pending ops for the
+    # same (op_type, entity id). NULL ids (for ops without an id field) are always distinct.
+    conn.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_yaml_sync_pending_dedup
+        ON yaml_sync_queue(op_type, json_extract(payload, '$.id'))
+        WHERE status = 'pending'
+    """)
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
+    _migration_v2,
 ]

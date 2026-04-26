@@ -51,22 +51,23 @@ def test_pragma_values(db_conn: sqlite3.Connection):
     cursor = db_conn.execute("PRAGMA foreign_keys")
     assert cursor.fetchone()[0] == 1
     
-    # User version
+    # User version matches current schema
+    from superharness.engine.db import CURRENT_SCHEMA_VERSION
     cursor = db_conn.execute("PRAGMA user_version")
-    assert cursor.fetchone()[0] == 1
+    assert cursor.fetchone()[0] == CURRENT_SCHEMA_VERSION
 
 def test_schema_migrations_row(db_conn: sqlite3.Connection):
     cursor = db_conn.execute("SELECT version FROM schema_migrations WHERE version=1")
     assert cursor.fetchone() is not None
 
 def test_idempotency(db_conn: sqlite3.Connection):
-    from superharness.engine.db import init_db
+    from superharness.engine.db import init_db, CURRENT_SCHEMA_VERSION
     # Should not raise even if called again
     init_db(db_conn)
     init_db(db_conn)
-    
+
     cursor = db_conn.execute("SELECT count(*) FROM schema_migrations")
-    assert cursor.fetchone()[0] == 1
+    assert cursor.fetchone()[0] == CURRENT_SCHEMA_VERSION
 
 def test_sqlite_version_check(monkeypatch, tmp_path: Path):
     import sqlite3
