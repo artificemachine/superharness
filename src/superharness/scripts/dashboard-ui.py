@@ -2280,7 +2280,18 @@ class Handler(BaseHTTPRequestHandler):
             return result, 200
         if action.startswith("remove_item:"):
             item_id = action.split(":", 1)[1]
-            return self._run_cmd(inbox_py + ["remove", "--file", inbox_file, "--id", item_id]), 200
+            result = self._run_cmd(inbox_py + ["remove", "--file", inbox_file, "--id", item_id])
+            # Also purge from SQLite — items written by dual-mode may exist only in DB
+            try:
+                from superharness.engine.db import get_connection, init_db
+                _conn = get_connection(str(self.project_dir))
+                init_db(_conn)
+                _conn.execute("DELETE FROM inbox WHERE id = ?", (item_id,))
+                _conn.commit()
+                _conn.close()
+            except Exception:
+                pass
+            return result, 200
 
         return ({"error": f"unsupported action: {action}"}, 400)
 

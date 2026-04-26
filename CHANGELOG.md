@@ -92,3 +92,4 @@
 - 2026-04-26: fix(__init__): update __version__ to 1.37.0 to match pyproject.toml
 - 2026-04-26 (v1.37.1): fix(release): patch bump to republish with correct __version__ = "1.37.1" — v1.37.0 wheel was built before __init__.py fix landed, so superharness --version reported 1.36.0. pyproject.toml + __init__.py now in sync.
 - 2026-04-26: chore(state): commit protocol files — contract, handoffs, discussions, SQLite state, HANDOFF.md update to v1.37.1
+- 2026-04-26 (v1.37.2): fix(dashboard): Remove button now also deletes from SQLite — dual-mode inbox items exist only in DB and were invisible to the YAML-only remove handler
