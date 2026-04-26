@@ -2164,6 +2164,34 @@ class Handler(BaseHTTPRequestHandler):
                     except Exception:
                         pass
 
+            # Parity panel data
+            try:
+                from superharness.engine import parity as _parity
+                _pconn = self._db_conn()
+                try:
+                    _pr = _parity.check_parity(_pconn, str(self.project_dir))
+                    result["parity"] = {
+                        "healthy": _pr.healthy,
+                        "yaml_sync_lag": _pr.yaml_sync_lag,
+                        "foreign_key_violations": _pr.foreign_key_violations,
+                        "drift": [
+                            {
+                                "table": d.table,
+                                "only_in_db": d.only_in_db,
+                                "only_in_yaml": d.only_in_yaml,
+                                "mismatched": d.mismatched,
+                            }
+                            for d in _pr.drifts
+                        ],
+                    }
+                finally:
+                    _pconn.close()
+            except Exception as _pe:
+                result["parity"] = {"healthy": None, "error": str(_pe)}
+
+            import os as _os
+            result["state_backend"] = _os.environ.get("STATE_BACKEND", "dual")
+
             self._json(result)
             return
 

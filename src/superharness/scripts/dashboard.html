@@ -137,6 +137,13 @@
       </div>
     </div>
 
+    <div class="card" id="parityCard" style="margin-top:10px;">
+      <h2>sqlite parity <span id="parityBadge" style="font-size:11px;font-weight:normal;margin-left:8px;padding:2px 7px;border-radius:4px;">...</span></h2>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">backend: <span id="stateBackend" style="font-family:monospace">-</span></div>
+      <div id="parityDrift" style="font-size:12px;font-family:monospace;white-space:pre;color:var(--text)">-</div>
+      <div style="margin-top:6px;font-size:11px;color:var(--muted)">yaml_sync_lag: <span id="paritySyncLag">-</span> &nbsp; fk_violations: <span id="parityFkViolations">-</span></div>
+    </div>
+
     <div class="card" style="margin-top:10px;display:none;">
       <h2>plans to confirm</h2>
       <div class="v" id="planCount">-</div>
@@ -373,6 +380,24 @@ async function refresh() {
     if (_currentView === 'board') loadBoardView();
     renderTaskOverview(d.contract_tasks || []);
     renderActivityFeed(d.activity_feed || []);
+    // Parity panel
+    const pr = d.parity || {};
+    const badge = document.getElementById('parityBadge');
+    if (pr.healthy === true) {
+      badge.textContent = 'healthy'; badge.style.background = 'var(--ok)'; badge.style.color = '#fff';
+    } else if (pr.healthy === false) {
+      badge.textContent = 'drift'; badge.style.background = 'var(--bad,#c0392b)'; badge.style.color = '#fff';
+    } else {
+      badge.textContent = pr.error ? 'error' : '...'; badge.style.background = 'var(--btn)'; badge.style.color = 'var(--muted)';
+    }
+    document.getElementById('stateBackend').textContent = d.state_backend || 'dual';
+    document.getElementById('paritySyncLag').textContent = pr.yaml_sync_lag ?? '-';
+    document.getElementById('parityFkViolations').textContent = pr.foreign_key_violations ?? '-';
+    const driftRows = (pr.drift || []).filter(r => r.only_in_db > 0 || r.only_in_yaml > 0 || r.mismatched > 0);
+    document.getElementById('parityDrift').textContent = driftRows.length
+      ? driftRows.map(r => `${r.table.padEnd(12)} only_in_db=${r.only_in_db}  only_in_yaml=${r.only_in_yaml}  mismatched=${r.mismatched}`).join('\n')
+      : (pr.healthy === true ? 'all tables in sync' : (pr.error || '-'));
+
     document.getElementById('ledger').textContent = (d.ledger_tail || []).join('\n');
     document.getElementById('out').textContent = (d.out_tail || []).join('\n');
     document.getElementById('err').textContent = (d.err_tail || []).join('\n');
