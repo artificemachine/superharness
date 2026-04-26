@@ -37,6 +37,42 @@ def _yaml_writes_enabled(project_dir: str) -> bool:
     return True
 
 
+def _load_tasks(project_dir: str) -> list[dict]:
+    """Return all contract tasks via state_reader (SQLite-aware) or YAML fallback."""
+    try:
+        from superharness.engine.state_reader import get_tasks
+        return get_tasks(project_dir)
+    except Exception:
+        pass
+    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
+    if not os.path.exists(contract_file):
+        return []
+    try:
+        import yaml as _yaml
+        doc = _yaml.safe_load(open(contract_file, encoding="utf-8").read()) or {}
+        return [t for t in (doc.get("tasks") or []) if isinstance(t, dict)]
+    except Exception:
+        return []
+
+
+def _deps_satisfied_from_tasks(tasks: list[dict], task_id: str) -> bool:
+    """Dependency check using an already-loaded task list (no file I/O)."""
+    task = next((t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == task_id), None)
+    if task is None:
+        return True
+    blocked_by = task.get("blocked_by")
+    if not blocked_by or str(blocked_by).strip().lower() in ("none", "", "null"):
+        return True
+    if isinstance(blocked_by, str):
+        dep_ids = [d.strip() for d in blocked_by.split(",") if d.strip()]
+    elif isinstance(blocked_by, list):
+        dep_ids = [str(d).strip() for d in blocked_by if str(d).strip()]
+    else:
+        return True
+    status_map = {str(t.get("id", "")): str(t.get("status", "")) for t in tasks if isinstance(t, dict)}
+    return all(status_map.get(dep_id, "") == "done" for dep_id in dep_ids)
+
+
 def _ensure_task_in_sqlite(conn, task_id: str, project_dir: str, now: str) -> None:
     """Upsert a minimal task row if it is not yet in SQLite. Never raises."""
     try:
@@ -477,22 +513,14 @@ def auto_enqueue_todo(project_dir: str) -> int:
     if not profile.get("auto_dispatch") or profile.get("autonomy") != "autonomous":
         return 0
 
-    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
     inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
 
-    if not os.path.exists(contract_file):
-        return 0
-
-    try:
-        import yaml as _yaml
-        contract = _yaml.safe_load(open(contract_file, encoding="utf-8").read()) or {}
-        tasks = contract.get("tasks") or []
-    except Exception:
+    tasks = _load_tasks(project_dir)
+    if not tasks:
         return 0
 
     inbox_items: list[dict] = []
     if not _yaml_writes_enabled(project_dir):
-        # Post-archive (sqlite_only): read active items from SQLite for correct dedup
         try:
             from superharness.engine.state_reader import get_inbox_items
             inbox_items = get_inbox_items(project_dir)
@@ -513,15 +541,9 @@ def auto_enqueue_todo(project_dir: str) -> int:
     ]
     active_tasks = {str(item.get("task", "")) for item in active_inbox_items}
 
-    # Safety throttle: respect max_concurrent_tasks from profile
     max_concurrent = int(profile.get("max_concurrent_tasks", 2))
     if len(active_inbox_items) >= max_concurrent:
         return 0
-
-    try:
-        from superharness.engine.inbox import _deps_satisfied
-    except ImportError:
-        _deps_satisfied = None  # type: ignore[assignment]
 
     added = 0
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -530,7 +552,6 @@ def auto_enqueue_todo(project_dir: str) -> int:
     for task in tasks:
         if not isinstance(task, dict):
             continue
-        # Only target 'todo' tasks for auto-planning
         if task.get("status") != "todo":
             continue
 
@@ -540,10 +561,8 @@ def auto_enqueue_todo(project_dir: str) -> int:
         if task_id in active_tasks:
             continue
 
-        # Respect dependencies
-        if _deps_satisfied is not None:
-            if not _deps_satisfied(contract_file, task_id):
-                continue
+        if not _deps_satisfied_from_tasks(tasks, task_id):
+            continue
 
         owner = str(task.get("owner", "claude-code"))
         item_id = f"auto-plan-{uuid.uuid4().hex[:6]}"
@@ -557,7 +576,7 @@ def auto_enqueue_todo(project_dir: str) -> int:
             "max_retries": 3,
             "created_at": now,
             "project": project_dir,
-            "plan_only": True, # Hint for the dispatcher
+            "plan_only": True,
         }
         inbox_items.append(new_item)
         active_tasks.add(task_id)
@@ -611,22 +630,14 @@ def auto_enqueue_approved(project_dir: str) -> int:
     if autonomy not in ("autonomous", "oversight", "ai_driven"):
         return 0
 
-    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
     inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
 
-    if not os.path.exists(contract_file):
-        return 0
-
-    try:
-        import yaml as _yaml
-        contract = _yaml.safe_load(open(contract_file, encoding="utf-8").read()) or {}
-        tasks = contract.get("tasks") or []
-    except Exception:
+    tasks = _load_tasks(project_dir)
+    if not tasks:
         return 0
 
     inbox_items: list[dict] = []
     if not _yaml_writes_enabled(project_dir):
-        # Post-archive (sqlite_only): read active items from SQLite for correct dedup
         try:
             from superharness.engine.state_reader import get_inbox_items
             inbox_items = get_inbox_items(project_dir)
@@ -647,15 +658,9 @@ def auto_enqueue_approved(project_dir: str) -> int:
     ]
     active_tasks = {str(item.get("task", "")) for item in active_inbox_items}
 
-    # Safety throttle: respect max_concurrent_tasks from profile
     max_concurrent = int(profile.get("max_concurrent_tasks", 2))
     if len(active_inbox_items) >= max_concurrent:
         return 0
-
-    try:
-        from superharness.engine.inbox import _deps_satisfied
-    except ImportError:
-        _deps_satisfied = None  # type: ignore[assignment]
 
     added = 0
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -671,9 +676,8 @@ def auto_enqueue_approved(project_dir: str) -> int:
             continue
         if task_id in active_tasks:
             continue
-        if _deps_satisfied is not None:
-            if not _deps_satisfied(contract_file, task_id):
-                continue
+        if not _deps_satisfied_from_tasks(tasks, task_id):
+            continue
 
         owner = str(task.get("owner", "claude-code"))
         item_id = f"auto-{uuid.uuid4().hex[:6]}"

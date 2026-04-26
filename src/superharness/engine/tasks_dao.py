@@ -31,7 +31,8 @@ class TaskRow:
     report_ready_at: str | None = None
     done_at: str | None = None
     cancelled_at: str | None = None
-    blocked_by: list[str] = None # type: ignore
+    blocked_by: list[str] = None  # type: ignore
+    parent_id: str | None = None
 
 def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
     """Insert or update a task. Bumps version on update."""
@@ -44,12 +45,12 @@ def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
     try:
         cursor = conn.execute("""
             INSERT INTO tasks (
-                id, title, owner, status, effort, project_path, 
+                id, title, owner, status, effort, project_path,
                 development_method, acceptance_criteria, test_types,
                 out_of_scope, definition_of_done, context, tdd, created_at,
                 plan_proposed_at, plan_approved_at, in_progress_at,
-                report_ready_at, done_at, cancelled_at, version
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                report_ready_at, done_at, cancelled_at, version, parent_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 title=excluded.title, owner=excluded.owner, status=excluded.status,
                 effort=excluded.effort, project_path=excluded.project_path,
@@ -64,13 +65,14 @@ def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
                 report_ready_at=excluded.report_ready_at,
                 done_at=excluded.done_at,
                 cancelled_at=excluded.cancelled_at,
+                parent_id=excluded.parent_id,
                 version=tasks.version + 1
             RETURNING *
         """, (
             task.id, task.title, task.owner, task.status, task.effort, task.project_path,
             task.development_method, ac, tt, oos, dod, task.context, tdd, task.created_at,
             task.plan_proposed_at, task.plan_approved_at, task.in_progress_at,
-            task.report_ready_at, task.done_at, task.cancelled_at, task.version
+            task.report_ready_at, task.done_at, task.cancelled_at, task.version, task.parent_id
         ))
         row = cursor.fetchone()
         if not row:
@@ -92,8 +94,9 @@ def get_all(
     *,
     status: str | None = None,
     owner: str | None = None,
+    top_level_only: bool = False,
 ) -> list[TaskRow]:
-    """Get all tasks, optionally filtered by status or owner."""
+    """Get all tasks, optionally filtered by status, owner, or top-level only (parent_id IS NULL)."""
     query = "SELECT * FROM tasks WHERE 1=1"
     params: list[Any] = []
     if status:
@@ -102,6 +105,8 @@ def get_all(
     if owner:
         query += " AND owner = ?"
         params.append(owner)
+    if top_level_only:
+        query += " AND parent_id IS NULL"
     
     query += " ORDER BY created_at ASC"
     cursor = conn.execute(query, params)
@@ -228,6 +233,7 @@ def _row_to_task(conn: sqlite3.Connection, row: sqlite3.Row, blocked_by: list[st
         )
         blocked_by = [r[0] for r in cursor.fetchall()]
     
+    keys = row.keys() if hasattr(row, "keys") else []
     return TaskRow(
         id=row["id"],
         title=row["title"],
@@ -250,5 +256,6 @@ def _row_to_task(conn: sqlite3.Connection, row: sqlite3.Row, blocked_by: list[st
         report_ready_at=row["report_ready_at"],
         done_at=row["done_at"],
         cancelled_at=row["cancelled_at"],
-        blocked_by=blocked_by
+        blocked_by=blocked_by,
+        parent_id=row["parent_id"] if "parent_id" in keys else None,
     )

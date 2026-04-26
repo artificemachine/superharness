@@ -73,3 +73,19 @@
 - 2026-04-26: feat(soak): add soak-monitor.py — polls parity every N seconds, writes structured YAML log, revised pass criteria (mismatched=0, lag<5, fk=0), prints summary with pass rate.
 - 2026-04-26: chore(soak): commit Gate 2 soak log for remote agent confirmation at 06:45 UTC 2026-04-27
 - 2026-04-26 (v1.36.0): feat(release): bump to v1.36.0 — parity panel, inbox dedup guard, _check_inbox active-only scope, Gate 2 soak monitor
+- 2026-04-26: fix(dashboard): parity badge now shows ok/drift based on mismatched=0 criteria (Gate 2), not strict healthy flag (Gate 3); only_in_db gaps no longer trigger drift badge
+- 2026-04-26: feat(sqlite-only): schema migration v2 — parent_id on tasks (F10), discussions + discussion_rounds tables, UNIQUE partial index on yaml_sync_queue (F8)
+- 2026-04-26: feat(sqlite-only): yaml_sync drain no-op in sqlite_only mode — marks ops applied without writing YAML, lag stays zero post-cutover
+- 2026-04-26: feat(sqlite-only): tasks_dao top_level_only filter — get_all(top_level_only=True) returns WHERE parent_id IS NULL, separating subtasks from top-level tasks
+- 2026-04-26: feat(sqlite-only): discussions_dao — new DAO for discussions and discussion_rounds tables
+- 2026-04-26: feat(sqlite-only): state_reader get_top_level_tasks + sqlite_only contract_doc reconstruction without contract.yaml
+- 2026-04-26: feat(sqlite-only): dashboard contract_tasks and inbox_items use state_reader as primary source (YAML fallback remains)
+- 2026-04-26: test(sqlite-only): 32 new tests covering migration v2, parent_id, discussions DAO, yaml_sync dedup, drain no-op, state_reader, and full lifecycle without YAML
+- 2026-04-26: fix(inbox_dao): add model_override param to enqueue() — inbox_enqueue.py was passing it but the DAO didn't accept it, causing TypeError in deadline-check and auto-dispatch flows
+- 2026-04-26: feat(sqlite-only): board_view/contract_owners/plan_proposals use state_reader; inbox_dispatch uses inbox_dao.claim_next() in sqlite_only mode; 7 new tests (120 DB total)
+- 2026-04-26: feat(sqlite-only): eliminate all remaining YAML reads — auto_enqueue, recover_failed, clear_resolved_inbox fully SQLite-native; 6 new tests (45 cutover, 126 DB total)
+- 2026-04-26: feat(sqlite-only): board_tasks, review_queue, _set_task_status, _contract_task, _confirm_plan, remove_task all SQLite-primary; 1 new test (46 cutover total) — full Gate 3 implementation complete
+- 2026-04-26: fix(state_reader): add _has_sqlite_db guard in dual mode to skip empty SQLite and fall back to YAML; fix inbox_items/board_tasks/review_queue/board_view to use direct YAML fallback when SQLite is empty
+- 2026-04-26: fix(engine/inbox): add missing model_override and effort_override params to enqueue() — inbox_enqueue.py was passing both but inbox.py didn't accept them, causing TypeError in auto-dispatch and deadline-check flows
+- 2026-04-26: chore(release): bump version to 1.37.0
+- 2026-04-26: fix(dashboard): guard state_reader calls behind _in_harness check — prevents CI from resolving project_dir to repo root and returning real tasks for missing-file tests

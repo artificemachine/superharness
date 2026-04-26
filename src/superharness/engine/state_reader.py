@@ -15,6 +15,10 @@ import os
 from typing import Any
 
 
+def _has_sqlite_db(project_dir: str) -> bool:
+    return os.path.exists(os.path.join(project_dir, ".superharness", "state.sqlite3"))
+
+
 def _get_backend(project_dir: str) -> str:
     env = os.environ.get("STATE_BACKEND", "").strip().lower()
     if env in ("yaml_only", "dual", "sqlite_only"):
@@ -42,6 +46,10 @@ def get_inbox_items(project_dir: str) -> list[dict]:
     """Return inbox items. Source determined by STATE_BACKEND."""
     backend = _get_backend(project_dir)
     if backend == "yaml_only":
+        return _inbox_from_yaml(project_dir)
+    if not _has_sqlite_db(project_dir):
+        if backend == "sqlite_only":
+            raise RuntimeError(f"sqlite_only mode but no DB at {project_dir!r}")
         return _inbox_from_yaml(project_dir)
     try:
         items = _inbox_from_sqlite(project_dir)
@@ -96,6 +104,10 @@ def get_tasks(project_dir: str) -> list[dict]:
     backend = _get_backend(project_dir)
     if backend == "yaml_only":
         return _tasks_from_yaml(project_dir)
+    if not _has_sqlite_db(project_dir):
+        if backend == "sqlite_only":
+            raise RuntimeError(f"sqlite_only mode but no DB at {project_dir!r}")
+        return _tasks_from_yaml(project_dir)
     try:
         return _tasks_from_sqlite(project_dir)
     except Exception:
@@ -105,10 +117,15 @@ def get_tasks(project_dir: str) -> list[dict]:
 
 
 def get_contract_doc(project_dir: str) -> dict:
-    """Return the full contract document. Falls back to YAML on error."""
+    """Return the full contract document. In sqlite_only mode, reconstructs from SQLite only."""
     backend = _get_backend(project_dir)
     contract_path = os.path.join(project_dir, ".superharness", "contract.yaml")
     if backend == "yaml_only":
+        return _contract_yaml(contract_path)
+    if backend == "sqlite_only":
+        tasks = _tasks_from_sqlite(project_dir)
+        return {"tasks": tasks}
+    if not _has_sqlite_db(project_dir):
         return _contract_yaml(contract_path)
     try:
         tasks = _tasks_from_sqlite(project_dir)
@@ -116,9 +133,24 @@ def get_contract_doc(project_dir: str) -> dict:
         doc["tasks"] = tasks
         return doc
     except Exception:
+        return _contract_yaml(contract_path)
+
+
+def get_top_level_tasks(project_dir: str) -> list[dict]:
+    """Return only top-level tasks (parent_id IS NULL), excluding subtasks."""
+    backend = _get_backend(project_dir)
+    if backend == "yaml_only":
+        return _tasks_from_yaml(project_dir)
+    if not _has_sqlite_db(project_dir):
+        if backend == "sqlite_only":
+            raise RuntimeError(f"sqlite_only mode but no DB at {project_dir!r}")
+        return _tasks_from_yaml(project_dir)
+    try:
+        return _tasks_from_sqlite(project_dir, top_level_only=True)
+    except Exception:
         if backend == "sqlite_only":
             raise
-        return _contract_yaml(contract_path)
+        return _tasks_from_yaml(project_dir)
 
 
 def _tasks_from_yaml(project_dir: str) -> list[dict]:
@@ -128,14 +160,15 @@ def _tasks_from_yaml(project_dir: str) -> list[dict]:
     return [t for t in tasks if isinstance(t, dict)]
 
 
-def _tasks_from_sqlite(project_dir: str) -> list[dict]:
+def _tasks_from_sqlite(project_dir: str, *, top_level_only: bool = False) -> list[dict]:
+    from dataclasses import asdict
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
     conn = get_connection(project_dir)
     try:
         init_db(conn)
-        rows = tasks_dao.get_all(conn)
-        return [dict(r) for r in rows]
+        rows = tasks_dao.get_all(conn, top_level_only=top_level_only)
+        return [asdict(r) for r in rows]
     finally:
         conn.close()
 
