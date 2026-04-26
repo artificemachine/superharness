@@ -1,0 +1,316 @@
+task: sqlite-review-2-parity
+phase: review
+status: review_passed_with_followups
+from: claude-code
+to: owner
+reviewer_model: claude-opus-4-7
+review_effort: max
+date: 2026-04-25T06:18:22Z
+
+reviews_in_chain:
+  - sqlite-review-2-parity-20260424T232648Z-claude-code.yaml      # initial review (failed)
+  - sqlite-review-2-parity-resubmit-20260425T005520Z-claude-code.yaml  # resubmit (audited here)
+  - sqlite-review-2-parity-verdict-20260425T061822Z-claude-code.yaml   # this handoff
+
+verdict: |
+  PASS — with two follow-ups that must close before iter-8 read cutover (Gate 3),
+  not before Gate 2 itself.
+
+  All five blockers from the original review are functionally closed. Two of
+  the closures introduced regressions that I caught and fixed in this review
+  pass (commit d922652 on top of 109764f). After those fixes:
+
+    - All 13 parity tests pass (4 prior + 9 Gate 2 additions).
+    - Doctor parity wiring is live (verified end-to-end on this repo: it
+      now reports drift on the live state.sqlite3 instead of silently
+      skipping with "state.sqlite not found").
+    - shux heal-parity CLI exists, so the hint doctor prints is actionable.
+    - Orchestrator decomposition no longer produces permanent F6 mismatched
+      drift (status now consistent across YAML and SQLite).
+
+  The 24h soak required by the Gate 2 spec was NOT performed in this review
+  cycle. Per the previous reviewer's note, a clean soak does not "unblock"
+  the gate either — the static review is the gating artifact. I'm marking
+  this gate as passed contingent on the soak being run before iter-8 starts
+  (operator's call on timing).
+
+  Two architectural concerns are deferred to Gate 3 and explicitly out of
+  Gate 2 scope per the original review's "defer" entries:
+    - Subtask schema asymmetry (TaskStatus vs SubtaskStatus enums share one
+      SQLite column).
+    - Single-mutation-path invariant.
+
+review_method: |
+  Re-read the entire diff stack as if it were a fresh PR. Did not trust the
+  resubmit handoff's claims; re-derived each blocker fix end-to-end:
+    1. Read parity.py, contract_io.py, doctor.py, delegate.py at HEAD.
+    2. Ran the parity test suite (13/13).
+    3. Invoked the doctor end-to-end on the actual repo (caught dead-code).
+    4. Traced orchestrator → contract.yaml → SQLite → parity hash path
+       to verify F6 doesn't false-positive (caught permanent drift bug).
+    5. Grepped for heal_parity callers (caught: zero, fixed via new CLI).
+    6. Tested shux heal-parity --check end-to-end on the live repo.
+
+regressions_found_and_fixed_in_this_review_pass:
+
+  R1:
+    title: B5 dead code — doctor checked state.sqlite, actual filename is state.sqlite3
+    severity: blocker (would have made B5 ineffective in production)
+    detected_via: |
+      Ran `python -c "from superharness.commands import doctor; doctor.main(['--project','.'])"`
+      against the live repo. Output: `INFO parity: state.sqlite not found —
+      run shux migrate or start the watcher to initialise`. But .superharness/
+      state.sqlite3 already existed (and held drift). The parity check section
+      was unreachable in the entire test suite because no test created a file
+      at the path doctor was looking at.
+    fix: |
+      Switched doctor to construct the path via get_connection() from db.py,
+      and updated the file-presence check to state.sqlite3. Also added
+      tests/unit/test_doctor.py::test_doctor_parity_section_runs_when_db_present
+      that creates a state.sqlite3, runs doctor, and asserts that the parity
+      section actually executed (no "not found" string in stdout). Live verified
+      doctor on the repo: now prints concrete drift counts for tasks/inbox/
+      handoffs/failures.
+    commit: d922652
+
+  R2:
+    title: F6 produces permanent drift on every orchestrator decomposition
+    severity: blocker (mismatched count never returns to 0)
+    detected_via: |
+      Read orchestrator.py: subtasks are emitted as
+        {id, title, model_tier, estimated_tokens, owner}
+      with NO status field. Pydantic's Subtask schema fills status=pending on
+      validation, but pydantic does not mutate the source dict. The YAML
+      written by _write_subtasks_to_contract therefore has subtasks with no
+      status. _sqlite_mirror_orchestrate previously upserted them with
+      status="todo" hardcoded (line 393). _sqlite_sync_tasks via _task_row_from_dict
+      defaulted to "todo" too. Result:
+        YAML hash → _stable_hash(None, owner, title) → "" hashed
+        SQLite hash → _stable_hash("todo", owner, title) → "todo" hashed
+      Different strings → mismatched += 1 per subtask. Permanent.
+      Heal_parity does not heal mismatched (only only_in_db / only_in_yaml).
+    fix: |
+      Aligned defaults at the producer:
+        - _write_subtasks_to_contract sets st.setdefault("status","pending")
+          and st.setdefault("owner","claude-code") before serialising the
+          subtask list into contract.yaml.
+        - _sqlite_mirror_orchestrate uses status=str(st.get("status") or
+          "pending") instead of the hardcoded "todo".
+      "pending" matches Subtask pydantic schema default. After the orchestrator
+      runs, both sides hash ("pending", owner, title), mismatched stays 0.
+      Added tests/unit/db/test_parity.py::test_parity_clean_after_orchestrator_subtask_normalisation
+      as a regression guard.
+    commit: d922652
+
+  R3:
+    title: heal_parity has no invocation path
+    severity: medium (B4's recovery primitive was operationally inert)
+    detected_via: |
+      grep -rn "heal_parity\\|parity\\.heal" src/superharness/ — zero callers
+      outside parity.py itself. Doctor printed "Run: shux heal-parity" but
+      that command did not exist in cli.py.
+    fix: |
+      Added src/superharness/commands/heal_parity.py with `shux heal-parity`
+      and `shux heal-parity --check`. Registered in cli.py. Also fixed
+      doctor's lag warning so it prints regardless of healthy status (was
+      only printing inside the unhealthy branch, hiding drain backlog when
+      no other drift was present).
+    commit: d922652
+
+blocker_resolution_after_my_fixes:
+
+  B1:
+    status: closed
+    confidence: high
+    notes: |
+      _check_handoffs / _check_failures / _check_decisions added.
+      Natural-key matching: handoffs by (task_id, date), failures by
+      (task_id, agent, date), decisions by (agent, task_id, date).
+      Tolerant to YAML field-name variants (task vs task_id, date vs created_at).
+
+  B2:
+    status: closed
+    confidence: high
+    notes: |
+      _load_yaml_list flattens nested subtasks; _sqlite_sync_tasks recurses
+      into t.get("subtasks") and upserts each as a top-level row. Combined
+      with R2's fix, defaults align across YAML and SQLite. Caveat (deferred
+      to Gate 3): the SQLite tasks table now mixes TaskStatus (todo/...) and
+      SubtaskStatus (pending/...) values in the same column. Consumers that
+      enum-match against TaskStatus will misclassify subtasks. This is the
+      same enum-bleed that existed before B2 (because _sqlite_mirror_orchestrate
+      already inserted subtasks at top level), and is acceptable for Gate 2
+      because Gate 2's invariant is "parity is correct" not "schema is clean".
+
+  B3:
+    status: closed
+    confidence: medium
+    notes: |
+      SELECT 1 FROM yaml_sync_queue WHERE status='pending' AND op_type=? AND
+      json_extract(payload,'$.id')=? gates each enqueue. Idempotent under
+      serial calls (test_heal_parity_is_idempotent passes).
+      Race-condition residual: two concurrent processes can both SELECT (no
+      row) and both INSERT before either commits. SQLite WAL provides
+      snapshot isolation but not insert-conflict atomicity for this pattern.
+      This is acceptable because heal_parity is currently single-caller (the
+      new shux heal-parity CLI; not wired into watcher tick). If/when heal
+      is wired into the watcher, replace with a UNIQUE partial index on
+      (op_type, json_extract(payload,'$.id')) WHERE status='pending'.
+      Logged as F8 for follow-up.
+
+  B4:
+    status: closed
+    confidence: medium
+    notes: |
+      _heal_tasks_yaml_to_db reads YAML (with subtask flattening) and upserts
+      missing rows directly into SQLite. Closes the crash-window where YAML
+      is ahead of SQLite. Caveat: heal_parity must actually be invoked for
+      this to fire. The new shux heal-parity CLI provides one trigger. The
+      operator should run it periodically (cron/launchd) or wire it into
+      the watcher tick during the soak. The Gate 2 spec language is
+      "heal_parity is safe during active writes" — which is satisfied — not
+      "heal_parity runs continuously". Logged as F9 for follow-up.
+
+  B5:
+    status: closed
+    confidence: high
+    notes: |
+      After R1 fix, doctor's parity section actually runs. Verified
+      end-to-end on this repo. Both PASS parity and FAIL parity branches
+      tested. yaml_sync_lag warning now prints regardless of healthy state.
+      foreign_key_violations from F7 is reported.
+
+finding_resolution:
+
+  F6:
+    status: closed
+    confidence: high
+    notes: |
+      _stable_hash(*parts) over (status, owner, title) for tasks and
+      (status, target_agent, task_id) for inbox. After R2 fix, false drift
+      from missing-status is gone. Real semantic drift (e.g. status changed
+      in DB but not in YAML) is detected.
+
+  F7:
+    status: closed
+    confidence: high
+    notes: |
+      _check_foreign_keys runs PRAGMA foreign_key_check, returns row count.
+      Wired into ParityReport.foreign_key_violations and check_parity's
+      healthy calculation. Doctor surfaces FAIL parity:foreign_key_violations
+      when non-zero.
+
+new_followups_logged:
+
+  F8:
+    title: heal_parity dedup is TOCTOU under concurrent processes
+    severity: low (single-caller today)
+    fix_when: before wiring heal into watcher tick (Gate 3 territory)
+    suggested_fix: |
+      CREATE UNIQUE INDEX idx_yaml_sync_pending_dedup
+      ON yaml_sync_queue(op_type, json_extract(payload,'$.id'))
+      WHERE status='pending';
+      Then replace SELECT-before-INSERT with INSERT OR IGNORE.
+
+  F9:
+    title: heal_parity has no automatic invocation point
+    severity: low (CLI exists; operator can schedule)
+    fix_when: during/after the 24h soak, if drift accumulates faster than
+              manual invocation can clear it
+    suggested_fix: |
+      Either (a) call check_parity + heal_parity at end of yaml_sync.drain()
+      in inbox_watch.py, OR (b) add a launchd/cron entry that runs
+      `shux heal-parity` every 10 min.
+      Option (a) is more reliable (drain is already on the watcher tick).
+
+  F10:
+    title: SQLite tasks column has mixed enum domains
+    severity: medium (semantic, not parity)
+    fix_when: before iter-8 read cutover (Gate 3)
+    suggested_fix: |
+      Add `parent_id TEXT` column to tasks (NULL for top-level, parent task
+      id for subtasks). Migrate existing rows: anything whose id is in some
+      other task's nested subtasks list gets parent_id set; status enum stays
+      whatever it is. Read paths can then filter `WHERE parent_id IS NULL`
+      for top-level tasks and `WHERE parent_id IS NOT NULL` for subtasks.
+      Alternative: separate `subtasks` table.
+
+deferred_findings_from_previous_review:
+  F1, F2, F3, F4, F5: |
+    Same disposition as previous review — non-blocking, can land before Gate 3.
+
+soak_status:
+  required_duration: 24h
+  performed_duration: 0h
+  recommendation: |
+    Run the soak on the superharness repo itself. Steps:
+      1. shux migrate (populate state.sqlite3 from current YAML).
+         - Address F9 by either adding heal to watcher tick or scheduling
+           shux heal-parity every 10 minutes via cron/launchd.
+      2. Start the inbox watcher.
+      3. Every 5 minutes, append `shux heal-parity --check` output to a log
+         file. Pipe through `grep "drift\\|lag\\|foreign_key"`.
+      4. Drive normal load: a few orchestrated tasks, manual handoff writes,
+         failure injections via failures.yaml.
+      5. After 24h, verify the log shows healthy=True for ≥99% of samples
+         (a few False from in-flight writes is expected).
+      6. Attach the log to a Gate 2 confirmation handoff.
+
+  reviewer_note: |
+    The 24h soak is operator-run, not reviewer-run. I am passing the static
+    review on the assumption the soak will surface any dynamic regressions
+    that escaped the unit tests. If soak shows persistent unhealthy>5min,
+    that becomes a B6 and we re-open Gate 2.
+
+checklist_map:
+  "Parity detects every drift class":
+    status: pass
+    evidence: B1, B2, F6, F7 closed; new test guards orchestration cycle
+  "heal_parity is idempotent":
+    status: pass
+    evidence: B3 closed (test_heal_parity_is_idempotent)
+  "heal_parity is safe during active writes":
+    status: pass
+    evidence: |
+      Each enqueue/upsert is in its own commit, with SELECT-before dedup.
+      Concurrent-process race is logged as F8, not in scope.
+  "drain handles partial-failure retries without losing ops":
+    status: pass
+    evidence: Unchanged — attempts column + exhausted status.
+  "SQLite write + yaml_sync_queue.enqueue commit in same transaction":
+    status: pass_with_safety_net
+    evidence: |
+      B4 fixed via heal_parity YAML→SQLite recovery, not via transaction
+      inversion. The crash gap is recoverable. Full inversion is iter-8.
+  "24h soak shows 0 drift":
+    status: not_performed
+    evidence: |
+      Operator-run. Pass conditional on this being completed before iter-8.
+      F9 (auto-invoke heal) should be addressed before the soak so drift
+      doesn't accumulate faster than manual heal can clear.
+  "shux doctor reflects drift / queue lag":
+    status: pass
+    evidence: B5 closed after R1 fix; verified end-to-end on live repo.
+  "Single mutation path — no direct YAML writes outside yaml_sync":
+    status: defer
+    evidence: Same as previous review — Gate 3 / post-cutover invariant.
+
+what_should_happen_next:
+  - operator: |
+      Run the 24h soak on this repo. Before starting, address F9 (one of
+      either: wire heal into watcher tick, OR schedule shux heal-parity
+      via launchd/cron at 10-min intervals). The soak log goes in
+      .superharness/handoffs/sqlite-review-2-soak-<ts>-claude-code.yaml.
+  - sonnet_or_gemini: |
+      Address F8, F9, F10 before iter-8 starts. F1-F5 from the previous
+      review can land in the same window. None of these are Gate 2 blockers.
+  - opus_again: |
+      Only re-engage if (a) the soak shows persistent unhealthy>5min, OR
+      (b) the operator wants a Gate 3 architectural decision memo on
+      the subtask schema (F10).
+
+reviewer_signoff: |
+  Static review verdict: PASS. Iter 4-11 work is sound after the regressions
+  caught in this pass are committed (109764f + d922652). Iter 12 (CLI audit)
+  may proceed. Iter 8 (read cutover) must wait for the 24h soak and F9/F10
+  resolution.

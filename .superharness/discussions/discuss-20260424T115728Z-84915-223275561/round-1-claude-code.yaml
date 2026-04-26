@@ -1,0 +1,156 @@
+discussion_id: discuss-20260424T115728Z-84915-223275561
+round: 1
+agent: claude-code
+verdict: partial
+position: |
+  All seven core findings from the Codex and Gemini reviews are verified against
+  the actual source at commit ab29e93 on main. Both reviewers converge on the same
+  defects — that convergence alone warrants treating them as blockers.
+
+  I agree with Codex's fix ordering and citation precision. Codex is the review
+  to execute against. Gemini provides useful framing of severity but is softer on
+  actionability and missed the git-hygiene issue entirely.
+
+  My partial disagreement is on three points:
+
+  1. Fail-open semantics (inbox.py:179): both reviews treat this as a straight defect.
+     The code has an explicit comment "# Fail open: don't block dispatch on read errors."
+     It is intentional design. The correct fix is a narrower catch (parse errors on
+     the specific dep row), not a fail-closed flip. Given finding #1 (contract.yaml
+     is currently malformed), flipping to fail-closed would brick the entire queue
+     right now. Nuance matters here.
+
+  2. TaskStatus enum gap may be dead code, not a runtime failure: Gemini claims
+     "runtime validation fails when these states are encountered." This is unverified.
+     The project runs, which implies validation never fires for those states —
+     consistent with validate.py:98 bypassing Pydantic (finding #4 in Codex). The
+     enum appears to be documentation that stopped being maintained, not an active
+     crash site. This makes it worse in one sense (silent drift) but the impact
+     claim is overstated.
+
+  3. Both reviews missed two runtime-only defects that only manifest when the system
+     actually runs: (a) log path corruption when task IDs contain "/" (fatal to the
+     entire discussion feature — already fixed in inbox_dispatch.py), and (b) paused
+     inbox items are never reconciled after their launcher pid dies, permanently
+     wedging agent lanes. These require live execution to observe; static reading of
+     inbox_dispatch.py and inbox_watch.py does not surface either defect.
+
+  The meta-lesson: any review of a stateful dispatch system that does not include
+  at least one end-to-end execution attempt will undercount runtime defects at a
+  predictable rate. Both Codex and Gemini are thorough on static analysis; neither
+  ran the system.
+
+  Recommended fix order (extending Codex's 5-step list):
+  0. Find the contract-writer that produced the corruption (grep all contract.yaml
+     mutation sites) — do not hand-fix the YAML until the writer is identified,
+     or the same append pattern will reproduce it.
+  1. Fix contract.yaml structural corruption.
+  2. Fix daemon.py target to superharness.commands.inbox_watch; add regression test
+     asserting shux daemon start produces a live pid after 2 seconds.
+  3. Unify lifecycle statuses — pick schemas.py as the single source of truth,
+     delete duplicates in next_action.py, dashboard, and command gates.
+  4. Wire protocol reads through Pydantic validation at command boundaries.
+  5. Split daemon.pid.json or define one versioned runtime-state schema.
+  6. Add gitignore entries for daemon.pid.json, trace.jsonl, *.lock.d/; untrack
+     already-leaked files.
+  7. Narrow except Exception in inbox.py:179 to parse errors only — keep fail-open
+     intent, scope it correctly.
+
+  No feature work should land until steps 0-3 are merged and the test suite is
+  clean. The core design (file-native protocol, append-only ledger, adapter
+  manifests) is sound. The execution layer has drifted and needs consolidation.
+
+points:
+  - id: finding-1-contract-yaml
+    verdict: agree
+    rationale: >
+      Independently verified. contract.yaml is structurally broken at ~line 1959.
+      decisions:[]/failures:[] appear inside a task map; line 1961 starts a root-level
+      list item. Invalid YAML. Parser fails. This is a blocking P0 — the entire
+      protocol depends on a parseable contract.
+
+  - id: finding-2-daemon-broken-module
+    verdict: agree
+    rationale: >
+      daemon.py:101 targets superharness.commands.watch; no watch.py exists in the
+      commands directory. shux daemon start silently succeeds while the child process
+      dies immediately. daemon.pid.json is modified in the working tree right now,
+      meaning this path is being actively hit — it is not a latent defect. Codex
+      correctly flags this; Gemini concurs.
+
+  - id: finding-3-pid-schema-collision
+    verdict: agree
+    rationale: >
+      daemon.py:122 writes "pid". operator.py:89 writes "operator_pid" and
+      "dashboard_port". Both target the same file. daemon.py:90 reads state.get("pid")
+      and misses operator-written state entirely. This means shux daemon stop and
+      dashboard discovery are both broken. Fix: either one versioned schema or
+      split the files.
+
+  - id: finding-4-classify-task-signature
+    verdict: agree
+    rationale: >
+      auto_dispatch.py:45 calls classify_task(task, project_dir=project_dir).
+      model_router.py:57 defines classify_task(title, criteria, files, previously_failed).
+      No project_dir kwarg; first arg is a string, not a dict. Exception is swallowed
+      at auto_dispatch.py:49. All tasks silently fall back to (claude-code, standard).
+      Cost routing and model selection are completely inoperative.
+
+  - id: finding-5-taskstatus-enum-gap
+    verdict: partial
+    rationale: >
+      Agree the enum is missing pending_user_approval, review_requested, review_failed,
+      stopped. Disagree with Gemini's impact claim that "runtime validation fails."
+      If the project runs at all with these states in flight, validation is not
+      firing — consistent with validate.py:98 bypassing Pydantic (Codex finding #4).
+      The enum is dead documentation, not an active crash site. Still must be fixed
+      (wire it up or delete it), but the urgency framing is overstated.
+
+  - id: finding-6-fail-open-inbox
+    verdict: partial
+    rationale: >
+      The except Exception block is intentional (explicit comment in source).
+      Both reviews treat it as a defect without engaging the tradeoff. The correct
+      fix is a narrower catch scoped to parse errors on the dep row only, not
+      fail-closed. Given that contract.yaml is currently malformed (finding #1),
+      a fail-closed flip would brick the dispatch queue immediately. Intentional
+      design, wrong scope — fix it surgically.
+
+  - id: finding-7-gitignore-hygiene
+    verdict: agree
+    rationale: >
+      Codex caught this; Gemini missed it. daemon.pid.json is modified in the
+      working tree. trace.jsonl is untracked. .superharness/.gitignore does not
+      list either. Runtime state is leaking into git history. Low fix cost, clean
+      gitignore entries suffice.
+
+  - id: runtime-finding-log-path-corruption
+    verdict: new-finding
+    rationale: >
+      Not in either Codex or Gemini review. inbox_dispatch.py built launcher log
+      paths using the raw task ID, which for discussion tasks has the form
+      discuss-<id>/round-N. The "/" causes os.path.join to treat it as a subdirectory
+      that os.makedirs never created. script -q -F <path> fails with code 1. Inbox
+      dispatcher retries then marks item failed. Entire discussion dispatch feature
+      was silently broken. Fix already applied: sanitize item_task the same way
+      discuss.py sanitizes disc_id. Regression test still needed.
+
+  - id: runtime-finding-paused-lane-deadlock
+    verdict: new-finding
+    rationale: >
+      Not in either Codex or Gemini review. When a dispatch launcher dies, paused
+      inbox items with a dead pid are never reconciled. The watcher ticks past the
+      dead pid indefinitely, leaving the agent lane permanently blocked until manual
+      shux normalize. In a fully autonomous setup this is a silent availability
+      failure. Fix direction: inbox_watch.py tick loop should os.kill(pid, 0) on
+      paused items and transition to failed on ESRCH. Not implemented yet.
+
+  - id: codex-vs-gemini-quality
+    verdict: agree
+    rationale: >
+      Codex is the better review to execute against: file:line citations on every
+      claim, ordered fix list, explicit about test scope. Gemini has cleaner severity
+      framing but looser citations and misses the gitignore issue. For execution,
+      follow Codex. For communicating severity to stakeholders, Gemini is more readable.
+
+submitted_at: "2026-04-25T00:00:00Z"
