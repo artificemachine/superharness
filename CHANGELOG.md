@@ -89,3 +89,4 @@
 - 2026-04-26: fix(engine/inbox): add missing model_override and effort_override params to enqueue() — inbox_enqueue.py was passing both but inbox.py didn't accept them, causing TypeError in auto-dispatch and deadline-check flows
 - 2026-04-26: chore(release): bump version to 1.37.0
 - 2026-04-26: fix(dashboard): guard state_reader calls behind _in_harness check — prevents CI from resolving project_dir to repo root and returning real tasks for missing-file tests
+- 2026-04-26: fix(__init__): update __version__ to 1.37.0 to match pyproject.toml
