@@ -1,0 +1,25 @@
+task: sqlite-gate2-soak
+phase: soak
+status: in_progress
+from: claude-code
+to: owner
+started_at: 2026-04-26T06:24:37Z
+last_updated: 2026-04-26T06:29:38Z
+interval_seconds: 300
+duration_seconds: 86400
+
+pass_criteria:
+  mismatched: 0
+  yaml_sync_lag: "< 5"
+  foreign_key_violations: 0
+  healthy_rate_target: ">=99%"
+
+summary:
+  total_samples: 2
+  pass_samples: 0
+  fail_samples: 2
+  pass_rate: "0.0%"
+
+samples: |
+  2026-04-26T06:24:37Z  FAIL  healthy=False  lag=5  mismatched=0  only_in_db=7  fk=0
+  2026-04-26T06:29:38Z  FAIL  healthy=False  lag=5  mismatched=0  only_in_db=7  fk=0
