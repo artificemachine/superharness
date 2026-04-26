@@ -37,22 +37,42 @@ def enqueue_op(
     op_type: str,
     payload: dict,
     now: str,
-) -> int:
+) -> int | None:
     """Enqueue a YAML sync operation. Must be called inside the authoritative transaction.
 
-    Returns the new queue row id.
+    Returns the new queue row id, or None if a duplicate pending op was silently ignored
+    (F8: INSERT OR IGNORE with UNIQUE partial index on (op_type, payload.id) WHERE pending).
     """
     try:
         cursor = conn.execute(
             """
-            INSERT INTO yaml_sync_queue (op_type, payload, status, attempts, created_at)
+            INSERT OR IGNORE INTO yaml_sync_queue (op_type, payload, status, attempts, created_at)
             VALUES (?, ?, 'pending', 0, ?)
             """,
             (op_type, json.dumps(payload), now),
         )
-        return cursor.lastrowid
+        return cursor.lastrowid if cursor.rowcount else None
     except sqlite3.Error as exc:
         raise StateError(f"enqueue_op failed: {exc}") from exc
+
+
+def _yaml_writes_enabled(project_dir: str) -> bool:
+    """Return False when STATE_BACKEND=sqlite_only — YAML writes are skipped entirely."""
+    env = os.environ.get("STATE_BACKEND", "").strip().lower()
+    if env == "sqlite_only":
+        return False
+    if env in ("yaml_only", "dual"):
+        return True
+    try:
+        import yaml as _yaml
+        profile = os.path.join(project_dir, ".superharness", "profile.yaml")
+        if os.path.exists(profile):
+            with open(profile, encoding="utf-8") as f:
+                doc = _yaml.safe_load(f) or {}
+            return str(doc.get("state_backend", "")).strip().lower() != "sqlite_only"
+    except Exception:
+        pass
+    return True
 
 
 def drain(
@@ -62,9 +82,23 @@ def drain(
     max_ops: int = 100,
     max_attempts: int = 5,
 ) -> DrainReport:
-    """Apply pending sync ops to YAML files. Never raises; aggregates errors into report."""
+    """Apply pending sync ops to YAML files. Never raises; aggregates errors into report.
+
+    In sqlite_only mode, pending ops are marked applied without writing YAML so the
+    queue stays drained and lag stays zero.
+    """
     applied = 0
     failed = 0
+
+    if not _yaml_writes_enabled(project_dir):
+        try:
+            count = conn.execute(
+                "UPDATE yaml_sync_queue SET status='applied', applied_at=datetime('now') WHERE status='pending'"
+            ).rowcount
+            conn.commit()
+            return DrainReport(applied=count, failed=0, pending_remaining=0)
+        except sqlite3.Error:
+            return DrainReport(applied=0, failed=0, pending_remaining=0)
 
     try:
         cursor = conn.execute(

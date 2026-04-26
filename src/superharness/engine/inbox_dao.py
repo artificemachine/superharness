@@ -40,6 +40,7 @@ def enqueue(
     max_retries: int = 3,
     project_path: str | None = None,
     plan_only: bool = False,
+    model_override: str = "",
     now: str,
 ) -> InboxRow:
     """Insert a new inbox row with status='pending'.

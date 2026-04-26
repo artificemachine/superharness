@@ -498,6 +498,39 @@ def _read_context_cache_cost(project_dir: str, task_id: str) -> float:
 # Main dispatch logic
 # ---------------------------------------------------------------------------
 
+def _sqlite_claim_next(project_dir: str, target_agent: str, now: str) -> dict | None:
+    """Claim the next pending inbox item via inbox_dao (SQLite-native). Never raises.
+
+    Returns a dict with YAML-shape keys, or None if nothing to claim.
+    """
+    try:
+        from dataclasses import asdict
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import inbox_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            row = inbox_dao.claim_next(conn, target_agent=target_agent, pid=os.getpid(), now=now)
+            if row is None:
+                return None
+            conn.commit()
+            d = asdict(row)
+            return {
+                "id": d["id"],
+                "to": d["target_agent"],
+                "task": d["task_id"],
+                "project": d["project_path"] or "",
+                "retry_count": d["retry_count"],
+                "max_retries": d["max_retries"],
+                "priority": d["priority"],
+                "plan_only": d["plan_only"],
+            }
+        finally:
+            conn.close()
+    except Exception:
+        return None
+
+
 def dispatch(
     project_dir: str,
     target_filter: str | None = None,
@@ -511,7 +544,10 @@ def dispatch(
     inbox_file = os.path.join(harness_dir, "inbox.yaml")
     contract_file = os.path.join(harness_dir, "contract.yaml")
 
-    if not os.path.exists(inbox_file):
+    _backend = os.environ.get("STATE_BACKEND", "").strip().lower()
+    _sqlite_primary = _backend == "sqlite_only"
+
+    if not _sqlite_primary and not os.path.exists(inbox_file):
         print(f"Inbox file not found: {inbox_file}", file=sys.stderr)
         return 1
 
@@ -538,6 +574,7 @@ def dispatch(
             launcher_timeout=launcher_timeout,
             script_dir=script_dir,
             lock=lock,
+            sqlite_primary=_sqlite_primary,
         )
     finally:
         lock.release()
@@ -554,26 +591,37 @@ def _do_dispatch(
     launcher_timeout: int,
     script_dir: str,
     lock: _MkdirLock,
+    sqlite_primary: bool = False,
 ) -> int:
-    # Read next pending item
-    r = subprocess.run(
-        [sys.executable, "-m", "superharness.engine.inbox", "next_pending",
-         "--file", inbox_file] + (["--to", target_filter] if target_filter else []),
-        capture_output=True, text=True, check=False,
-    )
-    if r.returncode != 0:
-        print(f"Failed to read pending inbox item from {inbox_file}: {r.stderr.strip()}", file=sys.stderr)
-        return 1
+    now_claim = _now_utc()
 
-    item_json = r.stdout.strip()
-    if not item_json:
-        return 0
+    if sqlite_primary and target_filter:
+        # SQLite-native path: atomically claim next pending item via inbox_dao
+        item = _sqlite_claim_next(project_dir, target_filter, now_claim)
+        if item is None:
+            return 0
+        # Log the claim (inbox.yaml transition skipped in sqlite_only)
+        print(f"Inbox item claimed from SQLite: {item['id']} → {item['task']} (sqlite_only mode)")
+    else:
+        # YAML path: read next pending item from inbox.yaml
+        r = subprocess.run(
+            [sys.executable, "-m", "superharness.engine.inbox", "next_pending",
+             "--file", inbox_file] + (["--to", target_filter] if target_filter else []),
+            capture_output=True, text=True, check=False,
+        )
+        if r.returncode != 0:
+            print(f"Failed to read pending inbox item from {inbox_file}: {r.stderr.strip()}", file=sys.stderr)
+            return 1
 
-    try:
-        item = json.loads(item_json)
-    except json.JSONDecodeError as e:
-        print(f"Failed to parse pending inbox item from {inbox_file}: {e}", file=sys.stderr)
-        return 1
+        item_json = r.stdout.strip()
+        if not item_json:
+            return 0
+
+        try:
+            item = json.loads(item_json)
+        except json.JSONDecodeError as e:
+            print(f"Failed to parse pending inbox item from {inbox_file}: {e}", file=sys.stderr)
+            return 1
 
     item_id = str(item.get("id", ""))
     item_to = str(item.get("to", ""))
@@ -626,31 +674,36 @@ def _do_dispatch(
             if _mark_item_paused_dirty(inbox_file, item_id, pause_now):
                 return 0
 
-    # Launch transition
+    # Launch transition: in sqlite_only mode, inbox_dao.claim_next() already set status=launched.
+    # In YAML mode, explicitly transition via YAML CLI.
     launch_now = _now_utc()
-    lr = subprocess.run(
-        [sys.executable, "-m", "superharness.engine.inbox", "launch",
-         "--file", inbox_file, "--id", item_id, "--now", launch_now],
-        capture_output=True, text=True, check=False,
-    )
-    launch_rc = lr.returncode
+    if sqlite_primary:
+        lock.release()
+        new_retry_count = item_retry_count
+        print(f"Inbox item updated: {item_id} -> launched (priority={item_priority}, retries={new_retry_count}/{item_max_retries})")
+    else:
+        lr = subprocess.run(
+            [sys.executable, "-m", "superharness.engine.inbox", "launch",
+             "--file", inbox_file, "--id", item_id, "--now", launch_now],
+            capture_output=True, text=True, check=False,
+        )
+        launch_rc = lr.returncode
 
-    lock.release()  # Release before spawning launcher
+        lock.release()  # Release before spawning launcher
 
-    if launch_rc == 4:
-        print(f"Inbox item updated: {item_id} -> failed (retry limit reached: {item_retry_count}/{item_max_retries})")
-        return 1
+        if launch_rc == 4:
+            print(f"Inbox item updated: {item_id} -> failed (retry limit reached: {item_retry_count}/{item_max_retries})")
+            return 1
 
-    if launch_rc != 0:
-        print(f"Failed to launch inbox item transition for {item_id}: {lr.stdout.strip()}", file=sys.stderr)
-        return 1
+        if launch_rc != 0:
+            print(f"Failed to launch inbox item transition for {item_id}: {lr.stdout.strip()}", file=sys.stderr)
+            return 1
 
-    # Parse new retry count from output
-    import re
-    m = re.search(r"retry_count=(\d+)", lr.stdout)
-    new_retry_count = int(m.group(1)) if m else item_retry_count
-    print(f"Inbox item updated: {item_id} -> launched (priority={item_priority}, retries={new_retry_count}/{item_max_retries})")
-    _sqlite_mirror_dispatch(project_dir, item_id, item_task, item_to, "launched", launch_now)
+        import re
+        m = re.search(r"retry_count=(\d+)", lr.stdout)
+        new_retry_count = int(m.group(1)) if m else item_retry_count
+        print(f"Inbox item updated: {item_id} -> launched (priority={item_priority}, retries={new_retry_count}/{item_max_retries})")
+        _sqlite_mirror_dispatch(project_dir, item_id, item_task, item_to, "launched", launch_now)
 
     # Build launcher args
     launch_args = ["bash", launcher, "--project", exec_project, "--task", item_task]
