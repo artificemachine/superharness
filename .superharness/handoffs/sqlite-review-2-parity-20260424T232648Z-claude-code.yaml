@@ -1,0 +1,318 @@
+task: sqlite-review-2-parity
+phase: review
+status: review_failed
+from: claude-code
+to: owner
+reviewer_model: claude-opus-4-7
+review_effort: max
+date: 2026-04-24T23:26:48Z
+
+verdict: |
+  CHANGES REQUESTED — MAJOR.
+
+  Iterations 1–11 land a working dual-write scaffold, and all 2058 tests pass.
+  But the *parity guarantee itself*, which is what this gate exists to certify,
+  has concrete gaps that would produce silent drift today — not hypothetical
+  drift, guaranteed drift — the moment the orchestrator runs or anyone who
+  is not claude-code writes a handoff / failure / decision. Those gaps must
+  close before iter 12 (CLI audit) and long before iter 8 / read cutover.
+
+  The 24h soak required by this gate (sqlite-5-parity-soak) has not been
+  performed. I am still writing the review because the static findings below
+  block the gate regardless of the soak result, but a clean soak will not
+  unblock it either.
+
+summary_of_what_landed:
+  - db.py: WAL, FK ON, busy_timeout=5000, user_version migrations — schema is
+    fine, 11 tables created in v1.
+  - DAOs (Gemini): inbox_dao atomic claim via UPDATE...RETURNING, tasks_dao
+    optimistic-concurrency update, watcher_singleton with CHECK(key='singleton').
+  - Z-suffix fix in get_stale / watcher_singleton.acquire — correct.
+  - yaml_sync.py: queue + drain + 5 op handlers, os.replace for atomic file
+    writes.
+  - parity.py: check_parity for tasks + inbox, heal_parity for only_in_db.
+  - Dual-write hooks: _sqlite_mirror_dispatch (inbox_dispatch), _sqlite_tick
+    (inbox_watch), _sqlite_mirror_orchestrate (delegate), _sqlite_sync_tasks
+    (contract_io), _sqlite_record_review (inbox_dispatch).
+  - Watcher singleton: acquire on startup, heartbeat per tick, release on exit.
+  - Dashboard: dashboard_presenter (Gemini iter 9) — not in this review's scope
+    beyond parity implications.
+
+blockers:
+  - id: B1
+    title: Parity check only covers tasks and inbox
+    location: src/superharness/engine/parity.py:42-43
+    detail: |
+      check_parity calls _check_tasks and _check_inbox. It never looks at
+      handoffs, failures, or decisions. Those tables are dual-written via
+      yaml_sync ops (append_handoff, record_failure, record_decision) but
+      nothing verifies convergence. Any command that bypasses yaml_sync
+      for those (and several do — handoff_write writes YAML directly, see
+      commands/handoff_write.py) will drift silently and the doctor will
+      report "healthy".
+    required_fix: |
+      Add _check_handoffs, _check_failures, _check_decisions to parity.
+      Count by primary key or by (task_id + created_at) for append-only
+      tables.
+
+  - id: B2
+    title: Subtask drift is guaranteed every time the orchestrator runs
+    location: |
+      src/superharness/commands/delegate.py:_write_subtasks_to_contract and
+      _sqlite_mirror_orchestrate; src/superharness/engine/contract_io.py:_sqlite_sync_tasks;
+      src/superharness/engine/parity.py:_load_yaml_list
+    detail: |
+      _write_subtasks_to_contract writes subtasks NESTED inside the parent
+      task (t["subtasks"] = [...]) — they are not top-level entries in
+      doc["tasks"]. _sqlite_sync_tasks (and _load_yaml_list in parity) only
+      iterate the top-level doc["tasks"] list, so they never see the nested
+      subtasks. Meanwhile _sqlite_mirror_orchestrate upserts each subtask
+      as a top-level row in SQLite tasks table.
+
+      Net result: N subtasks in SQLite, 0 in YAML-visible-to-parity, so
+      every orchestrated task yields only_in_db == N. Parity will never
+      recover on its own, and heal_parity will re-enqueue upsert_task ops
+      every cycle that do nothing because _apply_upsert_task writes them
+      into the top-level tasks list — which then creates a different kind
+      of drift (duplicated under parent and at top level).
+    required_fix: |
+      Pick one: (a) flatten subtasks to top-level in contract.yaml and
+      use a parent_id column, or (b) have parity recurse into nested
+      subtasks, or (c) model subtasks as a separate SQLite table so they
+      never compare against top-level tasks at all. Option (a) is the
+      cleanest given the rest of the architecture already assumes a flat
+      tasks table.
+
+  - id: B3
+    title: heal_parity is not queue-idempotent
+    location: src/superharness/engine/parity.py:131-159
+    detail: |
+      Calling heal_parity twice on the same drift enqueues the same
+      upsert_task op twice. yaml_sync_queue has no dedup (no UNIQUE
+      (op_type, payload_hash, status='pending') constraint) so the
+      queue accumulates redundant work. Gate 2 spec: "heal_parity is
+      idempotent — calling twice on the same drift does not duplicate
+      sync ops". This fails.
+    required_fix: |
+      Before enqueue, SELECT 1 FROM yaml_sync_queue WHERE status='pending'
+      AND op_type=? AND json_extract(payload, '$.id')=? ; if exists,
+      skip. Or add a UNIQUE index on (op_type, json_extract(payload,'$.id'))
+      WHERE status='pending'. The latter is cheaper and enforced at the
+      storage level.
+
+  - id: B4
+    title: contract_io.write_contract is not atomic with its SQLite sync
+    location: src/superharness/engine/contract_io.py:59-87
+    detail: |
+      write_contract does os.replace(tmp, path) first, then calls
+      _sqlite_sync_tasks(path, doc). A crash between the two leaves YAML
+      ahead of SQLite with no way for parity to close the gap on the
+      only_in_yaml side — heal_parity explicitly does NOT heal
+      only_in_yaml drift (parity.py:65). Today this is tolerable because
+      YAML is authoritative, but Gate 2's invariant is "both or neither"
+      and this is "YAML then maybe SQLite".
+    required_fix: |
+      Either (a) enqueue an upsert_task yaml_sync op INSIDE the SQLite
+      transaction and have a separate drain write YAML — invert the
+      write order so SQLite becomes the authoritative step — or
+      (b) teach heal_parity to apply YAML→SQLite upserts when
+      only_in_yaml > 0 with a checksum-based confirmation. (a) is the
+      intended end state per the migration plan.
+
+  - id: B5
+    title: shux doctor does not surface parity or yaml_sync lag
+    location: src/superharness/commands/doctor.py (no parity import)
+    detail: |
+      Gate 2 spec: "shux doctor output accurately reflects drift counts
+      and yaml_sync_queue lag under test drift injection". Grep for
+      'parity', 'yaml_sync', or 'state.sqlite' in doctor.py returns
+      nothing. Operators cannot see drift from the CLI today.
+    required_fix: |
+      Add a parity section to doctor that calls check_parity, prints the
+      per-table drift counts and yaml_sync_lag, and exits non-zero when
+      healthy==False (or adds a WARN badge). Also expose parity via
+      dashboard health endpoint.
+
+non_blocking_findings:
+  - id: F1
+    title: tasks_dao.upsert always bumps version on conflict
+    location: src/superharness/engine/tasks_dao.py:67
+    detail: |
+      ON CONFLICT DO UPDATE SET ... version=tasks.version + 1 means every
+      write_contract() call bumps the SQLite version for every task in
+      the contract, even when nothing changed. This silently invalidates
+      any CAS-based update(conn, id, version=X, ...) from concurrent
+      callers. For dual-write today this is tolerable (the authoritative
+      version lives in YAML as a plain int), but once SQLite becomes
+      authoritative, the version will no longer reflect write intent —
+      it will reflect write frequency.
+    recommendation: |
+      Either (a) compare incoming row against existing and skip the UPDATE
+      when every field matches, (b) accept the caller's version and only
+      bump when the update actually changes a column, or (c) split into
+      explicit "sync" (no version bump) and "mutate" (version bump) paths.
+
+  - id: F2
+    title: yaml_sync op in _sqlite_mirror_dispatch is redundant
+    location: src/superharness/commands/inbox_dispatch.py:_sqlite_mirror_dispatch
+    detail: |
+      The dispatch flow writes YAML via a subprocess ("inbox launch" CLI)
+      BEFORE _sqlite_mirror_dispatch runs. The helper then enqueues a
+      yaml_sync op that, on drain, re-writes the same status to the same
+      inbox.yaml entry. Harmless but wasteful, and makes drain throughput
+      look artificially high in metrics.
+    recommendation: |
+      Drop the yaml_sync.enqueue_op call from this helper; rely on
+      subprocess-side YAML as the source and let SQLite catch up via
+      parity/heal if the subprocess succeeded but SQLite mirror failed.
+      Alternatively, invert the order once the legacy subprocess is
+      retired.
+
+  - id: F3
+    title: yaml_sync.drain has no claim mechanism
+    location: src/superharness/engine/yaml_sync.py:56-121
+    detail: |
+      drain() does SELECT ... LIMIT then iterates and UPDATE-commits per
+      op. If any code other than the watcher ever calls drain() (future
+      admin CLI, parallel test, crash-recovery script), two callers can
+      pick up the same pending op. The inbox_dao atomic claim pattern
+      (UPDATE...RETURNING) is the right template here.
+    recommendation: |
+      Replace the two-step fetch-then-update with a single
+      UPDATE yaml_sync_queue SET status='claimed', claimed_by=? WHERE
+      id IN (SELECT id FROM yaml_sync_queue WHERE status='pending'
+      ORDER BY created_at LIMIT ?) RETURNING *; then dispatch each
+      claimed op; update to 'applied' or back to 'pending' on result.
+
+  - id: F4
+    title: Ledger grows unboundedly from watcher ticks
+    location: src/superharness/commands/inbox_watch.py:_sqlite_tick
+    detail: |
+      Every tick records ledger(action='tick') alongside the drain call.
+      At 30s interval that's ~2880 rows/day per project. Over a year
+      that's 1M rows of pure heartbeat noise sharing a table with
+      semantically meaningful task events. Queries with
+      WHERE task_id=... still use the idx_ledger_task index so cost is
+      bounded, but the table itself bloats indefinitely.
+    recommendation: |
+      Either (a) don't write a ledger row for 'tick' (use
+      watcher_instance.last_heartbeat — we already update it), or
+      (b) add a nightly prune job that deletes ledger rows where
+      action='tick' AND created_at < now-7d, or (c) move tick
+      heartbeats to a separate watcher_ticks table with a short TTL.
+      Option (a) is cheapest.
+
+  - id: F5
+    title: Exhausted ops have no alert or replay path
+    location: src/superharness/engine/yaml_sync.py:100-113
+    detail: |
+      After max_attempts=5 retries, an op goes to status='exhausted' and
+      sits there forever with no retry, no alert, no admin CLI to replay.
+      Under silent-corruption-prone conditions this is how drift becomes
+      permanent.
+    recommendation: |
+      (a) Surface exhausted count in doctor / dashboard, (b) add
+      `shux sync-queue --retry-exhausted` that resets attempts=0 and
+      status='pending', (c) log at WARNING when any op exhausts.
+
+  - id: F6
+    title: Parity does not detect mismatched fields
+    location: src/superharness/engine/parity.py:112
+    detail: |
+      `mismatched = 0  # fine-grained field comparison deferred to a
+      later iteration`. Today parity will return healthy=True for any
+      task whose id matches in both backends, regardless of whether
+      status / owner / title / timestamps differ. This is the single
+      highest-risk class of silent drift because it looks like "fine"
+      until a downstream reader hits the wrong side.
+    recommendation: |
+      Compare a stable hash of (status, owner, title, done_at,
+      failed_at, cancelled_at) between DB and YAML for every id in
+      the intersection; set mismatched = count of hash mismatches.
+      Do not defer this further — it is core to the gate.
+
+  - id: F7
+    title: Orphaned foreign keys not audited
+    detail: |
+      Gate 2 spec calls out "orphaned foreign keys". PRAGMA
+      foreign_keys=ON is set so new orphans cannot be inserted, but
+      the migration bridge (migrate_yaml.py) and yaml_sync handlers
+      do not assert 0 orphans after migration. An existing
+      task_dependencies / inbox row pointing at a missing task would
+      not be surfaced.
+    recommendation: |
+      Add PRAGMA foreign_key_check to doctor and to a new parity
+      sub-report. Fail loudly if any row is returned.
+
+soak_status:
+  required_duration: 24h
+  performed_duration: 0h
+  healthy_minutes_observed: n/a
+  note: |
+    Gate 2 requires a 24h soak on a live superharness project with drift
+    counts logged every 5 minutes. This was not run. Even with blockers
+    B1–B5 closed the gate cannot pass without this. Recommend: after
+    fixes land, run soak for 24h on the superharness repo itself
+    (eat-your-own-dogfood) and attach the log to the revised handoff.
+
+checklist_map:
+  "Parity detects every drift class":
+    status: fail
+    evidence: B1, B2, F6, F7
+  "heal_parity is idempotent":
+    status: fail
+    evidence: B3
+  "heal_parity is safe during active writes":
+    status: pass_with_caveats
+    evidence: |
+      Each enqueue is in its own commit — no intra-row race, but races
+      with concurrent heal invocations (see B3) and with concurrent
+      writes landing between _check and _heal. Acceptable once B3 is
+      fixed.
+  "drain handles partial-failure retries without losing ops":
+    status: pass
+    evidence: |
+      attempts column + exhausted status covers this. F3 and F5 are
+      operational concerns, not correctness.
+  "SQLite write + yaml_sync_queue.enqueue commit in same transaction":
+    status: fail
+    evidence: B4, F2
+  "24h soak shows 0 drift":
+    status: not_performed
+    evidence: soak_status
+  "shux doctor reflects drift / queue lag":
+    status: fail
+    evidence: B5
+  "Single mutation path — no direct YAML writes outside yaml_sync":
+    status: defer
+    evidence: |
+      Not currently achievable — YAML is authoritative; write_contract
+      and the inbox subprocess write directly. This invariant applies
+      post-cutover (iter 8), not Gate 2. Flagging as deferred, not
+      failed, since enforcing it now would break the dual-write model.
+
+what_gemini_and_sonnet_should_do_next:
+  - Close B1, B2, B3, B4, B5 before proceeding to iter 12 (CLI audit).
+  - Address F6 and F7 in the same pass — they are spec-level parity
+    requirements, not nice-to-have.
+  - F1, F2, F3, F4, F5 can land in a follow-up commit but not past
+    Gate 3.
+  - Run the 24h soak on the superharness repo AFTER the fixes.
+    Attach the 5-min drift log to the next review handoff.
+  - Resubmit review as sqlite-review-2-parity-<new-ts>.yaml.
+
+reviewer_notes: |
+  The engineering is competent — atomic claim pattern in inbox_dao,
+  Z-suffix bug caught in get_stale, WAL enabled everywhere, migrations
+  keyed by PRAGMA user_version. Tests are thorough at the DAO layer
+  (69–89 pass cleanly). The parity and heal primitives exist; they just
+  do not yet deliver the guarantee the gate is asking for.
+
+  The single most important finding is B2 (subtask drift is guaranteed).
+  That one is not a race or a rare edge case — it will occur on the
+  very first orchestrator call on this branch and every one after it,
+  until fixed. Everything else is secondary to closing that.
+
+  Recommend a gate re-submission after B1–B5 close + F6/F7 address +
+  24h soak. Do NOT treat any of iter 4–11 as "done" until this gate
+  passes.

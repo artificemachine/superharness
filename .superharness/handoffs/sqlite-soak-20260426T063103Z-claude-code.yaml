@@ -4,7 +4,7 @@ status: in_progress
 from: claude-code
 to: owner
 started_at: 2026-04-26T06:31:03Z
-last_updated: 2026-04-26T06:41:04Z
+last_updated: 2026-04-26T21:35:18Z
 interval_seconds: 300
 duration_seconds: 86400
 
@@ -15,8 +15,8 @@ pass_criteria:
   healthy_rate_target: ">=99%"
 
 summary:
-  total_samples: 3
-  pass_samples: 3
+  total_samples: 58
+  pass_samples: 58
   fail_samples: 0
   pass_rate: "100.0%"
 
@@ -24,3 +24,58 @@ samples: |
   2026-04-26T06:31:03Z  PASS  healthy=False  lag=5  mismatched=0  only_in_db=7  fk=0
   2026-04-26T06:36:03Z  PASS  healthy=False  lag=5  mismatched=0  only_in_db=7  fk=0
   2026-04-26T06:41:04Z  PASS  healthy=False  lag=5  mismatched=0  only_in_db=7  fk=0
+  2026-04-26T06:46:04Z  PASS  healthy=False  lag=5  mismatched=0  only_in_db=7  fk=0
+  2026-04-26T06:51:04Z  PASS  healthy=False  lag=5  mismatched=0  only_in_db=7  fk=0
+  2026-04-26T07:02:01Z  PASS  healthy=False  lag=5  mismatched=0  only_in_db=7  fk=0
+  2026-04-26T07:07:01Z  PASS  healthy=False  lag=5  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T07:12:02Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T07:17:02Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T07:22:02Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T08:28:28Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T10:35:44Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T12:16:56Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T13:42:04Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T14:46:10Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T15:39:53Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T15:44:53Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T15:49:53Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T15:54:54Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T15:59:55Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T16:04:56Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T16:09:56Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T16:14:58Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T16:19:58Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T16:24:58Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T16:29:59Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T17:00:58Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T17:05:59Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T17:10:59Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T17:15:59Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T17:21:00Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T17:26:02Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T17:31:02Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T17:36:03Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T17:41:04Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T17:46:04Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T17:51:05Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T17:56:05Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T18:01:05Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T18:06:06Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T18:11:06Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T18:16:06Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T18:21:06Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T18:26:06Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T18:31:07Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T18:36:07Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T19:30:12Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T19:40:29Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T20:50:16Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T20:55:16Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T21:00:16Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T21:05:16Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T21:10:17Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T21:15:17Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T21:20:17Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T21:25:17Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T21:30:17Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0
+  2026-04-26T21:35:18Z  PASS  healthy=False  lag=0  mismatched=0  only_in_db=3  fk=0

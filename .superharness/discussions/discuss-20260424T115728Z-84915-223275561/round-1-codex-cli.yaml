@@ -1,0 +1,56 @@
+discussion_id: discuss-20260424T115728Z-84915-223275561
+round: 1
+agent: codex-cli
+verdict: partial
+position: |
+  I agree with the core diagnosis from all three reviews: the main failure mode is protocol/runtime drift caused by multiple writers and duplicated lifecycle logic, with insufficient end-to-end guardrails.
+
+  I disagree that all listed defects are still blockers right now. Several were valid at review snapshot time but appear fixed in current source:
+  - contract YAML is parseable
+  - daemon now launches `superharness.commands.inbox_watch`
+  - missing lifecycle enum states were added to `TaskStatus`
+  - dependency fail-open was narrowed to YAML/I/O errors (no blanket `except Exception`)
+  - runtime artifacts are in `.superharness/.gitignore`
+  - discussion launcher-log task-id sanitization appears implemented
+
+  The two highest-priority defects still open are:
+  1) auto-dispatch/model-router API mismatch (`auto_dispatch._classify_task` passes `classify_task(task, project_dir=...)` but `model_router.classify_task` expects `(title, criteria, files, previously_failed)`), with silent fallback swallowing;
+  2) daemon/operator state-file collision on `.superharness/daemon.pid.json` (daemon expects `pid`; operator writes `operator_pid` + `dashboard_port`), which keeps state semantics ambiguous.
+
+  Recommended fix order for current state:
+  1. Fix auto-dispatch classifier call contract and log fallback reason explicitly.
+  2. Split or version runtime process state (`daemon-state.json` and `operator-state.json`, or one schema with version + owner).
+  3. Add E2E smoke gates for contract parse + daemon start-alive + discussion dispatch log path.
+  4. Continue consolidation: enforce one canonical lifecycle/status model and keep protocol writes schema-validated at boundaries.
+points:
+  - id: core-root-cause
+    verdict: agree
+    rationale: The shared root cause is architecture drift, not isolated bugs; duplicated state and multi-writer protocol files created inconsistent runtime behavior.
+  - id: contract-corruption-still-blocking
+    verdict: disagree
+    rationale: Current `.superharness/contract.yaml` parses successfully as a dict, so this is not an active blocker now.
+  - id: daemon-nonexistent-watch-module
+    verdict: disagree
+    rationale: `daemon.py` now launches `superharness.commands.inbox_watch`; the previously cited `superharness.commands.watch` path no longer appears.
+  - id: auto-dispatch-router-mismatch
+    verdict: agree
+    rationale: API mismatch remains open and is high impact because exceptions are swallowed, forcing silent default routing and defeating intended model selection.
+  - id: daemon-operator-state-collision
+    verdict: agree
+    rationale: Shared `daemon.pid.json` still has incompatible producer/consumer schemas; this keeps daemon/dashboard discovery and control semantics fragile.
+  - id: lifecycle-enum-gap
+    verdict: disagree
+    rationale: The previously missing statuses are now present in `TaskStatus`; this specific drift item appears addressed.
+  - id: inbox-fail-open
+    verdict: partial
+    rationale: Behavior was tightened to fail-open only for YAML/I/O read errors, which is a defensible compromise; still worth tracking as an explicit policy choice.
+  - id: runtime-git-hygiene
+    verdict: disagree
+    rationale: `.superharness/.gitignore` now includes `daemon.pid.json`, `trace.jsonl`, and `*.lock.d/`, so this leakage item is currently mitigated.
+  - id: discussion-launcher-log-path
+    verdict: partial
+    rationale: The slash-in-task-id launcher-log bug described in Claude's meta-review appears fixed via task-id sanitization, but it still needs an explicit regression test.
+  - id: fix-order
+    verdict: partial
+    rationale: I support consolidation-first sequencing, but current ordering should prioritize open blockers (auto-dispatch mismatch, state-file collision) ahead of already-resolved items.
+submitted_at: 2026-04-24T12:14:45Z
