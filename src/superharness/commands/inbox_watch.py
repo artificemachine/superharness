@@ -892,6 +892,8 @@ def _auto_close_report_ready(project_dir: str) -> None:
                 try:
                     with open(contract_file, "w", encoding="utf-8") as _f:
                         _yaml.dump(doc, _f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+                    from superharness.engine.state_writer import mirror_task_dict
+                    mirror_task_dict(project_dir, task)
                 except Exception:
                     pass
                 if verification.suggested_action == "fail":
@@ -1289,6 +1291,10 @@ def _run_scripts(
                 with _inbox_lock(_inbox_file):
                     with open(_inbox_file, "w", encoding="utf-8") as _f:
                         _yaml.dump(_inbox_items, _f)
+                from superharness.engine.state_writer import mirror_inbox_item_dict
+                for _item in _inbox_items:
+                    if isinstance(_item, dict):
+                        mirror_inbox_item_dict(project_dir, _item)
     except Exception as e:
         print(f"Warning: paused dead-pid reconciliation failed: {e}", file=sys.stderr)
 
@@ -1508,6 +1514,10 @@ def _reconcile_discussion_contract(project_dir: str) -> int:
         try:
             with open(contract_file, "w", encoding="utf-8") as _f:
                 _yaml.dump(doc, _f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+            from superharness.engine.state_writer import mirror_task_dict
+            for _task in tasks:
+                if isinstance(_task, dict):
+                    mirror_task_dict(project_dir, _task)
         except Exception as e:
             print(f"Warning: failed to write contract after discussion reconcile: {e}", file=sys.stderr)
             return 0
