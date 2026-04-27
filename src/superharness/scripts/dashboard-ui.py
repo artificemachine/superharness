@@ -49,7 +49,7 @@ def _ensure_python_with_yaml() -> None:
     os.execve(str(venv_python), [str(venv_python), str(Path(__file__).resolve()), *sys.argv[1:]], env)
 
 
-HTML = (Path(__file__).parent / "dashboard.html").read_text()
+HTML = (Path(__file__).parent / "dashboard.html").read_text(encoding="utf-8")
 
 # Registry of known agent names — add new agents here as the ecosystem grows.
 KNOWN_AGENTS: list[str] = ["claude-code", "codex-cli", "gemini-cli"]
@@ -2090,6 +2090,49 @@ class Handler(BaseHTTPRequestHandler):
                 200,
             )
 
+        if action.startswith("cancel_discussion:"):
+            disc_id = action.split(":", 1)[1]
+            if not disc_id:
+                return ({"error": "missing discussion id"}, 400)
+            disc_dir = self.project_dir / ".superharness" / "discussions" / disc_id
+            if not disc_dir.exists():
+                return ({"error": f"discussion {disc_id} not found"}, 404)
+            result, _status = self._run_cmd([
+                sys.executable, "-m", "superharness.engine.discussion", "close",
+                "--discussion-dir", str(disc_dir),
+                "--outcome", "cancelled",
+            ])
+            # Sync contract task: mark any in_progress task linked to this discussion archived.
+            # The contract task ID is either stored in state.yaml task_id or matches the
+            # discussion ID pattern (<disc_id>/round-N).
+            try:
+                import yaml as _disc_yaml
+                state_file = disc_dir / "state.yaml"
+                if state_file.exists():
+                    _state = _disc_yaml.safe_load(state_file.read_text()) or {}
+                    _task_id = _state.get("task_id") or ""
+                harness_dir = self.project_dir / ".superharness"
+                contract_path = harness_dir / "contract.yaml"
+                if contract_path.exists():
+                    _doc = _disc_yaml.safe_load(contract_path.read_text()) or {}
+                    _changed = False
+                    for _t in _doc.get("tasks") or []:
+                        _tid = str(_t.get("id", ""))
+                        if _t.get("status") == "in_progress" and (
+                            _tid == _task_id
+                            or _tid.startswith(disc_id + "/")
+                            or (_task_id and _tid.startswith(_task_id + "/"))
+                        ):
+                            _t["status"] = "archived"
+                            _changed = True
+                    if _changed:
+                        contract_path.write_text(
+                            _disc_yaml.dump(_doc, default_flow_style=False, sort_keys=False, allow_unicode=True)
+                        )
+            except Exception:
+                pass
+            return (result, 200 if result.get("ok") or result.get("exit_code") == 0 else 500)
+
         if action.startswith("cancel_review:"):
             task_id = action.split(":", 1)[1]
             if not task_id:
@@ -2357,8 +2400,9 @@ class Handler(BaseHTTPRequestHandler):
             _contract_file = self.project_dir / ".superharness" / "contract.yaml"
             result["contract_id"] = contract_id(_contract_file)
 
-            # YAML fallback: fill board/review/inbox when SQLite tables are empty
+            # YAML fallback: fill contract_tasks/board/review when SQLite tables are empty
             if not snapshot.get("contract_tasks"):
+                result["contract_tasks"] = contract_tasks(_contract_file)
                 _bv = board_view(_contract_file)
                 result["board_columns"] = _bv["columns"]
                 _rq_full = review_queue(_contract_file)
@@ -2533,6 +2577,46 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": f"task_report failed: {exc}", "task": task_id, "agent": agent}, 500)
             return
 
+        if p == "/api/discussion":
+            qs = parse_qs(parsed.query)
+            disc_id = qs.get("id", [""])[0]
+            if not disc_id:
+                self._json({"error": "id parameter required"}, 400)
+                return
+            disc_dir = self.project_dir / ".superharness" / "discussions" / disc_id
+            if not disc_dir.exists():
+                self._json({"error": f"discussion {disc_id} not found"}, 404)
+                return
+            try:
+                result: dict = {"id": disc_id, "rounds": []}
+                state_file = disc_dir / "state.yaml"
+                if state_file.exists():
+                    import yaml as _yaml
+                    st = _yaml.safe_load(state_file.read_text()) or {}
+                    result["topic"] = st.get("topic", "")
+                    result["status"] = st.get("status", "")
+                    result["current_round"] = st.get("current_round", "")
+                    result["max_rounds"] = st.get("max_rounds", "")
+                    result["participants"] = st.get("participants", [])
+                    result["created_at"] = st.get("created_at", "")
+                for sub_file in sorted(disc_dir.glob("round-*.yaml")):
+                    try:
+                        sub = _yaml.safe_load(sub_file.read_text()) or {}
+                        result["rounds"].append({
+                            "round": sub.get("round", ""),
+                            "agent": sub.get("agent", ""),
+                            "verdict": sub.get("verdict", ""),
+                            "position": sub.get("position", ""),
+                            "submitted_at": sub.get("submitted_at", ""),
+                            "points": sub.get("points", []),
+                        })
+                    except Exception:
+                        pass
+                self._json(result)
+            except Exception as exc:
+                self._json({"error": f"discussion fetch failed: {exc}"}, 500)
+            return
+
         if p == "/api/board":
             _contract_file = self.project_dir / ".superharness" / "contract.yaml"
             _board = board_tasks(_contract_file)
@@ -2558,6 +2642,56 @@ class Handler(BaseHTTPRequestHandler):
                 "queue": review_queue(_contract_file),
                 "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             })
+            return
+
+        if p == "/api/recent-failures":
+            # iter 8: dashboard error surface. Returns latest failed inbox items
+            # with structured failure_class, failure_explain, and last 20 lines
+            # of launcher log inline so operators don't need to tail logs.
+            from urllib.parse import parse_qs as _pq
+            qs = _pq(parsed.query)
+            limit = int((qs.get("limit", ["10"])[0] or "10"))
+            harness = self.project_dir / ".superharness"
+            inbox_file = harness / "inbox.yaml"
+            launcher_logs = harness / "launcher-logs"
+            failures = []
+            try:
+                import yaml as _yaml
+                items = _yaml.safe_load(inbox_file.read_text()) or [] if inbox_file.exists() else []
+                failed = [i for i in items if isinstance(i, dict) and i.get("status") == "failed"]
+                failed.sort(key=lambda i: str(i.get("failed_at") or ""), reverse=True)
+                for item in failed[:limit]:
+                    log_tail = ""
+                    task_id = str(item.get("task") or item.get("task_id") or "")
+                    target = str(item.get("to") or item.get("target_agent") or "")
+                    if task_id and launcher_logs.is_dir():
+                        # Find the most recent log for this task+target
+                        safe_task = task_id.replace("/", "-")
+                        candidates = sorted(
+                            launcher_logs.glob(f"{safe_task}-{target}-*.log"),
+                            key=lambda p: p.stat().st_mtime, reverse=True,
+                        )
+                        if candidates:
+                            try:
+                                lines = candidates[0].read_text(encoding="utf-8", errors="replace").splitlines()
+                                log_tail = "\n".join(lines[-20:])
+                            except Exception:
+                                pass
+                    failures.append({
+                        "id": str(item.get("id", "")),
+                        "task": task_id,
+                        "to": target,
+                        "failed_at": str(item.get("failed_at") or ""),
+                        "failure_class": str(item.get("failure_class") or "unknown"),
+                        "failure_explain": str(item.get("failure_explain") or item.get("failed_reason") or ""),
+                        "retry_count": int(item.get("retry_count", 0) or 0),
+                        "max_retries": int(item.get("max_retries", 3) or 3),
+                        "log_tail": log_tail,
+                    })
+            except Exception as e:
+                self._json({"error": str(e), "failures": []}, 500)
+                return
+            self._json({"failures": failures, "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
             return
 
         if p == "/api/costs":
@@ -2880,7 +3014,19 @@ def main() -> int:
     Handler.label = project_label(project_dir)
     Handler.refresh_seconds = args.refresh_seconds
     Handler.scripts_dir = scripts_dir
-    Handler.auth_token = secrets.token_urlsafe(24)
+    # Persist the auth token so browser tabs survive daemon restarts.
+    # Token is regenerated only when the file is absent or unreadable.
+    _token_file = project_dir / ".superharness" / ".dashboard_auth_token"
+    try:
+        _stored = _token_file.read_text().strip()
+        Handler.auth_token = _stored if len(_stored) >= 16 else secrets.token_urlsafe(24)
+    except Exception:
+        Handler.auth_token = secrets.token_urlsafe(24)
+    try:
+        _token_file.write_text(Handler.auth_token)
+        _token_file.chmod(0o600)
+    except Exception:
+        pass
 
     port = args.port
     user_specified_port = "--port" in sys.argv
