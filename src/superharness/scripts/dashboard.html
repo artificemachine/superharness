@@ -29,7 +29,11 @@
     .inbox-detail { margin-top:10px; overflow-x:auto; }
     .inbox-detail table { width:100%; border-collapse:collapse; font-size:12px; }
     .inbox-detail th { text-align:left; color:var(--muted); border-bottom:1px solid var(--line); padding:4px 8px; }
-    .inbox-detail td { padding:4px 8px; border-bottom:1px solid var(--line); word-break:break-all; }
+    .inbox-detail td { padding:4px 8px; border-bottom:1px solid var(--line); overflow-wrap:break-word; color:var(--text); }
+    .inbox-detail td.col-task { min-width:200px; max-width:480px; white-space:normal; }
+    .inbox-detail td.col-id   { white-space:nowrap; font-size:10px; color:var(--muted); }
+    .inbox-detail td.col-to   { white-space:normal; }
+    .inbox-detail td.col-short { white-space:nowrap; }
     .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
     .task-row { display:flex; flex-direction:column; align-items:flex-start; padding:20px 0; border-bottom:1px solid var(--line); gap:12px; }
     .task-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
@@ -180,8 +184,7 @@
       <div id="ownerFilter" style="margin-bottom:8px;"></div>
       <div id="counts"></div>
       <div class="inbox-detail" id="inboxDetail" style="display:none">
-        <table><thead><tr><th>id</th><th>task</th><th>to</th><th>priority</th><th>launched_at</th><th>timer</th><th>reason</th><th></th></tr></thead>
-        <tbody id="inboxRows"></tbody></table>
+        <div id="inboxRows"></div>
       </div>
       <div class="actions">
         <button onclick="act('dispatch_print_codex')">Dispatch preview codex</button>
@@ -525,52 +528,94 @@ async function loadInboxDetail(status) {
     const discussions = (status === 'active' || status === 'all') ? ((latestStatus && latestStatus.active_discussions) || []) : [];
     for (const disc of discussions) {
       const participants = (disc.participants || []).join(', ');
-      const topic = (disc.topic || '').length > 60 ? disc.topic.slice(0, 60) + '…' : (disc.topic || '');
-      const badge = `<span style="background:var(--accent);color:#000;font-size:10px;padding:1px 5px;border-radius:3px;font-weight:700">discussion</span>`;
-      const roundBadge = `<span style="color:var(--muted);font-size:11px"> round ${disc.current_round||'?'}/${disc.max_rounds||'?'}</span>`;
-      const cancelBtn = `<button onclick="act('cancel_discussion:${disc.id}')" style="font-size:11px;padding:2px 6px;color:var(--bad)">Cancel</button>`;
-      const tr = document.createElement('tr');
-      tr.style.borderLeft = '3px solid var(--accent)';
-      tr.innerHTML = `<td>${disc.id||''}</td><td>${badge}${roundBadge} ${topic}</td><td>${participants}</td><td>—</td><td>${disc.created_at||''}</td><td>—</td><td><span style="color:var(--ok);font-size:11px">in progress</span></td><td>${cancelBtn}</td>`;
-      tbody.appendChild(tr);
+      const topic = disc.topic || disc.id || '';
+      const discBadge = `<span style="background:var(--accent);color:#000;font-size:10px;padding:1px 5px;border-radius:3px;font-weight:700">discussion</span>`;
+      const roundBadge = `<span class="pill" style="background:var(--btn);border-color:var(--ok);color:var(--ok);cursor:default">● in progress — round ${disc.current_round||'?'}/${disc.max_rounds||'?'}</span>`;
+      const cancelBtn = `<button onclick="act('cancel_discussion:${disc.id}')" class="bad">Cancel</button>`;
+      const row = document.createElement('div');
+      row.className = 'task-row';
+      row.style.borderLeft = '3px solid var(--accent)';
+      row.innerHTML = `
+        <div class="task-actions">
+          ${roundBadge}
+          ${cancelBtn}
+        </div>
+        <div class="task-meta">
+          <div class="task-desc-line">${discBadge} <span class="task-id">${disc.id||''}</span> ${topic}</div>
+          <div class="task-meta-line"><span>participants: ${participants}</span>${disc.created_at ? `<span>started: ${disc.created_at}</span>` : ''}</div>
+        </div>`;
+      tbody.appendChild(row);
     }
 
     if (!d.items.length && !discussions.length && tbody.children.length === 0) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = '<td colspan="8" style="color:var(--muted)">no items</td>';
-      tbody.appendChild(tr);
+      const empty = document.createElement('div');
+      empty.style.cssText = 'color:var(--muted);padding:12px 0;font-size:12px';
+      empty.textContent = 'no items';
+      tbody.appendChild(empty);
     }
     const now = new Date(d.now_utc);
     for (const item of d.items) {
-      let timer = '';
+      let timerText = '';
       const la = (item.launched_at || '').replace(/^'|'$/g, '');
       if (la) {
         const diff = Math.max(0, Math.floor((now - new Date(la)) / 1000));
         const h = Math.floor(diff / 3600);
         const m = Math.floor((diff % 3600) / 60);
         const s = diff % 60;
-        timer = h > 0 ? `${h}h${m}m` : m > 0 ? `${m}m${s}s` : `${s}s`;
+        timerText = h > 0 ? `${h}h${m}m` : m > 0 ? `${m}m${s}s` : `${s}s`;
       }
-      let btn = '';
       const st = item.status || '';
       const eid = (item.id || '').replace(/'/g, "\\\\'");
-      if (st === 'pending') btn = `<button onclick="act('pause_item:${eid}')" style="font-size:11px;padding:2px 6px">Pause</button>`;
-      else if (st === 'paused') btn = `<button onclick="act('resume_item:${eid}')" style="font-size:11px;padding:2px 6px">Resume</button>`;
-      else if (st === 'launched' || st === 'running') btn = `<button onclick="act('stop_item:${eid}')" style="font-size:11px;padding:2px 6px;color:var(--bad)">Stop</button>`;
-      else if (st === 'stale' || st === 'failed' || st === 'stopped') btn = `<button onclick="act('retry_item:${eid}')" style="font-size:11px;padding:2px 6px;color:var(--warn)">Retry</button>`;
-      const removeBtn = `<button onclick="removeItem('${eid}')" style="font-size:11px;padding:2px 6px;color:var(--bad)">Remove</button>`;
       const taskEsc = (item.task||'').replace(/'/g, "\\\\'");
       const agentEsc = (item.to||'').replace(/'/g, "\\\\'");
-      const viewBtn = `<button onclick="viewTaskReport('${taskEsc}','${agentEsc}')" style="font-size:11px;padding:2px 6px">View</button>`;
-      const actionCell = `${viewBtn} ${btn ? btn + ' ' : ''}${removeBtn}`;
-      const tr = document.createElement('tr');
       const reason = item.pause_reason || item.failed_reason || item.stale_reason || item.stopped_reason || '';
-      const itemJson = JSON.stringify(item).replace(/'/g, '&#39;').replace(/"/g, '&quot;');
-      const reasonText = reason.replace(/_/g, ' ');
-      const reasonCell = reason ? `<span style="color:var(--warn);font-size:11px;cursor:pointer;text-decoration:underline dotted" title="Click for details" onclick="showInboxReason(JSON.parse(this.closest('tr').dataset.item))">${reasonText.length > 40 ? reasonText.slice(0,40) + '…' : reasonText}</span>` : (st !== 'done' ? `<span style="color:var(--muted);font-size:11px;cursor:pointer" onclick="showInboxReason(JSON.parse(this.closest('tr').dataset.item))">details</span>` : '');
-      tr.dataset.item = JSON.stringify(item);
-      tr.innerHTML = `<td>${item.id||''}</td><td>${item.task||''}</td><td>${item.to||''}</td><td>${item.priority||''}</td><td>${la}</td><td>${timer}</td><td>${reasonCell}</td><td>${actionCell}</td>`;
-      tbody.appendChild(tr);
+
+      // Status pill
+      const stColors = {pending:'var(--muted)',launched:'var(--ok)',running:'var(--ok)',paused:'var(--warn)',stale:'var(--warn)',failed:'var(--bad)',stopped:'var(--bad)',done:'var(--muted)'};
+      const stColor = stColors[st] || 'var(--muted)';
+      const stIcon = {pending:'○',launched:'⚡',running:'🔄',paused:'⏸',stale:'⚠',failed:'✗',stopped:'■',done:'✓'}[st] || '○';
+      const statusPill = `<span class="pill" style="background:var(--btn);border-color:${stColor};color:${stColor};cursor:default">${stIcon} ${st}</span>`;
+
+      // Hint
+      let hint = '';
+      if (st === 'paused') hint = 'dispatch paused — click Resume to retry';
+      else if (st === 'failed') hint = 'dispatch failed — click Retry to re-dispatch';
+      else if (st === 'stale') hint = 'stale — click Retry to re-dispatch';
+      const hintHtml = hint ? `<div style="width:100%;color:var(--warn);font-size:11px;font-weight:bold;margin-bottom:6px;letter-spacing:0.02em">ℹ ${hint}</div>` : '';
+
+      // Action buttons
+      const viewBtn = `<button onclick="viewTaskReport('${taskEsc}','${agentEsc}')">View Report</button>`;
+      let actionBtn = '';
+      if (st === 'pending') actionBtn = `<button onclick="act('pause_item:${eid}')">Pause</button>`;
+      else if (st === 'paused') actionBtn = `<button onclick="act('resume_item:${eid}')">Resume</button>`;
+      else if (st === 'launched' || st === 'running') actionBtn = `<button onclick="act('stop_item:${eid}')" class="bad">Stop</button>`;
+      else if (st === 'stale' || st === 'failed' || st === 'stopped') actionBtn = `<button onclick="act('retry_item:${eid}')" class="warn">Retry</button>`;
+      const removeBtn = `<button onclick="removeItem('${eid}')" class="bad">Remove</button>`;
+      const reasonBtn = reason ? `<button onclick="showInboxReason(JSON.parse(this.closest('.task-row').dataset.item))" class="warn" title="${reason.replace(/"/g,'&quot;')}">Reason</button>` : '';
+
+      const row = document.createElement('div');
+      row.className = 'task-row';
+      row.dataset.item = JSON.stringify(item);
+      const metaLine = [
+        item.to ? `to: ${item.to}` : '',
+        la ? `launched: ${la}` : '',
+        timerText ? `timer: ${timerText}` : '',
+        item.priority ? `priority: ${item.priority}` : '',
+      ].filter(Boolean).join('  ·  ');
+      row.innerHTML = `
+        <div class="task-actions">
+          ${hintHtml}
+          ${statusPill}
+          ${viewBtn}
+          ${actionBtn}
+          ${reasonBtn}
+          ${removeBtn}
+          <div class="task-status-footer" style="width:100%;margin-top:4px">${metaLine}</div>
+        </div>
+        <div class="task-meta">
+          <div class="task-desc-line"><span class="task-id">${item.id||''}</span> ${item.task||''}</div>
+        </div>`;
+      tbody.appendChild(row);
     }
     document.getElementById('inboxDetail').style.display = 'block';
   } catch(e) {}
