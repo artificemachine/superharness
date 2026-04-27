@@ -136,3 +136,4 @@
 - 2026-04-27: feat(engine): iter 3a (auto-mode plan) — state_writer skeleton. Unified write API (set_task_status, set_inbox_status, upsert_handoff) with YAML writes and best-effort SQLite mirror. Foundation contract for iter 3b-3e SQLite-as-SoT migration
 - 2026-04-27: chore(release): bump version 1.37.5 → 1.38.0 (feat: auto-mode-gap-plan iters 1-8 + 3a, dashboard failures panel, lifecycle reconciler, failure classifier, plan/report gates, review escalation, state_writer skeleton)
 - 2026-04-27: docs(handoff): update HANDOFF.md for v1.38.0 — auto-mode-gap-plan complete (iters 0-8+3a), contract status, next actions
+- 2026-04-27: fix(dispatch): prepend full binary paths to PATH in delegate-to-claude.sh and delegate-to-gemini.sh so launchd's stripped environment can find claude and gemini
