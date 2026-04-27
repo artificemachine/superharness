@@ -1949,6 +1949,11 @@ class Handler(BaseHTTPRequestHandler):
                     return ({"error": f"task '{task_id}' not found"}, 404)
                 with open(contract_file, "w") as _f:
                     _yaml.safe_dump(_contract, _f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+                try:
+                    from superharness.engine.state_writer import _mirror_task_to_sqlite
+                    _mirror_task_to_sqlite(str(self.project_dir), task_id, next((t.get("status","") for t in _tasks if t.get("id")==task_id), ""))
+                except Exception:
+                    pass
                 return {"ok": True, "task": task_id, "new_owner": new_owner}, 200
             except Exception as exc:
                 return ({"error": str(exc)}, 500)
@@ -2809,8 +2814,20 @@ class Handler(BaseHTTPRequestHandler):
                     import yaml
                     doc = yaml.safe_load(contract.read_text()) or {}
                     tasks = doc.get("tasks") or []
+                    removed_tasks = [t for t in tasks if isinstance(t, dict) and t.get("owner") == owner]
                     doc["tasks"] = [t for t in tasks if not (isinstance(t, dict) and t.get("owner") == owner)]
                     contract.write_text(yaml.dump(doc, default_flow_style=False, sort_keys=False))
+                    try:
+                        import sqlite3 as _sqlite3
+                        _db_path = self.project_dir / ".superharness" / "state.sqlite3"
+                        if _db_path.exists():
+                            _conn = _sqlite3.connect(str(_db_path))
+                            for _rt in removed_tasks:
+                                _conn.execute("DELETE FROM tasks WHERE id=?", (_rt.get("id",""),))
+                            _conn.commit()
+                            _conn.close()
+                    except Exception:
+                        pass
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
                     return
