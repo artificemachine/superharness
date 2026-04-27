@@ -146,3 +146,4 @@
 - 2026-04-27: fix(dispatch): remove printf pipe from delegate-to-gemini.sh — pipe was sending EOF to gemini immediately after trust confirmation, causing silent exit before task execution; redirect stdin from /dev/null instead
 - 2026-04-27: feat(dashboard): live log stream — View Report auto-stops when task done/failed, warns after 60s no output, close button clears interval, launched status now activates live mode, 200 lines (was 100)
 - 2026-04-27: chore(release): bump version 1.39.1 → 1.40.0 (feat: dashboard report_ready badge, live log stream auto-stop/stale/close-cleanup; fix: gemini dispatch stdin EOF, __init__.py version sync)
+- 2026-04-27: fix(gemini): rewrite GEMINI.md with full superharness protocol — task discovery, lifecycle, TDD rules, commands reference; Gemini now self-orients without a --prompt arg
