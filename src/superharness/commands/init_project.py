@@ -217,7 +217,7 @@ def main(argv: list[str] | None = None) -> None:
     if opts.dry_run:
         print("[dry-run] Would create: .superharness/{handoffs,contracts,review-lenses}")
         print("[dry-run] Would create: .superharness/{failures.yaml,decisions.yaml,ledger.md,contract.yaml}")
-        print("[dry-run] Would create if missing: CLAUDE.md, AGENTS.md")
+        print("[dry-run] Would create if missing: CLAUDE.md, AGENTS.md, GEMINI.md")
         return
 
     harness = Path(project_dir) / ".superharness"
@@ -376,6 +376,26 @@ def main(argv: list[str] | None = None) -> None:
     else:
         print("Skipped: AGENTS.md (user-owned — use --force to overwrite)")
 
+    # GEMINI.md
+    gemini_dst = Path(project_dir) / "GEMINI.md"
+    if not gemini_dst.exists() or _overwrite_user_file:
+        gemini_tmpl = template_dir / "GEMINI.md.template"
+        if gemini_tmpl.is_file():
+            _render_template(gemini_tmpl, gemini_dst, project_name, tech_stack, status, project_dir, today)
+        else:
+            gemini_dst.write_text(
+                f"# Gemini Agent — {project_name}\n\n"
+                f"You are `gemini-cli`, an agent in the superharness multi-agent framework.\n"
+                f"Read `.superharness/contract.yaml` to find your task (owner: gemini-cli).\n"
+                f"Follow the lifecycle: todo → plan_proposed → plan_approved → in_progress → report_ready.\n"
+                f"Use `shux` / `superharness` CLI to advance task status and write handoffs.\n"
+                f"Never close a task — only the operator runs `shux close`.\n",
+                encoding="utf-8"
+            )
+        print("Refreshed: GEMINI.md" if opts.refresh else "Created: GEMINI.md")
+    else:
+        print("Skipped: GEMINI.md (user-owned — use --force to overwrite)")
+
     # SOUL.md
     soul_dst = Path(project_dir) / "SOUL.md"
     if not soul_dst.exists() or _overwrite_user_file:
@@ -470,6 +490,11 @@ def main(argv: list[str] | None = None) -> None:
     print("  shux status            ← dashboard")
     print("  shux recall <keywords> ← search past work")
     print("  shux dashboard         ← open browser dashboard")
+    print()
+    print("Enhance agent orientation files with native /init commands:")
+    print("  Claude Code: /init     ← rewrites CLAUDE.md with codebase analysis")
+    print("  Codex CLI:   /init     ← rewrites AGENTS.md with project context")
+    print("  Gemini CLI:  /init     ← rewrites GEMINI.md with project analysis")
     print()
     print("Next steps (terminal):")
     print("  superharness doctor --project .   ← verify setup")
