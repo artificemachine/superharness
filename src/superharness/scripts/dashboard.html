@@ -633,6 +633,11 @@ async function loadInboxDetail(status) {
       const agentEsc = agent.replace(/'/g, "\\\\'");
       const reason   = item.pause_reason || item.failed_reason || item.stale_reason || item.stopped_reason || '';
 
+      // Join contract task status so operator sees when review is needed
+      const contractTask = ((latestStatus && latestStatus.contract_tasks) || []).find(t => t.id === taskId);
+      const contractStatus = contractTask ? contractTask.status : '';
+      const needsReview = contractStatus === 'report_ready';
+
       let timerText = '';
       const la = (item.launched_at || '').replace(/^'|'$/g, '');
       const ca = (item.created_at || '').replace(/^'|'$/g, '');
@@ -657,14 +662,19 @@ async function loadInboxDetail(status) {
       else if (['stale','failed','stopped'].includes(st)) actionBtn = `<button onclick="act('retry_item:${eid}')" class="warn">Retry</button>`;
 
       const tr = document.createElement('tr');
-      tr.style.cssText = 'border-bottom:1px solid var(--line)';
+      tr.style.cssText = needsReview
+        ? 'border-bottom:1px solid var(--line);background:rgba(210,153,34,0.08)'
+        : 'border-bottom:1px solid var(--line)';
       tr.dataset.item = JSON.stringify(item);
       const reasonBtn = reason ? `<button onclick="showInboxReason(this.closest('tr').dataset.item)" class="warn" title="${reason.replace(/"/g,'&quot;')}">Reason</button>` : '';
       const laDisplay = la ? la.replace('T',' ').slice(0,16) : '';
+      const reviewBadge = needsReview
+        ? `<div style="margin-top:3px;font-size:10px;color:var(--warn);font-weight:600">&#128203; report ready — needs review</div>`
+        : '';
       tr.innerHTML = `
         <td style="padding:6px 8px;white-space:nowrap"><span style="color:${stColor}">${stIcon} ${st}</span></td>
         <td style="padding:6px 8px;font-family:monospace;font-size:11px;color:var(--muted)">${item.id||''}</td>
-        <td style="padding:6px 8px;font-size:11px;min-width:160px;word-break:break-word;white-space:normal">${taskId}</td>
+        <td style="padding:6px 8px;font-size:11px;min-width:160px;word-break:break-word;white-space:normal">${taskId}${reviewBadge}</td>
         <td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${agent}</td>
         <td style="padding:6px 8px;text-align:right;color:var(--muted)">${item.priority||''}</td>
         <td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${laDisplay}</td>
