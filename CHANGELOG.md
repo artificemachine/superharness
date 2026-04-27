@@ -144,3 +144,4 @@
 - 2026-04-27: fix(version): sync __init__.py __version__ with pyproject.toml (1.39.0 → 1.39.1 patch)
 - 2026-04-27: fix(dashboard): active work queue shows "report ready — needs review" badge when contract task status is report_ready, row highlighted amber
 - 2026-04-27: fix(dispatch): remove printf pipe from delegate-to-gemini.sh — pipe was sending EOF to gemini immediately after trust confirmation, causing silent exit before task execution; redirect stdin from /dev/null instead
+- 2026-04-27: feat(dashboard): live log stream — View Report auto-stops when task done/failed, warns after 60s no output, close button clears interval, launched status now activates live mode, 200 lines (was 100)
