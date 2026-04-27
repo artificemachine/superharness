@@ -148,3 +148,4 @@
 - 2026-04-27: chore(release): bump version 1.39.1 → 1.40.0 (feat: dashboard report_ready badge, live log stream auto-stop/stale/close-cleanup; fix: gemini dispatch stdin EOF, __init__.py version sync)
 - 2026-04-27: fix(gemini): rewrite GEMINI.md with full superharness protocol — task discovery, lifecycle, TDD rules, commands reference; Gemini now self-orients without a --prompt arg
 - 2026-04-27: feat(init): shux init now scaffolds GEMINI.md from template (skipped if file exists, --force to overwrite); preflight validation in delegate-to-gemini.sh fails early with actionable error when GEMINI.md missing or incomplete; bump 1.40.0 → 1.41.0
+- 2026-04-28: feat(dashboard): startup validates version (auto-restarts stale process on mismatch) and watcher/auto-dispatch status; version printed on start; bump 1.41.0 → 1.42.0
