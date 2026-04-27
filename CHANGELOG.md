@@ -149,3 +149,5 @@
 - 2026-04-27: fix(gemini): rewrite GEMINI.md with full superharness protocol — task discovery, lifecycle, TDD rules, commands reference; Gemini now self-orients without a --prompt arg
 - 2026-04-27: feat(init): shux init now scaffolds GEMINI.md from template (skipped if file exists, --force to overwrite); preflight validation in delegate-to-gemini.sh fails early with actionable error when GEMINI.md missing or incomplete; bump 1.40.0 → 1.41.0
 - 2026-04-28: feat(dashboard): startup validates version (auto-restarts stale process on mismatch) and watcher/auto-dispatch status; version printed on start; bump 1.41.0 → 1.42.0
+- 2026-04-28: fix(dashboard): guard now detects dashboards launched via -m superharness.scripts.dashboard-ui (module form), not just dashboard-ui.py script path — prevents stale old-version process surviving upgrade
+- 2026-04-28: chore: bump 1.42.0 → 1.42.1 (fix dashboard guard module-form detection)
