@@ -147,3 +147,4 @@
 - 2026-04-27: feat(dashboard): live log stream — View Report auto-stops when task done/failed, warns after 60s no output, close button clears interval, launched status now activates live mode, 200 lines (was 100)
 - 2026-04-27: chore(release): bump version 1.39.1 → 1.40.0 (feat: dashboard report_ready badge, live log stream auto-stop/stale/close-cleanup; fix: gemini dispatch stdin EOF, __init__.py version sync)
 - 2026-04-27: fix(gemini): rewrite GEMINI.md with full superharness protocol — task discovery, lifecycle, TDD rules, commands reference; Gemini now self-orients without a --prompt arg
+- 2026-04-27: feat(init): shux init now scaffolds GEMINI.md from template (skipped if file exists, --force to overwrite); preflight validation in delegate-to-gemini.sh fails early with actionable error when GEMINI.md missing or incomplete; bump 1.40.0 → 1.41.0
