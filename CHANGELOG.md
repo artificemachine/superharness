@@ -138,3 +138,4 @@
 - 2026-04-27: docs(handoff): update HANDOFF.md for v1.38.0 — auto-mode-gap-plan complete (iters 0-8+3a), contract status, next actions
 - 2026-04-27: fix(dispatch): prepend full binary paths to PATH in delegate-to-claude.sh and delegate-to-gemini.sh so launchd's stripped environment can find claude and gemini
 - 2026-04-27: fix(dispatch): re-apply bash 3.2 safe array expansion in delegate-to-claude.sh (set -u + empty CLAUDE_ARGS → unbound variable)
+- 2026-04-27: fix(dashboard): wrap topic/task column text in active work queue (remove nowrap+ellipsis, show full text)

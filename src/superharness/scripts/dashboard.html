@@ -613,7 +613,7 @@ async function loadInboxDetail(status) {
       tr.innerHTML = `
         <td style="padding:6px 8px;white-space:nowrap">${discBadge} <span style="color:var(--ok);font-size:11px">● round ${roundLabel}</span></td>
         <td style="padding:6px 8px;font-family:monospace;font-size:11px;color:var(--muted)">${disc.id||''}</td>
-        <td style="padding:6px 8px;font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${topic}">${topic}</td>
+        <td style="padding:6px 8px;font-size:11px;min-width:160px;word-break:break-word;white-space:normal">${topic}</td>
         <td style="padding:6px 8px;font-size:11px;color:var(--muted)">${participants}</td>
         <td style="padding:6px 8px;text-align:right;color:var(--muted)">${roundLabel}</td>
         <td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${started}</td>
@@ -664,7 +664,7 @@ async function loadInboxDetail(status) {
       tr.innerHTML = `
         <td style="padding:6px 8px;white-space:nowrap"><span style="color:${stColor}">${stIcon} ${st}</span></td>
         <td style="padding:6px 8px;font-family:monospace;font-size:11px;color:var(--muted)">${item.id||''}</td>
-        <td style="padding:6px 8px;font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${taskId}">${taskId}</td>
+        <td style="padding:6px 8px;font-size:11px;min-width:160px;word-break:break-word;white-space:normal">${taskId}</td>
         <td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${agent}</td>
         <td style="padding:6px 8px;text-align:right;color:var(--muted)">${item.priority||''}</td>
         <td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${laDisplay}</td>
