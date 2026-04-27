@@ -91,10 +91,22 @@ def get_dashboard_status_snapshot(conn: sqlite3.Connection, project_dir: str) ->
     failed_inbox_tasks = [i.task_id for i in all_inbox if i.status in ("failed", "stale")]
     done_inbox_tasks = [i.task_id for i in all_inbox if i.status == "done"]
     
-    # Board columns
-    board_columns: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    # Board columns — map raw statuses to the 6 display columns
+    _STATUS_TO_COL = {
+        "todo": "todo",
+        "plan_proposed": "plan", "plan_approved": "plan",
+        "in_progress": "active", "launched": "active", "running": "active",
+        "report_ready": "review", "review_requested": "review",
+        "review_passed": "review", "review_failed": "review",
+        "done": "done", "failed": "done", "archived": "done",
+        "stopped": "stopped",
+    }
+    board_columns: dict[str, list[dict[str, Any]]] = {
+        "todo": [], "plan": [], "active": [], "review": [], "done": [], "stopped": []
+    }
     for t in tasks_as_dict:
-        board_columns[t["status"]].append(t)
+        col = _STATUS_TO_COL.get(t["status"], "todo")
+        board_columns[col].append(t)
         
     # Review queue
     review_queue = [t for t in tasks_as_dict if t["status"] in {"review_requested", "review_passed", "review_failed"}]

@@ -8,9 +8,9 @@ model_map:
     standard: gpt-5.3-codex
     max: gpt-5.4
   gemini-cli:
-    mini: flash
-    standard: pro
-    max: ultra
+    mini: gemini-2.0-flash
+    standard: gemini-2.0-pro
+    max: gemini-ultra
 
 pricing:
   claude-opus-4-7:
@@ -28,12 +28,12 @@ pricing:
   claude-haiku-4-5-20251001:
     input: 0.25
     output: 1.25
-  flash:
+  gemini-2.0-flash:
     input: 0.10
     output: 0.40
-  pro:
+  gemini-2.0-pro:
     input: 1.25
     output: 5.00
-  ultra:
+  gemini-ultra:
     input: 15.00
     output: 75.00
