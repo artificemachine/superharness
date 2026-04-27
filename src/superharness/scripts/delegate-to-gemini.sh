@@ -100,7 +100,7 @@ if [[ ! -f "$_gemini_md" ]]; then
   exit 1
 fi
 _missing_sections=()
-for _pattern in "contract.yaml" "report_ready" "superharness\|shux"; do
+for _pattern in "contract.yaml" "report_ready" "superharness|shux"; do
   if ! grep -qE "$_pattern" "$_gemini_md"; then
     _missing_sections+=("$_pattern")
   fi
