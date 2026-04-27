@@ -33,15 +33,15 @@ class Operator:
         self.processes: dict[str, subprocess.Popen] = {}
         self._stopping = False
 
-    def start_stack(self, dashboard_port: int = 8787):
+    def start_stack(self, dashboard_port: int = 8787, no_open: bool = False):
         """Start the full Superharness stack."""
         from superharness.engine.trace import trace_event
-        
+
         # Patch: Try to reclaim the port if it is held by a stale dashboard FROM THIS PROJECT
         self._reclaim_port_if_zombie(dashboard_port)
-        
+
         actual_port = self._find_available_port(dashboard_port)
-        
+
         if actual_port != dashboard_port:
             trace_event(self.project_dir, "port_arbitration", {
                 "requested": dashboard_port,
@@ -50,7 +50,7 @@ class Operator:
             })
 
         self._spawn_watcher()
-        self._spawn_dashboard(actual_port)
+        self._spawn_dashboard(actual_port, no_open=no_open)
         self._write_daemon_info(actual_port)
 
     def _reclaim_port_if_zombie(self, port: int):
@@ -78,6 +78,9 @@ class Operator:
         port = start_port
         while port < start_port + 100:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                # SO_REUSEADDR lets us see through TIME_WAIT so a recently-killed
+                # dashboard on this port doesn't cause us to skip to the next one.
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 try:
                     s.bind(("127.0.0.1", port))
                     return port
@@ -108,32 +111,52 @@ class Operator:
             cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
         )
 
-    def _spawn_dashboard(self, port: int):
+    def _spawn_dashboard(self, port: int, no_open: bool = False):
         """Launch the dashboard UI."""
         cmd = [
             sys.executable, "-m", "superharness.scripts.dashboard-ui",
             "--port", str(port),
             "--project", str(self.project_dir)
         ]
+        if no_open:
+            cmd.append("--no-open")
         self.processes["dashboard"] = subprocess.Popen(
             cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
         )
 
+    @staticmethod
+    def _is_pid_alive(pid: int) -> bool:
+        """Check if a process is alive without waiting on it (safe from forked child)."""
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True  # exists, no permission to signal
+
     def monitor_and_recover(self, poll_interval: int = 5):
-        """Loop forever, restarting any crashed components."""
+        """Loop forever, restarting any crashed components.
+
+        Runs in the MAIN process (not forked), so proc.poll() is safe — it reaps
+        zombies via os.waitpid and avoids false-alive readings from zombie entries.
+        The watcher is intentionally one-shot (no --foreground), so it exits after
+        every tick; the monitor is what keeps it cycling.
+        """
         from superharness.engine.trace import trace_event
         try:
             while not self._stopping:
                 for name, proc in list(self.processes.items()):
                     if proc.poll() is not None:
-                        exit_code = proc.returncode
                         trace_event(self.project_dir, "process_recovery", {
-                            "component": name, "exit_code": exit_code, "action": "restart"
+                            "component": name, "pid": proc.pid,
+                            "exit_code": proc.returncode, "action": "restart"
                         })
-                        if name == "watcher": self._spawn_watcher()
-                        elif name == "dashboard": 
-                            # Re-read port from metadata if dashboard crashed
-                            self._spawn_dashboard(8787)
+                        if name == "watcher":
+                            self._spawn_watcher()
+                        elif name == "dashboard":
+                            port = self._find_available_port(8787)
+                            self._spawn_dashboard(port, no_open=True)
                 time.sleep(poll_interval)
         except KeyboardInterrupt:
             self.stop_all()
