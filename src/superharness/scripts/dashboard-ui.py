@@ -2436,7 +2436,7 @@ class Handler(BaseHTTPRequestHandler):
                 from superharness.engine import inbox_dao
                 items = [asdict(i) for i in inbox_dao.get_all(conn, status=status_filter or None if status_filter != "active" else None)]
                 if status_filter == "active":
-                    _ACTIVE = {"pending", "launched", "running", "paused"}
+                    _ACTIVE = {"pending", "launched", "running"}
                     items = [i for i in items if i.get("status") in _ACTIVE]
                 if owner_filter:
                     items = [i for i in items if i.get("target_agent") in owner_filter]
