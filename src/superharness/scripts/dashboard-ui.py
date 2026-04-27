@@ -2989,7 +2989,13 @@ def main() -> int:
         _ps = _sp.run(["ps", "ax", "-o", "pid=,args="], capture_output=True, text=True).stdout
         for _line in _ps.splitlines():
             _line = _line.strip()
-            if "dashboard-ui.py" not in _line and "monitor-ui.py" not in _line:
+            _is_dash = (
+                "dashboard-ui.py" in _line
+                or "monitor-ui.py" in _line
+                or "superharness.scripts.dashboard-ui" in _line
+                or "superharness.scripts.monitor-ui" in _line
+            )
+            if not _is_dash:
                 continue
             _parts = _line.split()
             try:
