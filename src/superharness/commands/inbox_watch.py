@@ -289,7 +289,7 @@ def _reconcile_paused_dead_pids(inbox: list) -> bool:
     Returns True if any item was changed.
     Called on every watcher tick so dead-pid lanes are unblocked within one interval.
     Only acts on items with status=paused AND a recorded pid.
-    Items without a pid are left alone (ambiguous — may be paused by operator, not by crash).
+    Items without a pid are left alone, handled by lifecycle_rules.reconcile_lifecycle instead.
     """
     changed = False
     for item in inbox:
@@ -549,6 +549,9 @@ def auto_enqueue_todo(project_dir: str) -> int:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     new_item_ids: set[str] = set()
 
+    # Build a set of archived parent task IDs so subtasks can be skipped.
+    archived_ids = {str(t.get("id", "")) for t in tasks if isinstance(t, dict) and t.get("status") == "archived"}
+
     for task in tasks:
         if not isinstance(task, dict):
             continue
@@ -558,6 +561,12 @@ def auto_enqueue_todo(project_dir: str) -> int:
         task_id = str(task.get("id", ""))
         if not task_id:
             continue
+
+        # Skip subtasks whose parent is archived (e.g. verify.foo.1 when verify.foo is archived).
+        parent_id = ".".join(task_id.rsplit(".", 1)[:-1]) if "." in task_id else ""
+        if parent_id and parent_id in archived_ids:
+            continue
+
         if task_id in active_tasks:
             continue
 
@@ -865,8 +874,34 @@ def _auto_close_report_ready(project_dir: str) -> None:
 
         if not handoff:
             continue
-        if not handoff.get("tests_passed"):
+        # Require tests_passed only when auto_close was inferred from autonomy,
+        # not when explicitly set — explicit opt-in trusts the operator.
+        auto_close_explicit = "auto_close" in profile
+        if not handoff.get("tests_passed") and not auto_close_explicit:
             continue
+
+        # iter 6: report verification gate. Stamps verification_failures on
+        # the task and routes per suggested_action.
+        try:
+            from superharness.engine.report_verifier import verify_report as _verify_report
+            verification = _verify_report(handoff, task, project_dir)
+            if not verification.passed:
+                # Stamp verification_failures so dashboard surfaces them
+                task["verification_failures"] = verification.failures
+                # Persist
+                try:
+                    with open(contract_file, "w", encoding="utf-8") as _f:
+                        _yaml.dump(doc, _f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+                except Exception:
+                    pass
+                if verification.suggested_action == "fail":
+                    print(f"auto-close: task '{task_id}' failed verification: " + "; ".join(verification.failures))
+                    # Leave for operator (do not auto-fail to avoid surprise)
+                else:
+                    print(f"auto-close: task '{task_id}' needs operator review: " + "; ".join(verification.failures))
+                continue
+        except Exception as e:
+            print(f"Warning: report verification skipped: {e}", file=sys.stderr)
 
         # NEW: Auto-review logic (Human-in-the-loop bypass)
         budget_cfg = profile.get("budget", {})
@@ -943,6 +978,14 @@ def _auto_retry_failed(project_dir: str) -> None:
                 if not isinstance(item, dict):
                     continue
                 if item.get("status") != "failed":
+                    continue
+                # Skip items with a manual pause reason — they were intentionally
+                # stopped and should not be auto-retried.
+                if item.get("reason"):
+                    continue
+                # Skip items the failure_classifier flagged as not retryable
+                # (permanent_block, quota, no_op).
+                if item.get("failure_class") in ("permanent_block", "quota", "no_op"):
                     continue
                 retry_count = int(item.get("retry_count", 0) or 0)
                 max_retries = int(item.get("max_retries", 3) or 3)
@@ -1202,6 +1245,14 @@ def _run_scripts(
     except Exception as e:
         print(f"Warning: auto_close_report_ready failed: {e}", file=sys.stderr)
 
+    # Sync cancelled/closed discussions back to contract task status
+    try:
+        _reconcile_discussion_contract(project_dir)
+    except Exception as e:
+        print(f"Warning: discussion contract reconciliation failed: {e}", file=sys.stderr)
+
+    # review_requested timeout is handled by reconcile_lifecycle (above, after dispatch reconciliation)
+
     # ship_on_complete guard: mark failed when report_ready has no PR URL
     try:
         _check_ship_on_complete_tasks(project_dir)
@@ -1226,7 +1277,7 @@ def _run_scripts(
     except Exception as e:
         print(f"Warning: zombie reconciliation failed: {e}", file=sys.stderr)
 
-    # Reconcile paused items whose launcher pid is dead (Finding #7)
+    # Reconcile paused dead-pid items (orthogonal to lifecycle timeouts)
     try:
         import yaml as _yaml
         from superharness.engine.inbox import _inbox_lock
@@ -1239,7 +1290,23 @@ def _run_scripts(
                     with open(_inbox_file, "w", encoding="utf-8") as _f:
                         _yaml.dump(_inbox_items, _f)
     except Exception as e:
-        print(f"Warning: paused-pid reconciliation failed: {e}", file=sys.stderr)
+        print(f"Warning: paused dead-pid reconciliation failed: {e}", file=sys.stderr)
+
+    # iter 7: review escalation — runs before lifecycle reconciler so chain
+    # advancement takes priority over the simple revert behavior.
+    try:
+        from superharness.engine.review_escalation import escalate_stale_reviews
+        escalate_stale_reviews(project_dir)
+    except Exception as e:
+        print(f"Warning: review escalation failed: {e}", file=sys.stderr)
+
+    # Unified lifecycle reconciler (paused timeout, in_progress timeout, and
+    # any review_requested without a review_chain that the escalation pass left)
+    try:
+        from superharness.engine.lifecycle_rules import reconcile_lifecycle
+        reconcile_lifecycle(project_dir)
+    except Exception as e:
+        print(f"Warning: lifecycle reconciliation failed: {e}", file=sys.stderr)
 
     # Inbox GC: reconcile stale items against contract
     try:
@@ -1385,6 +1452,67 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 1200) -> int:
                 _yaml.dump(items, f, default_flow_style=False, sort_keys=True)
 
     return reconciled
+
+
+def _reconcile_discussion_contract(project_dir: str) -> int:
+    """Sync discussion terminal states (cancelled/closed) back to contract tasks.
+
+    When a discussion is cancelled or closed via CLI (not dashboard), the contract
+    task linked to it stays in_progress. This reconciler catches that gap.
+    Returns count of tasks updated.
+    """
+    import yaml as _yaml
+
+    disc_base = os.path.join(project_dir, ".superharness", "discussions")
+    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
+    if not os.path.isdir(disc_base) or not os.path.isfile(contract_file):
+        return 0
+
+    terminal = {"cancelled", "closed", "consensus", "deadlock", "failed"}
+
+    # Collect discussion IDs whose state is terminal
+    terminal_disc_ids: set[str] = set()
+    for disc_id in os.listdir(disc_base):
+        state_path = os.path.join(disc_base, disc_id, "state.yaml")
+        if not os.path.isfile(state_path):
+            continue
+        try:
+            state = _yaml.safe_load(open(state_path, encoding="utf-8").read()) or {}
+            if state.get("status") in terminal:
+                terminal_disc_ids.add(disc_id)
+        except Exception:
+            continue
+
+    if not terminal_disc_ids:
+        return 0
+
+    try:
+        doc = _yaml.safe_load(open(contract_file, encoding="utf-8").read()) or {}
+    except Exception:
+        return 0
+
+    updated = 0
+    for task in doc.get("tasks") or []:
+        if not isinstance(task, dict) or task.get("status") != "in_progress":
+            continue
+        tid = str(task.get("id", ""))
+        # Match tasks whose ID starts with a terminal discussion ID (e.g. disc-id/round-1)
+        for disc_id in terminal_disc_ids:
+            if tid.startswith(disc_id + "/") or tid == disc_id:
+                task["status"] = "archived"
+                updated += 1
+                print(f"discussion-reconcile: {tid} → archived (discussion {disc_id} is terminal)")
+                break
+
+    if updated:
+        try:
+            with open(contract_file, "w", encoding="utf-8") as _f:
+                _yaml.dump(doc, _f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        except Exception as e:
+            print(f"Warning: failed to write contract after discussion reconcile: {e}", file=sys.stderr)
+            return 0
+
+    return updated
 
 
 def _find_scripts_dir() -> str:
