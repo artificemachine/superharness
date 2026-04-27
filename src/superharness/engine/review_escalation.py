@@ -115,6 +115,10 @@ def escalate_stale_reviews(project_dir: str, timeout_minutes: int | None = None)
         try:
             with open(contract_file, "w", encoding="utf-8") as f:
                 yaml.dump(doc, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+            from superharness.engine.state_writer import mirror_task_dict
+            for task in tasks:
+                if isinstance(task, dict):
+                    mirror_task_dict(project_dir, task)
         except Exception as e:
             import sys
             print(f"review-escalation: failed to write contract: {e}", file=sys.stderr)

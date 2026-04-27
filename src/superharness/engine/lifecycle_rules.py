@@ -170,6 +170,10 @@ def _scan_inbox(project_dir: str, rules: list[LifecycleRule], profile: dict) -> 
         try:
             with open(inbox_file, "w", encoding="utf-8") as f:
                 yaml.dump(items, f, default_flow_style=False, allow_unicode=True)
+            from superharness.engine.state_writer import mirror_inbox_item_dict
+            for item in items:
+                if isinstance(item, dict):
+                    mirror_inbox_item_dict(project_dir, item)
         except Exception as e:
             import sys
             print(f"lifecycle: failed to write inbox: {e}", file=sys.stderr)
@@ -221,6 +225,10 @@ def _scan_contract(project_dir: str, rules: list[LifecycleRule], profile: dict) 
         try:
             with open(contract_file, "w", encoding="utf-8") as f:
                 yaml.dump(doc, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+            from superharness.engine.state_writer import mirror_task_dict
+            for task in tasks:
+                if isinstance(task, dict):
+                    mirror_task_dict(project_dir, task)
         except Exception as e:
             import sys
             print(f"lifecycle: failed to write contract: {e}", file=sys.stderr)
