@@ -130,6 +130,7 @@ _cmd("enqueue",         "Add inbox item.",                           module="sup
 _cmd("normalize",       "Normalize/archive inbox rows.",             module="superharness.commands.inbox_normalize")
 _cmd("inbox-gc",        "Reconcile stale inbox items against contract.", module="superharness.commands.inbox_gc")
 _cmd("worktree-gc",     "Clean orphaned dispatch worktrees.",           module="superharness.commands.worktree_gc")
+_cmd("worktree",        "Manage git worktrees (list/create/remove/gc).", module="superharness.commands.worktree")
 _cmd("notify-desktop",  "Send native desktop notification.",            module="superharness.commands.notify_desktop")
 _cmd("recap",           "What happened in the last N hours.",           module="superharness.commands.recap")
 _cmd("recover",         "Recover stale launched items.",             module="superharness.commands.inbox_recover")
@@ -774,20 +775,21 @@ def operator_check(project):
 @operator.command(name="start")
 @click.option("--project", "-p", default=".", help="Project directory")
 @click.option("--port", default=8787, help="Dashboard port")
-def operator_start(project, port):
+@click.option("--no-open", "no_open", is_flag=True, default=False, help="Do not open browser on start (for daemon/launchd use)")
+def operator_start(project, port, no_open):
     """Start the Superharness Guardian (Watcher + Dashboard)."""
-    import multiprocessing
     from superharness.engine.operator import Operator
     op = Operator(project)
-    op.start_stack(dashboard_port=port)
+    op.start_stack(dashboard_port=port, no_open=no_open)
 
-    # Fork the monitor loop so this command returns immediately.
-    # The child process runs detached and restarts crashed components.
-    monitor = multiprocessing.Process(target=op.monitor_and_recover, daemon=False)
-    monitor.start()
+    click.echo(f"dashboard: http://127.0.0.1:{port}")
+    click.echo(f"monitor pid: {os.getpid()}")
 
-    click.echo(f"dashboard: http://127.0.0.1:{port}  (already running)")
-    click.echo(f"monitor pid: {monitor.pid}")
+    # Run the monitor loop in THIS process — no fork needed.
+    # launchd manages restarts via KeepAlive; forking would spawn an unpicklable
+    # Popen-holding child (macOS uses spawn, not fork), crash immediately, and
+    # cause launchd to restart the CLI in a tight loop.
+    op.monitor_and_recover()
 
 
 @operator.command(name="install")

@@ -37,21 +37,20 @@
     .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
     .task-row { display:flex; flex-direction:column; align-items:flex-start; padding:20px 0; border-bottom:1px solid var(--line); gap:12px; }
     .task-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .task-actions .pill.status-pill { width:auto; height:auto; white-space:nowrap; cursor:default; }
     .task-actions button, .task-actions select, .task-actions .pill {
-      width: 140px;
-      height: 36px;
+      width: auto;
+      height: auto;
       box-sizing: border-box;
-      display: flex;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-size: 11px;
-      padding: 0 8px;
+      font-size: 12px;
+      padding: 4px 12px;
       margin: 0;
       text-align: center;
-      overflow: hidden;
-      text-overflow: ellipsis;
       white-space: nowrap;
-      border-radius: 8px;
+      border-radius: 6px;
       background: var(--btn);
       border: 1px solid var(--line);
       color: var(--text);
@@ -72,7 +71,7 @@
     .task-meta-line { color:var(--muted); font-size:11px; padding-left:24px; display:flex; flex-wrap:wrap; gap:10px; }
     .task-id { font-weight:bold; color:var(--text); font-size:16px; letter-spacing:-0.02em; }
     .task-status-footer { width:100%; font-size:10px; color:var(--muted); margin-top:8px; font-style:italic; padding-left:2px; }
-    button { background:var(--btn); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px 10px; cursor:pointer; }
+    button { background:var(--btn); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:4px 12px; font-size:12px; cursor:pointer; }
     button:hover { background:var(--btn2); }
     .small { font-size:11px; color:var(--muted); }
     .status { margin-top:8px; font-size:12px; color:var(--muted); }
@@ -100,7 +99,6 @@
     .agent-pill { display:inline-flex; align-items:center; gap:6px; font-size:11px; padding:4px 10px; border-radius:6px; background:var(--btn); border:1px solid var(--line); }
     .live-badge { display:inline-block; font-size:10px; padding:1px 6px; border-radius:999px; background:#ef444422; color:var(--bad); border:1px solid var(--bad); animation:pulse 1.5s ease-in-out infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-    .view-toggle { display:flex; gap:6px; margin-bottom:8px; align-items:center; }
     .view-btn { font-size:11px; padding:2px 10px; border-radius:6px; cursor:pointer; border:1px solid var(--line); background:var(--btn); color:var(--muted); }
     .view-btn.active { background:var(--btn2); color:#fff; border-color:#4a6fa5; }
     .adapter-node { background:var(--bg); border:2px solid var(--ok); border-radius:10px; padding:10px; position:relative; }
@@ -131,13 +129,17 @@
       <span class="k">refreshed</span> <span class="v" id="ts"         style="margin-top:0;font-size:11px;color:var(--muted)">-</span>
     </div>
     <div class="card" style="margin-top:10px;">
-      <h2>watcher control</h2>
-      <div class="watcher-health" id="watcherHealth">-</div>
-      <div class="watcher-health" id="heartbeat">-</div>
-      <div class="agent-health-pills" id="agentHealthPills"></div>
-      <div class="actions">
-        <button onclick="act('watcher_start')">Start watcher</button>
-        <button onclick="act('watcher_restart')">Restart watcher</button>
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="togglePanel('watcherControlBody',this)">
+        <h2 style="margin:0">watcher control</h2><span style="color:var(--muted);font-size:11px">▾</span>
+      </div>
+      <div id="watcherControlBody" style="margin-top:8px">
+        <div class="watcher-health" id="watcherHealth">-</div>
+        <div class="watcher-health" id="heartbeat">-</div>
+        <div class="agent-health-pills" id="agentHealthPills"></div>
+        <div class="actions">
+          <button onclick="act('watcher_start')">Start watcher</button>
+          <button onclick="act('watcher_restart')">Restart watcher</button>
+        </div>
       </div>
     </div>
 
@@ -148,7 +150,7 @@
       <div class="plan-list" id="planList">-</div>
     </div>
     <div class="card report-scroll" style="margin-top:10px; display:none;" id="planReportCard">
-      <h2 style="position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;">plan preview <button onclick="document.getElementById('planReportCard').style.display='none'" style="font-size:11px;padding:2px 8px;float:right">close</button></h2>
+      <h2 style="position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;">plan preview <button onclick="document.getElementById('planReportCard').style.display='none'" style="font-size:11px;padding:2px 8px;float:right">close</button><button onclick="copyPanel('planReportBody',this)" style="font-size:11px;padding:2px 8px;float:right;margin-right:4px">Copy</button></h2>
       <div class="small" id="planReportMeta" style="position:sticky;top:28px;background:var(--panel);padding-bottom:4px;z-index:1;">-</div>
       <pre id="planReportBody">-</pre>
     </div>
@@ -159,68 +161,94 @@
       <div class="approval-list" id="approvalList">-</div>
     </div>
     <div class="card report-scroll" style="margin-top:10px; display:none;" id="approvalReportCard">
-      <h2 style="position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;">approval report preview <button onclick="document.getElementById('approvalReportCard').style.display='none'" style="font-size:11px;padding:2px 8px;float:right">close</button></h2>
+      <h2 style="position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;">approval report preview <button onclick="document.getElementById('approvalReportCard').style.display='none'" style="font-size:11px;padding:2px 8px;float:right">close</button><button onclick="copyPanel('approvalReportBody',this)" style="font-size:11px;padding:2px 8px;float:right;margin-right:4px">Copy</button></h2>
       <div class="small" id="approvalReportMeta" style="position:sticky;top:28px;background:var(--panel);padding-bottom:4px;z-index:1;">-</div>
       <pre id="approvalReportBody">-</pre>
     </div>
 
     <div class="card report-scroll" style="margin-top:10px; display:none;" id="taskReportCard">
-      <h2 style="position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;">task report <button onclick="document.getElementById('taskReportCard').style.display='none'" style="font-size:11px;padding:2px 8px;float:right">close</button></h2>
+      <h2 style="position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;">task report <button onclick="document.getElementById('taskReportCard').style.display='none'" style="font-size:11px;padding:2px 8px;float:right">close</button><button onclick="copyPanel('taskReportBody',this)" style="font-size:11px;padding:2px 8px;float:right;margin-right:4px">Copy</button></h2>
       <div class="small" id="taskReportMeta" style="position:sticky;top:28px;background:var(--panel);padding-bottom:4px;z-index:1;">-</div>
       <pre id="taskReportBody">-</pre>
     </div>
 
+    <div class="card report-scroll" style="margin-top:10px; display:none;" id="discussionCard">
+      <h2 style="position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;">discussion <button onclick="document.getElementById('discussionCard').style.display='none'" style="font-size:11px;padding:2px 8px;float:right">close</button><button onclick="copyPanel('discussionBody',this)" style="font-size:11px;padding:2px 8px;float:right;margin-right:4px">Copy</button></h2>
+      <div class="small" id="discussionMeta" style="position:sticky;top:28px;background:var(--panel);padding-bottom:4px;z-index:1;">-</div>
+      <pre id="discussionBody" style="white-space:pre-wrap;word-break:break-word;">-</pre>
+    </div>
+
     <div class="card report-scroll" style="margin-top:10px; display:none;" id="inboxReasonCard">
-      <h2 style="position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;">inbox item details <button onclick="document.getElementById('inboxReasonCard').style.display='none'" style="font-size:11px;padding:2px 8px;float:right">close</button></h2>
+      <h2 style="position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;">inbox item details <button onclick="document.getElementById('inboxReasonCard').style.display='none'" style="font-size:11px;padding:2px 8px;float:right">close</button><button onclick="copyPanel('inboxReasonBody',this)" style="font-size:11px;padding:2px 8px;float:right;margin-right:4px">Copy</button></h2>
       <div class="small" id="inboxReasonMeta" style="position:sticky;top:28px;background:var(--panel);padding-bottom:4px;z-index:1;">-</div>
       <pre id="inboxReasonBody" style="white-space:pre-wrap;word-break:break-word;">-</pre>
     </div>
 
+    <div class="card" style="margin-top:10px;" id="recentFailuresCard">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;margin-bottom:6px" onclick="togglePanel('recentFailuresBody',this)">
+        <h2 style="margin:0">recent failures</h2>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="small" id="recentFailuresCount" style="color:var(--muted);font-size:11px;">-</span>
+          <span style="color:var(--muted);font-size:11px">▸</span>
+        </div>
+      </div>
+      <div id="recentFailuresBody" style="display:none">
+        <div id="recentFailuresList" style="font-size:12px"></div>
+      </div>
+    </div>
+
     <div class="card" style="margin-top:10px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;margin-bottom:6px" onclick="togglePanel('workQueueBody',this)">
         <h2 style="margin:0">active work queue</h2>
-        <span class="small" id="inboxQueueNote" style="color:var(--muted);font-size:11px;">active tasks only</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="small" id="inboxQueueNote" style="color:var(--muted);font-size:11px;">active tasks only</span>
+          <span style="color:var(--muted);font-size:11px">▾</span>
+        </div>
       </div>
-      <div id="ownerFilter" style="margin-bottom:8px;"></div>
-      <div id="counts"></div>
-      <div class="inbox-detail" id="inboxDetail" style="display:none">
-        <div id="inboxRows"></div>
+      <div id="workQueueBody">
+        <div id="ownerFilter" style="margin-bottom:8px;"></div>
+        <div class="actions" style="margin-bottom:8px;">
+          <button onclick="act('dispatch_print_codex')">Dispatch preview codex</button>
+          <button onclick="act('dispatch_print_claude')">Dispatch preview claude</button>
+          <button onclick="act('recover_retry')">Recover stale → retry</button>
+          <button onclick="act('recover_failed')">Recover failed tasks</button>
+          <button onclick="act('normalize_stale')">Normalize stale</button>
+          <button onclick="clearResolvedInbox()" id="clearResolvedBtn" style="display:none">Clear resolved</button>
+        </div>
+        <div id="counts"></div>
+        <div class="inbox-detail" id="inboxDetail" style="display:none">
+          <div id="inboxRows"></div>
+        </div>
+        <div class="status" id="actionStatus">ready</div>
       </div>
-      <div class="actions">
-        <button onclick="act('dispatch_print_codex')">Dispatch preview codex</button>
-        <button onclick="act('dispatch_print_claude')">Dispatch preview claude</button>
-        <button onclick="act('recover_retry')">Recover stale → retry</button>
-        <button onclick="act('recover_failed')">Recover failed tasks</button>
-        <button onclick="act('normalize_stale')">Normalize stale</button>
-        <button onclick="clearResolvedInbox()" id="clearResolvedBtn" style="display:none">Clear resolved</button>
-      </div>
-      <div class="status" id="actionStatus">ready</div>
     </div>
 
     <div class="card" style="margin-top:10px;" id="taskOverviewCard">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;user-select:none" onclick="toggleTaskOverview()">
-        <h2 style="margin:0">task overview</h2>
+        <h2 style="margin:0">task overview (nodes)</h2>
         <div style="display:flex;align-items:center;gap:8px">
           <span class="small" id="taskOverviewCount" style="color:var(--muted)">-</span>
-          <button id="taskOverviewReflow" onclick="event.stopPropagation();reflowTaskOverview()" style="font-size:11px;padding:2px 8px" title="Re-render dependency graph">⟳ reflow</button>
-          <span id="taskOverviewArrow" style="color:var(--muted);font-size:11px">▾</span>
+          <button id="taskOverviewReflow" onclick="event.stopPropagation();reflowTaskOverview()" style="font-size:11px;padding:2px 8px;display:none" title="Re-render dependency graph">⟳ reflow</button>
+          <span id="taskOverviewArrow" style="color:var(--muted);font-size:11px">▸</span>
         </div>
       </div>
-      <div id="taskOverviewBody">
+      <div id="taskOverviewBody" style="display:none">
         <div id="depGraphRender" style="overflow-x:auto;min-height:60px;"></div>
       </div>
     </div>
 
     <div class="card" style="margin-top:10px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <h2 style="margin:0">tasks</h2>
-        <div class="view-toggle">
-          <span class="view-btn active" id="listViewBtn" onclick="setView('list')">☰ list</span>
-          <span class="view-btn" id="boardViewBtn" onclick="setView('board')">▦ board</span>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;" id="tasksHeader">
+        <h2 style="margin:0;cursor:pointer;user-select:none" onclick="togglePanel('tasksBody',document.getElementById('tasksHeader'))">tasks</h2>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="view-btn active" id="viewToggleBtn" onclick="setView(_currentView==='list'?'board':'list')">☰ list</span>
+          <span style="color:var(--muted);font-size:11px;cursor:pointer;user-select:none" onclick="togglePanel('tasksBody',document.getElementById('tasksHeader'))">▾</span>
         </div>
       </div>
-      <div id="taskFilterPills" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
-      <div id="contractTaskList">-</div>
+      <div id="tasksBody">
+        <div id="taskFilterPills" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
+        <div id="contractTaskList">-</div>
+      </div>
     </div>
     <div class="card" style="margin-top:10px; display:none;" id="boardViewCard">
       <h2>board view</h2>
@@ -228,21 +256,30 @@
     </div>
 
     <div class="card" style="margin-top:10px;">
-      <h2>contract owners</h2>
-      <div id="ownersList" style="margin-bottom:8px;"></div>
-      <div style="display:flex;gap:6px;align-items:center;">
-        <input id="newOwnerInput" type="text" placeholder="new-agent-name" style="background:var(--btn);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;font-family:inherit;" />
-        <button onclick="addOwner()">Add owner</button>
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="togglePanel('ownersBody',this)">
+        <h2 style="margin:0">contract owners</h2><span style="color:var(--muted);font-size:11px">▸</span>
       </div>
-      <div class="small" id="ownerStatus" style="margin-top:4px;"></div>
+      <div id="ownersBody" style="display:none;margin-top:8px">
+        <div id="ownersList" style="margin-bottom:8px;"></div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input id="newOwnerInput" type="text" placeholder="new-agent-name" style="background:var(--btn);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;font-family:inherit;" />
+          <button onclick="addOwner()">Add owner</button>
+        </div>
+        <div class="small" id="ownerStatus" style="margin-top:4px;"></div>
+      </div>
     </div>
 
     <div class="card" style="margin-top:10px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="togglePanel('activityBody',this)">
         <h2 style="margin:0">activity feed</h2>
-        <span class="small" id="activityCount" style="color:var(--muted)"></span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="small" id="activityCount" style="color:var(--muted)"></span>
+          <span style="color:var(--muted);font-size:11px">▸</span>
+        </div>
       </div>
-      <div id="activityFeed" style="max-height:200px;overflow-y:auto;font-size:12px;font-family:monospace;"></div>
+      <div id="activityBody" style="display:none;margin-top:8px">
+        <div id="activityFeed" style="max-height:200px;overflow-y:auto;font-size:12px;font-family:monospace;"></div>
+      </div>
     </div>
 
     <div class="card" style="margin-top:10px;">
@@ -438,7 +475,13 @@ async function refresh() {
     const activeInboxCount = (filteredCounts['pending'] || 0) + (filteredCounts['launched'] || 0) + (filteredCounts['running'] || 0);
     const discEl = document.createElement('span');
     discEl.className = 'pill' + (selectedStatus === 'active' || !selectedStatus ? ' sel' : '');
-    discEl.textContent = activeInboxCount > 0 ? `discussion: ${discCount} + ${activeInboxCount}` : `discussion: ${discCount}`;
+    if (discCount > 0 && activeInboxCount > 0) {
+      discEl.textContent = `discussion: ${discCount}  queue: ${activeInboxCount}`;
+    } else if (discCount > 0) {
+      discEl.textContent = `discussion: ${discCount}`;
+    } else {
+      discEl.textContent = `queue: ${activeInboxCount}`;
+    }
     discEl.onclick = () => selectStatus('active');
     counts.appendChild(discEl);
 
@@ -497,6 +540,7 @@ function toggleOwner(owner, checked) {
   }
   rebuildOwnerCheckboxes();
   refresh();
+  if (_currentView === 'board') loadBoardView();
 }
 
 async function selectStatus(k) {
@@ -521,102 +565,119 @@ async function loadInboxDetail(status) {
       url += '&' + [...selectedOwners].map(o => 'owner=' + encodeURIComponent(o)).join('&');
     }
     const d = await api(url);
-    const tbody = document.getElementById('inboxRows');
-    tbody.innerHTML = '';
+    const container = document.getElementById('inboxRows');
+    container.innerHTML = '';
 
-    // Inject active discussion rounds at the top — only when showing active/all view
     const discussions = (status === 'active' || status === 'all') ? ((latestStatus && latestStatus.active_discussions) || []) : [];
+    const now = new Date(d.now_utc);
+
+    if (!d.items.length && !discussions.length) {
+      container.innerHTML = '<div style="color:var(--muted);padding:12px 0;font-size:12px">no items</div>';
+      document.getElementById('inboxDetail').style.display = 'block';
+      return;
+    }
+
+    // Single unified table for both discussions and inbox items
+    const table = document.createElement('table');
+    table.style.cssText = 'width:100%;border-collapse:collapse;font-size:12px;margin-top:8px';
+    table.innerHTML = `<thead><tr style="color:var(--muted);text-align:left;border-bottom:1px solid var(--line)">
+      <th style="padding:4px 8px;font-weight:500">status</th>
+      <th style="padding:4px 8px;font-weight:500">id</th>
+      <th style="padding:4px 8px;font-weight:500">topic / task</th>
+      <th style="padding:4px 8px;font-weight:500">to / participants</th>
+      <th style="padding:4px 8px;font-weight:500;text-align:right">round / priority</th>
+      <th style="padding:4px 8px;font-weight:500">started / launched</th>
+      <th style="padding:4px 8px;font-weight:500">timer</th>
+      <th style="padding:4px 8px;font-weight:500">reason</th>
+      <th style="padding:4px 8px"></th>
+    </tr></thead>`;
+    const tableBody = document.createElement('tbody');
+
+    // Discussion rows
     for (const disc of discussions) {
       const participants = (disc.participants || []).join(', ');
-      const topic = disc.topic || disc.id || '';
-      const discBadge = `<span style="background:var(--accent);color:#000;font-size:10px;padding:1px 5px;border-radius:3px;font-weight:700">discussion</span>`;
-      const roundBadge = `<span class="pill" style="background:var(--btn);border-color:var(--ok);color:var(--ok);cursor:default">● in progress — round ${disc.current_round||'?'}/${disc.max_rounds||'?'}</span>`;
-      const cancelBtn = `<button onclick="act('cancel_discussion:${disc.id}')" class="bad">Cancel</button>`;
-      const row = document.createElement('div');
-      row.className = 'task-row';
-      row.style.borderLeft = '3px solid var(--accent)';
-      row.innerHTML = `
-        <div class="task-actions">
-          ${roundBadge}
-          ${cancelBtn}
-        </div>
-        <div class="task-meta">
-          <div class="task-desc-line">${discBadge} <span class="task-id">${disc.id||''}</span> ${topic}</div>
-          <div class="task-meta-line"><span>participants: ${participants}</span>${disc.created_at ? `<span>started: ${disc.created_at}</span>` : ''}</div>
-        </div>`;
-      tbody.appendChild(row);
-    }
-
-    if (!d.items.length && !discussions.length && tbody.children.length === 0) {
-      const empty = document.createElement('div');
-      empty.style.cssText = 'color:var(--muted);padding:12px 0;font-size:12px';
-      empty.textContent = 'no items';
-      tbody.appendChild(empty);
-    }
-    const now = new Date(d.now_utc);
-    for (const item of d.items) {
+      const topic        = disc.topic || disc.id || '';
+      const started      = (disc.created_at || '').replace('T',' ').slice(0,16);
+      const roundLabel   = `${disc.current_round||'?'}/${disc.max_rounds||'?'}`;
       let timerText = '';
-      const la = (item.launched_at || '').replace(/^'|'$/g, '');
-      if (la) {
-        const diff = Math.max(0, Math.floor((now - new Date(la)) / 1000));
-        const h = Math.floor(diff / 3600);
-        const m = Math.floor((diff % 3600) / 60);
-        const s = diff % 60;
+      if (disc.created_at) {
+        const diff = Math.max(0, Math.floor((now - new Date(disc.created_at)) / 1000));
+        const h = Math.floor(diff/3600), m = Math.floor((diff%3600)/60), s = diff%60;
         timerText = h > 0 ? `${h}h${m}m` : m > 0 ? `${m}m${s}s` : `${s}s`;
       }
-      const st = item.status || '';
-      const eid = (item.id || '').replace(/'/g, "\\\\'");
-      const taskEsc = (item.task||'').replace(/'/g, "\\\\'");
-      const agentEsc = (item.to||'').replace(/'/g, "\\\\'");
-      const reason = item.pause_reason || item.failed_reason || item.stale_reason || item.stopped_reason || '';
-
-      // Status pill
-      const stColors = {pending:'var(--muted)',launched:'var(--ok)',running:'var(--ok)',paused:'var(--warn)',stale:'var(--warn)',failed:'var(--bad)',stopped:'var(--bad)',done:'var(--muted)'};
-      const stColor = stColors[st] || 'var(--muted)';
-      const stIcon = {pending:'○',launched:'⚡',running:'🔄',paused:'⏸',stale:'⚠',failed:'✗',stopped:'■',done:'✓'}[st] || '○';
-      const statusPill = `<span class="pill" style="background:var(--btn);border-color:${stColor};color:${stColor};cursor:default">${stIcon} ${st}</span>`;
-
-      // Hint
-      let hint = '';
-      if (st === 'paused') hint = 'dispatch paused — click Resume to retry';
-      else if (st === 'failed') hint = 'dispatch failed — click Retry to re-dispatch';
-      else if (st === 'stale') hint = 'stale — click Retry to re-dispatch';
-      const hintHtml = hint ? `<div style="width:100%;color:var(--warn);font-size:11px;font-weight:bold;margin-bottom:6px;letter-spacing:0.02em">ℹ ${hint}</div>` : '';
-
-      // Action buttons
-      const viewBtn = `<button onclick="viewTaskReport('${taskEsc}','${agentEsc}')">View Report</button>`;
-      let actionBtn = '';
-      if (st === 'pending') actionBtn = `<button onclick="act('pause_item:${eid}')">Pause</button>`;
-      else if (st === 'paused') actionBtn = `<button onclick="act('resume_item:${eid}')">Resume</button>`;
-      else if (st === 'launched' || st === 'running') actionBtn = `<button onclick="act('stop_item:${eid}')" class="bad">Stop</button>`;
-      else if (st === 'stale' || st === 'failed' || st === 'stopped') actionBtn = `<button onclick="act('retry_item:${eid}')" class="warn">Retry</button>`;
-      const removeBtn = `<button onclick="removeItem('${eid}')" class="bad">Remove</button>`;
-      const reasonBtn = reason ? `<button onclick="showInboxReason(JSON.parse(this.closest('.task-row').dataset.item))" class="warn" title="${reason.replace(/"/g,'&quot;')}">Reason</button>` : '';
-
-      const row = document.createElement('div');
-      row.className = 'task-row';
-      row.dataset.item = JSON.stringify(item);
-      const metaLine = [
-        item.to ? `to: ${item.to}` : '',
-        la ? `launched: ${la}` : '',
-        timerText ? `timer: ${timerText}` : '',
-        item.priority ? `priority: ${item.priority}` : '',
-      ].filter(Boolean).join('  ·  ');
-      row.innerHTML = `
-        <div class="task-actions">
-          ${hintHtml}
-          ${statusPill}
-          ${viewBtn}
-          ${actionBtn}
-          ${reasonBtn}
-          ${removeBtn}
-          <div class="task-status-footer" style="width:100%;margin-top:4px">${metaLine}</div>
-        </div>
-        <div class="task-meta">
-          <div class="task-desc-line"><span class="task-id">${item.id||''}</span> ${item.task||''}</div>
-        </div>`;
-      tbody.appendChild(row);
+      const discBadge  = `<span style="background:#f59e0b;color:#000;font-size:10px;padding:1px 5px;border-radius:3px;font-weight:700">discussion</span>`;
+      const cancelBtn  = `<button onclick="act('cancel_discussion:${disc.id}')" class="bad">Cancel</button>`;
+      const viewDiscBtn = `<button onclick="viewDiscussion('${disc.id}')">View</button>`;
+      const tr = document.createElement('tr');
+      tr.style.cssText = 'border-bottom:1px solid var(--line);border-left:3px solid #f59e0b';
+      tr.innerHTML = `
+        <td style="padding:6px 8px;white-space:nowrap">${discBadge} <span style="color:var(--ok);font-size:11px">● round ${roundLabel}</span></td>
+        <td style="padding:6px 8px;font-family:monospace;font-size:11px;color:var(--muted)">${disc.id||''}</td>
+        <td style="padding:6px 8px;font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${topic}">${topic}</td>
+        <td style="padding:6px 8px;font-size:11px;color:var(--muted)">${participants}</td>
+        <td style="padding:6px 8px;text-align:right;color:var(--muted)">${roundLabel}</td>
+        <td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${started}</td>
+        <td style="padding:6px 8px;font-size:11px;color:var(--ok);white-space:nowrap;font-weight:bold">${timerText}</td>
+        <td></td>
+        <td style="padding:6px 8px;white-space:nowrap;display:flex;gap:4px">${viewDiscBtn}${cancelBtn}</td>`;
+      tableBody.appendChild(tr);
     }
+
+    // Inbox item rows
+    for (const item of d.items) {
+      const taskId   = item.task_id || item.task || '';
+      const agent    = item.target_agent || item.to || '';
+      const st       = item.status || '';
+      const eid      = (item.id || '').replace(/'/g, "\\\\'");
+      const taskEsc  = taskId.replace(/'/g, "\\\\'");
+      const agentEsc = agent.replace(/'/g, "\\\\'");
+      const reason   = item.pause_reason || item.failed_reason || item.stale_reason || item.stopped_reason || '';
+
+      let timerText = '';
+      const la = (item.launched_at || '').replace(/^'|'$/g, '');
+      const ca = (item.created_at || '').replace(/^'|'$/g, '');
+      // Use launched_at when available; fall back to created_at for pending/paused items
+      const timerBase = la || ca;
+      if (timerBase) {
+        const diff = Math.max(0, Math.floor((now - new Date(timerBase)) / 1000));
+        const h = Math.floor(diff/3600), m = Math.floor((diff%3600)/60), s = diff%60;
+        timerText = h > 0 ? `${h}h${m}m` : m > 0 ? `${m}m${s}s` : `${s}s`;
+      }
+
+      const stColors = {pending:'var(--muted)',launched:'var(--ok)',running:'var(--ok)',paused:'var(--warn)',stale:'var(--warn)',failed:'var(--bad)',stopped:'var(--bad)',done:'var(--muted)'};
+      const stIcon   = {pending:'○',launched:'⚡',running:'🔄',paused:'⏸',stale:'⚠',failed:'✗',stopped:'■',done:'✓'}[st] || '○';
+      const stColor  = stColors[st] || 'var(--muted)';
+
+      const viewBtn   = `<button onclick="viewTaskReport('${taskEsc}','${agentEsc}')">View</button>`;
+      const removeBtn = `<button onclick="removeItem('${eid}')" class="bad">Remove</button>`;
+      let actionBtn   = '';
+      if (st === 'pending')                               actionBtn = `<button onclick="act('pause_item:${eid}')">Pause</button>`;
+      else if (st === 'paused')                           actionBtn = `<button onclick="act('resume_item:${eid}')">Resume</button>`;
+      else if (st === 'launched' || st === 'running')     actionBtn = `<button onclick="act('stop_item:${eid}')" class="bad">Stop</button>`;
+      else if (['stale','failed','stopped'].includes(st)) actionBtn = `<button onclick="act('retry_item:${eid}')" class="warn">Retry</button>`;
+
+      const tr = document.createElement('tr');
+      tr.style.cssText = 'border-bottom:1px solid var(--line)';
+      tr.dataset.item = JSON.stringify(item);
+      const reasonBtn = reason ? `<button onclick="showInboxReason(this.closest('tr').dataset.item)" class="warn" title="${reason.replace(/"/g,'&quot;')}">Reason</button>` : '';
+      const laDisplay = la ? la.replace('T',' ').slice(0,16) : '';
+      tr.innerHTML = `
+        <td style="padding:6px 8px;white-space:nowrap"><span style="color:${stColor}">${stIcon} ${st}</span></td>
+        <td style="padding:6px 8px;font-family:monospace;font-size:11px;color:var(--muted)">${item.id||''}</td>
+        <td style="padding:6px 8px;font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${taskId}">${taskId}</td>
+        <td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${agent}</td>
+        <td style="padding:6px 8px;text-align:right;color:var(--muted)">${item.priority||''}</td>
+        <td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${laDisplay}</td>
+        <td style="padding:6px 8px;font-size:11px;color:var(--ok);white-space:nowrap;font-weight:bold">${timerText}</td>
+        <td style="padding:6px 8px;font-size:11px;color:var(--warn);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${reason.replace(/"/g,'&quot;')}">${reason.slice(0,40)}</td>
+        <td style="padding:6px 8px;white-space:nowrap">
+          <div style="display:flex;gap:4px;align-items:center">${viewBtn}${actionBtn}${reasonBtn}${removeBtn}</div>
+        </td>`;
+      tableBody.appendChild(tr);
+    }
+
+    table.appendChild(tableBody);
+    container.appendChild(table);
     document.getElementById('inboxDetail').style.display = 'block';
   } catch(e) {}
 }
@@ -761,6 +822,112 @@ async function viewTaskReport(taskId, agent) {
   }
 }
 
+async function refreshRecentFailures() {
+  try {
+    const d = await api('/api/recent-failures?limit=10');
+    const list = document.getElementById('recentFailuresList');
+    const count = document.getElementById('recentFailuresCount');
+    const failures = d.failures || [];
+    if (count) count.textContent = failures.length ? `${failures.length} failure${failures.length === 1 ? '' : 's'}` : 'none';
+    if (!failures.length) {
+      list.innerHTML = '<div style="color:var(--muted);padding:8px 0">No recent failures.</div>';
+      return;
+    }
+    const classColors = {
+      permanent_block: 'var(--bad)',
+      transient: 'var(--warn)',
+      quota: '#a78bfa',
+      agent_crash: 'var(--warn)',
+      no_op: 'var(--muted)',
+      unknown: 'var(--muted)',
+    };
+    list.innerHTML = failures.map(f => {
+      const c = classColors[f.failure_class] || 'var(--muted)';
+      const tail = (f.log_tail || '').slice(-1500);
+      const tailEsc = tail.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      return `<div style="border-bottom:1px solid var(--line);padding:6px 0">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <span class="pill" style="background:var(--btn);border-color:${c};color:${c};font-size:11px">${f.failure_class}</span>
+            <span style="font-family:monospace;font-size:11px;margin-left:6px;color:var(--muted)">${f.id}</span>
+            <span style="font-size:12px;margin-left:6px">${f.task}</span>
+            <span style="font-size:11px;color:var(--muted);margin-left:6px">to ${f.to}</span>
+            <span style="font-size:11px;color:var(--muted);margin-left:6px">retries ${f.retry_count}/${f.max_retries}</span>
+          </div>
+          <span style="font-size:11px;color:var(--muted)">${(f.failed_at || '').replace('T',' ').slice(0,16)}</span>
+        </div>
+        <div style="color:${c};font-size:12px;margin-top:4px">${f.failure_explain}</div>
+        ${tail ? `<pre style="font-size:10px;color:var(--muted);background:var(--btn);padding:6px;margin-top:4px;max-height:200px;overflow:auto;white-space:pre-wrap;border-radius:3px">${tailEsc}</pre>` : ''}
+      </div>`;
+    }).join('');
+  } catch (e) {
+    const list = document.getElementById('recentFailuresList');
+    if (list) list.innerHTML = '<div style="color:var(--bad);padding:8px 0">Error loading failures: ' + e + '</div>';
+  }
+}
+
+function copyPanel(bodyId, btn) {
+  const el = document.getElementById(bodyId);
+  if (!el) return;
+  const text = el.textContent || '';
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  }).catch(() => {
+    btn.textContent = 'Error';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+  });
+}
+
+async function viewDiscussion(discId) {
+  const card = document.getElementById('discussionCard');
+  const meta = document.getElementById('discussionMeta');
+  const body = document.getElementById('discussionBody');
+  card.style.display = 'block';
+  card.scrollIntoView({behavior:'smooth', block:'start'});
+  meta.textContent = discId;
+  body.textContent = 'loading…';
+  try {
+    const r = await fetch(`/api/discussion?id=${encodeURIComponent(discId)}&_auth=${AUTH_TOKEN}`);
+    const d = await r.json();
+    if (d.error) { body.textContent = 'Error: ' + d.error; return; }
+
+    let out = '';
+    out += `Topic:       ${d.topic||'-'}\n`;
+    out += `Status:      ${d.status||'-'}\n`;
+    out += `Round:       ${d.current_round||'?'} / ${d.max_rounds||'?'}\n`;
+    out += `Participants: ${(d.participants||[]).join(', ')}\n`;
+    out += `Created:     ${(d.created_at||'').replace('T',' ').slice(0,16)}\n`;
+
+    const submitted = (d.rounds||[]).map(r => r.agent);
+    const pending = (d.participants||[]).filter(p => !submitted.includes(p));
+    out += `\nSubmitted:   ${submitted.length ? submitted.join(', ') : '(none)'}\n`;
+    out += `Pending:     ${pending.length ? pending.join(', ') : '(none — all responded)'}\n`;
+
+    for (const round of (d.rounds||[])) {
+      out += `\n${'═'.repeat(60)}\n`;
+      out += `Agent:       ${round.agent}   (round ${round.round})   verdict: ${round.verdict||'-'}\n`;
+      out += `Submitted:   ${(round.submitted_at||'').replace('T',' ').slice(0,16)}\n`;
+      if (round.position) {
+        out += `\nPosition:\n${round.position}\n`;
+      }
+      if (round.points && round.points.length) {
+        out += `\nPoint-by-point:\n`;
+        for (const pt of round.points) {
+          out += `  [${pt.verdict||'?'}] ${pt.id||''}\n`;
+          if (pt.rationale) out += `         ${pt.rationale}\n`;
+        }
+      }
+    }
+
+    if (!d.rounds || !d.rounds.length) out += '\n(no submissions yet)\n';
+    body.textContent = out;
+  } catch (e) {
+    body.textContent = 'Error: ' + e;
+  }
+}
+
 async function removeItem(itemId) {
   const ok = window.confirm(`Remove task item ${itemId} from inbox?`);
   if (!ok) return;
@@ -789,7 +956,7 @@ const STATUS_GROUPS = [
   { key: 'done',           label: '✅ done',           statuses: ['done'],                          color: 'var(--ok)' },
   { key: 'stopped',        label: '⛔ disabled',        statuses: ['stopped'],                       color: 'var(--muted)' },
   { key: 'pr_open',        label: '🔀 pr open',          statuses: ['pr_open'],                                         color: 'var(--ok)' },
-  { key: 'review',         label: '🔍 review',          statuses: ['review_requested','review_passed','review_failed'], color: 'var(--warn)' },
+  { key: 'review',         label: '🔍 review',          statuses: ['report_ready','review_requested','review_passed','review_failed'], color: 'var(--warn)' },
   { key: 'in_progress',    label: '🔄 in progress',     statuses: ['in_progress','launched','running'], color: '#4a9eff' },
   { key: 'plan',           label: '📋 plan',            statuses: ['plan_proposed','plan_approved'], color: '#a78bfa' },
   { key: 'todo',           label: '🕐 todo',            statuses: ['todo'],                          color: 'var(--muted)' },
@@ -1083,7 +1250,8 @@ async function cancelReview(taskId) {
 
 function humanize(s) { return (s || '').replace(/_/g, ' '); }
 
-function showInboxReason(item) {
+function showInboxReason(itemOrJson) {
+  const item = typeof itemOrJson === 'string' ? JSON.parse(itemOrJson) : itemOrJson;
   const card = document.getElementById('inboxReasonCard');
   const meta = document.getElementById('inboxReasonMeta');
   const body = document.getElementById('inboxReasonBody');
@@ -1360,8 +1528,8 @@ let _currentView = 'list';
 
 function setView(v) {
   _currentView = v;
-  document.getElementById('listViewBtn').className = 'view-btn' + (v==='list' ? ' active' : '');
-  document.getElementById('boardViewBtn').className = 'view-btn' + (v==='board' ? ' active' : '');
+  const tb = document.getElementById('viewToggleBtn');
+  if (tb) { tb.textContent = v === 'list' ? '▦ board' : '☰ list'; tb.className = 'view-btn'; }
   document.getElementById('contractTaskList').style.display = v === 'list' ? '' : 'none';
   document.getElementById('taskFilterPills').style.display = v === 'list' ? '' : 'none';
   document.getElementById('boardViewCard').style.display = v === 'board' ? '' : 'none';
@@ -1369,41 +1537,42 @@ function setView(v) {
 }
 
 const BOARD_COL_LABELS = {
-  todo: {label:'⬜ todo', color:'var(--muted)'},
-  plan: {label:'📋 plan', color:'#a78bfa'},
-  in_progress: {label:'🔄 in progress', color:'#4a9eff'},
-  review: {label:'🔍 review', color:'var(--warn)'},
-  done: {label:'✅ done', color:'var(--ok)'},
+  todo:    {label:'⬜ todo',        color:'var(--muted)'},
+  plan:    {label:'📋 plan',        color:'#a78bfa'},
+  active:  {label:'🔄 in progress', color:'#4a9eff'},
+  review:  {label:'🔍 review',      color:'var(--warn)'},
+  done:    {label:'✅ done',         color:'var(--ok)'},
+  stopped: {label:'■ stopped',       color:'var(--muted)'},
 };
 
-async function loadBoardView() {
+function loadBoardView() {
   const el = document.getElementById('boardColumns');
   if (!el) return;
-  try {
-    const d = await api('/api/board');
-    el.innerHTML = '';
-    for (const [col, meta] of Object.entries(BOARD_COL_LABELS)) {
-      const tasks = (d.columns || {})[col] || [];
-      const div = document.createElement('div');
-      div.className = 'board-col';
-      const header = `<div class="board-col-header"><span style="color:${meta.color}">${meta.label}</span><span class="board-col-count">${tasks.length}</span></div>`;
-      let rows = '';
-      for (const t of tasks) {
-        const st = t.status || '';
-        const [icon] = PHASE_LABEL[st] || ['?'];
-        const eid = (t.id || '').replace(/'/g, "\\'");
-        rows += `<div class="board-task" onclick="viewTaskReport('${eid}','${(t.owner||'').replace(/'/g,"\\'")}')">
-          <div class="bt-owner">${t.owner||''}</div>
-          <div class="bt-id">${icon} ${t.id||''}</div>
-          <div style="font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.title||''}</div>
-        </div>`;
-      }
-      div.innerHTML = header + (rows || '<div style="color:var(--muted);font-size:11px;text-align:center;padding:8px">empty</div>');
-      el.appendChild(div);
+  // Use cached latestStatus.board_columns — same data as list view, no extra fetch
+  const columns = (latestStatus && latestStatus.board_columns) || {};
+  el.innerHTML = '';
+  for (const [col, meta] of Object.entries(BOARD_COL_LABELS)) {
+    let tasks = columns[col] || [];
+    // Apply same owner filter as list view
+    if (selectedOwners.size > 0) {
+      tasks = tasks.filter(t => selectedOwners.has(t.owner));
     }
-    renderAgentHealthPills((d.agent_status||{}).agents||{});
-  } catch(e) {
-    el.textContent = 'Error loading board: ' + e;
+    const div = document.createElement('div');
+    div.className = 'board-col';
+    const header = `<div class="board-col-header"><span style="color:${meta.color}">${meta.label}</span><span class="board-col-count">${tasks.length}</span></div>`;
+    let rows = '';
+    for (const t of tasks) {
+      const st = t.status || '';
+      const [icon] = PHASE_LABEL[st] || ['?'];
+      const eid = (t.id || '').replace(/'/g, "\\'");
+      rows += `<div class="board-task" onclick="viewTaskReport('${eid}','${(t.owner||'').replace(/'/g,"\\'")}')">
+        <div class="bt-owner">${t.owner||''}</div>
+        <div class="bt-id">${icon} ${t.id||''}</div>
+        <div style="font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.title||''}</div>
+      </div>`;
+    }
+    div.innerHTML = header + (rows || '<div style="color:var(--muted);font-size:11px;text-align:center;padding:8px">empty</div>');
+    el.appendChild(div);
   }
 }
 
@@ -1553,7 +1722,7 @@ function renderTaskGraph(tasks) {
 
 function renderTaskOverview(tasks) {
   const countEl = document.getElementById('taskOverviewCount');
-  const visible = tasks.filter(t => t.status !== 'archived');
+  const visible = tasks.filter(t => t.status !== 'archived' && t.status !== 'done');
   if (countEl) countEl.textContent = `${visible.length} task${visible.length === 1 ? '' : 's'}`;
   renderTaskGraph(tasks);
 }
@@ -1640,8 +1809,10 @@ async function refreshCosts() {
 
 refresh();
 refreshCosts();
+refreshRecentFailures();
 setInterval(refresh, 3000);
 setInterval(refreshCosts, 30000);
+setInterval(refreshRecentFailures, 10000);
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {

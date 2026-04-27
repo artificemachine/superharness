@@ -22,9 +22,9 @@ MODEL_MAP: dict[str, dict[str, str]] = {
         "max": "gpt-5.4"
     },
     "gemini-cli": {
-        "mini": "flash",
-        "standard": "pro",
-        "max": "ultra"
+        "mini": "gemini-2.0-flash",
+        "standard": "gemini-2.0-pro",
+        "max": "gemini-ultra"
     },
 }
 
