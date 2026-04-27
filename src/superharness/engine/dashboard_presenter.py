@@ -7,7 +7,7 @@ from typing import Any
 from collections import defaultdict
 from pathlib import Path
 
-from superharness.engine import tasks_dao, inbox_dao, handoffs_dao, failures_dao, decisions_dao, ledger_dao
+from superharness.engine import tasks_dao, inbox_dao, handoffs_dao, failures_dao, decisions_dao, ledger_dao, discussions_dao
 
 def get_dashboard_status_snapshot(conn: sqlite3.Connection, project_dir: str) -> dict[str, Any]:
     """Return a comprehensive snapshot of the project state for the dashboard.
@@ -22,7 +22,32 @@ def get_dashboard_status_snapshot(conn: sqlite3.Connection, project_dir: str) ->
     all_inbox = inbox_dao.get_all(conn)
     inbox_as_dict = [asdict(i) for i in all_inbox]
     
-    # 3. Failures & Decisions
+    # 3. Active discussions — read from YAML state files (discussions not yet in SQLite)
+    active_discussions = []
+    try:
+        import yaml as _yaml
+        disc_root = Path(project_dir) / ".superharness" / "discussions"
+        if disc_root.exists():
+            for state_file in disc_root.glob("*/state.yaml"):
+                try:
+                    st = _yaml.safe_load(state_file.read_text(encoding="utf-8", errors="replace")) or {}
+                    if st.get("status") == "active":
+                        active_discussions.append({
+                            "id": st.get("id", state_file.parent.name),
+                            "topic": st.get("topic", ""),
+                            "status": st.get("status", ""),
+                            "current_round": st.get("current_round", "?"),
+                            "max_rounds": st.get("max_rounds", "?"),
+                            "participants": st.get("participants") or [],
+                            "created_at": st.get("created_at", ""),
+                            "task_id": st.get("task_id"),
+                        })
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # 4. Failures & Decisions
     failures = [asdict(f) for f in failures_dao.get_recent(conn, limit=50)]
     decisions = [asdict(d) for d in decisions_dao.get_recent(conn, limit=50)]
     
@@ -94,6 +119,7 @@ def get_dashboard_status_snapshot(conn: sqlite3.Connection, project_dir: str) ->
         "board_columns": dict(board_columns),
         "activity_feed": activity,
         "inbox_items": inbox_as_dict,
+        "active_discussions": active_discussions,
         "failures": failures,
         "decisions": decisions,
         "ledger_tail": [f"- {l.created_at} — {l.action} ({l.agent or 'system'})" for l in ledger[:18]]
