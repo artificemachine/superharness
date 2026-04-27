@@ -90,6 +90,27 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Preflight: validate GEMINI.md exists and contains required protocol sections.
+# Gemini CLI reads GEMINI.md at startup (like Claude reads CLAUDE.md) for
+# self-orientation. Without it, the agent has no task protocol and will stall.
+_gemini_md="$(pwd)/GEMINI.md"
+if [[ ! -f "$_gemini_md" ]]; then
+  _msg="PREFLIGHT FAIL: GEMINI.md not found at $_gemini_md — run '/init' inside Gemini CLI (or 'gemini /init' from terminal) in the project root to generate it, then redispatch."
+  echo "$_msg" | tee -a /tmp/shux-launcher-error.log >&2
+  exit 1
+fi
+_missing_sections=()
+for _pattern in "contract.yaml" "report_ready" "superharness\|shux"; do
+  if ! grep -qE "$_pattern" "$_gemini_md"; then
+    _missing_sections+=("$_pattern")
+  fi
+done
+if [[ ${#_missing_sections[@]} -gt 0 ]]; then
+  _msg="PREFLIGHT FAIL: GEMINI.md at $_gemini_md is missing required content: ${_missing_sections[*]} — regenerate with '/init' inside Gemini CLI or update GEMINI.md manually."
+  echo "$_msg" | tee -a /tmp/shux-launcher-error.log >&2
+  exit 1
+fi
+
 # Launch Gemini with the prompt as the final argument.
 # Do NOT pipe printf/stdin into gemini: piping closes stdin after writing,
 # which sends EOF (^D) to gemini immediately and causes it to exit before
