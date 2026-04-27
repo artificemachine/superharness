@@ -403,6 +403,36 @@ def _cascade_unblocked_tasks(contract_file: str, finished_task_id: str) -> None:
                 print(f"cascading-dispatch: task {tid} unblocked and enqueued (item {item_id}, plan_only={plan_only})")
 
 
+def _load_latest_plan_handoff(contract_file: str, task_id: str) -> dict | None:
+    """Return the latest phase=plan handoff for a task, or None if none found.
+
+    Used by iter 5 plan quality gate before auto-approval.
+    """
+    import glob
+
+    import yaml as _yaml
+
+    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(contract_file)))
+    handoffs_dir = os.path.join(project_dir, ".superharness", "handoffs")
+    if not os.path.isdir(handoffs_dir):
+        return None
+
+    candidates = sorted(glob.glob(os.path.join(handoffs_dir, f"*{task_id}*plan*")), reverse=True)
+    candidates += [
+        p for p in sorted(glob.glob(os.path.join(handoffs_dir, f"*{task_id}*.yaml")), reverse=True)
+        if p not in candidates
+    ]
+    for path in candidates:
+        try:
+            with open(path, encoding="utf-8") as f:
+                h = _yaml.safe_load(f.read()) or {}
+            if str(h.get("task", "")) == task_id and h.get("phase") == "plan":
+                return h
+        except Exception:
+            continue
+    return None
+
+
 def _enqueue_for_implementation(contract_file: str, task_id: str) -> None:
     """Instantly enqueue a plan_approved task for implementation."""
     project_dir = os.path.dirname(os.path.dirname(os.path.abspath(contract_file)))
@@ -624,6 +654,26 @@ def status_update(
 
         task_autonomy = str(task.get("autonomy") or "ai_driven")
         if task_autonomy == "ai_driven" or auto_approve:
+            # Plan quality gate (iter 5 of auto-mode-gap-plan): only auto-approve
+            # plans that pass structural checks. Failing plans stay plan_proposed
+            # with a validation_failures field so the operator sees them with reason.
+            try:
+                from superharness.engine.plan_validator import validate_plan
+                plan_handoff = _load_latest_plan_handoff(contract_file, task_id)
+                if plan_handoff:
+                    result = validate_plan(plan_handoff, task)  # type: ignore[arg-type]
+                    if not result.passed:
+                        print(
+                            f"Auto-approve blocked for '{task_id}': "
+                            + "; ".join(result.failures)
+                        )
+                        # Stamp validation_failures on the task for dashboard surface
+                        task["validation_failures"] = result.failures  # type: ignore[index]
+                        _write_contract(contract_file, doc)
+                        return
+            except Exception as e:
+                print(f"Warning: plan validation skipped: {e}", file=sys.stderr)
+
             reason = "auto-approved per task autonomy setting" if task_autonomy == "ai_driven" else "auto-approved per project policy"
             print(f"Auto-approving task '{task_id}' ({reason})")
             status_update(
@@ -632,7 +682,7 @@ def status_update(
                 summary=reason,
                 _recursion_guard=True,
             )
-            
+
             # Instant re-enqueue for implementation!
             try:
                 _enqueue_for_implementation(contract_file, task_id)

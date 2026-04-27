@@ -706,6 +706,7 @@ tasks:
       No reasoning or code changes needed.
     title: Verify shux delegate --orchestrate --print-only CLI flag exists and parses
       without error
+    status: cancelled
   - estimated_cost_usd: 0.0039
     estimated_tokens: 6000
     id: verify.orchestrator-decompose.2
@@ -715,6 +716,7 @@ tasks:
       no multi-step reasoning.
     title: Inspect contract.yaml schema to confirm subtasks[] field is supported and
       validate its structure
+    status: cancelled
   - estimated_cost_usd: 0.195
     estimated_tokens: 25000
     id: verify.orchestrator-decompose.3
@@ -726,6 +728,7 @@ tasks:
       debugging.
     title: Run shux delegate --orchestrate --print-only with a sample task and capture
       decomposition output
+    status: cancelled
   - estimated_cost_usd: 0.00325
     estimated_tokens: 5000
     id: verify.orchestrator-decompose.4
@@ -735,6 +738,7 @@ tasks:
       validation — no reasoning needed.
     title: 'Validate subtask fields: each entry has id, title, model_tier, estimated_tokens,
       estimated_cost_usd'
+    status: cancelled
   - estimated_cost_usd: 0.0026
     estimated_tokens: 4000
     id: verify.orchestrator-decompose.5
@@ -744,6 +748,7 @@ tasks:
       extraction task.
     title: Verify decomposition summary output contains subtask count, estimated cost,
       and recommended budget
+    status: cancelled
   - estimated_cost_usd: 0.00325
     estimated_tokens: 5000
     id: verify.orchestrator-decompose.6
@@ -753,6 +758,7 @@ tasks:
       file read and assertion.
     title: Verify contract.yaml is updated with subtasks[] containing at least 1 entry
       after orchestrate run
+    status: cancelled
   summary: Task completed and verified
   title: 'Verify: orchestrator decomposes a real task via Opus'
   verified: true
@@ -1911,7 +1917,7 @@ tasks:
   owner: claude-code
   project_path: /Users/airm2max/DevOpsSec/superharness
   require_tdd: true
-  status: in_progress
+  status: archived
   title: 'Discussion round 1: Superharness review synthesis: blocking defects, root
     causes, and fix order from codex/gemini/claude reviews of docs/*_superharness_review.md'
   workflow: discussion
@@ -1922,15 +1928,15 @@ tasks:
   owner: claude-code
   project_path: /Users/airm2max/DevOpsSec/superharness
   require_tdd: true
-  status: in_progress
+  status: archived
   title: 'Discussion round 1: Superharness review synthesis: blocking defects, root
     causes, and fix order from docs/*_superharness_review.md'
   workflow: discussion
 - id: mock.alpha
   owner: claude-code
-  status: report_ready
+  status: done
   title: 'Mock Alpha: Automated Flow Test'
 - id: mock.beta
   owner: codex-cli
-  status: review_requested
+  status: archived
   title: 'Mock Beta: Automated Flow Test'
