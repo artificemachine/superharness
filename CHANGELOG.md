@@ -104,3 +104,5 @@
 - 2026-04-27: fix(parity): add _heal_handoffs_db_to_yaml — heal-parity now repairs DB→YAML handoff drift automatically
 - 2026-04-27: test(parity): 6 tests for _heal_handoffs_db_to_yaml — writes missing file, idempotent, skips orphan, skips matched, empty created_at, multi-row no collision
 - 2026-04-27: test(dashboard): 38 HTTP integration tests covering all GET/POST endpoints, auth, subprocess-delegating and logic-bearing actions, owners endpoint
+- 2026-04-27: fix(operator): fork monitor_and_recover as detached Process so shux operator start returns immediately instead of blocking with exit 144
+- 2026-04-27: fix(dashboard): work queue card-style rows — full-size .task-actions buttons, text color fix, wrap instead of truncate (v1.37.4)
