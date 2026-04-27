@@ -151,3 +151,4 @@
 - 2026-04-28: feat(dashboard): startup validates version (auto-restarts stale process on mismatch) and watcher/auto-dispatch status; version printed on start; bump 1.41.0 → 1.42.0
 - 2026-04-28: fix(dashboard): guard now detects dashboards launched via -m superharness.scripts.dashboard-ui (module form), not just dashboard-ui.py script path — prevents stale old-version process surviving upgrade
 - 2026-04-28: chore: bump 1.42.0 → 1.42.1 (fix dashboard guard module-form detection)
+- 2026-04-28: fix(dashboard): cli.py _is_dashboard_running checks version match before returning 'already running'; kills stale process on mismatch so fresh start uses correct port; bump 1.42.1 → 1.42.2
