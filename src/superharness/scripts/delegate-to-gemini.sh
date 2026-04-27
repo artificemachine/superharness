@@ -90,10 +90,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Launch Gemini with the prompt as the final argument
-{
-  printf "y\n" | exec gemini "${GEMINI_ARGS[@]}" "$PROMPT"
-} || {
+# Launch Gemini with the prompt as the final argument.
+# Do NOT pipe printf/stdin into gemini: piping closes stdin after writing,
+# which sends EOF (^D) to gemini immediately and causes it to exit before
+# processing the task. Trust is bypassed via --skip-trust in GEMINI_ARGS.
+exec gemini ${GEMINI_ARGS[@]+"${GEMINI_ARGS[@]}"} "$PROMPT" < /dev/null || {
   echo "Gemini launch failed with exit code $?" >> /tmp/shux-launcher-error.log
   exit 1
 }
