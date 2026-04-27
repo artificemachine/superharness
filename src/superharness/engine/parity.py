@@ -101,6 +101,8 @@ def heal_parity(
             if drift.only_in_yaml > 0:
                 enqueued += _heal_inbox_yaml_to_db(conn, project_dir, now)
         elif drift.table == "handoffs":
+            if drift.only_in_db > 0:
+                enqueued += _heal_handoffs_db_to_yaml(conn, project_dir)
             if drift.only_in_yaml > 0:
                 enqueued += _heal_handoffs_yaml_to_db(conn, project_dir, now)
         elif drift.table == "failures":
@@ -544,6 +546,84 @@ def _heal_inbox_yaml_to_db(conn: sqlite3.Connection, project_dir: str, now: str)
             count += 1
         except sqlite3.Error as exc:
             logger.warning("heal_inbox_yaml_to_db: insert failed for %s: %s", item_id, exc)
+    return count
+
+
+def _heal_handoffs_db_to_yaml(conn: sqlite3.Connection, project_dir: str) -> int:
+    """Write YAML files for handoff DB rows that have no corresponding file.
+
+    Parity key is (task_id, created_at) — same as _check_handoffs. Each missing
+    pair gets its own timestamped file so collisions between multiple handoffs for
+    the same task are impossible.
+    """
+    handoffs_dir = os.path.join(project_dir, ".superharness", "handoffs")
+    os.makedirs(handoffs_dir, exist_ok=True)
+
+    try:
+        known_task_ids = {r[0] for r in conn.execute("SELECT id FROM tasks").fetchall()}
+    except sqlite3.Error as exc:
+        logger.warning("heal_handoffs_db_to_yaml: db read failed: %s", exc)
+        return 0
+
+    yaml_keys: set[tuple[str, str]] = set()
+    for fname in os.listdir(handoffs_dir):
+        if not fname.endswith(".yaml"):
+            continue
+        fpath = os.path.join(handoffs_dir, fname)
+        try:
+            with open(fpath, encoding="utf-8") as f:
+                h = yaml.safe_load(f)
+            if isinstance(h, dict):
+                task_id = str(h.get("task_id") or h.get("task") or "")
+                date = str(h.get("date") or "")
+                if task_id:
+                    yaml_keys.add((task_id, date))
+        except Exception:
+            pass
+
+    try:
+        db_rows = conn.execute(
+            "SELECT task_id, phase, status, from_agent, to_agent, created_at FROM handoffs"
+        ).fetchall()
+    except sqlite3.Error as exc:
+        logger.warning("heal_handoffs_db_to_yaml: db read failed: %s", exc)
+        return 0
+
+    count = 0
+    for row in db_rows:
+        task_id = str(row["task_id"] or "")
+        created_at = str(row["created_at"] or "")
+        if not task_id or task_id not in known_task_ids:
+            continue
+        if (task_id, created_at) in yaml_keys:
+            continue
+
+        safe_task = task_id.replace("/", ".")
+        phase = str(row["phase"] or "report")
+        ts_part = created_at.replace(":", "").replace(" ", "T")[:15] if created_at else "nodatetime"
+        fname = f"{safe_task}-{phase}-healed-{ts_part}.yaml"
+        fpath = os.path.join(handoffs_dir, fname)
+
+        doc: dict = {
+            "task": task_id,
+            "task_id": task_id,
+            "phase": phase,
+            "status": str(row["status"] or ""),
+            "from": str(row["from_agent"] or ""),
+            "to": str(row["to_agent"] or ""),
+        }
+        if created_at:
+            doc["date"] = created_at
+
+        try:
+            with open(fpath, "w", encoding="utf-8") as f:
+                yaml.dump(doc, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+            yaml_keys.add((task_id, created_at))
+            count += 1
+            logger.info("heal_handoffs_db_to_yaml: wrote %s", fname)
+        except OSError as exc:
+            logger.warning("heal_handoffs_db_to_yaml: could not write %s: %s", fpath, exc)
+
     return count
 
 

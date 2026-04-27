@@ -93,3 +93,14 @@
 - 2026-04-26 (v1.37.1): fix(release): patch bump to republish with correct __version__ = "1.37.1" — v1.37.0 wheel was built before __init__.py fix landed, so superharness --version reported 1.36.0. pyproject.toml + __init__.py now in sync.
 - 2026-04-26: chore(state): commit protocol files — contract, handoffs, discussions, SQLite state, HANDOFF.md update to v1.37.1
 - 2026-04-26 (v1.37.2): fix(dashboard): Remove button now also deletes from SQLite — dual-mode inbox items exist only in DB and were invisible to the YAML-only remove handler
+- 2026-04-27 (v1.37.3): feat(dashboard): merge active discussion rounds into the work queue panel — discussions now visible alongside inbox items with a distinct badge, round counter, and Cancel action; panel renamed to 'active work queue'
+- 2026-04-27: fix(dashboard): detect module-form dashboard launches in _find_dashboard_processes; write operator-state.json from _run_dashboard to prevent stale port on next call; 12 regression tests
+- 2026-04-26: fix(dashboard): remove paused from active inbox filter — discussion pill was showing 6 paused items alongside discussions instead of discussions only
+- 2026-04-27: test(dashboard): 31 inbox filter tests covering all pill states — discussion/paused/failed/stale/done/no-filter + cross-pill isolation
+- 2026-04-27: test(dashboard): expand cross-pill isolation to all 15 pairs via parametrize — C(6,2) exhaustive coverage
+- 2026-04-27: feat(dashboard): toggle + reflow button on task overview panel — header click collapses/expands, reflow re-renders dependency graph on demand
+- 2026-04-27: test(dashboard): 25 action button tests — recover_failed, remove_item, resume_item, retry_item, stop_item, clear_resolved_inbox, routing guards
+- 2026-04-27: test(dashboard): 99 new tests — task board actions (approve_plan, cancel_review, disable/enable, set_owner, enqueue, remove_task, pause_item, resume/retry task), panel toggle logic, view toggle, selectStatus, showInboxReason, /api/status shape, task-report/instructions shape, action routing completeness
+- 2026-04-27: fix(parity): add _heal_handoffs_db_to_yaml — heal-parity now repairs DB→YAML handoff drift automatically
+- 2026-04-27: test(parity): 6 tests for _heal_handoffs_db_to_yaml — writes missing file, idempotent, skips orphan, skips matched, empty created_at, multi-row no collision
+- 2026-04-27: test(dashboard): 38 HTTP integration tests covering all GET/POST endpoints, auth, subprocess-delegating and logic-bearing actions, owners endpoint

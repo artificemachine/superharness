@@ -303,6 +303,160 @@ def test_parity_clean_after_orchestrator_subtask_normalisation(db_conn, tmp_path
     )
 
 
+# _heal_handoffs_db_to_yaml: DB→YAML direction for handoff drift
+
+def _insert_handoff(conn, task_id, phase="report", status="report_ready",
+                    from_agent="claude-code", to_agent="owner", created_at=T0):
+    conn.execute(
+        "INSERT INTO handoffs (task_id, phase, status, from_agent, to_agent, created_at)"
+        " VALUES (?,?,?,?,?,?)",
+        (task_id, phase, status, from_agent, to_agent, created_at),
+    )
+    conn.commit()
+
+
+def _contract(sh_dir, tasks):
+    """Write contract.yaml with tasks matched exactly to _task() defaults (title=T, status=todo)."""
+    (sh_dir / "contract.yaml").write_text(
+        yaml.dump({"tasks": [{"id": t, "title": "T", "status": "todo"} for t in tasks]})
+    )
+
+
+def test_heal_handoffs_db_to_yaml_writes_missing_file(db_conn, tmp_path):
+    sh_dir = _setup_sh(tmp_path)
+    handoffs_dir = sh_dir / "handoffs"
+    handoffs_dir.mkdir()
+    project_dir = str(tmp_path)
+
+    tasks_dao.upsert(db_conn, _task("t1"))
+    _contract(sh_dir, ["t1"])
+    _insert_handoff(db_conn, "t1", created_at=T0)
+
+    report = parity.check_parity(db_conn, project_dir)
+    h_drift = next(d for d in report.drifts if d.table == "handoffs")
+    assert h_drift.only_in_db == 1
+
+    healed = parity.heal_parity(db_conn, project_dir, report)
+    assert healed >= 1
+
+    yaml_files = list(handoffs_dir.glob("*.yaml"))
+    assert len(yaml_files) == 1
+    doc = yaml.safe_load(yaml_files[0].read_text())
+    assert doc["task_id"] == "t1"
+    assert doc["phase"] == "report"
+    assert doc["date"] == T0
+
+
+def test_heal_handoffs_db_to_yaml_idempotent(db_conn, tmp_path):
+    sh_dir = _setup_sh(tmp_path)
+    handoffs_dir = sh_dir / "handoffs"
+    handoffs_dir.mkdir()
+    project_dir = str(tmp_path)
+
+    tasks_dao.upsert(db_conn, _task("t1"))
+    _contract(sh_dir, ["t1"])
+    _insert_handoff(db_conn, "t1", created_at=T0)
+
+    report = parity.check_parity(db_conn, project_dir)
+    parity.heal_parity(db_conn, project_dir, report)
+
+    # Second run: handoff drift is gone, heal writes nothing new
+    report2 = parity.check_parity(db_conn, project_dir)
+    h_drift2 = next(d for d in report2.drifts if d.table == "handoffs")
+    assert h_drift2.only_in_db == 0
+
+    healed2 = parity.heal_parity(db_conn, project_dir, report2)
+    assert healed2 == 0
+    assert len(list(handoffs_dir.glob("*.yaml"))) == 1
+
+
+def test_heal_handoffs_db_to_yaml_skips_orphaned_task(db_conn, tmp_path):
+    sh_dir = _setup_sh(tmp_path)
+    handoffs_dir = sh_dir / "handoffs"
+    handoffs_dir.mkdir()
+    project_dir = str(tmp_path)
+
+    # Insert handoff for a task that does NOT exist in tasks table
+    db_conn.execute("PRAGMA foreign_keys = OFF")
+    _insert_handoff(db_conn, "ghost-task", created_at=T0)
+    db_conn.execute("PRAGMA foreign_keys = ON")
+    (sh_dir / "contract.yaml").write_text(yaml.dump({"tasks": []}))
+
+    report = parity.check_parity(db_conn, project_dir)
+    parity.heal_parity(db_conn, project_dir, report)
+
+    # Orphaned handoff must not produce a YAML file
+    assert len(list(handoffs_dir.glob("*.yaml"))) == 0
+
+
+def test_heal_handoffs_db_to_yaml_skips_already_matched(db_conn, tmp_path):
+    sh_dir = _setup_sh(tmp_path)
+    handoffs_dir = sh_dir / "handoffs"
+    handoffs_dir.mkdir()
+    project_dir = str(tmp_path)
+
+    tasks_dao.upsert(db_conn, _task("t1"))
+    _contract(sh_dir, ["t1"])
+    _insert_handoff(db_conn, "t1", created_at=T0)
+
+    # Pre-write a YAML file with the same (task_id, date) key — no drift
+    (handoffs_dir / "existing.yaml").write_text(
+        yaml.dump({"task": "t1", "task_id": "t1", "date": T0, "phase": "report"})
+    )
+
+    report = parity.check_parity(db_conn, project_dir)
+    h_drift = next(d for d in report.drifts if d.table == "handoffs")
+    assert h_drift.only_in_db == 0
+
+    healed = parity.heal_parity(db_conn, project_dir, report)
+    assert healed == 0
+    assert len(list(handoffs_dir.glob("*.yaml"))) == 1  # no new file written
+
+
+def test_heal_handoffs_db_to_yaml_empty_created_at(db_conn, tmp_path):
+    sh_dir = _setup_sh(tmp_path)
+    handoffs_dir = sh_dir / "handoffs"
+    handoffs_dir.mkdir()
+    project_dir = str(tmp_path)
+
+    tasks_dao.upsert(db_conn, _task("t1"))
+    _contract(sh_dir, ["t1"])
+    _insert_handoff(db_conn, "t1", created_at="")  # empty timestamp edge case
+
+    report = parity.check_parity(db_conn, project_dir)
+    h_drift = next(d for d in report.drifts if d.table == "handoffs")
+    assert h_drift.only_in_db == 1
+
+    healed = parity.heal_parity(db_conn, project_dir, report)
+    assert healed >= 1
+
+    yaml_files = list(handoffs_dir.glob("*.yaml"))
+    assert len(yaml_files) == 1
+    doc = yaml.safe_load(yaml_files[0].read_text())
+    assert "date" not in doc  # empty date omitted from output
+
+
+def test_heal_handoffs_db_to_yaml_multiple_rows_same_task(db_conn, tmp_path):
+    sh_dir = _setup_sh(tmp_path)
+    handoffs_dir = sh_dir / "handoffs"
+    handoffs_dir.mkdir()
+    project_dir = str(tmp_path)
+
+    tasks_dao.upsert(db_conn, _task("t1"))
+    _contract(sh_dir, ["t1"])
+    _insert_handoff(db_conn, "t1", phase="plan", created_at="2026-01-01T00:00:00Z")
+    _insert_handoff(db_conn, "t1", phase="report", created_at="2026-01-02T00:00:00Z")
+
+    report = parity.check_parity(db_conn, project_dir)
+    h_drift = next(d for d in report.drifts if d.table == "handoffs")
+    assert h_drift.only_in_db == 2
+
+    parity.heal_parity(db_conn, project_dir, report)
+
+    yaml_files = list(handoffs_dir.glob("*.yaml"))
+    assert len(yaml_files) == 2  # one file per row, no filename collision
+
+
 # F9: _sqlite_tick calls heal_parity after drain when drift is present
 def test_sqlite_tick_heals_parity_after_drain(tmp_path):
     """_sqlite_tick must call parity.heal_parity when check_parity returns unhealthy."""
