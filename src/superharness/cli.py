@@ -243,7 +243,11 @@ def _find_dashboard_processes():
     results = []
     for line in ps_out.splitlines():
         line = line.strip()
-        if "dashboard-ui.py" not in line and "monitor-ui.py" not in line:
+        if not any(pat in line for pat in (
+            "dashboard-ui.py", "monitor-ui.py",
+            "superharness.scripts.dashboard-ui",
+            "superharness.scripts.monitor-ui",
+        )):
             continue
         parts = line.split()
         try:
@@ -391,6 +395,30 @@ def _run_dashboard(args):
             os.unlink(url_file)
         print("dashboard starting in background...")
     print(f"pid: {proc.pid}  (stop with: kill {proc.pid})")
+
+    # Write operator-state.json so _is_dashboard_running() Priority 1 check works
+    # reliably on next invocation, even when the operator was never used.
+    try:
+        import re as _re, json as _json, time as _time2
+        port_match = _re.search(r":(\d+)$", url) if url_written else None
+        _port = int(port_match.group(1)) if port_match else None
+        if not _port:
+            for a in args_list:
+                if a.isdigit():
+                    _port = int(a)
+                    break
+        if _port:
+            _op_file = os.path.join(proj, ".superharness", "operator-state.json")
+            if os.path.isdir(os.path.dirname(_op_file)):
+                with open(_op_file, "w") as _f:
+                    _json.dump({
+                        "operator_pid": proc.pid,
+                        "dashboard_port": _port,
+                        "started_at": _time2.time(),
+                        "project": proj,
+                    }, _f, indent=2)
+    except Exception:
+        pass
 
 
 @main.command(name="dashboard-kill")

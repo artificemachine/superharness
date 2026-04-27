@@ -137,12 +137,6 @@
       </div>
     </div>
 
-    <div class="card" id="parityCard" style="margin-top:10px;">
-      <h2>sqlite parity <span id="parityBadge" style="font-size:11px;font-weight:normal;margin-left:8px;padding:2px 7px;border-radius:4px;">...</span></h2>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">backend: <span id="stateBackend" style="font-family:monospace">-</span></div>
-      <div id="parityDrift" style="font-size:12px;font-family:monospace;white-space:pre;color:var(--text)">-</div>
-      <div style="margin-top:6px;font-size:11px;color:var(--muted)">yaml_sync_lag: <span id="paritySyncLag">-</span> &nbsp; fk_violations: <span id="parityFkViolations">-</span></div>
-    </div>
 
     <div class="card" style="margin-top:10px;display:none;">
       <h2>plans to confirm</h2>
@@ -180,7 +174,7 @@
 
     <div class="card" style="margin-top:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-        <h2 style="margin:0">inbox dispatch queue</h2>
+        <h2 style="margin:0">active work queue</h2>
         <span class="small" id="inboxQueueNote" style="color:var(--muted);font-size:11px;">active tasks only</span>
       </div>
       <div id="ownerFilter" style="margin-bottom:8px;"></div>
@@ -201,11 +195,17 @@
     </div>
 
     <div class="card" style="margin-top:10px;" id="taskOverviewCard">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;user-select:none" onclick="toggleTaskOverview()">
         <h2 style="margin:0">task overview</h2>
-        <span class="small" id="taskOverviewCount" style="color:var(--muted)">-</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="small" id="taskOverviewCount" style="color:var(--muted)">-</span>
+          <button id="taskOverviewReflow" onclick="event.stopPropagation();reflowTaskOverview()" style="font-size:11px;padding:2px 8px" title="Re-render dependency graph">⟳ reflow</button>
+          <span id="taskOverviewArrow" style="color:var(--muted);font-size:11px">▾</span>
+        </div>
       </div>
-      <div id="depGraphRender" style="overflow-x:auto;min-height:60px;"></div>
+      <div id="taskOverviewBody">
+        <div id="depGraphRender" style="overflow-x:auto;min-height:60px;"></div>
+      </div>
     </div>
 
     <div class="card" style="margin-top:10px;">
@@ -309,6 +309,20 @@ function togglePanel(bodyId, header) {
   if (arrow) arrow.textContent = open ? '▾' : '▸';
 }
 
+function toggleTaskOverview() {
+  const body = document.getElementById('taskOverviewBody');
+  const arrow = document.getElementById('taskOverviewArrow');
+  const btn = document.getElementById('taskOverviewReflow');
+  const open = body.style.display === 'none';
+  body.style.display = open ? '' : 'none';
+  if (arrow) arrow.textContent = open ? '▾' : '▸';
+  if (btn) btn.style.display = open ? '' : 'none';
+}
+
+function reflowTaskOverview() {
+  if (latestStatus) renderTaskOverview(latestStatus.contract_tasks || []);
+}
+
 let lastActionText = '-';
 let selectedStatus = null;
 let selectedOwners = new Set();
@@ -322,9 +336,12 @@ async function api(path, init) {
   return d;
 }
 
+let latestStatus = null;
+
 async function refresh() {
   try {
     const d = await api('/api/status');
+    latestStatus = d;
     document.getElementById('version').textContent = 'v' + (d.version || 'unknown');
     document.getElementById('meta').textContent = `project: ${d.project} | refresh: ${d.refresh_seconds}s`;
     document.getElementById('label').textContent = d.label;
@@ -380,27 +397,6 @@ async function refresh() {
     if (_currentView === 'board') loadBoardView();
     renderTaskOverview(d.contract_tasks || []);
     renderActivityFeed(d.activity_feed || []);
-    // Parity panel — badge reflects mismatched=0 (Gate 2 criteria), not healthy (Gate 3 strict)
-    const pr = d.parity || {};
-    const badge = document.getElementById('parityBadge');
-    const totalMismatched = (pr.drift || []).reduce((s, r) => s + (r.mismatched || 0), 0);
-    const totalOnlyInYaml = (pr.drift || []).reduce((s, r) => s + (r.only_in_yaml || 0), 0);
-    if (pr.error) {
-      badge.textContent = 'error'; badge.style.background = 'var(--bad,#c0392b)'; badge.style.color = '#fff';
-    } else if (pr.healthy == null) {
-      badge.textContent = '...'; badge.style.background = 'var(--btn)'; badge.style.color = 'var(--muted)';
-    } else if (totalMismatched > 0 || totalOnlyInYaml > 0) {
-      badge.textContent = 'drift'; badge.style.background = 'var(--bad,#c0392b)'; badge.style.color = '#fff';
-    } else {
-      badge.textContent = 'ok'; badge.style.background = 'var(--ok)'; badge.style.color = '#fff';
-    }
-    document.getElementById('stateBackend').textContent = d.state_backend || 'dual';
-    document.getElementById('paritySyncLag').textContent = pr.yaml_sync_lag ?? '-';
-    document.getElementById('parityFkViolations').textContent = pr.foreign_key_violations ?? '-';
-    const driftRows = (pr.drift || []).filter(r => r.only_in_db > 0 || r.only_in_yaml > 0 || r.mismatched > 0);
-    document.getElementById('parityDrift').textContent = driftRows.length
-      ? driftRows.map(r => `${r.table.padEnd(12)} only_in_db=${r.only_in_db}  only_in_yaml=${r.only_in_yaml}  mismatched=${r.mismatched}`).join('\n')
-      : 'mismatched=0  all tables in sync';
 
     document.getElementById('ledger').textContent = (d.ledger_tail || []).join('\n');
     document.getElementById('out').textContent = (d.out_tail || []).join('\n');
@@ -432,8 +428,20 @@ async function refresh() {
       } catch(e) {}
     }
     const keys = Object.keys(filteredCounts).sort();
-    if (!keys.length) { counts.textContent = 'no inbox rows'; selectedStatus = null; }
+    counts.innerHTML = '';
+
+    // Always show "discussion" pill — composite label: discussions + active inbox items
+    const discCount = (latestStatus && latestStatus.active_discussions || []).length;
+    const activeInboxCount = (filteredCounts['pending'] || 0) + (filteredCounts['launched'] || 0) + (filteredCounts['running'] || 0);
+    const discEl = document.createElement('span');
+    discEl.className = 'pill' + (selectedStatus === 'active' || !selectedStatus ? ' sel' : '');
+    discEl.textContent = activeInboxCount > 0 ? `discussion: ${discCount} + ${activeInboxCount}` : `discussion: ${discCount}`;
+    discEl.onclick = () => selectStatus('active');
+    counts.appendChild(discEl);
+
+    // Dynamic pills for all other statuses with items
     for (const k of keys) {
+      if (k === 'active' || k === 'pending' || k === 'launched' || k === 'running') continue;
       const el = document.createElement('span');
       el.className = 'pill' + (k === selectedStatus ? ' sel' : '');
       el.textContent = `${k}: ${filteredCounts[k]}`;
@@ -495,8 +503,10 @@ async function selectStatus(k) {
     document.querySelectorAll('.pill').forEach(p => p.classList.remove('sel'));
     return;
   }
+  // 'active' maps to the 'discussion' pill (which starts with 'discussion:')
+  const pillPrefix = k === 'active' ? 'discussion:' : k + ':';
   document.querySelectorAll('.pill').forEach(p => {
-    p.classList.toggle('sel', p.textContent.startsWith(k + ':'));
+    p.classList.toggle('sel', p.textContent.startsWith(pillPrefix));
   });
   await loadInboxDetail(selectedStatus);
 }
@@ -510,7 +520,22 @@ async function loadInboxDetail(status) {
     const d = await api(url);
     const tbody = document.getElementById('inboxRows');
     tbody.innerHTML = '';
-    if (!d.items.length) {
+
+    // Inject active discussion rounds at the top — only when showing active/all view
+    const discussions = (status === 'active' || status === 'all') ? ((latestStatus && latestStatus.active_discussions) || []) : [];
+    for (const disc of discussions) {
+      const participants = (disc.participants || []).join(', ');
+      const topic = (disc.topic || '').length > 60 ? disc.topic.slice(0, 60) + '…' : (disc.topic || '');
+      const badge = `<span style="background:var(--accent);color:#000;font-size:10px;padding:1px 5px;border-radius:3px;font-weight:700">discussion</span>`;
+      const roundBadge = `<span style="color:var(--muted);font-size:11px"> round ${disc.current_round||'?'}/${disc.max_rounds||'?'}</span>`;
+      const cancelBtn = `<button onclick="act('cancel_discussion:${disc.id}')" style="font-size:11px;padding:2px 6px;color:var(--bad)">Cancel</button>`;
+      const tr = document.createElement('tr');
+      tr.style.borderLeft = '3px solid var(--accent)';
+      tr.innerHTML = `<td>${disc.id||''}</td><td>${badge}${roundBadge} ${topic}</td><td>${participants}</td><td>—</td><td>${disc.created_at||''}</td><td>—</td><td><span style="color:var(--ok);font-size:11px">in progress</span></td><td>${cancelBtn}</td>`;
+      tbody.appendChild(tr);
+    }
+
+    if (!d.items.length && !discussions.length && tbody.children.length === 0) {
       const tr = document.createElement('tr');
       tr.innerHTML = '<td colspan="8" style="color:var(--muted)">no items</td>';
       tbody.appendChild(tr);
