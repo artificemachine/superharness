@@ -776,12 +776,18 @@ def operator_check(project):
 @click.option("--port", default=8787, help="Dashboard port")
 def operator_start(project, port):
     """Start the Superharness Guardian (Watcher + Dashboard)."""
+    import multiprocessing
     from superharness.engine.operator import Operator
     op = Operator(project)
-    
-    click.echo("🛡️  Superharness Guardian active.")
     op.start_stack(dashboard_port=port)
-    op.monitor_and_recover()
+
+    # Fork the monitor loop so this command returns immediately.
+    # The child process runs detached and restarts crashed components.
+    monitor = multiprocessing.Process(target=op.monitor_and_recover, daemon=False)
+    monitor.start()
+
+    click.echo(f"dashboard: http://127.0.0.1:{port}  (already running)")
+    click.echo(f"monitor pid: {monitor.pid}")
 
 
 @operator.command(name="install")
