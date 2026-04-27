@@ -285,13 +285,36 @@ def _find_dashboard_processes():
 def _is_dashboard_running(project_dir: str = None) -> tuple:
     """Return (running: bool, port: int|None) for the dashboard serving project_dir.
 
+    Returns False when the running dashboard's version doesn't match the
+    installed version so the caller starts a fresh one.
     If project_dir is None, falls back to checking any dashboard on port 8787.
     """
     import urllib.request
     import json
+    try:
+        import importlib.metadata as _meta
+        _installed_ver = _meta.version("superharness")
+    except Exception:
+        _installed_ver = None
+
+    def _version_ok(port: int) -> bool:
+        """Return True only if the running dashboard version matches installed."""
+        if _installed_ver is None:
+            return True
+        try:
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/api/status")
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                running_ver = json.loads(resp.read()).get("version", "unknown")
+            if running_ver != _installed_ver:
+                print(f"dashboard version mismatch: running={running_ver} installed={_installed_ver} — will restart")
+                return False
+            return True
+        except Exception:
+            return False
+
     if project_dir is not None:
         real_proj = os.path.realpath(project_dir)
-        
+
         # Priority 1: Check operator-state.json for the actual port this project is using
         daemon_file = os.path.join(real_proj, ".superharness", "operator-state.json")
         if os.path.exists(daemon_file):
@@ -302,7 +325,7 @@ def _is_dashboard_running(project_dir: str = None) -> tuple:
                     if port:
                         req = urllib.request.Request(f"http://127.0.0.1:{port}/api/status")
                         with urllib.request.urlopen(req, timeout=1) as resp:
-                            if resp.status == 200:
+                            if resp.status == 200 and _version_ok(port):
                                 return True, port
             except Exception:
                 pass
@@ -313,7 +336,7 @@ def _is_dashboard_running(project_dir: str = None) -> tuple:
                 try:
                     req = urllib.request.Request(f"http://127.0.0.1:{port}/api/status")
                     with urllib.request.urlopen(req, timeout=1) as resp:
-                        if resp.status == 200:
+                        if resp.status == 200 and _version_ok(port):
                             return True, port
                 except Exception:
                     pass
@@ -322,7 +345,9 @@ def _is_dashboard_running(project_dir: str = None) -> tuple:
     try:
         req = urllib.request.Request("http://127.0.0.1:8787/api/status")
         with urllib.request.urlopen(req, timeout=1) as resp:
-            return resp.status == 200, 8787
+            if resp.status == 200 and _version_ok(8787):
+                return True, 8787
+        return False, None
     except Exception:
         return False, None
 
@@ -345,13 +370,25 @@ def _run_dashboard(args):
             proj = args_list[i + 1]
             break
 
-    # Check if a dashboard for THIS project is already running
+    # Check if a dashboard for THIS project is already running at the correct version
     if not foreground:
         running, port = _is_dashboard_running(proj)
         if running:
             print(f"dashboard: http://127.0.0.1:{port}  (already running)")
             print(f"project: {proj}")
             return
+        # Version mismatch: kill any stale process on the target port before starting fresh
+        _stale_port = port or 8787
+        for _pid, _p, _proj in _find_dashboard_processes():
+            if _proj and os.path.realpath(_proj) == os.path.realpath(proj) and _p == _stale_port:
+                try:
+                    import signal as _sig
+                    os.kill(_pid, _sig.SIGTERM)
+                    import time as _t
+                    _t.sleep(1)
+                except Exception:
+                    pass
+                break
 
     if foreground:
         args_list.remove("--foreground")
