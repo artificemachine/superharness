@@ -1,6 +1,6 @@
 """STATE_BACKEND-aware read functions for the superharness state layer.
 
-Controls whether reads come from YAML (legacy) or SQLite (cutover).
+Controls whether reads come from YAML (legacy) or SQLite (primary).
 
 STATE_BACKEND values:
   yaml_only   — read YAML, ignore SQLite (emergency rollback)
@@ -8,6 +8,8 @@ STATE_BACKEND values:
   sqlite_only — read SQLite exclusively; error if unavailable
 
 Set via environment variable STATE_BACKEND or profile.yaml state_backend key.
+Projects that have fully migrated to SQLite can set state_backend: sqlite_only
+in their profile.yaml to opt in to strict mode.
 """
 from __future__ import annotations
 

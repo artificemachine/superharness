@@ -1,21 +1,14 @@
-"""state_writer — unified write API for tasks, inbox, handoffs (iter 3a skeleton).
+"""state_writer — unified write API for tasks, inbox, handoffs.
 
-This is the FOUNDATION for iter 3 of auto-mode-gap-plan: SQLite as the
-single source of truth. Today (3a), this module provides a public API that
-performs YAML writes (and best-effort SQLite mirror) so callers can migrate
-to it. In 3b..3d, individual writers across the codebase migrate to call
-these functions instead of editing YAML directly. In 3e, the default backend
-switches to sqlite_only and YAML becomes export-only.
-
-Why a skeleton now: it defines the contract and gives migration targets, so
-later iterations are mechanical refactors rather than design work.
+Foundation for SQLite-as-SoT migration. Writes YAML (source of truth
+during transition) and mirrors to SQLite so both stores stay in sync.
 
 API:
   set_task_status(project_dir, task_id, status, *, from_status=None) -> bool
   set_inbox_status(project_dir, item_id, status, **fields) -> bool
   upsert_handoff(project_dir, handoff_id, content) -> bool
-
-All functions return True on success, False on no-op (e.g. unknown id).
+  mirror_task_dict(project_dir, task) -> None        # best-effort SQLite sync
+  mirror_inbox_item_dict(project_dir, item) -> None  # best-effort SQLite sync
 """
 from __future__ import annotations
 
@@ -62,7 +55,6 @@ def set_task_status(
                 yaml.dump(doc, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
         except Exception:
             return False
-        # Best-effort SQLite mirror (skipped silently if unavailable in 3a)
         _mirror_task_to_sqlite(project_dir, task_id, status)
         return True
     return False
@@ -94,7 +86,6 @@ def set_inbox_status(
         if str(item.get("id", "")) != item_id:
             continue
         item["status"] = status
-        # Stamp common timestamp keys based on status
         if status == "paused":
             item.setdefault("paused_at", _now_utc())
         elif status == "launched":
@@ -129,14 +120,33 @@ def upsert_handoff(project_dir: str, handoff_id: str, content: dict) -> bool:
         return False
 
 
+def mirror_task_dict(project_dir: str, task: dict) -> None:
+    """Mirror a fully-populated task dict to SQLite. Best-effort, silent on failure."""
+    task_id = str(task.get("id", ""))
+    status = str(task.get("status", ""))
+    if task_id and status:
+        _mirror_task_to_sqlite(project_dir, task_id, status)
+
+
+def mirror_inbox_item_dict(project_dir: str, item: dict) -> None:
+    """Mirror a fully-populated inbox item dict to SQLite. Best-effort, silent on failure."""
+    item_id = str(item.get("id", ""))
+    status = str(item.get("status", ""))
+    if item_id and status:
+        _mirror_inbox_to_sqlite(project_dir, item_id, status)
+
+
 def _mirror_task_to_sqlite(project_dir: str, task_id: str, status: str) -> None:
-    """Best-effort SQLite mirror. Silent on failure (skeleton stage)."""
+    """Best-effort SQLite mirror for a task status change."""
     try:
-        from superharness.engine import db, tasks_dao
-        conn = db.connect(project_dir)
+        from superharness.engine import db
+        db_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
+        if not os.path.isfile(db_path):
+            return
+        conn = db.get_connection(project_dir)
         try:
-            with db.transaction(conn):
-                tasks_dao.update_status(conn, task_id, status, now=_now_utc())
+            conn.execute("UPDATE tasks SET status=? WHERE id=?", (status, task_id))
+            conn.commit()
         finally:
             conn.close()
     except Exception:
@@ -144,18 +154,29 @@ def _mirror_task_to_sqlite(project_dir: str, task_id: str, status: str) -> None:
 
 
 def _mirror_inbox_to_sqlite(project_dir: str, item_id: str, status: str) -> None:
-    """Best-effort SQLite mirror. Silent on failure (skeleton stage)."""
+    """Best-effort SQLite mirror for an inbox item status change."""
     try:
-        from superharness.engine import db, inbox_dao
-        conn = db.connect(project_dir)
+        from superharness.engine import db
+        db_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
+        if not os.path.isfile(db_path):
+            return
+        conn = db.get_connection(project_dir)
         try:
-            with db.transaction(conn):
-                inbox_dao.update_status(
-                    conn, item_id,
-                    from_status=None,  # type: ignore[arg-type]
-                    to_status=status,
-                    now=_now_utc(),
-                )
+            now = _now_utc()
+            extra = ""
+            params: list = [status]
+            if status == "failed":
+                extra = ", failed_at = ?"
+                params.append(now)
+            elif status == "done":
+                extra = ", done_at = ?"
+                params.append(now)
+            elif status == "paused":
+                extra = ", paused_at = ?"
+                params.append(now)
+            params.append(item_id)
+            conn.execute(f"UPDATE inbox SET status = ?{extra} WHERE id = ?", params)
+            conn.commit()
         finally:
             conn.close()
     except Exception:
