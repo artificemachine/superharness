@@ -797,18 +797,53 @@ def _do_dispatch(
         # immediately to stop the watcher from burning its retry budget. See
         # superharness.commands.delegate.EXIT_PERMANENT_BLOCK.
         permanent_block = launcher_rc == 2
+
+        # Read log tail for classifier
+        log_tail_text = ""
+        if os.path.isfile(task_log):
+            try:
+                from pathlib import Path as _P
+                _lines = _P(task_log).read_text(encoding="utf-8", errors="replace").splitlines()
+                log_tail_text = "\n".join(_lines[-50:])
+            except Exception:
+                log_tail_text = ""
+
+        # Classify the failure
+        try:
+            from superharness.engine.failure_classifier import classify as _classify_failure
+            _classification = _classify_failure(
+                launcher_rc=launcher_rc, error_text="", log_tail=log_tail_text
+            )
+            failure_class = _classification.category
+            failure_explain = _classification.explain
+        except Exception:
+            failure_class = "unknown"
+            failure_explain = f"launcher exited with code {launcher_rc}"
+
         if launcher_rc == 124:
             fail_reason = f"launcher timed out after {effective_timeout}s"
             print(f"Launcher timed out after {effective_timeout}s for {item_id}", file=sys.stderr)
         elif permanent_block:
-            fail_reason = "permanent block (lifecycle gate) — not retryable"
+            fail_reason = f"permanent block (lifecycle gate): {failure_explain}"
             print(f"Permanent block for {item_id}: lifecycle gate rejected. Not retrying.", file=sys.stderr)
         else:
-            fail_reason = f"launcher exited with code {launcher_rc}"
+            fail_reason = f"{failure_class}: {failure_explain}"
         new_lock = _MkdirLock(inbox_file + ".lock.d")
         _mark_item_failed(inbox_file, item_id, fail_now, new_lock, reason=fail_reason)
+        # Stamp structured failure metadata for auto_retry and dashboard surface
+        try:
+            _inbox_cmd([
+                "set_field", "--file", inbox_file, "--id", item_id,
+                "--key", "failure_class", "--value", failure_class,
+            ])
+            _inbox_cmd([
+                "set_field", "--file", inbox_file, "--id", item_id,
+                "--key", "failure_explain", "--value", failure_explain,
+            ])
+        except Exception:
+            pass
         _sqlite_mirror_dispatch(project_dir, item_id, item_task, item_to, "failed", fail_now, reason=fail_reason)
-        if permanent_block:
+        if permanent_block or not _classification.retryable:
             # Push retry_count to max_retries so the watcher's next pass sees it as
             # retry-exhausted and does not pick it up again.
             _inbox_cmd([
