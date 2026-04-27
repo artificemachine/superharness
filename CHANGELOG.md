@@ -152,3 +152,4 @@
 - 2026-04-28: fix(dashboard): guard now detects dashboards launched via -m superharness.scripts.dashboard-ui (module form), not just dashboard-ui.py script path — prevents stale old-version process surviving upgrade
 - 2026-04-28: chore: bump 1.42.0 → 1.42.1 (fix dashboard guard module-form detection)
 - 2026-04-28: fix(dashboard): cli.py _is_dashboard_running checks version match before returning 'already running'; kills stale process on mismatch so fresh start uses correct port; bump 1.42.1 → 1.42.2
+- 2026-04-28: fix(dispatch): delegate-to-gemini.sh preflight grep used ERE backslash-pipe (literal) instead of pipe for alternation — GEMINI.md always failed superharness|shux check even when content present; bump 1.42.2 → 1.42.3
