@@ -167,7 +167,7 @@
     </div>
 
     <div class="card report-scroll" style="margin-top:10px; display:none;" id="taskReportCard">
-      <h2 style="position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;">task report <button onclick="document.getElementById('taskReportCard').style.display='none'" style="font-size:11px;padding:2px 8px;float:right">close</button><button onclick="copyPanel('taskReportBody',this)" style="font-size:11px;padding:2px 8px;float:right;margin-right:4px">Copy</button></h2>
+      <h2 style="position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;">task report <button onclick="if(_liveLogInterval){clearInterval(_liveLogInterval);_liveLogInterval=null;}document.getElementById('taskReportCard').style.display='none'" style="font-size:11px;padding:2px 8px;float:right">close</button><button onclick="copyPanel('taskReportBody',this)" style="font-size:11px;padding:2px 8px;float:right;margin-right:4px">Copy</button></h2>
       <div class="small" id="taskReportMeta" style="position:sticky;top:28px;background:var(--panel);padding-bottom:4px;z-index:1;">-</div>
       <pre id="taskReportBody">-</pre>
     </div>
@@ -336,7 +336,8 @@ const AGENT_MODEL_DEFAULTS = {
 };
 
 // Statuses that are considered "live" (auto-refresh task report).
-const LIVE_STATUSES = new Set(['in_progress', 'todo', 'plan_approved', 'report_ready', 'review_requested']);
+// 'launched' included so inbox items actively dispatched get live log.
+const LIVE_STATUSES = new Set(['in_progress', 'todo', 'plan_approved', 'report_ready', 'review_requested', 'launched']);
 
 // Statuses that trigger the review-queue banner.
 const REVIEW_STATUSES = ['review_requested', 'review_passed', 'review_failed'];
@@ -710,6 +711,7 @@ async function act(action) {
 }
 
 let _liveLogInterval = null;
+const _DEAD_STATUSES = new Set(['done', 'failed', 'stopped', 'archived']);
 
 async function viewTaskReport(taskId, agent) {
   const card = document.getElementById('taskReportCard');
@@ -721,24 +723,40 @@ async function viewTaskReport(taskId, agent) {
   if (_liveLogInterval) { clearInterval(_liveLogInterval); _liveLogInterval = null; }
   try {
     const d = await api('/api/task-report?task=' + encodeURIComponent(taskId) + '&agent=' + encodeURIComponent(agent));
-    const _liveStatuses = LIVE_STATUSES;
-    const isActive = _liveStatuses.has(d.contract_status);
+    const isActive = LIVE_STATUSES.has(d.contract_status);
     if (isActive) {
       // Show LIVE badge immediately for active statuses
       meta.innerHTML = `task=${taskId} &nbsp; agent=${agent} &nbsp; <span class="live-badge">LIVE ●</span> auto-refreshing`;
       try {
-        const logData = await api('/api/task-log?task=' + encodeURIComponent(taskId) + '&agent=' + encodeURIComponent(agent) + '&lines=100');
+        const logData = await api('/api/task-log?task=' + encodeURIComponent(taskId) + '&agent=' + encodeURIComponent(agent) + '&lines=200');
         if (logData.exists) {
           const sdkBadge = logData.sdk_status ? ` &nbsp; <span style="color:var(--warn)">${logData.sdk_status}</span>` : '';
           meta.innerHTML = `task=${taskId} &nbsp; agent=${agent} &nbsp; <span class="live-badge">LIVE ●</span> auto-refreshing${sdkBadge}`;
           body.textContent = logData.log;
           body.scrollTop = body.scrollHeight;
+          let _lastLogLen = (logData.log || '').length;
+          let _staleSeconds = 0;
           _liveLogInterval = setInterval(async () => {
             try {
-              const fresh = await api('/api/task-log?task=' + encodeURIComponent(taskId) + '&agent=' + encodeURIComponent(agent) + '&lines=100');
+              const fresh = await api('/api/task-log?task=' + encodeURIComponent(taskId) + '&agent=' + encodeURIComponent(agent) + '&lines=200');
+              const newLen = (fresh.log || '').length;
               if (fresh.log) { body.textContent = fresh.log; body.scrollTop = body.scrollHeight; }
+
+              // Stop polling when task is done/failed/stopped
+              const statusCheck = await api('/api/task-report?task=' + encodeURIComponent(taskId) + '&agent=' + encodeURIComponent(agent));
+              if (_DEAD_STATUSES.has(statusCheck.contract_status)) {
+                clearInterval(_liveLogInterval); _liveLogInterval = null;
+                meta.innerHTML = `task=${taskId} &nbsp; agent=${agent} &nbsp; <span style="color:var(--muted)">&#9632; stopped (${statusCheck.contract_status})</span>`;
+                return;
+              }
+
+              // Stale detection: warn if log hasn't grown in 60s
+              if (newLen > _lastLogLen) { _lastLogLen = newLen; _staleSeconds = 0; }
+              else { _staleSeconds += 3; }
+              const staleWarn = _staleSeconds >= 60
+                ? ` &nbsp; <span style="color:var(--warn)">&#9888; no new output for ${_staleSeconds}s</span>` : '';
               const freshBadge = fresh.sdk_status ? ` &nbsp; <span style="color:var(--warn)">${fresh.sdk_status}</span>` : '';
-              meta.innerHTML = `task=${taskId} &nbsp; agent=${agent} &nbsp; <span class="live-badge">LIVE ●</span> auto-refreshing${freshBadge}`;
+              meta.innerHTML = `task=${taskId} &nbsp; agent=${agent} &nbsp; <span class="live-badge">LIVE ●</span> auto-refreshing${freshBadge}${staleWarn}`;
             } catch(e) {}
           }, 3000);
           return;
