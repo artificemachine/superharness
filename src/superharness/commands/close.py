@@ -209,9 +209,10 @@ def close_task(
     if context:
         handoff_data["context"] = context
     try:
-        with open(handoff_file, "w") as f:
-            yaml.dump(handoff_data, f, default_flow_style=False, allow_unicode=True)
-    except OSError as e:
+        from superharness.engine.state_writer import upsert_handoff
+        if not upsert_handoff(project_dir, f"{task_id}-to-owner", handoff_data):
+            raise OSError("upsert_handoff returned False")
+    except Exception as e:
         print(f"Warning: could not write handoff: {e}", file=sys.stderr)
 
     # Sync inbox
