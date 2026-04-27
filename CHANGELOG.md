@@ -139,3 +139,4 @@
 - 2026-04-27: fix(dispatch): prepend full binary paths to PATH in delegate-to-claude.sh and delegate-to-gemini.sh so launchd's stripped environment can find claude and gemini
 - 2026-04-27: fix(dispatch): re-apply bash 3.2 safe array expansion in delegate-to-claude.sh (set -u + empty CLAUDE_ARGS → unbound variable)
 - 2026-04-27: fix(dashboard): wrap topic/task column text in active work queue (remove nowrap+ellipsis, show full text)
+- 2026-04-27: feat(state): iter 3b-3e — SQLite mirror at every YAML write site (lifecycle_rules, review_escalation, inbox_watch, dashboard-ui, close); state_writer mirror helpers + raw-SQL fixes; state_reader defaults to dual with sqlite_only opt-in via profile.yaml; 7 parity tests added
