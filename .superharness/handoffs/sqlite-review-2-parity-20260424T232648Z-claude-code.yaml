@@ -22,21 +22,15 @@ verdict: |
   block the gate regardless of the soak result, but a clean soak will not
   unblock it either.
 
-summary_of_what_landed:
-  - db.py: WAL, FK ON, busy_timeout=5000, user_version migrations — schema is
-    fine, 11 tables created in v1.
-  - DAOs (Gemini): inbox_dao atomic claim via UPDATE...RETURNING, tasks_dao
-    optimistic-concurrency update, watcher_singleton with CHECK(key='singleton').
+summary_of_what_landed: |
+  - db.py: WAL, FK ON, busy_timeout=5000, user_version migrations — schema is fine, 11 tables created in v1.
+  - DAOs (Gemini): inbox_dao atomic claim via UPDATE...RETURNING, tasks_dao optimistic-concurrency update, watcher_singleton with CHECK(key='singleton').
   - Z-suffix fix in get_stale / watcher_singleton.acquire — correct.
-  - yaml_sync.py: queue + drain + 5 op handlers, os.replace for atomic file
-    writes.
+  - yaml_sync.py: queue + drain + 5 op handlers, os.replace for atomic file writes.
   - parity.py: check_parity for tasks + inbox, heal_parity for only_in_db.
-  - Dual-write hooks: _sqlite_mirror_dispatch (inbox_dispatch), _sqlite_tick
-    (inbox_watch), _sqlite_mirror_orchestrate (delegate), _sqlite_sync_tasks
-    (contract_io), _sqlite_record_review (inbox_dispatch).
+  - Dual-write hooks: _sqlite_mirror_dispatch (inbox_dispatch), _sqlite_tick (inbox_watch), _sqlite_mirror_orchestrate (delegate), _sqlite_sync_tasks (contract_io), _sqlite_record_review (inbox_dispatch).
   - Watcher singleton: acquire on startup, heartbeat per tick, release on exit.
-  - Dashboard: dashboard_presenter (Gemini iter 9) — not in this review's scope
-    beyond parity implications.
+  - Dashboard: dashboard_presenter (Gemini iter 9) — not in this review's scope beyond parity implications.
 
 blockers:
   - id: B1
