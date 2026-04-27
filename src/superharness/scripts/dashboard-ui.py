@@ -3019,8 +3019,32 @@ def main() -> int:
                         except ValueError:
                             pass
                 _url = f"http://127.0.0.1:{_existing_port}" if _existing_port else "(port unknown)"
-                print(f"dashboard already running for project '{project_dir.name}' (pid={_other_pid}, {_url})")
-                print(f"  kill it first:  shux dashboard-kill --project {project_dir}")
+
+                # Version check: query running dashboard and compare to installed version
+                _current_version = _get_installed_version()
+                _running_version = "unknown"
+                if _existing_port:
+                    try:
+                        import urllib.request as _ur
+                        with _ur.urlopen(f"http://127.0.0.1:{_existing_port}/api/status", timeout=2) as _r:
+                            import json as _json
+                            _running_version = _json.loads(_r.read()).get("version", "unknown")
+                    except Exception:
+                        pass
+
+                if _running_version != "unknown" and _running_version != _current_version:
+                    print(f"dashboard version mismatch: running={_running_version} installed={_current_version} — restarting...")
+                    try:
+                        import signal as _signal
+                        os.kill(_other_pid, _signal.SIGTERM)
+                        import time as _time
+                        _time.sleep(1)
+                    except Exception:
+                        pass
+                    # Fall through to start a fresh dashboard at the new version
+                    break
+
+                print(f"dashboard already running for project '{project_dir.name}' (pid={_other_pid}, {_url}) — version {_running_version}")
                 raise SystemExit(0)
     except SystemExit:
         raise
@@ -3071,6 +3095,11 @@ def main() -> int:
     url = f"http://{args.host}:{port}"
     print(f"dashboard: {url}")
     print(f"project: {project_dir}")
+    _installed_ver = _get_installed_version()
+    print(f"version: {_installed_ver}")
+    _wrt = watcher_runtime(Handler.label)
+    _watcher_ok = _wrt.get("loaded") and _wrt.get("state") in ("waiting", "running")
+    print(f"watcher: {'ok — auto-dispatch active' if _watcher_ok else 'NOT RUNNING — auto-dispatch inactive (run: shux watcher-install)'}")
     print(f"watcher label: {Handler.label}")
     url_file = os.environ.get("SUPERHARNESS_DASHBOARD_URL_FILE") or os.environ.get("SUPERHARNESS_MONITOR_URL_FILE")
     if url_file:
