@@ -142,3 +142,4 @@
 - 2026-04-27: feat(state): iter 3b-3e — SQLite mirror at every YAML write site (lifecycle_rules, review_escalation, inbox_watch, dashboard-ui, close); state_writer mirror helpers + raw-SQL fixes; state_reader defaults to dual with sqlite_only opt-in via profile.yaml; 7 parity tests added
 - 2026-04-27: chore(release): bump version 1.38.0 → 1.39.0 (feat: iter 3b-3e SQLite mirror at every YAML write site)
 - 2026-04-27: fix(version): sync __init__.py __version__ with pyproject.toml (1.39.0 → 1.39.1 patch)
+- 2026-04-27: fix(dashboard): active work queue shows "report ready — needs review" badge when contract task status is report_ready, row highlighted amber
