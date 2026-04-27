@@ -86,4 +86,4 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Launch Claude
-exec claude "${CLAUDE_ARGS[@]}" "$PROMPT"
+exec claude ${CLAUDE_ARGS[@]+"${CLAUDE_ARGS[@]}"} "$PROMPT"
