@@ -166,3 +166,4 @@
 - 2026-04-28: feat(dashboard): review mode tabs — filter tasks by All / Needs Review / In Progress / Auto-handled / Stale; tabs wired into contract task rendering with visual mode indicator.
 - 2026-04-28: fix(auto-close): _auto_close_report_ready reads tasks from SQLite via state_reader instead of contract.yaml; writes done status directly to SQLite via tasks_dao; removes all YAML read/write from auto-close path.
 - 2026-04-28 (v1.43.0): feat(sqlite-migration): complete YAML→SQLite migration — all state reads/writes use SQLite; parity.py and yaml_sync.py replaced with no-op stubs; auto-mode gaps closed (peer approval, stale task GC, review mode tabs, auto-close SQLite, stopped concurrency fix, escalation classification, cross-agent orchestrator).
+- 2026-04-28: fix(verifier): context field check is soft when auto_close is explicitly set — missing context warns but does not block auto-close; prevents stale mock tasks from being stuck indefinitely.
