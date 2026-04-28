@@ -1002,6 +1002,7 @@ const STATUS_GROUPS = [
   { key: 'todo',           label: '🕐 todo',            statuses: ['todo'],                          color: 'var(--muted)' },
 ];
 let _reviewMode = 'all';
+let _hiddenGroups = new Set(['done', 'archived']);
 
 function setReviewMode(mode) {
   _reviewMode = mode;
