@@ -1028,6 +1028,142 @@ def _trigger_auto_review(project_dir: str, task_id: str, reviewers: list[str]) -
     return True
 
 
+def _auto_close_review_passed(project_dir: str) -> None:
+    """Auto-close review_requested tasks when a reviewer submits a verdict report.
+
+    Scans inbox for items with status==done and outcome containing "LGTM" or "REJECTED".
+    """
+    import yaml as _yaml
+    import re as _re
+    from superharness.commands.close import close_task
+    from superharness.engine.state_writer import mirror_task_dict
+
+    profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
+    profile: dict = {}
+    if os.path.isfile(profile_file):
+        try:
+            with open(profile_file, encoding="utf-8") as _f:
+                profile = _yaml.safe_load(_f.read()) or {}
+        except Exception:
+            return
+
+    # Same opt-in rule as _auto_close_report_ready
+    auto_close = profile.get("auto_close", profile.get("autonomy") == "autonomous")
+    if not auto_close:
+        return
+
+    tasks = _load_tasks(project_dir)
+    if not tasks:
+        return
+
+    from superharness.engine import state_reader as _sr
+    try:
+        inbox_items = _sr.get_inbox_items(project_dir)
+    except Exception:
+        return
+
+    for task in tasks:
+        if str(task.get("status")) != "review_requested":
+            continue
+        task_id = str(task.get("id"))
+
+        # Detect LGTM/REJECTED in any done inbox item for this task
+        verdict = ""
+        reviewer = "reviewer"
+        for item in inbox_items:
+            if not isinstance(item, dict):
+                continue
+            if item.get("task") == task_id and item.get("status") == "done":
+                outcome_raw = item.get("outcome")
+                
+                # F14: If outcome missing from item, check handoffs as fallback
+                if not outcome_raw:
+                    try:
+                        history = _sr.get_handoffs(project_dir, task_id=task_id)
+                        if history:
+                            # Check the latest report/handoff from this agent
+                            agent = str(item.get("to") or "")
+                            latest = next((h for h in history if h.get("from_agent") == agent), None)
+                            if latest:
+                                outcome_raw = str(latest.get("content") or "")
+                    except Exception:
+                        pass
+
+                if not outcome_raw:
+                    continue
+
+                outcome_str = str(outcome_raw).upper()
+                
+                # Check 1: Structured YAML verdict (highest precision)
+                if isinstance(outcome_raw, str) and ("review_verdict:" in outcome_raw or "verdict:" in outcome_raw):
+                    try:
+                        # Try full YAML load first
+                        parsed = _yaml.safe_load(outcome_raw)
+                        if isinstance(parsed, dict):
+                            v_val = str(parsed.get("review_verdict") or parsed.get("verdict") or "").lower()
+                            if v_val in ("lgtm", "rejected", "fail"):
+                                verdict = "lgtm" if v_val == "lgtm" else "rejected"
+                                reviewer = str(item.get("to") or "reviewer")
+                                break
+                    except Exception:
+                        # Fallback to regex if YAML load fails (e.g. mixed content)
+                        pass
+
+                # Check 2: Regex extraction (robust against mixed text/YAML)
+                if not verdict and isinstance(outcome_raw, str):
+                    m = _re.search(r"(?:review_verdict|verdict):\s*(lgtm|rejected|fail)", outcome_raw, _re.IGNORECASE)
+                    if m:
+                        v_val = m.group(1).lower()
+                        verdict = "lgtm" if v_val == "lgtm" else "rejected"
+                        reviewer = str(item.get("to") or "reviewer")
+                        break
+
+                # Check 3: Simple string match (legacy fallback)
+                if not verdict:
+                    if "LGTM" in outcome_str:
+                        verdict = "lgtm"
+                        reviewer = str(item.get("to") or "reviewer")
+                        break
+                    elif "REJECTED" in outcome_str:
+                        verdict = "rejected"
+                        reviewer = str(item.get("to") or "reviewer")
+                        break
+
+        if verdict == "lgtm":
+            print(f"auto-close: review passed for '{task_id}' (detected LGTM from {reviewer})")
+            
+            # 1. Transition to review_passed first (required by close_task gate)
+            from superharness.engine.state_writer import set_task_status
+            set_task_status(project_dir, task_id, "review_passed")
+
+            # 2. Call close_task
+            contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
+            try:
+                close_task(
+                    contract_file=contract_file,
+                    task_id=task_id,
+                    actor=reviewer,
+                    summary=f"Review passed: detected LGTM in {reviewer} report.",
+                    skip_verify=True,
+                )
+            except Exception as e:
+                print(f"auto-close: failed to close task '{task_id}': {e}", file=sys.stderr)
+
+        elif verdict == "rejected":
+            print(f"auto-close: review REJECTED for '{task_id}' (detected REJECTION from {reviewer})")
+            from superharness.engine.state_writer import set_task_status
+            if set_task_status(project_dir, task_id, "review_failed"):
+                # Append to ledger
+                ledger_file = os.path.join(project_dir, ".superharness", "ledger.md")
+                ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                line = f"- {ts} — watcher — REJECTED: {task_id} review failed by {reviewer}\n"
+                try:
+                    with open(ledger_file, "a", encoding="utf-8") as f:
+                        f.write(line)
+                except Exception:
+                    pass
+
+
 def _auto_close_report_ready(project_dir: str) -> None:
     """Auto-close report_ready tasks whose latest report handoff has tests_passed: true.
 
@@ -1652,6 +1788,12 @@ def _run_scripts(
     except Exception as e:
         _log_watcher_error(project_dir, "auto_close", str(e))
 
+    # Auto-close review_requested tasks when a reviewer submits a verdict report
+    try:
+        _auto_close_review_passed(project_dir)
+    except Exception as e:
+        _log_watcher_error(project_dir, "auto_review_close", str(e))
+
     # Sync cancelled/closed discussions back to contract task status
     try:
         _reconcile_discussion_contract(project_dir)
@@ -1730,6 +1872,17 @@ def _run_scripts(
         reconcile_lifecycle(project_dir)
     except Exception as e:
         _log_watcher_error(project_dir, "lifecycle_reconciler", str(e))
+
+    # Proactive session flush: save partial work before lifecycle timeout
+    try:
+        from superharness.engine.session_flush import check_expiring, flush_task
+        expiring = check_expiring(project_dir)
+        for task_id in expiring:
+            flush_task(project_dir, task_id)
+        if expiring:
+            print(f"session-flush: flushed {len(expiring)} expiring task(s)")
+    except Exception as e:
+        _log_watcher_error(project_dir, "session_flush", str(e))
 
     # Inbox GC: reconcile stale items against contract
     try:

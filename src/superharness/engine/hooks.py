@@ -73,9 +73,12 @@ def load_hooks_from_dir(project_dir: str) -> int:
             handler_path = os.path.join(hooks_dir, entry, handler)
             if not os.path.isfile(handler_path):
                 continue
+            hook_events = config.get("events", [])
+            if not hook_events:
+                continue  # skip hooks with no events
             hook = HookDef(
                 name=config.get("name", entry),
-                events=config.get("events", []),
+                events=hook_events,
                 handler_path=handler_path,
             )
             for event in hook.events:
