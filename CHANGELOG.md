@@ -186,3 +186,4 @@
 - 2026-04-28: refactor(yaml): strip dead YAML code branches from watcher (65 lines) — _yaml_writes_enabled always returns False, YAML else branches never execute.
 - 2026-04-28: refactor(yaml): inbox_gc and inbox_recover use state_reader (SQLite) instead of inbox.yaml — no more YAML reads in GC/recovery paths.
 - 2026-04-28: refactor(yaml): strip dead YAML code from state_reader, state_writer, lifecycle_rules — YAML fallback functions and mirror helpers removed.
+- 2026-04-28: refactor(yaml): strip YAML CRUD from inbox.py — kept only _process_alive, _deps_satisfied, _task_is_dispatch_ready.
