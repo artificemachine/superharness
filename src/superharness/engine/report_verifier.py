@@ -48,15 +48,14 @@ def _check_outcome(report: dict) -> list[str]:
     return []
 
 
-def _check_context(report: dict) -> list[str]:
-    """Soft check: missing context field warns but does not block.
-
-    The context field carries information for the next session to verify or
-    continue the work. Reports without it are harder to audit.
+def _check_context(report: dict, *, strict: bool = True) -> list[str]:
+    """Context field check. Strict mode (default) blocks on missing context.
+    When auto_close is explicit, missing context is a warning, not a block.
     """
-    context = report.get("context")
-    if not isinstance(context, str) or not context.strip():
-        return ["missing context field (used by next session for handoff)"]
+    if strict:
+        context = report.get("context")
+        if not isinstance(context, str) or not context.strip():
+            return ["missing context field (used by next session for handoff)"]
     return []
 
 
@@ -96,7 +95,7 @@ def _check_referenced_files(report: dict, project_dir: str) -> list[str]:
     return failures
 
 
-def verify_report(report: dict, contract_task: dict, project_dir: str) -> ReportVerification:
+def verify_report(report: dict, contract_task: dict, project_dir: str, *, strict_context: bool = True) -> ReportVerification:
     """Verify a report handoff against quality heuristics.
 
     Args:
@@ -109,7 +108,7 @@ def verify_report(report: dict, contract_task: dict, project_dir: str) -> Report
     """
     failures: list[str] = []
     failures.extend(_check_outcome(report))
-    failures.extend(_check_context(report))
+    failures.extend(_check_context(report, strict=strict_context))
     failures.extend(_check_tests_passed(report))
     failures.extend(_check_pr_url(report))
     failures.extend(_check_referenced_files(report, project_dir))

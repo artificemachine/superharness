@@ -4,6 +4,8 @@ phase: report
 status: report_ready
 from: claude-code
 to: owner
-date: "2026-04-25T11:00:00Z"
-outcome: |
-  Mock Alpha automated flow test completed.
+date: '2026-04-25T11:00:00Z'
+outcome: 'Mock Alpha automated flow test completed.
+
+  '
+context: 'Auto-closed by watcher: mock task verification test'
