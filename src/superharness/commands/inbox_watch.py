@@ -1650,7 +1650,7 @@ def _run_scripts(
         from superharness.modules.runner import run_hooks
         run_hooks("on_watcher_tick", {"project_dir": project_dir}, Path(project_dir))
     except Exception as e:
-        print(f"Warning: on_watcher_tick hook failed: {e}", file=sys.stderr)
+        _log_watcher_error(project_dir, "on_watcher_tick", str(e))
 
     # Auto-retry failed inbox items that still have retries remaining
     try:
@@ -1662,7 +1662,7 @@ def _run_scripts(
     try:
         _auto_recover_exhausted_failures_sqlite(project_dir)
     except Exception as e:
-        print(f"Warning: auto_recover_exhausted_failures failed: {e}", file=sys.stderr)
+        _log_watcher_error(project_dir, "auto_recover_exhausted", str(e))
 
     # Auto-close report_ready tasks with tests_passed: true in their handoff
     try:
@@ -1674,7 +1674,7 @@ def _run_scripts(
     try:
         _reconcile_discussion_contract(project_dir)
     except Exception as e:
-        print(f"Warning: discussion contract reconciliation failed: {e}", file=sys.stderr)
+        _log_watcher_error(project_dir, "discussion_reconcile", str(e))
 
     # review_requested timeout is handled by reconcile_lifecycle (above, after dispatch reconciliation)
 
@@ -1682,7 +1682,7 @@ def _run_scripts(
     try:
         _check_ship_on_complete_tasks(project_dir)
     except Exception as e:
-        print(f"Warning: _check_ship_on_complete_tasks failed: {e}", file=sys.stderr)
+        _log_watcher_error(project_dir, "ship_on_complete", str(e))
 
     # Auto-enqueue todo tasks for planning when auto_dispatch=True and autonomy=autonomous
     try:
@@ -1700,7 +1700,7 @@ def _run_scripts(
     try:
         auto_enqueue_approved(project_dir)
     except Exception as e:
-        print(f"Warning: auto_enqueue_approved failed: {e}", file=sys.stderr)
+        _log_watcher_error(project_dir, "auto_enqueue_approved", str(e))
 
     # Clean stale tasks with no handoff after timeout
     try:
@@ -1712,7 +1712,7 @@ def _run_scripts(
     try:
         _reconcile_zombies(project_dir)
     except Exception as e:
-        print(f"Warning: zombie reconciliation failed: {e}", file=sys.stderr)
+        _log_watcher_error(project_dir, "zombie_reconcile", str(e))
 
     # Reconcile paused dead-pid items (orthogonal to lifecycle timeouts)
     try:
@@ -1731,7 +1731,7 @@ def _run_scripts(
                     if isinstance(_item, dict):
                         mirror_inbox_item_dict(project_dir, _item)
     except Exception as e:
-        print(f"Warning: paused dead-pid reconciliation failed: {e}", file=sys.stderr)
+        _log_watcher_error(project_dir, "paused_reconcile", str(e))
 
     # iter 7: review escalation — runs before lifecycle reconciler so chain
     # advancement takes priority over the simple revert behavior.
@@ -1739,7 +1739,7 @@ def _run_scripts(
         from superharness.engine.review_escalation import escalate_stale_reviews
         escalate_stale_reviews(project_dir)
     except Exception as e:
-        print(f"Warning: review escalation failed: {e}", file=sys.stderr)
+        _log_watcher_error(project_dir, "review_escalation", str(e))
 
     # Unified lifecycle reconciler (paused timeout, in_progress timeout, and
     # any review_requested without a review_chain that the escalation pass left)
@@ -1754,7 +1754,7 @@ def _run_scripts(
         _watcher_cycle_count[0] += 1
         _run_gc_if_due(project_dir, _watcher_cycle_count[0])
     except Exception as e:
-        print(f"Warning: inbox gc failed: {e}", file=sys.stderr)
+        _log_watcher_error(project_dir, "inbox_gc", str(e))
 
     inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
     if not os.path.exists(inbox_file):

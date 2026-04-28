@@ -170,3 +170,4 @@
 - 2026-04-28: fix(handoff): auto-generate context field when agent omits it — prevents report verifier from blocking auto-close on missing context.
 - 2026-04-28: fix(verifier): revert soft-check — context field is always required; handoff_write.py now auto-generates default context so agents never leave it empty.
 - 2026-04-28: feat(logging): centralized watcher error log — _log_watcher_error writes to .superharness/watcher-errors.log + failures_dao; wired into 6 critical watcher exception handlers.
+- 2026-04-28: fix(logging): all 15+ watcher exception handlers now log to watcher-errors.log + failures_dao instead of stderr (swallowed by DEVNULL).
