@@ -97,34 +97,28 @@ def _start_daemon(project_dir: Path, interval: int) -> None:
     out_log = log_dir / "daemon.out.log"
     err_log = log_dir / "daemon.err.log"
 
-    cmd = [
-        sys.executable, "-m", "superharness.commands.inbox_watch",
-        "--project", str(project_dir),
-        "--interval", str(interval),
-        "--foreground",
-    ]
-
-    out_f = open(str(out_log), "a")
-    err_f = open(str(err_log), "a")
-    env = os.environ.copy()
-    if "PYTHONPATH" not in env:
-        # Ensure local src is in PYTHONPATH if we're running from source
-        src_root = project_dir / "src"
-        if src_root.exists():
-            env["PYTHONPATH"] = str(src_root)
-
-    try:
-        proc = subprocess.Popen(
+    def _spawn_watcher():
+        cmd = [
+            sys.executable, "-m", "superharness.commands.inbox_watch",
+            "--project", str(project_dir),
+            "--interval", str(interval),
+            "--foreground",
+        ]
+        env = os.environ.copy()
+        if "PYTHONPATH" not in env:
+            src_root = project_dir / "src"
+            if src_root.exists():
+                env["PYTHONPATH"] = str(src_root)
+        return subprocess.Popen(
             cmd,
-            stdout=out_f,
-            stderr=err_f,
+            stdout=open(str(out_log), "a"),
+            stderr=open(str(err_log), "a"),
             start_new_session=True,
             cwd=str(project_dir),
             env=env,
         )
-    finally:
-        out_f.close()
-        err_f.close()
+
+    proc = _spawn_watcher()
 
     _write_state(project_dir, {
         "pid": proc.pid,
@@ -136,6 +130,39 @@ def _start_daemon(project_dir: Path, interval: int) -> None:
     click.echo(f"daemon: started  pid={proc.pid}  interval={interval}s")
     click.echo(f"  logs: {out_log}")
     click.echo(f"  stop: shux daemon stop --project {project_dir}")
+
+    # Monitor and auto-restart the watcher if it dies (run in background)
+    import time as _time
+
+    def _monitor_loop():
+        _proc = proc
+        try:
+            while True:
+                exit_code = _proc.wait()
+                from datetime import datetime, timezone
+                ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                _log_path = project_dir / ".superharness" / "watcher-errors.log"
+                try:
+                    with open(str(_log_path), "a") as _lf:
+                        _lf.write(f"[{ts}] daemon: watcher crashed (rc={exit_code}), restarting in 5s\n")
+                except Exception:
+                    pass
+                _time.sleep(5)
+                _proc = _spawn_watcher()
+                _write_state(project_dir, {
+                    "pid": _proc.pid,
+                    "project": str(project_dir),
+                    "interval": interval,
+                    "log_out": str(out_log),
+                    "log_err": str(err_log),
+                })
+        except Exception:
+            pass
+
+    # Fork monitor into background so CLI returns immediately
+    import threading
+    _monitor_thread = threading.Thread(target=_monitor_loop, daemon=True)
+    _monitor_thread.start()
 
 
 def _stop_daemon(project_dir: Path) -> None:
