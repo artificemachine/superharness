@@ -151,66 +151,20 @@ def upsert_handoff(project_dir: str, handoff_id: str, content: dict) -> bool:
         return False
 
 
-def mirror_task_dict(project_dir: str, task: dict) -> None:
-    """Mirror a fully-populated task dict to SQLite. Best-effort, silent on failure."""
-    task_id = str(task.get("id", ""))
-    status = str(task.get("status", ""))
-    if task_id and status:
-        _mirror_task_to_sqlite(project_dir, task_id, status)
 
+
+def mirror_task_dict(project_dir: str, task: dict) -> None:
+    try:
+        from superharness.engine.db import get_connection
+        c = get_connection(project_dir)
+        c.execute('UPDATE tasks SET status=? WHERE id=?', (str(task.get('status','')), str(task.get('id',''))))
+        c.commit(); c.close()
+    except Exception: pass
 
 def mirror_inbox_item_dict(project_dir: str, item: dict) -> None:
-    """Mirror a fully-populated inbox item dict to SQLite. Best-effort, silent on failure."""
-    item_id = str(item.get("id", ""))
-    status = str(item.get("status", ""))
-    if item_id and status:
-        _mirror_inbox_to_sqlite(project_dir, item_id, status)
-
-
-def _mirror_task_to_sqlite(project_dir: str, task_id: str, status: str) -> None:
-    """Best-effort SQLite write for a task status change. Primary write path in sqlite_only mode."""
     try:
-        from superharness.engine import db
-
-        db_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
-        if not os.path.isfile(db_path):
-            return
-        conn = db.get_connection(project_dir)
-        try:
-            conn.execute("UPDATE tasks SET status=? WHERE id=?", (status, task_id))
-            conn.commit()
-        finally:
-            conn.close()
-    except Exception:
-        pass
-
-
-def _mirror_inbox_to_sqlite(project_dir: str, item_id: str, status: str) -> None:
-    """Best-effort SQLite write for an inbox item status change. Primary write path in sqlite_only mode."""
-    try:
-        from superharness.engine import db
-
-        db_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
-        if not os.path.isfile(db_path):
-            return
-        conn = db.get_connection(project_dir)
-        try:
-            now = _now_utc()
-            extra = ""
-            params: list = [status]
-            if status == "failed":
-                extra = ", failed_at = ?"
-                params.append(now)
-            elif status == "done":
-                extra = ", done_at = ?"
-                params.append(now)
-            elif status == "paused":
-                extra = ", paused_at = ?"
-                params.append(now)
-            params.append(item_id)
-            conn.execute(f"UPDATE inbox SET status = ?{extra} WHERE id = ?", params)
-            conn.commit()
-        finally:
-            conn.close()
-    except Exception:
-        pass
+        from superharness.engine.db import get_connection
+        c = get_connection(project_dir)
+        c.execute('UPDATE inbox SET status=? WHERE id=?', (str(item.get('status','')), str(item.get('id',''))))
+        c.commit(); c.close()
+    except Exception: pass

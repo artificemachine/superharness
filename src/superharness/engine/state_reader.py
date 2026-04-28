@@ -50,17 +50,6 @@ def get_inbox_items(project_dir: str) -> list[dict]:
         return _inbox_from_yaml(project_dir)
 
 
-def _inbox_from_yaml(project_dir: str) -> list[dict]:
-    import yaml
-
-    inbox_path = os.path.join(project_dir, ".superharness", "inbox.yaml")
-    if not os.path.exists(inbox_path):
-        return []
-    with open(inbox_path, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-    return [i for i in (data or []) if isinstance(i, dict)]
-
-
 def _inbox_row_to_yaml_shape(row: dict) -> dict:
     """Translate SQLite InboxRow field names to YAML inbox item field names.
 
@@ -146,13 +135,6 @@ def get_top_level_tasks(project_dir: str) -> list[dict]:
         return _tasks_from_yaml(project_dir)
 
 
-def _tasks_from_yaml(project_dir: str) -> list[dict]:
-    contract_path = os.path.join(project_dir, ".superharness", "contract.yaml")
-    doc = _contract_yaml(contract_path)
-    tasks = doc.get("tasks") or []
-    return [t for t in tasks if isinstance(t, dict)]
-
-
 def _tasks_from_sqlite(project_dir: str, *, top_level_only: bool = False) -> list[dict]:
     from dataclasses import asdict
     from superharness.engine.db import get_connection, init_db
@@ -167,21 +149,6 @@ def _tasks_from_sqlite(project_dir: str, *, top_level_only: bool = False) -> lis
         conn.close()
 
 
-def _contract_yaml(path: str) -> dict:
-    import yaml
-
-    if not os.path.exists(path):
-        return {}
-    with open(path, encoding="utf-8") as f:
-        doc = yaml.safe_load(f)
-    return doc if isinstance(doc, dict) else {}
-
-
-# ---------------------------------------------------------------------------
-# Handoff reads
-# ---------------------------------------------------------------------------
-
-
 def get_handoffs(project_dir: str, task_id: str | None = None) -> list[dict]:
     """Return handoff rows. Source determined by STATE_BACKEND."""
     backend = _get_backend(project_dir)
@@ -193,28 +160,6 @@ def get_handoffs(project_dir: str, task_id: str | None = None) -> list[dict]:
         if backend == "sqlite_only":
             raise
         return _handoffs_from_yaml(project_dir, task_id)
-
-
-def _handoffs_from_yaml(project_dir: str, task_id: str | None) -> list[dict]:
-    import glob
-    import yaml
-
-    handoffs_dir = os.path.join(project_dir, ".superharness", "handoffs")
-    if not os.path.isdir(handoffs_dir):
-        return []
-    pattern = os.path.join(handoffs_dir, f"*{task_id}*.yaml" if task_id else "*.yaml")
-    results: list[dict] = []
-    for path in sorted(glob.glob(pattern)):
-        try:
-            with open(path, encoding="utf-8") as f:
-                data = yaml.safe_load(f)
-            if isinstance(data, dict):
-                results.append(data)
-            elif isinstance(data, list):
-                results.extend(i for i in data if isinstance(i, dict))
-        except Exception:
-            continue
-    return results
 
 
 def _handoffs_from_sqlite(project_dir: str, task_id: str | None) -> list[dict]:
