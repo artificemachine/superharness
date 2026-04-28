@@ -191,6 +191,8 @@ def _build_report_handoff(args: argparse.Namespace) -> dict[str, Any]:
     }
     if context:
         payload["context"] = context
+    else:
+        payload["context"] = f"[auto-generated] report from {args.from_agent} for task {args.task_id}"
     if args.tests_passed is not None:
         payload["tests_passed"] = bool(args.tests_passed)
     return payload
