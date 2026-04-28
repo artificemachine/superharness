@@ -1856,16 +1856,35 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 1200) -> int:
                 pass
 
     if changed:
-        from superharness.engine.inbox import _inbox_lock
-        with _inbox_lock(inbox_file):
-            with open(inbox_file, "w", encoding="utf-8") as f:
-                f.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
-                _yaml.dump(items, f, default_flow_style=False, sort_keys=True)
-        # Mirror changes to SQLite
-        from superharness.engine.state_writer import mirror_inbox_item_dict
-        for item in items:
-            if isinstance(item, dict):
-                mirror_inbox_item_dict(project_dir, item)
+        # Write changes directly to SQLite (post-migration)
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import inbox_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            for item in items:
+                if isinstance(item, dict):
+                    item_id = str(item.get("id", ""))
+                    new_status = item.get("status", "")
+                    if item_id and new_status:
+                        try:
+                            row = inbox_dao.get(conn, item_id)
+                            if row:
+                                inbox_dao.update_status(
+                                    conn, item_id,
+                                    from_status="launched",
+                                    to_status=new_status,
+                                    now=_now_utc()
+                                )
+                        except Exception:
+                            # Fallback: direct SQL update
+                            conn.execute(
+                                "UPDATE inbox SET status=? WHERE id=?",
+                                (new_status, item_id)
+                            )
+            conn.commit()
+        finally:
+            conn.close()
 
     return reconciled
 
