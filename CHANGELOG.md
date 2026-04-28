@@ -181,3 +181,4 @@
 - 2026-04-28: feat(guard): dangerous command detection + credential redaction (cherry-picked from hermes-agent) — 25 regex patterns for dangerous shell commands; 10 patterns for credential redaction; per-session approval state with scoped persistence.
 - 2026-04-28: feat(hermes): Phase 2-4 — checkpoint/rollback via git stash; skills YAML loader with tag discovery; event hook system with HookRegistry; session flush before lifecycle timeout.
 - 2026-04-28: feat(hermes): complete all 8 phases — smart approval with risk classification + persistence; skills YAML loader with 7 tests; hooks with 6 tests; session flush wired into watcher; smart dispatch routing with complexity classifier.
+- 2026-04-28: feat(hooks+errors): wire hooks into watcher lifecycle (task:completed, task:failed, task:created); add /api/watcher-errors endpoint to dashboard.
