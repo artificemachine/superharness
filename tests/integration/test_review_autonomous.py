@@ -3,9 +3,8 @@ import os
 import yaml
 import re
 from datetime import datetime, timezone
+from unittest.mock import MagicMock, patch
 from superharness.commands.inbox_watch import _auto_close_review_passed
-from superharness.engine.state_writer import mirror_task_dict
-from superharness.engine import state_reader as _sr
 
 @pytest.fixture
 def mock_project(tmp_path):
@@ -56,30 +55,23 @@ def test_auto_close_lgtm_regex(mock_project):
     with open(inbox_file, "w") as f:
         yaml.dump(inbox, f)
         
-    # Run watcher logic
-    # We need to mock _load_tasks and _sr.get_inbox_items since we are using YAML in this test
-    # but the logic might try to use SQLite if enabled.
-    
-    # For simplicity, we'll just mock the state_reader to return our YAML data
-    with pytest.MonkeyPatch().context() as mp:
-        mp.setattr("superharness.commands.inbox_watch._load_tasks", lambda p: yaml.safe_load(open(sh_dir / "contract.yaml")).get("tasks"))
-        mp.setattr("superharness.engine.state_reader.get_inbox_items", lambda p: yaml.safe_load(open(inbox_file)))
-        
-        # Mock close_task to avoid actual closing
-        from unittest.mock import MagicMock
-        mock_close = MagicMock()
-        mp.setattr("superharness.commands.inbox_watch.close_task", mock_close)
-        
-        _auto_close_review_passed(str(mock_project))
-        
-        # Verify task status was updated to review_passed
-        tasks = yaml.safe_load(open(sh_dir / "contract.yaml")).get("tasks")
-        assert tasks[0]["status"] == "review_passed"
-        
-        # Verify close_task was called
-        mock_close.assert_called_once()
-        assert mock_close.call_args[1]["task_id"] == "feat-test"
-        assert "detected LGTM" in mock_close.call_args[1]["summary"]
+    with patch("superharness.commands.inbox_watch._load_tasks") as mock_load:
+        mock_load.return_value = [{"id": "feat-test", "status": "review_requested"}]
+        with patch("superharness.engine.state_reader.get_inbox_items") as mock_get_inbox:
+            mock_get_inbox.return_value = inbox
+            with patch("superharness.commands.close.close_task") as mock_close:
+                with patch("superharness.engine.state_writer.set_task_status") as mock_set_status:
+                    mock_set_status.return_value = True
+                    
+                    _auto_close_review_passed(str(mock_project))
+                    
+                    # Verify task status update was called
+                    mock_set_status.assert_any_call(str(mock_project), "feat-test", "review_passed")
+                    
+                    # Verify close_task was called
+                    mock_close.assert_called_once()
+                    assert mock_close.call_args[1]["task_id"] == "feat-test"
+                    assert "detected LGTM" in mock_close.call_args[1]["summary"]
 
 def test_auto_close_rejected_regex(mock_project):
     sh_dir = mock_project / ".superharness"
@@ -100,16 +92,18 @@ def test_auto_close_rejected_regex(mock_project):
     with open(inbox_file, "w") as f:
         yaml.dump(inbox, f)
         
-    with pytest.MonkeyPatch().context() as mp:
-        mp.setattr("superharness.commands.inbox_watch._load_tasks", lambda p: yaml.safe_load(open(sh_dir / "contract.yaml")).get("tasks"))
-        mp.setattr("superharness.engine.state_reader.get_inbox_items", lambda p: yaml.safe_load(open(inbox_file)))
-        
-        _auto_close_review_passed(str(mock_project))
-        
-        # Verify task status was updated to review_failed
-        tasks = yaml.safe_load(open(sh_dir / "contract.yaml")).get("tasks")
-        assert tasks[0]["status"] == "review_failed"
-        
-        # Verify ledger entry
-        ledger = open(sh_dir / "ledger.md").read()
-        assert "REJECTED: feat-test review failed by reviewer-agent" in ledger
+    with patch("superharness.commands.inbox_watch._load_tasks") as mock_load:
+        mock_load.return_value = [{"id": "feat-test", "status": "review_requested"}]
+        with patch("superharness.engine.state_reader.get_inbox_items") as mock_get_inbox:
+            mock_get_inbox.return_value = inbox
+            with patch("superharness.engine.state_writer.set_task_status") as mock_set_status:
+                mock_set_status.return_value = True
+                
+                _auto_close_review_passed(str(mock_project))
+                
+                # Verify task status was updated to review_failed
+                mock_set_status.assert_called_with(str(mock_project), "feat-test", "review_failed")
+                
+                # Verify ledger entry
+                ledger = open(sh_dir / "ledger.md").read()
+                assert "REJECTED: feat-test review failed by reviewer-agent" in ledger
