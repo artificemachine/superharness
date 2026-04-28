@@ -2547,6 +2547,19 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": str(exc)}, 500)
             return
 
+        if p == "/api/watcher-errors":
+            lines = int(parse_qs(parsed.query).get("lines", ["30"])[0])
+            errors_path = self.project_dir / ".superharness" / "watcher-errors.log"
+            content = ""
+            if errors_path.exists():
+                try:
+                    all_lines = errors_path.read_text(errors="replace").splitlines()
+                    content = "\n".join(all_lines[-lines:])
+                except Exception:
+                    pass
+            self._json({"errors": content, "lines": lines, "path": str(errors_path)})
+            return
+
         if p == "/api/task-report":
             qs = parse_qs(parsed.query)
             task_id = qs.get("task", [""])[0]

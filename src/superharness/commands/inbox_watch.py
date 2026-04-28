@@ -1322,7 +1322,8 @@ def _auto_close_report_ready(project_dir: str) -> None:
 
 
     if close_count:
-        print(f"auto-close: closed {close_count} task(s)")
+        _fire_hook("task:completed", {"count": close_count}, project_dir)
+    print(f"auto-close: closed {close_count} task(s)")
 
 
 def _auto_retry_failed(project_dir: str) -> None:
@@ -1545,6 +1546,7 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                         parent_id=task.parent_id,
                     ))
                     inbox_dao.update_status(conn, row.id, "stopped", now)
+                    _fire_hook("task:failed", {"task_id": row.task_id, "agent": row.target_agent, "reason": row.failed_reason or "exhausted"}, project_dir)
                     print(
                         f"auto-recover: escalated '{row.task_id}' → {new_status} "
                         f"(failed on {', '.join(agents_tried)})"
@@ -1676,6 +1678,15 @@ def _run_gc_if_due(project_dir: str, cycle_count: int) -> bool:
     from superharness.commands.inbox_gc import run_gc
     result = run_gc(project_dir)
     return result.get("reconciled", 0) >= 0
+
+
+def _fire_hook(event: str, data: dict, project_dir: str | None = None) -> None:
+    """Fire an event hook. Never raises."""
+    try:
+        from superharness.engine.hooks import get_registry
+        get_registry().fire(event, data)
+    except Exception:
+        pass
 
 
 def _sqlite_singleton_acquire(project_dir: str) -> None:
