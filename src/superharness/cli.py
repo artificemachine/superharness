@@ -823,11 +823,12 @@ def operator_start(project, port, no_open):
     click.echo(f"dashboard: http://127.0.0.1:{port}")
     click.echo(f"monitor pid: {os.getpid()}")
 
-    # Run the monitor loop in THIS process — no fork needed.
-    # launchd manages restarts via KeepAlive; forking would spawn an unpicklable
-    # Popen-holding child (macOS uses spawn, not fork), crash immediately, and
-    # cause launchd to restart the CLI in a tight loop.
-    op.monitor_and_recover()
+    # Run the monitor in a background daemon thread so CLI returns immediately.
+    # The monitor restarts crashed watcher/dashboard processes.
+    import threading
+    monitor_thread = threading.Thread(target=op.monitor_and_recover, daemon=True)
+    monitor_thread.start()
+    click.echo("  monitor: running in background")
 
 
 @operator.command(name="install")

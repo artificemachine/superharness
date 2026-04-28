@@ -1122,6 +1122,22 @@ def delegate(
 
     print(f"Via: {'sdk' if use_sdk else 'cli'}")
 
+    # Stamp model tier onto task in SQLite so reviewers know author's tier
+    if not print_only:
+        try:
+            from superharness.engine.model_router import find_tier_for_model
+            from superharness.engine.state_writer import mirror_task_dict
+            from superharness.engine import state_reader as _sr
+            
+            tier = find_tier_for_model(target, resolved_model, project_dir)
+            _task = next((t for t in _sr.get_tasks(project_dir) if str(t.get("id")) == str(task_id)), None)
+            if _task and _task.get("model_tier") != tier:
+                _task["model_tier"] = tier
+                mirror_task_dict(project_dir, _task)
+                print(f"Stamped model tier: {tier}")
+        except Exception as e:
+            print(f"Warning: failed to stamp model tier: {e}", file=sys.stderr)
+
     if print_only:
         print()
         print("Generated prompt:")

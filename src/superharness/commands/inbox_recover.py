@@ -1,11 +1,9 @@
-"""inbox recover command — mark stale launched items."""
+"""Recover stale launched inbox items — reads from SQLite via state_reader."""
 from __future__ import annotations
 
 import os
 import sys
 from datetime import datetime, timezone
-
-from superharness.engine.inbox import recover_launched as _recover
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -15,69 +13,83 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("-p", "--project", required=True)
     p.add_argument("--timeout-minutes", type=int, default=20, dest="timeout_minutes")
     p.add_argument("--action", default="stale", choices=["stale", "retry"])
-    p.add_argument("--dry-run", action="store_true", default=False,
-                   help="Preview stale items that would be recovered without mutating inbox.yaml")
+    p.add_argument("--dry-run", action="store_true", default=False)
     opts = p.parse_args(argv)
 
-    inbox_file = os.path.join(opts.project, ".superharness", "inbox.yaml")
-    if not os.path.exists(inbox_file):
-        sys.exit(f"Inbox file not found: {inbox_file}")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     if opts.dry_run:
-        # Delegate to preview function (read-only)
-        _preview_recover(inbox_file, opts.timeout_minutes)
+        _preview_recover(opts.project, opts.timeout_minutes)
         sys.exit(0)
 
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    sys.exit(_recover(file=inbox_file, now=now, timeout_minutes=opts.timeout_minutes, action=opts.action))
+    sys.exit(_recover(project_dir=opts.project, now=now, timeout_minutes=opts.timeout_minutes, action=opts.action))
 
 
-def _preview_recover(inbox_file: str, timeout_minutes: int) -> None:
-    """Print stale launched items without modifying inbox.yaml."""
-    import yaml
-    from superharness.engine.inbox import _process_alive  # type: ignore[attr-defined]
-
-    try:
-        with open(inbox_file, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-    except Exception as e:
-        print(f"recover --dry-run: could not read inbox: {e}", file=sys.stderr)
-        return
-
-    items = data.get("items") or []
+def _preview_recover(project_dir: str, timeout_minutes: int) -> None:
+    """Print stale launched items without modifying state."""
+    from superharness.engine.state_reader import get_inbox_items
+    items = get_inbox_items(project_dir)
     now = datetime.now(timezone.utc)
     timeout_seconds = timeout_minutes * 60
-    stale = []
+    count = 0
 
     for item in items:
         if not isinstance(item, dict):
             continue
-        if str(item.get("status", "")) != "launched":
+        if item.get("status") != "launched":
             continue
-        if _process_alive(item.get("pid")):
-            continue
-        launched_at = str(item.get("launched_at", ""))
+        launched_at = item.get("launched_at", "")
         if not launched_at:
             continue
         try:
-            launched_time = datetime.fromisoformat(launched_at.replace("Z", "+00:00"))
-            elapsed = (now - launched_time).total_seconds()
-            if elapsed >= timeout_seconds:
-                stale.append((item.get("id", "?"), item.get("task", "?"),
-                               int(elapsed // 60), item.get("pid")))
-        except ValueError:
-            stale.append((item.get("id", "?"), item.get("task", "?"), -1, item.get("pid")))
+            ts = datetime.fromisoformat(str(launched_at).replace("Z", "+00:00"))
+            if (now - ts).total_seconds() >= timeout_seconds:
+                print(f"  would recover: {item.get('id')} ({item.get('task', '')}) launched {launched_at}")
+                count += 1
+        except (ValueError, TypeError):
+            pass
 
-    if not stale:
-        print(f"recover --dry-run: no stale launched items (timeout={timeout_minutes}m)")
-        return
-
-    print(f"recover --dry-run: {len(stale)} stale item(s) would be recovered:")
-    for iid, task_id, age_min, pid in stale:
-        pid_note = f"  pid={pid}" if pid else ""
-        age_note = f"{age_min}m" if age_min >= 0 else "invalid_ts"
-        print(f"  {iid}  task={task_id}  age={age_note}{pid_note}")
+    print(f"recover --dry-run: {count} item(s) would be recovered")
 
 
-if __name__ == "__main__":
-    main()
+def _recover(*, project_dir: str, now: str, timeout_minutes: int, action: str) -> int:
+    """Recover stale launched items by writing to SQLite."""
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import inbox_dao
+    from superharness.engine.state_reader import get_inbox_items
+
+    items = get_inbox_items(project_dir)
+    timeout_seconds = timeout_minutes * 60
+    now_dt = datetime.fromisoformat(now.replace("Z", "+00:00"))
+    updated = 0
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if item.get("status") != "launched":
+            continue
+        launched_at = item.get("launched_at", "")
+        if not launched_at:
+            continue
+        try:
+            ts = datetime.fromisoformat(str(launched_at).replace("Z", "+00:00"))
+            if (now_dt - ts).total_seconds() < timeout_seconds:
+                continue
+        except (ValueError, TypeError):
+            continue
+
+        to_status = "pending" if action == "retry" else "stale"
+        try:
+            conn = get_connection(project_dir)
+            try:
+                init_db(conn)
+                inbox_dao.update_status(conn, item.get("id", ""), from_status="launched", to_status=to_status, now=now)
+                conn.commit()
+                updated += 1
+                print(f"recover: {item.get('id')} ({item.get('task', '')}) → {to_status}")
+            finally:
+                conn.close()
+        except Exception as e:
+            print(f"recover: failed for {item.get('id')}: {e}", file=sys.stderr)
+
+    return 0 if updated > 0 else 0

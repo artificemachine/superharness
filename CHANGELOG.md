@@ -177,3 +177,17 @@
 - 2026-04-28: fix(zombie): _reconcile_zombies reads from SQLite via state_reader instead of inbox.yaml/contract.yaml — fixes undetected dead PIDs post-migration.
 - 2026-04-28: fix(zombie): _reconcile_zombies now mirrors changes to SQLite — previously wrote to YAML only, invisible to SQLite readers.
 - 2026-04-28: fix(zombie): zombie reconciler writes directly to SQLite inbox table — no more YAML writes.
+- Add autonomous peer review with model-tier gating and LGTM auto-close (feat.autonomous-peer-review).
+- 2026-04-28: feat(guard): dangerous command detection + credential redaction (cherry-picked from hermes-agent) — 25 regex patterns for dangerous shell commands; 10 patterns for credential redaction; per-session approval state with scoped persistence.
+- 2026-04-28: feat(hermes): Phase 2-4 — checkpoint/rollback via git stash; skills YAML loader with tag discovery; event hook system with HookRegistry; session flush before lifecycle timeout.
+- 2026-04-28: feat(hermes): complete all 8 phases — smart approval with risk classification + persistence; skills YAML loader with 7 tests; hooks with 6 tests; session flush wired into watcher; smart dispatch routing with complexity classifier.
+- 2026-04-28: feat(hooks+errors): wire hooks into watcher lifecycle (task:completed, task:failed, task:created); add /api/watcher-errors endpoint to dashboard.
+- 2026-04-28: fix(paused): _reconcile_paused_dead_pids reads/writes SQLite directly — no more YAML writes for paused dead-pid cleanup.
+- 2026-04-28: refactor(yaml): strip dead YAML code branches from watcher (65 lines) — _yaml_writes_enabled always returns False, YAML else branches never execute.
+- 2026-04-28: refactor(yaml): inbox_gc and inbox_recover use state_reader (SQLite) instead of inbox.yaml — no more YAML reads in GC/recovery paths.
+- 2026-04-28: refactor(yaml): strip dead YAML code from state_reader, state_writer, lifecycle_rules — YAML fallback functions and mirror helpers removed.
+- 2026-04-28: refactor(yaml): strip YAML CRUD from inbox.py — kept only _process_alive, _deps_satisfied, _task_is_dispatch_ready.
+- 2026-04-28: fix(operator): monitor_and_recover runs in daemon thread — CLI returns immediately; dashboard: watcher-errors panel with auto-refresh.
+- 2026-04-28: feat(status): shux status shows task counts by status group; dashboard panel renamed to contract tasks.
+- 2026-04-28: fix(schema): add review_requested_at column to tasks table migration — missing column blocked lifecycle rules from reverting stale reviews.
+- 2026-04-28 (v1.44.0): feat(hermes): cherry-pick 8 features from hermes-agent — guard module (danger detection, credential redaction, checkpoint/rollback, smart approval); skills YAML loader; event hooks; session flush; smart dispatch routing; dashboard review tabs + error panel; operator CLI unblocked; daemon hot-reload; ~1000 lines of dead YAML code removed; inbox_gc + inbox_recover SQLite native; discussion reconciler SQLite; paused reconciler SQLite.
