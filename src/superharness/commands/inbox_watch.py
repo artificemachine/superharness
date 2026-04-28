@@ -477,7 +477,87 @@ def _run_scripts_heartbeat(project_dir: str) -> None:
         pass
 
 
-def auto_enqueue_todo(project_dir: str) -> int:
+_STALE_NO_HANDOFF_HOURS = 4  # archive tasks with no handoff after this many hours
+
+def _auto_archive_stale_tasks(project_dir: str) -> int:
+    """Archive tasks stuck in non-terminal states with no handoff file.
+
+    Covers: report_ready, plan_proposed, in_progress with no handoff after
+    STALE_NO_HANDOFF_HOURS. These are tasks where agents were dispatched
+    but never produced output — dead processes, lost sessions, etc.
+    """
+    import glob
+    from datetime import datetime, timezone
+
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import tasks_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            all_tasks = tasks_dao.get_all(conn)
+        finally:
+            conn.close()
+    except Exception:
+        return 0
+
+    now = datetime.now(timezone.utc)
+    handoff_dir = os.path.join(project_dir, ".superharness", "handoffs")
+    archived = 0
+
+    for task in all_tasks:
+        if task.status in ("done", "archived", "stopped", "failed"):
+            continue
+        # Check if task has been in this state long enough
+        ts_str = (task.report_ready_at or task.plan_proposed_at or
+                  task.in_progress_at or task.created_at or "")
+        if not ts_str:
+            continue
+        try:
+            ts = datetime.fromisoformat(str(ts_str).replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            continue
+        hours = (now - ts).total_seconds() / 3600
+        if hours < _STALE_NO_HANDOFF_HOURS:
+            continue
+
+        # Check if handoff exists for this task
+        pattern = os.path.join(handoff_dir, f"{task.id}*.yaml")
+        handoffs = glob.glob(pattern)
+        if handoffs:
+            continue  # Has a handoff — agent produced output
+
+        # No handoff after timeout — archive it
+        try:
+            conn2 = get_connection(project_dir)
+            try:
+                init_db(conn2)
+                tasks_dao.upsert(conn2, tasks_dao.TaskRow(
+                    id=task.id, title=task.title, owner=task.owner,
+                    status="archived", effort=task.effort,
+                    project_path=task.project_path,
+                    development_method=task.development_method,
+                    acceptance_criteria=task.acceptance_criteria,
+                    test_types=task.test_types,
+                    out_of_scope=task.out_of_scope,
+                    definition_of_done=task.definition_of_done,
+                    context=(task.context or "") +
+                        f"\n[auto-clean] archived: no handoff after {hours:.0f}h in {task.status}",
+                    tdd=task.tdd, version=task.version,
+                    created_at=task.created_at, blocked_by=task.blocked_by,
+                    parent_id=task.parent_id,
+                ))
+                conn2.commit()
+                archived += 1
+                print(f"auto-clean: archived '{task.id}' (no handoff, {hours:.0f}h in {task.status})")
+            finally:
+                conn2.close()
+        except Exception as e:
+            print(f"auto-clean: failed to archive '{task.id}': {e}", file=sys.stderr)
+
+    if archived:
+        print(f"auto-clean: archived {archived} stale task(s)")
+    return archived
     """Scan contract.yaml for todo tasks and enqueue them for planning.
 
     Only runs when auto_dispatch=True and autonomy=autonomous in profile.yaml.
@@ -597,7 +677,140 @@ def auto_enqueue_todo(project_dir: str) -> int:
     return added
 
 
-def auto_enqueue_approved(project_dir: str) -> int:
+_PEER_AGENTS: dict[str, str] = {
+    "claude-code": "gemini-cli",  # Claude proposes → Gemini reviews
+    "gemini-cli":  "codex-cli",   # Gemini proposes → Codex reviews
+    "codex-cli":   "claude-code", # Codex proposes → Claude reviews
+}
+
+_PEER_REVIEW_PROMPT = """Review this plan and approve or reject it.
+
+The task owner ({owner}) proposed a plan for: {task_title}
+
+Acceptance criteria:
+{criteria}
+
+Your job as peer reviewer (max-tier model):
+1. Read the plan handoff file at .superharness/handoffs/{task_id}*.yaml
+2. Check that the plan:
+   - Has a complete TDD block (red/green/refactor)
+   - Addresses each acceptance criterion
+   - Has a risks section
+   - Has no TODO placeholders
+   - Is feasible in the estimated effort ({effort})
+
+3. Write a 1-sentence verdict: APPROVED or REJECTED with reason.
+4. If APPROVED, the task advances to implementation automatically.
+5. If REJECTED, the task returns to todo for re-planning.
+
+Verdict:"""
+
+def _auto_peer_approve_plans(project_dir: str) -> int:
+    """Find plan_proposed tasks and dispatch to a different max-tier agent for review.
+
+    Never auto-approves without peer review. The peer must be a different agent
+    at max tier to ensure impartial judgment. If the peer is unavailable, the
+    task stays plan_proposed for operator review.
+
+    Returns count of review tasks enqueued.
+    """
+    import uuid
+    from datetime import datetime, timezone
+
+    profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
+    if not os.path.exists(profile_file):
+        return 0
+    try:
+        import yaml as _yaml
+        profile = _yaml.safe_load(open(profile_file, encoding="utf-8").read()) or {}
+    except Exception:
+        return 0
+
+    # Only run when auto-approve is enabled (now means "use peer review")
+    if not profile.get("auto_approve_plans"):
+        return 0
+    autonomy = profile.get("autonomy", "ai_driven")
+    if autonomy not in ("autonomous", "ai_driven"):
+        return 0
+
+    tasks = _load_tasks(project_dir)
+    if not tasks:
+        return 0
+
+    # Get active inbox items to avoid double-dispatch
+    active_tasks: set[str] = set()
+    try:
+        from superharness.engine.state_reader import get_inbox_items
+        for item in get_inbox_items(project_dir):
+            if isinstance(item, dict) and item.get("status") in ("pending", "launched", "running", "paused"):
+                task_id = item.get("task", item.get("task_id", ""))
+                if task_id:
+                    active_tasks.add(str(task_id))
+    except Exception:
+        pass
+
+    enqueued = 0
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        if task.get("status") != "plan_proposed":
+            continue
+        task_id = str(task.get("id", ""))
+        if not task_id:
+            continue
+        if task_id in active_tasks:
+            continue  # Already has an active inbox item
+
+        owner = str(task.get("owner") or "claude-code")
+        peer = _PEER_AGENTS.get(owner, "gemini-cli")
+
+        # Only dispatch if peer is different from owner
+        if peer == owner:
+            continue
+
+        # Build review prompt
+        criteria = task.get("acceptance_criteria") or []
+        criteria_str = "\n".join(f"  - {c}" for c in criteria) if criteria else "  (none)"
+        review_prompt = _PEER_REVIEW_PROMPT.format(
+            owner=owner,
+            task_title=task.get("title", task_id),
+            criteria=criteria_str,
+            effort=task.get("effort", "medium"),
+            task_id=task_id,
+        )
+
+        # Enqueue to peer agent as plan-only review
+        try:
+            from superharness.engine.db import get_connection, init_db
+            from superharness.engine import inbox_dao
+            conn = get_connection(project_dir)
+            try:
+                init_db(conn)
+                item_id = f"peer-review-{task_id.replace('.','-')}-{uuid.uuid4().hex[:8]}"
+                inbox_dao.enqueue(
+                    conn,
+                    id=item_id,
+                    task_id=task_id,
+                    target_agent=peer,
+                    priority=1,  # high priority
+                    max_retries=2,
+                    project_path=project_dir,
+                    plan_only=True,  # review only, don't implement
+                    now=now,
+                )
+                conn.commit()
+                enqueued += 1
+                print(f"peer-approve: dispatched '{task_id}' plan review → {peer}")
+            finally:
+                conn.close()
+        except Exception as e:
+            print(f"peer-approve: failed to enqueue '{task_id}': {e}", file=sys.stderr)
+
+    if enqueued:
+        print(f"peer-approve: {enqueued} plan(s) dispatched for peer review")
+    return enqueued
     """Scan contract.yaml for plan_approved tasks and enqueue them to inbox.yaml.
 
     Only runs when auto_dispatch=True in profile.yaml. Skips tasks that already
@@ -1426,11 +1639,23 @@ def _run_scripts(
     except Exception as e:
         print(f"Warning: auto_enqueue_todo failed: {e}", file=sys.stderr)
 
+    # Auto peer-approve plan_proposed tasks: dispatch to a different max-tier agent for review
+    try:
+        _auto_peer_approve_plans(project_dir)
+    except Exception as e:
+        print(f"Warning: peer_approve_plans failed: {e}", file=sys.stderr)
+
     # Auto-enqueue plan_approved tasks when auto_dispatch=True in profile.yaml
     try:
         auto_enqueue_approved(project_dir)
     except Exception as e:
         print(f"Warning: auto_enqueue_approved failed: {e}", file=sys.stderr)
+
+    # Clean stale tasks with no handoff after timeout
+    try:
+        _auto_archive_stale_tasks(project_dir)
+    except Exception as e:
+        print(f"Warning: auto_archive_stale_tasks failed: {e}", file=sys.stderr)
 
     # Reconcile zombie inbox items (launched but process gone)
     try:
