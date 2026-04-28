@@ -49,13 +49,12 @@ def _check_outcome(report: dict) -> list[str]:
 
 
 def _check_context(report: dict, *, strict: bool = True) -> list[str]:
-    """Context field check. Strict mode (default) blocks on missing context.
-    When auto_close is explicit, missing context is a warning, not a block.
+    """Context field must always be present.
+    Agents write it via --context, or handoff_write.py auto-generates a default.
     """
-    if strict:
-        context = report.get("context")
-        if not isinstance(context, str) or not context.strip():
-            return ["missing context field (used by next session for handoff)"]
+    context = report.get("context")
+    if not isinstance(context, str) or not context.strip():
+        return ["missing context field (used by next session for handoff)"]
     return []
 
 
@@ -95,7 +94,7 @@ def _check_referenced_files(report: dict, project_dir: str) -> list[str]:
     return failures
 
 
-def verify_report(report: dict, contract_task: dict, project_dir: str, *, strict_context: bool = True) -> ReportVerification:
+def verify_report(report: dict, contract_task: dict, project_dir: str) -> ReportVerification:
     """Verify a report handoff against quality heuristics.
 
     Args:
