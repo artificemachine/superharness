@@ -29,6 +29,7 @@ class TaskRow:
     plan_approved_at: str | None = None
     in_progress_at: str | None = None
     report_ready_at: str | None = None
+    review_requested_at: str | None = None
     done_at: str | None = None
     cancelled_at: str | None = None
     blocked_by: list[str] = None  # type: ignore
@@ -254,6 +255,7 @@ def _row_to_task(conn: sqlite3.Connection, row: sqlite3.Row, blocked_by: list[st
         plan_approved_at=row["plan_approved_at"],
         in_progress_at=row["in_progress_at"],
         report_ready_at=row["report_ready_at"],
+        review_requested_at=row["review_requested_at"] if "review_requested_at" in keys else None,
         done_at=row["done_at"],
         cancelled_at=row["cancelled_at"],
         blocked_by=blocked_by,
