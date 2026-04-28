@@ -161,3 +161,4 @@
 - 2026-04-28: fix(auto-dispatch): _enqueue writes directly to SQLite via inbox_dao instead of inbox_enqueue CLI + YAML; fixes status desync post-migration.
 - 2026-04-28: fix(dispatch): inbox_dispatch checks is_sqlite_only() instead of STATE_BACKEND env var — fixes dispatch reading stale inbox.yaml instead of SQLite.
 - 2026-04-28: feat(escalation): auto-recover classifies escalation cause — infrastructure bugs (permanent_block, command not found) mark task waiting_input + record to failures ledger; implementation failures (agent_crash, transient) re-plan via plan_proposed for orchestrator re-decomposition.
+- 2026-04-28: fix(auto-enqueue): stopped inbox items no longer count toward max_concurrent_tasks gate — was blocking auto_enqueue from enqueuing new todo tasks when stopped items existed; docs/auto-mode-gap-v2.md documents remaining gaps including peer approval by different max-tier agent.

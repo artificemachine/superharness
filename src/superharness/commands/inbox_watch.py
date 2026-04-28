@@ -520,7 +520,7 @@ def auto_enqueue_todo(project_dir: str) -> int:
         except Exception:
             inbox_items = []
 
-    _ACTIVE = {"pending", "launched", "running", "paused", "failed", "stopped"}
+    _ACTIVE = {"pending", "launched", "running", "paused", "failed"}
     active_inbox_items = [
         item for item in inbox_items
         if isinstance(item, dict) and str(item.get("status", "")) in _ACTIVE
@@ -646,7 +646,7 @@ def auto_enqueue_approved(project_dir: str) -> int:
         except Exception:
             inbox_items = []
 
-    _ACTIVE = {"pending", "launched", "running", "paused", "failed", "stopped"}
+    _ACTIVE = {"pending", "launched", "running", "paused", "failed"}
     active_inbox_items = [
         item for item in inbox_items
         if isinstance(item, dict) and str(item.get("status", "")) in _ACTIVE
