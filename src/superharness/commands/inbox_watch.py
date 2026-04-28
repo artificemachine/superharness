@@ -1520,7 +1520,47 @@ def _run_gc_if_due(project_dir: str, cycle_count: int) -> bool:
     return result.get("reconciled", 0) >= 0
 
 
-def _sqlite_singleton_acquire(project_dir: str) -> None:
+def _log_watcher_error(project_dir: str, component: str, error: str) -> None:
+    """Log a watcher error to persistent storage. Never raises."""
+    try:
+        # Write to watcher error log file
+        log_path = os.path.join(project_dir, ".superharness", "watcher-errors.log")
+        ts = _now_utc()
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"[{ts}] {component}: {error}\n")
+        # Also record to failures_dao for dashboard visibility
+        try:
+            from superharness.engine.db import get_connection, init_db
+            from superharness.engine import failures_dao
+            conn = get_connection(project_dir)
+            try:
+                init_db(conn)
+                failures_dao.record(
+                    conn,
+                    agent="watcher",
+                    error=f"{component}: {error}",
+                    details={"component": component},
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def _watcher_errors_tail(project_dir: str, lines: int = 20) -> str:
+    """Return the last N lines of the watcher error log."""
+    log_path = os.path.join(project_dir, ".superharness", "watcher-errors.log")
+    if not os.path.isfile(log_path):
+        return ""
+    try:
+        with open(log_path, encoding="utf-8") as f:
+            all_lines = f.readlines()
+            return "".join(all_lines[-lines:])
+    except Exception:
+        return ""
     """Acquire the SQLite watcher singleton lease. Never raises."""
     try:
         import socket
@@ -1616,7 +1656,7 @@ def _run_scripts(
     try:
         _auto_retry_failed(project_dir)
     except Exception as e:
-        print(f"Warning: auto_retry_failed failed: {e}", file=sys.stderr)
+        _log_watcher_error(project_dir, "auto_retry", str(e))
 
     # Auto-recover exhausted failures: re-route to a different agent
     try:
@@ -1628,7 +1668,7 @@ def _run_scripts(
     try:
         _auto_close_report_ready(project_dir)
     except Exception as e:
-        print(f"Warning: auto_close_report_ready failed: {e}", file=sys.stderr)
+        _log_watcher_error(project_dir, "auto_close", str(e))
 
     # Sync cancelled/closed discussions back to contract task status
     try:
@@ -1648,13 +1688,13 @@ def _run_scripts(
     try:
         auto_enqueue_todo(project_dir)
     except Exception as e:
-        print(f"Warning: auto_enqueue_todo failed: {e}", file=sys.stderr)
+        _log_watcher_error(project_dir, "auto_enqueue_todo", str(e))
 
     # Auto peer-approve plan_proposed tasks: dispatch to a different max-tier agent for review
     try:
         _auto_peer_approve_plans(project_dir)
     except Exception as e:
-        print(f"Warning: peer_approve_plans failed: {e}", file=sys.stderr)
+        _log_watcher_error(project_dir, "peer_approve", str(e))
 
     # Auto-enqueue plan_approved tasks when auto_dispatch=True in profile.yaml
     try:
@@ -1666,7 +1706,7 @@ def _run_scripts(
     try:
         _auto_archive_stale_tasks(project_dir)
     except Exception as e:
-        print(f"Warning: auto_archive_stale_tasks failed: {e}", file=sys.stderr)
+        _log_watcher_error(project_dir, "stale_gc", str(e))
 
     # Reconcile zombie inbox items (launched but process gone)
     try:
@@ -1707,7 +1747,7 @@ def _run_scripts(
         from superharness.engine.lifecycle_rules import reconcile_lifecycle
         reconcile_lifecycle(project_dir)
     except Exception as e:
-        print(f"Warning: lifecycle reconciliation failed: {e}", file=sys.stderr)
+        _log_watcher_error(project_dir, "lifecycle_reconciler", str(e))
 
     # Inbox GC: reconcile stale items against contract
     try:
