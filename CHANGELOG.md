@@ -182,3 +182,4 @@
 - 2026-04-28: feat(hermes): Phase 2-4 — checkpoint/rollback via git stash; skills YAML loader with tag discovery; event hook system with HookRegistry; session flush before lifecycle timeout.
 - 2026-04-28: feat(hermes): complete all 8 phases — smart approval with risk classification + persistence; skills YAML loader with 7 tests; hooks with 6 tests; session flush wired into watcher; smart dispatch routing with complexity classifier.
 - 2026-04-28: feat(hooks+errors): wire hooks into watcher lifecycle (task:completed, task:failed, task:created); add /api/watcher-errors endpoint to dashboard.
+- 2026-04-28: fix(paused): _reconcile_paused_dead_pids reads/writes SQLite directly — no more YAML writes for paused dead-pid cleanup.
