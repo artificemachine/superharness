@@ -391,11 +391,8 @@ async function loadWatcherErrors() {
     const d = await r.json();
     const el = document.getElementById('watcherErrors');
     if (!el) return;
-    if (d.errors) {
+    if (d.hasOwnProperty('errors')) {
       el.textContent = d.errors || '(no errors)';
-      el.style.display = '';
-    } else {
-      el.style.display = 'none';
     }
   } catch(e) {
     // endpoint may not exist yet on older dashboards
