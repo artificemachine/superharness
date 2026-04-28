@@ -1861,6 +1861,11 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 1200) -> int:
             with open(inbox_file, "w", encoding="utf-8") as f:
                 f.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
                 _yaml.dump(items, f, default_flow_style=False, sort_keys=True)
+        # Mirror changes to SQLite
+        from superharness.engine.state_writer import mirror_inbox_item_dict
+        for item in items:
+            if isinstance(item, dict):
+                mirror_inbox_item_dict(project_dir, item)
 
     return reconciled
 
