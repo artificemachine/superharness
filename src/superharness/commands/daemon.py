@@ -102,7 +102,7 @@ def _start_daemon(project_dir: Path, interval: int) -> None:
             sys.executable, "-m", "superharness.commands.inbox_watch",
             "--project", str(project_dir),
             "--interval", str(interval),
-            "--foreground",
+            "--once",
         ]
         env = os.environ.copy()
         if "PYTHONPATH" not in env:
