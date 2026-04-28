@@ -115,6 +115,12 @@ fi
 # Do NOT pipe printf/stdin into gemini: piping closes stdin after writing,
 # which sends EOF (^D) to gemini immediately and causes it to exit before
 # processing the task. Trust is bypassed via --skip-trust in GEMINI_ARGS.
+# Gemini requires at least one user message to start (exits 42 otherwise).
+# When no explicit prompt is given, use a bootstrap directive — GEMINI.md
+# contains the full protocol so Gemini can self-orient from there.
+if [[ -z "$PROMPT" ]]; then
+  PROMPT="Read GEMINI.md for the full task protocol. Find your task in .superharness/contract.yaml (owner: gemini-cli, status: todo or plan_approved) and begin."
+fi
 exec gemini ${GEMINI_ARGS[@]+"${GEMINI_ARGS[@]}"} "$PROMPT" < /dev/null || {
   echo "Gemini launch failed with exit code $?" >> /tmp/shux-launcher-error.log
   exit 1
