@@ -1103,28 +1103,69 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                 fallback_agents = _AGENT_FALLBACK.get(current_agent, ["claude-code", "gemini-cli"])
                 next_agent = fallback_agents[0]  # try first fallback
 
-                # If already recovered too many times, escalate
+                # If already recovered too many times, escalate with root cause analysis
                 if recovery_count >= _RECOVERY_MAX:
-                    # Escalate: mark task as blocked with context
+                    reason_lower = (row.failed_reason or "").lower()
+
+                    agents_tried: list[str] = []
+                    rc_matches = re.findall(r"_to_(\S+)", reason_lower)
+                    agents_tried = [row.target_agent] + rc_matches
+                    agents_tried = list(dict.fromkeys(agents_tried))
+
+                    is_architecture_bug = (
+                        "permanent_block" in reason_lower
+                        or "command not found" in reason_lower
+                        or "syntax error" in reason_lower
+                        or "unbound variable" in reason_lower
+                    )
+
+                    if is_architecture_bug:
+                        context_note = (
+                            f"\n[auto-recovery] INFRA ESCALATION: task failed on "
+                            f"{', '.join(agents_tried)} with: "
+                            f"{row.failed_reason or 'unknown error'}. "
+                            f"Check launcher logs, CLI availability, and superharness hooks."
+                        )
+                        new_status = "waiting_input"
+                        # Record to failures ledger for diagnostics
+                        try:
+                            from superharness.engine import failures_dao
+                            failures_dao.record(
+                                conn,
+                                agent=row.target_agent,
+                                error=f"[auto-recovery] infra escalation: "
+                                      f"task {row.task_id} failed on {agents_tried}",
+                                details={"task_id": row.task_id, "agents": agents_tried,
+                                        "reason": row.failed_reason},
+                            )
+                        except Exception:
+                            pass
+                    else:
+                        context_note = (
+                            f"\n[auto-recovery] RE-PLAN: task failed on "
+                            f"{', '.join(agents_tried)}. "
+                            f"Marked plan_proposed for re-decomposition by orchestrator."
+                        )
+                        new_status = "plan_proposed"
+
                     tasks_dao.upsert(conn, tasks_dao.TaskRow(
                         id=task.id, title=task.title, owner=task.owner,
-                        status="blocked", effort=task.effort,
+                        status=new_status, effort=task.effort,
                         project_path=task.project_path,
                         development_method=task.development_method,
                         acceptance_criteria=task.acceptance_criteria,
                         test_types=task.test_types,
                         out_of_scope=task.out_of_scope,
                         definition_of_done=task.definition_of_done,
-                        context=(task.context or "") + f"\n[auto-recovery] exhausted {current_agent} retries; escalated to operator",
+                        context=(task.context or "") + context_note,
                         tdd=task.tdd, version=task.version,
                         created_at=task.created_at, blocked_by=task.blocked_by,
                         parent_id=task.parent_id,
                     ))
-                    # Clear the failed inbox item
                     inbox_dao.update_status(conn, row.id, "stopped", now)
                     print(
-                        f"auto-recover: escalated '{row.task_id}' to operator "
-                        f"(recovery_{recovery_count} exhausted for {current_agent})"
+                        f"auto-recover: escalated '{row.task_id}' → {new_status} "
+                        f"(failed on {', '.join(agents_tried)})"
                     )
                     escalated += 1
                     continue

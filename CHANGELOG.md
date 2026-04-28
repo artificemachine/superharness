@@ -160,3 +160,4 @@
 - 2026-04-28: fix(status): shux status reads inbox from SQLite via state_reader instead of inbox.yaml — fixes stale display counts post-migration.
 - 2026-04-28: fix(auto-dispatch): _enqueue writes directly to SQLite via inbox_dao instead of inbox_enqueue CLI + YAML; fixes status desync post-migration.
 - 2026-04-28: fix(dispatch): inbox_dispatch checks is_sqlite_only() instead of STATE_BACKEND env var — fixes dispatch reading stale inbox.yaml instead of SQLite.
+- 2026-04-28: feat(escalation): auto-recover classifies escalation cause — infrastructure bugs (permanent_block, command not found) mark task waiting_input + record to failures ledger; implementation failures (agent_crash, transient) re-plan via plan_proposed for orchestrator re-decomposition.
