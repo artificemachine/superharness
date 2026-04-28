@@ -114,24 +114,35 @@ def _inbox_stats(inbox_file: str, handoff_dir: str, discussions_dir: str, retry_
     retry_high_ids: list = []
     failed_task_ids: list = []
 
-    if os.path.isfile(inbox_file):
-        items = safe_load(inbox_file, list) or []
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            st = str(item.get("status", ""))
-            task_id = str(item.get("task", ""))
-            if st:
-                counts[st] = counts.get(st, 0) + 1
-            if st == "failed" and task_id:
-                failed_task_ids.append(task_id)
-            if st in active_statuses:
-                rc = int(item.get("retry_count") or 0)
-                if rc >= retry_threshold:
-                    retry_high += 1
-                    iid = str(item.get("id", ""))
-                    if iid:
-                        retry_high_ids.append(iid)
+    # Read inbox from SQLite via state_reader (post-YAML migration).
+    # Fall back to YAML file only if SQLite is unavailable.
+    items = []
+    try:
+        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(inbox_file)))
+        from superharness.engine.state_reader import get_inbox_items
+        items = get_inbox_items(project_dir)
+    except Exception:
+        # Fallback: read YAML file directly
+        if os.path.isfile(inbox_file):
+            items = safe_load(inbox_file, list) or []
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        st = str(item.get("status", ""))
+        # Normalize field names: SQLite uses task_id/target_agent, YAML uses task/to
+        task_id = str(item.get("task", item.get("task_id", "")))
+        if st:
+            counts[st] = counts.get(st, 0) + 1
+        if st == "failed" and task_id:
+            failed_task_ids.append(task_id)
+        if st in active_statuses:
+            rc = int(item.get("retry_count") or 0)
+            if rc >= retry_threshold:
+                retry_high += 1
+                iid = str(item.get("id", ""))
+                if iid:
+                    retry_high_ids.append(iid)
 
     approvals_pending = 0
     if os.path.isdir(handoff_dir):
