@@ -1771,21 +1771,31 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 1200) -> int:
     inbox_file = os.path.join(harness, "inbox.yaml")
     contract_file = os.path.join(harness, "contract.yaml")
 
-    if not os.path.exists(inbox_file):
-        return 0
-
-    with open(inbox_file, encoding="utf-8") as _f:
-        items = _yaml.safe_load(_f.read()) or []
-    if not isinstance(items, list):
+    # Read from SQLite via state_reader (post-migration)
+    items = []
+    try:
+        from superharness.engine.state_reader import get_inbox_items
+        items = get_inbox_items(project_dir)
+    except Exception:
+        if os.path.exists(inbox_file):
+            with open(inbox_file, encoding="utf-8") as _f:
+                items = _yaml.safe_load(_f.read()) or []
+    if not isinstance(items, list) or not items:
         return 0
 
     contract_statuses: dict[str, str] = {}
-    if os.path.exists(contract_file):
-        with open(contract_file, encoding="utf-8") as _f:
-            doc = _yaml.safe_load(_f.read()) or {}
-        for t in doc.get("tasks") or []:
+    try:
+        from superharness.engine.state_reader import get_tasks
+        for t in get_tasks(project_dir):
             if isinstance(t, dict) and t.get("id"):
                 contract_statuses[str(t["id"])] = str(t.get("status", ""))
+    except Exception:
+        if os.path.exists(contract_file):
+            with open(contract_file, encoding="utf-8") as _f:
+                doc = _yaml.safe_load(_f.read()) or {}
+            for t in doc.get("tasks") or []:
+                if isinstance(t, dict) and t.get("id"):
+                    contract_statuses[str(t["id"])] = str(t.get("status", ""))
 
     now = datetime.now(timezone.utc)
     reconciled = 0
