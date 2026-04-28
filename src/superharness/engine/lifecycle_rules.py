@@ -154,17 +154,6 @@ def _scan_inbox(project_dir: str, rules: list[LifecycleRule], profile: dict) -> 
                 conn.close()
         except Exception:
             return 0
-    else:
-        if not os.path.isfile(inbox_file):
-            return 0
-        try:
-            with open(inbox_file, encoding="utf-8") as f:
-                items = yaml.safe_load(f.read()) or []
-        except Exception:
-            return 0
-        if not isinstance(items, list):
-            return 0
-
     changed = 0
     for item in items:
         if not isinstance(item, dict):
@@ -201,21 +190,6 @@ def _scan_inbox(project_dir: str, rules: list[LifecycleRule], profile: dict) -> 
             for item in items:
                 if isinstance(item, dict):
                     mirror_inbox_item_dict(project_dir, item)
-        else:
-            try:
-                with open(inbox_file, "w", encoding="utf-8") as f:
-                    yaml.dump(items, f, default_flow_style=False, allow_unicode=True)
-                from superharness.engine.state_writer import mirror_inbox_item_dict
-
-                for item in items:
-                    if isinstance(item, dict):
-                        mirror_inbox_item_dict(project_dir, item)
-            except Exception as e:
-                import sys
-
-                print(f"lifecycle: failed to write inbox: {e}", file=sys.stderr)
-                return 0
-
     return changed
 
 
@@ -242,18 +216,6 @@ def _scan_contract(project_dir: str, rules: list[LifecycleRule], profile: dict) 
                 conn.close()
         except Exception:
             return 0
-    else:
-        if not os.path.isfile(contract_file):
-            return 0
-        try:
-            with open(contract_file, encoding="utf-8") as f:
-                doc = yaml.safe_load(f.read()) or {}
-        except Exception:
-            return 0
-        tasks = doc.get("tasks") or []
-        if not isinstance(tasks, list):
-            return 0
-
     changed = 0
     for task in tasks:
         if not isinstance(task, dict):
@@ -290,27 +252,6 @@ def _scan_contract(project_dir: str, rules: list[LifecycleRule], profile: dict) 
             for task in tasks:
                 if isinstance(task, dict):
                     mirror_task_dict(project_dir, task)
-        else:
-            try:
-                with open(contract_file, "w", encoding="utf-8") as f:
-                    yaml.dump(
-                        doc,
-                        f,
-                        default_flow_style=False,
-                        sort_keys=False,
-                        allow_unicode=True,
-                    )
-                from superharness.engine.state_writer import mirror_task_dict
-
-                for task in tasks:
-                    if isinstance(task, dict):
-                        mirror_task_dict(project_dir, task)
-            except Exception as e:
-                import sys
-
-                print(f"lifecycle: failed to write contract: {e}", file=sys.stderr)
-                return 0
-
     return changed
 
 
