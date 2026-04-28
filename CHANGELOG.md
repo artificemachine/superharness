@@ -175,3 +175,4 @@
 - 2026-04-28: fix(daemon): auto-restart watcher on crash — background monitor thread detects watcher exit and respawns; CLI no longer blocks.
 - 2026-04-28: fix(dispatch): top-level try/except logs dispatch crashes to watcher-errors.log — previously 17 except blocks swallowed silently.
 - 2026-04-28: fix(zombie): _reconcile_zombies reads from SQLite via state_reader instead of inbox.yaml/contract.yaml — fixes undetected dead PIDs post-migration.
+- 2026-04-28: fix(zombie): _reconcile_zombies now mirrors changes to SQLite — previously wrote to YAML only, invisible to SQLite readers.
