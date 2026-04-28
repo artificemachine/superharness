@@ -592,23 +592,6 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
             inbox_items = get_inbox_items(project_dir)
         except Exception:
             inbox_items = []
-    elif os.path.exists(inbox_file):
-        try:
-            import yaml as _yaml
-            with open(inbox_file, encoding="utf-8") as _f:
-                inbox_items = _yaml.safe_load(_f) or []
-        except Exception:
-            inbox_items = []
-
-    _ACTIVE = {"pending", "launched", "running", "paused", "failed"}
-    active_inbox_items = [
-        item for item in inbox_items
-        if isinstance(item, dict) and str(item.get("status", "")) in _ACTIVE
-    ]
-    active_tasks = {str(item.get("task", "")) for item in active_inbox_items}
-
-    max_concurrent = int(profile.get("max_concurrent_tasks", 2))
-    if len(active_inbox_items) >= max_concurrent:
         return 0
 
     added = 0
@@ -851,23 +834,6 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
             inbox_items = get_inbox_items(project_dir)
         except Exception:
             inbox_items = []
-    elif os.path.exists(inbox_file):
-        try:
-            import yaml as _yaml
-            with open(inbox_file, encoding="utf-8") as _f:
-                inbox_items = _yaml.safe_load(_f) or []
-        except Exception:
-            inbox_items = []
-
-    _ACTIVE = {"pending", "launched", "running", "paused", "failed"}
-    active_inbox_items = [
-        item for item in inbox_items
-        if isinstance(item, dict) and str(item.get("status", "")) in _ACTIVE
-    ]
-    active_tasks = {str(item.get("task", "")) for item in active_inbox_items}
-
-    max_concurrent = int(profile.get("max_concurrent_tasks", 2))
-    if len(active_inbox_items) >= max_concurrent:
         return 0
 
     added = 0
@@ -945,6 +911,28 @@ def _find_pr_url_in_handoff(handoff_dir: str, task_id: str) -> str | None:
     return None
 
 
+def _select_reviewers(task: dict, candidates: list[str], profile: dict) -> list[str]:
+    """Filter candidate reviewers based on cross-pollination and model-tier gates."""
+    from superharness.engine.model_budget import reviewer_meets_tier, AGENT_DEFAULT_TIERS
+    
+    owner = str(task.get("owner", ""))
+    # author tier: 1. task field, 2. owner default, 3. standard
+    author_tier = str(task.get("model_tier") or "")
+    if not author_tier:
+        author_tier = AGENT_DEFAULT_TIERS.get(owner, "standard")
+    
+    # 1. Cross-pollination guard: owner cannot review own task
+    peers = [a for a in candidates if a != owner]
+    
+    # 2. Model-tier gate: reviewer must be >= author tier
+    qualified = [
+        a for a in peers 
+        if reviewer_meets_tier(a, author_tier, profile)
+    ]
+    
+    return qualified
+
+
 def _trigger_auto_review(project_dir: str, task_id: str, reviewers: list[str]) -> bool:
     """Transition task to review_requested and enqueue multiple reviewers."""
     from superharness.engine.contract_io import write_contract
@@ -1004,6 +992,142 @@ def _trigger_auto_review(project_dir: str, task_id: str, reviewers: list[str]) -
         
     print(f"auto-review: triggered reviews for {task_id} via {', '.join(enqueued)}")
     return True
+
+
+def _auto_close_review_passed(project_dir: str) -> None:
+    """Auto-close review_requested tasks when a reviewer submits a verdict report.
+
+    Scans inbox for items with status==done and outcome containing "LGTM" or "REJECTED".
+    """
+    import yaml as _yaml
+    import re as _re
+    from superharness.commands.close import close_task
+    from superharness.engine.state_writer import mirror_task_dict
+
+    profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
+    profile: dict = {}
+    if os.path.isfile(profile_file):
+        try:
+            with open(profile_file, encoding="utf-8") as _f:
+                profile = _yaml.safe_load(_f.read()) or {}
+        except Exception:
+            return
+
+    # Same opt-in rule as _auto_close_report_ready
+    auto_close = profile.get("auto_close", profile.get("autonomy") == "autonomous")
+    if not auto_close:
+        return
+
+    tasks = _load_tasks(project_dir)
+    if not tasks:
+        return
+
+    from superharness.engine import state_reader as _sr
+    try:
+        inbox_items = _sr.get_inbox_items(project_dir)
+    except Exception:
+        return
+
+    for task in tasks:
+        if str(task.get("status")) != "review_requested":
+            continue
+        task_id = str(task.get("id"))
+
+        # Detect LGTM/REJECTED in any done inbox item for this task
+        verdict = ""
+        reviewer = "reviewer"
+        for item in inbox_items:
+            if not isinstance(item, dict):
+                continue
+            if item.get("task") == task_id and item.get("status") == "done":
+                outcome_raw = item.get("outcome")
+                
+                # F14: If outcome missing from item, check handoffs as fallback
+                if not outcome_raw:
+                    try:
+                        history = _sr.get_handoffs(project_dir, task_id=task_id)
+                        if history:
+                            # Check the latest report/handoff from this agent
+                            agent = str(item.get("to") or "")
+                            latest = next((h for h in history if h.get("from_agent") == agent), None)
+                            if latest:
+                                outcome_raw = str(latest.get("content") or "")
+                    except Exception:
+                        pass
+
+                if not outcome_raw:
+                    continue
+
+                outcome_str = str(outcome_raw).upper()
+                
+                # Check 1: Structured YAML verdict (highest precision)
+                if isinstance(outcome_raw, str) and ("review_verdict:" in outcome_raw or "verdict:" in outcome_raw):
+                    try:
+                        # Try full YAML load first
+                        parsed = _yaml.safe_load(outcome_raw)
+                        if isinstance(parsed, dict):
+                            v_val = str(parsed.get("review_verdict") or parsed.get("verdict") or "").lower()
+                            if v_val in ("lgtm", "rejected", "fail"):
+                                verdict = "lgtm" if v_val == "lgtm" else "rejected"
+                                reviewer = str(item.get("to") or "reviewer")
+                                break
+                    except Exception:
+                        # Fallback to regex if YAML load fails (e.g. mixed content)
+                        pass
+
+                # Check 2: Regex extraction (robust against mixed text/YAML)
+                if not verdict and isinstance(outcome_raw, str):
+                    m = _re.search(r"(?:review_verdict|verdict):\s*(lgtm|rejected|fail)", outcome_raw, _re.IGNORECASE)
+                    if m:
+                        v_val = m.group(1).lower()
+                        verdict = "lgtm" if v_val == "lgtm" else "rejected"
+                        reviewer = str(item.get("to") or "reviewer")
+                        break
+
+                # Check 3: Simple string match (legacy fallback)
+                if not verdict:
+                    if "LGTM" in outcome_str:
+                        verdict = "lgtm"
+                        reviewer = str(item.get("to") or "reviewer")
+                        break
+                    elif "REJECTED" in outcome_str:
+                        verdict = "rejected"
+                        reviewer = str(item.get("to") or "reviewer")
+                        break
+
+        if verdict == "lgtm":
+            print(f"auto-close: review passed for '{task_id}' (detected LGTM from {reviewer})")
+            
+            # 1. Transition to review_passed first (required by close_task gate)
+            from superharness.engine.state_writer import set_task_status
+            set_task_status(project_dir, task_id, "review_passed")
+
+            # 2. Call close_task
+            contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
+            try:
+                close_task(
+                    contract_file=contract_file,
+                    task_id=task_id,
+                    actor=reviewer,
+                    summary=f"Review passed: detected LGTM in {reviewer} report.",
+                    skip_verify=True,
+                )
+            except Exception as e:
+                print(f"auto-close: failed to close task '{task_id}': {e}", file=sys.stderr)
+
+        elif verdict == "rejected":
+            print(f"auto-close: review REJECTED for '{task_id}' (detected REJECTION from {reviewer})")
+            from superharness.engine.state_writer import set_task_status
+            if set_task_status(project_dir, task_id, "review_failed"):
+                # Append to ledger
+                ledger_file = os.path.join(project_dir, ".superharness", "ledger.md")
+                ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                line = f"- {ts} — watcher — REJECTED: {task_id} review failed by {reviewer}\n"
+                try:
+                    with open(ledger_file, "a", encoding="utf-8") as f:
+                        f.write(line)
+                except Exception:
+                    pass
 
 
 def _auto_close_report_ready(project_dir: str) -> None:
@@ -1164,7 +1288,8 @@ def _auto_close_report_ready(project_dir: str) -> None:
 
 
     if close_count:
-        print(f"auto-close: closed {close_count} task(s)")
+        _fire_hook("task:completed", {"count": close_count}, project_dir)
+    print(f"auto-close: closed {close_count} task(s)")
 
 
 def _auto_retry_failed(project_dir: str) -> None:
@@ -1364,36 +1489,6 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                             )
                         except Exception:
                             pass
-                    else:
-                        context_note = (
-                            f"\n[auto-recovery] RE-PLAN: task failed on "
-                            f"{', '.join(agents_tried)}. "
-                            f"Marked plan_proposed for re-decomposition by orchestrator."
-                        )
-                        new_status = "plan_proposed"
-
-                    tasks_dao.upsert(conn, tasks_dao.TaskRow(
-                        id=task.id, title=task.title, owner=task.owner,
-                        status=new_status, effort=task.effort,
-                        project_path=task.project_path,
-                        development_method=task.development_method,
-                        acceptance_criteria=task.acceptance_criteria,
-                        test_types=task.test_types,
-                        out_of_scope=task.out_of_scope,
-                        definition_of_done=task.definition_of_done,
-                        context=(task.context or "") + context_note,
-                        tdd=task.tdd, version=task.version,
-                        created_at=task.created_at, blocked_by=task.blocked_by,
-                        parent_id=task.parent_id,
-                    ))
-                    inbox_dao.update_status(conn, row.id, "stopped", now)
-                    print(
-                        f"auto-recover: escalated '{row.task_id}' → {new_status} "
-                        f"(failed on {', '.join(agents_tried)})"
-                    )
-                    escalated += 1
-                    continue
-
                 # Recover: re-enqueue to fallback agent with raw SQL
                 new_recovery = recovery_count + 1
                 new_reason = f"recovery_{new_recovery}:{current_agent}_to_{next_agent}"
@@ -1520,6 +1615,15 @@ def _run_gc_if_due(project_dir: str, cycle_count: int) -> bool:
     return result.get("reconciled", 0) >= 0
 
 
+def _fire_hook(event: str, data: dict, project_dir: str | None = None) -> None:
+    """Fire an event hook. Never raises."""
+    try:
+        from superharness.engine.hooks import get_registry
+        get_registry().fire(event, data)
+    except Exception:
+        pass
+
+
 def _sqlite_singleton_acquire(project_dir: str) -> None:
     """Acquire the SQLite watcher singleton lease. Never raises."""
     try:
@@ -1630,6 +1734,12 @@ def _run_scripts(
     except Exception as e:
         _log_watcher_error(project_dir, "auto_close", str(e))
 
+    # Auto-close review_requested tasks when a reviewer submits a verdict report
+    try:
+        _auto_close_review_passed(project_dir)
+    except Exception as e:
+        _log_watcher_error(project_dir, "auto_review_close", str(e))
+
     # Sync cancelled/closed discussions back to contract task status
     try:
         _reconcile_discussion_contract(project_dir)
@@ -1674,22 +1784,26 @@ def _run_scripts(
     except Exception as e:
         print(f"Warning: zombie reconciliation failed: {e}", file=sys.stderr)
 
-    # Reconcile paused dead-pid items (orthogonal to lifecycle timeouts)
-    try:
-        import yaml as _yaml
-        from superharness.engine.inbox import _inbox_lock
-        _inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
-        if os.path.exists(_inbox_file):
-            with open(_inbox_file, encoding="utf-8") as _f:
-                _inbox_items = _yaml.safe_load(_f.read()) or []
-            if _reconcile_paused_dead_pids(_inbox_items):
-                with _inbox_lock(_inbox_file):
-                    with open(_inbox_file, "w", encoding="utf-8") as _f:
-                        _yaml.dump(_inbox_items, _f)
-                from superharness.engine.state_writer import mirror_inbox_item_dict
-                for _item in _inbox_items:
-                    if isinstance(_item, dict):
-                        mirror_inbox_item_dict(project_dir, _item)
+    # Reconcile paused dead-pid items — read from SQLite, write to SQLite
+        from dataclasses import asdict
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import inbox_dao
+        conn_paused = get_connection(project_dir)
+        try:
+            init_db(conn_paused)
+            paused_items = [asdict(r) for r in inbox_dao.get_all(conn_paused, status="paused")]
+            if _reconcile_paused_dead_pids(paused_items):
+                for item in paused_items:
+                    if isinstance(item, dict) and item.get("status") != "paused":
+                        inbox_dao.update_status(
+                            conn_paused, item.get("id", ""),
+                            from_status="paused",
+                            to_status=item.get("status", "failed"),
+                            now=_now_utc()
+                        )
+                conn_paused.commit()
+        finally:
+            conn_paused.close()
     except Exception as e:
         print(f"Warning: paused dead-pid reconciliation failed: {e}", file=sys.stderr)
 
@@ -1708,6 +1822,17 @@ def _run_scripts(
         reconcile_lifecycle(project_dir)
     except Exception as e:
         _log_watcher_error(project_dir, "lifecycle_reconciler", str(e))
+
+    # Proactive session flush: save partial work before lifecycle timeout
+    try:
+        from superharness.engine.session_flush import check_expiring, flush_task
+        expiring = check_expiring(project_dir)
+        for task_id in expiring:
+            flush_task(project_dir, task_id)
+        if expiring:
+            print(f"session-flush: flushed {len(expiring)} expiring task(s)")
+    except Exception as e:
+        _log_watcher_error(project_dir, "session_flush", str(e))
 
     # Inbox GC: reconcile stale items against contract
     try:

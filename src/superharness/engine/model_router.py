@@ -153,3 +153,60 @@ def resolve_tier(model_name: str) -> str | None:
     if model_name in VALID_TIERS:
         return model_name
     return None
+
+
+def classify_complexity(task: dict) -> str:
+    """Classify task complexity: simple, medium, or complex.
+
+    Heuristics cherry-picked from hermes-agent/agent/smart_model_routing.py.
+    """
+    title = str(task.get("title", task.get("id", "")))
+    criteria = task.get("acceptance_criteria") or []
+    ac_count = len([c for c in criteria if str(c).strip()])
+    effort = str(task.get("effort", "medium")).lower()
+    context = str(task.get("context", "")).lower()
+
+    # High complexity signals
+    complex_signals = [
+        "refactor", "migrate", "redesign", "architecture",
+        "security", "auth", "api", "database", "schema",
+        "multi-file", "breaking change", "cross-cutting",
+        "performance", "optimize", "scale",
+    ]
+    # Simple task signals
+    simple_signals = ["typo", "fix comment", "rename", "update readme",
+                      "add test", "config", "bump version", "changelog"]
+
+    is_complex = (
+        effort in ("xhigh", "max")
+        or ac_count > 3
+        or any(s in title.lower() or s in context for s in complex_signals)
+    )
+
+    if is_complex:
+        return "complex"
+
+    is_simple = (
+        effort == "low"
+        or ac_count == 0
+        or any(s in (title.lower() + context) for s in simple_signals)
+    )
+
+    return "simple" if is_simple else "medium"
+
+
+def suggest_tier(complexity: str, budget_remaining: float | None = None) -> str:
+    """Suggest model tier based on complexity and budget.
+
+    Returns: mini, standard, or max.
+    """
+    if complexity == "complex":
+        return "max"
+    if complexity == "simple":
+        if budget_remaining is not None and budget_remaining < 1.0:
+            return "mini"
+        return "mini"
+    # medium
+    if budget_remaining is not None and budget_remaining < 3.0:
+        return "mini"
+    return "standard"

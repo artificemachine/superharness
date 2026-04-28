@@ -159,15 +159,29 @@ def _inbox_stats(inbox_file: str, handoff_dir: str, discussions_dir: str, retry_
                 continue
 
     discussion_counts: dict = {}
-    if os.path.isdir(discussions_dir):
-        for path in sorted(glob.glob(os.path.join(discussions_dir, "*/state.yaml"))):
-            try:
-                y = safe_load(path, dict)
-                st = str(y.get("status", ""))
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import discussions_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            for row in discussions_dao.get_all(conn):
+                st = row.status
                 if st:
                     discussion_counts[st] = discussion_counts.get(st, 0) + 1
-            except Exception:
-                continue
+        finally:
+            conn.close()
+    except Exception:
+        # Fallback: read state.yaml from disk
+        if os.path.isdir(discussions_dir):
+            for path in sorted(glob.glob(os.path.join(discussions_dir, "*/state.yaml"))):
+                try:
+                    y = safe_load(path, dict)
+                    st = str(y.get("status", ""))
+                    if st:
+                        discussion_counts[st] = discussion_counts.get(st, 0) + 1
+                except Exception:
+                    continue
 
     return {
         "counts": counts,
@@ -177,6 +191,27 @@ def _inbox_stats(inbox_file: str, handoff_dir: str, discussions_dir: str, retry_
         "approvals_pending": approvals_pending,
         "discussion_counts": discussion_counts,
     }
+
+
+def _task_stats(project_dir: str) -> dict:
+    """Count contract tasks by status group from SQLite."""
+    counts: dict = {}
+    try:
+        from superharness.engine.state_reader import get_tasks
+        tasks = get_tasks(project_dir)
+        for t in tasks:
+            if not isinstance(t, dict):
+                continue
+            st = str(t.get("status", "todo"))
+            if st in ("report_ready", "review_requested", "review_passed", "review_failed","pr_open"):
+                counts["review"] = counts.get("review", 0) + 1
+            elif st in ("plan_proposed", "plan_approved"):
+                counts["plan"] = counts.get("plan", 0) + 1
+            else:
+                counts[st] = counts.get(st, 0) + 1
+    except Exception:
+        pass
+    return counts
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -226,6 +261,7 @@ def main(argv: list[str] | None = None) -> None:
 
     stats = _inbox_stats(inbox_file, handoff_dir, discussions_dir, opts.retry_threshold)
     counts = stats["counts"]
+    task_counts = _task_stats(project_dir)
 
     def c(k: str) -> int:
         return counts.get(k, 0)
@@ -245,6 +281,9 @@ def main(argv: list[str] | None = None) -> None:
     print(f"discussions: active={dc.get('active', 0)} consensus={dc.get('consensus', 0)} "
           f"failed_participant={dc.get('failed_participant', 0)} "
           f"deadlock={dc.get('deadlock', 0)} closed={dc.get('closed', 0)}")
+    print(f"tasks: archived={task_counts.get('archived',0)} done={task_counts.get('done',0)} "
+          f"review={task_counts.get('review',0)} todo={task_counts.get('todo',0)} "
+          f"in_progress={task_counts.get('in_progress',0)} plan={task_counts.get('plan',0)}")
 
     issues = 0
     issue_details = []
