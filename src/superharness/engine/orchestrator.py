@@ -1,13 +1,19 @@
-"""Orchestrator engine — Opus decomposes tasks and routes to sub-agents.
+"""Orchestrator engine — cross-agent task decomposition and model routing.
 
-The orchestrator (always Opus 4.6) evaluates a task, decomposes it into
-subtasks, assigns model tiers (mini/standard/max), estimates cost, and
-generates dispatch instructions for sub-agents (Haiku/Sonnet/Opus).
+The orchestrator selects the best available max-tier model from any agent
+(Claude Opus, Codex GPT-5.4, Gemini Ultra) to decompose a task into subtasks,
+assigns model tiers (mini/standard/max), estimates cost, and generates
+dispatch instructions for sub-agents.
+
+Orchestrator model selection uses random exploration with quality tracking:
+each model in the chain gets scored on decomposition success rate. Over time,
+preferred models get higher selection weight.
 """
 from __future__ import annotations
 
 import json
 import logging
+import random
 import subprocess
 from dataclasses import dataclass, field
 from typing import Any
@@ -21,8 +27,66 @@ from superharness.engine.taxonomy import VALID_EFFORTS
 
 logger = logging.getLogger(__name__)
 
-DECOMPOSER_MODEL = "claude-opus-4-6"
-DECOMPOSER_FALLBACK = "claude-opus-4-7"  # escalate when 4.6 unavailable; log warning
+DECOMPOSER_MODEL = "claude-opus-4-7"
+DECOMPOSER_FALLBACK = "claude-opus-4-6"  # kept as single-model fallback within claude
+
+# Cross-agent orchestrator chain: (binary, model_id, label)
+# Tries the best model from each agent. Randomly shuffled per call so
+# different models get a chance — quality scores accumulate over time.
+_ORCHESTRATOR_CHAIN: list[tuple[str, str, str]] = [
+    ("claude", "claude-opus-4-7",   "Claude Opus 4.7 (max)"),
+    ("claude", "claude-opus-4-6",   "Claude Opus 4.6 (fallback)"),
+    ("codex",  "gpt-5.4",           "Codex GPT-5.4 (max)"),
+    ("gemini", "gemini-ultra",      "Gemini Ultra (max)"),
+]
+
+# Quality scores per model: {model_id: {successes: int, failures: int, last_used: iso}}
+# Higher success rate = higher selection weight for future decompositions.
+# Initialized with neutral scores so new models get a fair chance.
+_orchestrator_scores: dict[str, dict[str, Any]] = {}
+
+
+def _shuffle_chain() -> list[tuple[str, str, str]]:
+    """Shuffle the chain randomly, biased by quality scores.
+
+    Models with higher success rates get duplicated entries in the pool,
+    giving them proportionally higher chance of being picked first.
+    """
+    # Build a weighted pool: each model appears 1 + ceil(success_rate * 4) times
+    pool: list[tuple[str, str, str]] = []
+    for entry in _ORCHESTRATOR_CHAIN:
+        binary, model, label = entry
+        score = _orchestrator_scores.get(model, {})
+        successes = score.get("successes", 0)
+        failures = score.get("failures", 0)
+        total = successes + failures
+        # New models (no history) get a bonus so they get tried
+        if total == 0:
+            weight = 3  # generous for exploration
+        else:
+            rate = successes / total
+            weight = 1 + int(rate * 4)  # 1-5 entries
+        pool.extend([entry] * weight)
+    random.shuffle(pool)
+    # Deduplicate: keep first occurrence of each model
+    seen: set[str] = set()
+    result: list[tuple[str, str, str]] = []
+    for entry in pool:
+        if entry[1] not in seen:
+            seen.add(entry[1])
+            result.append(entry)
+    return result
+
+
+def _record_orchestrator_score(model: str, success: bool) -> None:
+    """Update quality score for an orchestrator model."""
+    from datetime import datetime, timezone
+    score = _orchestrator_scores.setdefault(model, {"successes": 0, "failures": 0})
+    if success:
+        score["successes"] += 1
+    else:
+        score["failures"] += 1
+    score["last_used"] = datetime.now(timezone.utc).isoformat()
 
 _ORCHESTRATOR_MODEL = DECOMPOSER_MODEL
 _DEFAULT_ESTIMATED_TOKENS = 30000
@@ -30,20 +94,41 @@ _FALLBACK_ESTIMATED_TOKENS = 50000
 _ORCHESTRATOR_TIMEOUT = 60
 
 _MODEL_TO_TIER: dict[str, str] = {
-    "sonnet-4-6": "standard",
-    "opus-4-6":   "max",
-    "opus-4-7":   "max",
+    # claude-code
+    "haiku-4-5":     "mini",
+    "sonnet-4-6":    "standard",
+    "sonnet-4-5":    "standard",
+    "opus-4-6":      "max",
+    "opus-4-7":      "max",
+    # codex-cli
+    "codex-mini":    "mini",
+    "codex":         "standard",
+    "gpt-5.4":       "max",
+    # gemini-cli
+    "gemini-flash":  "mini",
+    "gemini-pro":    "standard",
+    "gemini-ultra":  "max",
 }
 
 _DECOMPOSE_PROMPT = """\
 You are an orchestrator for a multi-agent coding system.
-Your job is to decompose a task into subtasks and assign each to the
-right model and effort level.
+Your job is to decompose a task into subtasks and assign each to the right model and effort level.
 
-Available executors (pick ONE per subtask):
-- sonnet-4-6 ($3/$15 per MTok)   — default for ~80% of subtasks
-- opus-4-6   ($15/$75 per MTok)  — complex core logic, security, cross-cutting concerns
-- opus-4-7   ($15/$75 per MTok)  — reserve for the single irreversible subtask; max effort only
+Available executors across agents (pick ONE model per subtask):
+  MINI tier (quick, cheap — simple edits, typo fixes, single-file changes):
+    - haiku-4-5        ($0.25/$1.25 per MTok) — claude-code
+    - gemini-2.0-flash ($0.10/$0.40 per MTok) — gemini-cli
+    - gpt-5.1-codex-mini                     — codex-cli
+
+  STANDARD tier (default for ~80% of subtasks — typical features, CRUD, tests):
+    - sonnet-4-6       ($3/$15 per MTok)     — claude-code
+    - gemini-2.0-pro   ($1.25/$5 per MTok)   — gemini-cli
+    - gpt-5.3-codex                           — codex-cli
+
+  MAX tier (complex logic, security, architecture, cross-cutting concerns):
+    - opus-4-7         ($15/$75 per MTok)    — claude-code
+    - gemini-ultra     ($15/$75 per MTok)    — gemini-cli
+    - gpt-5.4                                — codex-cli
 
 Effort levels: low | medium | high | xhigh | max
 (low=bounded; medium=typical; high=complex; xhigh=cross-system; max=highest-stakes)
@@ -58,9 +143,10 @@ Rules:
 4. Respect out_of_scope — no subtask may violate it
 5. Assign model + effort + timeout per subtask using the table above
 6. Use blocked_by for sequential ordering; leave independent subtasks unblocked
-7. Subtask model MUST be <= parent model (never escalate silently)
+7. Subtask model tier MUST be <= parent model tier (never escalate silently)
 8. Subtask effort MUST be <= parent effort (never escalate silently)
-9. Prefer sonnet-4-6 unless the subtask explicitly requires Opus-level judgment
+9. Prefer MINI or STANDARD models unless the subtask explicitly requires MAX-tier judgment
+10. Route to the cheapest model at the assigned tier unless complexity demands a specific agent
 
 Task:
   ID:                  {task_id}
@@ -82,7 +168,7 @@ Reply with JSON only (no markdown fences):
     {{
       "id": "<parent_id>.<N>",
       "title": "...",
-      "model": "sonnet-4-6 | opus-4-6 | opus-4-7",
+      "model": "sonnet-4-6 | opus-4-7 | haiku-4-5 | gemini-2.0-flash | gemini-2.0-pro | gemini-ultra | gpt-5.1-codex-mini | gpt-5.3-codex | gpt-5.4",
       "effort": "low | medium | high | xhigh | max",
       "timeout_minutes": <int>,
       "blocked_by": "<parent_id>.<N-1>" | null,
@@ -203,22 +289,43 @@ class Orchestrator:
         )
 
     def _call_orchestrator_model(self, prompt: str) -> str:
-        """Call Opus via claude CLI to get decomposition."""
-        try:
-            result = subprocess.run(
-                ["claude", "--model", _ORCHESTRATOR_MODEL, "-p", prompt],
-                capture_output=True,
-                text=True,
-                timeout=_ORCHESTRATOR_TIMEOUT,
-                check=False,
-            )
-            if result.returncode != 0:
-                logger.warning("Orchestrator model call failed: %s", result.stderr)
-                return ""
-            return result.stdout.strip()
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
-            logger.warning("Orchestrator model call error: %s", e)
-            return ""
+        """Call the best available model across all agents for decomposition.
+
+        Shuffles the orchestrator chain randomly (biased by quality scores)
+        and tries each model in order. First successful response wins.
+        Quality scores are recorded for future selection weighting.
+        """
+        from datetime import datetime, timezone
+
+        chain = _shuffle_chain()
+        for binary, model, label in chain:
+            try:
+                result = subprocess.run(
+                    [binary, "--model", model, "-p", prompt],
+                    capture_output=True,
+                    text=True,
+                    timeout=_ORCHESTRATOR_TIMEOUT,
+                    check=False,
+                )
+                success = result.returncode == 0 and bool(result.stdout.strip())
+                _record_orchestrator_score(model, success)
+
+                if success:
+                    logger.info("Orchestrator: %s (%s) succeeded", label, model)
+                    return result.stdout.strip()
+                logger.debug(
+                    "Orchestrator: %s (%s) failed (rc=%d): %.200s",
+                    label, model, result.returncode, result.stderr
+                )
+            except FileNotFoundError:
+                _record_orchestrator_score(model, False)
+                logger.debug("Orchestrator: %s binary not found, skipping", binary)
+            except (subprocess.TimeoutExpired, OSError) as e:
+                _record_orchestrator_score(model, False)
+                logger.debug("Orchestrator: %s (%s) error: %s", label, model, e)
+
+        logger.warning("Orchestrator: all models failed — decomposition skipped")
+        return ""
 
     def _parse_decomposition(
         self, raw: str, task: dict[str, Any]
