@@ -151,3 +151,20 @@ def upsert_handoff(project_dir: str, handoff_id: str, content: dict) -> bool:
         return False
 
 
+
+
+def mirror_task_dict(project_dir: str, task: dict) -> None:
+    try:
+        from superharness.engine.db import get_connection
+        c = get_connection(project_dir)
+        c.execute('UPDATE tasks SET status=? WHERE id=?', (str(task.get('status','')), str(task.get('id',''))))
+        c.commit(); c.close()
+    except Exception: pass
+
+def mirror_inbox_item_dict(project_dir: str, item: dict) -> None:
+    try:
+        from superharness.engine.db import get_connection
+        c = get_connection(project_dir)
+        c.execute('UPDATE inbox SET status=? WHERE id=?', (str(item.get('status','')), str(item.get('id',''))))
+        c.commit(); c.close()
+    except Exception: pass
