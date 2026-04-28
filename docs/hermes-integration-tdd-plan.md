@@ -1,159 +1,224 @@
-# Hermes Cherry-Pick Implementation: TDD Plan
+# Hermes → Superharness: Combined Implementation Plan (TDD)
 
+> Merged from: `hermes-agent/docs/hermes_to_superharness_spec_plan.md` + `docs/hermes-integration-tdd-plan.md`
 > Date: 2026-04-28
-> Source audit: `docs/hermes-cherry-pick-audit.md`
-> Goal: Implement top 5 cherry-pick patterns into superharness using TDD
 
-## Iteration 0: Test harness setup (shared foundation)
+## Overview
 
-**RED:** No tests exist for new modules.
-
-**GREEN:**
-- Create `tests/unit/test_tool_registry.py` — empty test file with `test_registry_singleton`
-- Create `tests/unit/test_approval_state.py` — empty test file with `test_session_approved_defaults`
-- Create `tests/unit/test_hooks.py` — empty test file with `test_hook_yaml_parse`
-- All 3 test files have one failing test each (import non-existent module)
-
-**REFACTOR:** None (initial setup).
+8 features extracted from hermes-agent into superharness, organized in 4 phases. Each iteration follows RED → GREEN → REFACTOR. All extractions are additive — they wrap existing behavior, never replace it.
 
 ---
 
-## Iteration 1: Tool Registry
+## Phase 1: Security Guard
 
-**RED:** Write tests for `superharness.engine.tool_registry`:
-- `test_register_single_tool` — register a tool, verify it appears in registry
-- `test_register_duplicate_rejected` — registering same name twice raises error
-- `test_get_tool_by_name` — retrieve registered tool
-- `test_list_by_category` — filter tools by category
-- `test_dispatch_tool_call` — call a registered function through the registry
-- `test_missing_tool_raises` — getting unregistered tool raises KeyError
-- `test_singleton_pattern` — `get_registry()` always returns same instance
+### Iteration 1.1: Dangerous Command Detection
+
+**Source:** `hermes-agent/tools/approval.py` (lines 24-93, 100-116)
+**Effort:** ~2 hours
+
+**RED:** Write `tests/unit/test_guard.py`:
+- `test_detect_rm_rf` — `rm -rf /` → dangerous
+- `test_detect_curl_pipe_bash` — `curl ... | bash` → dangerous
+- `test_detect_fork_bomb` — `:(){ :|:& };:` → dangerous
+- `test_detect_chmod_777` — `chmod 777 /etc` → dangerous
+- `test_detect_dd_overwrite` — `dd if=/dev/zero of=/dev/sda` → dangerous
+- `test_safe_echo` — `echo hello` → safe
+- `test_safe_ls` — `ls -la` → safe
+- `test_approval_state_session` — approve once, check is_approved
+- `test_approval_state_permanent` — approve permanent, survives session reset
 
 **GREEN:**
-- `engine/tool_registry.py`:
-  - `ToolDef` dataclass (name, fn, schema, category, help_text, requires_env)
-  - `ToolRegistry` class with `register()`, `get()`, `list()`, `dispatch()`
-  - `get_registry()` singleton factory
-  - Each method validates inputs
-- All 7 tests pass
+- `src/superharness/guard/__init__.py` (5 lines)
+- `src/superharness/guard/dangerous_patterns.py` (55 lines) — 25 regex patterns
+- `src/superharness/guard/detector.py` (20 lines) — `detect_dangerous_command(cmd) -> (bool, str)`
+- `src/superharness/guard/state.py` (30 lines) — per-session approval tracking
 
 **REFACTOR:**
-- Inline `cli.py` `_cmd()` calls into tool registry registration
-- Migrate 3 commands as proof: `shux contract`, `shux status`, `shux auto-dispatch`
-- Verify existing tests still pass after refactor
+- Wire into handoff writer: scan terminal history before persisting
+- Wire into ledger: flag dangerous commands found in agent output
+- New CLI: `shux guard check <command>`
 
 ---
 
-## Iteration 2: Approval State
+### Iteration 1.2: Credential Redaction
 
-**RED:** Write tests for `superharness.engine.approval_state`:
-- `test_session_approved_starts_empty` — new session has no approvals
-- `test_approve_once` — approve a command for current session
-- `test_approve_session` — approve all commands for session
-- `test_approve_permanent` — add to permanent allowlist
-- `test_deny_command` — denied command re-prompts
-- `test_legacy_key_aliasing` — old pattern key still matches
-- `test_thread_safety` — concurrent accesses don't corrupt state
-- `test_persistence` — permanent approvals survive restart (write to config)
-- `test_auto_approve_low_risk` — Smart Approvals pattern: low-risk commands auto-approved
+**Source:** `hermes-agent/agent/redact.py`
+**Effort:** ~1 hour
+
+**RED:** Write `tests/unit/test_redact.py`:
+- `test_redact_api_key` — `sk-abc123` → `[REDACTED]`
+- `test_redact_bearer_token` — `Bearer eyJ...` → `Bearer [REDACTED]`
+- `test_redact_password` — `password=secret` → `password=[REDACTED]`
+- `test_redact_db_url` — `postgres://user:pass@host` → `postgres://user:[REDACTED]@host`
+- `test_redact_private_key` — PEM block → `[REDACTED]`
+- `test_redact_phone` — `+1234567890` → `[REDACTED]`
+- `test_preserve_safe_text` — plain text unchanged
 
 **GREEN:**
-- `engine/approval_state.py`:
-  - `ApprovalState` class with `_session_approved`, `_permanent_approved` sets
-  - `approve(command, scope)`, `deny(command)`, `is_approved(command)`
-  - `_check_risk(command)` — simple heuristic risk classifier (path patterns, command categories)
-  - Thread-safe via `threading.Lock()`
+- `src/superharness/guard/redact.py` (90 lines) — pattern set + `redact(text) -> str`
+
+**REFACTOR:**
+- Wrap handoff writer: `content = redact(content)` before write
+- Wrap ledger append: `redact()` before persisting
+- Wrap task report: `redact()` before saving
+
+---
+
+## Phase 2: Safety Net
+
+### Iteration 2.1: Checkpoint / Rollback
+
+**Source:** `hermes-agent/tools/checkpoint_manager.py`
+**Effort:** ~3 hours
+
+**RED:** Write `tests/unit/test_checkpoint.py`:
+- `test_snapshot_creates_git_ref` — `snapshot()` creates a git stash/tag
+- `test_rollback_restores_files` — `rollback()` reverts to snapshot state
+- `test_prune_old_removes_stale` — `prune_old()` removes snapshots > 24h
+- `test_snapshot_idempotent` — second snapshot on same task is no-op
+- `test_rollback_nonexistent_fails` — rollback without snapshot raises
+
+**GREEN:**
+- `src/superharness/guard/checkpoint.py` (100 lines):
+  - `snapshot(project_dir, task_id)` — git stash with task tag
+  - `rollback(project_dir, task_id)` — git stash pop
+  - `prune_old(project_dir, max_age_hours=24)` — remove stale stashes
+  - All use `shux worktree` for consistency
+
+**REFACTOR:**
+- Pre-task hook: snapshot before `shux delegate` spawns agent
+- Failed verification: `shux verify <id> --rollback`
+- New CLI: `shux checkpoint list`, `shux checkpoint restore <id>`
+
+---
+
+### Iteration 2.2: Smart Approval State (from my audit)
+
+**RED:** Write `tests/unit/test_approval_state.py`:
+- `test_approve_session_scoped` — approve for session, reset on new session
+- `test_approve_permanent_persists` — permanent approval survives restart
+- `test_auto_approve_low_risk` — low-risk commands auto-approved
+- `test_thread_safe_concurrent` — concurrent access doesn't corrupt
+- `test_legacy_key_aliasing` — old pattern keys still match
+
+**GREEN:**
+- Extend `src/superharness/guard/state.py` (adds ~40 lines):
+  - `ApprovalState` class with `_session_approved`, `_permanent_approved`
+  - `_check_risk(command)` — heuristic classifier
   - Persistence via `~/.superharness/approvals.json`
-  - Legacy key mapping dict
-- All 9 tests pass
 
 **REFACTOR:**
-- Wire approval state into `_auto_peer_approve_plans` in `inbox_watch.py`
-- Low-risk tasks (typo fixes, config changes) auto-approved
-- High-risk tasks (refactors, new features) still need peer review
+- Wire into `_auto_peer_approve_plans`: low-risk tasks auto-approved
+- Wire into `shux guard check`: shows approval status
 
 ---
 
-## Iteration 3: Event Hook System
+## Phase 3: Intelligence
 
-**RED:** Write tests for `superharness.engine.hooks`:
-- `test_parse_hook_yaml` — parse HOOK.yaml with events list
-- `test_hook_yaml_missing_events_fails` — invalid YAML raises
-- `test_register_hook` — register a hook handler
-- `test_fire_event_calls_handler` — firing an event invokes registered handler
-- `test_fire_event_with_no_handlers` — event with no handlers doesn't crash
-- `test_handler_error_doesnt_block` — handler raises, other handlers still run
-- `test_multiple_handlers_same_event` — multiple handlers fire on same event
-- `test_builtin_events` — verify all built-in events exist (task:created, task:delegated, task:completed, task:failed, task:closed)
+### Iteration 3.1: Skills for Cross-Agent Handoffs
+
+**Source:** `hermes-agent/agent/skill_commands.py`
+**Effort:** ~4 hours
+
+**RED:** Write `tests/unit/test_skills.py`:
+- `test_save_skill_from_task` — save task workflow as skill YAML
+- `test_load_skill_by_name` — load and parse skill YAML
+- `test_discover_skills_by_tag` — find skills matching tags
+- `test_skill_injection_in_prompt` — skill included in delegation context
+- `test_invalid_skill_yaml_fails` — bad YAML raises validation error
+- `test_skill_list_all` — list all saved skills
+- `test_skill_delete_removes_file` — delete removes from disk
 
 **GREEN:**
-- `engine/hooks.py`:
-  - `HookDef` dataclass (name, events, handler_fn)
-  - `HookRegistry` class with `register()`, `fire(event, data)`
-  - `load_hooks_from_dir()` — scans `~/.superharness/hooks/` for `HOOK.yaml` + `handler.py`
-  - `HOOK_SCHEMA` — YAML schema validation
-  - Built-in events module: `engine/hook_events.py` with constants
-- All 8 tests pass
+- `protocol/skills.md` (60 lines) — skill YAML format spec
+- `src/superharness/skills/__init__.py` (5 lines)
+- `src/superharness/skills/loader.py` (50 lines) — YAML loading + validation
+- `src/superharness/skills/discovery.py` (40 lines) — tag matching, search
 
 **REFACTOR:**
-- Fire hooks from watcher at key lifecycle points (task:delegated, task:completed, task:failed)
-- Fire hooks from auto-close (task:closed)
-- Fire hooks from peer-approve (task:approved, task:rejected)
+- `shux close <id> --save-skill <name>` — extract workflow as skill
+- `shux delegate <id>` — include matching skill in context
+- New CLI: `shux skills list`, `shux skills show`, `shux skills delete`
 
 ---
 
-## Iteration 4: Proactive Session Flush
+### Iteration 3.2: Smart Dispatch Routing
 
-**RED:** Write tests for `superharness.engine.session_flush`:
-- `test_detect_expiring_task` — task nearing timeout returns True
-- `test_flush_partial_work` — flushes in_progress task context to handoff
-- `test_skip_flushed_task` — already-flushed task skips
-- `test_watcher_integrates_flush` — watcher calls flush before lifecycle reconciler
+**Source:** `hermes-agent/agent/smart_model_routing.py`
+**Effort:** ~3 hours
+
+**RED:** Write `tests/unit/test_smart_routing.py`:
+- `test_classify_simple_task` — short description → low complexity
+- `test_classify_complex_task` — multi-step, multi-file → high complexity
+- `test_route_simple_to_mini` — low complexity → mini tier suggestion
+- `test_route_complex_to_max` — high complexity → max tier suggestion
+- `test_budget_aware_routing` — low budget → downgrade tier
 
 **GREEN:**
-- `engine/session_flush.py`:
-  - `check_expiring(project_dir, warning_minutes=15)` — finds tasks within warning threshold of lifecycle timeout
-  - `flush_task(project_dir, task_id)` — writes current context to handoff file
-  - `is_flushed(task_id)` — checks if task was already flushed in this session
-  - Wired into watcher cycle BEFORE lifecycle reconciler
-- All 4 tests pass
+- Extend `src/superharness/engine/model_router.py` (adds ~80 lines):
+  - `classify_complexity(task) -> str` — simple/medium/complex
+  - `suggest_tier(complexity, budget_remaining) -> str` — mini/standard/max
 
 **REFACTOR:**
-- Add `flush_warning_minutes` to `profile.yaml` for configurable warning window
+- `shux auto-dispatch` uses complexity + budget for model selection
+- Budget-aware: if `budget.daily_limit` is low, prefer cheaper models
 
 ---
 
-## Iteration 5: Git Worktree Enhancement
+## Phase 4: Reliability & Observability
 
-**RED:** Write tests for `superharness.engine.worktree_ops`:
-- `test_prune_stale_worktrees` — removes worktrees older than 24h with no changes
-- `test_worktree_include_pattern` — copies `.worktreeinclude` files
-- `test_clean_removal_on_exit` — worktree removed if no uncommitted changes
-- `test_keep_dirty_worktree` — worktree with changes not removed
-- `test_concurrent_worktree_safety` — two dispatches don't collide on same worktree
+### Iteration 4.1: Event Hook System
+
+**RED:** Write `tests/unit/test_hooks.py`:
+- `test_parse_hook_yaml` — valid HOOK.yaml parses
+- `test_hook_expired_skipped` — expired hook not loaded
+- `test_fire_event_calls_handler` — event triggers handler
+- `test_handler_error_doesnt_block` — one handler crashes, others run
+- `test_task_lifecycle_hooks` — task:created, task:delegated, task:completed, task:failed fire
 
 **GREEN:**
-- Extend `engine/worktree_ops.py`:
-  - `prune_stale()` — scans dispatch worktrees, removes stale ones
-  - `resolve_includes()` — reads `.worktreeinclude`, copies matching files
-  - `cleanup_worktree(path)` — removes worktree if clean
-  - All functions use `shux worktree` CLI for consistency
-- All 5 tests pass
+- `src/superharness/engine/hooks.py` (100 lines):
+  - `HookDef` dataclass (name, events, handler_fn, expires)
+  - `HookRegistry` with `register()`, `fire(event, data)`
+  - `load_hooks_from_dir()` — scans `~/.superharness/hooks/`
+  - Built-in events: `hook_events.py`
 
 **REFACTOR:**
-- Wire `prune_stale()` into watcher cycle (between auto_enqueue and dispatch)
-- Wire `cleanup_worktree()` into `_run_dispatch_cmd()` post-dispatch
+- Fire hooks from watcher: `task:delegated`, `task:completed`, `task:failed`, `task:closed`
+
+---
+
+### Iteration 4.2: Proactive Session Flush
+
+**RED:** Write `tests/unit/test_session_flush.py`:
+- `test_detect_expiring_task` — task within warning window returns True
+- `test_flush_in_progress_context` — saves current state to handoff
+- `test_skip_already_flushed` — doesn't double-write
+- `test_watcher_runs_flush_before_timeout` — flush fires before lifecycle reconcile
+
+**GREEN:**
+- `src/superharness/engine/session_flush.py` (50 lines):
+  - `check_expiring(project_dir, warning_minutes=15) -> list[str]`
+  - `flush_task(project_dir, task_id)` — write partial work to handoff
+
+**REFACTOR:**
+- Wire into watcher cycle BEFORE lifecycle reconciler
+- Configurable: `profile.yaml` → `flush_warning_minutes: 15`
 
 ---
 
 ## Summary
 
-| Iteration | Pattern | Tests | Effort |
-|-----------|---------|-------|--------|
-| 0 | Test harness | 3 | 1 session |
-| 1 | Tool Registry | 7 | 1-2 sessions |
-| 2 | Approval State | 9 | 2-3 sessions |
-| 3 | Event Hook System | 8 | 2 sessions |
-| 4 | Proactive Session Flush | 4 | 1-2 sessions |
-| 5 | Git Worktree Enhancement | 5 | 1-2 sessions |
-| **Total** | | **36** | **8-12 sessions** |
+| Phase | Iteration | Pattern | Tests | Hours |
+|-------|-----------|---------|-------|-------|
+| 1 | 1.1 | Dangerous Command Detection | 9 | 2 |
+| 1 | 1.2 | Credential Redaction | 7 | 1 |
+| 2 | 2.1 | Checkpoint/Rollback | 5 | 3 |
+| 2 | 2.2 | Smart Approval State | 5 | 2 |
+| 3 | 3.1 | Skills for Handoffs | 7 | 4 |
+| 3 | 3.2 | Smart Dispatch Routing | 5 | 3 |
+| 4 | 4.1 | Event Hook System | 5 | 2 |
+| 4 | 4.2 | Proactive Session Flush | 4 | 2 |
+| **Total** | | | **47** | **19** |
+
+Files: ~13 new, ~5 modified. Lines: ~1,100 new.
