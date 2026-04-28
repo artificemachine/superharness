@@ -546,6 +546,13 @@ def dispatch(
 
     _backend = os.environ.get("STATE_BACKEND", "").strip().lower()
     _sqlite_primary = _backend == "sqlite_only"
+    # Post-migration: SQLite is always the source of truth.
+    if not _sqlite_primary:
+        try:
+            from superharness.engine.sqlite_only import is_sqlite_only
+            _sqlite_primary = is_sqlite_only()
+        except Exception:
+            pass
 
     if not _sqlite_primary and not os.path.exists(inbox_file):
         print(f"Inbox file not found: {inbox_file}", file=sys.stderr)
