@@ -1078,7 +1078,7 @@ def _auto_close_report_ready(project_dir: str) -> None:
         # the task and routes per suggested_action.
         try:
             from superharness.engine.report_verifier import verify_report as _verify_report
-                    verification = _verify_report(handoff, task, project_dir, strict_context=not auto_close_explicit)
+                    verification = _verify_report(handoff, task, project_dir)
             if not verification.passed:
                 # Stamp verification_failures so dashboard surfaces them
                 task["verification_failures"] = verification.failures

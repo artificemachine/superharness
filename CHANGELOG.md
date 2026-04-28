@@ -168,3 +168,4 @@
 - 2026-04-28 (v1.43.0): feat(sqlite-migration): complete YAML→SQLite migration — all state reads/writes use SQLite; parity.py and yaml_sync.py replaced with no-op stubs; auto-mode gaps closed (peer approval, stale task GC, review mode tabs, auto-close SQLite, stopped concurrency fix, escalation classification, cross-agent orchestrator).
 - 2026-04-28: fix(verifier): context field check is soft when auto_close is explicitly set — missing context warns but does not block auto-close; prevents stale mock tasks from being stuck indefinitely.
 - 2026-04-28: fix(handoff): auto-generate context field when agent omits it — prevents report verifier from blocking auto-close on missing context.
+- 2026-04-28: fix(verifier): revert soft-check — context field is always required; handoff_write.py now auto-generates default context so agents never leave it empty.
