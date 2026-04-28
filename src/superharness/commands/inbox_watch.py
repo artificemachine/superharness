@@ -19,22 +19,8 @@ def _now_utc() -> str:
 
 
 def _yaml_writes_enabled(project_dir: str) -> bool:
-    """Return False when STATE_BACKEND=sqlite_only (post-archive mode)."""
-    env = os.environ.get("STATE_BACKEND", "").strip().lower()
-    if env == "sqlite_only":
-        return False
-    if env in ("yaml_only", "dual"):
-        return True
-    try:
-        import yaml as _yaml
-        profile_path = os.path.join(project_dir, ".superharness", "profile.yaml")
-        if os.path.exists(profile_path):
-            with open(profile_path, encoding="utf-8") as f:
-                profile = _yaml.safe_load(f) or {}
-            return str(profile.get("state_backend", "")).strip().lower() != "sqlite_only"
-    except Exception:
-        pass
-    return True
+    """Return False — YAML writes are permanently disabled (SQLite-only migration complete)."""
+    return False
 
 
 def _load_tasks(project_dir: str) -> list[dict]:
