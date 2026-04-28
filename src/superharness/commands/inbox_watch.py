@@ -1849,22 +1849,26 @@ def _run_scripts(
     except Exception as e:
         print(f"Warning: zombie reconciliation failed: {e}", file=sys.stderr)
 
-    # Reconcile paused dead-pid items (orthogonal to lifecycle timeouts)
-    try:
-        import yaml as _yaml
-        from superharness.engine.inbox import _inbox_lock
-        _inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
-        if os.path.exists(_inbox_file):
-            with open(_inbox_file, encoding="utf-8") as _f:
-                _inbox_items = _yaml.safe_load(_f.read()) or []
-            if _reconcile_paused_dead_pids(_inbox_items):
-                with _inbox_lock(_inbox_file):
-                    with open(_inbox_file, "w", encoding="utf-8") as _f:
-                        _yaml.dump(_inbox_items, _f)
-                from superharness.engine.state_writer import mirror_inbox_item_dict
-                for _item in _inbox_items:
-                    if isinstance(_item, dict):
-                        mirror_inbox_item_dict(project_dir, _item)
+    # Reconcile paused dead-pid items — read from SQLite, write to SQLite
+        from dataclasses import asdict
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import inbox_dao
+        conn_paused = get_connection(project_dir)
+        try:
+            init_db(conn_paused)
+            paused_items = [asdict(r) for r in inbox_dao.get_all(conn_paused, status="paused")]
+            if _reconcile_paused_dead_pids(paused_items):
+                for item in paused_items:
+                    if isinstance(item, dict) and item.get("status") != "paused":
+                        inbox_dao.update_status(
+                            conn_paused, item.get("id", ""),
+                            from_status="paused",
+                            to_status=item.get("status", "failed"),
+                            now=_now_utc()
+                        )
+                conn_paused.commit()
+        finally:
+            conn_paused.close()
     except Exception as e:
         print(f"Warning: paused dead-pid reconciliation failed: {e}", file=sys.stderr)
 
