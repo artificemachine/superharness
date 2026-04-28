@@ -57,28 +57,39 @@ def _enqueue(
     priority: int = 2,
     plan_only: bool = True,
 ) -> bool:
-    """Enqueue a task into inbox.yaml. Returns True on success.
+    """Enqueue a task directly into SQLite inbox. Returns True on success.
 
     auto-dispatch operates on `todo` tasks, which are not valid at enqueue for
     the implementation workflow. Default to `plan_only=True` so the agent
     proposes a plan first; the operator then approves and the task re-enters
     the normal dispatch flow.
     """
+    import uuid
+    from datetime import datetime, timezone
     try:
-        from superharness.commands.inbox_enqueue import main as enqueue_main
-        argv = [
-            "--project", project_dir,
-            "--task", task_id,
-            "--to", agent,
-            "--priority", str(priority),
-        ]
-        if plan_only:
-            argv.append("--plan-only")
-        enqueue_main(argv)
-        return True
-    except SystemExit as e:
-        return e.code == 0
-    except Exception:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import inbox_dao
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        item_id = f"{now[:8]}T{now[9:15].replace(':', '')}Z-{task_id.replace('.', '-')}-{uuid.uuid4().hex[:6]}"
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            inbox_dao.enqueue(
+                conn,
+                id=item_id,
+                task_id=task_id,
+                target_agent=agent,
+                priority=priority,
+                project_path=project_dir,
+                plan_only=plan_only,
+                now=now,
+            )
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"  ERROR: failed to enqueue {task_id}: {e}", file=sys.stderr)
         return False
 
 

@@ -158,3 +158,4 @@
 - 2026-04-28: feat(autonomous): cross-agent orchestrator with A/B testing and exhausted failure recovery — orchestrator shuffles between claude-opus-4-7, gpt-5.4, gemini-ultra with quality-weighted random selection; decomposition prompt lists all agent models across tiers; _auto_recover_exhausted_failures_sqlite re-routes exhausted inbox items to fallback agents (claude→gemini→codex) with recovery tracking; escalation to operator after 2 recovery attempts; budget check wired for auto-close.
 - 2026-04-28: fix(watcher): _yaml_writes_enabled always returns False (sqlite_only post-migration); fixes auto-retry/recovery reading stale YAML instead of SQLite.
 - 2026-04-28: fix(status): shux status reads inbox from SQLite via state_reader instead of inbox.yaml — fixes stale display counts post-migration.
+- 2026-04-28: fix(auto-dispatch): _enqueue writes directly to SQLite via inbox_dao instead of inbox_enqueue CLI + YAML; fixes status desync post-migration.
