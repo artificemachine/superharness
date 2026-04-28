@@ -247,6 +247,13 @@
       </div>
       <div id="tasksBody">
         <div id="taskFilterPills" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
+        <div id="reviewModeTabs" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+          <button class="review-tab active" data-mode="all"     style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid var(--line);background:var(--btn);cursor:pointer;">All</button>
+          <button class="review-tab" data-mode="needs-review"   style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid var(--line);background:var(--btn);cursor:pointer;">🔍 Needs Review</button>
+          <button class="review-tab" data-mode="in-progress"    style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid var(--line);background:var(--btn);cursor:pointer;">🔄 In Progress</button>
+          <button class="review-tab" data-mode="auto-handled"   style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid var(--line);background:var(--btn);cursor:pointer;">✅ Auto-handled</button>
+          <button class="review-tab" data-mode="stale"          style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid var(--line);background:var(--btn);cursor:pointer;">⏸ Stale</button>
+        </div>
         <div id="contractTaskList">-</div>
       </div>
     </div>
@@ -422,7 +429,12 @@ async function refresh() {
     // Extend KNOWN_AGENTS from live API data so dynamically added agents appear everywhere.
     KNOWN_AGENTS = [...new Set([...KNOWN_AGENTS, ...(d.all_task_owners || [])])];
     renderOwnersList(d.contract_owners || [], d.all_task_owners || []);
-    renderContractTasks(d.contract_tasks || [], new Set(d.active_inbox_tasks || []), new Set(d.done_inbox_tasks || []), new Set(d.paused_inbox_tasks || []), new Set(d.failed_inbox_tasks || []));
+    // Apply review mode filter
+    const filteredTasks = filterByReviewMode(d.contract_tasks || []);
+    renderContractTasks(filteredTasks, new Set(d.active_inbox_tasks || []), new Set(d.done_inbox_tasks || []), new Set(d.paused_inbox_tasks || []), new Set(d.failed_inbox_tasks || []));
+    // Update task count in header
+    const countEl = document.getElementById('taskOverviewCount');
+    if (countEl) countEl.textContent = '(' + filteredTasks.length + ' tasks)';
     // Show/hide "Clear resolved" button — visible when resolved tasks have inbox items
     const allInboxTaskIds = new Set([...(d.active_inbox_tasks||[]), ...(d.paused_inbox_tasks||[]), ...(d.failed_inbox_tasks||[]), ...(d.done_inbox_tasks||[])]);
     const activeContractIds = new Set((d.contract_tasks||[]).filter(t => t.status !== 'done' && t.status !== 'archived').map(t => t.id));
@@ -989,8 +1001,36 @@ const STATUS_GROUPS = [
   { key: 'plan',           label: '📋 plan',            statuses: ['plan_proposed','plan_approved'], color: '#a78bfa' },
   { key: 'todo',           label: '🕐 todo',            statuses: ['todo'],                          color: 'var(--muted)' },
 ];
-// hidden groups — set of group keys currently hidden; done and archived are hidden by default
-const _hiddenGroups = new Set(['done', 'archived']);
+let _reviewMode = 'all';
+
+function setReviewMode(mode) {
+  _reviewMode = mode;
+  document.querySelectorAll('.review-tab').forEach(b => {
+    b.style.borderColor = b.dataset.mode === mode ? 'var(--accent)' : 'var(--line)';
+    b.style.background = b.dataset.mode === mode ? 'var(--accent)18' : 'var(--btn)';
+    b.style.fontWeight = b.dataset.mode === mode ? 'bold' : 'normal';
+  });
+  refresh();
+}
+
+function filterByReviewMode(tasks) {
+  if (_reviewMode === 'all') return tasks;
+  return tasks.filter(t => {
+    const st = t.status || 'todo';
+    if (_reviewMode === 'needs-review')  return ['report_ready','review_requested','review_passed','review_failed','waiting_input'].includes(st);
+    if (_reviewMode === 'in-progress')   return ['todo','plan_proposed','plan_approved','in_progress','launched','running'].includes(st);
+    if (_reviewMode === 'auto-handled')  return ['done','archived'].includes(st);
+    if (_reviewMode === 'stale')         return ['stopped','paused','failed','blocked'].includes(st);
+    return true;
+  });
+}
+
+// Wire tab clicks
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('review-tab')) {
+    setReviewMode(e.target.dataset.mode);
+  }
+});
 
 function _statusToGroup(st) {
   for (const g of STATUS_GROUPS) {
