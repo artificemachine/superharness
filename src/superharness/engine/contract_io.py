@@ -4,6 +4,7 @@ All contract-mutating commands must use write_contract() from this module.
 Pydantic validation runs when pydantic is available; degrades gracefully when
 it is not (e.g. minimal CI environments that install only core deps).
 """
+
 from __future__ import annotations
 
 import logging
@@ -21,6 +22,7 @@ class ContractValidationError(RuntimeError):
 
 try:
     from ruamel.yaml import YAML as RuamelYAML
+
     _RT_AVAILABLE = True
 except ImportError:
     _RT_AVAILABLE = False
@@ -42,13 +44,13 @@ def _validate(doc: object) -> None:
         Contract.model_validate(doc)
     except ValidationError as exc:
         errs = "\n".join(
-            f"  {'.'.join(str(x) for x in e['loc'])}: {e['msg']}"
-            for e in exc.errors()
+            f"  {'.'.join(str(x) for x in e['loc'])}: {e['msg']}" for e in exc.errors()
         )
         if _ENFORCEMENT == "warn":
             logger.critical(
                 "SCHEMA ENFORCEMENT BYPASSED (SUPERHARNESS_SCHEMA_ENFORCEMENT=warn). "
-                "Violations:\n%s", errs
+                "Violations:\n%s",
+                errs,
             )
         else:
             raise ContractValidationError(
@@ -62,6 +64,7 @@ def _task_row_from_dict(
     now: str,
 ) -> "TaskRow":
     from superharness.engine.tasks_dao import TaskRow
+
     task_id = str(t.get("id", ""))
     return TaskRow(
         id=task_id,
@@ -77,8 +80,16 @@ def _task_row_from_dict(
         definition_of_done=list(t.get("definition_of_done") or []),
         context=t.get("context"),
         tdd=t.get("tdd"),
+        summary=t.get("summary"),
         version=int(t.get("version") or 1),
         created_at=str(t.get("created_at") or now),
+        plan_proposed_at=t.get("plan_proposed_at"),
+        plan_approved_at=t.get("plan_approved_at"),
+        in_progress_at=t.get("in_progress_at"),
+        report_ready_at=t.get("report_ready_at"),
+        review_requested_at=t.get("review_requested_at"),
+        done_at=t.get("done_at"),
+        cancelled_at=t.get("cancelled_at"),
         blocked_by=list(t.get("blocked_by") or []),
     )
 
@@ -99,6 +110,7 @@ def _sqlite_sync_tasks(path: str, doc: object) -> None:
         from datetime import datetime, timezone
         from superharness.engine.db import get_connection, init_db, transaction
         from superharness.engine import tasks_dao
+
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         conn = get_connection(project_dir)
         try:
@@ -112,7 +124,9 @@ def _sqlite_sync_tasks(path: str, doc: object) -> None:
                     tasks_dao.upsert(conn, _task_row_from_dict(t, project_dir, now))
                     for st in t.get("subtasks") or []:
                         if isinstance(st, dict) and str(st.get("id", "")):
-                            tasks_dao.upsert(conn, _task_row_from_dict(st, project_dir, now))
+                            tasks_dao.upsert(
+                                conn, _task_row_from_dict(st, project_dir, now)
+                            )
             conn.commit()
         finally:
             conn.close()
@@ -122,6 +136,13 @@ def _sqlite_sync_tasks(path: str, doc: object) -> None:
 
 def write_contract(path: str, doc: object) -> None:
     _validate(doc)
+
+    from superharness.engine.sqlite_only import is_sqlite_only
+
+    if is_sqlite_only():
+        # SQLite-only mode: skip YAML file write, write directly to SQLite.
+        _sqlite_sync_tasks(path, doc)
+        return
 
     dir_ = os.path.dirname(os.path.abspath(path))
     base = os.path.basename(path)
@@ -156,6 +177,7 @@ def read_contract(path: str) -> tuple[dict, list]:
     try:
         from pydantic import ValidationError
         from superharness.engine.schemas import Contract
+
         try:
             Contract.model_validate(doc)
         except ValidationError as exc:

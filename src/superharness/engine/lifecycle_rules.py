@@ -14,6 +14,7 @@ Each LifecycleRule declares:
 
 Adding a new rule only requires adding a row to LIFECYCLE_RULES.
 """
+
 from __future__ import annotations
 
 import os
@@ -34,7 +35,9 @@ class LifecycleRule:
     revert_to: str | None = None
     skip_if_field: str | None = None
     profile_key: str | None = None  # profile.yaml override key
-    fail_reason_template: str = "{state} timeout ({age_minutes}m >= {limit_minutes}m limit)"
+    fail_reason_template: str = (
+        "{state} timeout ({age_minutes}m >= {limit_minutes}m limit)"
+    )
 
 
 LIFECYCLE_RULES: list[LifecycleRule] = [
@@ -129,16 +132,49 @@ def _apply_action(item: dict, rule: LifecycleRule, age: float, limit: int) -> bo
 
 
 def _scan_inbox(project_dir: str, rules: list[LifecycleRule], profile: dict) -> int:
+    from superharness.engine.sqlite_only import is_sqlite_only
+
     inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
-    if not os.path.isfile(inbox_file):
-        return 0
-    try:
-        with open(inbox_file, encoding="utf-8") as f:
-            items = yaml.safe_load(f.read()) or []
-    except Exception:
-        return 0
-    if not isinstance(items, list):
-        return 0
+
+    if is_sqlite_only():
+        # SQLite-only: read from SQLite, apply rules, write back.
+        from dataclasses import asdict
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import inbox_dao
+        db_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
+        if not os.path.isfile(db_path):
+            return 0
+        try:
+            conn = get_connection(project_dir)
+            try:
+                init_db(conn)
+                rows = inbox_dao.get_all(conn)
+                items = [asdict(r) for r in rows]
+            finally:
+                conn.close()
+        except Exception:
+            return 0
+    else:
+        if not os.path.isfile(inbox_file):
+            return 0
+        try:
+            with open(inbox_file, encoding="utf-8") as f:
+                items = yaml.safe_load(f.read()) or []
+        except Exception:
+            return 0
+        if not isinstance(items, list):
+            return 0
+    else:
+        inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
+        if not os.path.isfile(inbox_file):
+            return 0
+        try:
+            with open(inbox_file, encoding="utf-8") as f:
+                items = yaml.safe_load(f.read()) or []
+        except Exception:
+            return 0
+        if not isinstance(items, list):
+            return 0
 
     changed = 0
     for item in items:
@@ -167,33 +203,67 @@ def _scan_inbox(project_dir: str, rules: list[LifecycleRule], profile: dict) -> 
                     break  # one rule per item per pass
 
     if changed:
-        try:
-            with open(inbox_file, "w", encoding="utf-8") as f:
-                yaml.dump(items, f, default_flow_style=False, allow_unicode=True)
+        from superharness.engine.sqlite_only import is_sqlite_only
+
+        if is_sqlite_only():
+            # SQLite-only: just mirror to SQLite, skip YAML file write.
             from superharness.engine.state_writer import mirror_inbox_item_dict
+
             for item in items:
                 if isinstance(item, dict):
                     mirror_inbox_item_dict(project_dir, item)
-        except Exception as e:
-            import sys
-            print(f"lifecycle: failed to write inbox: {e}", file=sys.stderr)
-            return 0
+        else:
+            try:
+                with open(inbox_file, "w", encoding="utf-8") as f:
+                    yaml.dump(items, f, default_flow_style=False, allow_unicode=True)
+                from superharness.engine.state_writer import mirror_inbox_item_dict
+
+                for item in items:
+                    if isinstance(item, dict):
+                        mirror_inbox_item_dict(project_dir, item)
+            except Exception as e:
+                import sys
+
+                print(f"lifecycle: failed to write inbox: {e}", file=sys.stderr)
+                return 0
 
     return changed
 
 
 def _scan_contract(project_dir: str, rules: list[LifecycleRule], profile: dict) -> int:
+    from superharness.engine.sqlite_only import is_sqlite_only
+
     contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
-    if not os.path.isfile(contract_file):
-        return 0
-    try:
-        with open(contract_file, encoding="utf-8") as f:
-            doc = yaml.safe_load(f.read()) or {}
-    except Exception:
-        return 0
-    tasks = doc.get("tasks") or []
-    if not isinstance(tasks, list):
-        return 0
+
+    if is_sqlite_only():
+        # SQLite-only: read from SQLite, apply rules, write back.
+        from dataclasses import asdict
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import tasks_dao
+        db_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
+        if not os.path.isfile(db_path):
+            return 0
+        try:
+            conn = get_connection(project_dir)
+            try:
+                init_db(conn)
+                rows = tasks_dao.get_all(conn)
+                tasks = [asdict(r) for r in rows]
+            finally:
+                conn.close()
+        except Exception:
+            return 0
+    else:
+        if not os.path.isfile(contract_file):
+            return 0
+        try:
+            with open(contract_file, encoding="utf-8") as f:
+                doc = yaml.safe_load(f.read()) or {}
+        except Exception:
+            return 0
+        tasks = doc.get("tasks") or []
+        if not isinstance(tasks, list):
+            return 0
 
     changed = 0
     for task in tasks:
@@ -222,17 +292,35 @@ def _scan_contract(project_dir: str, rules: list[LifecycleRule], profile: dict) 
                     break
 
     if changed:
-        try:
-            with open(contract_file, "w", encoding="utf-8") as f:
-                yaml.dump(doc, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        from superharness.engine.sqlite_only import is_sqlite_only
+
+        if is_sqlite_only():
+            # SQLite-only: just mirror to SQLite, skip YAML file write.
             from superharness.engine.state_writer import mirror_task_dict
+
             for task in tasks:
                 if isinstance(task, dict):
                     mirror_task_dict(project_dir, task)
-        except Exception as e:
-            import sys
-            print(f"lifecycle: failed to write contract: {e}", file=sys.stderr)
-            return 0
+        else:
+            try:
+                with open(contract_file, "w", encoding="utf-8") as f:
+                    yaml.dump(
+                        doc,
+                        f,
+                        default_flow_style=False,
+                        sort_keys=False,
+                        allow_unicode=True,
+                    )
+                from superharness.engine.state_writer import mirror_task_dict
+
+                for task in tasks:
+                    if isinstance(task, dict):
+                        mirror_task_dict(project_dir, task)
+            except Exception as e:
+                import sys
+
+                print(f"lifecycle: failed to write contract: {e}", file=sys.stderr)
+                return 0
 
     return changed
 
@@ -242,7 +330,6 @@ def reconcile_lifecycle(project_dir: str) -> int:
     profile = _load_profile(project_dir)
     inbox_rules = [r for r in LIFECYCLE_RULES if r.source == "inbox"]
     contract_rules = [r for r in LIFECYCLE_RULES if r.source == "contract"]
-    return (
-        _scan_inbox(project_dir, inbox_rules, profile)
-        + _scan_contract(project_dir, contract_rules, profile)
+    return _scan_inbox(project_dir, inbox_rules, profile) + _scan_contract(
+        project_dir, contract_rules, profile
     )
