@@ -177,3 +177,5 @@
 - 2026-04-28: fix(zombie): _reconcile_zombies reads from SQLite via state_reader instead of inbox.yaml/contract.yaml — fixes undetected dead PIDs post-migration.
 - 2026-04-28: fix(zombie): _reconcile_zombies now mirrors changes to SQLite — previously wrote to YAML only, invisible to SQLite readers.
 - 2026-04-28: fix(zombie): zombie reconciler writes directly to SQLite inbox table — no more YAML writes.
+- Add autonomous peer review with model-tier gating and LGTM auto-close (feat.autonomous-peer-review).
+- 2026-04-28: feat(guard): dangerous command detection + credential redaction (cherry-picked from hermes-agent) — 25 regex patterns for dangerous shell commands; 10 patterns for credential redaction; per-session approval state with scoped persistence.
