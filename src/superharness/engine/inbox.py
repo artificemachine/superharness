@@ -37,6 +37,17 @@ def _load_items(path: str) -> list:
 
 
 def _write_items(path: str, items: list) -> None:
+    from superharness.engine.sqlite_only import is_sqlite_only
+
+    if is_sqlite_only():
+        # SQLite-only: skip YAML file write, mirror each item to SQLite.
+        from superharness.engine.state_writer import mirror_inbox_item_dict
+        project_dir = os.path.dirname(os.path.dirname(path))
+        for item in items:
+            if isinstance(item, dict):
+                mirror_inbox_item_dict(project_dir, item)
+        return
+
     dir_ = os.path.dirname(os.path.abspath(path))
     base = os.path.basename(path)
     fd, tmp_path = tempfile.mkstemp(prefix=base, suffix=".tmp", dir=dir_)
