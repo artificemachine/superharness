@@ -4,6 +4,8 @@ phase: report
 status: report_ready
 from: codex-cli
 to: owner
-date: "2026-04-25T11:00:00Z"
-outcome: |
-  Mock Beta automated flow test completed.
+date: '2026-04-25T11:00:00Z'
+outcome: 'Mock Beta automated flow test completed.
+
+  '
+context: 'Auto-closed by watcher: mock task verification test'
