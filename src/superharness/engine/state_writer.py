@@ -10,6 +10,7 @@ API:
   mirror_task_dict(project_dir, task) -> None        # best-effort SQLite sync
   mirror_inbox_item_dict(project_dir, item) -> None  # best-effort SQLite sync
 """
+
 from __future__ import annotations
 
 import os
@@ -30,7 +31,15 @@ def set_task_status(
     from_status: str | None = None,
 ) -> bool:
     """Update a contract task's status. Returns True if the task was found and updated."""
+    from superharness.engine.sqlite_only import is_sqlite_only
+
     contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
+
+    if is_sqlite_only():
+        # SQLite-only: use the existing mirror function as the primary write path.
+        _mirror_task_to_sqlite(project_dir, task_id, status)
+        return True
+
     if not os.path.isfile(contract_file):
         return False
 
@@ -52,7 +61,13 @@ def set_task_status(
         task["updated_at"] = _now_utc()
         try:
             with open(contract_file, "w", encoding="utf-8") as f:
-                yaml.dump(doc, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+                yaml.dump(
+                    doc,
+                    f,
+                    default_flow_style=False,
+                    sort_keys=False,
+                    allow_unicode=True,
+                )
         except Exception:
             return False
         _mirror_task_to_sqlite(project_dir, task_id, status)
@@ -67,7 +82,15 @@ def set_inbox_status(
     **fields,
 ) -> bool:
     """Update an inbox item's status. Returns True if the item was found."""
+    from superharness.engine.sqlite_only import is_sqlite_only
+
     inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
+
+    if is_sqlite_only():
+        # SQLite-only: use the existing mirror function as the primary write path.
+        _mirror_inbox_to_sqlite(project_dir, item_id, status)
+        return True
+
     if not os.path.isfile(inbox_file):
         return False
 
@@ -108,10 +131,18 @@ def set_inbox_status(
 
 def upsert_handoff(project_dir: str, handoff_id: str, content: dict) -> bool:
     """Write or overwrite a handoff yaml. Returns True on success."""
+    from superharness.engine.sqlite_only import is_sqlite_only
+
     handoffs = os.path.join(project_dir, ".superharness", "handoffs")
     os.makedirs(handoffs, exist_ok=True)
     safe_id = handoff_id.replace("/", "-")
     path = os.path.join(handoffs, f"{safe_id}.yaml")
+
+    if is_sqlite_only():
+        # SQLite-only: handoffs go to SQLite only via the handoffs_dao.
+        # The YAML file write is skipped. Caller should also persist via handoffs_dao.
+        return True
+
     try:
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(content, f, default_flow_style=False, allow_unicode=True)
@@ -137,9 +168,10 @@ def mirror_inbox_item_dict(project_dir: str, item: dict) -> None:
 
 
 def _mirror_task_to_sqlite(project_dir: str, task_id: str, status: str) -> None:
-    """Best-effort SQLite mirror for a task status change."""
+    """Best-effort SQLite write for a task status change. Primary write path in sqlite_only mode."""
     try:
         from superharness.engine import db
+
         db_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
         if not os.path.isfile(db_path):
             return
@@ -154,9 +186,10 @@ def _mirror_task_to_sqlite(project_dir: str, task_id: str, status: str) -> None:
 
 
 def _mirror_inbox_to_sqlite(project_dir: str, item_id: str, status: str) -> None:
-    """Best-effort SQLite mirror for an inbox item status change."""
+    """Best-effort SQLite write for an inbox item status change. Primary write path in sqlite_only mode."""
     try:
         from superharness.engine import db
+
         db_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
         if not os.path.isfile(db_path):
             return

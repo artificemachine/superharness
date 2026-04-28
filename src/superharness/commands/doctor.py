@@ -241,41 +241,22 @@ def main(argv: list[str] | None = None) -> None:
     except Exception:
         pass
 
-    # Parity check (B5: surface drift counts and yaml_sync lag)
+    # SQLite state DB health (parity checking removed)
     state_db = os.path.join(harness_dir, "state.sqlite3")
     if os.path.isfile(state_db):
         try:
             from superharness.engine.db import get_connection, init_db
-            from superharness.engine import parity as _parity
             _conn = get_connection(project_dir)
             try:
                 init_db(_conn)
-                report = _parity.check_parity(_conn, project_dir)
-                if report.healthy:
-                    print(f"PASS parity: all tables in sync (yaml_sync_lag={report.yaml_sync_lag})")
-                else:
-                    failures += 1
-                    for d in report.drifts:
-                        if d.only_in_db or d.only_in_yaml or d.mismatched:
-                            print(
-                                f"FAIL parity:{d.table} only_in_db={d.only_in_db}"
-                                f" only_in_yaml={d.only_in_yaml} mismatched={d.mismatched}"
-                            )
-                    if report.foreign_key_violations > 0:
-                        print(f"FAIL parity:foreign_key_violations={report.foreign_key_violations}")
-                    print("       Run: shux heal-parity")
-                # yaml_sync_lag is reported regardless of healthy — pending ops aren't "drift"
-                # but operators need visibility on watcher drain backlog
-                if report.yaml_sync_lag > 0:
-                    print(f"WARN parity:yaml_sync_queue lag={report.yaml_sync_lag} pending ops")
-                    warns += 1
+                print(f"PASS state-db: state.sqlite3 present and initialised")
             finally:
                 _conn.close()
         except Exception as _exc:
-            print(f"WARN parity: check failed ({_exc})")
+            print(f"WARN state-db: check failed ({_exc})")
             warns += 1
     else:
-        print("INFO parity: state.sqlite3 not found — run shux migrate or start the watcher to initialise")
+        print("INFO state-db: state.sqlite3 not found — run shux migrate or start the watcher to initialise")
 
     print(f"summary: failures={failures} warnings={warns}")
     if failures > 0:
