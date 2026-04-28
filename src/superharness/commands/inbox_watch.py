@@ -592,23 +592,6 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
             inbox_items = get_inbox_items(project_dir)
         except Exception:
             inbox_items = []
-    elif os.path.exists(inbox_file):
-        try:
-            import yaml as _yaml
-            with open(inbox_file, encoding="utf-8") as _f:
-                inbox_items = _yaml.safe_load(_f) or []
-        except Exception:
-            inbox_items = []
-
-    _ACTIVE = {"pending", "launched", "running", "paused", "failed"}
-    active_inbox_items = [
-        item for item in inbox_items
-        if isinstance(item, dict) and str(item.get("status", "")) in _ACTIVE
-    ]
-    active_tasks = {str(item.get("task", "")) for item in active_inbox_items}
-
-    max_concurrent = int(profile.get("max_concurrent_tasks", 2))
-    if len(active_inbox_items) >= max_concurrent:
         return 0
 
     added = 0
@@ -851,23 +834,6 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
             inbox_items = get_inbox_items(project_dir)
         except Exception:
             inbox_items = []
-    elif os.path.exists(inbox_file):
-        try:
-            import yaml as _yaml
-            with open(inbox_file, encoding="utf-8") as _f:
-                inbox_items = _yaml.safe_load(_f) or []
-        except Exception:
-            inbox_items = []
-
-    _ACTIVE = {"pending", "launched", "running", "paused", "failed"}
-    active_inbox_items = [
-        item for item in inbox_items
-        if isinstance(item, dict) and str(item.get("status", "")) in _ACTIVE
-    ]
-    active_tasks = {str(item.get("task", "")) for item in active_inbox_items}
-
-    max_concurrent = int(profile.get("max_concurrent_tasks", 2))
-    if len(active_inbox_items) >= max_concurrent:
         return 0
 
     added = 0
@@ -1523,37 +1489,6 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                             )
                         except Exception:
                             pass
-                    else:
-                        context_note = (
-                            f"\n[auto-recovery] RE-PLAN: task failed on "
-                            f"{', '.join(agents_tried)}. "
-                            f"Marked plan_proposed for re-decomposition by orchestrator."
-                        )
-                        new_status = "plan_proposed"
-
-                    tasks_dao.upsert(conn, tasks_dao.TaskRow(
-                        id=task.id, title=task.title, owner=task.owner,
-                        status=new_status, effort=task.effort,
-                        project_path=task.project_path,
-                        development_method=task.development_method,
-                        acceptance_criteria=task.acceptance_criteria,
-                        test_types=task.test_types,
-                        out_of_scope=task.out_of_scope,
-                        definition_of_done=task.definition_of_done,
-                        context=(task.context or "") + context_note,
-                        tdd=task.tdd, version=task.version,
-                        created_at=task.created_at, blocked_by=task.blocked_by,
-                        parent_id=task.parent_id,
-                    ))
-                    inbox_dao.update_status(conn, row.id, "stopped", now)
-                    _fire_hook("task:failed", {"task_id": row.task_id, "agent": row.target_agent, "reason": row.failed_reason or "exhausted"}, project_dir)
-                    print(
-                        f"auto-recover: escalated '{row.task_id}' → {new_status} "
-                        f"(failed on {', '.join(agents_tried)})"
-                    )
-                    escalated += 1
-                    continue
-
                 # Recover: re-enqueue to fallback agent with raw SQL
                 new_recovery = recovery_count + 1
                 new_reason = f"recovery_{new_recovery}:{current_agent}_to_{next_agent}"
