@@ -146,7 +146,7 @@ def activity_feed(project_dir: Path, inbox_file: Path, ledger_file: Path, limit:
                 elif "dispatch" in line_lower:
                     etype = "dispatch"
                 elif "review" in line_lower:
-                    etype = "review"
+                    etype = "Reviewing..."
                 else:
                     etype = "ledger"
                 # Clean up the message
@@ -2545,6 +2545,19 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"task": task_id, "instructions": text, "task_meta": task_meta})
             except Exception as exc:
                 self._json({"error": str(exc)}, 500)
+            return
+
+        if p == "/api/watcher-errors":
+            lines = int(parse_qs(parsed.query).get("lines", ["30"])[0])
+            errors_path = self.project_dir / ".superharness" / "watcher-errors.log"
+            content = ""
+            if errors_path.exists():
+                try:
+                    all_lines = errors_path.read_text(errors="replace").splitlines()
+                    content = "\n".join(all_lines[-lines:])
+                except Exception:
+                    pass
+            self._json({"errors": content, "lines": lines, "path": str(errors_path)})
             return
 
         if p == "/api/task-report":

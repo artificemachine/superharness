@@ -143,6 +143,15 @@
       </div>
     </div>
 
+    <div class="card" style="margin-top:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="togglePanel('watcherErrorsBody',this)">
+        <h2 style="margin:0">watcher errors</h2><span style="color:var(--muted);font-size:11px">▾</span>
+      </div>
+      <div id="watcherErrorsBody" style="margin-top:8px">
+        <pre id="watcherErrors" style="font-size:11px;color:var(--bad);max-height:200px;overflow-y:auto;margin:0;white-space:pre-wrap;background:var(--btn);padding:8px;border-radius:6px">(loading...)</pre>
+      </div>
+    </div>
+
 
     <div class="card" style="margin-top:10px;display:none;">
       <h2>plans to confirm</h2>
@@ -239,7 +248,7 @@
 
     <div class="card" style="margin-top:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;" id="tasksHeader">
-        <h2 style="margin:0;cursor:pointer;user-select:none" onclick="togglePanel('tasksBody',document.getElementById('tasksHeader'))">tasks</h2>
+        <h2 style="margin:0;cursor:pointer;user-select:none" onclick="togglePanel('tasksBody',document.getElementById('tasksHeader'))">contract tasks</h2>
         <div style="display:flex;align-items:center;gap:10px">
           <span class="view-btn active" id="viewToggleBtn" onclick="setView(_currentView==='list'?'board':'list')">☰ list</span>
           <span style="color:var(--muted);font-size:11px;cursor:pointer;user-select:none" onclick="togglePanel('tasksBody',document.getElementById('tasksHeader'))">▾</span>
@@ -374,6 +383,23 @@ function reflowTaskOverview() {
 let lastActionText = '-';
 let selectedStatus = null;
 let selectedOwners = new Set();
+
+// Watcher error panel auto-refresh
+async function loadWatcherErrors() {
+  try {
+    const r = await fetch('/api/watcher-errors?lines=20');
+    const d = await r.json();
+    const el = document.getElementById('watcherErrors');
+    if (!el) return;
+    if (d.hasOwnProperty('errors')) {
+      el.textContent = d.errors || '(no errors)';
+    }
+  } catch(e) {
+    // endpoint may not exist yet on older dashboards
+  }
+}
+setInterval(loadWatcherErrors, 30000);
+loadWatcherErrors();
 let knownOwners = [];
 const AUTH_TOKEN = __AUTH_TOKEN__;
 
@@ -1939,6 +1965,5 @@ document.addEventListener('keydown', (e) => {
     </div>
   </div>
 </div>
-
-</body>
+  </body>
 </html>
