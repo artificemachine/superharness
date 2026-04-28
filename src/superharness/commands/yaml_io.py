@@ -21,9 +21,6 @@ def export_yaml(project_dir: str, *, out_dir: str | None = None, all_: bool = Fa
 
     Always exports inbox and contract. With --all, also exports handoffs,
     failures, and decisions.
-
-    Writes to out_dir (default: .superharness/export/).
-    Returns 0 on success, 1 on failure.
     """
     if out_dir is None:
         out_dir = os.path.join(project_dir, ".superharness", "export")
@@ -67,70 +64,72 @@ def export_yaml(project_dir: str, *, out_dir: str | None = None, all_: bool = Fa
         print(f"export-yaml: failed: {exc}", file=sys.stderr)
         return 1
 
+    if not all_:
+        return 0
+
     # Handoffs (--all)
-    if all_:
+    try:
+        from dataclasses import asdict as _asdict2
+        from superharness.engine.db import get_connection as gc2, init_db as idb2
+        from superharness.engine import tasks_dao as td2, handoffs_dao as hd2
+        conn2 = gc2(project_dir)
         try:
-            from superharness.engine import handoffs_dao
-            conn2 = None
-            try:
-                from superharness.engine.db import get_connection as gc2, init_db as idb2
-                conn2 = gc2(project_dir)
-                idb2(conn2)
-                handoffs = [dict(r) for r in handoffs_dao.get_history(conn2)]
-            finally:
-                if conn2:
-                    conn2.close()
-            handoffs_dir = os.path.join(out_dir, "handoffs")
-            os.makedirs(handoffs_dir, exist_ok=True)
-            n = 0
-            for h in handoffs:
-                task_id = str(h.get("task_id", "unknown")).replace("/", "-")
-                ts = str(h.get("created_at", ""))[:10]
-                fname = f"{task_id}_{ts}.yaml"
-                with open(os.path.join(handoffs_dir, fname), "w", encoding="utf-8") as f:
-                    yaml.dump(h, f, default_flow_style=False, allow_unicode=True)
-                n += 1
-            print(f"export-yaml: handoffs → {handoffs_dir} ({n} files)")
-        except Exception as exc:
-            print(f"export-yaml: handoffs export failed: {exc}", file=sys.stderr)
+            idb2(conn2)
+            all_task_ids = [t.id for t in td2.get_all(conn2)]
+            handoffs = []
+            for tid in all_task_ids:
+                handoffs.extend(_asdict2(r) for r in hd2.get_history(conn2, tid))
+        finally:
+            conn2.close()
+        handoffs_dir = os.path.join(out_dir, "handoffs")
+        os.makedirs(handoffs_dir, exist_ok=True)
+        n = 0
+        for h in handoffs:
+            tid = str(h.get("task_id", "unknown")).replace("/", "-")
+            ts = str(h.get("created_at", ""))[:10]
+            fname = f"{tid}_{ts}.yaml"
+            with open(os.path.join(handoffs_dir, fname), "w", encoding="utf-8") as f:
+                yaml.dump(h, f, default_flow_style=False, allow_unicode=True)
+            n += 1
+        print(f"export-yaml: handoffs → {handoffs_dir} ({n} files)")
+    except Exception as exc:
+        print(f"export-yaml: handoffs export failed: {exc}", file=sys.stderr)
 
-        # Failures
+    # Failures (--all)
+    try:
+        from dataclasses import asdict as _asdict3
+        from superharness.engine.db import get_connection as gc3, init_db as idb3
+        from superharness.engine import failures_dao as fd3
+        conn3 = gc3(project_dir)
         try:
-            from superharness.engine import failures_dao
-            conn3 = None
-            try:
-                from superharness.engine.db import get_connection as gc3, init_db as idb3
-                conn3 = gc3(project_dir)
-                idb3(conn3)
-                failures = [dict(r) for r in failures_dao.get_all(conn3)]
-            finally:
-                if conn3:
-                    conn3.close()
-            failures_path = os.path.join(out_dir, "failures.yaml")
-            with open(failures_path, "w", encoding="utf-8") as f:
-                yaml.dump({"failures": failures}, f, default_flow_style=False, allow_unicode=True)
-            print(f"export-yaml: failures → {failures_path} ({len(failures)} entries)")
-        except Exception as exc:
-            print(f"export-yaml: failures export failed: {exc}", file=sys.stderr)
+            idb3(conn3)
+            failures = [_asdict3(r) for r in fd3.get_recent(conn3, limit=1000)]
+        finally:
+            conn3.close()
+        failures_path = os.path.join(out_dir, "failures.yaml")
+        with open(failures_path, "w", encoding="utf-8") as f:
+            yaml.dump({"failures": failures}, f, default_flow_style=False, allow_unicode=True)
+        print(f"export-yaml: failures → {failures_path} ({len(failures)} entries)")
+    except Exception as exc:
+        print(f"export-yaml: failures export failed: {exc}", file=sys.stderr)
 
-        # Decisions
+    # Decisions (--all)
+    try:
+        from dataclasses import asdict as _asdict4
+        from superharness.engine.db import get_connection as gc4, init_db as idb4
+        from superharness.engine import decisions_dao as dd4
+        conn4 = gc4(project_dir)
         try:
-            from superharness.engine import decisions_dao
-            conn4 = None
-            try:
-                from superharness.engine.db import get_connection as gc4, init_db as idb4
-                conn4 = gc4(project_dir)
-                idb4(conn4)
-                decisions = [dict(r) for r in decisions_dao.get_all(conn4)]
-            finally:
-                if conn4:
-                    conn4.close()
-            decisions_path = os.path.join(out_dir, "decisions.yaml")
-            with open(decisions_path, "w", encoding="utf-8") as f:
-                yaml.dump(decisions, f, default_flow_style=False, allow_unicode=True)
-            print(f"export-yaml: decisions → {decisions_path} ({len(decisions)} entries)")
-        except Exception as exc:
-            print(f"export-yaml: decisions export failed: {exc}", file=sys.stderr)
+            idb4(conn4)
+            decisions = [_asdict4(r) for r in dd4.get_recent(conn4, limit=1000)]
+        finally:
+            conn4.close()
+        decisions_path = os.path.join(out_dir, "decisions.yaml")
+        with open(decisions_path, "w", encoding="utf-8") as f:
+            yaml.dump(decisions, f, default_flow_style=False, allow_unicode=True)
+        print(f"export-yaml: decisions → {decisions_path} ({len(decisions)} entries)")
+    except Exception as exc:
+        print(f"export-yaml: decisions export failed: {exc}", file=sys.stderr)
 
     return 0
 
@@ -138,11 +137,8 @@ def export_yaml(project_dir: str, *, out_dir: str | None = None, all_: bool = Fa
 def import_yaml(project_dir: str, *, source_dir: str) -> int:
     """Bulk-load YAML state files into SQLite.
 
-    Reads contract.yaml, inbox.yaml, handoffs/*.yaml, failures.yaml from
-    source_dir and upserts into the project's SQLite DB. One-shot migration
-    for projects upgrading from pre-SQLite superharness.
-
-    Returns 0 on success, 1 on failure.
+    Reads contract.yaml, inbox.yaml from source_dir and upserts into
+    the project's SQLite DB.
     """
     from superharness.engine.db import get_connection, init_db, transaction
 

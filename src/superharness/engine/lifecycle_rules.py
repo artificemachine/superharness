@@ -164,17 +164,6 @@ def _scan_inbox(project_dir: str, rules: list[LifecycleRule], profile: dict) -> 
             return 0
         if not isinstance(items, list):
             return 0
-    else:
-        inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
-        if not os.path.isfile(inbox_file):
-            return 0
-        try:
-            with open(inbox_file, encoding="utf-8") as f:
-                items = yaml.safe_load(f.read()) or []
-        except Exception:
-            return 0
-        if not isinstance(items, list):
-            return 0
 
     changed = 0
     for item in items:
