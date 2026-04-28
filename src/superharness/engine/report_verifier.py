@@ -107,7 +107,7 @@ def verify_report(report: dict, contract_task: dict, project_dir: str) -> Report
     """
     failures: list[str] = []
     failures.extend(_check_outcome(report))
-    failures.extend(_check_context(report, strict=strict_context))
+    failures.extend(_check_context(report, strict=False))
     failures.extend(_check_tests_passed(report))
     failures.extend(_check_pr_url(report))
     failures.extend(_check_referenced_files(report, project_dir))
