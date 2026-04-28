@@ -993,6 +993,17 @@ def _do_dispatch(
     return 0
 
 
+def _log_dispatch_error(project_dir: str, error: str) -> None:
+    """Log a dispatch error to the project's watcher error log. Never raises."""
+    try:
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        log_path = os.path.join(project_dir, ".superharness", "watcher-errors.log")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"[{ts}] dispatch: {error}\n")
+    except Exception:
+        pass
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -1038,14 +1049,18 @@ def main(argv: list[str] | None = None) -> None:
             print(f"--to must be one of: {', '.join(valid_targets) or 'none'}", file=sys.stderr)
             sys.exit(2)
 
-    rc = dispatch(
-        project_dir=opts.project,
-        target_filter=opts.target_filter or None,
-        print_only=opts.print_only,
-        non_interactive=opts.non_interactive,
-        codex_bypass=opts.codex_bypass,
-        launcher_timeout=launcher_timeout,
-    )
+    try:
+        rc = dispatch(
+            project_dir=opts.project,
+            target_filter=opts.target_filter or None,
+            print_only=opts.print_only,
+            non_interactive=opts.non_interactive,
+            codex_bypass=opts.codex_bypass,
+            launcher_timeout=launcher_timeout,
+        )
+    except Exception as e:
+        _log_dispatch_error(opts.project, f"dispatch raised: {e}")
+        raise
     sys.exit(rc)
 
 
