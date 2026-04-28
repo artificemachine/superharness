@@ -116,6 +116,7 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
             plan_approved_at     TEXT,
             in_progress_at       TEXT,
             report_ready_at      TEXT,
+            review_requested_at  TEXT,
             done_at              TEXT,
             cancelled_at         TEXT
         )
