@@ -374,6 +374,25 @@ function reflowTaskOverview() {
 let lastActionText = '-';
 let selectedStatus = null;
 let selectedOwners = new Set();
+
+// Watcher error panel auto-refresh
+async function loadWatcherErrors() {
+  try {
+    const r = await fetch('/api/watcher-errors?lines=20');
+    const d = await r.json();
+    const el = document.getElementById('watcherErrors');
+    if (!el) return;
+    if (d.errors) {
+      el.textContent = d.errors || '(no errors)';
+      el.style.display = '';
+    } else {
+      el.style.display = 'none';
+    }
+  } catch(e) {
+    // endpoint may not exist yet on older dashboards
+  }
+}
+setInterval(loadWatcherErrors, 30000);
 let knownOwners = [];
 const AUTH_TOKEN = __AUTH_TOKEN__;
 
@@ -1940,5 +1959,9 @@ document.addEventListener('keydown', (e) => {
   </div>
 </div>
 
-</body>
+    <div class="card" style="margin-top:10px;">
+      <h2 style="margin:0 0 8px 0">watcher errors</h2>
+      <pre id="watcherErrors" style="font-size:11px;color:var(--bad);max-height:200px;overflow-y:auto;margin:0;white-space:pre-wrap;background:var(--btn);padding:8px;border-radius:6px">(loading...)</pre>
+    </div>
+  </body>
 </html>
