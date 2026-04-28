@@ -138,10 +138,10 @@ class Operator:
     def monitor_and_recover(self, poll_interval: int = 5):
         """Loop forever, restarting any crashed components.
 
-        Runs in the MAIN process (not forked), so proc.poll() is safe — it reaps
-        zombies via os.waitpid and avoids false-alive readings from zombie entries.
-        The watcher is intentionally one-shot (no --foreground), so it exits after
-        every tick; the monitor is what keeps it cycling.
+        Runs in a daemon thread (spawned by operator_start in cli.py) so the CLI
+        returns immediately. Uses proc.poll() which reaps zombies safely even in
+        a thread. The watcher is intentionally one-shot, so it exits after every
+        tick; the monitor is what keeps it cycling.
         """
         from superharness.engine.trace import trace_event
         try:
