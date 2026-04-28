@@ -173,3 +173,4 @@
 - 2026-04-28: fix(logging): all 15+ watcher exception handlers now log to watcher-errors.log + failures_dao instead of stderr (swallowed by DEVNULL).
 - 2026-04-28: fix(logging): orchestrator errors now logged via _log_orchestrator_error.
 - 2026-04-28: fix(daemon): auto-restart watcher on crash — background monitor thread detects watcher exit and respawns; CLI no longer blocks.
+- 2026-04-28: fix(dispatch): top-level try/except logs dispatch crashes to watcher-errors.log — previously 17 except blocks swallowed silently.
