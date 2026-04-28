@@ -402,6 +402,7 @@ async function loadWatcherErrors() {
   }
 }
 setInterval(loadWatcherErrors, 30000);
+loadWatcherErrors();
 let knownOwners = [];
 const AUTH_TOKEN = __AUTH_TOKEN__;
 
