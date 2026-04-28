@@ -380,7 +380,11 @@ wheels = [
 
 [[package]]
 name = "superharness"
+<<<<<<< Updated upstream
 version = "1.11.1"
+=======
+version = "1.42.4"
+>>>>>>> Stashed changes
 source = { editable = "." }
 dependencies = [
     { name = "click" },

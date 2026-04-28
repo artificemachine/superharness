@@ -179,3 +179,4 @@
 - 2026-04-28: fix(zombie): zombie reconciler writes directly to SQLite inbox table — no more YAML writes.
 - Add autonomous peer review with model-tier gating and LGTM auto-close (feat.autonomous-peer-review).
 - 2026-04-28: feat(guard): dangerous command detection + credential redaction (cherry-picked from hermes-agent) — 25 regex patterns for dangerous shell commands; 10 patterns for credential redaction; per-session approval state with scoped persistence.
+- 2026-04-28: feat(hermes): Phase 2-4 — checkpoint/rollback via git stash; skills YAML loader with tag discovery; event hook system with HookRegistry; session flush before lifecycle timeout.

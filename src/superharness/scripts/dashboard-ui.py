@@ -146,7 +146,7 @@ def activity_feed(project_dir: Path, inbox_file: Path, ledger_file: Path, limit:
                 elif "dispatch" in line_lower:
                     etype = "dispatch"
                 elif "review" in line_lower:
-                    etype = "review"
+                    etype = "Reviewing..."
                 else:
                     etype = "ledger"
                 # Clean up the message

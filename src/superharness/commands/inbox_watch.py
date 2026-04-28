@@ -945,6 +945,28 @@ def _find_pr_url_in_handoff(handoff_dir: str, task_id: str) -> str | None:
     return None
 
 
+def _select_reviewers(task: dict, candidates: list[str], profile: dict) -> list[str]:
+    """Filter candidate reviewers based on cross-pollination and model-tier gates."""
+    from superharness.engine.model_budget import reviewer_meets_tier, AGENT_DEFAULT_TIERS
+    
+    owner = str(task.get("owner", ""))
+    # author tier: 1. task field, 2. owner default, 3. standard
+    author_tier = str(task.get("model_tier") or "")
+    if not author_tier:
+        author_tier = AGENT_DEFAULT_TIERS.get(owner, "standard")
+    
+    # 1. Cross-pollination guard: owner cannot review own task
+    peers = [a for a in candidates if a != owner]
+    
+    # 2. Model-tier gate: reviewer must be >= author tier
+    qualified = [
+        a for a in peers 
+        if reviewer_meets_tier(a, author_tier, profile)
+    ]
+    
+    return qualified
+
+
 def _trigger_auto_review(project_dir: str, task_id: str, reviewers: list[str]) -> bool:
     """Transition task to review_requested and enqueue multiple reviewers."""
     from superharness.engine.contract_io import write_contract
