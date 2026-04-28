@@ -190,3 +190,4 @@
 - 2026-04-28: fix(operator): monitor_and_recover runs in daemon thread — CLI returns immediately; dashboard: watcher-errors panel with auto-refresh.
 - 2026-04-28: feat(status): shux status shows task counts by status group; dashboard panel renamed to contract tasks.
 - 2026-04-28: fix(schema): add review_requested_at column to tasks table migration — missing column blocked lifecycle rules from reverting stale reviews.
+- 2026-04-28 (v1.44.0): feat(hermes): cherry-pick 8 features from hermes-agent — guard module (danger detection, credential redaction, checkpoint/rollback, smart approval); skills YAML loader; event hooks; session flush; smart dispatch routing; dashboard review tabs + error panel; operator CLI unblocked; daemon hot-reload; ~1000 lines of dead YAML code removed; inbox_gc + inbox_recover SQLite native; discussion reconciler SQLite; paused reconciler SQLite.
