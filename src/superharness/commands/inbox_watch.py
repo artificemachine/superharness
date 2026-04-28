@@ -1060,6 +1060,120 @@ def _auto_retry_failed_sqlite(project_dir: str) -> None:
         print(f"auto-retry (sqlite): error: {exc}", file=sys.stderr)
 
 
+_AGENT_FALLBACK: dict[str, list[str]] = {
+    "claude-code": ["gemini-cli", "codex-cli"],
+    "gemini-cli":  ["claude-code", "codex-cli"],
+    "codex-cli":   ["claude-code", "gemini-cli"],
+}
+
+_RECOVERY_MAX = 2  # max recovery attempts before escalating to operator
+
+def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
+    """Recover failed inbox items that have exhausted retries.
+
+    Uses the failure_classifier to decide if recovery is possible:
+      - permanent_block / no_op → skip (different agent won't help)
+      - quota / transient / agent_crash / unknown → re-enqueue to a fallback agent
+
+    Items already recovered RECOVERY_MAX times are escalated to operator:
+      marks the parent task as blocked with failure_context.
+    Never raises.
+    """
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import inbox_dao, tasks_dao
+        now = _now_utc()
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            failed = inbox_dao.get_all(conn, status="failed")
+            recovered = 0
+            escalated = 0
+
+            for row in failed:
+                if row.retry_count < row.max_retries:
+                    continue  # _auto_retry_failed handles these
+
+                # Parse recovery_count from failed_reason or use 0
+                recovery_count = 0
+                reason = (row.failed_reason or "").lower()
+                # Check for existing recovery markers stored in reason text
+                import re
+                rc_match = re.search(r"recovery_(\d+)", reason)
+                if rc_match:
+                    recovery_count = int(rc_match.group(1))
+
+                # Skip permanent failures — agent routing won't help
+                if "permanent_block" in reason or "no_op" in reason:
+                    continue
+
+                # Skip if parent task is no longer dispatch-ready
+                task = tasks_dao.get(conn, row.task_id)
+                if task is None or task.status in ("done", "stopped", "archived"):
+                    continue
+
+                # Determine fallback agent
+                current_agent = row.target_agent
+                fallback_agents = _AGENT_FALLBACK.get(current_agent, ["claude-code", "gemini-cli"])
+                next_agent = fallback_agents[0]  # try first fallback
+
+                # If already recovered too many times, escalate
+                if recovery_count >= _RECOVERY_MAX:
+                    # Escalate: mark task as blocked with context
+                    tasks_dao.upsert(conn, tasks_dao.TaskRow(
+                        id=task.id, title=task.title, owner=task.owner,
+                        status="blocked", effort=task.effort,
+                        project_path=task.project_path,
+                        development_method=task.development_method,
+                        acceptance_criteria=task.acceptance_criteria,
+                        test_types=task.test_types,
+                        out_of_scope=task.out_of_scope,
+                        definition_of_done=task.definition_of_done,
+                        context=(task.context or "") + f"\n[auto-recovery] exhausted {current_agent} retries; escalated to operator",
+                        tdd=task.tdd, version=task.version,
+                        created_at=task.created_at, blocked_by=task.blocked_by,
+                        parent_id=task.parent_id,
+                    ))
+                    # Clear the failed inbox item
+                    inbox_dao.update_status(conn, row.id, "stopped", now)
+                    print(
+                        f"auto-recover: escalated '{row.task_id}' to operator "
+                        f"(recovery_{recovery_count} exhausted for {current_agent})"
+                    )
+                    escalated += 1
+                    continue
+
+                # Recover: re-enqueue to fallback agent with raw SQL
+                new_recovery = recovery_count + 1
+                new_reason = f"recovery_{new_recovery}:{current_agent}_to_{next_agent}"
+                conn.execute(
+                    """UPDATE inbox
+                       SET status = 'pending', retry_count = 0,
+                           max_retries = max_retries + 1,
+                           target_agent = ?, failed_reason = ?,
+                           pid = NULL, failed_at = NULL
+                       WHERE id = ?""",
+                    (next_agent, new_reason, row.id)
+                )
+                print(
+                    f"auto-recover: re-routed '{row.task_id}' "
+                    f"{current_agent} → {next_agent} "
+                    f"(recovery_{new_recovery}/{_RECOVERY_MAX})"
+                )
+                recovered += 1
+
+            conn.commit()
+            if recovered or escalated:
+                print(
+                    f"auto-recover: {recovered} re-routed, "
+                    f"{escalated} escalated to operator"
+                )
+        finally:
+            conn.close()
+    except Exception as exc:
+        print(f"auto-recover: error: {exc}", file=sys.stderr)
+
+
 def _check_ship_on_complete_tasks(project_dir: str) -> None:
     """For ship_on_complete tasks at report_ready with no PR URL, mark failed."""
     import yaml as _yaml
@@ -1252,6 +1366,12 @@ def _run_scripts(
         _auto_retry_failed(project_dir)
     except Exception as e:
         print(f"Warning: auto_retry_failed failed: {e}", file=sys.stderr)
+
+    # Auto-recover exhausted failures: re-route to a different agent
+    try:
+        _auto_recover_exhausted_failures_sqlite(project_dir)
+    except Exception as e:
+        print(f"Warning: auto_recover_exhausted_failures failed: {e}", file=sys.stderr)
 
     # Auto-close report_ready tasks with tests_passed: true in their handoff
     try:
