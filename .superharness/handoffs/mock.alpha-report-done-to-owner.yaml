@@ -4,5 +4,7 @@ phase: report
 status: done
 from: claude-code
 to: owner
-outcome: |
-  Mock Alpha automated flow test verified and closed.
+outcome: 'Mock Alpha automated flow test verified and closed.
+
+  '
+context: 'Auto-closed by watcher: mock task verification test'
