@@ -11,6 +11,7 @@ Set via environment variable STATE_BACKEND or profile.yaml state_backend key.
 Projects that have fully migrated to SQLite can set state_backend: sqlite_only
 in their profile.yaml to opt in to strict mode.
 """
+
 from __future__ import annotations
 
 import os
@@ -22,27 +23,14 @@ def _has_sqlite_db(project_dir: str) -> bool:
 
 
 def _get_backend(project_dir: str) -> str:
-    env = os.environ.get("STATE_BACKEND", "").strip().lower()
-    if env in ("yaml_only", "dual", "sqlite_only"):
-        return env
-    # Fall back to profile.yaml
-    try:
-        import yaml
-        profile_path = os.path.join(project_dir, ".superharness", "profile.yaml")
-        if os.path.exists(profile_path):
-            with open(profile_path, encoding="utf-8") as f:
-                profile = yaml.safe_load(f) or {}
-            val = str(profile.get("state_backend", "")).strip().lower()
-            if val in ("yaml_only", "dual", "sqlite_only"):
-                return val
-    except Exception:
-        pass
-    return "dual"
+    # SQLite is the sole source of truth — always sqlite_only.
+    return "sqlite_only"
 
 
 # ---------------------------------------------------------------------------
 # Inbox reads
 # ---------------------------------------------------------------------------
+
 
 def get_inbox_items(project_dir: str) -> list[dict]:
     """Return inbox items. Source determined by STATE_BACKEND."""
@@ -64,6 +52,7 @@ def get_inbox_items(project_dir: str) -> list[dict]:
 
 def _inbox_from_yaml(project_dir: str) -> list[dict]:
     import yaml
+
     inbox_path = os.path.join(project_dir, ".superharness", "inbox.yaml")
     if not os.path.exists(inbox_path):
         return []
@@ -88,6 +77,7 @@ def _inbox_from_sqlite(project_dir: str) -> list[dict]:
     from dataclasses import asdict
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import inbox_dao
+
     conn = get_connection(project_dir)
     try:
         init_db(conn)
@@ -100,6 +90,7 @@ def _inbox_from_sqlite(project_dir: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Contract / task reads
 # ---------------------------------------------------------------------------
+
 
 def get_tasks(project_dir: str) -> list[dict]:
     """Return all tasks. Source determined by STATE_BACKEND."""
@@ -166,6 +157,7 @@ def _tasks_from_sqlite(project_dir: str, *, top_level_only: bool = False) -> lis
     from dataclasses import asdict
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
+
     conn = get_connection(project_dir)
     try:
         init_db(conn)
@@ -177,6 +169,7 @@ def _tasks_from_sqlite(project_dir: str, *, top_level_only: bool = False) -> lis
 
 def _contract_yaml(path: str) -> dict:
     import yaml
+
     if not os.path.exists(path):
         return {}
     with open(path, encoding="utf-8") as f:
@@ -187,6 +180,7 @@ def _contract_yaml(path: str) -> dict:
 # ---------------------------------------------------------------------------
 # Handoff reads
 # ---------------------------------------------------------------------------
+
 
 def get_handoffs(project_dir: str, task_id: str | None = None) -> list[dict]:
     """Return handoff rows. Source determined by STATE_BACKEND."""
@@ -204,6 +198,7 @@ def get_handoffs(project_dir: str, task_id: str | None = None) -> list[dict]:
 def _handoffs_from_yaml(project_dir: str, task_id: str | None) -> list[dict]:
     import glob
     import yaml
+
     handoffs_dir = os.path.join(project_dir, ".superharness", "handoffs")
     if not os.path.isdir(handoffs_dir):
         return []
@@ -225,6 +220,7 @@ def _handoffs_from_yaml(project_dir: str, task_id: str | None) -> list[dict]:
 def _handoffs_from_sqlite(project_dir: str, task_id: str | None) -> list[dict]:
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import handoffs_dao
+
     conn = get_connection(project_dir)
     try:
         init_db(conn)

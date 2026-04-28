@@ -911,9 +911,29 @@ def _auto_close_report_ready(project_dir: str) -> None:
         threshold = float(budget_cfg.get("auto_review_usd_threshold", 0.0))
         cost_usd = float(handoff.get("cost_usd", 0.0))
         peer_reviewers = profile.get("peer_reviewers", [])
+        autonomy = profile.get("autonomy", "ai_driven")
 
-        if peer_reviewers and (auto_review_all or (threshold > 0 and cost_usd <= threshold)):
+        # Autonomous Peer Review selection (cross-pollination)
+        if not peer_reviewers and autonomy == "ai_driven":
+            known_agents = ["claude-code", "codex-cli", "gemini-cli"]
+            owner = str(task.get("owner", ""))
+            peers = [a for a in known_agents if a != owner]
+            if peers:
+                peer_reviewers = [peers[0]]
+
+        if peer_reviewers and (auto_review_all or (threshold > 0 and cost_usd <= threshold) or autonomy == "ai_driven"):
+            # Reasoning: Reviewer must use a higher or equal model tier than the author
+            author_tier = str(task.get("model_tier") or "standard")
+            if author_tier == "mini":
+                task["model_tier"] = "standard"  # Upgrade to at least standard for review
+            
             if _trigger_auto_review(project_dir, task_id, peer_reviewers):
+                # Save tier upgrade back to contract
+                try:
+                    with open(contract_file, "w", encoding="utf-8") as _f:
+                        _yaml.dump(doc, _f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+                except Exception:
+                    pass
                 continue  # Task moved to review_requested, skip auto-close
 
         # All gates passed — auto-close
@@ -1172,24 +1192,16 @@ def _sqlite_singleton_release(project_dir: str) -> None:
 
 
 def _sqlite_tick(project_dir: str, now: str) -> None:
-    """Run SQLite-side per-tick operations: drain yaml_sync queue + record heartbeat.
+    """Run SQLite-side per-tick operations: record heartbeat.
 
     Never raises. Silently skipped if SQLite backend is not initialised yet.
     """
     try:
         from superharness.engine.db import get_connection, init_db
-        from superharness.engine import yaml_sync, ledger_dao, watcher_singleton, parity
+        from superharness.engine import ledger_dao, watcher_singleton
         conn = get_connection(project_dir)
         try:
             init_db(conn)
-            yaml_sync.drain(conn, project_dir)
-            # F9: auto-heal drift after every drain so the soak stays clean
-            try:
-                report = parity.check_parity(conn, project_dir)
-                if not report.healthy:
-                    parity.heal_parity(conn, project_dir, report)
-            except Exception:
-                pass
             ledger_dao.record(conn, agent="watcher", action="tick", now=now)
             watcher_singleton.heartbeat(conn, os.getpid(), now)
             conn.commit()
