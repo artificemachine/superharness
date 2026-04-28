@@ -73,3 +73,32 @@ class TestApprovalState:
         state.approve("rm", scope="session")
         assert state.is_approved("rm -rf /tmp/test") is True
         assert state.is_approved("rm anything") is True
+
+    def test_auto_approve_low_risk(self):
+        from superharness.guard.state import ApprovalState
+        state = ApprovalState()
+        assert state.check_risk("echo hello") == "low"
+        assert state.check_risk("ls -la") == "low"
+
+    def test_high_risk(self):
+        from superharness.guard.state import ApprovalState
+        state = ApprovalState()
+        assert state.check_risk("rm -rf /") == "high"
+        assert state.check_risk("chmod 777 /etc") == "high"
+
+    def test_permanent_approval_persists(self, tmp_path):
+        from superharness.guard.state import ApprovalState
+        config_file = tmp_path / "approvals.json"
+        state = ApprovalState(config_path=str(config_file))
+        state.approve("rm", scope="permanent")
+        state2 = ApprovalState(config_path=str(config_file))
+        assert state2.is_approved("rm -rf /tmp/test") is True
+
+    def test_reset_clears_once_and_session(self):
+        from superharness.guard.state import ApprovalState
+        state = ApprovalState()
+        state.approve("rm -rf /tmp", scope="once")
+        state.approve("git push", scope="session")
+        state.reset()
+        assert state.is_approved("rm -rf /tmp") is False
+        assert state.is_approved("git push origin") is False
