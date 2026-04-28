@@ -188,3 +188,4 @@
 - 2026-04-28: refactor(yaml): strip dead YAML code from state_reader, state_writer, lifecycle_rules — YAML fallback functions and mirror helpers removed.
 - 2026-04-28: refactor(yaml): strip YAML CRUD from inbox.py — kept only _process_alive, _deps_satisfied, _task_is_dispatch_ready.
 - 2026-04-28: fix(operator): monitor_and_recover runs in daemon thread — CLI returns immediately; dashboard: watcher-errors panel with auto-refresh.
+- 2026-04-28: feat(status): shux status shows task counts by status group; dashboard panel renamed to contract tasks.
