@@ -153,3 +153,4 @@
 - 2026-04-28: chore: bump 1.42.0 → 1.42.1 (fix dashboard guard module-form detection)
 - 2026-04-28: fix(dashboard): cli.py _is_dashboard_running checks version match before returning 'already running'; kills stale process on mismatch so fresh start uses correct port; bump 1.42.1 → 1.42.2
 - 2026-04-28: fix(dispatch): delegate-to-gemini.sh preflight grep used ERE backslash-pipe (literal) instead of pipe for alternation — GEMINI.md always failed superharness|shux check even when content present; bump 1.42.2 → 1.42.3
+- 2026-04-28: fix(dispatch): gemini exits 42 (no input) when PROMPT is empty — set bootstrap directive as default prompt so gemini self-orients from GEMINI.md; bump 1.42.3 → 1.42.4
