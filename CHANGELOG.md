@@ -184,3 +184,4 @@
 - 2026-04-28: feat(hooks+errors): wire hooks into watcher lifecycle (task:completed, task:failed, task:created); add /api/watcher-errors endpoint to dashboard.
 - 2026-04-28: fix(paused): _reconcile_paused_dead_pids reads/writes SQLite directly — no more YAML writes for paused dead-pid cleanup.
 - 2026-04-28: refactor(yaml): strip dead YAML code branches from watcher (65 lines) — _yaml_writes_enabled always returns False, YAML else branches never execute.
+- 2026-04-28: refactor(yaml): inbox_gc and inbox_recover use state_reader (SQLite) instead of inbox.yaml — no more YAML reads in GC/recovery paths.
