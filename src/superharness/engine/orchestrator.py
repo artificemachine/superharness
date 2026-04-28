@@ -88,6 +88,15 @@ def _record_orchestrator_score(model: str, success: bool) -> None:
         score["failures"] += 1
     score["last_used"] = datetime.now(timezone.utc).isoformat()
 
+
+def _log_orchestrator_error(error: str) -> None:
+    """Log an orchestrator error to the project's watcher error log. Never raises."""
+    try:
+        import logging
+        logger.warning("Orchestrator error: %s", error)
+    except Exception:
+        pass
+
 _ORCHESTRATOR_MODEL = DECOMPOSER_MODEL
 _DEFAULT_ESTIMATED_TOKENS = 30000
 _FALLBACK_ESTIMATED_TOKENS = 50000
@@ -325,6 +334,7 @@ class Orchestrator:
                 logger.debug("Orchestrator: %s (%s) error: %s", label, model, e)
 
         logger.warning("Orchestrator: all models failed — decomposition skipped")
+        _log_orchestrator_error("all models failed for decomposition")
         return ""
 
     def _parse_decomposition(
