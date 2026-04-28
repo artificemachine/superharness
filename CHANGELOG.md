@@ -164,3 +164,4 @@
 - 2026-04-28: fix(auto-enqueue): stopped inbox items no longer count toward max_concurrent_tasks gate — was blocking auto_enqueue from enqueuing new todo tasks when stopped items existed; docs/auto-mode-gap-v2.md documents remaining gaps including peer approval by different max-tier agent.
 - 2026-04-28: feat(auto-mode): peer approval + stale task GC — _auto_peer_approve_plans dispatches plan_review to different max-tier agent; _auto_archive_stale_tasks archives tasks with no handoff after 4h; both wired into watcher cycle.
 - 2026-04-28: feat(dashboard): review mode tabs — filter tasks by All / Needs Review / In Progress / Auto-handled / Stale; tabs wired into contract task rendering with visual mode indicator.
+- 2026-04-28: fix(auto-close): _auto_close_report_ready reads tasks from SQLite via state_reader instead of contract.yaml; writes done status directly to SQLite via tasks_dao; removes all YAML read/write from auto-close path.

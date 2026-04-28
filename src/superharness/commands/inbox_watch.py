@@ -1029,18 +1029,13 @@ def _auto_close_report_ready(project_dir: str) -> None:
     if not auto_close:
         return
 
-    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
-    if not os.path.isfile(contract_file):
-        return
-
-    try:
-        with open(contract_file, encoding="utf-8") as _f:
-            doc = _yaml.safe_load(_f.read()) or {}
-    except Exception:
+    # Read tasks from SQLite via state_reader (post-migration).
+    tasks: list[dict] = _load_tasks(project_dir)
+    if not tasks:
         return
 
     handoffs_dir = os.path.join(project_dir, ".superharness", "handoffs")
-    tasks = doc.get("tasks") or []
+    close_count = 0
 
     for task in tasks:
         if not isinstance(task, dict):
@@ -1087,10 +1082,8 @@ def _auto_close_report_ready(project_dir: str) -> None:
             if not verification.passed:
                 # Stamp verification_failures so dashboard surfaces them
                 task["verification_failures"] = verification.failures
-                # Persist
+                # Persist verification failures to SQLite
                 try:
-                    with open(contract_file, "w", encoding="utf-8") as _f:
-                        _yaml.dump(doc, _f, default_flow_style=False, sort_keys=False, allow_unicode=True)
                     from superharness.engine.state_writer import mirror_task_dict
                     mirror_task_dict(project_dir, task)
                 except Exception:
@@ -1127,33 +1120,51 @@ def _auto_close_report_ready(project_dir: str) -> None:
                 task["model_tier"] = "standard"  # Upgrade to at least standard for review
             
             if _trigger_auto_review(project_dir, task_id, peer_reviewers):
-                # Save tier upgrade back to contract
+                # Persist tier upgrade to SQLite
                 try:
-                    with open(contract_file, "w", encoding="utf-8") as _f:
-                        _yaml.dump(doc, _f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+                    from superharness.engine.state_writer import mirror_task_dict
+                    mirror_task_dict(project_dir, task)
                 except Exception:
                     pass
                 continue  # Task moved to review_requested, skip auto-close
 
-        # All gates passed — auto-close
+        # All gates passed — auto-close via SQLite
         try:
-            from superharness.commands.close import close_task
-            summary = str(handoff.get("outcome") or "Auto-closed by watcher: tests_passed=true")
-            summary = summary.split("\n")[0][:120]
-            actor = str(task.get("owner") or "owner")
-            rc = close_task(
-                contract_file=contract_file,
-                task_id=task_id,
-                actor=actor,
-                summary=summary,
-                skip_verify=True,
-            )
-            if rc == 0:
-                print(f"auto-close: closed '{task_id}' (tests_passed=true, actor={actor})")
-            else:
-                print(f"auto-close: close_task returned {rc} for '{task_id}'", file=sys.stderr)
+            from superharness.engine.db import get_connection as _gc3, init_db as _idb3
+            from superharness.engine import tasks_dao as _td3
+            conn3 = _gc3(project_dir)
+            try:
+                _idb3(conn3)
+                existing = _td3.get(conn3, task_id)
+                if existing:
+                    _td3.upsert(conn3, _td3.TaskRow(
+                        id=task_id, title=existing.title,
+                        owner=existing.owner or "watcher", status="done",
+                        effort=existing.effort, project_path=project_dir,
+                        development_method=existing.development_method,
+                        acceptance_criteria=existing.acceptance_criteria,
+                        test_types=existing.test_types,
+                        out_of_scope=existing.out_of_scope,
+                        definition_of_done=existing.definition_of_done,
+                        context=existing.context, tdd=existing.tdd,
+                        version=existing.version + 1,
+                        created_at=existing.created_at,
+                        blocked_by=existing.blocked_by,
+                        parent_id=existing.parent_id,
+                        report_ready_at=existing.report_ready_at,
+                    ))
+                    conn3.commit()
+                    close_count += 1
+                    summary = str(handoff.get("outcome") or "auto-closed by watcher")
+                    print(f"auto-close: '{task_id}' → done: {summary.split(chr(10))[0][:120]}")
+            finally:
+                conn3.close()
         except Exception as exc:
-            print(f"auto-close: failed for '{task_id}': {exc}", file=sys.stderr)
+            print(f"auto-close: failed to close '{task_id}': {exc}", file=sys.stderr)
+
+
+    if close_count:
+        print(f"auto-close: closed {close_count} task(s)")
 
 
 def _auto_retry_failed(project_dir: str) -> None:
