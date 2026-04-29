@@ -380,7 +380,7 @@ wheels = [
 
 [[package]]
 name = "superharness"
-version = "1.44.2"
+version = "1.44.3"
 source = { editable = "." }
 dependencies = [
     { name = "click" },

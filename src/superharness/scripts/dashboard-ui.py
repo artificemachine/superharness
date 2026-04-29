@@ -2123,7 +2123,7 @@ class Handler(BaseHTTPRequestHandler):
             disc_dir = self.project_dir / ".superharness" / "discussions" / disc_id
             if not disc_dir.exists():
                 return ({"error": f"discussion {disc_id} not found"}, 404)
-            result, _status = self._run_cmd([
+            result = self._run_cmd([
                 sys.executable, "-m", "superharness.engine.discussion", "close",
                 "--discussion-dir", str(disc_dir),
                 "--outcome", "cancelled",
@@ -2158,6 +2158,65 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
             return (result, 200 if result.get("ok") or result.get("exit_code") == 0 else 500)
+
+        if action.startswith("close_discussion:"):
+            disc_id = action.split(":", 1)[1]
+            if not disc_id:
+                return ({"error": "missing discussion id"}, 400)
+            disc_dir = self.project_dir / ".superharness" / "discussions" / disc_id
+            if not disc_dir.exists():
+                return ({"error": f"discussion {disc_id} not found"}, 404)
+            result = self._run_cmd([
+                sys.executable, "-m", "superharness.engine.discussion", "close",
+                "--discussion-dir", str(disc_dir),
+                "--outcome", "consensus",
+            ])
+            # Always sync state.yaml + SQLite regardless of exit code
+            try:
+                import yaml as _dy
+                import sqlite3 as _sq
+                state_file = disc_dir / "state.yaml"
+                if state_file.exists():
+                    _s = _dy.safe_load(state_file.read_text()) or {}
+                    _s["status"] = "consensus"
+                    state_file.write_text(_dy.dump(_s, default_flow_style=False, sort_keys=False, allow_unicode=True))
+                _db = self.project_dir / ".superharness" / "state.sqlite3"
+                if _db.exists():
+                    _con = _sq.connect(str(_db))
+                    _con.execute("UPDATE discussions SET status=? WHERE id=?", ("consensus", disc_id))
+                    _con.commit()
+                    _con.close()
+            except Exception:
+                pass
+            result["ok"] = True
+            result["stdout"] = result.get("stdout") or f"Discussion {disc_id} closed with consensus."
+            return (result, 200)
+
+        if action.startswith("reopen_discussion:"):
+            disc_id = action.split(":", 1)[1]
+            if not disc_id:
+                return ({"error": "missing discussion id"}, 400)
+            disc_dir = self.project_dir / ".superharness" / "discussions" / disc_id
+            if not disc_dir.exists():
+                return ({"error": f"discussion {disc_id} not found"}, 404)
+            try:
+                import yaml as _dy
+                import sqlite3 as _sq
+                state_file = disc_dir / "state.yaml"
+                if state_file.exists():
+                    _s = _dy.safe_load(state_file.read_text()) or {}
+                    _s["status"] = "active"
+                    _s.pop("closed_at", None)
+                    state_file.write_text(_dy.dump(_s, default_flow_style=False, sort_keys=False, allow_unicode=True))
+                _db = self.project_dir / ".superharness" / "state.sqlite3"
+                if _db.exists():
+                    _con = _sq.connect(str(_db))
+                    _con.execute("UPDATE discussions SET status=? WHERE id=?", ("active", disc_id))
+                    _con.commit()
+                    _con.close()
+            except Exception as exc:
+                return ({"error": str(exc)}, 500)
+            return ({"ok": True, "stdout": f"Discussion {disc_id} reopened."}, 200)
 
         if action.startswith("cancel_review:"):
             task_id = action.split(":", 1)[1]
