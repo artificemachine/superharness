@@ -3033,16 +3033,9 @@ def main() -> int:
                         pass
 
                 if _running_version != "unknown" and _running_version != _current_version:
-                    print(f"dashboard version mismatch: running={_running_version} installed={_current_version} — restarting...")
-                    try:
-                        import signal as _signal
-                        os.kill(_other_pid, _signal.SIGTERM)
-                        import time as _time
-                        _time.sleep(1)
-                    except Exception:
-                        pass
-                    # Fall through to start a fresh dashboard at the new version
-                    break
+                    # Log the mismatch but DON'T restart — let the user decide
+                    print(f"dashboard version: running {_running_version} vs installed {_current_version} — run 'pipx upgrade superharness' to update")
+                    # Don't kill the process — just continue as a warning
 
                 # If the port is unknown, the PID is dead — kill stale entry and start fresh
                 if _existing_port is None:
