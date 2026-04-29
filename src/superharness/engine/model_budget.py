@@ -126,3 +126,50 @@ def check_budget(project_dir: str) -> CheckResult:
         pct_used=pct,
         message=f"Budget OK: ${used:.2f} / ${daily_limit:.2f} ({pct*100:.0f}% used).",
     )
+
+
+def _today_spend_by_agent(project_dir: str) -> dict[str, float]:
+    """Return per-agent spend for today from benchmark.jsonl."""
+    from superharness.engine.benchmark import load_records
+    today = datetime.date.today().isoformat()
+    records = load_records(project_dir)
+    spend: dict[str, float] = {}
+    for r in records:
+        ts = r.get("timestamp", "")
+        if not ts.startswith(today):
+            continue
+        agent = r.get("agent", r.get("owner", "unknown"))
+        spend[agent] = spend.get(agent, 0.0) + float(r.get("cost_usd", 0.0))
+    return spend
+
+
+def check_agent_budget(project_dir: str, agent: str) -> CheckResult:
+    """Check per-agent spend against budget limits.
+
+    Uses per_agent_limit from profile.yaml budget config.
+    Falls back to project-wide limit if no per-agent limit is set.
+    """
+    cfg = _load_budget_config(project_dir)
+    per_agent_limit = cfg.get("per_agent_limit", cfg.get("daily_limit"))
+    strict = bool(cfg.get("strict", False))
+
+    used = _today_spend_by_agent(project_dir).get(agent, 0.0)
+
+    if per_agent_limit is None:
+        return CheckResult(status=BudgetStatus.OK, used_today=used, daily_limit=None, pct_used=0.0,
+                          message=f"No per-agent budget for {agent}.")
+
+    limit = float(per_agent_limit)
+    pct = used / limit if limit > 0 else 0.0
+
+    if pct >= 1.0:
+        if strict:
+            return CheckResult(status=BudgetStatus.BLOCK, used_today=used, daily_limit=limit, pct_used=pct,
+                              message=f"BLOCKED: {agent} budget exceeded (${used:.2f} / ${limit:.2f}).")
+        return CheckResult(status=BudgetStatus.WARN, used_today=used, daily_limit=limit, pct_used=pct,
+                          message=f"WARN: {agent} budget exceeded (${used:.2f} / ${limit:.2f}).")
+    if pct >= _WARN_THRESHOLD:
+        return CheckResult(status=BudgetStatus.WARN, used_today=used, daily_limit=limit, pct_used=pct,
+                          message=f"WARN: {agent} budget {pct*100:.0f}% (${used:.2f} / ${limit:.2f}).")
+    return CheckResult(status=BudgetStatus.OK, used_today=used, daily_limit=limit, pct_used=pct,
+                      message=f"{agent} OK: ${used:.2f} / ${limit:.2f} ({pct*100:.0f}%).")

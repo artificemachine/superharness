@@ -1876,6 +1876,18 @@ def _run_scripts(
 
 
     for t in targets:
+        # Per-agent budget check: skip agents over their limit
+        try:
+            from superharness.engine.model_budget import check_agent_budget, BudgetStatus
+            agent_budget = check_agent_budget(project_dir, t)
+            if agent_budget.status == BudgetStatus.BLOCK:
+                print(f"budget-gate: skipping {t} — per-agent budget exceeded (${agent_budget.used_today:.2f} / ${agent_budget.daily_limit:.2f})")
+                continue
+            elif agent_budget.status == BudgetStatus.WARN:
+                print(f"budget-gate: {t} WARN — ${agent_budget.used_today:.2f} / ${agent_budget.daily_limit:.2f}")
+        except Exception as e:
+            _log_watcher_error(project_dir, f"agent_budget_{t}", str(e))
+
         _run_dispatch_cmd(
             project_dir=project_dir,
             target=t,
