@@ -343,21 +343,6 @@ def task_instructions(project_dir: Path, task_id: str) -> str:
     finally:
         conn.close()
 
-    # YAML fallback when SQLite has no data
-    if task_title == task_id:
-        try:
-            import yaml as _yaml_instr
-            _cf = project_dir / ".superharness" / "contract.yaml"
-            if _cf.exists():
-                _doc = _yaml_instr.safe_load(_cf.read_text(encoding="utf-8", errors="replace")) or {}
-                for _t in _doc.get("tasks") or []:
-                    if isinstance(_t, dict) and str(_t.get("id", "")) == task_id:
-                        task_title = str(_t.get("title", task_id))
-                        _crit = _t.get("criteria") or _t.get("acceptance_criteria") or []
-                        criteria = [_crit] if isinstance(_crit, str) else list(_crit)
-                        break
-        except Exception:
-            pass
 
     # Try to find matching iteration section in plan docs
     plan_section = ""
@@ -466,26 +451,6 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
     finally:
         conn.close()
 
-    # YAML fallback when SQLite has no task data
-    if "contract_status" not in result:
-        try:
-            import yaml as _yaml_report
-            _cf = harness / "contract.yaml"
-            if _cf.exists():
-                _doc = _yaml_report.safe_load(_cf.read_text(encoding="utf-8", errors="replace")) or {}
-                for _t in _doc.get("tasks") or []:
-                    if isinstance(_t, dict) and str(_t.get("id", "")) == task_id:
-                        result["contract_status"] = str(_t.get("status", "todo"))
-                        result["contract_title"] = str(_t.get("title", ""))
-                        result["contract_owner"] = str(_t.get("owner", ""))
-                        result["contract_summary"] = str(_t.get("summary", "") or "")
-                        result["blocked_by"] = _t.get("blocked_by") or []
-                        result["acceptance_criteria"] = _t.get("criteria") or _t.get("acceptance_criteria") or []
-                        result["test_types"] = _t.get("test_types") or []
-                        result["tdd"] = _t.get("tdd") or {}
-                        break
-        except Exception:
-            pass
 
     # 1b. Launcher log — extract Model / Effort / Via written at dispatch time
     launcher_log_dir = harness / "launcher-logs"
@@ -1392,27 +1357,6 @@ def _confirm_plan(harness_dir: Path, task_id: str) -> dict:
     except Exception as e:
         errors.append(f"sqlite update error: {e}")  # shipguard:ignore PY-007
 
-    # YAML fallback for contract update (dual-write / yaml-only modes)
-    backend = os.environ.get("STATE_BACKEND", "yaml_only")
-    if backend != "sqlite_only" and contract_file.exists():
-        try:
-            doc = yaml.safe_load(contract_file.read_text()) or {}
-            tasks = doc.get("tasks", []) or []
-            found = False
-            for t in tasks:
-                if isinstance(t, dict) and t.get("id") == task_id and t.get("status") == "plan_proposed":
-                    t["status"] = "todo"
-                    t["plan_confirmed_at"] = now
-                    t["plan_confirmed_by"] = "owner"
-                    found = True
-                    break
-            if found:
-                contract_file.write_text(yaml.dump(doc, default_flow_style=False, allow_unicode=True))
-            elif not sqlite_ok:
-                errors.append(f"task {task_id} not found in plan_proposed status")
-        except Exception as e:
-            if not sqlite_ok:
-                errors.append(f"contract update error: {e}")  # shipguard:ignore PY-007
 
     # Update matching handoff: add plan_gate confirmation
     if handoff_dir.exists():
@@ -2401,49 +2345,7 @@ class Handler(BaseHTTPRequestHandler):
             # Add all snapshot fields (contract_tasks, board_columns, activity_feed, etc.)
             result.update(snapshot)
 
-            # YAML overrides: always use YAML for contract_id (monkeypatch-friendly)
-            _contract_file = self.project_dir / ".superharness" / "contract.yaml"
-            result["contract_id"] = contract_id(_contract_file)
 
-            # YAML fallback: fill contract_tasks/board/review when SQLite tables are empty
-            if not snapshot.get("contract_tasks"):
-                result["contract_tasks"] = contract_tasks(_contract_file)
-                _bv = board_view(_contract_file)
-                result["board_columns"] = _bv["columns"]
-                _rq_full = review_queue(_contract_file)
-                result["review_queue"] = _rq_full
-                result["review_queue_count"] = len(_bv["review_queue"])
-            if not snapshot.get("inbox_items"):
-                _inbox_file = self.project_dir / ".superharness" / "inbox.yaml"
-                # Read YAML directly here: SQLite was empty (not yet migrated),
-                # and calling inbox_items() would loop back to the empty SQLite.
-                try:
-                    import yaml as _yaml
-                    _raw = _yaml.safe_load(_inbox_file.read_text(encoding="utf-8", errors="replace")) if _inbox_file.exists() else None
-                    _items = [i for i in (_raw or []) if isinstance(i, dict)]
-                except Exception:
-                    _items = []
-                result["active_inbox_tasks"] = [
-                    i.get("task", i.get("id", "")) for i in _items
-                    if i.get("status") in ("pending", "launched", "running")
-                ]
-                result["done_inbox_tasks"] = [
-                    i.get("task", i.get("id", "")) for i in _items
-                    if i.get("status") == "done"
-                ]
-                _counts: dict = {}
-                for _i in _items:
-                    _st = _i.get("status", "")
-                    _counts[_st] = _counts.get(_st, 0) + 1
-                result["inbox_counts"] = _counts
-            if not result.get("ledger_tail"):
-                _ledger_file = self.project_dir / ".superharness" / "ledger.md"
-                if _ledger_file.exists():
-                    try:
-                        _lines = [ln.strip() for ln in _ledger_file.read_text(errors="replace").splitlines() if ln.strip() and not ln.strip().startswith("Append-only")]
-                        result["ledger_tail"] = _lines[-18:]
-                    except Exception:
-                        pass
 
             # Parity panel removed — YAML/SQLite parity is no longer tracked.
             result["parity"] = {"healthy": True, "yaml_sync_lag": 0, "drift": []}

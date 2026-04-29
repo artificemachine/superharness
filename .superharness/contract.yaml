@@ -2,7 +2,7 @@ created: 2026-03-15
 created_by: owner
 decisions: []
 failures: []
-goal: TBD — describe the current objective
+goal: "TBD \u2014 describe the current objective"
 id: initial-setup
 status: draft
 tasks:
@@ -50,7 +50,7 @@ tasks:
     exist
   test_types:
   - unit
-  title: Module loader (YAML → dataclass)
+  title: "Module loader (YAML \u2192 dataclass)"
   verified: true
   verified_at: '2026-03-26T15:00:00Z'
   verified_by: claude-code
@@ -322,8 +322,8 @@ tasks:
   owner: claude-code
   project_path: /Users/airm2max/DevOpsSec/superharness
   status: archived
-  summary: blocked_by field + full lifecycle gates on delegate and close — 19 tests,
-    TDD complete
+  summary: "blocked_by field + full lifecycle gates on delegate and close \u2014 19\
+    \ tests, TDD complete"
   title: Add blocked_by field + enforce plan/approve/review lifecycle on task create
   verified: true
   verified_at: '2026-03-26T00:41:12Z'
@@ -334,8 +334,8 @@ tasks:
   status: archived
   summary: 'Monitor crash fixed: HTTP probe + url_file race + crash detection + cross-platform
     timeout'
-  title: Monitor UI crashes silently — server dies after spawning, port 8787 becomes
-    unreachable
+  title: "Monitor UI crashes silently \u2014 server dies after spawning, port 8787\
+    \ becomes unreachable"
   verified: true
   verified_at: '2026-03-26T00:40:56Z'
   verified_by: claude-code
@@ -345,7 +345,7 @@ tasks:
   status: archived
   summary: 'Version strings aligned: README, AGENTS.md, validate.py vault path via
     env var'
-  title: CLI reports 1.0.0 but pip has 1.1.1 — hardcoded version string
+  title: "CLI reports 1.0.0 but pip has 1.1.1 \u2014 hardcoded version string"
   verified: true
   verified_at: '2026-03-26T00:40:56Z'
   verified_by: claude-code
@@ -354,8 +354,8 @@ tasks:
   project_path: /Users/airm2max/DevOpsSec/superharness
   status: archived
   summary: Close owner gate fixed + status lifecycle gate + --force escape hatch
-  title: shux close rejects owner actor — owner should always be able to close any
-    task
+  title: "shux close rejects owner actor \u2014 owner should always be able to close\
+    \ any task"
   verified: true
   verified_at: '2026-03-26T00:40:56Z'
   verified_by: claude-code
@@ -363,8 +363,8 @@ tasks:
   owner: claude-code
   project_path: /Users/airm2max/DevOpsSec/superharness
   status: archived
-  summary: Corrupt handoff YAML fixed — single valid document
-  title: Fix corrupt YAML in feat.sdk-streaming-complete.yaml — multiple documents
+  summary: "Corrupt handoff YAML fixed \u2014 single valid document"
+  title: "Fix corrupt YAML in feat.sdk-streaming-complete.yaml \u2014 multiple documents"
   verified: true
   verified_at: '2026-03-26T00:40:56Z'
   verified_by: claude-code
@@ -382,8 +382,8 @@ tasks:
   owner: claude-code
   project_path: /Users/airm2max/DevOpsSec/superharness
   status: archived
-  summary: 'Working tree clean at v1.2.5 — prior dirty files already merged via PRs
-    #49-55. Obsolete stash dropped.'
+  summary: "Working tree clean at v1.2.5 \u2014 prior dirty files already merged via\
+    \ PRs #49-55. Obsolete stash dropped."
   title: Triage and commit 15 dirty files from prior sessions
   verified: true
   verified_at: '2026-03-26T12:15:31Z'
@@ -406,9 +406,9 @@ tasks:
   owner: claude-code
   project_path: /Users/airm2max/DevOpsSec/superharness
   status: archived
-  summary: Session 2026-03-26 fully verified and closed — all 12 AC pass, 149 targeted
-    tests pass (6 pre-existing failures in test_session_stop.py / test_delegate.py
-    outside scope)
+  summary: "Session 2026-03-26 fully verified and closed \u2014 all 12 AC pass, 149\
+    \ targeted tests pass (6 pre-existing failures in test_session_stop.py / test_delegate.py\
+    \ outside scope)"
   tdd:
     green: all tests pass, shux doctor/delegate/close behave as described in criteria
     red: 'run: pytest tests/unit/test_task_dependencies.py tests/unit/test_task_create.py
@@ -702,8 +702,8 @@ tasks:
     id: verify.orchestrator-decompose.1
     model_tier: mini
     owner: claude-code
-    rationale: Simple CLI invocation check — run command, capture exit code and stdout.
-      No reasoning or code changes needed.
+    rationale: "Simple CLI invocation check \u2014 run command, capture exit code\
+      \ and stdout. No reasoning or code changes needed."
     title: Verify shux delegate --orchestrate --print-only CLI flag exists and parses
       without error
     status: cancelled
@@ -734,8 +734,8 @@ tasks:
     id: verify.orchestrator-decompose.4
     model_tier: mini
     owner: claude-code
-    rationale: Field-presence check on structured JSON/YAML output. Simple schema
-      validation — no reasoning needed.
+    rationale: "Field-presence check on structured JSON/YAML output. Simple schema\
+      \ validation \u2014 no reasoning needed."
     title: 'Validate subtask fields: each entry has id, title, model_tier, estimated_tokens,
       estimated_cost_usd'
     status: cancelled
@@ -801,8 +801,8 @@ tasks:
     model_used: claude-haiku-4-5
     owner: claude-code
     status: done
-    title: Run TestSubtaskAggregator tests (all_done → report_ready, any_failed →
-      failed)
+    title: "Run TestSubtaskAggregator tests (all_done \u2192 report_ready, any_failed\
+      \ \u2192 failed)"
   - actual_cost_usd: 0.00061
     actual_tokens: 1953
     estimated_cost_usd: 0.000625
@@ -982,12 +982,12 @@ tasks:
   plan_approved_at: '2026-04-05T10:54:09Z'
   project_path: /Users/airm2max/DevOpsSec/superharness
   status: archived
-  summary: Adapter registry v1 complete. YAML manifests for claude-code and codex-cli
-    in adapter_manifests/. engine/adapter_registry.py with AdapterManifest, AdapterValidationError,
-    list_adapters, load_manifest, validate_adapter, resolve_launcher, adapter_info.
-    commands/adapters.py CLI (shux adapters list/info/test). inbox_dispatch.py routing
-    refactored to use resolve_launcher() — no hard-coded if/else. 21/21 unit tests
-    pass. 0 regressions.
+  summary: "Adapter registry v1 complete. YAML manifests for claude-code and codex-cli\
+    \ in adapter_manifests/. engine/adapter_registry.py with AdapterManifest, AdapterValidationError,\
+    \ list_adapters, load_manifest, validate_adapter, resolve_launcher, adapter_info.\
+    \ commands/adapters.py CLI (shux adapters list/info/test). inbox_dispatch.py routing\
+    \ refactored to use resolve_launcher() \u2014 no hard-coded if/else. 21/21 unit\
+    \ tests pass. 0 regressions."
   tdd:
     green: Implement the minimal registry, adapter manifest loader, and shared dispatch
       path so native adapters run through one interface and invalid adapters fail
@@ -1016,14 +1016,14 @@ tasks:
   owner: claude-code
   project_path: /Users/airm2max/DevOpsSec/superharness
   status: archived
-  summary: 'Heartbeat contract v1 complete. engine/heartbeat_contract.py: AgentHeartbeat
-    + AgentBudget dataclasses, write_heartbeat/read_heartbeat/is_stale/age_seconds/list_agent_heartbeats.
-    engine/agent_status.py: AgentStatusRecord, write/read/read_all, is_status_stale,
-    list_stale_agents, agent_status_health — all runtime-agnostic via directory scan.
-    inbox_watch.py writes both legacy watcher.heartbeat and structured watcher.heartbeat.yaml
-    each tick. status.py prefers structured YAML, falls back to legacy. protocol/templates/agent-status.yaml
-    template published. 72 tests pass (16 heartbeat_contract + 45 agent_status + 11
-    heartbeat cmd). 0 regressions.'
+  summary: "Heartbeat contract v1 complete. engine/heartbeat_contract.py: AgentHeartbeat\
+    \ + AgentBudget dataclasses, write_heartbeat/read_heartbeat/is_stale/age_seconds/list_agent_heartbeats.\
+    \ engine/agent_status.py: AgentStatusRecord, write/read/read_all, is_status_stale,\
+    \ list_stale_agents, agent_status_health \u2014 all runtime-agnostic via directory\
+    \ scan. inbox_watch.py writes both legacy watcher.heartbeat and structured watcher.heartbeat.yaml\
+    \ each tick. status.py prefers structured YAML, falls back to legacy. protocol/templates/agent-status.yaml\
+    \ template published. 72 tests pass (16 heartbeat_contract + 45 agent_status +\
+    \ 11 heartbeat cmd). 0 regressions."
   tdd:
     green: Implement the minimal heartbeat contract, readers/writers, and status plumbing
       so watcher and monitor can consume any compliant runtime.
@@ -1087,7 +1087,7 @@ tasks:
   owner: claude-code
   project_path: /Users/airm2max/DevOpsSec/superharness
   status: archived
-  summary: Completed on earlier dispatch — 31/31 tests pass
+  summary: "Completed on earlier dispatch \u2014 31/31 tests pass"
   tdd:
     green: Implement the minimal SDK schema, loader, and lifecycle contract so modules
       can be validated and executed through one documented interface.
@@ -1183,7 +1183,7 @@ tasks:
   status: archived
   summary: Register SIGTERM/SIGHUP handlers in single-cycle (launchd) mode to release
     watcher lock on signal
-  title: Watcher lock not released on normal exit — orphan messages every cycle
+  title: "Watcher lock not released on normal exit \u2014 orphan messages every cycle"
   verified: true
   verified_at: '2026-04-05T13:18:21Z'
   verified_by: claude-code
@@ -1206,7 +1206,7 @@ tasks:
   - task create CLI accepts --effort, --test-types, --out-of-scope, --definition-of-done,
     --context
   - Contract has default_definition_of_done inherited by tasks
-  - No hardcoded development method enum — accept any string
+  - "No hardcoded development method enum \u2014 accept any string"
   - 'Old contracts with tdd: key still load correctly'
   blocked_by: none
   development_method: tdd
@@ -1222,8 +1222,8 @@ tasks:
     red: test_task_create_with_effort, test_plan_field_reads_old_tdd_alias, test_out_of_scope_written,
       test_context_field_written, test_contract_default_definition_of_done
     refactor: Remove VALID_DEVELOPMENT_METHODS hardcoded enum
-  title: 'Phase 1: Task fields — effort, test_types, plan, out_of_scope, definition_of_done,
-    context'
+  title: "Phase 1: Task fields \u2014 effort, test_types, plan, out_of_scope, definition_of_done,\
+    \ context"
   workflow: quick
 - acceptance_criteria:
   - shux inbox gc --dry-run shows stale items without modifying
@@ -1249,7 +1249,7 @@ tasks:
   test_types:
   - unit
   - integration
-  title: shux inbox gc — reconcile stale inbox items against contract
+  title: "shux inbox gc \u2014 reconcile stale inbox items against contract"
   workflow: quick
 - acceptance_criteria:
   - Watcher runs inbox gc reconcile every N heartbeat cycles (configurable)
@@ -1267,13 +1267,13 @@ tasks:
   summary: Approved by operator without agent review
   test_types:
   - unit
-  title: Watcher auto-gc — periodic inbox reconciliation in watcher loop
+  title: "Watcher auto-gc \u2014 periodic inbox reconciliation in watcher loop"
   workflow: quick
 - acceptance_criteria:
   - Watcher auto-stashes uncommitted changes before dispatch
   - Stash is popped after agent completes (success or failure)
   - If stash pop conflicts, worktree is left stashed with a warning
-  - Paused-dirty-worktree path removed — stash replaces it
+  - "Paused-dirty-worktree path removed \u2014 stash replaces it"
   blocked_by: none
   development_method: tdd
   effort: medium
@@ -1308,8 +1308,8 @@ tasks:
   status: archived
   summary: 'Design doc shipped in PR #111 / v1.24.14. All AC met: risk analysis, pr_open
     status, ship_on_complete opt-in, 3-phase plan.'
-  title: 'Ship step in task lifecycle — auto-commit after task approval (BLOCKED:
-    review pipeline bypass risk)'
+  title: "Ship step in task lifecycle \u2014 auto-commit after task approval (BLOCKED:\
+    \ review pipeline bypass risk)"
   verified: true
   verified_at: '2026-04-18T18:43:20Z'
   verified_by: claude-code
@@ -1321,7 +1321,7 @@ tasks:
   project_path: /Users/airm2max/DevOpsSec/superharness
   status: archived
   summary: Implemented and tested
-  title: shux worktree-gc — clean orphaned dispatch worktrees
+  title: "shux worktree-gc \u2014 clean orphaned dispatch worktrees"
   workflow: quick
 - blocked_by: none
   effort: medium
@@ -1330,7 +1330,7 @@ tasks:
   project_path: /Users/airm2max/DevOpsSec/superharness
   status: archived
   summary: Implemented and tested
-  title: Dashboard live activity feed — timeline of events
+  title: "Dashboard live activity feed \u2014 timeline of events"
   workflow: quick
 - blocked_by: none
   effort: medium
@@ -1339,7 +1339,7 @@ tasks:
   project_path: /Users/airm2max/DevOpsSec/superharness
   status: archived
   summary: Implemented and tested
-  title: shux recap — what happened in the last N hours
+  title: "shux recap \u2014 what happened in the last N hours"
   workflow: quick
 - blocked_by: none
   effort: low
@@ -1414,15 +1414,16 @@ tasks:
     label: tier} fallback for unknown owner/tier'
   - 'shux adapter-payload --json includes resolved_model: {id, label} on every task
     and subtask'
-  - model_tier string field remains in payload (backwards compat — Morpheme fallback)
+  - "model_tier string field remains in payload (backwards compat \u2014 Morpheme\
+    \ fallback)"
   - schema_version bumped to 1.1 in both code and docs/adapter-payload-spec.md
   blocked_by: none
-  context: 'Paired branch: feat/superharness-integration-morpheme (same name on both
-    superharness and artificemachine/morpheme, per cross-repo pairing policy in CLAUDE.md).
-    Morpheme currently renders model_tier badges (mini/standard/max) as a proxy for
-    model identity; clients need the concrete human-facing model name (Haiku 4.5,
-    Sonnet 4.6, gpt-5.3-codex). Tier→model mapping is authoritatively owned by superharness
-    via each adapter''s manifest.'
+  context: "Paired branch: feat/superharness-integration-morpheme (same name on both\
+    \ superharness and artificemachine/morpheme, per cross-repo pairing policy in\
+    \ CLAUDE.md). Morpheme currently renders model_tier badges (mini/standard/max)\
+    \ as a proxy for model identity; clients need the concrete human-facing model\
+    \ name (Haiku 4.5, Sonnet 4.6, gpt-5.3-codex). Tier\u2192model mapping is authoritatively\
+    \ owned by superharness via each adapter's manifest."
   definition_of_done:
   - shux adapter-payload --json output for a claude-code + standard-tier task shows
     resolved_model.label = 'Sonnet 4.6'
@@ -1434,8 +1435,8 @@ tasks:
   effort: medium
   id: feat.adapter-payload-resolved-model
   out_of_scope:
-  - Changing cost_estimator or auto_dispatch logic — they still reason in tiers
-  - Morpheme UI rendering of resolved_model.label — separate ticket on artificemachine/morpheme
+  - "Changing cost_estimator or auto_dispatch logic \u2014 they still reason in tiers"
+  - "Morpheme UI rendering of resolved_model.label \u2014 separate ticket on artificemachine/morpheme"
   owner: claude-code
   project_path: /Users/airm2max/DevOpsSec/superharness
   status: archived
@@ -1474,15 +1475,15 @@ tasks:
     Fix lives in whichever test family runs in the 69-73% range of pytest alphabetical
     order.'
   definition_of_done:
-  - Three consecutive PR-CI runs on Windows complete without hang (not all required
-    to pass — just not hang)
+  - "Three consecutive PR-CI runs on Windows complete without hang (not all required\
+    \ to pass \u2014 just not hang)"
   - Contract task shipped via PR with version bump 1.24.3 or similar
   development_method: tdd
   effort: medium
   id: fix.windows-unit-test-hang
   out_of_scope:
-  - Rewriting the entire test harness for cross-platform parity — only fix the specific
-    hang
+  - "Rewriting the entire test harness for cross-platform parity \u2014 only fix the\
+    \ specific hang"
   - Adding Windows-specific CI runs beyond what already exists
   owner: claude-code
   project_path: /Users/airm2max/DevOpsSec/superharness
@@ -1519,7 +1520,7 @@ tasks:
   - pytest tests/ -q passes unchanged
   - CHANGELOG.md has chore(taxonomy) entry
   blocked_by: none
-  context: 'Plan: docs/plan-effort-taxonomy-opus47-morpheme.md §7.2. Handoff: .superharness/handoffs/feat.taxonomy-module-plan-2026-04-17-claude-code.yaml'
+  context: "Plan: docs/plan-effort-taxonomy-opus47-morpheme.md \xA77.2. Handoff: .superharness/handoffs/feat.taxonomy-module-plan-2026-04-17-claude-code.yaml"
   development_method: tdd
   effort: medium
   id: feat.taxonomy-module
@@ -1596,8 +1597,8 @@ tasks:
   owner: claude-code
   project_path: /Users/airm2max/DevOpsSec/superharness
   status: archived
-  summary: 'Shipped in v1.25.0 PR #115 — --json on task status/enqueue/verify/close/delegate;
-    shared utils/json_output.py'
+  summary: "Shipped in v1.25.0 PR #115 \u2014 --json on task status/enqueue/verify/close/delegate;\
+    \ shared utils/json_output.py"
   tdd:
     green: Add --json flag to each command's argparse. Route success + error paths
       through a shared emit_json(payload, ok) helper in src/superharness/utils/json_output.py.
@@ -1624,7 +1625,7 @@ tasks:
     shux hygiene validates
   - Refuses to write if schema invalid; exit nonzero with structured error
   - Supports --json for machine consumption (depends on t-ba1c80)
-  - Does NOT mutate contract status — callers chain with shux task status
+  - "Does NOT mutate contract status \u2014 callers chain with shux task status"
   - Existing agent-side handoff authoring continues to work unchanged
   blocked_by: t-ba1c80
   context: Morpheme adapter is read-only over data sources. Without this command,
@@ -1645,24 +1646,24 @@ tasks:
   owner: claude-code
   project_path: /Users/airm2max/DevOpsSec/superharness
   status: archived
-  summary: 'Shipped in v1.25.0 PR #115 — shux handoff write command for plan/report
-    YAML authoring'
+  summary: "Shipped in v1.25.0 PR #115 \u2014 shux handoff write command for plan/report\
+    \ YAML authoring"
   tdd:
     green: Add src/superharness/commands/handoff_write.py. Reuse existing handoff
       schema (look in src/superharness/engine/ or scripts/). Wire into CLI dispatcher.
       Implement @file argument convention (read file if starts with @).
-    red: 'tests/integration/test_handoff_write.py: invoke shux handoff write for a
-      plan phase, assert file exists under .superharness/handoffs/, assert YAML parses,
-      assert schema keys (task, phase, status, from, to, date, plan, tdd). Negative
-      tests: missing required field, invalid phase, nonexistent task — each must exit
-      nonzero without writing a file.'
+    red: "tests/integration/test_handoff_write.py: invoke shux handoff write for a\
+      \ plan phase, assert file exists under .superharness/handoffs/, assert YAML\
+      \ parses, assert schema keys (task, phase, status, from, to, date, plan, tdd).\
+      \ Negative tests: missing required field, invalid phase, nonexistent task \u2014\
+      \ each must exit nonzero without writing a file."
     refactor: Extract handoff schema into a single source of truth shared by hygiene
       check, agent-side authoring, and this new command. Update docs/adapter-payload-spec.md
       and GUIDE.md with handoff write examples.
   test_types:
   - unit
   - integration
-  title: shux handoff write — CLI surface for plan/report handoff authoring
+  title: "shux handoff write \u2014 CLI surface for plan/report handoff authoring"
   verified: true
   verified_at: '2026-04-20T11:33:51Z'
   verified_by: claude-code
@@ -1694,14 +1695,14 @@ tasks:
   effort: medium
   id: t-91b396
   out_of_scope:
-  - Per-subtask dispatch/enqueue (option B from advice — defer)
+  - "Per-subtask dispatch/enqueue (option B from advice \u2014 defer)"
   - Per-subtask hygiene gates
   - Editing subtasks via CLI (they are planning artifacts written by orchestrator)
   owner: claude-code
   project_path: /Users/airm2max/DevOpsSec/superharness
   status: archived
-  summary: 'Shipped in v1.25.0 PR #115 — subtask resolver + adapter-payload status
-    + contract/recall/context visibility'
+  summary: "Shipped in v1.25.0 PR #115 \u2014 subtask resolver + adapter-payload status\
+    \ + contract/recall/context visibility"
   tdd:
     green: Add resolve_subtask_status() in src/superharness/engine/lifecycle.py or
       a new src/superharness/engine/subtask.py. Update adapter-payload serializer
@@ -1908,7 +1909,7 @@ tasks:
   id: feat.autonomous-peer-review
   owner: gemini-cli
   project_path: /Users/airm2max/DevOpsSec/superharness
-  status: todo
+  status: archived
   title: 'Autonomous Peer Review: Agents can verify and close tasks'
 - autonomy: ai_driven
   blocked_by: none
@@ -1938,5 +1939,5 @@ tasks:
   title: 'Mock Alpha: Automated Flow Test'
 - id: mock.beta
   owner: codex-cli
-  status: archived
+  status: done
   title: 'Mock Beta: Automated Flow Test'
