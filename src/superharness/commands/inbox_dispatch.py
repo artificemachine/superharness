@@ -21,6 +21,12 @@ TIMEOUT_MEDIUM_EFFORT = 1800   # 30 minutes
 TIMEOUT_HIGH_EFFORT = 3600     # 60 minutes
 
 
+def _get_python() -> str:
+    """Return the superharness pipx Python binary path."""
+    venv = os.path.expanduser("~/.local/pipx/venvs/superharness/bin/python3")
+    return venv if os.path.isfile(venv) else sys.executable
+
+
 def _now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
