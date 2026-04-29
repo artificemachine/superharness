@@ -125,6 +125,26 @@ def cmd_start(
     sf = _state_file(discussion_dir)
     _atomic_write(sf, yaml.dump(state))
 
+    # Sync to SQLite
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import discussions_dao
+        project_dir = discussions_dir.replace("/.superharness/discussions", "")
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            discussions_dao.create(
+                conn,
+                id=id_, topic=topic, owners=participants,
+                task_id=task_id, now=state["created_at"],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        if "already exists" not in str(e):
+            print(f"Warning: failed to sync discussion to SQLite: {e}", file=sys.stderr)
+
     print(
         json.dumps(
             {
