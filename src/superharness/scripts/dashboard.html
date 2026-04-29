@@ -145,7 +145,11 @@
 
     <div class="card" style="margin-top:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="togglePanel('watcherErrorsBody',this)">
-        <h2 style="margin:0">watcher errors</h2><span style="color:var(--muted);font-size:11px">▾</span>
+        <h2 style="margin:0">watcher errors</h2>
+        <span style="display:flex;align-items:center;gap:8px">
+          <button onclick="event.stopPropagation();copyPanel('watcherErrors',this)" style="font-size:11px;padding:2px 8px">Copy</button>
+          <span style="color:var(--muted);font-size:11px">▾</span>
+        </span>
       </div>
       <div id="watcherErrorsBody" style="margin-top:8px">
         <pre id="watcherErrors" style="font-size:11px;color:var(--bad);max-height:200px;overflow-y:auto;margin:0;white-space:pre-wrap;background:var(--btn);padding:8px;border-radius:6px">(loading...)</pre>
@@ -198,6 +202,7 @@
         <h2 style="margin:0">recent failures</h2>
         <div style="display:flex;align-items:center;gap:8px">
           <span class="small" id="recentFailuresCount" style="color:var(--muted);font-size:11px;">-</span>
+          <button onclick="event.stopPropagation();copyPanel('recentFailuresBody',this)" style="font-size:11px;padding:2px 8px">Copy</button>
           <span style="color:var(--muted);font-size:11px">▸</span>
         </div>
       </div>
