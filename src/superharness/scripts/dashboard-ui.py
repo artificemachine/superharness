@@ -694,55 +694,39 @@ def task_log_content(project_dir: Path, task_id: str, agent: str, lines: int = 0
             
             import re
             # Strip ANSI escape sequences
-            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-            content = ansi_escape.sub('', content)
-            # Strip box-drawing unicode and terminal framing
+            content = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', content)
+            # Box-drawing and terminal framing
             content = re.sub(r'[╭╮╰╯─│┌┐└┘├┤┬┴┼▐▌▛▜▀▄▘▝█]', '', content)
-            # Collapse runs of spaces
+            # Nerd Font icons and powerline symbols (U+E000-U+F8FF and U+2500+)
+            content = re.sub(r'[\ue000-\uf8ff\u2500-\u259f\u25a0-\u25ff]', '', content)
+            # Control characters (except newline and tab)
+            content = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', content)
+            # Strip lines that are only whitespace or consist only of terminal artifacts
+            content = '\n'.join(l for l in content.splitlines() if l.strip() and len(l.strip()) > 1)
+            # Collapse multiple spaces
             content = re.sub(r' {3,}', '  ', content)
             # Collapse blank lines
             content = re.sub(r'\n{3,}', '\n\n', content)
-            # Clean up remaining control codes
-            content = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', content)
+            # Remove terminal cursor positioning artifacts (lines with only digits+spaces)
+            content = re.sub(r'^\s*\d+\s*$', '', content, flags=re.MULTILINE)
+            # Remove common terminal noise patterns
+            content = content.replace('^D', '')
+            content = content.replace('✳', '')
 
-            # Build a human-readable activity summary
-            import re
-            summary_lines = []
+            # Activity summary
             content_lower = content.lower()
-            
-            # Phase detection
-            if "plan mode" in content_lower:
-                summary_lines.append("Phase: PLANNING (agent is designing the approach)")
-            elif "todo" in content_lower or "implement" in content_lower:
-                summary_lines.append("Phase: IMPLEMENTATION (agent is writing code)")
-            else:
-                summary_lines.append("Phase: WORKING (agent is processing)")
-            
-            # File changes
-            file_changes = re.findall(r'(?:modified|changed|created|deleted).*?[\w./]+', content_lower)
-            if file_changes:
-                summary_lines.append(f"Files: {', '.join(set(file_changes[-5:]))}")
-            
-            # Errors
-            errors = re.findall(r'(?:error|failed|exception|traceback).*', content_lower)
-            if errors:
-                summary_lines.append(f"Errors: {errors[-1][:100]}")
-            
-            # Stale check
-            if len(content.strip()) < 100:
-                summary_lines.append("Status: waiting for agent output...")
-            
-            result["activity"] = "\n".join(summary_lines) if summary_lines else "Agent is working..."
+            summary = []
+            if "plan mode" in content_lower: summary.append("Phase: PLANNING")
+            elif "implement" in content_lower: summary.append("Phase: IMPLEMENTATION")
+            errs = re.findall(r'(?:error|failed|exception).*', content_lower)
+            if errs: summary.append(f"Errors: {errs[-1][:80]}")
+            result["activity"] = "\n".join(summary) if summary else "Working..."
 
             if lines > 0:
-                # Return only last N lines of raw log
-                all_lines = content.splitlines()
-                content = "\n".join(all_lines[-lines:])
-                # Return only last N lines
                 all_lines = content.splitlines()
                 content = "\n".join(all_lines[-lines:])
             result["content"] = content
-            result["log"] = content  # Compatibility with existing JS code
+            result["log"] = content
             result["size_bytes"] = log_file.stat().st_size
         except Exception as exc:
             error_msg = f"(error reading log: {exc})"
