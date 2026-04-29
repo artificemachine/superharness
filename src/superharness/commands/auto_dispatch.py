@@ -64,7 +64,9 @@ def _enqueue(
     proposes a plan first; the operator then approves and the task re-enters
     the normal dispatch flow.
     """
-    import uuid
+    # Discussion round tasks should NOT be plan-only — agent must submit immediately
+    if "/round-" in str(task_id) or "round-" in str(task_id):
+        plan_only = False
     from datetime import datetime, timezone
     try:
         from superharness.engine.db import get_connection, init_db
