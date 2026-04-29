@@ -1735,6 +1735,67 @@ def _self_diagnosis(project_dir: str) -> list[str]:
     return warnings
 
 
+def auto_enqueue_todo(project_dir: str) -> int:
+    """Scan SQLite for todo tasks and enqueue them for planning."""
+    tasks = _load_tasks(project_dir)
+    if not tasks:
+        return 0
+    now = _now_utc()
+    enqueued = 0
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import inbox_dao
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        for task in tasks:
+            if not isinstance(task, dict) or task.get('status') != 'todo':
+                continue
+            tid = str(task.get('id',''))
+            if not tid:
+                continue
+            owner = task.get('owner', 'claude-code')
+            inbox_dao.enqueue(conn, id=f'auto-{tid[:20]}', task_id=tid,
+                              target_agent=owner, priority=2, max_retries=3,
+                              project_path=project_dir, plan_only=True, now=now)
+            enqueued += 1
+        conn.commit()
+        if enqueued:
+            print(f'auto-enqueue: {enqueued} todo task(s) enqueued')
+    finally:
+        conn.close()
+    return enqueued
+
+def auto_enqueue_approved(project_dir: str) -> int:
+    """Scan SQLite for plan_approved tasks and enqueue them."""
+    tasks = _load_tasks(project_dir)
+    if not tasks:
+        return 0
+    now = _now_utc()
+    enqueued = 0
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import inbox_dao
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        for task in tasks:
+            if not isinstance(task, dict) or task.get('status') != 'plan_approved':
+                continue
+            tid = str(task.get('id',''))
+            if not tid:
+                continue
+            owner = task.get('owner', 'claude-code')
+            inbox_dao.enqueue(conn, id=f'auto-{tid[:20]}', task_id=tid,
+                              target_agent=owner, priority=2, max_retries=3,
+                              project_path=project_dir, plan_only=False, now=now)
+            enqueued += 1
+        conn.commit()
+        if enqueued:
+            print(f'auto-enqueue: {enqueued} approved task(s) enqueued')
+    finally:
+        conn.close()
+    return enqueued
+
+
 
 _LAUNCHER_LOG_MAX_FILES = 200
 
