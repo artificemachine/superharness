@@ -1261,6 +1261,14 @@ def _auto_close_report_ready(project_dir: str) -> None:
                 _idb3(conn3)
                 existing = _td3.get(conn3, task_id)
                 if existing:
+                    # Build review context
+                    outcome = str(handoff.get("outcome") or "auto-closed by watcher")
+                    review_note = (
+                        f"\n[auto-mode review] Task completed by {existing.owner or 'agent'}. "
+                        f"Outcome: {outcome[:200]}. "
+                        f"Review: verify changes, check tests pass, approve or request changes."
+                    )
+                    new_context = (existing.context or "") + review_note
                     _td3.upsert(conn3, _td3.TaskRow(
                         id=task_id, title=existing.title,
                         owner=existing.owner or "watcher", status="done",
@@ -1270,7 +1278,7 @@ def _auto_close_report_ready(project_dir: str) -> None:
                         test_types=existing.test_types,
                         out_of_scope=existing.out_of_scope,
                         definition_of_done=existing.definition_of_done,
-                        context=existing.context, tdd=existing.tdd,
+                        context=new_context, tdd=existing.tdd,
                         version=existing.version + 1,
                         created_at=existing.created_at,
                         blocked_by=existing.blocked_by,
