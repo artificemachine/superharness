@@ -242,6 +242,40 @@ def _parse_ledger(sh_dir: Path, limit: int = 200) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def _load_failures(sh_dir: Path) -> list[dict]:
+    """Load failures from SQLite first, fall back to failures.yaml.
+
+    Post v1.43, failures are written via failures_dao to the SQLite
+    `failures` table. failures.yaml is a tombstone (only init-scaffolded,
+    not maintained). Reading the YAML alone misses every failure recorded
+    after migration.
+
+    Note: SQLite schema lacks `severity` and `patterns` (list) columns.
+    severity defaults to "minor"; patterns is wrapped from the single
+    `pattern` column. If those fields matter to consumers, the schema
+    needs columns added in a separate change.
+    """
+    project_dir = sh_dir.parent
+    try:
+        from superharness.engine.db import get_connection
+        from superharness.engine import failures_dao
+        conn = get_connection(str(project_dir))
+        try:
+            rows = failures_dao.get_recent(conn, limit=100)
+        finally:
+            conn.close()
+        if rows:
+            return [{
+                "task":          r.task_id or "",
+                "severity":      "minor",
+                "error_snippet": r.error_snippet or "",
+                "patterns":      [r.pattern] if r.pattern else [],
+                "agent":         r.agent or "",
+                "date":          _coerce_date(r.created_at or ""),
+            } for r in rows]
+    except Exception:
+        pass
+
+    # Legacy YAML fallback (pre-v1.43 projects).
     raw = _load_yaml(sh_dir / "failures.yaml")
     items = (raw.get("failures") or []) if isinstance(raw, dict) else []
     result = []
@@ -260,6 +294,39 @@ def _load_failures(sh_dir: Path) -> list[dict]:
 
 
 def _load_decisions(sh_dir: Path) -> list[dict]:
+    """Load decisions from SQLite first, fall back to decisions.yaml.
+
+    Post v1.43, decisions are written via decisions_dao to the SQLite
+    `decisions` table. decisions.yaml is a tombstone (only init-scaffolded,
+    not maintained). Reading the YAML alone misses every decision recorded
+    after migration.
+
+    Note: SQLite schema lacks the `status` field (defaults to "accepted").
+    `id` is an INTEGER autoincrement, not the YAML's freeform string id.
+    """
+    project_dir = sh_dir.parent
+    try:
+        from superharness.engine.db import get_connection
+        from superharness.engine import decisions_dao
+        conn = get_connection(str(project_dir))
+        try:
+            rows = decisions_dao.get_recent(conn, limit=100)
+        finally:
+            conn.close()
+        if rows:
+            return [{
+                "id":           str(r.id),
+                "what":         r.decision or "",
+                "why":          r.reason or "",
+                "alternatives": list(r.alternatives or []),
+                "status":       "accepted",
+                "by":           r.agent or "",
+                "date":         _coerce_date(r.created_at or ""),
+            } for r in rows]
+    except Exception:
+        pass
+
+    # Legacy YAML fallback (pre-v1.43 projects).
     raw = _load_yaml(sh_dir / "decisions.yaml")
     items = (raw.get("decisions") or []) if isinstance(raw, dict) else []
     result = []
