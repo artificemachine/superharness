@@ -258,3 +258,7 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(export_yaml(project_dir, out_dir=getattr(args, "out_dir", None), all_=args.all))
     elif args.action == "import":
         sys.exit(import_yaml(project_dir, source_dir=args.source_dir))
+
+
+if __name__ == "__main__":
+    main()
