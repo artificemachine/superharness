@@ -705,7 +705,39 @@ def task_log_content(project_dir: Path, task_id: str, agent: str, lines: int = 0
             # Clean up remaining control codes
             content = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', content)
 
+            # Build a human-readable activity summary
+            import re
+            summary_lines = []
+            content_lower = content.lower()
+            
+            # Phase detection
+            if "plan mode" in content_lower:
+                summary_lines.append("Phase: PLANNING (agent is designing the approach)")
+            elif "todo" in content_lower or "implement" in content_lower:
+                summary_lines.append("Phase: IMPLEMENTATION (agent is writing code)")
+            else:
+                summary_lines.append("Phase: WORKING (agent is processing)")
+            
+            # File changes
+            file_changes = re.findall(r'(?:modified|changed|created|deleted).*?[\w./]+', content_lower)
+            if file_changes:
+                summary_lines.append(f"Files: {', '.join(set(file_changes[-5:]))}")
+            
+            # Errors
+            errors = re.findall(r'(?:error|failed|exception|traceback).*', content_lower)
+            if errors:
+                summary_lines.append(f"Errors: {errors[-1][:100]}")
+            
+            # Stale check
+            if len(content.strip()) < 100:
+                summary_lines.append("Status: waiting for agent output...")
+            
+            result["activity"] = "\n".join(summary_lines) if summary_lines else "Agent is working..."
+
             if lines > 0:
+                # Return only last N lines of raw log
+                all_lines = content.splitlines()
+                content = "\n".join(all_lines[-lines:])
                 # Return only last N lines
                 all_lines = content.splitlines()
                 content = "\n".join(all_lines[-lines:])
