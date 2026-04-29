@@ -27,6 +27,17 @@ def _state_file(project_dir: Path) -> Path:
     return project_dir / _DAEMON_STATE_FILE
 
 
+def _find_superharness_python() -> str:
+    """Find the Python executable from the superharness pipx venv. Never fails."""
+    import shutil
+    # Try the pipx venv Python first
+    venv_python = os.path.expanduser("~/.local/pipx/venvs/superharness/bin/python3")
+    if os.path.isfile(venv_python):
+        return venv_python
+    # Fallback to whatever python is running right now
+    return sys.executable
+
+
 def _read_state(project_dir: Path) -> dict:
     sf = _state_file(project_dir)
     if not sf.exists():
@@ -98,8 +109,10 @@ def _start_daemon(project_dir: Path, interval: int) -> None:
     err_log = log_dir / "daemon.err.log"
 
     def _spawn_watcher():
+        # Use superharness binary to ensure correct Python env with all dependencies
+        python = _find_superharness_python()
         cmd = [
-            sys.executable, "-m", "superharness.commands.inbox_watch",
+            python, "-m", "superharness.commands.inbox_watch",
             "--project", str(project_dir),
             "--interval", str(interval),
             "--once",
