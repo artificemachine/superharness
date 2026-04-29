@@ -1688,6 +1688,50 @@ def _sqlite_tick(project_dir: str, now: str) -> None:
         pass
 
 
+def _self_diagnosis(project_dir: str) -> list[str]:
+    """Check environment health before running auto-mode. Returns list of warnings."""
+    warnings = []
+
+    # Check Python has yaml (prevents ModuleNotFoundError)
+    try:
+        import yaml
+    except ImportError:
+        warnings.append("MISSING: pyyaml not installed — dispatch will fail")
+
+    # Check SQLite DB exists and is writable
+    db_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
+    if not os.path.isfile(db_path):
+        warnings.append(f"MISSING: {db_path} — run shux init or start watcher first")
+    elif not os.access(db_path, os.W_OK):
+        warnings.append(f"PERMISSION: {db_path} is not writable")
+
+    # Check agent binaries exist
+    for agent, binary in [("claude-code", "claude"), ("codex-cli", "codex"), ("gemini-cli", "gemini")]:
+        import shutil
+        if not shutil.which(binary):
+            warnings.append(f"MISSING: {agent} binary '{binary}' not on PATH")
+
+    # Check profile.yaml exists and has required fields
+    profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
+    if os.path.isfile(profile_file):
+        try:
+            profile = yaml.safe_load(open(profile_file).read()) or {}
+            if not profile.get("auto_dispatch"):
+                warnings.append("CONFIG: auto_dispatch not enabled in profile.yaml")
+        except Exception:
+            warnings.append("CORRUPT: profile.yaml cannot be parsed")
+    else:
+        warnings.append("MISSING: profile.yaml — auto-mode needs project config")
+
+    # Log warnings
+    if warnings:
+        for w in warnings:
+            print(f"self-diagnosis: {w}")
+            _log_watcher_error(project_dir, "self_diagnosis", w)
+
+    return warnings
+
+
 def _run_scripts(
     project_dir: str,
     *,
@@ -1700,6 +1744,9 @@ def _run_scripts(
     recover_action: str,
 ) -> None:
     script_dir = _find_scripts_dir()
+
+    # Self-diagnosis: check environment before running auto-mode
+    _self_diagnosis(project_dir)
 
     # SQLite tick: drain dual-write queue + record heartbeat
     _sqlite_tick(project_dir, _now_utc())
