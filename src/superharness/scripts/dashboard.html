@@ -993,6 +993,25 @@ async function viewDiscussion(discId) {
     }
 
     if (!d.rounds || !d.rounds.length) out += '\n(no submissions yet)\n';
+
+    // Add live agent activity
+    try {
+      const sr = await fetch('/api/discussion-status?id=' + encodeURIComponent(discId));
+      const sd = await sr.json();
+      if (sd.agents && sd.agents.length > 0) {
+        out += '\nLive agent activity:\n';
+        for (const a of sd.agents) {
+          out += '  ' + a.pid + ': ' + a.cmd.substring(0,30) + ' (' + a.elapsed + ')\n';
+        }
+      }
+      if (sd.logs && sd.logs.length > 0) {
+        out += '\nRecent logs: ' + sd.logs.length + ' files\n';
+        for (const l of sd.logs.slice(0,3)) {
+          out += '  ' + l.name.substring(l.name.length-45) + ' (' + l.size_kb + 'K)\n';
+        }
+      }
+    } catch(e) {}
+
     body.textContent = out;
   } catch (e) {
     body.textContent = 'Error: ' + e;
