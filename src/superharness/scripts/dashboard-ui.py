@@ -601,6 +601,47 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
     return result
 
 
+def discussion_agent_status(project_dir: Path, disc_id: str) -> dict:
+    """Get live agent activity for a discussion: CPU, elapsed, log sizes."""
+    import subprocess as _sp
+    harness = project_dir / ".superharness"
+    launcher_logs = harness / "launcher-logs"
+    agents = []
+
+    # Check running agent processes
+    try:
+        ps_out = _sp.run(["ps", "ax", "-o", "pid=,pcpu=,args=,etime="], capture_output=True, text=True).stdout
+        for line in ps_out.splitlines():
+            parts = line.strip().split(None, 2)  # pid, cpu, rest
+            if len(parts) < 3:
+                continue
+            pid, cpu, rest = parts[0], parts[1], parts[2]
+            # Extract elapsed (last field)
+            fields = rest.rsplit(None, 1)
+            if len(fields) < 2:
+                continue
+            cmd, elapsed = fields[0], fields[1]
+            if any(a in cmd.lower() for a in ("claude", "codex", "gemini")):
+                agents.append({"pid": pid, "cpu": f"{cpu}%", "cmd": cmd[:50], "elapsed": elapsed})
+    except Exception:
+        pass
+
+    # Check launcher logs for this discussion
+    logs = []
+    if launcher_logs.exists():
+        for lf in sorted(launcher_logs.glob(f"*{disc_id}*"), key=lambda p: p.stat().st_mtime, reverse=True):
+            try:
+                size = lf.stat().st_size
+                name = str(lf.name)
+                if name.endswith(".log"):
+                    logs.append({"name": name, "size_kb": round(size / 1024, 1)})
+            except Exception:
+                pass
+
+    return {"discussion_id": disc_id, "agents": agents[:10], "logs": logs[:10],
+            "total_agents": len(agents), "total_logs": len(logs)}
+
+
 def task_log_content(project_dir: Path, task_id: str, agent: str, lines: int = 0) -> dict:
     """Retrieve live launcher log content for a task+agent.
 
@@ -2460,6 +2501,17 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
             self._json({"errors": content, "lines": lines, "path": str(errors_path)})
+            return
+
+        if p == "/api/discussion-status":
+            from urllib.parse import parse_qs as _pqs
+            qs = _pqs(parsed.query)
+            disc_id = qs.get("id", [""])[0]
+            if not disc_id:
+                self._json({"error": "id required"}, 400)
+                return
+            result = discussion_agent_status(self.project_dir, disc_id)
+            self._json(result)
             return
 
         if p == "/api/task-report":
