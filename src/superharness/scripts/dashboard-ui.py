@@ -712,6 +712,10 @@ def task_log_content(project_dir: Path, task_id: str, agent: str, lines: int = 0
             # Remove common terminal noise patterns
             content = content.replace('^D', '')
             content = content.replace('✳', '')
+            # Strip all non-ASCII characters (U+0080 and above) for readability
+            content = re.sub(r'[^\x00-\x7f]', '', content)
+            # Remove lines that are only whitespace/symbols after ASCII strip
+            content = '\n'.join(l for l in content.splitlines() if l.strip() and len(l.strip()) > 2)
 
             # Activity summary
             content_lower = content.lower()
