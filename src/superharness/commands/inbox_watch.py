@@ -1988,6 +1988,26 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 1200) -> int:
                 reconciled += 1
                 changed = True
                 print(f"zombie-reconcile: {item_id} ({task_id}) → failed (pid {pid} dead)")
+            # Check 2b: plan-only task alive but timed out → kill and fail
+            elif item.get("plan_only") and launched_at:
+                _PLAN_ONLY_TIMEOUT = 900  # 15 minutes
+                try:
+                    lt = datetime.fromisoformat(launched_at.replace("Z", "+00:00"))
+                    age = (now - lt).total_seconds()
+                    if age > _PLAN_ONLY_TIMEOUT:
+                        try:
+                            os.kill(pid_int, signal.SIGTERM)
+                        except Exception:
+                            pass
+                        item["status"] = "failed"
+                        item["failed_at"] = _now_utc()
+                        item["pid"] = ""
+                        item["failed_reason"] = f"plan-only timeout ({int(age)}s > {_PLAN_ONLY_TIMEOUT}s)"
+                        reconciled += 1
+                        changed = True
+                        print(f"zombie-reconcile: {item_id} ({task_id}) → failed (plan-only timeout, {int(age)}s)")
+                except (ValueError, TypeError):
+                    pass
             continue
 
         # Check 3: no PID + old → mark failed
