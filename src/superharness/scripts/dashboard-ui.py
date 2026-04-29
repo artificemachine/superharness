@@ -2958,9 +2958,18 @@ def main() -> int:
                     # Fall through to start a fresh dashboard at the new version
                     break
 
-                # If the port is unknown, the PID is dead — skip guard and start fresh
+                # If the port is unknown, the PID is dead — kill stale entry and start fresh
                 if _existing_port is None:
-                    print(f"dashboard: found stale pid={_other_pid} for project '{project_dir.name}' — skipping (dead process)")
+                    print(f"dashboard: found stale pid={_other_pid} for project '{project_dir.name}' — clearing and starting fresh")
+                    try:
+                        os.kill(_other_pid, 0)  # test if alive
+                    except OSError:
+                        # PID is dead — remove stale operator-state.json
+                        _state_file = project_dir / ".superharness" / "operator-state.json"
+                        try:
+                            _state_file.unlink(missing_ok=True)
+                        except Exception:
+                            pass
                     continue
 
                 print(f"dashboard already running for project '{project_dir.name}' (pid={_other_pid}, {_url}) — version {_running_version}")
