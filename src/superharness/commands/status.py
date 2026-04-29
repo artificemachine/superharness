@@ -274,7 +274,10 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("-p", "--project", default=os.getcwd())
     p.add_argument("--retry-threshold", type=int, default=3, dest="retry_threshold")
     p.add_argument("--check", action="store_true")
-    p.add_argument("--active", "-a", action="store_true", help="Show per-task progress details")
+    p.add_argument("--active", "-a", action="store_true", default=True,
+                   help="Show per-task progress details (default)")
+    p.add_argument("--summary", "-s", action="store_true",
+                   help="Show summary counts only (compact mode)")
     opts = p.parse_args(argv)
 
     if opts.retry_threshold <= 0:
@@ -339,8 +342,8 @@ def main(argv: list[str] | None = None) -> None:
           f"review={task_counts.get('review',0)} todo={task_counts.get('todo',0)} "
           f"in_progress={task_counts.get('in_progress',0)} plan={task_counts.get('plan',0)}")
 
-    # Active tasks detail
-    if opts.active:
+    # Active tasks detail (default)
+    if opts.active and not opts.summary:
         print()
         print("Active Tasks:")
         _print_active_tasks(project_dir)
