@@ -2958,6 +2958,11 @@ def main() -> int:
                     # Fall through to start a fresh dashboard at the new version
                     break
 
+                # If the port is unknown, the PID is dead — skip guard and start fresh
+                if _existing_port is None:
+                    print(f"dashboard: found stale pid={_other_pid} for project '{project_dir.name}' — skipping (dead process)")
+                    continue
+
                 print(f"dashboard already running for project '{project_dir.name}' (pid={_other_pid}, {_url}) — version {_running_version}")
                 raise SystemExit(0)
     except SystemExit:
