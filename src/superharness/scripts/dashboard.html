@@ -951,7 +951,18 @@ function copyPanel(bodyId, btn) {
   });
 }
 
-async function viewDiscussion(discId) {
+async function closeDiscussionConsensus(discId, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Closing...';
+  try {
+    await act('close_discussion:' + discId);
+    btn.textContent = 'Closed ✅';
+    setTimeout(() => viewDiscussion(discId), 1500);
+  } catch(e) {
+    btn.textContent = 'Error';
+    btn.disabled = false;
+  }
+}
   const card = document.getElementById('discussionCard');
   const meta = document.getElementById('discussionMeta');
   const body = document.getElementById('discussionBody');
@@ -993,6 +1004,18 @@ async function viewDiscussion(discId) {
     }
 
     if (!d.rounds || !d.rounds.length) out += '\n(no submissions yet)\n';
+
+    // Show consensus close button if all submitted with consensus
+    const allConsensus = d.rounds && d.rounds.length === (d.participants||[]).length
+      && d.rounds.every(r => r.verdict === 'consensus');
+    if (allConsensus && d.status === 'active') {
+      meta.innerHTML = `discussion: ${discId} ` +
+        '<button onclick="closeDiscussionConsensus(\'' + discId + '\',this)" ' +
+        'style="font-size:11px;padding:2px 8px;background:var(--ok);color:#fff;border:none;border-radius:4px;cursor:pointer">' +
+        'Close with consensus</button>';
+    } else {
+      meta.textContent = discId;
+    }
 
     // Add live agent activity
     try {
