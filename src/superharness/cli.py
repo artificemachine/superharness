@@ -824,19 +824,13 @@ def operator_start(project, port, no_open):
     click.echo(f"dashboard: http://127.0.0.1:{port}")
     click.echo(f"monitor pid: {os.getpid()}")
 
-    # Fork the operator into a detached background process so CLI returns
-    # and operator stays alive to monitor watcher + dashboard.
-    import subprocess
-    operator_script = [
-        sys.executable, "-c",
-        f"from superharness.engine.operator import Operator\n"
-        f"op = Operator('{os.path.abspath(project)}')\n"
-        f"op.start_stack(dashboard_port={port}, no_open=True)\n"
-        f"op.monitor_and_recover()\n"
-    ]
-    subprocess.Popen(operator_script, start_new_session=True,
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    click.echo("  monitor: running in background")
+    # Start dashboard directly — daemon handles watcher already.
+    # Operator spawns watcher+dashboard and exits; daemon keeps watcher cycling.
+    from superharness.engine.operator import Operator
+    op = Operator(project)
+    op.start_stack(dashboard_port=port, no_open=no_open)
+    click.echo(f"dashboard: http://127.0.0.1:{port}")
+    click.echo("  daemon handles watcher; dashboard runs standalone")
 
 
 @operator.command(name="install")
