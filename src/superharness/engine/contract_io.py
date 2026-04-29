@@ -80,7 +80,6 @@ def _task_row_from_dict(
         definition_of_done=list(t.get("definition_of_done") or []),
         context=t.get("context"),
         tdd=t.get("tdd"),
-        summary=t.get("summary"),
         version=int(t.get("version") or 1),
         created_at=str(t.get("created_at") or now),
         plan_proposed_at=t.get("plan_proposed_at"),
