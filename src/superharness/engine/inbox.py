@@ -137,3 +137,42 @@ def _task_is_dispatch_ready(project_dir: str, task_id: str) -> bool:
         return False
 
 
+# Compatibility shims — used by discuss.py, task.py, inbox_enqueue.py
+HEADER = "# Delegation inbox\n"
+
+from contextlib import contextmanager
+import fcntl as _fcntl
+
+
+@contextmanager
+def _inbox_lock(path: str):
+    """File lock for inbox operations. Compatibility shim."""
+    lock_path = f"{path}.flock"
+    with open(lock_path, "a+") as lock_file:
+        _fcntl.flock(lock_file.fileno(), _fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            _fcntl.flock(lock_file.fileno(), _fcntl.LOCK_UN)
+
+
+def enqueue(file: str, id: str, to: str, task: str, project: str, priority: int,
+            created_at: str, retry_count: int = 0, max_retries: int = 3,
+            plan_only: bool = False, model_override: str = "", effort_override: str = "") -> int:
+    """Enqueue to SQLite inbox. Compatibility shim for discuss.py."""
+    import os as _os
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import inbox_dao as _dao
+    project_dir = _os.path.dirname(_os.path.dirname(file))
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        _dao.enqueue(conn, id=id, task_id=task, target_agent=to,
+                     priority=priority, max_retries=max_retries,
+                     project_path=project, plan_only=plan_only, now=created_at)
+        conn.commit()
+        return 0
+    finally:
+        conn.close()
+
+
