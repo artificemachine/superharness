@@ -1732,6 +1732,24 @@ def _self_diagnosis(project_dir: str) -> list[str]:
     return warnings
 
 
+
+_LAUNCHER_LOG_MAX_FILES = 200
+
+def _rotate_launcher_logs_if_needed(project_dir: str) -> None:
+    """Remove old launcher logs if there are too many. Never raises."""
+    import glob
+    try:
+        log_dir = os.path.join(project_dir, '.superharness', 'launcher-logs')
+        if not os.path.isdir(log_dir):
+            return
+        logs = sorted(glob.glob(os.path.join(log_dir, '*.log')), key=os.path.getmtime)
+        if len(logs) > _LAUNCHER_LOG_MAX_FILES:
+            to_remove = len(logs) - _LAUNCHER_LOG_MAX_FILES
+            for lf in logs[:to_remove]:
+                os.remove(lf)
+            print(f'disk-guard: removed {to_remove} old launcher log(s) ({len(logs)} -> {_LAUNCHER_LOG_MAX_FILES})')
+    except Exception:
+        pass
 def _run_scripts(
     project_dir: str,
     *,
@@ -1747,6 +1765,9 @@ def _run_scripts(
 
     # Self-diagnosis: check environment before running auto-mode
     _self_diagnosis(project_dir)
+
+    # Disk guard: rotate launcher logs if too many (>200 total)
+    _rotate_launcher_logs_if_needed(project_dir)
 
     # SQLite tick: drain dual-write queue + record heartbeat
     _sqlite_tick(project_dir, _now_utc())
