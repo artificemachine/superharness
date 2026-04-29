@@ -1,116 +1,165 @@
-# Project Handoff: Auto-Mode Gap Plan Complete (v1.38.0)
+# Handoff — superharness v1.44.2 → v1.45.0
 
-**Date**: 2026-04-27
-**Status**: v1.38.0 on PyPI / auto-mode coverage gaps closed / branch merged
-**Summary**: Completed all iterations of `docs/auto-mode-gap-plan.md` (iters 0-8 + 3a). Seven new engine modules shipped: failure classifier, lifecycle reconciler, plan/report quality gates, review escalation chain, and state_writer skeleton. Dashboard gains a recent-failures panel. 2556 tests pass.
+> Date: 2026-04-29
+> Branch: `main` (unpublished fixes)
+> Published: v1.44.2 on PyPI
 
----
+## What was accomplished
 
-## What Shipped This Session
+### YAML→SQLite Migration (Complete)
+All runtime state reads/writes use SQLite. YAML is export-only via `shux export-yaml`.
+- ~1,000 lines of dead YAML code removed
+- `inbox_gc`, `inbox_recover`, `zombie_reconcile`, `paused_reconcile`, `discussion_reconcile` all SQLite-native
+- `state_reader._get_backend()` always returns `sqlite_only`
+- `state_writer` mirror functions removed; keep `mirror_task_dict`/`mirror_inbox_item_dict` as SQLite shims
 
-### Iterations 0-8 + 3a — auto-mode-gap-plan (v1.38.0 — PR #145)
+### Hermes Cherry-Pick (8 features from hermes-agent)
+```
+src/superharness/guard/
+├── dangerous_patterns.py  — 25 shell attack patterns
+├── detector.py            — detect_dangerous_command()
+├── state.py               — ApprovalState with risk classification
+├── redact.py              — Credential redaction (10 patterns)
+└── checkpoint.py          — Git stash checkpoint/rollback
 
-**Iter 0 — Test infrastructure**
-- `clean_harness` pytest fixture: isolated tmp `.superharness/` workspace for all engine tests
-- `past_iso(minutes_ago)` helper: returns real past timestamps (avoids pytest-freezegun conflicts)
+src/superharness/skills/
+└── loader.py              — Skill YAML save/load/discover
 
-**Iter 1 — `engine.failure_classifier`**
-- Classifies dispatch failures: `permanent_block / transient / quota / agent_crash / no_op / unknown`
-- Wired into `inbox_dispatch._mark_item_failed`: stamps `failure_class` + `failure_explain` on every failed inbox item
-- Non-retryable categories (`permanent_block`, `quota`, `no_op`) skip the retry loop immediately
-
-**Iter 2 + 4 — `engine.lifecycle_rules`**
-- Data-driven `LIFECYCLE_RULES` table replaces two ad-hoc reconcilers
-- Adds `in_progress` 180m → `archived` timeout (iter 4 previewed in the table)
-- Adding a new state timeout is now one row, not a new function + watcher edit
-
-**Iter 5 — `engine.plan_validator`**
-- Plans missing a full TDD block (`red`/`green`/`refactor`), a `risks` section, or containing TODO/FIXME placeholders stay `plan_proposed`
-- `validation_failures` list stamped on the task for operator surface
-- Gate wired into `task.py` auto-approve flow
-
-**Iter 6 — `engine.report_verifier`**
-- Reports with outcome < 20 chars, `tests_passed=false`, broken `pr_url`, or referencing non-existent files stay `report_ready`
-- `verification_failures` list stamped on the task
-- Gate wired into `inbox_watch._auto_close_report_ready`
-
-**Iter 7 — `engine.review_escalation`**
-- Stale `review_requested` tasks advance through `review_chain` (codex-cli → gemini-cli → operator) instead of blindly reverting to `report_ready`
-- Tasks with `escalated_to=operator` are visible in the dashboard
-
-**Iter 8 — Recent failures dashboard panel**
-- `/api/recent-failures` endpoint: failed inbox items with `failure_class`, `failure_explain`, last 20 lines of launcher log
-- Panel above active work queue, color-coded pills by class, refreshes every 10s
-
-**Iter 3a — `engine.state_writer` skeleton**
-- Unified write API: `set_task_status`, `set_inbox_status`, `upsert_handoff`
-- Writes to YAML first; best-effort SQLite mirror via `_mirror_*_to_sqlite`
-- Foundation contract for iters 3b-3e (SQLite-as-SoT full migration, deferred)
-
-### Previous work on branch (v1.37.4-1.37.5)
-Shipped in the same PR (#145):
-- Non-blocking `shux operator start` + launchd-safe daemon
-- `paused` timeout reconciler (30m → failed, immune if `reason` set)
-- `shux worktree list/create/remove/gc` CLI
-- Dashboard: Copy button, discussion view panel, board/list fixes
-- Fixed `delegate-to-claude.sh` bash 3.2 unbound variable (`CLAUDE_ARGS`)
-- Auth token persists to `.dashboard_auth_token` (survives restarts)
-
----
-
-## Current Version
-
-| | |
-|---|---|
-| **PyPI** | `1.38.0` |
-| **`shux --version`** | `1.38.0` |
-| **Default backend** | `dual` (SQLite first, YAML fallback) |
-| **Gate 3** | Complete |
-| **Auto-mode gap plan** | Iters 0-8 + 3a complete / 3b-3e deferred |
-
----
-
-## Contract Status
-
-| Task | Status | Owner |
-|---|---|---|
-| `chore.collapse-guards-next-action` | done | claude-code |
-| `verify.auto-dispatch.A/B/C` | done | claude-code |
-| `mock.alpha` | done | claude-code |
-| `feat.dashboard-auto-restart-on-upgrade` | plan_approved | claude-code |
-| `feat.autonomous-peer-review` | todo | gemini-cli |
-
-89 archived tasks hidden (`shux contract --include-archived`).
-
----
-
-## Next Actions
-
-1. **`feat.dashboard-auto-restart-on-upgrade`** — plan approved, ready to implement. Dashboard detects when installed superharness version changes and auto-restarts.
-2. **`feat.autonomous-peer-review`** — Gemini peer-reviews Claude's completed tasks autonomously via `report_ready` status.
-3. **Iters 3b-3e** — SQLite-as-SoT full migration (deferred, ~2 weeks). See `docs/auto-mode-gap-plan.md` for scope.
-
----
-
-## Infrastructure
-
-Start the background stack with:
-
-```bash
-shux operator start --port 8787
+src/superharness/engine/
+├── hooks.py               — Event hook system (HookRegistry)
+└── session_flush.py       — Proactive flush before lifecycle timeout
 ```
 
-The Guardian self-heals the Watcher and Dashboard if they crash, and arbitrates port conflicts automatically.
+### Auto-Mode Gaps Closed
+- **Peer approval**: `_auto_peer_approve_plans` dispatches plan review to different max-tier agent
+- **Stale task GC**: `_auto_archive_stale_tasks` archives tasks with no handoff after 4h
+- **Plan-only timeout**: 15-min kill for stuck plan-only tasks
+- **Task log analyzer**: detects stuck agents (no activity >15min → fail)
+- **Escalation classifier**: infra bug vs implementation fail
+- **Per-agent budget**: `check_agent_budget()` before dispatch
+- **Self-diagnosis**: `_self_diagnosis()` on watcher startup
+- **Pipeline health check**: `shux pipeline-check`
+- **Review notes**: auto-mode appends review context to completed tasks
 
-**State backend** is `dual` by default. To run sqlite-only:
+### Watcher Enhancements
+- `auto_enqueue_todo` / `auto_enqueue_approved` recreated (were deleted by YAML cleanup)
+- `--once` mode for hot-reload on each cycle
+- All errors logged to `.superharness/watcher-errors.log`
+- Disk guard: launcher log rotation at 200 files
+- Auto-upgrade detection in daemon
+
+### Dashboard Improvements
+- Review mode tabs (All / Needs Review / In Progress / Auto-handled / Stale)
+- Watcher errors panel (collapsible, copy button, auto-refresh)
+- "contract tasks" panel (renamed from "tasks")
+- Sort button (default / A-Z / status / owner)
+- Live log deep-cleaning (ANSI, box-drawing, Nerd Font, non-ASCII stripped)
+- Activity summary in task report (Phase, Errors, Files changed)
+- Discussion agent activity panel
+- Recent failures copy button
+
+### Discussion System
+- File-based submission workflow (prompts generated at `.superharness/discussions/<id>/prompt-<agent>.md`)
+- Agents submit via `shux discuss submit` (CLI) or module directly
+- Round submissions synced to SQLite
+- Consensus close button in dashboard panel
+- Discussion state sync to SQLite on creation
+
+### Bug Fixes
+- Dashboard version mismatch: log warning instead of restart loop
+- Stale `operator-state.json`: dead PID detection + cleanup
+- Python path: daemon/dispatch pinned to pipx Python (prevents `ModuleNotFoundError: yaml`)
+- `_get_python()` helper added to dispatch
+- `plan_only=False` for discussion round tasks (auto-dispatch + auto-retry)
+- `review_requested_at` column added to tasks schema
+
+## What's NOT done (known issues)
+
+### 1. Discussion auto-dispatch broken for Claude Code
+Claude Code is inherently interactive. Discussion agents dispatched via inbox dispatch get stuck at prompts.
+**Workaround**: Use file-based submission (prompts generated, submit via CLI).
+**Fix needed**: Implement non-interactive dispatch mode for discussions (use `-p` flag for Claude).
+
+### 2. pipx version is stale (v1.44.2)
+Many fixes exist only in source code (`main` branch), not in pipx install.
+**Needed**: Bump to v1.44.3 and publish to PyPI.
+
+### 3. Dashboard needs uv run for latest features
+The pipx-installed `superharness dashboard` runs v1.44.2 (old code).
+**Workaround**: `uv run superharness dashboard --port 8787 --project ...`
+**Fix needed**: Publish v1.44.3.
+
+### 4. Operator CLI blocks on `shux operator start`
+`monitor_and_recover` runs in main thread. Use `shux dashboard` standalone instead.
+**Workaround**: `nohup uv run superharness dashboard --port 8787 ... &`
+
+### 5. Discussion SQLite sync was reverted
+The `_sync_discussion_to_sqlite` calls were in a commit that introduced indentation errors.
+**Reverted**: Clean `discussion.py` committed. Need to re-apply the SQLite sync carefully.
+
+### 6. Tests needed
+- `tests/unit/test_anti_hang.py`: 7 tests (passing)
+- Need: E2E smoke test, pipeline integration test, discussion submission test
+
+## Key Commands
 
 ```bash
-STATE_BACKEND=sqlite_only shux status
+# Development (use source code)
+uv sync --reinstall
+uv run shux status --active         # verbose per-task view
+uv run shux pipeline-check          # health probe (11 checks)
+uv run superharness dashboard --port 8787 --no-open --project .
+
+# Production (pipx)
+shux status
+shux daemon start
+shux daemon restart
+shux dashboard --port 8787
+
+# Discussion submissions (file-based)
+shux discuss submit \
+  --discussion <id> --agent <agent> --round 1 \
+  --verdict consensus --position "..." \
+  --points-file <path>
+
+# Export YAML snapshots
+shux export-yaml --all
+
+# Check errors
+tail -f .superharness/watcher-errors.log
 ```
 
----
+## Next Priority (v1.45.0)
 
-## Key Docs
+1. **Publish v1.44.3** with all fixes on `main`
+2. **Refactor dashboard** — split 3100-line monolith into server/api/static
+3. **File-based discussion dispatch** — non-interactive mode for Claude Code
+4. **Re-apply discussion SQLite sync** — re-add `_sync_discussion_to_sqlite` calls
+5. **E2E smoke tests** — dynamic pipeline probe that creates a test task
+6. **OpenTelemetry tracing** — for auto-mode pipeline diagnostics
 
-- `docs/auto-mode-gap.md` — root-cause analysis of the 4 structural gaps and 12 bugs this session fixed
-- `docs/auto-mode-gap-plan.md` — TDD iteration plan (iters 0-8 + 3a complete, 3b-3e pending)
+## Active Processes (after restart)
+
+```bash
+# Daemon (watcher cycles)
+shux daemon start
+
+# Dashboard (standalone)
+nohup uv run superharness dashboard --port 8787 --no-open --project . > /tmp/dash.log 2>&1 &
+
+# Verify
+uv run shux status --active
+```
+
+## File Locations
+
+| What | Where |
+|------|-------|
+| Watcher errors | `.superharness/watcher-errors.log` |
+| Daemon logs | `.superharness/launcher-logs/daemon.out.log` |
+| Discussion prompts | `.superharness/discussions/<id>/prompt-<agent>.md` |
+| Guard modules | `src/superharness/guard/` |
+| Skills | `src/superharness/skills/` |
+| Hooks config | `.superharness/hooks/<name>/HOOK.yaml` |
+| Pipeline check | `src/superharness/commands/pipeline_check.py` |
+| Anti-hang tests | `tests/unit/test_anti_hang.py` |
