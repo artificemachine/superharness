@@ -24,34 +24,15 @@ def _atomic_write(path: str, content: str) -> None:
         with os.fdopen(fd, "w") as f:
             f.write(content)
             f.flush()
-            os.fsync(f.fileno())
+            try:
+                os.fsync(f.fileno())
+            except OSError:
+                pass
         os.replace(tmp_path, path)
         tmp_path = None
     finally:
-        if tmp_path and os.path.exists(tmp_path):
+        if tmp_path is not None and os.path.exists(tmp_path):
             os.unlink(tmp_path)
-
-
-def _sync_discussion_to_sqlite(discussion_dir: str, state: dict) -> None:
-    """Sync discussion state change to SQLite. Never raises."""
-    try:
-        from superharness.engine.db import get_connection, init_db
-        disc_id = state.get("id", "")
-        if not disc_id:
-            return
-        project_dir = discussion_dir.rsplit("/.superharness/discussions/", 1)[0]
-        conn = get_connection(project_dir)
-        try:
-            init_db(conn)
-            conn.execute(
-                "UPDATE discussions SET status=?, consensus=? WHERE id=?",
-                (state.get("status", "active"), state.get("consensus"), disc_id)
-            )
-            conn.commit()
-        finally:
-            conn.close()
-    except Exception:
-        pass
 
 
 @contextmanager
@@ -143,7 +124,6 @@ def cmd_start(
 
     sf = _state_file(discussion_dir)
     _atomic_write(sf, yaml.dump(state))
-    _sync_discussion_to_sqlite(discussion_dir, state)
 
     # Sync to SQLite
     try:
@@ -319,18 +299,15 @@ def cmd_advance(discussion_dir: str) -> int:
             state["closed_at"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
             state["consensus_round"] = round_
             _atomic_write(sf, yaml.dump(state))
-    _sync_discussion_to_sqlite(discussion_dir, state)
             result = {"action": "closed", "reason": "consensus", "round": round_}
         elif round_ >= max_rounds:
             state["status"] = "no_consensus"
             state["closed_at"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
             _atomic_write(sf, yaml.dump(state))
-    _sync_discussion_to_sqlite(discussion_dir, state)
             result = {"action": "closed", "reason": "max_rounds_reached", "round": round_}
         else:
             state["current_round"] = round_ + 1
             _atomic_write(sf, yaml.dump(state))
-    _sync_discussion_to_sqlite(discussion_dir, state)
             result = {"action": "advanced", "next_round": round_ + 1}
 
     if result is not None:
@@ -400,7 +377,6 @@ def cmd_close(discussion_dir: str, outcome: str) -> int:
         state["status"] = outcome
         state["closed_at"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
         _atomic_write(sf, yaml.dump(state))
-    _sync_discussion_to_sqlite(discussion_dir, state)
 
     print(json.dumps({"closed": True, "outcome": outcome}, separators=(", ", ": ")))
     return 0
