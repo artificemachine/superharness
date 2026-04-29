@@ -1,6 +1,17 @@
 """
 Concurrency-focused regression tests for parallel checkout safety.
-RED phase: tests fail until GREEN implementation is in place.
+
+History: this suite was written in RED-phase to drive a YAML-based
+file-locking implementation in superharness.engine.inbox. The v1.43
+SQLite-only migration replaced YAML locking with
+inbox_dao.claim_next() (SQLite atomicity), and the YAML-side
+primitives `claim`, `launch`, `next_pending`, `recover_launched`,
+and `_load_items` were removed from engine/inbox.py.
+
+The TestDepsSatisfied class still tests a function that lives at
+its original location and is kept active. The remaining classes are
+soft-skipped at import time when their required symbols are missing,
+so the broken imports do not block test-suite collection.
 """
 from __future__ import annotations
 
@@ -16,17 +27,32 @@ from pathlib import Path
 import pytest
 import yaml
 
-# These imports will fail (RED) until inbox.py has claim() and _deps_satisfied()
-from superharness.engine.inbox import (
-    _deps_satisfied,
-    claim,
-    enqueue,
-    launch,
-    next_pending,
-    recover_launched,
-    _load_items,
+# Symbols still present post-v1.43 migration.
+from superharness.engine.inbox import _deps_satisfied, enqueue
+
+# Symbols removed by the v1.43 SQLite migration. Soft-import so module
+# collection still succeeds; the obsolete test classes are pytest-skipped.
+try:
+    from superharness.engine.inbox import (  # type: ignore[attr-defined]
+        claim, launch, next_pending, recover_launched, _load_items,
+    )
+    _LEGACY_INBOX_AVAILABLE = True
+except ImportError:
+    claim = launch = next_pending = recover_launched = _load_items = None  # type: ignore[assignment]
+    _LEGACY_INBOX_AVAILABLE = False
+
+try:
+    from superharness.commands.inbox_dispatch import _MkdirLock  # type: ignore[attr-defined]
+except ImportError:
+    _MkdirLock = None  # type: ignore[assignment]
+
+_LEGACY_REASON = (
+    "Obsolete: YAML-based inbox primitives (claim/launch/next_pending/"
+    "recover_launched/_load_items) were removed in the v1.43 SQLite-only "
+    "migration. Parallel-claim safety is now enforced by "
+    "inbox_dao.claim_next() (SQLite atomicity); see engine/inbox_dao.py."
 )
-from superharness.commands.inbox_dispatch import _MkdirLock
+_legacy_skip = pytest.mark.skipif(not _LEGACY_INBOX_AVAILABLE, reason=_LEGACY_REASON)
 
 INBOX_HEADER = (
     "# Delegation inbox\n"
@@ -116,6 +142,7 @@ class TestDepsSatisfied:
 # TestClaimAtomic
 # ---------------------------------------------------------------------------
 
+@_legacy_skip
 class TestClaimAtomic:
     def test_claim_transitions_to_launched(self, tmp_path):
         inbox = _make_inbox(tmp_path, [
@@ -217,6 +244,7 @@ class TestClaimAtomic:
 # TestConcurrentClaim
 # ---------------------------------------------------------------------------
 
+@_legacy_skip
 class TestConcurrentClaim:
     def test_double_claim_prevented(self, tmp_path):
         """Two concurrent threads: only ONE item gets claimed."""
@@ -300,6 +328,7 @@ class TestConcurrentClaim:
 # TestDependencyAwareScheduling
 # ---------------------------------------------------------------------------
 
+@_legacy_skip
 class TestDependencyAwareScheduling:
     def test_next_pending_skips_blocked_task(self, tmp_path):
         contract = _make_contract(tmp_path, [
@@ -387,6 +416,7 @@ class TestDependencyAwareScheduling:
 # TestStaleLockRecovery
 # ---------------------------------------------------------------------------
 
+@_legacy_skip
 class TestStaleLockRecovery:
     def test_stale_dispatch_lock_dead_pid_auto_recovered(self, tmp_path):
         lock_dir = str(tmp_path / "inbox.yaml.lock.d")
@@ -472,6 +502,7 @@ class TestStaleLockRecovery:
 # TestSingleAgentUnchanged
 # ---------------------------------------------------------------------------
 
+@_legacy_skip
 class TestSingleAgentUnchanged:
     def test_next_pending_backward_compat(self, tmp_path):
         inbox = _make_inbox(tmp_path, [

@@ -80,7 +80,6 @@ def _task_row_from_dict(
         definition_of_done=list(t.get("definition_of_done") or []),
         context=t.get("context"),
         tdd=t.get("tdd"),
-        summary=t.get("summary"),
         version=int(t.get("version") or 1),
         created_at=str(t.get("created_at") or now),
         plan_proposed_at=t.get("plan_proposed_at"),
@@ -167,10 +166,43 @@ def write_contract(path: str, doc: object) -> None:
 
 
 def read_contract(path: str) -> tuple[dict, list]:
-    """Load contract YAML and return (doc, validation_errors).
+    """Load contract document and return (doc, validation_errors).
 
-    validation_errors is an empty list when pydantic is unavailable or schema is satisfied.
+    In sqlite_only mode (default since v1.43), reconstructs the doc from
+    SQLite via state_reader.get_contract_doc instead of reading the
+    tombstone contract.yaml. This keeps read and write paths consistent:
+    write_contract upserts to SQLite, so read_contract must read from
+    SQLite, otherwise out-of-band mutations done via `shux task status`
+    are clobbered the next time anyone calls `shux task create` (which
+    re-syncs the stale YAML over SQLite via _sqlite_sync_tasks).
+
+    validation_errors is an empty list when pydantic is unavailable or
+    schema is satisfied.
     """
+    from superharness.engine.sqlite_only import is_sqlite_only
+
+    if is_sqlite_only():
+        from superharness.engine import state_reader
+        # path is .../.superharness/contract.yaml; project_dir is two levels up.
+        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(path)))
+        doc = state_reader.get_contract_doc(project_dir)
+        # Preserve YAML-side metadata that SQLite does not currently mirror
+        # (id, goal, created, created_by, status). state_reader returns only
+        # `tasks`; merge with the YAML so callers that read top-level keys
+        # still see them when the YAML exists alongside SQLite.
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    legacy = yaml.safe_load(f) or {}
+                if isinstance(legacy, dict):
+                    for k, v in legacy.items():
+                        if k != "tasks":
+                            doc.setdefault(k, v)
+            except Exception:
+                pass
+        errors: list = []
+        return doc, errors
+
     with open(path, encoding="utf-8") as f:
         doc = yaml.safe_load(f)
     errors: list = []
