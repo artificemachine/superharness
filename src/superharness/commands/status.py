@@ -214,6 +214,59 @@ def _task_stats(project_dir: str) -> dict:
     return counts
 
 
+def _print_active_tasks(project_dir: str) -> None:
+    """Print per-task details for all non-archived tasks."""
+    from datetime import datetime, timezone
+    from superharness.engine.state_reader import get_tasks, get_inbox_items
+
+    tasks = get_tasks(project_dir)
+    inbox = get_inbox_items(project_dir)
+    now = datetime.now(timezone.utc)
+
+    # Map inbox items to task IDs
+    inbox_by_task: dict[str, list[dict]] = {}
+    for item in inbox:
+        if isinstance(item, dict):
+            tid = item.get("task", item.get("task_id", ""))
+            if tid:
+                inbox_by_task.setdefault(tid, []).append(item)
+
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        st = task.get("status", "?")
+        if st in ("archived", "done"):
+            continue
+        tid = task.get("id", "?")
+        title = task.get("title", "")[:60]
+        owner = task.get("owner", "?")
+
+        # Timer
+        timer = ""
+        for ts_field in ("launched_at", "in_progress_at", "created_at"):
+            ts = task.get(ts_field, "")
+            if ts:
+                try:
+                    t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    mins = int((now - t).total_seconds() / 60)
+                    timer = f"({mins}m)"
+                except:
+                    pass
+                break
+
+        # Agent status
+        agents = ""
+        if tid in inbox_by_task:
+            for item in inbox_by_task[tid]:
+                a = item.get("to", item.get("target_agent", "?"))
+                s = item.get("status", "?")
+                agents += f" [{a}:{s}]"
+
+        print(f"  {st:20s} {tid:40s} {owner:12s} {timer:8s}{agents}")
+        if title:
+            print(f"  {'':20s} {'':40s} {'':12s} {'':8s} {title}")
+
+
 def main(argv: list[str] | None = None) -> None:
     import argparse
 
@@ -221,6 +274,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("-p", "--project", default=os.getcwd())
     p.add_argument("--retry-threshold", type=int, default=3, dest="retry_threshold")
     p.add_argument("--check", action="store_true")
+    p.add_argument("--active", "-a", action="store_true", help="Show per-task progress details")
     opts = p.parse_args(argv)
 
     if opts.retry_threshold <= 0:
@@ -284,6 +338,12 @@ def main(argv: list[str] | None = None) -> None:
     print(f"tasks: archived={task_counts.get('archived',0)} done={task_counts.get('done',0)} "
           f"review={task_counts.get('review',0)} todo={task_counts.get('todo',0)} "
           f"in_progress={task_counts.get('in_progress',0)} plan={task_counts.get('plan',0)}")
+
+    # Active tasks detail
+    if opts.active:
+        print()
+        print("Active Tasks:")
+        _print_active_tasks(project_dir)
 
     issues = 0
     issue_details = []
