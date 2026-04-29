@@ -225,14 +225,14 @@ def _has_dirty_worktree(project_dir: str) -> bool:
 
 def _inbox_cmd(args: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, "-m", "superharness.engine.inbox"] + args,
+        [_get_python(), "-m", "superharness.engine.inbox"] + args,
         capture_output=True, text=True, check=False,
     )
 
 
 def _contract_cmd(args: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, "-m", "superharness.engine.contract"] + args,
+        [_get_python(), "-m", "superharness.engine.contract"] + args,
         capture_output=True, text=True, check=False,
     )
 
@@ -612,7 +612,7 @@ def _do_dispatch(
     else:
         # YAML path: read next pending item from inbox.yaml
         r = subprocess.run(
-            [sys.executable, "-m", "superharness.engine.inbox", "next_pending",
+            [_get_python(), "-m", "superharness.engine.inbox", "next_pending",
              "--file", inbox_file] + (["--to", target_filter] if target_filter else []),
             capture_output=True, text=True, check=False,
         )
@@ -690,7 +690,7 @@ def _do_dispatch(
         print(f"Inbox item updated: {item_id} -> launched (priority={item_priority}, retries={new_retry_count}/{item_max_retries})")
     else:
         lr = subprocess.run(
-            [sys.executable, "-m", "superharness.engine.inbox", "launch",
+            [_get_python(), "-m", "superharness.engine.inbox", "launch",
              "--file", inbox_file, "--id", item_id, "--now", launch_now],
             capture_output=True, text=True, check=False,
         )
@@ -717,7 +717,7 @@ def _do_dispatch(
     task_status = ""
     if os.path.exists(contract_file):
         cr = subprocess.run(
-            [sys.executable, "-m", "superharness.engine.contract", "task_status",
+            [_get_python(), "-m", "superharness.engine.contract", "task_status",
              "--file", contract_file, "--task", item_task],
             capture_output=True, text=True, check=False,
         )
@@ -907,7 +907,7 @@ def _do_dispatch(
         final_state = ""
         if os.path.exists(contract_file):
             cr = subprocess.run(
-                [sys.executable, "-m", "superharness.engine.contract", "task_status",
+                [_get_python(), "-m", "superharness.engine.contract", "task_status",
                  "--file", contract_file, "--task", item_task],
                 capture_output=True, text=True, check=False,
             )
