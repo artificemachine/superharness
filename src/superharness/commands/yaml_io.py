@@ -190,14 +190,23 @@ def import_yaml(project_dir: str, *, source_dir: str) -> int:
                 items = []
             from superharness.engine import inbox_dao
             now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            # Pre-load known task IDs so we can skip orphan inbox rows that
+            # reference deleted/missing tasks instead of aborting the whole
+            # transaction with a FOREIGN KEY violation.
+            known_task_ids = {row[0] for row in conn.execute("SELECT id FROM tasks")}
+            count_orphan = 0
             with transaction(conn):
                 for item in items:
                     if not isinstance(item, dict):
                         continue
+                    task_id = str(item.get("task", item.get("task_id", "")))
+                    if task_id and task_id not in known_task_ids:
+                        count_orphan += 1
+                        continue
                     inbox_dao.enqueue(
                         conn,
                         id=str(item.get("id", "")),
-                        task_id=str(item.get("task", item.get("task_id", ""))),
+                        task_id=task_id,
                         target_agent=str(item.get("to", item.get("target_agent", ""))),
                         priority=int(item.get("priority", 2)),
                         max_retries=int(item.get("max_retries", 3)),
@@ -208,6 +217,8 @@ def import_yaml(project_dir: str, *, source_dir: str) -> int:
                     count_inbox += 1
             conn.commit()
             print(f"import-yaml: inbox → {count_inbox} imported")
+            if count_orphan:
+                print(f"import-yaml: inbox → {count_orphan} orphan row(s) skipped (referenced unknown task)", file=sys.stderr)
         except Exception as exc:
             errors.append(f"inbox: {exc}")
 
