@@ -2648,14 +2648,29 @@ class Handler(BaseHTTPRequestHandler):
             qs = _pq(parsed.query)
             limit = int((qs.get("limit", ["10"])[0] or "10"))
             harness = self.project_dir / ".superharness"
-            inbox_file = harness / "inbox.yaml"
             launcher_logs = harness / "launcher-logs"
             failures = []
             try:
-                import yaml as _yaml
-                items = _yaml.safe_load(inbox_file.read_text()) or [] if inbox_file.exists() else []
-                failed = [i for i in items if isinstance(i, dict) and i.get("status") == "failed"]
-                failed.sort(key=lambda i: str(i.get("failed_at") or ""), reverse=True)
+                # Read failed items from SQLite inbox table
+                from superharness.engine.db import get_connection, init_db
+                from superharness.engine import inbox_dao
+                conn = get_connection(str(self.project_dir))
+                try:
+                    init_db(conn)
+                    failed_rows = inbox_dao.get_all(conn, status="failed")
+                    failed = [{
+                        "id": r.id,
+                        "task": r.task_id,
+                        "to": r.target_agent,
+                        "status": r.status,
+                        "retry_count": r.retry_count,
+                        "failed_reason": r.failed_reason or "",
+                        "failed_at": r.failed_at or "",
+                        "pid": r.pid,
+                    } for r in failed_rows]
+                    failed.sort(key=lambda i: i.get("failed_at", ""), reverse=True)
+                finally:
+                    conn.close()
                 for item in failed[:limit]:
                     log_tail = ""
                     task_id = str(item.get("task") or item.get("task_id") or "")
