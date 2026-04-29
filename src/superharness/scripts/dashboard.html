@@ -203,10 +203,10 @@
         <div style="display:flex;align-items:center;gap:8px">
           <span class="small" id="recentFailuresCount" style="color:var(--muted);font-size:11px;">-</span>
           <button onclick="event.stopPropagation();copyPanel('recentFailuresBody',this)" style="font-size:11px;padding:2px 8px">Copy</button>
-          <span style="color:var(--muted);font-size:11px">▸</span>
+          <span style="color:var(--muted);font-size:11px">▾</span>
         </div>
       </div>
-      <div id="recentFailuresBody" style="display:none">
+      <div id="recentFailuresBody" style="display:block">
         <div id="recentFailuresList" style="font-size:12px"></div>
       </div>
     </div>
@@ -279,9 +279,9 @@
 
     <div class="card" style="margin-top:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="togglePanel('ownersBody',this)">
-        <h2 style="margin:0">contract owners</h2><span style="color:var(--muted);font-size:11px">▸</span>
+        <h2 style="margin:0">contract owners</h2><span style="color:var(--muted);font-size:11px">▾</span>
       </div>
-      <div id="ownersBody" style="display:none;margin-top:8px">
+      <div id="ownersBody" style="display:block;margin-top:8px">
         <div id="ownersList" style="margin-bottom:8px;"></div>
         <div style="display:flex;gap:6px;align-items:center;">
           <input id="newOwnerInput" type="text" placeholder="new-agent-name" style="background:var(--btn);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;font-family:inherit;" />
@@ -330,9 +330,9 @@
     </div>
     <div class="card" style="margin-top:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="togglePanel('costBody',this)">
-        <h2 style="margin:0">dispatch cost leaderboard <span id="costSummary" style="font-weight:normal;font-size:0.85em;color:var(--muted)"></span></h2><span style="color:var(--muted);font-size:11px">▸</span>
+        <h2 style="margin:0">dispatch cost leaderboard <span id="costSummary" style="font-weight:normal;font-size:0.85em;color:var(--muted)"></span></h2><span style="color:var(--muted);font-size:11px">▾</span>
       </div>
-      <div id="costBody" style="display:none;margin-top:8px;max-height:300px;overflow-y:auto">
+      <div id="costBody" style="display:block;margin-top:8px;max-height:300px;overflow-y:auto">
         <table id="costTable" style="width:100%;border-collapse:collapse;font-size:0.85em;">
           <thead><tr style="text-align:left;">
             <th style="padding:2px 6px;">task</th>
@@ -516,7 +516,8 @@ async function refresh() {
     counts.innerHTML = '';
 
     // Always show "discussion" pill — composite label: discussions + active inbox items
-    const discCount = (latestStatus && latestStatus.active_discussions || []).length;
+    const _dismissedNow = _dismissedSet();
+    const discCount = (latestStatus && latestStatus.active_discussions || []).filter(d => !_dismissedNow.has(d.id) && d.status === 'active').length;
     const activeInboxCount = (filteredCounts['pending'] || 0) + (filteredCounts['launched'] || 0) + (filteredCounts['running'] || 0);
     const discEl = document.createElement('span');
     discEl.className = 'pill' + (selectedStatus === 'active' || !selectedStatus ? ' sel' : '');
@@ -638,8 +639,10 @@ async function loadInboxDetail(status) {
     </tr></thead>`;
     const tableBody = document.createElement('tbody');
 
-    // Discussion rows
+    // Discussion rows (skip dismissed)
+    const _dismissed = _dismissedSet();
     for (const disc of discussions) {
+      if (_dismissed.has(disc.id)) continue;
       const participants = (disc.participants || []).join(', ');
       const topic        = disc.topic || disc.id || '';
       const started      = (disc.created_at || '').replace('T',' ').slice(0,16);
@@ -650,21 +653,58 @@ async function loadInboxDetail(status) {
         const h = Math.floor(diff/3600), m = Math.floor((diff%3600)/60), s = diff%60;
         timerText = h > 0 ? `${h}h${m}m` : m > 0 ? `${m}m${s}s` : `${s}s`;
       }
-      const discBadge  = `<span style="background:#f59e0b;color:#000;font-size:10px;padding:1px 5px;border-radius:3px;font-weight:700">discussion</span>`;
-      const cancelBtn  = `<button onclick="act('cancel_discussion:${disc.id}')" class="bad">Cancel</button>`;
-      const viewDiscBtn = `<button onclick="viewDiscussion('${disc.id}')">View</button>`;
+      const discStatus  = disc.status || 'active';
+      const isClosed    = discStatus === 'consensus' || discStatus === 'closed';
+      const isCancelled = discStatus === 'cancelled';
+      const isActive    = discStatus === 'active';
+
+      // Left-border and badge color by status
+      const borderColor = isClosed ? 'var(--ok)' : isCancelled ? 'var(--muted)' : '#f59e0b';
+      const discBadge   = isClosed
+        ? `<span style="background:var(--ok);color:#000;font-size:10px;padding:1px 5px;border-radius:3px;font-weight:700">discussion</span>`
+        : isCancelled
+        ? `<span style="background:var(--muted);color:#000;font-size:10px;padding:1px 5px;border-radius:3px;font-weight:700">discussion</span>`
+        : `<span style="background:#f59e0b;color:#000;font-size:10px;padding:1px 5px;border-radius:3px;font-weight:700">discussion</span>`;
+
+      // Consensus / submission indicator (active only)
+      const total = (disc.participants || []).length;
+      const submitted = disc.submitted_count || 0;
+      let statusBadge = '';
+      if (isClosed) {
+        const closedTime = disc.closed_at ? disc.closed_at.replace('T',' ').slice(0,16) : '';
+        statusBadge = `<span style="color:var(--ok);font-size:11px;margin-left:4px">✓ closed${closedTime ? ' ' + closedTime : ''}</span>`;
+      } else if (isCancelled) {
+        statusBadge = `<span style="color:var(--muted);font-size:11px;margin-left:4px">✗ cancelled</span>`;
+      } else if (disc.all_consensus) {
+        statusBadge = `<span title="All agents agreed" style="background:var(--ok)18;color:var(--ok);font-size:10px;padding:1px 6px;border-radius:3px;border:1px solid var(--ok);margin-left:4px">✓ consensus</span>`;
+      } else if (disc.all_submitted) {
+        statusBadge = `<span title="All submitted — no consensus" style="background:#f59e0b18;color:#f59e0b;font-size:10px;padding:1px 6px;border-radius:3px;border:1px solid #f59e0b;margin-left:4px">⚠ no consensus</span>`;
+      } else if (submitted > 0) {
+        statusBadge = `<span title="${submitted}/${total} submitted" style="color:var(--muted);font-size:10px;margin-left:4px">${submitted}/${total} submitted</span>`;
+      } else {
+        statusBadge = `<span title="Waiting for submissions" style="color:var(--muted);font-size:10px;margin-left:4px">waiting…</span>`;
+      }
+
+      // Buttons: active → View/Close/Cancel; closed/cancelled → View/Dismiss
+      const viewDiscBtn   = `<button onclick="viewDiscussion('${disc.id}')">View</button>`;
+      const dismissBtn    = `<button onclick="dismissDiscussion('${disc.id}')" style="background:var(--muted)18;color:var(--muted);border-color:var(--muted)">Dismiss</button>`;
+      const reopenBtn     = `<button onclick="act('reopen_discussion:${disc.id}')" style="background:var(--warn)18;color:var(--warn);border-color:var(--warn)">Re-open</button>`;
+      const closeDiscBtn  = `<button onclick="act('close_discussion:${disc.id}')" style="background:var(--ok)18;color:var(--ok);border-color:var(--ok)">Close</button>`;
+      const cancelBtn     = `<button onclick="act('cancel_discussion:${disc.id}')" class="bad">Cancel</button>`;
+      const actionBtns    = isActive ? `${viewDiscBtn}${closeDiscBtn}${cancelBtn}` : `${viewDiscBtn}${reopenBtn}${dismissBtn}`;
+
       const tr = document.createElement('tr');
-      tr.style.cssText = 'border-bottom:1px solid var(--line);border-left:3px solid #f59e0b';
+      tr.style.cssText = `border-bottom:1px solid var(--line);border-left:3px solid ${borderColor}${isClosed || isCancelled ? ';opacity:0.75' : ''}`;
       tr.innerHTML = `
-        <td style="padding:6px 8px;white-space:nowrap">${discBadge} <span style="color:var(--ok);font-size:11px">● round ${roundLabel}</span></td>
+        <td style="padding:6px 8px;white-space:nowrap">${discBadge} <span style="color:var(--muted);font-size:11px">● round ${roundLabel}</span>${statusBadge}</td>
         <td style="padding:6px 8px;font-family:monospace;font-size:11px;color:var(--muted)">${disc.id||''}</td>
         <td style="padding:6px 8px;font-size:11px;min-width:160px;word-break:break-word;white-space:normal">${topic}</td>
         <td style="padding:6px 8px;font-size:11px;color:var(--muted)">${participants}</td>
         <td style="padding:6px 8px;text-align:right;color:var(--muted)">${roundLabel}</td>
         <td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${started}</td>
-        <td style="padding:6px 8px;font-size:11px;color:var(--ok);white-space:nowrap;font-weight:bold">${timerText}</td>
+        <td style="padding:6px 8px;font-size:11px;color:${isActive ? 'var(--ok)' : 'var(--muted)'};white-space:nowrap;font-weight:bold">${timerText}</td>
         <td></td>
-        <td style="padding:6px 8px;white-space:nowrap;display:flex;gap:4px">${viewDiscBtn}${cancelBtn}</td>`;
+        <td style="padding:6px 8px;white-space:nowrap;display:flex;gap:4px">${actionBtns}</td>`;
       tableBody.appendChild(tr);
     }
 
@@ -1100,10 +1140,25 @@ function applySort(tasks) {
   if (_reverseSort) sorted.reverse();
   return sorted;
 }
-let _hiddenGroups = new Set(['done', 'archived']);
+let _hiddenGroups = new Set(['archived']);
+let _reviewMode = 'all';
+
+// Discussions dismissed from queue (persisted in localStorage)
+const _DISMISSED_KEY = 'sh_dismissed_discussions';
+function _dismissedSet() {
+  try { return new Set(JSON.parse(localStorage.getItem(_DISMISSED_KEY) || '[]')); }
+  catch { return new Set(); }
+}
+function dismissDiscussion(id) {
+  const s = _dismissedSet();
+  s.add(id);
+  localStorage.setItem(_DISMISSED_KEY, JSON.stringify([...s]));
+  refresh();
+}
 
 function setReviewMode(mode) {
   _reviewMode = mode;
+  if (mode === 'all') _hiddenGroups = new Set(['archived']);
   document.querySelectorAll('.review-tab').forEach(b => {
     b.style.borderColor = b.dataset.mode === mode ? 'var(--accent)' : 'var(--line)';
     b.style.background = b.dataset.mode === mode ? 'var(--accent)18' : 'var(--btn)';
