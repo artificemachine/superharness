@@ -1926,6 +1926,28 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+
+async function loadDiscussionStatus(discId) {
+  if (!discId) return;
+  try {
+    const r = await fetch('/api/discussion-status?id=' + discId);
+    const d = await r.json();
+    const el = document.getElementById('discussionAgentStatus');
+    if (!el) return;
+    if (d.agents && d.agents.length > 0) {
+      el.innerHTML = d.agents.map(a => 
+        '<div>' + a.pid + ': ' + a.cpu + ' ' + a.cmd.substring(0,40) + ' (' + a.elapsed + ')</div>'
+      ).join('');
+    } else {
+      el.innerHTML = '(no running agents detected)';
+    }
+    if (d.logs && d.logs.length > 0) {
+      el.innerHTML += '<hr>Logs: ' + d.logs.map(l => l.name.substring(l.name.length-40) + ' (' + l.size_kb + 'K)').join('<br>');
+    }
+  } catch(e) {}
+}
+setInterval(() => { const di = document.querySelector('[data-disc-id]'); if(di) loadDiscussionStatus(di.dataset.discId); }, 10000);
+
 </script>
 
 <div id="enqueueModal" onclick="if(event.target===this)cancelEnqueue()" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:999">
