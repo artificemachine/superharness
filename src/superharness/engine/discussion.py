@@ -202,6 +202,26 @@ def cmd_submit_round(
         }
         _atomic_write(rf, yaml.dump(doc))
 
+        # Sync round submission to SQLite
+        try:
+            from superharness.engine.db import get_connection, init_db
+            from superharness.engine import discussions_dao
+            project_dir = discussion_dir.rsplit("/.superharness/discussions/", 1)[0]
+            conn = get_connection(project_dir)
+            try:
+                init_db(conn)
+                discussions_dao.add_round(
+                    conn, discussion_id=state.get("id", ""),
+                    round_number=round_, agent=agent,
+                    content=position, verdict=verdict,
+                    now=doc["submitted_at"],
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            pass
+
     print(json.dumps({"submitted": True, "round": round_, "agent": agent, "verdict": verdict}, separators=(", ", ": ")))
     return 0
 
