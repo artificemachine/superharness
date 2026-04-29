@@ -135,6 +135,7 @@ _cmd("notify-desktop",  "Send native desktop notification.",            module="
 _cmd("recap",           "What happened in the last N hours.",           module="superharness.commands.recap")
 _cmd("recover",         "Recover stale launched items.",             module="superharness.commands.inbox_recover")
 _cmd("doctor",          "Check local setup and project health.",     module="superharness.commands.doctor")
+_cmd("pipeline-check",  "Probe the auto-mode pipeline for issues.",  module="superharness.commands.pipeline_check")
 _cmd("backup-state",    "Backup or restore the SQLite state DB.",   module="superharness.commands.backup_state")
 _cmd("archive-yaml",    "Archive YAML state or export SQLite snapshot.", module="superharness.commands.archive_yaml")
 _cmd("export-yaml",     "Export YAML snapshot from SQLite state.",       module="superharness.commands.yaml_io")
