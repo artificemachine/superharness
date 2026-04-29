@@ -612,15 +612,17 @@ def discussion_agent_status(project_dir: Path, disc_id: str) -> dict:
     try:
         ps_out = _sp.run(["ps", "ax", "-o", "pid=,pcpu=,args=,etime="], capture_output=True, text=True).stdout
         for line in ps_out.splitlines():
-            parts = line.strip().split(None, 2)  # pid, cpu, rest
+            parts = line.strip().split(None, 2)
             if len(parts) < 3:
                 continue
             pid, cpu, rest = parts[0], parts[1], parts[2]
-            # Extract elapsed (last field)
             fields = rest.rsplit(None, 1)
             if len(fields) < 2:
                 continue
             cmd, elapsed = fields[0], fields[1]
+            # Only show agents running in the project directory
+            if 'superharness' not in cmd.lower() and '.local/bin' not in cmd:
+                continue
             if any(a in cmd.lower() for a in ("claude", "codex", "gemini")):
                 agents.append({"pid": pid, "cpu": f"{cpu}%", "cmd": cmd[:50], "elapsed": elapsed})
     except Exception:
