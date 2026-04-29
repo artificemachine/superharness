@@ -692,10 +692,18 @@ def task_log_content(project_dir: Path, task_id: str, agent: str, lines: int = 0
         try:
             content = log_file.read_text(errors="replace")
             
-            # Strip ANSI escape sequences (e.g., [1C, [m)
             import re
+            # Strip ANSI escape sequences
             ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
             content = ansi_escape.sub('', content)
+            # Strip box-drawing unicode and terminal framing
+            content = re.sub(r'[╭╮╰╯─│┌┐└┘├┤┬┴┼▐▌▛▜▀▄▘▝█]', '', content)
+            # Collapse runs of spaces
+            content = re.sub(r' {3,}', '  ', content)
+            # Collapse blank lines
+            content = re.sub(r'\n{3,}', '\n\n', content)
+            # Clean up remaining control codes
+            content = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', content)
 
             if lines > 0:
                 # Return only last N lines
