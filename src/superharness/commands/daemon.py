@@ -144,6 +144,9 @@ def _start_daemon(project_dir: Path, interval: int) -> None:
     click.echo(f"  logs: {out_log}")
     click.echo(f"  stop: shux daemon stop --project {project_dir}")
 
+    # Auto-upgrade check: restart daemon if a newer pipx version is installed
+    _check_version_and_upgrade(project_dir)
+
     # Monitor and auto-restart the watcher if it dies (run in background)
     import time as _time
 
@@ -271,3 +274,24 @@ def cmd_daemon_restart(project_str, interval):
     project_dir = Path(project_str or os.getcwd()).resolve()
     _stop_daemon(project_dir)
     _start_daemon(project_dir, interval)
+
+
+def _check_version_and_upgrade(project_dir):
+    """Check if a newer pipx version is installed and auto-restart if so."""
+    try:
+        import importlib.metadata, subprocess
+        current = importlib.metadata.version('superharness')
+        # Check if we should track version
+        state_file = os.path.join(str(project_dir), '.superharness', 'daemon-state.json')
+        import json
+        if os.path.isfile(state_file):
+            state = json.load(open(state_file))
+            last_version = state.get('version', '')
+            if last_version and last_version != current:
+                import sys
+                print(f'daemon: version upgraded {last_version} -> {current}, restarting...')
+                os.execv(sys.executable, [sys.executable] + sys.argv)
+            state['version'] = current
+            json.dump(state, open(state_file, 'w'))
+    except Exception:
+        pass
