@@ -255,6 +255,7 @@
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;" id="tasksHeader">
         <h2 style="margin:0;cursor:pointer;user-select:none" onclick="togglePanel('tasksBody',document.getElementById('tasksHeader'))">contract tasks</h2>
         <div style="display:flex;align-items:center;gap:10px">
+          <span class="view-btn" id="sortBtn" onclick="cycleSort()" title="Sort tasks">↕ default</span>
           <span class="view-btn active" id="viewToggleBtn" onclick="setView(_currentView==='list'?'board':'list')">☰ list</span>
           <span style="color:var(--muted);font-size:11px;cursor:pointer;user-select:none" onclick="togglePanel('tasksBody',document.getElementById('tasksHeader'))">▾</span>
         </div>
@@ -1074,7 +1075,30 @@ const STATUS_GROUPS = [
   { key: 'plan',           label: '📋 plan',            statuses: ['plan_proposed','plan_approved'], color: '#a78bfa' },
   { key: 'todo',           label: '🕐 todo',            statuses: ['todo'],                          color: 'var(--muted)' },
 ];
-let _reviewMode = 'all';
+let _sortMode = 'default';
+let _reverseSort = false;
+
+function cycleSort() {
+  _reverseSort = !_reverseSort;
+  const labels = {default: 'default', alpha: 'A-Z', status: 'status', owner: 'owner'};
+  const modes = Object.keys(labels);
+  if (!_reverseSort) {
+    let idx = modes.indexOf(_sortMode);
+    _sortMode = modes[(idx + 1) % modes.length];
+  }
+  document.getElementById('sortBtn').textContent = '↕ ' + labels[_sortMode] + (_reverseSort ? ' ▼' : '');
+  refresh();
+}
+
+function applySort(tasks) {
+  const sorted = [...tasks];
+  if (_sortMode === 'alpha') sorted.sort((a,b) => (a.title||'').localeCompare(b.title||''));
+  else if (_sortMode === 'status') sorted.sort((a,b) => (a.status||'').localeCompare(b.status||''));
+  else if (_sortMode === 'owner') sorted.sort((a,b) => (a.owner||'').localeCompare(b.owner||''));
+  else sorted.reverse(); // default: newest first
+  if (_reverseSort) sorted.reverse();
+  return sorted;
+}
 let _hiddenGroups = new Set(['done', 'archived']);
 
 function setReviewMode(mode) {
@@ -1202,7 +1226,7 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks, pausedInbo
   const el = document.getElementById('contractTaskList');
   if (!tasks.length) { el.textContent = '(no tasks)'; return; }
   el.innerHTML = '';
-  const sorted = [...tasks].reverse();
+  const sorted = applySort(tasks);
   renderTaskFilterPills(sorted);
   const visible = _hiddenGroups.size === 0 ? sorted : sorted.filter(t => !_hiddenGroups.has(_statusToGroup(t.status || 'todo')));
   if (!visible.length) { el.textContent = '(no tasks match current filters)'; return; }
