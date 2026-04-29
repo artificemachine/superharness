@@ -1855,12 +1855,24 @@ def _run_scripts(
             check=False, capture_output=False,
         )
 
-    # Dispatch
+    # Dispatch — check budget before launching agents
     targets = []
     if target == "both":
         targets = ["claude-code", "codex-cli", "gemini-cli"]
     else:
         targets = [target]
+
+    # Budget gate: skip dispatch if daily budget is exceeded (strict mode)
+    try:
+        from superharness.engine.model_budget import check_budget, BudgetStatus
+        budget = check_budget(project_dir)
+        if budget.status == BudgetStatus.BLOCK:
+            print(f"budget-gate: BLOCKED — daily budget exceeded (${budget.used_today:.2f} / ${budget.daily_limit:.2f}). Skipping dispatch.")
+            return
+        elif budget.status == BudgetStatus.WARN:
+            print(f"budget-gate: WARN — {budget.message}")
+    except Exception as e:
+        _log_watcher_error(project_dir, "budget_gate", str(e))
 
 
     for t in targets:
