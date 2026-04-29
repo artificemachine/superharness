@@ -194,3 +194,4 @@
 - 2026-04-29 (v1.44.1): fix(dashboard): /api/recent-failures reads from SQLite inbox table instead of inbox.yaml — eliminates last YAML read in dashboard API.
 - 2026-04-29 (v1.44.2): refactor(dashboard): strip 98 lines of dead YAML fallback blocks — all contract/inbox reads now SQLite-only.
 - 2026-04-29 (v1.44.3): feat(release): bump to v1.44.3 — discussion system (consensus close, live agent activity, file-based submission, round sync to SQLite); dashboard (sort button, viewDiscussion fix, discussion_agent_status fix); watcher (auto_enqueue_todo/approved restored, auto-upgrade detection, disk guard); status --active default + --summary mode; anti-hang tests; plan_only=False for discussion round tasks.
+- 2026-04-29 (v1.44.4): fix: bump __version__ in __init__.py — was missed in v1.44.3, causing --version to report 1.44.2.
