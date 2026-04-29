@@ -1782,7 +1782,13 @@ def _run_scripts(
     try:
         _reconcile_zombies(project_dir)
     except Exception as e:
-        print(f"Warning: zombie reconciliation failed: {e}", file=sys.stderr)
+        _log_watcher_error(project_dir, "zombie_reconcile", str(e))
+
+    # Analyze task logs for stuck agents
+    try:
+        _analyze_task_logs(project_dir)
+    except Exception as e:
+        _log_watcher_error(project_dir, "task_log_analyzer", str(e))
 
     # Reconcile paused dead-pid items — read from SQLite, write to SQLite
         from dataclasses import asdict
@@ -1904,7 +1910,91 @@ def _run_scripts(
                        check=False, capture_output=False)
 
 
-def _reconcile_zombies(project_dir: str, max_age_seconds: int = 1200) -> int:
+_TASK_LOG_STALE_MINUTES = 15  # mark as failed if no activity for this long
+
+
+def _analyze_task_logs(project_dir: str) -> None:
+    """Check launched task logs for activity. Stale tasks get marked failed."""
+    import glob
+    from dataclasses import asdict
+    from datetime import datetime, timezone
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import inbox_dao
+
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        launched = inbox_dao.get_all(conn, status="launched")
+        if not launched:
+            return
+
+        now = datetime.now(timezone.utc)
+        launcher_logs = os.path.join(project_dir, ".superharness", "launcher-logs")
+        escalated = 0
+
+        for item in launched:
+            d = asdict(item)
+            launched_at = d.get("launched_at", "")
+            if not launched_at:
+                continue
+            try:
+                lt = datetime.fromisoformat(launched_at.replace("Z", "+00:00"))
+                age_minutes = (now - lt).total_seconds() / 60
+            except (ValueError, TypeError):
+                continue
+
+            if age_minutes < _TASK_LOG_STALE_MINUTES:
+                continue  # not stale yet
+
+            # Find log file for this task
+            task_id = item.task_id.replace("/", "_")
+            agent = item.target_agent
+            log_pattern = os.path.join(launcher_logs, f"*{task_id}*{agent}*.log")
+
+            logs = sorted(glob.glob(log_pattern), key=os.path.getmtime, reverse=True)
+            if not logs:
+                # No log file at all → likely never started
+                inbox_dao.update_status(conn, item.id, from_status="launched", to_status="failed", now=_now_utc())
+                print(f"log-analyzer: '{item.task_id}' → failed (no log file after {int(age_minutes)}m)")
+                escalated += 1
+                continue
+
+            # Check latest log for activity
+            latest_log = logs[0]
+            try:
+                log_mtime = datetime.fromtimestamp(os.path.getmtime(latest_log), tz=timezone.utc)
+                inactive_minutes = (now - log_mtime).total_seconds() / 60
+            except Exception:
+                inactive_minutes = 0
+
+            # Check for git changes as activity signal
+            has_activity = False
+            try:
+                import subprocess
+                r = subprocess.run(
+                    ["git", "diff", "--stat", "HEAD"],
+                    capture_output=True, text=True, check=False, timeout=5,
+                    cwd=project_dir
+                )
+                if r.stdout.strip():
+                    has_activity = True
+            except Exception:
+                pass
+
+            if has_activity:
+                print(f"log-analyzer: '{item.task_id}' active (files changing, {int(age_minutes)}m elapsed)")
+                continue
+
+            if inactive_minutes >= _TASK_LOG_STALE_MINUTES:
+                inbox_dao.update_status(conn, item.id, from_status="launched", to_status="failed", now=_now_utc())
+                print(f"log-analyzer: '{item.task_id}' → failed (no log activity for {int(inactive_minutes)}m, {int(age_minutes)}m total)")
+                escalated += 1
+
+        if escalated:
+            print(f"log-analyzer: {escalated} stale task(s) marked failed")
+            conn.commit()
+    finally:
+        conn.close()
     """Reconcile launched inbox items that have no running process.
 
     Three checks in order:
