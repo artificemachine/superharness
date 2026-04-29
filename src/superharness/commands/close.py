@@ -11,14 +11,7 @@ import os
 import sys
 from datetime import datetime, timezone
 
-try:
-    from ruamel.yaml import YAML as RuamelYAML
-    _RT_AVAILABLE = True
-except ImportError:
-    _RT_AVAILABLE = False
-
-import yaml
-from superharness.engine.contract_io import write_contract as _write_contract
+from superharness.engine.contract_io import write_contract as _write_contract, read_contract as _read_contract
 
 
 _JSON_MODE = False
@@ -31,21 +24,6 @@ def _abort(msg: str, code: int = 1) -> None:
         emit_error(msg, exit_code=code, **_JSON_CTX)
     print(msg, file=sys.stderr)
     sys.exit(code)
-
-
-def _load_contract(path: str) -> dict:
-    if not os.path.exists(path):
-        _abort(f"Missing contract file: {path}")
-    if _RT_AVAILABLE:
-        rt = RuamelYAML()
-        rt.preserve_quotes = True
-        with open(path, "r") as f:
-            doc = rt.load(f)
-        return doc if doc else {}
-    with open(path, "r") as f:
-        doc = yaml.safe_load(f)
-    return doc if doc else {}
-
 
 
 
@@ -92,7 +70,7 @@ def close_task(
     cancel_remaining: bool = False,
     cancel_reason: str = "",
 ) -> int:
-    doc = _load_contract(contract_file)
+    doc, _ = _read_contract(contract_file)
     tasks = doc.get("tasks")
     if not isinstance(tasks, list):
         _abort("contract tasks must be a sequence")

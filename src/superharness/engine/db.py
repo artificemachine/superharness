@@ -11,7 +11,7 @@ from superharness.engine.state_errors import ConnectionError, SchemaError
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -309,7 +309,15 @@ def _migration_v2(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migration_v3(conn: sqlite3.Connection) -> None:
+    """Add verified/verified_at/verified_by columns to tasks."""
+    conn.execute("ALTER TABLE tasks ADD COLUMN verified INTEGER NOT NULL DEFAULT 0")
+    conn.execute("ALTER TABLE tasks ADD COLUMN verified_at TEXT")
+    conn.execute("ALTER TABLE tasks ADD COLUMN verified_by TEXT")
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
+    _migration_v3,
 ]
