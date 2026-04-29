@@ -679,6 +679,12 @@ def task_log_content(project_dir: Path, task_id: str, agent: str, lines: int = 0
         pattern = f"{task_id}-*.log"
     matching = sorted(log_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
 
+    # Fallback: try glob with underscore separator (discussion round files)
+    if not matching and agent:
+        safe_task = task_id.replace("/", "_")
+        pattern2 = f"*{safe_task}*{agent}*.log"
+        matching = sorted(log_dir.glob(pattern2), key=lambda p: p.stat().st_mtime, reverse=True)
+
     if matching:
         log_file = matching[0]
         result["exists"] = True
