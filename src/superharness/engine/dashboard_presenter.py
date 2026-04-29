@@ -31,16 +31,37 @@ def get_dashboard_status_snapshot(conn: sqlite3.Connection, project_dir: str) ->
             for state_file in disc_root.glob("*/state.yaml"):
                 try:
                     st = _yaml.safe_load(state_file.read_text(encoding="utf-8", errors="replace")) or {}
-                    if st.get("status") == "active":
+                    if st.get("status") in ("active", "consensus", "cancelled", "closed"):
+                        disc_id = st.get("id", state_file.parent.name)
+                        participants = st.get("participants") or []
+                        current_round = st.get("current_round", 1)
+                        # Collect round verdicts from submission files
+                        verdicts: dict = {}
+                        for agent in participants:
+                            rf = state_file.parent / f"round-{current_round}-{agent}.yaml"
+                            if rf.exists():
+                                try:
+                                    rs = _yaml.safe_load(rf.read_text(encoding="utf-8", errors="replace")) or {}
+                                    verdicts[agent] = rs.get("verdict", "")
+                                except Exception:
+                                    pass
+                        submitted = list(verdicts.keys())
+                        all_submitted = len(submitted) == len(participants) and len(participants) > 0
+                        all_consensus = all_submitted and all(v == "consensus" for v in verdicts.values())
                         active_discussions.append({
-                            "id": st.get("id", state_file.parent.name),
+                            "id": disc_id,
                             "topic": st.get("topic", ""),
                             "status": st.get("status", ""),
-                            "current_round": st.get("current_round", "?"),
+                            "current_round": current_round,
                             "max_rounds": st.get("max_rounds", "?"),
-                            "participants": st.get("participants") or [],
+                            "participants": participants,
                             "created_at": st.get("created_at", ""),
                             "task_id": st.get("task_id"),
+                            "verdicts": verdicts,
+                            "submitted_count": len(submitted),
+                            "all_submitted": all_submitted,
+                            "all_consensus": all_consensus,
+                            "closed_at": st.get("closed_at", ""),
                         })
                 except Exception:
                     pass
