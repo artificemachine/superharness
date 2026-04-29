@@ -1392,6 +1392,9 @@ def _auto_retry_failed_sqlite(project_dir: str) -> None:
             for row in failed:
                 if row.retry_count < row.max_retries:
                     inbox_dao.set_retry(conn, row.id, row.retry_count, None, now)
+                    # Discussion round tasks must not be plan_only
+                    if "/round-" in str(row.task_id) or "round-" in str(row.task_id):
+                        conn.execute("UPDATE inbox SET plan_only=0 WHERE id=?", (row.id,))
                     print(
                         f"auto-retry (sqlite): re-queued '{row.task_id}' "
                         f"(attempt {row.retry_count + 1}/{row.max_retries})"
