@@ -177,12 +177,9 @@ def _read_profile_field(project_dir: str, field: str, default: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _load_contract(contract_file: str) -> dict:
-    try:
-        import yaml
-        with open(contract_file) as f:
-            return yaml.safe_load(f) or {}
-    except Exception as e:
-        _abort(f"Failed to parse contract: {e}")
+    from superharness.engine.contract_io import read_contract as _rc
+    doc, _ = _rc(contract_file)
+    return doc or {}
 
 
 def _get_contract_id(contract_file: str) -> str:
