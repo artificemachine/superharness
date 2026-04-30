@@ -7,6 +7,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
+from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
 
 import pytest
 import yaml
@@ -83,8 +84,10 @@ def test_task_create_adds_to_contract(tmp_path: Path) -> None:
     assert "Created task 'new-task'" in r.stdout
     assert "owner=claude-code" in r.stdout
     assert "status=todo" in r.stdout
-    text = contract.read_text()
-    assert "id: new-task" in text
+    # Verify task in SQLite (post-YAML migration)
+    task = get_task_from_sqlite(project, "new-task")
+    assert task is not None, "task not found in SQLite"
+    assert task["status"] == "todo"
 
 
 def test_task_create_duplicate_fails(tmp_path: Path) -> None:
@@ -139,8 +142,8 @@ def test_task_create_with_dependency(tmp_path: Path) -> None:
     ])
     assert r.returncode == 0, r.stderr
     assert "dependency" in r.stdout or "blocked_by" in r.stdout
-    text = contract.read_text()
-    assert "dependency: dep-task" in text
+    task = get_task_from_sqlite(project, "dependency: dep-task")
+    assert task is not None, "task dependency: dep-task not found in SQLite"
 
 
 def test_task_create_dependency_not_found(tmp_path: Path) -> None:
@@ -258,8 +261,8 @@ def test_task_status_update_succeeds(tmp_path: Path) -> None:
     ])
     assert r.returncode == 0, r.stderr
     assert "Updated task 't4' status=in_progress by actor=claude-code" in r.stdout
-    text = contract.read_text()
-    assert "status: in_progress" in text
+    task = get_task_from_sqlite(project, "status: in_progress")
+    assert task is not None, "task status: in_progress not found in SQLite"
 
 
 def test_task_status_update_done_with_dep_done(tmp_path: Path) -> None:
@@ -276,8 +279,8 @@ def test_task_status_update_done_with_dep_done(tmp_path: Path) -> None:
         "--summary", "Dependency cleared",
     ])
     assert r.returncode == 0, r.stderr
-    text = contract.read_text()
-    assert "status: in_progress" in text
+    task = get_task_from_sqlite(project, "status: in_progress")
+    assert task is not None, "task status: in_progress not found in SQLite"
 
 
 # ---------------------------------------------------------------------------
