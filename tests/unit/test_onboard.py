@@ -4,6 +4,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
+from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
 
 import pytest
 import yaml
@@ -34,6 +35,7 @@ def initialized_project(project):
     sh.mkdir()
     (sh / "contract.yaml").write_text("id: c1\ntasks: []\n")
     (sh / "ledger.md").write_text("# Ledger\n")
+    seed_sqlite_from_yaml(project)
     return project
 
 

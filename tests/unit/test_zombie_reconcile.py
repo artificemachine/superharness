@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
 
 import yaml
 
@@ -21,6 +22,7 @@ def _make_project(tmp_path: Path) -> Path:
     harness = project / ".superharness"
     harness.mkdir(parents=True)
     (harness / "handoffs").mkdir()
+    seed_sqlite_from_yaml(project)
     return project
 
 

@@ -66,6 +66,7 @@ def _setup_project(tmp_path: Path, task_status: str = "report_ready", verified: 
         tasks_dao.upsert(conn, _task_row_from_dict(task_dict, str(project), "2026-01-01T00:00:00Z"))
     conn.commit()
     conn.close()
+    seed_sqlite_from_yaml(project)
 
     return project
 
