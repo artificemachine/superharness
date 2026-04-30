@@ -35,6 +35,8 @@ def _setup_project(
     (harness / "ledger.md").write_text("# Ledger\n\n")
     (harness / "decisions.yaml").write_text("decisions: []\n")
     (harness / "failures.yaml").write_text("failures: []\n")
+    from tests.helpers import seed_sqlite_from_yaml
+    seed_sqlite_from_yaml(project)
     return project
 
 
