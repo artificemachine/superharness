@@ -35,6 +35,7 @@ See also: `SOUL.md.template` for the separate soul file approach (preferred for 
 ## Before Starting Work
 - Run `superharness recall --project . "KEYWORDS"` with terms related to your task
 - Check for prior decisions, failures, or context from earlier sessions
+- Run `shux daemon status --project .` — if stopped, run `shux daemon start --project .` before any autonomous work
 
 ## Cross-Agent Protocol
 - Read `.superharness/contract.yaml` before starting work.
