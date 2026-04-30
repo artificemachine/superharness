@@ -19,7 +19,7 @@ from superharness.engine.next_action import ALL_STATUSES
 # Validation helpers
 # ---------------------------------------------------------------------------
 
-VALID_OWNERS = {"claude-code", "codex-cli", "gemini-cli"}
+VALID_OWNERS = {"owner", "claude-code", "codex-cli", "gemini-cli"}
 VALID_CREATE_STATUSES = {"todo", "in_progress", "pending_user_approval", "done"}
 VALID_WORKFLOWS = {"implementation", "quick", "discussion", "review", "approval", "note"}
 VALID_AUTONOMY = {"ai_driven", "oversight", "hands_on"}

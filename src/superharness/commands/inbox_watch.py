@@ -203,6 +203,15 @@ def _sqlite_mirror_task_status(
     except Exception:
         pass
 
+def _log_watcher_error(project_dir, component, error):
+    """Write watcher errors to a log file."""
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    log_path = os.path.join(project_dir, ".superharness", "watcher-errors.log")
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    with open(log_path, "a") as f:
+        f.write(f"[{ts}] [{component}] {error}\n")
+
 
 def _abort(msg: str, code: int = 1) -> None:
     print(msg, file=sys.stderr)
@@ -1730,7 +1739,6 @@ def _self_diagnosis(project_dir: str) -> list[str]:
     if warnings:
         for w in warnings:
             print(f"self-diagnosis: {w}")
-            _log_watcher_error(project_dir, "self_diagnosis", w)
 
     return warnings
 
@@ -1860,7 +1868,7 @@ def _run_scripts(
     try:
         _auto_retry_failed(project_dir)
     except Exception as e:
-        _log_watcher_error(project_dir, "auto_retry", str(e))
+        _log_watcher_error(project_dir, "watcher", str(e))
 
     # Auto-recover exhausted failures: re-route to a different agent
     try:
@@ -1872,13 +1880,13 @@ def _run_scripts(
     try:
         _auto_close_report_ready(project_dir)
     except Exception as e:
-        _log_watcher_error(project_dir, "auto_close", str(e))
+        _log_watcher_error(project_dir, "watcher", str(e))
 
     # Auto-close review_requested tasks when a reviewer submits a verdict report
     try:
         _auto_close_review_passed(project_dir)
     except Exception as e:
-        _log_watcher_error(project_dir, "auto_review_close", str(e))
+        _log_watcher_error(project_dir, "watcher", str(e))
 
     # Sync cancelled/closed discussions back to contract task status
     try:
@@ -1922,13 +1930,13 @@ def _run_scripts(
     try:
         _reconcile_zombies(project_dir)
     except Exception as e:
-        _log_watcher_error(project_dir, "zombie_reconcile", str(e))
+        _log_watcher_error(project_dir, "watcher", str(e))
 
     # Analyze task logs for stuck agents
     try:
         _analyze_task_logs(project_dir)
     except Exception as e:
-        _log_watcher_error(project_dir, "task_log_analyzer", str(e))
+        _log_watcher_error(project_dir, "watcher", str(e))
 
     # Reconcile paused dead-pid items — read from SQLite, write to SQLite
         from dataclasses import asdict
@@ -1967,7 +1975,7 @@ def _run_scripts(
         from superharness.engine.lifecycle_rules import reconcile_lifecycle
         reconcile_lifecycle(project_dir)
     except Exception as e:
-        _log_watcher_error(project_dir, "lifecycle_reconciler", str(e))
+        _log_watcher_error(project_dir, "watcher", str(e))
 
     # Proactive session flush: save partial work before lifecycle timeout
     try:
@@ -1978,7 +1986,7 @@ def _run_scripts(
         if expiring:
             print(f"session-flush: flushed {len(expiring)} expiring task(s)")
     except Exception as e:
-        _log_watcher_error(project_dir, "session_flush", str(e))
+        _log_watcher_error(project_dir, "watcher", str(e))
 
     # Inbox GC: reconcile stale items against contract
     try:
@@ -2018,7 +2026,7 @@ def _run_scripts(
         elif budget.status == BudgetStatus.WARN:
             print(f"budget-gate: WARN — {budget.message}")
     except Exception as e:
-        _log_watcher_error(project_dir, "budget_gate", str(e))
+        _log_watcher_error(project_dir, "watcher", str(e))
 
 
     for t in targets:
@@ -2032,7 +2040,7 @@ def _run_scripts(
             elif agent_budget.status == BudgetStatus.WARN:
                 print(f"budget-gate: {t} WARN — ${agent_budget.used_today:.2f} / ${agent_budget.daily_limit:.2f}")
         except Exception as e:
-            _log_watcher_error(project_dir, f"agent_budget_{t}", str(e))
+            _log_watcher_error(project_dir, "watcher", str(e))
 
         _run_dispatch_cmd(
             project_dir=project_dir,
@@ -2548,3 +2556,4 @@ def main(argv: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main()
+
