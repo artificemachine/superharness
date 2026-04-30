@@ -200,3 +200,4 @@
 - 2026-04-30 (v1.44.3): fix(tests): _RT_AVAILABLE NameError in task.py; SQLite seeding for 30+ test files via shared helpers; YAML assertions converted to SQLite reads in task_create; owner defaults in _make_contract fixture.
 - 2026-04-30 (v1.44.8): fix(discussion): auto-sync state changes to SQLite via _atomic_write finally block.
 - 2026-04-30 (v1.44.9): fix(dispatch): Claude non-interactive mode via -p flag; watcher defaults non_interactive=True for auto-mode.
+- 2026-04-30 (v1.44.10): clean release with all fixes.
