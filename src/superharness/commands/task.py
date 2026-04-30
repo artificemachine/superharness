@@ -11,7 +11,6 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-import yaml
 from superharness.engine.contract_io import write_contract as _write_contract, read_contract as _read_contract
 from superharness.engine.taxonomy import VALID_EFFORTS
 from superharness.engine.next_action import ALL_STATUSES
@@ -186,11 +185,7 @@ def create(
             if bid not in existing_ids:
                 _abort(f"blocked_by task '{bid}' not found")
 
-    if _RT_AVAILABLE:
-        from ruamel.yaml.comments import CommentedMap
-        task: dict = CommentedMap()
-    else:
-        task = {}
+    task: dict = {}
 
     task["id"] = task_id
     task["title"] = title
