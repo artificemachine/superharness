@@ -1581,7 +1581,7 @@ def run_once(
     project_dir: str,
     *,
     to: str = "both",
-    non_interactive: bool = False,
+    non_interactive: bool = True,  # default non-interactive for auto-mode
     recover_timeout_minutes: int = 3,
     recover_action: str = "retry",
     launcher_timeout: int = 0,
@@ -2371,7 +2371,7 @@ def watch(
     foreground: bool = False,
     interval: int = 30,
     print_only: bool = False,
-    non_interactive: bool = False,
+    non_interactive: bool = True,  # default non-interactive for auto-mode
     codex_bypass: bool = False,
     recover_timeout_minutes: int = 20,
     recover_action: str = "stale",
