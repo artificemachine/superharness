@@ -202,3 +202,4 @@
 - 2026-04-30 (v1.44.9): fix(dispatch): Claude non-interactive mode via -p flag; watcher defaults non_interactive=True for auto-mode.
 - 2026-04-30 (v1.44.10): clean release with all fixes.
 - 2026-04-30 (v1.44.11): feat(discuss): add submit subcommand for discussion round responses.
+- 2026-04-30 (v1.44.12): fix(db): idempotent migrations + automatic pre-migration backups. ALTER TABLE ADD COLUMN now guarded by PRAGMA table_info; each migration runs inside a SAVEPOINT with rollback on failure; state.sqlite3.bak.vN written before each schema bump. Recovery from partial migration verified.
