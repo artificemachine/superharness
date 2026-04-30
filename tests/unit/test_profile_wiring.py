@@ -54,6 +54,8 @@ def _setup_project(tmp_path: Path, *, owner: str = "codex-cli") -> Path:
         )
         + "\n"
     )
+    from tests.helpers import seed_sqlite_from_yaml
+    seed_sqlite_from_yaml(project)
     return project
 
 
