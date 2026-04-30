@@ -21,6 +21,7 @@ import yaml
 from superharness.engine.adapter_registry import resolve_model
 from superharness.engine.next_action import next_action as _next_action
 from superharness.engine.normalization import normalize_blocked_by
+from superharness.engine import state_reader
 
 SCHEMA_VERSION = "1.4"
 
@@ -102,6 +103,17 @@ def _load_yaml(path: Path) -> Any:
         return yaml.safe_load(path.read_text(errors="replace")) or {}
     except Exception:
         return {}
+
+
+def _load_contract_meta(sh_dir: Path) -> dict:
+    """Read contract.yaml for id/goal metadata (tasks come from state_reader)."""
+    contract_path = sh_dir / "contract.yaml"
+    if not contract_path.exists():
+        return {}
+    raw = _load_yaml(contract_path)
+    if not isinstance(raw, dict):
+        return {}
+    return {"id": raw.get("id", ""), "goal": raw.get("goal") or ""}
 
 
 def _coerce_date(value: Any) -> str:
@@ -583,19 +595,15 @@ def _build_edges(tasks: list[dict]) -> list[dict]:
 
 def build_payload(project_path: str) -> dict:
     """Build and return the full adapter payload for a project."""
-    sh_dir        = Path(project_path).resolve() / ".superharness"
-    contract_path = sh_dir / "contract.yaml"
+    sh_dir = Path(project_path).resolve() / ".superharness"
 
-    if not contract_path.exists():
-        raise FileNotFoundError(
-            f"No .superharness/contract.yaml found at {project_path!r}"
-        )
+    # Read tasks from SQLite in sqlite_only mode (v1.43+), falling back to YAML
+    # for legacy projects. Previously read contract.yaml directly, which is a
+    # tombstone in sqlite_only mode and drifts from the canonical SQLite state.
+    contract_doc = state_reader.get_contract_doc(project_path)
+    raw_tasks    = contract_doc.get("tasks") or []
+    contract_meta = _load_contract_meta(sh_dir)
 
-    raw_contract = _load_yaml(contract_path)
-    if not isinstance(raw_contract, dict):
-        raise ValueError("contract.yaml is not a YAML mapping")
-
-    raw_tasks         = raw_contract.get("tasks") or []
     handoffs_by_task  = _load_handoffs(sh_dir)
     tasks             = _build_tasks(raw_tasks, handoffs_by_task)
     project_settings  = _load_project_settings(sh_dir)
@@ -603,8 +611,8 @@ def build_payload(project_path: str) -> dict:
     return {
         "schema_version":   SCHEMA_VERSION,
         "project_settings": project_settings,
-        "contract_id":      raw_contract.get("id", ""),
-        "goal":           raw_contract.get("goal") or "",
+        "contract_id":      contract_doc.get("id") or contract_meta.get("id", ""),
+        "goal":             contract_doc.get("goal") or contract_meta.get("goal") or "",
         "tasks":          tasks,
         "edges":          _build_edges(tasks),
         "ledger":         _parse_ledger(sh_dir),
