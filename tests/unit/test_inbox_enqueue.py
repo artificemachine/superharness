@@ -25,6 +25,8 @@ def _setup_project(tmp_path: Path, name: str) -> Path:
     project = tmp_path / name
     project.mkdir()
     (project / ".superharness").mkdir(parents=True, exist_ok=True)
+    from tests.helpers import seed_sqlite_from_yaml
+    seed_sqlite_from_yaml(project)
     return project
 
 
