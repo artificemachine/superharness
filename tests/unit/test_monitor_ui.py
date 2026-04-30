@@ -8,6 +8,7 @@ import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
+from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
 
 import pytest
 
@@ -56,6 +57,7 @@ def _setup_project(tmp_path: Path) -> Path:
         )
         + "\n"
     )
+    seed_sqlite_from_yaml(project)
     return project
 
 

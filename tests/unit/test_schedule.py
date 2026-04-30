@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
 from unittest.mock import patch
 
 import pytest
@@ -23,6 +24,7 @@ def _make_project(tmp_path: Path) -> Path:
         "id": "test", "created": "2026-01-01", "created_by": "agent",
         "status": "active", "tasks": [],
     }))
+    seed_sqlite_from_yaml(project)
     return project
 
 

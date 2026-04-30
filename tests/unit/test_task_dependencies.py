@@ -7,6 +7,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
+from tests.helpers import seed_sqlite_from_yaml
 import os
 
 import yaml
@@ -36,6 +37,7 @@ def _make_contract(tmp_path: Path, tasks: list[dict]) -> tuple[Path, Path]:
         resolved.append(t2)
     data = {"id": "test-contract", "tasks": resolved}
     contract.write_text(yaml.dump(data, default_flow_style=False))
+    seed_sqlite_from_yaml(project)
     return project, contract
 
 
@@ -367,7 +369,8 @@ class TestCloseStatusGate:
              "status": status, "project_path": "__project__",
              "verified": True},
         ])
-        return project, contract
+        seed_sqlite_from_yaml(project)
+    return project, contract
 
     def test_close_status_todo_refused(self, tmp_path):
         """close refuses when task status is todo."""

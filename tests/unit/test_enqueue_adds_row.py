@@ -28,6 +28,8 @@ def _make_project(tmp_path: Path, contract_yaml: str | None = None) -> Path:
     harness.mkdir(parents=True, exist_ok=True)
     if contract_yaml is not None:
         (harness / "contract.yaml").write_text(contract_yaml)
+    from tests.helpers import seed_sqlite_from_yaml
+    seed_sqlite_from_yaml(project)
     return project
 
 

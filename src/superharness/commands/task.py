@@ -11,15 +11,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-import yaml
-from superharness.engine.contract_io import write_contract as _write_contract
+from superharness.engine.contract_io import write_contract as _write_contract, read_contract as _read_contract
 from superharness.engine.taxonomy import VALID_EFFORTS
-
-try:
-    from ruamel.yaml import YAML as RuamelYAML
-    _RT_AVAILABLE = True
-except ImportError:
-    _RT_AVAILABLE = False
 from superharness.engine.next_action import ALL_STATUSES
 
 # ---------------------------------------------------------------------------
@@ -83,25 +76,6 @@ def _abort(msg: str, code: int = 1) -> None:
 # ---------------------------------------------------------------------------
 # YAML read / write helpers
 # ---------------------------------------------------------------------------
-
-def _load_contract(path: str) -> object:
-    """Load contract.yaml in round-trip mode (ruamel) or plain yaml."""
-    if not os.path.exists(path):
-        _abort(f"Missing contract file: {path}")
-    if _RT_AVAILABLE:
-        rt = RuamelYAML()
-        rt.preserve_quotes = True
-        with open(path, "r") as f:
-            doc = rt.load(f)
-        if doc is None:
-            doc = {}
-        return doc
-    else:
-        with open(path, "r") as f:
-            doc = yaml.safe_load(f)
-        if doc is None:
-            doc = {}
-        return doc
 
 
 def _get_tasks(doc: object, path: str) -> list:
@@ -186,7 +160,7 @@ def create(
     if require_tdd is None:
         require_tdd = profile_require_tdd
 
-    doc = _load_contract(contract_file)
+    doc, _ = _read_contract(contract_file)
     tasks = _get_tasks(doc, contract_file)
 
     # Check duplicate
@@ -211,11 +185,7 @@ def create(
             if bid not in existing_ids:
                 _abort(f"blocked_by task '{bid}' not found")
 
-    if _RT_AVAILABLE:
-        from ruamel.yaml.comments import CommentedMap
-        task: dict = CommentedMap()
-    else:
-        task = {}
+    task: dict = {}
 
     task["id"] = task_id
     task["title"] = title
@@ -276,7 +246,7 @@ def archive_done(contract_file: str, ids: list[str] | None = None) -> int:
     cleanup). Archived tasks remain in contract.yaml; renderers hide them
     by default.
     """
-    doc = _load_contract(contract_file)
+    doc, _ = _read_contract(contract_file)
     tasks = _get_tasks(doc, contract_file)
 
     targets = set(ids) if ids else None
@@ -306,7 +276,7 @@ def archive_done(contract_file: str, ids: list[str] | None = None) -> int:
 def delete(contract_file: str, task_id: str) -> int:
     _validate_token("task id", task_id)
 
-    doc = _load_contract(contract_file)
+    doc, _ = _read_contract(contract_file)
     tasks = _get_tasks(doc, contract_file)
 
     before = len(tasks)
@@ -337,7 +307,7 @@ def _cascade_unblocked_tasks(contract_file: str, finished_task_id: str) -> None:
     except Exception:
         return
 
-    doc = _load_contract(contract_file)
+    doc, _ = _read_contract(contract_file)
     tasks = _get_tasks(doc, contract_file)
     
     # Map all tasks for quick status lookup
@@ -439,7 +409,7 @@ def _enqueue_for_implementation(contract_file: str, task_id: str) -> None:
     inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     
-    doc = _load_contract(contract_file)
+    doc, _ = _read_contract(contract_file)
     tasks = _get_tasks(doc, contract_file)
     task = next((t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == task_id), None)
     if not task:
@@ -469,7 +439,7 @@ def set_owner(contract_file: str, task_id: str, new_owner: str) -> int:
     """Update task owner and clean up any active inbox items for the old owner."""
     import signal as _signal
 
-    doc = _load_contract(contract_file)
+    doc, _ = _read_contract(contract_file)
     tasks = _get_tasks(doc, contract_file)
 
     task = next((t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == task_id), None)
@@ -578,7 +548,7 @@ def status_update(
     if status in ("todo", "in_progress", "pending_user_approval", "done") and not summary:
         _abort(f"error: --summary is required when status={status}", 2)
 
-    doc = _load_contract(contract_file)
+    doc, _ = _read_contract(contract_file)
     tasks = _get_tasks(doc, contract_file)
 
     task = next((t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == task_id), None)
@@ -927,7 +897,7 @@ def main(argv: list[str] | None = None) -> None:
         old_status = None
         if _JSON_MODE:
             try:
-                _doc = _load_contract(contract_file)
+                _doc, _ = _read_contract(contract_file)
                 _tasks = _get_tasks(_doc, contract_file)
                 _t = next((t for t in _tasks if isinstance(t, dict) and str(t.get("id", "")) == opts.task_id), None)
                 if _t is not None:

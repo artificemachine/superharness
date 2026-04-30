@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
+from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
 
 import pytest
 
@@ -26,6 +27,7 @@ def _init_git_project(tmp_path: Path) -> Path:
     (project / ".gitignore").write_text(".superharness/\n")
     subprocess.run(["git", "-C", str(project), "add", ".gitignore"], capture_output=True, check=True, env=env)
     subprocess.run(["git", "-C", str(project), "commit", "-m", "add gitignore"], capture_output=True, check=True, env=env)
+    seed_sqlite_from_yaml(project)
     return project
 
 

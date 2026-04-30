@@ -47,7 +47,42 @@ def _setup_project(tmp_path: Path, task_status: str = "report_ready", verified: 
 
     (harness / "contract.yaml").write_text(task_yaml)
     (harness / "ledger.md").write_text("# Ledger\n\n")
+
+    # Seed SQLite so read_contract (sqlite_only=True) finds the task.
+    from superharness.engine.db import get_connection, init_db, transaction
+    from superharness.engine.contract_io import _task_row_from_dict
+    from superharness.engine import tasks_dao
+    task_dict: dict = {
+        "id": "feat-001", "title": "Build feature one", "owner": "claude-code",
+        "status": task_status, "project_path": project.as_posix(),
+    }
+    if verified:
+        task_dict["verified"] = True
+        task_dict["verified_at"] = "2026-03-15T00:00:00Z"
+        task_dict["verified_by"] = "claude-code"
+    conn = get_connection(str(project))
+    init_db(conn)
+    with transaction(conn):
+        tasks_dao.upsert(conn, _task_row_from_dict(task_dict, str(project), "2026-01-01T00:00:00Z"))
+    conn.commit()
+    conn.close()
+    seed_sqlite_from_yaml(project)
+
     return project
+
+
+def _get_task_sqlite(project: Path, task_id: str) -> dict:
+    """Read a task directly from SQLite (used in assertions since sqlite_only skips YAML writes)."""
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import tasks_dao
+    conn = get_connection(str(project))
+    init_db(conn)
+    row = tasks_dao.get(conn, task_id)
+    conn.close()
+    if row is None:
+        raise KeyError(f"task '{task_id}' not found in SQLite")
+    from dataclasses import asdict
+    return asdict(row)
 
 
 # ---------------------------------------------------------------------------
@@ -66,11 +101,8 @@ class TestVerify:
         assert result.returncode == 0, result.stderr
         assert "PASS" in result.stdout
 
-        # Check contract was updated
-        import yaml
-        with open(project / ".superharness" / "contract.yaml") as f:
-            doc = yaml.safe_load(f)
-        task = doc["tasks"][0]
+        # In sqlite_only mode write_contract skips YAML; read from SQLite instead.
+        task = _get_task_sqlite(project, "feat-001")
         assert task["verified"] is True
         assert task["verified_by"] == "claude-code"
         assert task["verified_at"]
@@ -85,10 +117,8 @@ class TestVerify:
         assert result.returncode == 0, result.stderr
         assert "FAIL" in result.stdout
 
-        import yaml
-        with open(project / ".superharness" / "contract.yaml") as f:
-            doc = yaml.safe_load(f)
-        assert doc["tasks"][0]["verified"] is False
+        task = _get_task_sqlite(project, "feat-001")
+        assert task["verified"] is False
 
     def test_verify_appends_ledger_entry(self, tmp_path):
         project = _setup_project(tmp_path)
@@ -138,10 +168,8 @@ class TestClose:
         assert result.returncode == 0, result.stderr
         assert "Closed task 'feat-001'" in result.stdout
 
-        import yaml
-        with open(project / ".superharness" / "contract.yaml") as f:
-            doc = yaml.safe_load(f)
-        assert doc["tasks"][0]["status"] == "done"
+        task = _get_task_sqlite(project, "feat-001")
+        assert task["status"] == "done"
 
     def test_close_unverified_task_fails(self, tmp_path):
         project = _setup_project(tmp_path, task_status="report_ready", verified=False)
@@ -280,8 +308,6 @@ class TestVerifyThenClose:
         )
         assert r3.returncode == 0
 
-        import yaml
-        with open(project / ".superharness" / "contract.yaml") as f:
-            doc = yaml.safe_load(f)
-        assert doc["tasks"][0]["status"] == "done"
-        assert doc["tasks"][0]["verified"] is True
+        task = _get_task_sqlite(project, "feat-001")
+        assert task["status"] == "done"
+        assert task["verified"] is True

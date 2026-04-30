@@ -47,6 +47,7 @@ def _setup_project(tmp_path: Path) -> Path:
         )
         + "\n"
     )
+    seed_sqlite_from_yaml(project)
     return project
 
 

@@ -14,6 +14,7 @@ from pathlib import Path
 from superharness.engine.sdk_runner import sdk_available, SDKRunner
 from superharness.engine.orchestrator import Orchestrator, DecompositionResult
 from superharness.engine.taxonomy import VALID_EFFORTS
+from superharness.engine.contract_io import read_contract as _read_contract
 
 
 _JSON_MODE = False
@@ -176,23 +177,14 @@ def _read_profile_field(project_dir: str, field: str, default: str) -> str:
 # Contract helpers (direct YAML reads — avoids subprocess for simple fields)
 # ---------------------------------------------------------------------------
 
-def _load_contract(contract_file: str) -> dict:
-    try:
-        import yaml
-        with open(contract_file) as f:
-            return yaml.safe_load(f) or {}
-    except Exception as e:
-        _abort(f"Failed to parse contract: {e}")
-
-
 def _get_contract_id(contract_file: str) -> str:
-    doc = _load_contract(contract_file)
-    return str(doc.get("id") or "") or "unknown-contract"
+    doc, _ = _read_contract(contract_file)
+    return str((doc or {}).get("id") or "") or "unknown-contract"
 
 
 def _get_task_acceptance_criteria(contract_file: str, task_id: str) -> list[str]:
-    doc = _load_contract(contract_file)
-    tasks = doc.get("tasks") or []
+    doc, _ = _read_contract(contract_file)
+    tasks = (doc or {}).get("tasks") or []
     for t in tasks:
         if isinstance(t, dict) and str(t.get("id", "")) == task_id:
             ac = t.get("acceptance_criteria")
@@ -203,8 +195,8 @@ def _get_task_acceptance_criteria(contract_file: str, task_id: str) -> list[str]
 
 
 def _get_task_title(contract_file: str, task_id: str) -> str:
-    doc = _load_contract(contract_file)
-    tasks = doc.get("tasks") or []
+    doc, _ = _read_contract(contract_file)
+    tasks = (doc or {}).get("tasks") or []
     for t in tasks:
         if isinstance(t, dict) and str(t.get("id", "")) == task_id:
             return str(t.get("title", ""))
@@ -213,8 +205,8 @@ def _get_task_title(contract_file: str, task_id: str) -> str:
 
 def _get_task_field(contract_file: str, task_id: str, field: str) -> str | None:
     """Return a string field from a task, or None if absent."""
-    doc = _load_contract(contract_file)
-    tasks = doc.get("tasks") or []
+    doc, _ = _read_contract(contract_file)
+    tasks = (doc or {}).get("tasks") or []
     for t in tasks:
         if isinstance(t, dict) and str(t.get("id", "")) == task_id:
             val = t.get(field)
@@ -668,8 +660,8 @@ def delegate(
             pass
 
     # Gate 3: depends_on / blocked_by — block if dependency tasks are not done
-    doc = _load_contract(contract_file)
-    task_obj = next((t for t in (doc.get("tasks") or []) if isinstance(t, dict) and str(t.get("id", "")) == task_id), None)
+    doc, _ = _read_contract(contract_file)
+    task_obj = next((t for t in ((doc or {}).get("tasks") or []) if isinstance(t, dict) and str(t.get("id", "")) == task_id), None)
 
     # Collect blocker IDs from both blocked_by (new) and depends_on (legacy)
     _blocked_by_val = task_obj.get("blocked_by") if task_obj else None

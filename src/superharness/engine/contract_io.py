@@ -90,6 +90,9 @@ def _task_row_from_dict(
         done_at=t.get("done_at"),
         cancelled_at=t.get("cancelled_at"),
         blocked_by=list(t.get("blocked_by") or []),
+        verified=bool(t.get("verified", False)),
+        verified_at=t.get("verified_at"),
+        verified_by=t.get("verified_by"),
     )
 
 

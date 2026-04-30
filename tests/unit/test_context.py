@@ -37,6 +37,7 @@ def _setup_project(tmp_path: Path, task_id: str = "feat-001", status: str = "in_
     (harness / "failures.yaml").write_text("failures: []\n")
     (harness / "ledger.md").write_text("# Ledger\n\n")
     _make_contract(harness, task_id, status)
+    seed_sqlite_from_yaml(project)
     return project
 
 

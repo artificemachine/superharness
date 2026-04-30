@@ -18,13 +18,12 @@ import yaml
 
 
 def _find_task(contract: Path, task_id: str) -> dict | None:
-    if not contract.exists():
-        return None
     try:
-        doc = yaml.safe_load(contract.read_text()) or {}
+        from superharness.engine.contract_io import read_contract
+        doc, _ = read_contract(str(contract))
     except Exception:
         return None
-    for t in doc.get("tasks", []):
+    for t in (doc or {}).get("tasks", []):
         if t.get("id") == task_id:
             return t
     return None
