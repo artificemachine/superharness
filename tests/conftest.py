@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers import REPO_ROOT, SCRIPTS_DIR
+from tests.helpers import REPO_ROOT, SCRIPTS_DIR, seed_sqlite_from_yaml
 
 # Ensure shims (SUPERHARNESS_PYTHON shim pattern) always resolve to the interpreter
 # running the test suite, even when individual tests restrict PATH to /usr/bin:/bin.
@@ -49,6 +49,8 @@ def clean_harness(tmp_path: Path) -> Path:
     )
     (harness / "handoffs").mkdir()
     (harness / "discussions").mkdir()
+    # Seed SQLite from YAML so sqlite_only code paths find expected data
+    seed_sqlite_from_yaml(project)
     return project
 
 
