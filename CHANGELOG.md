@@ -204,3 +204,4 @@
 - 2026-04-30 (v1.44.11): feat(discuss): add submit subcommand for discussion round responses.
 - 2026-04-30 (v1.44.12): fix(db): idempotent migrations + automatic pre-migration backups. ALTER TABLE ADD COLUMN now guarded by PRAGMA table_info; each migration runs inside a SAVEPOINT with rollback on failure; state.sqlite3.bak.vN written before each schema bump. Recovery from partial migration verified.
 - 2026-04-30: chore(tests): delete test_parallel_checkout_safety.py — tests v1.42 inbox primitives removed in v1.43; was on @_legacy_skip
+- 2026-04-30: fix(daemon): monitor now runs as a detached subprocess and survives CLI exit

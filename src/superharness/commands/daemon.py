@@ -30,7 +30,12 @@ def _state_file(project_dir: Path) -> Path:
 def _find_superharness_python() -> str:
     """Find the Python executable from the superharness pipx venv. Never fails."""
     import shutil
-    # Try the pipx venv Python first
+    # Try the dev venv Python first (for development — ensures we use current code)
+    dev_venv_python = os.path.join(os.path.dirname(__file__), "..", "..", "..", ".venv", "bin", "python3")
+    dev_venv_python = os.path.abspath(dev_venv_python)
+    if os.path.isfile(dev_venv_python):
+        return dev_venv_python
+    # Try the pipx venv Python
     venv_python = os.path.expanduser("~/.local/pipx/venvs/superharness/bin/python3")
     if os.path.isfile(venv_python):
         return venv_python
@@ -52,6 +57,68 @@ def _write_state(project_dir: Path, state: dict) -> None:
     sf = _state_file(project_dir)
     sf.parent.mkdir(parents=True, exist_ok=True)
     sf.write_text(json.dumps(state, indent=2))
+
+
+def _write_monitor_script(project_dir: Path, interval: int,
+                          out_log: Path, err_log: Path, watcher_pid: int) -> Path:
+    """Write a standalone monitor script that auto-restarts the watcher."""
+    script = project_dir / ".superharness" / "daemon-monitor.py"
+    script.write_text(f'''"""Auto-generated daemon monitor — do not edit."""
+import os, sys, time, json, subprocess, signal
+project_dir = sys.argv[1]
+interval = int(sys.argv[2])
+out_log = sys.argv[3]
+err_log = sys.argv[4]
+watcher_pid = int(sys.argv[5])
+
+python = os.path.expanduser("~/.local/pipx/venvs/superharness/bin/python3")
+if not os.path.isfile(python):
+    python = sys.executable
+
+def spawn():
+    cmd = [python, "-m", "superharness.commands.inbox_watch",
+           "--project", project_dir, "--interval", str(interval), "--once"]
+    env = os.environ.copy()
+    src_root = os.path.join(project_dir, "src")
+    if os.path.exists(src_root):
+        env["PYTHONPATH"] = src_root
+    return subprocess.Popen(cmd, stdout=open(out_log, "a"),
+                            stderr=open(err_log, "a"),
+                            start_new_session=True, cwd=project_dir, env=env)
+
+def write_state(watcher_proc):
+    sf = os.path.join(project_dir, ".superharness", "daemon-state.json")
+    os.makedirs(os.path.dirname(sf), exist_ok=True)
+    with open(sf, "w") as f:
+        json.dump({{"pid": os.getpid(), "watcher_pid": watcher_proc.pid,
+                     "project": project_dir, "interval": interval,
+                     "log_out": out_log, "log_err": err_log}}, f)
+
+proc = spawn()
+write_state(proc)
+
+while True:
+    exit_code = proc.wait()
+    ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    log_path = os.path.join(project_dir, ".superharness", "watcher-errors.log")
+    try:
+        with open(log_path, "a") as lf:
+            lf.write(f"[{{ts}}] daemon: watcher crashed (rc={{exit_code}}), restarting in 5s\\n")
+    except Exception:
+        pass
+    time.sleep(5)
+    proc = spawn()
+    write_state(proc)
+''')
+    return script
+
+
+def _cleanup_monitor_script(script: Path) -> None:
+    """Remove the auto-generated monitor script on exit."""
+    try:
+        script.unlink(missing_ok=True)
+    except Exception:
+        pass
 
 
 def _is_pid_alive(pid: int) -> bool:
@@ -147,38 +214,45 @@ def _start_daemon(project_dir: Path, interval: int) -> None:
     # Auto-upgrade check: restart daemon if a newer pipx version is installed
     _check_version_and_upgrade(project_dir)
 
-    # Monitor and auto-restart the watcher if it dies (run in background)
-    import time as _time
+    # Detach monitor as a subprocess so it survives CLI exit.
+    # Previously a daemon thread — died with the launcher, leaving no
+    # auto-restart and a stale PID in daemon-state.json.
+    # Use double-fork: first fork creates a child, second fork creates a grandchild
+    # that is reparented to PID 1 (launchd on macOS, init on Linux).
+    # Monitor script is written to .superharness/ (gitignored, harmless to leave).
+    _monitor_script = _write_monitor_script(project_dir, interval, out_log, err_log, proc.pid)
+    _monitor_env = os.environ.copy()
+    if "PYTHONPATH" not in _monitor_env:
+        src_root = project_dir / "src"
+        if src_root.exists():
+            _monitor_env["PYTHONPATH"] = str(src_root)
 
-    def _monitor_loop():
-        _proc = proc
-        try:
-            while True:
-                exit_code = _proc.wait()
-                from datetime import datetime, timezone
-                ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                _log_path = project_dir / ".superharness" / "watcher-errors.log"
-                try:
-                    with open(str(_log_path), "a") as _lf:
-                        _lf.write(f"[{ts}] daemon: watcher crashed (rc={exit_code}), restarting in 5s\n")
-                except Exception:
-                    pass
-                _time.sleep(5)
-                _proc = _spawn_watcher()
-                _write_state(project_dir, {
-                    "pid": _proc.pid,
-                    "project": str(project_dir),
-                    "interval": interval,
-                    "log_out": str(out_log),
-                    "log_err": str(err_log),
-                })
-        except Exception:
-            pass
+    # Monitor script writes its own PID to state file on start
 
-    # Fork monitor into background so CLI returns immediately
-    import threading
-    _monitor_thread = threading.Thread(target=_monitor_loop, daemon=True)
-    _monitor_thread.start()
+    # First fork
+    _monitor_pid = os.fork()
+    if _monitor_pid == 0:
+        # Child: second fork to create grandchild (reparented to init)
+        if os.fork() > 0:
+            os._exit(0)  # First child exits immediately
+        # Grandchild: the actual monitor
+        os.setsid()
+        os.chdir(str(project_dir))
+        os.umask(0)
+        # Close inherited fds, open devnull for standard streams
+        os.closerange(0, 3)
+        os.open(os.devnull, os.O_RDONLY)  # stdin
+        os.open(os.devnull, os.O_WRONLY)  # stdout
+        os.open(os.devnull, os.O_WRONLY)  # stderr
+        # Execute monitor script
+        os.execvpe(_find_superharness_python(),
+                   [_find_superharness_python(), str(_monitor_script),
+                    str(project_dir), str(interval),
+                    str(out_log), str(err_log), str(proc.pid)],
+                   _monitor_env)
+    # Parent: wait for first child to exit
+    os.waitpid(_monitor_pid, 0)
+    # Monitor script writes its own PID to state file on start
 
 
 def _stop_daemon(project_dir: Path) -> None:
