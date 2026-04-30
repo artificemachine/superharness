@@ -432,6 +432,17 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--project", "-p", default=None)
     p.add_argument("--id", required=True, dest="disc_id")
 
+    # submit
+    p = sub.add_parser("submit", add_help=True,
+                       help="Submit a discussion round response")
+    p.add_argument("--project", "-p", default=None)
+    p.add_argument("--discussion", required=True, dest="disc_id")
+    p.add_argument("--agent", required=True)
+    p.add_argument("--round", type=int, required=True)
+    p.add_argument("--verdict", required=True, help="consensus|disagree|abstain")
+    p.add_argument("--position", required=True, help="Your position statement")
+    p.add_argument("--points-file", default=None, help="YAML file with point-by-point responses")
+
     opts = parser.parse_args(argv)
     if not opts.subcmd:
         parser.print_help(sys.stderr)
@@ -488,6 +499,18 @@ def main(argv: list[str] | None = None) -> None:
 
     elif opts.subcmd == "summary":
         rc = cmd_summary(discussions_dir, opts.disc_id, handoff_dir)
+
+    elif opts.subcmd == "submit":
+        from superharness.engine.discussion import cmd_submit_round
+        disc_dir = os.path.join(discussions_dir, opts.disc_id)
+        rc = cmd_submit_round(
+            discussion_dir=disc_dir,
+            round_=opts.round,
+            agent=opts.agent,
+            verdict=opts.verdict,
+            position=opts.position,
+            points_file=opts.points_file,
+        )
 
     else:
         _abort(f"Unknown discuss subcommand: {opts.subcmd}", 2)
