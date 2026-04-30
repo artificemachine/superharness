@@ -370,7 +370,7 @@ class TestCloseStatusGate:
              "verified": True},
         ])
         seed_sqlite_from_yaml(project)
-    return project, contract
+        return project, contract
 
     def test_close_status_todo_refused(self, tmp_path):
         """close refuses when task status is todo."""
