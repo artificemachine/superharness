@@ -199,3 +199,4 @@
 - 2026-04-29 (v1.44.6): fix: migrate all command YAML reads to read_contract — close.py, verify.py, task.py, delegate.py, diff.py no longer bypass sqlite_only by reading contract.yaml directly; db schema v3 adds verified/verified_at/verified_by columns; TaskRow and upsert extended with those fields; upsert_handoff always writes YAML file (reverts silent-drop of handoff writes in sqlite_only mode); test_verify_and_close.py fixture seeds SQLite and asserts against SQLite/filesystem.
 - 2026-04-30 (v1.44.3): fix(tests): _RT_AVAILABLE NameError in task.py; SQLite seeding for 30+ test files via shared helpers; YAML assertions converted to SQLite reads in task_create; owner defaults in _make_contract fixture.
 - 2026-04-30 (v1.44.8): fix(discussion): auto-sync state changes to SQLite via _atomic_write finally block.
+- 2026-04-30 (v1.44.9): fix(dispatch): Claude non-interactive mode via -p flag; watcher defaults non_interactive=True for auto-mode.
