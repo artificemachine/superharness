@@ -27,6 +27,7 @@ def _write_project(tmp_path: Path) -> Path:
         "# Delegation inbox\n"
         "# status: pending|launched|running|done|failed|stale\n\n"
     )
+    seed_sqlite_from_yaml(project)
     return project
 
 

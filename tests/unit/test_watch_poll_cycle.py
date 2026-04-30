@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
 from unittest.mock import MagicMock
 
 from superharness.engine.platform_runtime import watcher_lock_path
@@ -38,6 +39,7 @@ def _make_project(tmp_path: Path) -> Path:
         f"    project_path: '{project.as_posix()}'\n"
     )
     (harness / "inbox.yaml").write_text(INBOX_HEADER)
+    seed_sqlite_from_yaml(project)
     return project
 
 
