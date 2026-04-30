@@ -49,7 +49,8 @@ def _make_contract(tmp_path: Path, tasks: list[dict] | None = None) -> tuple[Pat
     conn = get_connection(str(project))
     init_db(conn)
     for t in tasks:
-        t["project_path"] = project.as_posix()
+        t.setdefault("owner", "claude-code")
+        t.setdefault("project_path", project.as_posix())
         tasks_dao.upsert(conn, _task_row_from_dict(t, str(project), "2026-01-01T00:00:00Z"))
     conn.commit()
     conn.close()
@@ -142,8 +143,9 @@ def test_task_create_with_dependency(tmp_path: Path) -> None:
     ])
     assert r.returncode == 0, r.stderr
     assert "dependency" in r.stdout or "blocked_by" in r.stdout
-    task = get_task_from_sqlite(project, "dependency: dep-task")
-    assert task is not None, "task dependency: dep-task not found in SQLite"
+    # Verify child task exists in SQLite
+    task = get_task_from_sqlite(project, "child-task")
+    assert task is not None, "child-task not found in SQLite"
 
 
 def test_task_create_dependency_not_found(tmp_path: Path) -> None:
@@ -453,10 +455,15 @@ def test_task_create_autogenerates_id(tmp_path: Path) -> None:
         "--owner", "claude-code",
     ])
     assert r.returncode == 0, r.stderr
-    doc = yaml.safe_load(contract_file.read_text())
-    tasks = doc.get("tasks", [])
+    # Verify in SQLite — id is auto-generated
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import tasks_dao
+    conn = get_connection(str(project))
+    init_db(conn)
+    tasks = tasks_dao.get_all(conn)
+    conn.close()
     assert len(tasks) == 1
-    task_id = tasks[0]["id"]
+    task_id = tasks[0].id
     assert task_id.startswith("t-"), f"Expected t-XXXXXX, got {task_id!r}"
     assert len(task_id) == 8, f"Expected t-XXXXXX (8 chars), got {task_id!r}"
 
@@ -475,8 +482,8 @@ def test_task_create_ship_on_complete_writes_flag(tmp_path: Path) -> None:
         "--ship-on-complete",
     ])
     assert result.returncode == 0, result.stderr
-    doc = yaml.safe_load(contract.read_text()) or {}
-    task = next(t for t in doc.get("tasks", []) if t["id"] == "feat.ship-me")
+    task = get_task_from_sqlite(project, "feat.ship-me")
+    assert task is not None, "feat.ship-me not found in SQLite"
     assert task.get("ship_on_complete") is True
 
 
@@ -490,6 +497,6 @@ def test_task_create_ship_on_complete_defaults_absent(tmp_path: Path) -> None:
         "--owner", "claude-code",
     ])
     assert result.returncode == 0, result.stderr
-    doc = yaml.safe_load(contract.read_text()) or {}
-    task = next(t for t in doc.get("tasks", []) if t["id"] == "feat.normal")
+    task = get_task_from_sqlite(project, "feat.normal")
+    assert task is not None, "feat.normal not found in SQLite"
     assert not task.get("ship_on_complete")
