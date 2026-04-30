@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from tests.helpers import seed_sqlite_from_yaml
 
 from tests.helpers import REPO_ROOT
 import pytest
