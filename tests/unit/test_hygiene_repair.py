@@ -4,6 +4,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
+from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
 
 import pytest
 
@@ -43,6 +44,7 @@ def _write_project(
     (harness / "ledger.md").write_text(ledger)
     (harness / "decisions.yaml").write_text("decisions: []\n")
     (harness / "failures.yaml").write_text("failures: []\n")
+    seed_sqlite_from_yaml(project)
     return project
 
 
