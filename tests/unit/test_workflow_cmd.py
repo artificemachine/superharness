@@ -9,6 +9,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
 
 import yaml
 
@@ -22,6 +23,7 @@ def _make_project(tmp_path: Path, profile: dict | None = None) -> Path:
     (sh / "contract.yaml").write_text("id: proj\ntasks:\n")
     if profile is not None:
         (sh / "profile.yaml").write_text(yaml.dump(profile))
+    seed_sqlite_from_yaml(project)
     return project
 
 
