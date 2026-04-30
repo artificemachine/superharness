@@ -34,6 +34,29 @@ def _atomic_write(path: str, content: str) -> None:
         if tmp_path is not None and os.path.exists(tmp_path):
             os.unlink(tmp_path)
 
+        # After every state write, sync to SQLite
+        try:
+            if "/discussions/" in path and path.endswith("/state.yaml"):
+                disc_dir = os.path.dirname(path)
+                import yaml
+                state = yaml.safe_load(open(path).read()) if os.path.exists(path) else {}
+                disc_id = state.get("id", "")
+                if disc_id:
+                    from superharness.engine.db import get_connection, init_db
+                    proj_dir = disc_dir.rsplit("/.superharness/discussions/", 1)[0]
+                    conn = get_connection(proj_dir)
+                    try:
+                        init_db(conn)
+                        conn.execute(
+                            "UPDATE discussions SET status=?, consensus=? WHERE id=?",
+                            (state.get("status", "active"), state.get("consensus"), disc_id),
+                        )
+                        conn.commit()
+                    finally:
+                        conn.close()
+        except Exception:
+            pass
+
 
 @contextmanager
 def _file_lock(path: str, timeout: float = 5.0) -> Iterator[None]:
