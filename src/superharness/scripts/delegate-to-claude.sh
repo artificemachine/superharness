@@ -75,7 +75,8 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --non-interactive)
-      # Handled by passing prompt as positional arg
+      # Use -p flag for non-interactive (print) mode
+      CLAUDE_ARGS+=("-p")
       shift
       ;;
     *)
