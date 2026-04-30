@@ -46,6 +46,7 @@ def _make_project(tmp_path, task_id: str, owner: str, deadline_minutes: int | No
     )
 
     (harness / "ledger.md").write_text("# Ledger\n\nAppend-only.\n")
+    seed_sqlite_from_yaml(project)
     return project
 
 

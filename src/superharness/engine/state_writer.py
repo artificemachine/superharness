@@ -138,11 +138,6 @@ def upsert_handoff(project_dir: str, handoff_id: str, content: dict) -> bool:
     safe_id = handoff_id.replace("/", "-")
     path = os.path.join(handoffs, f"{safe_id}.yaml")
 
-    if is_sqlite_only():
-        # SQLite-only: handoffs go to SQLite only via the handoffs_dao.
-        # The YAML file write is skipped. Caller should also persist via handoffs_dao.
-        return True
-
     try:
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(content, f, default_flow_style=False, allow_unicode=True)

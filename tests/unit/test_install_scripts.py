@@ -28,6 +28,7 @@ def _run_watcher_worker_py(cwd, args: list[str] | None = None, env: dict | None 
 def _setup_launchd_project(tmp_path: Path) -> Path:
     project = tmp_path / "proj & demo"
     (project / ".superharness").mkdir(parents=True, exist_ok=True)
+    seed_sqlite_from_yaml(project)
     return project
 
 

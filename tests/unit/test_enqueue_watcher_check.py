@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
 from unittest.mock import patch
 
 import pytest
@@ -35,6 +36,7 @@ def _setup_project(tmp_path: Path) -> Path:
     import yaml
     (harness / "contract.yaml").write_text(yaml.safe_dump(contract))
     (harness / "inbox.yaml").write_text("# Delegation inbox\n")
+    seed_sqlite_from_yaml(project)
     return project
 
 

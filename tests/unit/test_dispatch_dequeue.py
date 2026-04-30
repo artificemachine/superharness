@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
 
 import pytest
 
@@ -54,6 +55,7 @@ def _make_project(tmp_path: Path, *, inbox_items: list[dict] | None = None) -> P
     else:
         # Empty inbox
         (harness / "inbox.yaml").write_text(INBOX_HEADER)
+    seed_sqlite_from_yaml(project)
 
     return project
 
