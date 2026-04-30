@@ -13,29 +13,7 @@ import os
 import sys
 from datetime import datetime, timezone
 
-try:
-    from ruamel.yaml import YAML as RuamelYAML
-    _RT_AVAILABLE = True
-except ImportError:
-    _RT_AVAILABLE = False
-
-import yaml
-from superharness.engine.contract_io import write_contract as _write_contract
-
-
-def _load_contract(path: str) -> object:
-    if not os.path.exists(path):
-        print(f"Missing contract file: {path}", file=sys.stderr)
-        sys.exit(1)
-    if _RT_AVAILABLE:
-        rt = RuamelYAML()
-        rt.preserve_quotes = True
-        with open(path, "r") as f:
-            doc = rt.load(f)
-        return doc if doc else {}
-    with open(path, "r") as f:
-        doc = yaml.safe_load(f)
-    return doc if doc else {}
+from superharness.engine.contract_io import write_contract as _write_contract, read_contract as _read_contract
 
 
 
@@ -53,7 +31,7 @@ def cancel_subtask(
     actor: str,
     reason: str,
 ) -> int:
-    doc = _load_contract(contract_file)
+    doc, _ = _read_contract(contract_file)
     tasks = doc.get("tasks")
     if not isinstance(tasks, list):
         print("contract tasks must be a sequence", file=sys.stderr)
