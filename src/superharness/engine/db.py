@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import logging
+import shutil
 from datetime import datetime, timezone
 from typing import Callable, Any, Iterator
 from contextlib import contextmanager
@@ -16,6 +17,29 @@ CURRENT_SCHEMA_VERSION = 3
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    """Check if a column exists in a table using PRAGMA table_info."""
+    return any(r["name"] == column for r in conn.execute(f"PRAGMA table_info({table})"))
+
+def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, ddl_clause: str):
+    """Add a column to a table if it doesn't already exist."""
+    if not _column_exists(conn, table, column):
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_clause}")
+
+def _backup_db(project_dir: str, version: int):
+    """Create a backup of the database before a migration."""
+    if not project_dir:
+        return
+    src = os.path.join(project_dir, ".superharness", "state.sqlite3")
+    dst = f"{src}.bak.v{version}"
+    if os.path.isfile(src) and not os.path.isfile(dst):
+        try:
+            shutil.copy2(src, dst)
+            logger.info(f"Created pre-migration backup: {dst}")
+        except Exception as e:
+            logger.warning(f"Failed to create backup {dst}: {e}")
+
 
 def get_connection(project_dir: str) -> sqlite3.Connection:
     """Open a connection to the state database.
@@ -58,7 +82,7 @@ def transaction(conn: sqlite3.Connection) -> Iterator[None]:
         # Wrap database errors if needed, but conn context manager handles rollback
         raise
 
-def init_db(conn: sqlite3.Connection) -> None:
+def init_db(conn: sqlite3.Connection, project_dir: str | None = None) -> None:
     """Initialize schema and run migrations."""
     # Ensure migration table exists
     conn.execute("""
@@ -73,21 +97,33 @@ def init_db(conn: sqlite3.Connection) -> None:
     version = cursor.fetchone()[0]
     
     if version < CURRENT_SCHEMA_VERSION:
-        _run_migrations(conn, version)
+        _run_migrations(conn, version, project_dir)
 
-def _run_migrations(conn: sqlite3.Connection, current_version: int) -> None:
+def _run_migrations(conn: sqlite3.Connection, current_version: int, project_dir: str | None = None) -> None:
     """Apply pending migrations in order."""
     for v in range(current_version + 1, CURRENT_SCHEMA_VERSION + 1):
-        migration_fn = _MIGRATIONS[v - 1]
+        _run_single_migration(conn, v, project_dir)
+
+def _run_single_migration(conn: sqlite3.Connection, v: int, project_dir: str | None = None) -> None:
+    """Run a single schema migration with backup and rollback."""
+    if project_dir:
+        _backup_db(project_dir, v - 1)
         
-        with transaction(conn):
+    with transaction(conn):
+        conn.execute(f"SAVEPOINT migrate_v{v}")
+        try:
+            migration_fn = _MIGRATIONS[v - 1]
             migration_fn(conn)
             conn.execute(
                 "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
                 (v, now_iso())
             )
             conn.execute(f"PRAGMA user_version = {v}")
+            conn.execute(f"RELEASE SAVEPOINT migrate_v{v}")
             logger.info(f"Applied schema migration v{v}")
+        except Exception:
+            conn.execute(f"ROLLBACK TO SAVEPOINT migrate_v{v}")
+            raise
 
 # --- Migration Functions ---
 
@@ -266,12 +302,12 @@ def _migration_v2(conn: sqlite3.Connection) -> None:
 
     # F10: parent_id distinguishes top-level tasks from subtasks in the same table.
     # Subtasks have parent_id = their parent task id; top-level tasks have parent_id IS NULL.
-    conn.execute("ALTER TABLE tasks ADD COLUMN parent_id TEXT REFERENCES tasks(id)")
-    conn.execute("CREATE INDEX idx_tasks_parent ON tasks(parent_id)")
+    _add_column_if_missing(conn, "tasks", "parent_id", "TEXT REFERENCES tasks(id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id)")
 
     # Discussions — persistent store for multi-agent discuss sessions.
     conn.execute("""
-        CREATE TABLE discussions (
+        CREATE TABLE IF NOT EXISTS discussions (
             id          TEXT PRIMARY KEY,
             task_id     TEXT,
             topic       TEXT NOT NULL,
@@ -283,11 +319,11 @@ def _migration_v2(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
         )
     """)
-    conn.execute("CREATE INDEX idx_discussions_task   ON discussions(task_id)")
-    conn.execute("CREATE INDEX idx_discussions_status ON discussions(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_discussions_task   ON discussions(task_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_discussions_status ON discussions(status)")
 
     conn.execute("""
-        CREATE TABLE discussion_rounds (
+        CREATE TABLE IF NOT EXISTS discussion_rounds (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             discussion_id   TEXT    NOT NULL,
             round_number    INTEGER NOT NULL,
@@ -298,7 +334,7 @@ def _migration_v2(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (discussion_id) REFERENCES discussions(id) ON DELETE CASCADE
         )
     """)
-    conn.execute("CREATE INDEX idx_disc_rounds_disc ON discussion_rounds(discussion_id, round_number)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_disc_rounds_disc ON discussion_rounds(discussion_id, round_number)")
 
     # F8: UNIQUE partial index on yaml_sync_queue prevents duplicate pending ops for the
     # same (op_type, entity id). NULL ids (for ops without an id field) are always distinct.
@@ -311,9 +347,9 @@ def _migration_v2(conn: sqlite3.Connection) -> None:
 
 def _migration_v3(conn: sqlite3.Connection) -> None:
     """Add verified/verified_at/verified_by columns to tasks."""
-    conn.execute("ALTER TABLE tasks ADD COLUMN verified INTEGER NOT NULL DEFAULT 0")
-    conn.execute("ALTER TABLE tasks ADD COLUMN verified_at TEXT")
-    conn.execute("ALTER TABLE tasks ADD COLUMN verified_by TEXT")
+    _add_column_if_missing(conn, "tasks", "verified", "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "tasks", "verified_at", "TEXT")
+    _add_column_if_missing(conn, "tasks", "verified_by", "TEXT")
 
 
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
