@@ -31,6 +31,7 @@ def _setup_project(tmp_path):
     (harness / "ledger.md").write_text("# Ledger\n")
     (harness / "decisions.yaml").write_text("decisions: []\n")
     (harness / "failures.yaml").write_text("failures: []\n")
+    seed_sqlite_from_yaml(project)
     return project
 
 

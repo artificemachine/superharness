@@ -32,6 +32,8 @@ def _make_project(tmp_path: Path, tasks: list[dict] | None = None) -> Path:
     (harness / "contract.yaml").write_text(yaml.dump(contract))
     (harness / "inbox.yaml").write_text(yaml.dump({"items": []}))
     (harness / "ledger.md").write_text("# Ledger\n")
+    from tests.helpers import seed_sqlite_from_yaml
+    seed_sqlite_from_yaml(project)
     return project
 
 

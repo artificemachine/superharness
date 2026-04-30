@@ -14,14 +14,7 @@ import argparse
 import os
 import sys
 
-try:
-    from ruamel.yaml import YAML as RuamelYAML
-    _RT_AVAILABLE = True
-except ImportError:
-    _RT_AVAILABLE = False
-
-import yaml
-from superharness.engine.contract_io import write_contract as _write_contract
+from superharness.engine.contract_io import write_contract as _write_contract, read_contract as _read_contract
 
 HELP_TEXT = """\
 Usage:
@@ -85,19 +78,6 @@ def _abort(msg: str, code: int = 1) -> None:
     sys.exit(code)
 
 
-def _load_contract(path: str) -> object:
-    if not os.path.exists(path):
-        _abort(f"Missing contract file: {path}")
-    if _RT_AVAILABLE:
-        rt = RuamelYAML()
-        rt.preserve_quotes = True
-        with open(path, "r") as f:
-            doc = rt.load(f)
-        return doc if doc is not None else {}
-    with open(path, "r") as f:
-        doc = yaml.safe_load(f)
-    return doc if doc is not None else {}
-
 
 def _find_task(tasks: list, task_id: str) -> dict | None:
     for t in tasks:
@@ -115,7 +95,7 @@ def run(
     show: bool = False,
     interactive: bool = False,
 ) -> int:
-    doc = _load_contract(contract_file)
+    doc, _ = _read_contract(contract_file)
     if not isinstance(doc, dict):
         _abort("contract.yaml must be a mapping")
 
@@ -173,7 +153,7 @@ def run_all(
     show: bool = False,
     interactive: bool = False,
 ) -> int:
-    doc = _load_contract(contract_file)
+    doc, _ = _read_contract(contract_file)
     if not isinstance(doc, dict):
         _abort("contract.yaml must be a mapping")
 
