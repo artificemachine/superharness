@@ -40,6 +40,19 @@ def _make_contract(tmp_path: Path, tasks: list[dict] | None = None) -> tuple[Pat
             lines.append(f"    dependency: {t['dependency']}")
 
     contract.write_text("\n".join(lines) + "\n")
+
+    # Seed SQLite so state_reader (sqlite_only) finds the tasks.
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine.contract_io import _task_row_from_dict
+    from superharness.engine import tasks_dao
+    conn = get_connection(str(project))
+    init_db(conn)
+    for t in tasks:
+        t["project_path"] = project.as_posix()
+        tasks_dao.upsert(conn, _task_row_from_dict(t, str(project), "2026-01-01T00:00:00Z"))
+    conn.commit()
+    conn.close()
+
     return project, contract
 
 
