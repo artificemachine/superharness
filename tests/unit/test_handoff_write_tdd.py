@@ -11,6 +11,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
+from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
 
 import yaml
 
@@ -22,6 +23,7 @@ def _make_project(tmp_path: Path, task: dict) -> Path:
     sh = project / ".superharness"
     sh.mkdir(parents=True)
     (sh / "contract.yaml").write_text(yaml.dump({"id": "proj", "tasks": [task]}))
+    seed_sqlite_from_yaml(project)
     return project
 
 
