@@ -21,6 +21,8 @@ def _make_project(tmp_path: Path, profile: dict | None = None) -> Path:
     (project / ".superharness" / "contract.yaml").write_text("id: test\ntasks:\n")
     if profile is not None:
         (project / ".superharness" / "profile.yaml").write_text(yaml.dump(profile))
+    from tests.helpers import seed_sqlite_from_yaml
+    seed_sqlite_from_yaml(project)
     return project
 
 

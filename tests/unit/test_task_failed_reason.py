@@ -27,6 +27,8 @@ def _make_project(tmp_path: Path, task_id: str, owner: str, status: str = "in_pr
         f"decisions: []\n"
         f"failures: []\n"
     )
+    from tests.helpers import seed_sqlite_from_yaml
+    seed_sqlite_from_yaml(project)
     return project
 
 
