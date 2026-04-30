@@ -5,6 +5,7 @@ import subprocess
 import sys
 import yaml
 from pathlib import Path
+from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
 
 
 PYTHON = sys.executable
@@ -35,6 +36,7 @@ def _write_project(tmp_path: Path, *, tasks: str = "") -> Path:
                 tasks_dao.upsert(conn, _task_row_from_dict(task_dict, str(project), "2026-01-01T00:00:00Z"))
     conn.commit()
     conn.close()
+    seed_sqlite_from_yaml(project)
 
     return project
 
