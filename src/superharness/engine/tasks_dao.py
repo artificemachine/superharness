@@ -34,6 +34,9 @@ class TaskRow:
     cancelled_at: str | None = None
     blocked_by: list[str] = None  # type: ignore
     parent_id: str | None = None
+    verified: bool = False
+    verified_at: str | None = None
+    verified_by: str | None = None
 
 def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
     """Insert or update a task. Bumps version on update."""
@@ -50,8 +53,9 @@ def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
                 development_method, acceptance_criteria, test_types,
                 out_of_scope, definition_of_done, context, tdd, created_at,
                 plan_proposed_at, plan_approved_at, in_progress_at,
-                report_ready_at, done_at, cancelled_at, version, parent_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                report_ready_at, done_at, cancelled_at, version, parent_id,
+                verified, verified_at, verified_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 title=excluded.title, owner=excluded.owner, status=excluded.status,
                 effort=excluded.effort, project_path=excluded.project_path,
@@ -67,13 +71,17 @@ def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
                 done_at=excluded.done_at,
                 cancelled_at=excluded.cancelled_at,
                 parent_id=excluded.parent_id,
+                verified=excluded.verified,
+                verified_at=excluded.verified_at,
+                verified_by=excluded.verified_by,
                 version=tasks.version + 1
             RETURNING *
         """, (
             task.id, task.title, task.owner, task.status, task.effort, task.project_path,
             task.development_method, ac, tt, oos, dod, task.context, tdd, task.created_at,
             task.plan_proposed_at, task.plan_approved_at, task.in_progress_at,
-            task.report_ready_at, task.done_at, task.cancelled_at, task.version, task.parent_id
+            task.report_ready_at, task.done_at, task.cancelled_at, task.version, task.parent_id,
+            int(task.verified), task.verified_at, task.verified_by,
         ))
         row = cursor.fetchone()
         if not row:
@@ -260,4 +268,7 @@ def _row_to_task(conn: sqlite3.Connection, row: sqlite3.Row, blocked_by: list[st
         cancelled_at=row["cancelled_at"],
         blocked_by=blocked_by,
         parent_id=row["parent_id"] if "parent_id" in keys else None,
+        verified=bool(row["verified"]) if "verified" in keys else False,
+        verified_at=row["verified_at"] if "verified_at" in keys else None,
+        verified_by=row["verified_by"] if "verified_by" in keys else None,
     )

@@ -13,7 +13,7 @@ import os
 import sys
 from typing import Optional
 
-import yaml
+from superharness.engine.contract_io import read_contract as _read_contract
 from superharness.engine.taxonomy import VALID_EFFORTS, EFFORT_ORDER
 
 
@@ -22,13 +22,6 @@ _VALID_AGENTS = ("claude-code", "codex-cli")
 # Effort levels that trigger orchestrator decomposition before enqueue
 _DECOMPOSE_EFFORTS = {"high", "max"}
 
-
-def _load_contract(contract_file: str) -> dict:
-    try:
-        with open(contract_file, encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
-    except FileNotFoundError:
-        return {}
 
 
 def _todo_tasks(contract: dict) -> list[dict]:
@@ -117,7 +110,8 @@ def run_auto_dispatch(
         print(f"auto-dispatch: contract not found at {contract_file}", file=sys.stderr)
         return 1
 
-    contract = _load_contract(contract_file)
+    contract, _ = _read_contract(contract_file)
+    contract = contract or {}
     tasks = _todo_tasks(contract)
 
     if not tasks:

@@ -51,6 +51,7 @@ def _setup(tmp_path: Path, *, tasks: list[dict] | None = None) -> Path:
         f"id: test-contract\ngoal: Test goal\ncreated: 2026-01-01\n"
         f"created_by: owner\nstatus: active\ntasks:\n{task_yaml}\n"
     )
+    seed_sqlite_from_yaml(project)
     return project
 
 

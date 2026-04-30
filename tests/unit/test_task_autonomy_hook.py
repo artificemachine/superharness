@@ -25,6 +25,8 @@ def _make_project(tmp_path: Path, task: dict) -> Path:
         "tasks": [task],
     }
     (sh / "contract.yaml").write_text(yaml.dump(contract))
+    from tests.helpers import seed_sqlite_from_yaml
+    seed_sqlite_from_yaml(project)
     return project
 
 
