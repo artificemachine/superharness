@@ -1,3 +1,3 @@
 """superharness — multi-agent session handoff framework."""
 
-__version__ = "1.44.18"
+__version__ = "1.44.19"
