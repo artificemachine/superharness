@@ -93,6 +93,19 @@ def _display_status(raw_status: str) -> tuple[str, str]:
     return _STATUS_MAP.get(raw_status, ("pending", "#6b7280"))
 
 
+_OWNER_DISPLAY = {
+    "owner":       "@you",
+    "claude-code": "claude-code",
+    "codex-cli":   "codex-cli",
+    "openclaw":    "openclaw",
+}
+
+
+def _owner_label(raw_owner: str) -> str:
+    """Return a human-readable label for an owner value."""
+    return _OWNER_DISPLAY.get(str(raw_owner or "").strip(), str(raw_owner or "").strip())
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -531,6 +544,7 @@ def _build_tasks(raw_tasks: list, handoffs_by_task: dict) -> list[dict]:
                 "status":              resolve_subtask_status(s, raw_status),
                 "model_tier":          sub_tier,
                 "owner":               sub_owner,
+                "owner_label":         _owner_label(sub_owner),
                 "estimated_tokens":    s.get("estimated_tokens"),
                 "estimated_cost_usd":  s.get("estimated_cost_usd"),
                 "rationale":           s.get("rationale"),
@@ -549,6 +563,7 @@ def _build_tasks(raw_tasks: list, handoffs_by_task: dict) -> list[dict]:
             "display_status":      display,
             "color":               color,
             "owner":               owner,
+            "owner_label":         _owner_label(owner),
             "cost":                t.get("estimated_cost_usd"),
             "blocked_by":          _blockers(t),
             "effort":              t.get("effort"),

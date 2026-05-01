@@ -263,57 +263,22 @@ def version_sanity(project_dir: Path) -> dict:
 
 
 def inbox_items(inbox_file: Path) -> list[dict]:
-    """Read inbox items. Prefers state_reader (SQLite-aware); falls back to YAML."""
+    """Read inbox items from state_reader (SQLite-only)."""
     project_dir = str(inbox_file.parent.parent)
-    sqlite_items: list[dict] | None = None
     try:
         from superharness.engine import state_reader as _sr
-        sqlite_items = _sr.get_inbox_items(project_dir)
-    except Exception:
-        pass
-
-    # In sqlite_only mode, trust the SQLite result (even if empty).
-    # In dual/yaml mode, if SQLite returned nothing, fall back to YAML.
-    import os as _os
-    backend = _os.environ.get("STATE_BACKEND", "").strip().lower()
-    if sqlite_items is not None and (sqlite_items or backend == "sqlite_only"):
-        return sqlite_items
-
-    if not inbox_file.exists():
-        return []
-    try:
-        import yaml
-        try:
-            import fcntl  # type: ignore[import-not-found]
-        except ImportError:
-            fcntl = None  # type: ignore[assignment]
-        with open(inbox_file, "r", encoding="utf-8", errors="replace") as f:
-            if fcntl is not None:
-                try:
-                    fcntl.flock(f, fcntl.LOCK_SH | fcntl.LOCK_NB)
-                    content = f.read()
-                    fcntl.flock(f, fcntl.LOCK_UN)
-                except (OSError, IOError):
-                    f.seek(0)
-                    content = f.read()
-            else:
-                content = f.read()
-        items = yaml.safe_load(content)
-        return items if isinstance(items, list) else []
+        return _sr.get_inbox_items(project_dir)
     except Exception:
         return []
 
 
 def inbox_counts(inbox_file: Path) -> dict[str, int]:
+    """Count inbox items by status from state_reader (SQLite-only)."""
     counts = Counter()
-    if not inbox_file.exists():
-        return {}
-    for ln in inbox_file.read_text(encoding="utf-8", errors="replace").splitlines():
-        line = ln.strip()
-        if line.startswith("status:"):
-            parts = line.split(":", 1)
-            if len(parts) == 2:
-                counts[parts[1].strip()] += 1
+    for item in inbox_items(inbox_file):
+        status = item.get("status", "")
+        if status:
+            counts[status] += 1
     return dict(counts)
 
 
@@ -825,20 +790,14 @@ def _detect_sdk_activity(project_dir: Path) -> str:
 
 
 def contract_owners(contract_file: Path) -> list[str]:
-    """Read distinct task owners. Prefers state_reader (SQLite-aware); falls back to YAML."""
+    """Read distinct task owners from state_reader (SQLite-only)."""
     project_dir = str(contract_file.parent.parent)
     raw_tasks: list[dict] = []
     try:
         from superharness.engine import state_reader as _sr
         raw_tasks = _sr.get_tasks(project_dir)
     except Exception:
-        if contract_file.exists():
-            try:
-                import yaml  # noqa: F811
-                doc = yaml.safe_load(contract_file.read_text()) or {}
-                raw_tasks = [t for t in (doc.get("tasks") or []) if isinstance(t, dict)]
-            except Exception:
-                pass
+        pass
     owners = []
     seen: set[str] = set()
     for t in raw_tasks:
@@ -1034,14 +993,26 @@ def heartbeat_health(project_dir: Path, stale_seconds: int = 120) -> dict:
 
 
 def contract_id(contract_file: Path) -> str:
-    if not contract_file.exists():
-        return ""
+    """Read the contract id from state_reader (SQLite)."""
+    project_dir = str(contract_file.parent.parent)
     try:
-        import yaml
-        doc = yaml.safe_load(contract_file.read_text(encoding="utf-8", errors="replace")) or {}
+        from superharness.engine import state_reader as _sr
+        doc = _sr.get_contract_doc(project_dir)
         return str(doc.get("id", "") or "")
     except Exception:
         return ""
+
+
+def _tasks_from_yaml(contract_file: Path) -> list[dict]:
+    """Fallback: read tasks directly from contract.yaml (for non-harness paths)."""
+    if not contract_file.exists():
+        return []
+    try:
+        import yaml
+        doc = yaml.safe_load(contract_file.read_text(encoding="utf-8", errors="replace")) or {}
+        return [t for t in (doc.get("tasks") or []) if isinstance(t, dict)]
+    except Exception:
+        return []
 
 
 def contract_tasks(contract_file: Path) -> list[dict]:
@@ -1060,13 +1031,8 @@ def contract_tasks(contract_file: Path) -> list[dict]:
             raw_tasks = _sr.get_top_level_tasks(project_dir)
         except Exception:
             pass
-    if not raw_tasks and contract_file.exists():
-        try:
-            import yaml
-            doc = yaml.safe_load(contract_file.read_text(encoding="utf-8", errors="replace")) or {}
-            raw_tasks = [t for t in (doc.get("tasks") or []) if isinstance(t, dict)]
-        except Exception:
-            pass
+    if not raw_tasks:
+        raw_tasks = _tasks_from_yaml(contract_file)
 
     tasks = []
     for t in raw_tasks:
@@ -1145,14 +1111,7 @@ def plan_proposals(harness_dir: Path) -> list[dict]:
         pass
 
     if all_tasks is None:
-        if not contract_file.exists():
-            return rows
-        try:
-            import yaml  # noqa: F811
-            doc = yaml.safe_load(contract_file.read_text()) or {}
-            all_tasks = [t for t in (doc.get("tasks", []) or []) if isinstance(t, dict)]
-        except Exception:
-            return rows
+        return rows
 
     tasks = all_tasks or []
     for t in tasks:
@@ -1188,83 +1147,47 @@ def plan_proposals(harness_dir: Path) -> list[dict]:
 
 
 def _set_task_status(harness_dir: Path, task_id: str, to_status: str, from_status: str | None = None) -> dict:
-    """Set a contract task status. Writes to SQLite first, then YAML (dual) or YAML-only fallback."""
+    """Set a contract task status. SQLite-only write path."""
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     project_dir = str(harness_dir.parent)
 
-    # SQLite-primary write
-    sqlite_ok = False
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import tasks_dao
         _conn = get_connection(project_dir)
-        init_db(_conn)
-        task_row = tasks_dao.get(_conn, task_id)
-        if task_row is not None:
-            if from_status and task_row.status != from_status:
-                _conn.close()
-                return {"ok": False, "error": f"task {task_id} is {task_row.status!r}, expected {from_status!r}"}
-            tasks_dao.update(_conn, task_id, version=task_row.version, changes={"status": to_status})
-            _conn.commit()
-            sqlite_ok = True
-        _conn.close()
-    except Exception:
-        pass
-
-    # YAML write (dual mode or sole source)
-    contract_file = harness_dir / "contract.yaml"
-    if contract_file.exists():
         try:
-            import yaml  # noqa: F811
-            doc = yaml.safe_load(contract_file.read_text()) or {}
-            found = False
-            for t in doc.get("tasks") or []:
-                if isinstance(t, dict) and t.get("id") == task_id:
-                    if from_status and t.get("status") != from_status and not sqlite_ok:
-                        return {"ok": False, "error": f"task {task_id} is {t.get('status')!r}, expected {from_status!r}"}
-                    t["status"] = to_status
-                    t[f"{to_status}_at"] = now
-                    found = True
-                    break
-            if found:
-                contract_file.write_text(yaml.dump(doc, default_flow_style=False, sort_keys=False))
+            init_db(_conn)
+            task_row = tasks_dao.get(_conn, task_id)
+            if task_row is not None:
+                if from_status and task_row.status != from_status:
+                    return {"ok": False, "error": f"task {task_id} is {task_row.status!r}, expected {from_status!r}"}
+                tasks_dao.update(_conn, task_id, version=task_row.version, changes={"status": to_status})
+                _conn.commit()
                 return {"ok": True, "task": task_id, "status": to_status}
-        except Exception as e:
-            if not sqlite_ok:
-                return {"ok": False, "error": str(e)}
+        finally:
+            _conn.close()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
-    if sqlite_ok:
-        return {"ok": True, "task": task_id, "status": to_status}
     return {"ok": False, "error": f"task {task_id} not found"}
 
 
 def _contract_task(harness_dir: Path, task_id: str) -> dict | None:
-    """Fetch a single task by ID. SQLite-primary; YAML fallback."""
+    """Fetch a single task by ID from SQLite."""
     project_dir = str(harness_dir.parent)
     try:
         from dataclasses import asdict
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import tasks_dao
         _conn = get_connection(project_dir)
-        init_db(_conn)
-        row = tasks_dao.get(_conn, task_id)
-        _conn.close()
-        if row is not None:
-            return asdict(row)
-    except Exception:
-        pass
-    contract_file = harness_dir / "contract.yaml"
-    if not contract_file.exists():
-        return None
-    try:
-        import yaml  # noqa: F811
-        doc = yaml.safe_load(contract_file.read_text()) or {}
+        try:
+            init_db(_conn)
+            row = tasks_dao.get(_conn, task_id)
+            return asdict(row) if row is not None else None
+        finally:
+            _conn.close()
     except Exception:
         return None
-    for task in doc.get("tasks") or []:
-        if isinstance(task, dict) and task.get("id") == task_id:
-            return task
-    return None
 
 
 def _review_target_for_owner(owner: str) -> str:
@@ -1307,16 +1230,6 @@ def board_view(contract_file: Path) -> dict:
         try:
             from superharness.engine import state_reader as _sr
             raw_tasks = _sr.get_top_level_tasks(project_dir)
-        except Exception:
-            pass
-
-    if not raw_tasks and contract_file.exists():
-        try:
-            import yaml  # noqa: F811
-            doc = yaml.safe_load(contract_file.read_text(encoding="utf-8", errors="replace")) or {}
-            direct = [t for t in (doc.get("tasks") or []) if isinstance(t, dict)]
-            if direct:
-                raw_tasks = direct
         except Exception:
             pass
 
@@ -1513,7 +1426,7 @@ def watcher_config(project_dir: Path) -> dict:
 def board_tasks(contract_file: Path) -> dict[str, list[dict]]:
     """Group contract tasks by board column (todo/plan/active/review/done/stopped).
 
-    Prefers state_reader (SQLite-aware); falls back to YAML.
+    Reads from state_reader (SQLite-only).
     """
     _STATUS_TO_COL: dict[str, str] = {
         "todo": "todo",
@@ -1544,17 +1457,7 @@ def board_tasks(contract_file: Path) -> dict[str, list[dict]]:
         except Exception:
             pass
 
-    if not raw_tasks and contract_file.exists():
-        try:
-            import yaml  # noqa: F811
-            doc = yaml.safe_load(contract_file.read_text(encoding="utf-8", errors="replace")) or {}
-            direct = [t for t in (doc.get("tasks") or []) if isinstance(t, dict)]
-            if direct:
-                raw_tasks = direct
-        except Exception:
-            pass
-
-    if not raw_tasks and not contract_file.exists():
+    if not raw_tasks:
         return {}
 
     for t in (raw_tasks or []):
@@ -1576,7 +1479,7 @@ def board_tasks(contract_file: Path) -> dict[str, list[dict]]:
 def review_queue(contract_file: Path) -> list[dict]:
     """Return tasks in review states ordered by urgency (review_failed first).
 
-    Prefers state_reader (SQLite-aware); falls back to YAML.
+    Reads from state_reader (SQLite-only).
     """
     _REVIEW_STATUSES = {"report_ready", "review_requested", "review_passed", "review_failed"}
     _URGENCY = {
@@ -1596,17 +1499,7 @@ def review_queue(contract_file: Path) -> list[dict]:
         except Exception:
             pass
 
-    if not raw_tasks and contract_file.exists():
-        try:
-            import yaml  # noqa: F811
-            doc = yaml.safe_load(contract_file.read_text(encoding="utf-8", errors="replace")) or {}
-            direct = [t for t in (doc.get("tasks") or []) if isinstance(t, dict)]
-            if direct:
-                raw_tasks = direct
-        except Exception:
-            pass
-
-    if raw_tasks is None:
+    if not raw_tasks:
         return []
 
     queue = []
@@ -1915,36 +1808,19 @@ class Handler(BaseHTTPRequestHandler):
             task_id = action.split(":", 1)[1]
             if not task_id:
                 return ({"error": "missing task id"}, 400)
-            harness_dir = self.project_dir / ".superharness"
-            contract_file = harness_dir / "contract.yaml"
-            sqlite_removed = False
             try:
                 from superharness.engine.db import get_connection, init_db
                 _conn = get_connection(str(self.project_dir))
-                init_db(_conn)
-                _rc = _conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,)).rowcount
-                _conn.commit()
-                _conn.close()
-                sqlite_removed = _rc > 0
+                try:
+                    init_db(_conn)
+                    _rc = _conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,)).rowcount
+                    _conn.commit()
+                    if _rc > 0:
+                        return {"ok": True, "removed": task_id}, 200
+                finally:
+                    _conn.close()
             except Exception:
                 pass
-            yaml_removed = False
-            if contract_file.exists():
-                try:
-                    import yaml as _yaml
-                    with open(contract_file) as _f:
-                        _contract = _yaml.safe_load(_f)
-                    _tasks = _contract.get("tasks", [])
-                    _before = len(_tasks)
-                    _contract["tasks"] = [t for t in _tasks if t.get("id") != task_id]
-                    yaml_removed = len(_contract["tasks"]) < _before
-                    if yaml_removed:
-                        with open(contract_file, "w") as _f:
-                            _yaml.safe_dump(_contract, _f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-                except Exception:
-                    pass
-            if sqlite_removed or yaml_removed:
-                return {"ok": True, "removed": task_id}, 200
             return ({"error": f"task '{task_id}' not found"}, 404)
 
         if action.startswith("set_owner:"):
@@ -1953,28 +1829,19 @@ class Handler(BaseHTTPRequestHandler):
                 return ({"error": "invalid action format"}, 400)
             task_id = parts[1]
             new_owner = parts[2]
-            harness_dir = self.project_dir / ".superharness"
-            contract_file = harness_dir / "contract.yaml"
             try:
-                import yaml as _yaml
-                with open(contract_file) as _f:
-                    _contract = _yaml.safe_load(_f)
-                _tasks = _contract.get("tasks", [])
-                _found = False
-                for t in _tasks:
-                    if isinstance(t, dict) and t.get("id") == task_id:
-                        t["owner"] = new_owner
-                        _found = True
-                        break
-                if not _found:
-                    return ({"error": f"task '{task_id}' not found"}, 404)
-                with open(contract_file, "w") as _f:
-                    _yaml.safe_dump(_contract, _f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+                from superharness.engine.db import get_connection, init_db
+                from superharness.engine import tasks_dao
+                _conn = get_connection(str(self.project_dir))
                 try:
-                    from superharness.engine.state_writer import _mirror_task_to_sqlite
-                    _mirror_task_to_sqlite(str(self.project_dir), task_id, next((t.get("status","") for t in _tasks if t.get("id")==task_id), ""))
-                except Exception:
-                    pass
+                    init_db(_conn)
+                    task_row = tasks_dao.get(_conn, task_id)
+                    if task_row is None:
+                        return ({"error": f"task '{task_id}' not found"}, 404)
+                    tasks_dao.update(_conn, task_id, version=task_row.version, changes={"owner": new_owner})
+                    _conn.commit()
+                finally:
+                    _conn.close()
                 return {"ok": True, "task": task_id, "new_owner": new_owner}, 200
             except Exception as exc:
                 return ({"error": str(exc)}, 500)
@@ -2134,27 +2001,29 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 import yaml as _disc_yaml
                 state_file = disc_dir / "state.yaml"
+                _task_id = ""
                 if state_file.exists():
                     _state = _disc_yaml.safe_load(state_file.read_text()) or {}
                     _task_id = _state.get("task_id") or ""
-                harness_dir = self.project_dir / ".superharness"
-                contract_path = harness_dir / "contract.yaml"
-                if contract_path.exists():
-                    _doc = _disc_yaml.safe_load(contract_path.read_text()) or {}
-                    _changed = False
-                    for _t in _doc.get("tasks") or []:
-                        _tid = str(_t.get("id", ""))
-                        if _t.get("status") == "in_progress" and (
+
+                # Use SQLite to find and update in_progress tasks linked to this discussion
+                from superharness.engine.db import get_connection, init_db
+                from superharness.engine import tasks_dao
+                _conn = get_connection(str(self.project_dir))
+                try:
+                    init_db(_conn)
+                    all_tasks = tasks_dao.get_all(_conn)
+                    for _t in all_tasks:
+                        _tid = str(_t.id)
+                        if _t.status == "in_progress" and (
                             _tid == _task_id
                             or _tid.startswith(disc_id + "/")
                             or (_task_id and _tid.startswith(_task_id + "/"))
                         ):
-                            _t["status"] = "archived"
-                            _changed = True
-                    if _changed:
-                        contract_path.write_text(
-                            _disc_yaml.dump(_doc, default_flow_style=False, sort_keys=False, allow_unicode=True)
-                        )
+                            tasks_dao.update(_conn, _tid, version=_t.version, changes={"status": "archived"})
+                    _conn.commit()
+                finally:
+                    _conn.close()
             except Exception:
                 pass
             return (result, 200 if result.get("ok") or result.get("exit_code") == 0 else 500)
@@ -2864,25 +2733,16 @@ class Handler(BaseHTTPRequestHandler):
                 if len(existing) <= 2:
                     self._json({"error": "Cannot remove owner: at least 2 owners required"}, 400)
                     return
-                # Remove all tasks owned by this owner
+                # Remove all tasks owned by this owner via SQLite
                 try:
-                    import yaml
-                    doc = yaml.safe_load(contract.read_text()) or {}
-                    tasks = doc.get("tasks") or []
-                    removed_tasks = [t for t in tasks if isinstance(t, dict) and t.get("owner") == owner]
-                    doc["tasks"] = [t for t in tasks if not (isinstance(t, dict) and t.get("owner") == owner)]
-                    contract.write_text(yaml.dump(doc, default_flow_style=False, sort_keys=False))
+                    from superharness.engine.db import get_connection, init_db
+                    _conn = get_connection(str(self.project_dir))
                     try:
-                        import sqlite3 as _sqlite3
-                        _db_path = self.project_dir / ".superharness" / "state.sqlite3"
-                        if _db_path.exists():
-                            _conn = _sqlite3.connect(str(_db_path))
-                            for _rt in removed_tasks:
-                                _conn.execute("DELETE FROM tasks WHERE id=?", (_rt.get("id",""),))
-                            _conn.commit()
-                            _conn.close()
-                    except Exception:
-                        pass
+                        init_db(_conn)
+                        _conn.execute("DELETE FROM tasks WHERE owner = ?", (owner,))
+                        _conn.commit()
+                    finally:
+                        _conn.close()
                 except Exception as e:
                     self._json({"error": str(e)}, 500)
                     return
