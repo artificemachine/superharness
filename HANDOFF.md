@@ -1,12 +1,13 @@
-# Handoff — superharness v1.44.16 (2026-05-01)
+# Handoff — superharness v1.44.18 (2026-05-01)
 
 > Branch: `main`
-> Published: v1.44.14 on PyPI + GitHub (v1.44.16 not yet released)
+> Published: v1.44.18 on PyPI + GitHub
+> Installed locally: `pipx install superharness` (v1.44.18)
 > Morpheme: v0.10.0 on GitHub (artificemachine/morpheme, private)
 
 ## Session summary
 
-Executed the dashboard YAML→SQLite migration plan (docs/plans/dashboard-yaml-to-sqlite.md). 4-step TDD migration: added 3 new state_reader functions, removed dead YAML fallbacks from 10 dashboard functions, migrated inbox reads, and fixed 6 read-modify-write paths to use SQLite exclusively. 14 new tests, zero regressions.
+Executed the dashboard YAML→SQLite migration plan (docs/plans/dashboard-yaml-to-sqlite.md). 4-step TDD migration: added 3 new state_reader functions, removed dead YAML fallbacks from 10 dashboard functions, migrated inbox reads, and fixed 6 read-modify-write paths to use SQLite exclusively. 14 new tests, zero regressions. Post-audit found and fixed 3 gaps. Published to PyPI as v1.44.18.
 
 ## What was shipped
 
@@ -17,7 +18,7 @@ Executed the dashboard YAML→SQLite migration plan (docs/plans/dashboard-yaml-t
 | #5 | **Daemon detached subprocess** — replaced `threading.Thread` with `os.fork` + `os.setsid` + `os.execvpe`. Monitor now survives CLI exit. 2 new tests. | v1.44.14 |
 | #2-B | **Split-brain conftest** — auto-seeds SQLite from YAML in `clean_harness` fixture. Partial fix; 20 tests still need individual rewrites. | v1.44.15 (test-only, no release tag) |
 | #4 (morpheme) | **Poller visibility + /health** — `errorCount`, `lastErrorMessage`, `lastSuccessAt` tracked. `GET /health` returns 200/503. 152/152 tests pass. | v0.10.0 |
-| #3 | **Dashboard YAML→SQLite migration** — 14 dead YAML reads removed from dashboard-ui.py. Added `get_failures()`, `get_decisions()`, `get_ledger_entries()` to state_reader. Fixed 6 read-modify-write paths (set_task_status, contract_task, kanban_board, task delete, set_owner, owner removal, discussion-close archival). 14 new TDD tests. | v1.44.16 (pending release) |
+| #3 | **Dashboard YAML→SQLite migration** — 14 dead YAML reads removed from dashboard-ui.py. Added `get_failures()`, `get_decisions()`, `get_ledger_entries()` to state_reader. Fixed 6 read-modify-write paths (set_task_status, contract_task, kanban_board, task delete, set_owner, owner removal, discussion-close archival). 14 new TDD tests. Post-audit gap fixes: removed YAML write in cleanup_inbox, removed inbox_file.exists() guard, bumped __version__, updated CLAUDE.md. | v1.44.18 |
 
 ## How to continue
 
@@ -56,14 +57,15 @@ Executed the dashboard YAML→SQLite migration plan (docs/plans/dashboard-yaml-t
 
 ```bash
 cd ~/DevOpsSec/superharness && git checkout main && git pull
+pipx upgrade superharness          # should install v1.44.18
+shux --version                     # should be 1.44.18
 uv run pytest tests/unit/dashboard/ -q  # should be 14 passed
-uv run python -m superharness --version
 ```
 
 ### Current test baseline
-- Unit tests: 14 new (all pass), 0 regressions from dashboard migration
-- Integration: 53 pre-existing failures (dashboard port detection, yaml_sync deprecated, parity deprecated, tests reading tombstone YAML)
-- ShipGuard: 2 CRITICAL — false positives in `test_redact.py` (test fixtures for credential redaction)
+- Dashboard unit: 14/14 pass (all new), 0 regressions
+- Unit (relevant subsets): 401 passed, 53 pre-existing failures (parity deprecated, yaml_sync deprecated, dashboard port-detection, stale-YAML integration tests)
+- ShipGuard: 2 CRITICAL — false positives in `test_redact.py`
 
 ### New files
 - `tests/unit/dashboard/test_state_reader_coverage.py` — 7 tests for new state_reader functions
