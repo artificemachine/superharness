@@ -361,14 +361,13 @@ def task_instructions(project_dir: Path, task_id: str) -> str:
             lines.append(f"- {c}")
         lines.append("")
 
-    # Check for prior failed attempts — inbox items and handoff reports
+    # Check for prior failed attempts — inbox items (SQLite) and handoff reports
     prior_failure = ""
     inbox_file = project_dir / ".superharness" / "inbox.yaml"
-    if inbox_file.exists():
-        items = inbox_items(inbox_file)
-        failed = [i for i in items if i.get("task") == task_id and i.get("status") in ("failed", "stale")]
-        if failed:
-            prior_failure = f"Status: {failed[-1].get('status')}"
+    items = inbox_items(inbox_file)
+    failed = [i for i in items if i.get("task") == task_id and i.get("status") in ("failed", "stale")]
+    if failed:
+        prior_failure = f"Status: {failed[-1].get('status')}"
 
     # Check handoff for failure details
     report = task_report(project_dir, task_id, "")
@@ -1771,17 +1770,6 @@ class Handler(BaseHTTPRequestHandler):
                     _conn.close()
                 except Exception:
                     pass
-                # YAML write (dual mode only)
-                if inbox.exists():
-                    try:
-                        import yaml as _yaml
-                        kept = [i for i in items if i.get("id") not in remove_ids]
-                        with open(inbox, "w", encoding="utf-8") as fh:
-                            fh.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
-                            for item in kept:
-                                _yaml.dump([item], fh, default_flow_style=False, allow_unicode=True, sort_keys=True)
-                    except Exception:
-                        pass
             return {"ok": True, "removed": removed}, 200
         if action.startswith("confirm_plan:"):
             task_id = action.split(":", 1)[1]
