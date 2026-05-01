@@ -95,6 +95,12 @@ trap 'rm -f "$PY_HELPER" "$JSON_TMP"' EXIT
 
 "$PYTHON3" -m superharness.engine.inbox list_launched --file "$INBOX_FILE" > "$JSON_TMP"
 
+# Handle empty output — inbox.yaml may be stale/empty in sqlite_only mode (v1.43+)
+if [ ! -s "$JSON_TMP" ]; then
+  echo "result=ok exceeded=0 (no launched items)"
+  exit 0
+fi
+
 LAUNCHED_LINES="$("$PYTHON3" "$PY_HELPER" "$JSON_TMP" "$NOW_EPOCH")"
 
 exceeded_count=0
