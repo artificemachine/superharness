@@ -34,9 +34,23 @@ Executed the dashboard YAML→SQLite migration plan (docs/plans/dashboard-yaml-t
    - Tests: `test_zombie_reconcile.py` (2 failing), `test_watcher_auto_gc.py` (9 failing)
 
 3. **PR #3 — dashboard YAML→SQLite** ✅ DONE
-   - Remaining YAML reads in dashboard-ui.py: 11 (all legitimate — handoffs, discussions, agent-pulse). Verified with `tests/unit/dashboard/test_dashboard_sqlite_only.py`.
+   - Remaining YAML reads in dashboard-ui.py: 12 (all legitimate — handoffs, discussions, agent-pulse). Verified with `tests/unit/dashboard/test_dashboard_sqlite_only.py`.
    - Bonus: removed YAML from `inbox_counts()` and `inbox_owner_counts()` (not in original plan).
+   - Gap fixes applied: removed dead YAML write in `cleanup_inbox` handler, removed `inbox_file.exists()` guard in `task_instructions()`.
    - Static check: only `_tasks_from_yaml()` (non-harness fallback) reads `contract.yaml` via `yaml.safe_load`.
+
+4. **PR #3-B — Next-wave: ancillary commands YAML→SQLite** (new)
+   - Files still reading/writing tombstone YAML:
+     | File | Severity | What |
+     |------|----------|------|
+     | `commands/onboard.py:315-331` | **HIGH** | Full read-modify-write to contract.yaml, no SQLite mirroring |
+     | `commands/inbox_watch.py:1543-1586` | **HIGH** | Reads contract.yaml, mutates, yaml.dump back, then mirrors to SQLite |
+     | `commands/inbox_watch.py:2328-2361` | **HIGH** | Discussion reconcile: same inverted pattern |
+     | `commands/handoff_write.py:88,116` | Medium | Reads contract.yaml for TDD policy + task existence |
+     | `commands/recap.py:53,96` | Medium | Reads inbox.yaml + contract.yaml for recap |
+     | `engine/preflight.py:154` | Medium | Reads contract.yaml for dependency checking |
+     | `engine/recall.py:109` | Medium | Reads contract.yaml for title-matching recall |
+   - Approach: migrate each to use `state_reader` for reads, `tasks_dao`/`inbox_dao` for writes
 
 ### Quick setup for next session
 
