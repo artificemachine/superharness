@@ -173,3 +173,86 @@ def _handoffs_from_sqlite(project_dir: str, task_id: str | None) -> list[dict]:
         return [dict(r) for r in rows]
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Failures reads
+# ---------------------------------------------------------------------------
+
+
+def get_failures(project_dir: str) -> list[dict]:
+    """Return all failure records from the SQLite failures table."""
+    from dataclasses import asdict
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import failures_dao
+
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        rows = failures_dao.get_recent(conn)
+        return [asdict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Decisions reads
+# ---------------------------------------------------------------------------
+
+
+def get_decisions(project_dir: str) -> list[dict]:
+    """Return all decision records from the SQLite decisions table."""
+    from dataclasses import asdict
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import decisions_dao
+
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        rows = decisions_dao.get_recent(conn)
+        return [asdict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Ledger reads
+# ---------------------------------------------------------------------------
+
+
+def get_ledger_entries(project_dir: str, *, hours: int | None = None) -> list[dict]:
+    """Return ledger entries from the SQLite ledger table.
+
+    Args:
+        project_dir: Path to the project root.
+        hours: If set, only return entries created within the last N hours.
+    """
+    from dataclasses import asdict
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import ledger_dao
+
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        rows = ledger_dao.get_recent(conn)
+        if hours is not None:
+            from datetime import datetime, timedelta, timezone
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+            rows = [
+                r for r in rows
+                if _parse_iso_utc(r.created_at) >= cutoff
+            ]
+        return [asdict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def _parse_iso_utc(ts: str):
+    """Parse an ISO-8601 timestamp string to a timezone-aware datetime.
+
+    Handles the 'Z' suffix by replacing it with '+00:00'.
+    """
+    from datetime import datetime, timezone
+    if ts.endswith("Z"):
+        ts = ts[:-1] + "+00:00"
+    return datetime.fromisoformat(ts)
