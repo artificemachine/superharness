@@ -38,8 +38,9 @@ See also: `SOUL.md.template` for the separate soul file approach (preferred for 
 - Run `shux daemon status --project .` — if stopped, run `shux daemon start --project .` before any autonomous work
 
 ## Cross-Agent Protocol
-- Read `.superharness/contract.yaml` before starting work.
-- Read `.superharness/failures.yaml` and `.superharness/decisions.yaml`.
+- Run `shux contract` to see current tasks and statuses (reads from SQLite, not tombstone YAML).
+- Run `shux recall --project . "KEYWORDS"` to search past handoffs, failures, and ledger.
+- Run `shux context <task-id>` for full context (handoffs, failures, decisions, ledger).
 - Read handoffs addressed to `claude-code`.
 - Keep task status, ledger, and handoff updated before stopping.
 - Keep task `project_path` absolute and accurate.
