@@ -877,6 +877,26 @@ async function viewTaskReport(taskId, agent) {
       const tsParts = tsKeys.filter(k => d[k]).map(k => tsLabels[k] + ': ' + d[k]);
       if (tsParts.length) report += '\nTimeline:\n' + tsParts.map(s => '  ' + s).join('\n') + '\n';
 
+      // Deadline
+      if (d.deadline_minutes) {
+        report += '\n⏱ Deadline: ' + d.deadline_minutes + 'm';
+        if (d.deadline_elapsed != null) {
+          report += '  (elapsed: ' + d.deadline_elapsed + 'm';
+          if (d.deadline_exceeded) report += ', EXCEEDED by ' + Math.abs(d.deadline_remaining) + 'm';
+          else report += ', ' + d.deadline_remaining + 'm remaining';
+          report += ')';
+        }
+        report += '\n';
+      }
+
+      // Lifecycle prediction
+      if (d.lifecycle_age != null) {
+        report += '\n🔄 Auto-' + d.lifecycle_action + ' in: ' + Math.max(0, d.lifecycle_remaining) + 'm';
+        report += '  (active for ' + d.lifecycle_age + 'm, limit: ' + d.lifecycle_timeout + 'm)';
+        if (d.lifecycle_remaining <= 0) report += '  ⚠ NEXT WATCHER CYCLE';
+        report += '\n';
+      }
+
       // Acceptance criteria
       if (d.acceptance_criteria && d.acceptance_criteria.length) {
         report += '\nAcceptance Criteria:\n';
@@ -1063,14 +1083,44 @@ async function viewDiscussion(discId) {
     try {
       const sr = await fetch('/api/discussion-status?id=' + encodeURIComponent(discId));
       const sd = await sr.json();
-      if (sd.agents && sd.agents.length > 0) {
-        out += '\nLive agent activity:\n';
-        for (const a of sd.agents) {
-          out += '  ' + a.pid + ': ' + a.cmd.substring(0,30) + ' (' + a.elapsed + ')\n';
+
+      // Submissions history
+      if (sd.submissions && sd.submissions.length > 0) {
+        out += '\n--- Submissions ---\n';
+        for (const s of sd.submissions) {
+          out += '[' + s.agent + '] round ' + s.round + ' — verdict: ' + (s.verdict || 'pending') + '\n';
+          if (s.position) out += '  ' + s.position.substring(0, 200) + '\n';
+          if (s.points && s.points.length > 0) {
+            for (const p of s.points) {
+              out += '  · ' + p.id + ': ' + (p.verdict || '?') + ' — ' + (p.rationale || '').substring(0, 100) + '\n';
+            }
+          }
         }
       }
+
+      // Timeline
+      if (sd.timeline && sd.timeline.length > 0) {
+        out += '\n--- Timeline ---\n';
+        for (const e of sd.timeline) {
+          const time = (e.at || '').substring(11, 16);
+          if (e.event === 'created') out += time + '  Discussion created\n';
+          else if (e.event === 'submitted') out += time + '  ' + e.agent + ' submitted round ' + e.round + ' [' + e.verdict + ']\n';
+          else if (e.event === 'consensus') out += time + '  Consensus reached: ' + (e.verdict || '') + '\n';
+          else if (e.event === 'closed') out += time + '  Discussion closed\n';
+        }
+      }
+
+      // Live agents
+      if (sd.agents && sd.agents.length > 0) {
+        out += '\nLive agents:\n';
+        for (const a of sd.agents) {
+          out += '  ' + a.pid + ': ' + a.cmd + ' (' + a.elapsed + ')\n';
+        }
+      }
+
+      // Logs
       if (sd.logs && sd.logs.length > 0) {
-        out += '\nRecent logs: ' + sd.logs.length + ' files\n';
+        out += '\nLogs: ' + sd.logs.length + ' files\n';
         for (const l of sd.logs.slice(0,3)) {
           out += '  ' + l.name.substring(l.name.length-45) + ' (' + l.size_kb + 'K)\n';
         }
@@ -1109,12 +1159,13 @@ const PHASE_LABEL = {
 const STATUS_GROUPS = [
   { key: 'archived',       label: '📁 archived',       statuses: ['archived'],                      color: 'var(--muted)' },
   { key: 'done',           label: '✅ done',           statuses: ['done'],                          color: 'var(--ok)' },
-  { key: 'stopped',        label: '⛔ disabled',        statuses: ['stopped'],                       color: 'var(--muted)' },
-  { key: 'pr_open',        label: '🔀 pr open',          statuses: ['pr_open'],                                         color: 'var(--ok)' },
-  { key: 'review',         label: '🔍 review',          statuses: ['report_ready','review_requested','review_passed','review_failed'], color: 'var(--warn)' },
-  { key: 'in_progress',    label: '🔄 in progress',     statuses: ['in_progress','launched','running'], color: '#4a9eff' },
-  { key: 'plan',           label: '📋 plan',            statuses: ['plan_proposed','plan_approved'], color: '#a78bfa' },
-  { key: 'todo',           label: '🕐 todo',            statuses: ['todo'],                          color: 'var(--muted)' },
+  { key: 'failed',         label: '❌ failed',         statuses: ['failed'],                        color: 'var(--bad)' },
+  { key: 'stopped',        label: '⛔ stopped',         statuses: ['stopped'],                       color: 'var(--muted)' },
+  { key: 'pr_open',        label: '🔀 pr open',         statuses: ['pr_open'],                       color: 'var(--ok)' },
+  { key: 'review',         label: '🔍 review',         statuses: ['report_ready','review_requested','review_passed','review_failed'], color: 'var(--warn)' },
+  { key: 'in_progress',    label: '🔄 in progress',    statuses: ['in_progress','launched','running','waiting_input','paused','pending_user_approval'], color: '#4a9eff' },
+  { key: 'plan',           label: '📋 plan',           statuses: ['plan_proposed','plan_approved'], color: '#a78bfa' },
+  { key: 'todo',           label: '🕐 todo',           statuses: ['todo','blocked'],                 color: 'var(--muted)' },
 ];
 let _sortMode = 'default';
 let _reverseSort = false;
@@ -1171,8 +1222,8 @@ function filterByReviewMode(tasks) {
   if (_reviewMode === 'all') return tasks;
   return tasks.filter(t => {
     const st = t.status || 'todo';
-    if (_reviewMode === 'needs-review')  return ['report_ready','review_requested','review_passed','review_failed','waiting_input'].includes(st);
-    if (_reviewMode === 'in-progress')   return ['todo','plan_proposed','plan_approved','in_progress','launched','running'].includes(st);
+    if (_reviewMode === 'needs-review')  return ['report_ready','review_requested','review_passed','review_failed','waiting_input','pending_user_approval'].includes(st);
+    if (_reviewMode === 'in-progress')   return ['todo','plan_proposed','plan_approved','in_progress','launched','running','paused','blocked'].includes(st);
     if (_reviewMode === 'auto-handled')  return ['done','archived'].includes(st);
     if (_reviewMode === 'stale')         return ['stopped','paused','failed','blocked'].includes(st);
     return true;
@@ -1347,6 +1398,7 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks, pausedInbo
     }
     if (st === 'plan_proposed') {
       actionButtons.push(`<button onclick="approvePlan('${tid}')" class="ok">Approve Plan</button>`);
+      actionButtons.push(`<button onclick="rejectPlan('${tid}')" class="bad">Reject</button>`);
     } else if (st === 'report_ready') {
       const isVerifyTask = tid.startsWith('verify.');
       if (isVerifyTask) {
@@ -1358,7 +1410,7 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks, pausedInbo
         if (t.verified) {
           actionButtons.push(`<button onclick="approveReport('${tid}')">Close Without Review</button>`);
         } else {
-          actionButtons.push(`<button disabled title="Run verify before closing">Verify First</button>`);
+          actionButtons.push(`<button onclick="verifyTask('${tid}')" class="ok">Verify</button>`);
         }
       }
     } else if (st === 'review_requested') {
@@ -1433,6 +1485,15 @@ async function removeTask(taskId) {
 async function approvePlan(taskId) {
   if (!window.confirm(`Approve plan for task "${taskId}"? The agent will proceed to implement.`)) return;
   await act('approve_plan:' + taskId);
+}
+
+async function rejectPlan(taskId) {
+  if (!window.confirm(`Reject plan for task "${taskId}"? It will return to todo status.`)) return;
+  await act('reject_plan:' + taskId);
+}
+
+async function verifyTask(taskId) {
+  await act('verify_task:' + taskId);
 }
 
 async function requestReview(taskId) {
@@ -1805,8 +1866,11 @@ function renderTaskGraph(tasks) {
   const STATUS_COLOR = {
     todo: '#6b7280', plan_proposed: '#a78bfa', plan_approved: '#7c3aed',
     in_progress: '#4a9eff', launched: '#4a9eff', running: '#4a9eff',
+    waiting_input: '#f59e0b', paused: '#f59e0b', pending_user_approval: '#f59e0b',
+    blocked: '#ef4444',
     report_ready: '#d29922', review_requested: '#d29922', review_passed: '#22c55e',
-    review_failed: '#da3633', failed: '#da3633', stopped: '#6b7280', done: '#22c55e',
+    review_failed: '#da3633', pr_open: '#8b5cf6',
+    failed: '#da3633', stopped: '#6b7280', done: '#22c55e', archived: '#6b7280',
   };
 
   const CARD_W = 220, CARD_H = 130, H_GAP = 90, V_GAP = 44, PAD = 16;
