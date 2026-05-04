@@ -25,6 +25,7 @@ class TaskRow:
     tdd: dict[str, Any] | None
     version: int
     created_at: str
+    updated_at: str | None = None
     plan_proposed_at: str | None = None
     plan_approved_at: str | None = None
     in_progress_at: str | None = None
@@ -37,6 +38,13 @@ class TaskRow:
     verified: bool = False
     verified_at: str | None = None
     verified_by: str | None = None
+    deadline_minutes: int | None = None
+    # v4 lifecycle columns
+    failed_at: str | None = None
+    stopped_at: str | None = None
+    failed_reason: str | None = None
+    archived_at: str | None = None
+    archived_reason: str | None = None
 
 def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
     """Insert or update a task. Bumps version on update."""
@@ -52,10 +60,10 @@ def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
                 id, title, owner, status, effort, project_path,
                 development_method, acceptance_criteria, test_types,
                 out_of_scope, definition_of_done, context, tdd, created_at,
-                plan_proposed_at, plan_approved_at, in_progress_at,
+                updated_at, plan_proposed_at, plan_approved_at, in_progress_at,
                 report_ready_at, done_at, cancelled_at, version, parent_id,
-                verified, verified_at, verified_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                verified, verified_at, verified_by, deadline_minutes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 title=excluded.title, owner=excluded.owner, status=excluded.status,
                 effort=excluded.effort, project_path=excluded.project_path,
@@ -64,6 +72,7 @@ def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
                 test_types=excluded.test_types, out_of_scope=excluded.out_of_scope,
                 definition_of_done=excluded.definition_of_done,
                 context=excluded.context, tdd=excluded.tdd,
+                updated_at=excluded.updated_at,
                 plan_proposed_at=excluded.plan_proposed_at,
                 plan_approved_at=excluded.plan_approved_at,
                 in_progress_at=excluded.in_progress_at,
@@ -74,14 +83,17 @@ def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
                 verified=excluded.verified,
                 verified_at=excluded.verified_at,
                 verified_by=excluded.verified_by,
+                deadline_minutes=excluded.deadline_minutes,
                 version=tasks.version + 1
             RETURNING *
         """, (
             task.id, task.title, task.owner, task.status, task.effort, task.project_path,
             task.development_method, ac, tt, oos, dod, task.context, tdd, task.created_at,
+            task.updated_at,
             task.plan_proposed_at, task.plan_approved_at, task.in_progress_at,
             task.report_ready_at, task.done_at, task.cancelled_at, task.version, task.parent_id,
             int(task.verified), task.verified_at, task.verified_by,
+            task.deadline_minutes,
         ))
         row = cursor.fetchone()
         if not row:
@@ -259,6 +271,7 @@ def _row_to_task(conn: sqlite3.Connection, row: sqlite3.Row, blocked_by: list[st
         tdd=json.loads(row["tdd"]) if row["tdd"] else None,
         version=row["version"],
         created_at=row["created_at"],
+        updated_at=row["updated_at"] if "updated_at" in keys else None,
         plan_proposed_at=row["plan_proposed_at"],
         plan_approved_at=row["plan_approved_at"],
         in_progress_at=row["in_progress_at"],
@@ -271,4 +284,10 @@ def _row_to_task(conn: sqlite3.Connection, row: sqlite3.Row, blocked_by: list[st
         verified=bool(row["verified"]) if "verified" in keys else False,
         verified_at=row["verified_at"] if "verified_at" in keys else None,
         verified_by=row["verified_by"] if "verified_by" in keys else None,
+        deadline_minutes=row["deadline_minutes"] if "deadline_minutes" in keys else None,
+        failed_at=row["failed_at"] if "failed_at" in keys else None,
+        stopped_at=row["stopped_at"] if "stopped_at" in keys else None,
+        failed_reason=row["failed_reason"] if "failed_reason" in keys else None,
+        archived_at=row["archived_at"] if "archived_at" in keys else None,
+        archived_reason=row["archived_reason"] if "archived_reason" in keys else None,
     )

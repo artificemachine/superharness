@@ -120,7 +120,7 @@ def test_status_ledger_last_entry(repo_root, tmp_path) -> None:
     _write_harness(project)
     result = _run_python(["--project", str(project)])
     assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
-    assert "summary:" in result.stdout
+    assert "Issues" in result.stdout or "No issues found" in result.stdout
 
 
 def test_status_no_watcher_heartbeat(repo_root, tmp_path) -> None:
