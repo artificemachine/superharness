@@ -208,4 +208,37 @@
 - 2026-04-30 (v1.44.15): fix(adapter-payload): read tasks from SQLite via state_reader instead of stale contract.yaml tombstone. In sqlite_only mode (default since v1.43), contract.yaml is no longer updated; adapter-payload was reading the stale YAML and returning 10 fewer tasks than the canonical SQLite state. Now uses state_reader.get_contract_doc() which queries SQLite in sqlite_only mode. Contract id/goal metadata still read from contract.yaml as fallback since state_reader doesn't currently surface those fields.
 - 2026-05-01 (v1.44.16): fix(dashboard): migrate contract/inbox reads from tombstone YAML to SQLite. Removed dead YAML fallbacks from 10 functions (contract_owners, contract_id, contract_tasks, plan_proposed_rows, board_tasks, review_queue, inbox_items, inbox_counts, _set_task_status, _contract_task, _kanban_board). Fixed 6 read-modify-write paths (task delete, set_owner, owner removal, discussion-close archival) to use SQLite exclusively. Added get_failures(), get_decisions(), get_ledger_entries() to state_reader. 14 new TDD tests.
 - 2026-05-01 (v1.44.16): fix(dashboard): removed dead YAML write in cleanup_inbox handler + removed inbox_file.exists() guard in task_instructions() that silently skipped prior-failure detection when tombstone YAML was deleted.
+- 2026-05-04: fix(lifecycle): critical bugs + auto-mode gaps closed. 
+
+  **BUG-1 (CRITICAL): in_progress timeout never fired.** TaskRow missing updated_at field. Column existed in SQLite (migration v4) and was written by state_writer, but asdict(TaskRow) dropped it. Lifecycle reconciler's task.get("updated_at") returned None every time. Added updated_at, deadline_minutes, failed_at, stopped_at, failed_reason, archived_at, archived_reason to TaskRow + upsert + _row_to_task.
+
+  **BUG-2: _task_row_from_dict clobbered v4/v5 fields.** _sqlite_sync_tasks (called by _export_contract_yaml) re-upserted all tasks via _task_row_from_dict which lacked updated_at, archived_at, etc. Added all missing fields.
+
+  **BUG-3: Inbox mirror SQL crash.** _mirror_inbox_to_sqlite ran raw UPDATE with YAML column names (task→task_id, to→target_agent, project→project_path) causing silent SQL error that rolled back the entire transaction including the successful update_status. Added column-name mapping + valid-column whitelist + reason passthrough.
+
+  **BUG-4: Dashboard status mapping gaps.** _STATUS_TO_COL (board_tasks), _STATUS_TO_COL (board_view), and JS STATUS_GROUPS all had incomplete coverage — archived, waiting_input, blocked, paused, failed, pr_open, pending_user_approval fell through to "todo". Mapped all statuses explicitly.
+
+  **BUG-5: str(Path('.')) matched .local in Claude binary path.** discussion_agent_status used str(Path('.')) which returns "." — a substring of ".local/bin/claude". Every Claude process on the machine falsely matched. Changed to str(project_dir.resolve()).
+
+  **BUG-6: shux status didn't flag stale items.** Health checks covered orphans, duplicates, stale pending/launched but skipped items already marked 'stale'. Added stale_items collection + issue flag + --fix deletion. Added _auto_delete_stale_inbox to watcher cycle.
+
+  **BUG-7: Discussion inbox items not cleaned on close.** _reconcile_discussion_contract only cleaned when tasks were freshly archived (updated > 0). Already-archived tasks skipped the cleanup. Changed to always clean inbox for terminal discussions. Swapped auto-close before reconcile so same watcher cycle handles both.
+
+  **BUG-8: archived_at missing from TaskRow.** Migration v4 added the column but _row_to_task never read it. Added archived_at + archived_reason + failed_at + stopped_at + failed_reason to TaskRow.
+
+  **BUG-9: discussion_agent_status showed zombies.** Showed project-wide agents and 22-hour stale user sessions. Rewrote to: (a) show only discussion-specific agents via inbox PID match, (b) show agent task context [round-N], (c) filter out non-project processes strictly, (d) include submission history with positions and points, (e) include chronological timeline.
+
+  **New lifecycle rules:** waiting_input → fail (480m), report_ready → archive (1440m). deadline_minutes enforcement via _check_deadlines (scans all non-terminal tasks, fails if created_at exceeds deadline).
+
+  **New shux status:** comprehensive health dashboard with 10 issue types, fix-it commands, --fix auto-clean (orphans, duplicates, stale items, consensus discussions), --check CI mode (exit 1 if issues).
+
+  **New discussion panel:** shows submissions with positions/points, chronological timeline, discussion-specific live agents.
+
+  **New E2E regression tests:** tests/e2e/test_lifecycle_fixes_regression.py — 14 tests covering all 9 bugs.
+
+  Files: tasks_dao.py, db.py, lifecycle_rules.py, state_writer.py, status.py, contract_io.py, dashboard-ui.py, dashboard.html, inbox_watch.py, schemas.py. Tests: test_lifecycle_reconciler.py (+10), test_lifecycle_fixes_regression.py (+14), test_status.py (updated)."
+
 - 2026-05-01 (v1.44.19): fix(daemon): inbox-deadline-check.sh handles empty JSON output in sqlite_only mode — list_launched returns empty when inbox.yaml is stale/absent (v1.43+), causing JSONDecodeError in the helper script. Now exits gracefully.
+- 2026-05-04: fix(lifecycle): critical bug — in_progress timeout never fired in production because TaskRow was missing updated_at field. Added updated_at + deadline_minutes to TaskRow dataclass, upsert, and _row_to_task. Bumped schema to v5 for deadline_minutes column. Added 3 new lifecycle rules: waiting_input → fail (480m), report_ready → archive (1440m). Added deadline_minutes enforcement to reconcile_lifecycle (checks created_at against per-task deadline). Fixed inbox status mirror bug: raw SQL UPDATE in set_inbox_status/_mirror_inbox_to_sqlite tried to set YAML-named columns (task, to, project) in SQLite where they are task_id, target_agent, project_path — silently failing and rolling back the entire transaction. Added column-name mapping and valid-column whitelist. Annotated progress_timeout_minutes as reserved for future agent liveness monitor. 10 new TDD tests. All 67 engine tests pass.
+- 2026-05-04: fix(lifecycle,status,dashboard): close 9 critical auto-mode bugs (BUG-1 through BUG-9). BUG-1: TaskRow missing updated_at causing in_progress timeout to never fire. BUG-2: _task_row_from_dict clobbered v4/v5 fields. BUG-3: Inbox mirror SQL crash with YAML→SQLite column mismatch. BUG-4: Dashboard status mappings incomplete (archived→todo). BUG-5: str(Path('.')) matched .local in Claude binary path. BUG-6: shux status didn't flag stale items. BUG-7: Discussion inbox not cleaned on close. BUG-8: archived_at missing from TaskRow. BUG-9: discussion_agent_status showed zombie user sessions. New: waiting_input (480m) + report_ready (1440m) lifecycle rules, deadline_minutes enforcement, comprehensive shux status with 10 issue types + --fix, discussion panel with submissions/timeline/live agents, stale inbox auto-deletion in watcher cycle. 24 new tests across test_lifecycle_reconciler.py (+10) and test_lifecycle_fixes_regression.py (+14 E2E). 96 tests pass.
+- 2026-05-04 (v1.44.20): fix(auto-enqueue): skip tasks with expired deadline_minutes — auto_enqueue_todo and auto_enqueue_approved now check if created_at exceeds deadline_minutes before creating inbox items, preventing orphaned inbox items from deadline-failed tasks.
