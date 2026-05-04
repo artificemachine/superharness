@@ -82,6 +82,7 @@ def _task_row_from_dict(
         tdd=t.get("tdd"),
         version=int(t.get("version") or 1),
         created_at=str(t.get("created_at") or now),
+        updated_at=t.get("updated_at"),
         plan_proposed_at=t.get("plan_proposed_at"),
         plan_approved_at=t.get("plan_approved_at"),
         in_progress_at=t.get("in_progress_at"),
@@ -93,6 +94,12 @@ def _task_row_from_dict(
         verified=bool(t.get("verified", False)),
         verified_at=t.get("verified_at"),
         verified_by=t.get("verified_by"),
+        deadline_minutes=t.get("deadline_minutes"),
+        failed_at=t.get("failed_at"),
+        stopped_at=t.get("stopped_at"),
+        failed_reason=t.get("failed_reason"),
+        archived_at=t.get("archived_at"),
+        archived_reason=t.get("archived_reason"),
     )
 
 

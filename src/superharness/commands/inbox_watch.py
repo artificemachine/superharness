@@ -19,8 +19,11 @@ def _now_utc() -> str:
 
 
 def _yaml_writes_enabled(project_dir: str) -> bool:
-    """Return False — YAML writes are permanently disabled (SQLite-only migration complete)."""
-    return False
+    """Return True if YAML writes are enabled (dual or yaml_only mode)."""
+    env = os.environ.get("STATE_BACKEND")
+    if env == "sqlite_only":
+        return False
+    return True
 
 
 def _load_tasks(project_dir: str) -> list[dict]:
@@ -584,8 +587,9 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
     except Exception:
         return 0
     
-    # Must be auto_dispatch AND autonomous to start new plans automatically
-    if not profile.get("auto_dispatch") or profile.get("autonomy") != "autonomous":
+    # Must be auto_dispatch AND (autonomous OR ai_driven) to start new plans automatically
+    autonomy = profile.get("autonomy", "ai_driven")
+    if not profile.get("auto_dispatch") or autonomy not in ("autonomous", "ai_driven"):
         return 0
 
     inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
@@ -601,7 +605,15 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
             inbox_items = get_inbox_items(project_dir)
         except Exception:
             inbox_items = []
-        return 0
+        # Continue to compute added items even if YAML is disabled
+    else:
+        # YAML mode: read existing items if file exists
+        if os.path.exists(inbox_file):
+            try:
+                from superharness.engine.yaml_helpers import safe_load_normalized
+                inbox_items = safe_load_normalized(inbox_file, list) or []
+            except Exception:
+                inbox_items = []
 
     added = 0
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -803,100 +815,6 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
     if enqueued:
         print(f"peer-approve: {enqueued} plan(s) dispatched for peer review")
     return enqueued
-    """Scan contract.yaml for plan_approved tasks and enqueue them to inbox.yaml.
-
-    Only runs when auto_dispatch=True in profile.yaml. Skips tasks that already
-    have an active inbox entry (pending/launched/running/paused). Uses
-    _deps_satisfied to respect blocked_by dependencies.
-
-    Returns the number of tasks newly enqueued.
-    """
-    import uuid
-    from datetime import datetime, timezone
-
-    profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
-    if not os.path.exists(profile_file):
-        return 0
-    try:
-        import yaml as _yaml
-        profile = _yaml.safe_load(open(profile_file, encoding="utf-8").read()) or {}
-    except Exception:
-        return 0
-    if not profile.get("auto_dispatch"):
-        return 0
-    
-    # Must be autonomous or oversight to auto-enqueue implementation work
-    autonomy = profile.get("autonomy", "ai_driven")
-    if autonomy not in ("autonomous", "oversight", "ai_driven"):
-        return 0
-
-    inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
-
-    tasks = _load_tasks(project_dir)
-    if not tasks:
-        return 0
-
-    inbox_items: list[dict] = []
-    if not _yaml_writes_enabled(project_dir):
-        try:
-            from superharness.engine.state_reader import get_inbox_items
-            inbox_items = get_inbox_items(project_dir)
-        except Exception:
-            inbox_items = []
-        return 0
-
-    added = 0
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    new_item_ids: set[str] = set()
-
-    for task in tasks:
-        if not isinstance(task, dict):
-            continue
-        if task.get("status") != "plan_approved":
-            continue
-        task_id = str(task.get("id", ""))
-        if not task_id:
-            continue
-        if task_id in active_tasks:
-            continue
-        if not _deps_satisfied_from_tasks(tasks, task_id):
-            continue
-
-        owner = str(task.get("owner", "claude-code"))
-        item_id = f"auto-{uuid.uuid4().hex[:6]}"
-        new_item: dict = {
-            "id": item_id,
-            "task": task_id,
-            "to": owner,
-            "status": "pending",
-            "priority": 2,
-            "retry_count": 0,
-            "max_retries": 3,
-            "created_at": now,
-            "project": project_dir,
-        }
-        inbox_items.append(new_item)
-        active_tasks.add(task_id)
-        new_item_ids.add(item_id)
-        added += 1
-        print(f"auto-dispatch: enqueued {task_id} → {owner} (item {item_id})")
-
-    if added > 0:
-        import yaml as _yaml
-        new_items = [i for i in inbox_items if i.get("id") in new_item_ids]
-        if _yaml_writes_enabled(project_dir):
-            try:
-                from superharness.engine.inbox import _inbox_lock
-                with _inbox_lock(inbox_file):
-                    with open(inbox_file, "w", encoding="utf-8") as _f:
-                        _f.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
-                        _yaml.dump(inbox_items, _f, default_flow_style=False, sort_keys=True)
-            except Exception as e:
-                print(f"auto-dispatch: failed to write inbox: {e}", file=sys.stderr)
-                return 0
-        _sqlite_mirror_inbox_enqueue(project_dir, new_items, now)
-
-    return added
 
 
 _PR_URL_RE = __import__("re").compile(r"https://github\.com/[^/]+/[^/]+/pull/\d+")
@@ -1542,20 +1460,13 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
 
 def _check_ship_on_complete_tasks(project_dir: str) -> None:
     """For ship_on_complete tasks at report_ready with no PR URL, mark failed."""
-    import yaml as _yaml
-    from superharness.engine.contract_io import write_contract
+    from superharness.engine import state_reader, state_writer
 
-    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
-    if not os.path.isfile(contract_file):
-        return
     try:
-        contract = _yaml.safe_load(open(contract_file, encoding="utf-8").read()) or {}
+        tasks = state_reader.get_tasks(project_dir)
     except Exception:
         return
 
-    now = _now_utc()
-    failed_ids: list[str] = []
-    tasks = contract.get("tasks") or []
     for task in tasks:
         if not isinstance(task, dict):
             continue
@@ -1569,21 +1480,12 @@ def _check_ship_on_complete_tasks(project_dir: str) -> None:
         handoff_dir = os.path.join(project_dir, ".superharness", "handoffs")
         pr_url = _find_pr_url_in_handoff(handoff_dir, task_id)
         if not pr_url:
-            task["status"] = "failed"
-            failed_ids.append(task_id)
             print(
                 f"ship_on_complete: task '{task_id}' reached report_ready without a PR URL "
                 f"in handoff outcomes — marking failed.",
                 file=sys.stderr,
             )
-
-    if failed_ids:
-        try:
-            write_contract(contract_file, contract)
-        except Exception as e:
-            print(f"ship_on_complete: failed to write contract: {e}", file=sys.stderr)
-        for task_id in failed_ids:
-            _sqlite_mirror_task_status(project_dir, task_id, "failed", now)
+            state_writer.set_task_status(project_dir, task_id, "failed", from_status="report_ready")
 
 
 def run_once(
@@ -1744,64 +1646,246 @@ def _self_diagnosis(project_dir: str) -> list[str]:
 
 
 def auto_enqueue_todo(project_dir: str) -> int:
-    """Scan SQLite for todo tasks and enqueue them for planning."""
+    """Scan contract for todo tasks and enqueue them for planning.
+    
+    Only runs if auto_dispatch=True and autonomy=(autonomous OR ai_driven) in profile.yaml.
+    """
+    import uuid
+    from datetime import datetime, timezone
+    from superharness.engine import state_reader, state_writer
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import inbox_dao
+
+    profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
+    if not os.path.exists(profile_file):
+        return 0
+    try:
+        import yaml as _yaml
+        profile = _yaml.safe_load(open(profile_file, encoding="utf-8").read()) or {}
+    except Exception:
+        return 0
+    if not profile.get("auto_dispatch"):
+        return 0
+
+    # autonomy: ai_driven or autonomous allowed for planning
+    autonomy = profile.get("autonomy", "ai_driven")
+    if autonomy not in ("autonomous", "ai_driven"):
+        return 0
+
     tasks = _load_tasks(project_dir)
     if not tasks:
         return 0
+
+    inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
+    inbox_items = []
+    try:
+        inbox_items = state_reader.get_inbox_items(project_dir)
+    except Exception:
+        pass
+
+    # Track tasks already in inbox (active)
+    active_tasks: set[str] = set()
+    for item in inbox_items:
+        if not isinstance(item, dict): continue
+        if item.get("status") in ("pending", "launched", "running", "paused"):
+            active_tasks.add(str(item.get("task", "")))
+
+    added = 0
     now = _now_utc()
-    enqueued = 0
-    from superharness.engine.db import get_connection, init_db
-    from superharness.engine import inbox_dao
+    new_items = []
+    
     conn = get_connection(project_dir)
     try:
         init_db(conn)
         for task in tasks:
-            if not isinstance(task, dict) or task.get('status') != 'todo':
+            if not isinstance(task, dict) or task.get("status") != "todo":
                 continue
-            tid = str(task.get('id',''))
-            if not tid:
+            task_id = str(task.get("id", ""))
+            if not task_id or task_id in active_tasks:
                 continue
-            owner = task.get('owner', 'claude-code')
-            inbox_dao.enqueue(conn, id=f'auto-{tid[:20]}', task_id=tid,
+            
+            # Check dependencies
+            if not _deps_satisfied_from_tasks(tasks, task_id):
+                continue
+
+            # Skip tasks whose deadline has already passed (lifecycle will fail them anyway)
+            deadline = task.get("deadline_minutes")
+            if deadline:
+                try:
+                    deadline = int(deadline)
+                except (ValueError, TypeError):
+                    deadline = None
+            if deadline and deadline > 0:
+                created = task.get("created_at", "")
+                if created:
+                    try:
+                        from datetime import datetime as _dt, timezone as _tz
+                        t = _dt.fromisoformat(str(created).replace("Z", "+00:00"))
+                        now_dt = _dt.now(_tz.utc)
+                        age = (now_dt - t).total_seconds() / 60
+                        if age >= deadline:
+                            continue  # deadline already expired — don't enqueue
+                    except (ValueError, TypeError):
+                        pass
+
+            owner = str(task.get("owner", "claude-code"))
+            item_id = f"auto-{uuid.uuid4().hex[:6]}"
+            
+            # 1. Mirror task to SQLite if missing
+            _ensure_task_in_sqlite(conn, task_id, project_dir, now)
+            
+            # 2. Enqueue in SQLite
+            inbox_dao.enqueue(conn, id=item_id, task_id=task_id,
                               target_agent=owner, priority=2, max_retries=3,
                               project_path=project_dir, plan_only=True, now=now)
-            enqueued += 1
+            
+            new_items.append({
+                "id": item_id, "task": task_id, "to": owner, "status": "pending",
+                "priority": 2, "retry_count": 0, "max_retries": 3, "created_at": now,
+                "project": project_dir, "plan_only": True
+            })
+            active_tasks.add(task_id)
+            added += 1
+            print(f"auto-dispatch: enqueued todo {task_id} for planning → {owner}")
+        
         conn.commit()
-        if enqueued:
-            print(f'auto-enqueue: {enqueued} todo task(s) enqueued')
     finally:
         conn.close()
-    return enqueued
+
+    if added > 0 and _yaml_writes_enabled(project_dir):
+        # Update inbox.yaml with all active items (legacy shape)
+        from superharness.engine.inbox import _inbox_lock
+        try:
+            with _inbox_lock(inbox_file):
+                # Reload fresh items to ensure we don't clobber
+                current_items = state_reader.get_inbox_items(project_dir)
+                with open(inbox_file, "w", encoding="utf-8") as _f:
+                    _f.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
+                    _yaml.dump(current_items, _f, default_flow_style=False, sort_keys=True)
+        except Exception:
+            pass
+
+    return added
 
 def auto_enqueue_approved(project_dir: str) -> int:
-    """Scan SQLite for plan_approved tasks and enqueue them."""
+    """Scan contract for plan_approved tasks and enqueue them.
+    
+    Only runs if auto_dispatch=True and autonomy=(autonomous OR oversight OR ai_driven) in profile.yaml.
+    """
+    import uuid
+    from datetime import datetime, timezone
+    from superharness.engine import state_reader, state_writer
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import inbox_dao
+
+    profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
+    if not os.path.exists(profile_file):
+        return 0
+    try:
+        import yaml as _yaml
+        profile = _yaml.safe_load(open(profile_file, encoding="utf-8").read()) or {}
+    except Exception:
+        return 0
+    if not profile.get("auto_dispatch"):
+        return 0
+
+    # autonomy: ai_driven, oversight, or autonomous allowed for implementation
+    autonomy = profile.get("autonomy", "ai_driven")
+    if autonomy not in ("autonomous", "oversight", "ai_driven"):
+        return 0
+
     tasks = _load_tasks(project_dir)
     if not tasks:
         return 0
+
+    inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
+    inbox_items = []
+    try:
+        inbox_items = state_reader.get_inbox_items(project_dir)
+    except Exception:
+        pass
+
+    # Track tasks already in inbox (active)
+    active_tasks: set[str] = set()
+    for item in inbox_items:
+        if not isinstance(item, dict): continue
+        if item.get("status") in ("pending", "launched", "running", "paused"):
+            active_tasks.add(str(item.get("task", "")))
+
+    added = 0
     now = _now_utc()
-    enqueued = 0
-    from superharness.engine.db import get_connection, init_db
-    from superharness.engine import inbox_dao
+    new_items = []
+    
     conn = get_connection(project_dir)
     try:
         init_db(conn)
         for task in tasks:
-            if not isinstance(task, dict) or task.get('status') != 'plan_approved':
+            if not isinstance(task, dict) or task.get("status") != "plan_approved":
                 continue
-            tid = str(task.get('id',''))
-            if not tid:
+            task_id = str(task.get("id", ""))
+            if not task_id or task_id in active_tasks:
                 continue
-            owner = task.get('owner', 'claude-code')
-            inbox_dao.enqueue(conn, id=f'auto-{tid[:20]}', task_id=tid,
+            
+            # Check dependencies
+            if not _deps_satisfied_from_tasks(tasks, task_id):
+                continue
+
+            # Skip tasks whose deadline has already passed (lifecycle will fail them anyway)
+            deadline = task.get("deadline_minutes")
+            if deadline:
+                try:
+                    deadline = int(deadline)
+                except (ValueError, TypeError):
+                    deadline = None
+            if deadline and deadline > 0:
+                created = task.get("created_at", "")
+                if created:
+                    try:
+                        from datetime import datetime as _dt, timezone as _tz
+                        t = _dt.fromisoformat(str(created).replace("Z", "+00:00"))
+                        now_dt = _dt.now(_tz.utc)
+                        age = (now_dt - t).total_seconds() / 60
+                        if age >= deadline:
+                            continue  # deadline already expired — don't enqueue
+                    except (ValueError, TypeError):
+                        pass
+
+            owner = str(task.get("owner", "claude-code"))
+            item_id = f"auto-{uuid.uuid4().hex[:6]}"
+            
+            # 1. Mirror task to SQLite if missing
+            _ensure_task_in_sqlite(conn, task_id, project_dir, now)
+            
+            # 2. Enqueue in SQLite
+            inbox_dao.enqueue(conn, id=item_id, task_id=task_id,
                               target_agent=owner, priority=2, max_retries=3,
                               project_path=project_dir, plan_only=False, now=now)
-            enqueued += 1
+            
+            new_items.append({
+                "id": item_id, "task": task_id, "to": owner, "status": "pending",
+                "priority": 2, "retry_count": 0, "max_retries": 3, "created_at": now,
+                "project": project_dir, "plan_only": False
+            })
+            active_tasks.add(task_id)
+            added += 1
+            print(f"auto-dispatch: enqueued approved {task_id} → {owner}")
+        
         conn.commit()
-        if enqueued:
-            print(f'auto-enqueue: {enqueued} approved task(s) enqueued')
     finally:
         conn.close()
-    return enqueued
+
+    if added > 0 and _yaml_writes_enabled(project_dir):
+        from superharness.engine.inbox import _inbox_lock
+        try:
+            with _inbox_lock(inbox_file):
+                current_items = state_reader.get_inbox_items(project_dir)
+                with open(inbox_file, "w", encoding="utf-8") as _f:
+                    _f.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
+                    _yaml.dump(current_items, _f, default_flow_style=False, sort_keys=True)
+        except Exception:
+            pass
+
+    return added
 
 
 
@@ -1888,7 +1972,13 @@ def _run_scripts(
     except Exception as e:
         _log_watcher_error(project_dir, "watcher", str(e))
 
-    # Sync cancelled/closed discussions back to contract task status
+    # Auto-close consensus discussions after grace period
+    try:
+        _auto_close_consensus_discussions(project_dir)
+    except Exception as e:
+        print(f"Warning: discussion auto-close failed: {e}", file=sys.stderr)
+
+    # Sync cancelled/closed discussions back to contract task status + clean inbox
     try:
         _reconcile_discussion_contract(project_dir)
     except Exception as e:
@@ -1995,19 +2085,11 @@ def _run_scripts(
     except Exception as e:
         print(f"Warning: inbox gc failed: {e}", file=sys.stderr)
 
-    inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
-    if not os.path.exists(inbox_file):
-        return
-
-    # Recover stale
-    recover = os.path.join(script_dir, "inbox-recover-stale.sh")
-    if os.path.isfile(recover) and os.access(recover, os.X_OK):
-        subprocess.run(
-            ["bash", recover, "--project", project_dir,
-             "--timeout-minutes", str(recover_timeout_minutes),
-             "--action", recover_action],
-            check=False, capture_output=False,
-        )
+    # Auto-delete terminal stale inbox items (status='stale') — they're dead data
+    try:
+        _auto_delete_stale_inbox(project_dir)
+    except Exception as e:
+        print(f"Warning: stale inbox cleanup failed: {e}", file=sys.stderr)
 
     # Dispatch — check budget before launching agents
     targets = []
@@ -2143,6 +2225,7 @@ def _analyze_task_logs(project_dir: str) -> None:
             conn.commit()
     finally:
         conn.close()
+def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
     """Reconcile launched inbox items that have no running process.
 
     Three checks in order:
@@ -2297,17 +2380,17 @@ def _analyze_task_logs(project_dir: str) -> None:
 
 
 def _reconcile_discussion_contract(project_dir: str) -> int:
-    """Sync discussion terminal states (cancelled/closed) back to contract tasks.
+    """Find in_progress tasks whose linked discussion is terminal.
 
     When a discussion is cancelled or closed via CLI (not dashboard), the contract
     task linked to it stays in_progress. This reconciler catches that gap.
     Returns count of tasks updated.
     """
+    from superharness.engine import state_reader, state_writer
     import yaml as _yaml
 
     disc_base = os.path.join(project_dir, ".superharness", "discussions")
-    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
-    if not os.path.isdir(disc_base) or not os.path.isfile(contract_file):
+    if not os.path.isdir(disc_base):
         return 0
 
     terminal = {"cancelled", "closed", "consensus", "deadlock", "failed"}
@@ -2329,36 +2412,200 @@ def _reconcile_discussion_contract(project_dir: str) -> int:
         return 0
 
     try:
-        doc = _yaml.safe_load(open(contract_file, encoding="utf-8").read()) or {}
+        tasks = state_reader.get_tasks(project_dir)
     except Exception:
         return 0
 
     updated = 0
-    for task in doc.get("tasks") or []:
+    for task in tasks:
         if not isinstance(task, dict) or task.get("status") != "in_progress":
             continue
         tid = str(task.get("id", ""))
-        # Match tasks whose ID starts with a terminal discussion ID (e.g. disc-id/round-1)
         for disc_id in terminal_disc_ids:
             if tid.startswith(disc_id + "/") or tid == disc_id:
-                task["status"] = "archived"
-                updated += 1
-                print(f"discussion-reconcile: {tid} → archived (discussion {disc_id} is terminal)")
+                if state_writer.set_task_status(project_dir, tid, "archived", from_status="in_progress"):
+                    updated += 1
+                    print(f"discussion-reconcile: {tid} → archived (discussion {disc_id} is terminal)")
                 break
 
-    if updated:
+    # Always clean up inbox items for terminal discussions (even if tasks already archived)
+    if terminal_disc_ids:
         try:
-            with open(contract_file, "w", encoding="utf-8") as _f:
-                _yaml.dump(doc, _f, default_flow_style=False, sort_keys=False, allow_unicode=True)
-            from superharness.engine.state_writer import mirror_task_dict
-            for _task in tasks:
-                if isinstance(_task, dict):
-                    mirror_task_dict(project_dir, _task)
+            from superharness.engine.state_reader import get_inbox_items
+            inbox = get_inbox_items(project_dir)
+            inbox_cleaned = 0
+            for item in inbox:
+                if not isinstance(item, dict):
+                    continue
+                iid = str(item.get("id", ""))
+                itask = str(item.get("task", item.get("task_id", "")))
+                istatus = str(item.get("status", ""))
+                if istatus not in ("pending", "launched", "running", "paused"):
+                    continue
+                for disc_id in terminal_disc_ids:
+                    if itask.startswith(disc_id + "/") or itask == disc_id:
+                        state_writer.set_inbox_status(project_dir, iid, "done")
+                        inbox_cleaned += 1
+                        break
+            if inbox_cleaned > 0:
+                print(f"discussion-reconcile: cleaned {inbox_cleaned} inbox item(s) for terminal discussions")
         except Exception as e:
-            print(f"Warning: failed to write contract after discussion reconcile: {e}", file=sys.stderr)
-            return 0
+            print(f"discussion-reconcile: inbox cleanup failed: {e}", file=sys.stderr)
 
     return updated
+
+
+_CONSENSUS_GRACE_MINUTES = 60  # auto-close consensus discussions after 1h
+
+
+def _auto_close_consensus_discussions(project_dir: str) -> int:
+    """Close discussions that have been in consensus state beyond the grace period.
+
+    Reads discussion state from SQLite (primary) with filesystem fallback.
+    Updates both SQLite and the on-disk state.yaml.
+    Returns count of discussions closed.
+    """
+    import yaml as _yaml
+    from datetime import datetime, timezone
+    from superharness.engine.db import get_connection, init_db
+
+    now = datetime.now(timezone.utc)
+    now_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    closed = 0
+
+    disc_base = os.path.join(project_dir, ".superharness", "discussions")
+    if not os.path.isdir(disc_base):
+        return 0
+
+    # Collect consensus discussions from filesystem (always up-to-date)
+    consensus_discs: list[dict] = []
+    for disc_id in os.listdir(disc_base):
+        state_path = os.path.join(disc_base, disc_id, "state.yaml")
+        if not os.path.isfile(state_path):
+            continue
+        try:
+            state = _yaml.safe_load(open(state_path, encoding="utf-8").read()) or {}
+            if str(state.get("status", "")) == "consensus":
+                consensus_discs.append({"id": disc_id, "state": state, "path": state_path})
+        except Exception:
+            continue
+
+    if not consensus_discs:
+        return 0
+
+    conn = None
+    try:
+        conn = get_connection(project_dir)
+        init_db(conn)
+    except Exception:
+        conn = None
+
+    for disc in consensus_discs:
+        disc_id = disc["id"]
+        state = disc["state"]
+        state_path = disc["path"]
+
+        # Check age: use closed_at or last consensus timestamp
+        # Fall back to file mtime if no timestamp
+        age_min = None
+        consensus_at = state.get("consensus_at", "")
+        if not consensus_at:
+            # Check round timestamps
+            rounds = state.get("rounds") or []
+            if isinstance(rounds, list) and rounds:
+                last_round = rounds[-1]
+                if isinstance(last_round, dict):
+                    consensus_at = last_round.get("created_at", "")
+        if consensus_at:
+            try:
+                t = datetime.fromisoformat(str(consensus_at).replace("Z", "+00:00"))
+                age_min = int((now - t).total_seconds() / 60)
+            except (ValueError, TypeError):
+                pass
+        if age_min is None:
+            # Fall back to file modification time
+            try:
+                mtime = os.path.getmtime(state_path)
+                age_min = int((now.timestamp() - mtime) / 60)
+            except OSError:
+                age_min = 99999  # can't determine age, close anyway
+
+        if age_min < _CONSENSUS_GRACE_MINUTES:
+            continue
+
+        # Close the discussion
+        state["status"] = "closed"
+        state["closed_at"] = now_str
+        try:
+            with open(state_path, "w", encoding="utf-8") as f:
+                _yaml.dump(state, f, default_flow_style=False, sort_keys=False)
+        except Exception as e:
+            print(f"discussion-auto-close: failed to write {state_path}: {e}", file=sys.stderr)
+            continue
+
+        # Update SQLite if available
+        if conn:
+            try:
+                from superharness.engine import discussions_dao
+                discussions_dao.close(
+                    conn, disc_id,
+                    consensus=state.get("consensus_verdict", "consensus"),
+                    now=now_str,
+                )
+            except Exception:
+                pass
+
+        closed += 1
+        topic = str(state.get("topic", ""))[:60]
+        print(f"discussion-auto-close: {disc_id} → closed (consensus for {age_min}m, grace={_CONSENSUS_GRACE_MINUTES}m) — {topic}")
+
+    if conn:
+        try:
+            conn.commit()
+        except Exception:
+            pass
+        finally:
+            conn.close()
+
+    return closed
+
+
+_STALE_INBOX_DELETE_AGE_HOURS = 1  # delete items marked stale after 1h (they've had time for review)
+
+
+def _auto_delete_stale_inbox(project_dir: str) -> int:
+    """Delete stale inbox items older than _STALE_INBOX_DELETE_AGE_HOURS.
+
+    Stale items are dead data — they've been marked as terminal by previous
+    cleanup passes and serve no further purpose in the inbox. Deleting them
+    keeps the inbox lean and prevents drift between status counts and actual
+    issues.
+
+    Returns count of items deleted.
+    """
+    from datetime import datetime, timezone, timedelta
+    from superharness.engine.db import get_connection, init_db
+
+    try:
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=_STALE_INBOX_DELETE_AGE_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            # Delete stale items where the last update was before the cutoff
+            cursor = conn.execute(
+                "DELETE FROM inbox WHERE status='stale' AND (failed_at IS NULL OR failed_at < ?)",
+                (cutoff,),
+            )
+            deleted = cursor.rowcount or 0
+            if deleted > 0:
+                conn.commit()
+                print(f"auto-delete-stale: removed {deleted} stale inbox item(s)")
+            return deleted
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"auto-delete-stale: failed: {e}", file=sys.stderr)
+        return 0
 
 
 def _find_scripts_dir() -> str:

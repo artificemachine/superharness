@@ -121,7 +121,7 @@ class ContractTask(BaseModel):
     definition_of_done: Optional[list[str]] = None
     context: Optional[str] = None
     timeout_minutes: Optional[int] = None
-    progress_timeout_minutes: Optional[int] = 10
+    progress_timeout_minutes: Optional[int] = 10  # reserved: agent liveness monitor (not yet wired)
     # Phase 3: 1M context opt-in; auto-promoted when effort=max AND tokens>200K
     context_1m: Optional[bool] = None
     # Ship step: agent runs /ship commit before report_ready; watcher validates PR URL

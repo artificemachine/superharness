@@ -12,7 +12,7 @@ from superharness.engine.state_errors import ConnectionError, SchemaError
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 5
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -352,8 +352,27 @@ def _migration_v3(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "tasks", "verified_by", "TEXT")
 
 
+def _migration_v4(conn: sqlite3.Connection) -> None:
+    """Add missing lifecycle columns to tasks."""
+    _add_column_if_missing(conn, "tasks", "updated_at", "TEXT")
+    _add_column_if_missing(conn, "tasks", "failed_at", "TEXT")
+    _add_column_if_missing(conn, "tasks", "stopped_at", "TEXT")
+    _add_column_if_missing(conn, "tasks", "failed_reason", "TEXT")
+    _add_column_if_missing(conn, "tasks", "pause_reason", "TEXT")
+    _add_column_if_missing(conn, "tasks", "archived_at", "TEXT")
+    _add_column_if_missing(conn, "tasks", "archived_reason", "TEXT")
+    _add_column_if_missing(conn, "tasks", "model_tier", "TEXT")
+
+
+def _migration_v5(conn: sqlite3.Connection) -> None:
+    """Add deadline_minutes column to tasks table."""
+    _add_column_if_missing(conn, "tasks", "deadline_minutes", "INTEGER")
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
     _migration_v3,
+    _migration_v4,
+    _migration_v5,
 ]

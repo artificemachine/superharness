@@ -295,18 +295,20 @@ def task_instructions(project_dir: Path, task_id: str) -> str:
     import re as _re
 
     # Get task title and criteria from SQLite
-    task_title = task_id
+    task_title = ""
     criteria = []
 
     conn = db.get_connection(str(project_dir))
     db.init_db(conn)
     try:
-        data = dashboard_presenter.get_task_instructions_data(conn, task_id)
-        if data:
-            task_title = data["title"]
-            criteria = data["acceptance_criteria"]
+        data = dashboard_presenter.get_task_instructions_data(conn, task_id, str(project_dir))
+        if not data:
+            return {"error": "task not found"}
+        task_title = data["title"]
+        criteria = data["acceptance_criteria"]
     finally:
         conn.close()
+
 
 
     # Try to find matching iteration section in plan docs
@@ -409,11 +411,69 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
     conn = db.get_connection(str(project_dir))
     db.init_db(conn)
     try:
-        data = dashboard_presenter.get_task_report_data(conn, task_id)
+        data = dashboard_presenter.get_task_report_data(conn, task_id, str(project_dir))
         if data:
             result.update(data)
     finally:
         conn.close()
+
+    # 1a. Deadline and lifecycle predictions
+    try:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        conn2 = db.get_connection(str(project_dir))
+        db.init_db(conn2)
+        try:
+            row = conn2.execute(
+                "SELECT deadline_minutes, created_at, updated_at, in_progress_at, status FROM tasks WHERE id=?",
+                (task_id,),
+            ).fetchone()
+            if row:
+                deadline = row[0]
+                created = row[1]
+                updated = row[2]
+                in_progress = row[3]
+                status = row[4]
+                if deadline:
+                    result["deadline_minutes"] = deadline
+                    if created:
+                        try:
+                            t = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
+                            elapsed = int((now - t).total_seconds() / 60)
+                            remaining = deadline - elapsed
+                            result["deadline_elapsed"] = elapsed
+                            result["deadline_remaining"] = remaining
+                            result["deadline_exceeded"] = remaining <= 0
+                        except (ValueError, TypeError):
+                            pass
+                # Lifecycle prediction
+                ts = updated or in_progress
+                if ts and status == "in_progress":
+                    try:
+                        t = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                        age = int((now - t).total_seconds() / 60)
+                        result["lifecycle_age"] = age
+                        result["lifecycle_timeout"] = 180
+                        result["lifecycle_remaining"] = 180 - age
+                        result["lifecycle_action"] = "archive"
+                    except (ValueError, TypeError):
+                        pass
+                elif ts and status == "waiting_input":
+                    try:
+                        t = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                        age = int((now - t).total_seconds() / 60)
+                        result["lifecycle_age"] = age
+                        result["lifecycle_timeout"] = 480
+                        result["lifecycle_remaining"] = 480 - age
+                        result["lifecycle_action"] = "fail"
+                    except (ValueError, TypeError):
+                        pass
+        finally:
+            conn2.close()
+    except Exception:
+        pass
+
+    # 1b. Inbox status for this task
 
 
     # 1b. Launcher log — extract Model / Effort / Via written at dispatch time
@@ -516,34 +576,30 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
                 except Exception:
                     pass
 
-            # Agent submission for this round
+            # Agent submissions for this round — show ALL agent positions
             round_num = round_part.replace("round-", "")
-            sub_file = disc_dir / f"round-{round_num}-{agent}.yaml"
-            if sub_file.exists():
+            all_positions = []
+            for sf in sorted(disc_dir.glob(f"round-{round_num}-*.yaml")):
                 try:
                     import yaml
-                    sub = yaml.safe_load(sub_file.read_text()) or {}
-                    result["discussion_verdict"] = sub.get("verdict", "")
-                    result["discussion_position"] = sub.get("position", "")
-                    result["discussion_agent"] = sub.get("agent", agent)
+                    sub = yaml.safe_load(sf.read_text()) or {}
+                    a = sub.get("agent", sf.stem.split("-")[-1])
+                    v = sub.get("verdict", "?")
+                    p = sub.get("position", "")
+                    all_positions.append(f"[{a}] verdict={v}\n{p}")
                 except Exception:
-                    pass
-
-            # If no specific agent submission, try all agents
-            if "discussion_position" not in result:
-                all_positions = []
-                for sf in sorted(disc_dir.glob(f"round-{round_num}-*.yaml")):
+                    continue
+            if all_positions:
+                result["discussion_position"] = "\n\n".join(all_positions)
+                # Use the specific agent's submission for single-agent view
+                for sf in sorted(disc_dir.glob(f"round-{round_num}-{agent}.yaml")):
                     try:
-                        import yaml
                         sub = yaml.safe_load(sf.read_text()) or {}
-                        a = sub.get("agent", sf.stem.split("-")[-1])
-                        v = sub.get("verdict", "?")
-                        p = sub.get("position", "")
-                        all_positions.append(f"[{a}] verdict={v}\n{p}")
+                        result["discussion_agent"] = sub.get("agent", agent)
+                        result["discussion_verdict"] = sub.get("verdict", "")
                     except Exception:
-                        continue
-                if all_positions:
-                    result["discussion_position"] = "\n\n".join(all_positions)
+                        pass
+                    break
 
             # Outcome handoff markdown
             if "markdown_report" not in result:
@@ -566,46 +622,185 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
 
 
 def discussion_agent_status(project_dir: Path, disc_id: str) -> dict:
-    """Get live agent activity for a discussion: CPU, elapsed, log sizes."""
-    import subprocess as _sp
-    harness = project_dir / ".superharness"
-    launcher_logs = harness / "launcher-logs"
-    agents = []
+    """Get full discussion status: submissions, live agents, logs.
 
-    # Check running agent processes
+    Returns a rich view of a discussion including:
+    - submissions: round submissions from each agent (content, verdict, points)
+    - agents: live agent activity (PIDs, CPU, elapsed)
+    - logs: launcher log files
+    - timeline: key events (created, submitted, consensus, closed)
+    """
+    import subprocess as _sp
+    import yaml as _yaml
+    harness = project_dir / ".superharness"
+    disc_dir = harness / "discussions" / disc_id
+    launcher_logs = harness / "launcher-logs"
+
+    result: dict = {
+        "discussion_id": disc_id,
+        "submissions": [],
+        "agents": [],
+        "logs": [],
+        "timeline": [],
+    }
+
+    # --- 1. Read discussion state and round submissions ---
+    state: dict = {}
+    if disc_dir.exists():
+        state_path = disc_dir / "state.yaml"
+        if state_path.exists():
+            try:
+                state = _yaml.safe_load(state_path.read_text()) or {}
+            except Exception:
+                pass
+
+        # Read round submissions from disk (round-N-agent.yaml)
+        submissions = []
+        for rf in sorted(disc_dir.glob("round-*.yaml")):
+            try:
+                data = _yaml.safe_load(rf.read_text()) or {}
+                if isinstance(data, dict) and data.get("agent"):
+                    content = ""
+                    # Try to read corresponding markdown report
+                    md_file = disc_dir / f"report-{data['agent']}-r{data.get('round','?')}.md"
+                    if not md_file.exists():
+                        md_file = disc_dir / f"{rf.stem}.md"
+                    if md_file.exists():
+                        try:
+                            content = md_file.read_text()[:5000]
+                        except Exception:
+                            pass
+                    submissions.append({
+                        "agent": str(data.get("agent", "")),
+                        "round": data.get("round", 1),
+                        "verdict": str(data.get("verdict", "")),
+                        "position": str(data.get("position", ""))[:500],
+                        "points": data.get("points", []),
+                        "submitted_at": str(data.get("submitted_at", "")),
+                        "content": content,
+                    })
+            except Exception:
+                continue
+
+        # Sort by round then agent
+        submissions.sort(key=lambda s: (s["round"], s["agent"]))
+        result["submissions"] = submissions
+
+        # Build timeline
+        created = state.get("created_at", "")
+        if created:
+            result["timeline"].append({"event": "created", "at": str(created)})
+
+        for s in submissions:
+            result["timeline"].append({
+                "event": "submitted",
+                "agent": s["agent"],
+                "round": s["round"],
+                "verdict": s["verdict"],
+                "at": s["submitted_at"],
+            })
+
+        consensus_at = state.get("consensus_at", "")
+        if consensus_at:
+            result["timeline"].append({"event": "consensus", "at": str(consensus_at),
+                                       "verdict": str(state.get("consensus_verdict", ""))})
+
+        closed_at = state.get("closed_at", "")
+        if closed_at:
+            result["timeline"].append({"event": "closed", "at": str(closed_at)})
+
+    # --- 2. Live agent activity (discussion-specific) ---
+
+    # --- 2. Live agent activity (discussion-specific) ---
+    seen_pids: set[int] = set()
+
+    # Collect inbox PIDs for this discussion
+    inbox_agents: dict[int, dict] = {}
+    try:
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(str(project_dir))
+        try:
+            init_db(conn)
+            rows = conn.execute(
+                "SELECT pid, target_agent, task_id FROM inbox "
+                "WHERE pid IS NOT NULL AND status IN ('launched','running') "
+                "AND (task_id LIKE ? OR task_id LIKE ?)",
+                (f"{disc_id}/%", f"{disc_id}%"),
+            ).fetchall()
+            for r in rows:
+                try:
+                    inbox_agents[int(r[0])] = {"agent": str(r[1]), "task": str(r[2])}
+                except (ValueError, TypeError):
+                    pass
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+    # Build snapshot of running processes
+    running_procs: dict[int, tuple[str, str, str]] = {}
     try:
         ps_out = _sp.run(["ps", "ax", "-o", "pid=,pcpu=,args=,etime="], capture_output=True, text=True).stdout
         for line in ps_out.splitlines():
             parts = line.strip().split(None, 2)
             if len(parts) < 3:
                 continue
-            pid, cpu, rest = parts[0], parts[1], parts[2]
+            pid_str, cpu, rest = parts[0], parts[1], parts[2]
             fields = rest.rsplit(None, 1)
             if len(fields) < 2:
                 continue
             cmd, elapsed = fields[0], fields[1]
-            # Only show agents running in the project directory
-            if 'superharness' not in cmd.lower() and '.local/bin' not in cmd:
+            try:
+                pid = int(pid_str)
+            except ValueError:
                 continue
-            if any(a in cmd.lower() for a in ("claude", "codex", "gemini")):
-                agents.append({"pid": pid, "cpu": f"{cpu}%", "cmd": cmd[:50], "elapsed": elapsed})
+            running_procs[pid] = (cpu, cmd, elapsed)
     except Exception:
         pass
 
-    # Check launcher logs for this discussion
-    logs = []
+    # Inbox-tracked agents for this discussion
+    for pid, info in inbox_agents.items():
+        if pid in seen_pids:
+            continue
+        seen_pids.add(pid)
+        task_short = info["task"].rsplit("/", 1)[-1] if "/" in info["task"] else info["task"]
+        if pid in running_procs:
+            cpu, cmd, elapsed = running_procs[pid]
+            result["agents"].append({"pid": str(pid), "cpu": f"{cpu}%",
+                          "cmd": f"{info['agent']} [{task_short}]", "elapsed": elapsed})
+        else:
+            result["agents"].append({"pid": str(pid), "cpu": "—",
+                          "cmd": f"{info['agent']} [{task_short}] (exited)", "elapsed": "—"})
+
+    project_str = str(project_dir.resolve())
+
+    # Running processes not in inbox (user's own agent sessions — filtered strictly)
+    for pid, (cpu, cmd, elapsed) in running_procs.items():
+        if pid in seen_pids:
+            continue
+        if not any(a in cmd.lower() for a in ("claude", "codex", "gemini")):
+            continue
+        if project_str not in cmd:
+            if not any(m in cmd for m in (".superharness", "--task", "--project", "delegate-to-")):
+                continue
+        seen_pids.add(pid)
+        result["agents"].append({"pid": str(pid), "cpu": f"{cpu}%", "cmd": cmd[:50], "elapsed": elapsed})
+
+    # --- 3. Launcher logs ---
     if launcher_logs.exists():
         for lf in sorted(launcher_logs.glob(f"*{disc_id}*"), key=lambda p: p.stat().st_mtime, reverse=True):
             try:
                 size = lf.stat().st_size
                 name = str(lf.name)
                 if name.endswith(".log"):
-                    logs.append({"name": name, "size_kb": round(size / 1024, 1)})
+                    result["logs"].append({"name": name, "size_kb": round(size / 1024, 1)})
             except Exception:
                 pass
 
-    return {"discussion_id": disc_id, "agents": agents[:10], "logs": logs[:10],
-            "total_agents": len(agents), "total_logs": len(logs)}
+    result["total_submissions"] = len(result["submissions"])
+    result["total_agents"] = len(result["agents"])
+    result["total_logs"] = len(result["logs"])
+    return result
 
 
 def task_log_content(project_dir: Path, task_id: str, agent: str, lines: int = 0) -> dict:
@@ -1146,45 +1341,32 @@ def plan_proposals(harness_dir: Path) -> list[dict]:
 
 
 def _set_task_status(harness_dir: Path, task_id: str, to_status: str, from_status: str | None = None) -> dict:
-    """Set a contract task status. SQLite-only write path."""
-    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    """Set a contract task status. Uses unified state_writer (YAML + SQLite)."""
     project_dir = str(harness_dir.parent)
-
     try:
-        from superharness.engine.db import get_connection, init_db
-        from superharness.engine import tasks_dao
-        _conn = get_connection(project_dir)
-        try:
-            init_db(_conn)
-            task_row = tasks_dao.get(_conn, task_id)
-            if task_row is not None:
-                if from_status and task_row.status != from_status:
-                    return {"ok": False, "error": f"task {task_id} is {task_row.status!r}, expected {from_status!r}"}
-                tasks_dao.update(_conn, task_id, version=task_row.version, changes={"status": to_status})
-                _conn.commit()
-                return {"ok": True, "task": task_id, "status": to_status}
-        finally:
-            _conn.close()
+        from superharness.engine import state_writer
+        ok = state_writer.set_task_status(project_dir, task_id, to_status, from_status=from_status)
+        if ok:
+            return {"ok": True, "task": task_id, "status": to_status}
+        
+        # Determine specific error
+        from superharness.engine import state_reader
+        task = state_reader.get_task(project_dir, task_id)
+        if not task:
+            return {"ok": False, "error": f"task {task_id} not found"}
+        if from_status and task.get("status") != from_status:
+            return {"ok": False, "error": f"task {task_id} is {task.get('status')!r}, expected {from_status!r}"}
+        return {"ok": False, "error": f"transition for {task_id} failed"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-    return {"ok": False, "error": f"task {task_id} not found"}
-
 
 def _contract_task(harness_dir: Path, task_id: str) -> dict | None:
-    """Fetch a single task by ID from SQLite."""
+    """Fetch a single task by ID. Uses state_reader (YAML + SQLite)."""
     project_dir = str(harness_dir.parent)
     try:
-        from dataclasses import asdict
-        from superharness.engine.db import get_connection, init_db
-        from superharness.engine import tasks_dao
-        _conn = get_connection(project_dir)
-        try:
-            init_db(_conn)
-            row = tasks_dao.get(_conn, task_id)
-            return asdict(row) if row is not None else None
-        finally:
-            _conn.close()
+        from superharness.engine import state_reader
+        return state_reader.get_task(project_dir, task_id)
     except Exception:
         return None
 
@@ -1218,6 +1400,12 @@ def board_view(contract_file: Path) -> dict:
         "done": "done",
         "stopped": "done",
         "failed": "done",
+        "archived": "done",
+        "waiting_input": "in_progress",
+        "pending_user_approval": "in_progress",
+        "blocked": "todo",
+        "paused": "in_progress",
+        "pr_open": "review",
     }
     _REVIEW_QUEUE_STATUSES = {"review_requested", "review_passed", "review_failed"}
     empty: dict = {col: [] for col in ("todo", "plan", "in_progress", "review", "done")}
@@ -1319,33 +1507,28 @@ def _confirm_plan(harness_dir: Path, task_id: str) -> dict:
     """Confirm a plan_proposed task: set contract task to todo, update handoff."""
     import yaml  # noqa: F811
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    contract_file = harness_dir / "contract.yaml"
     handoff_dir = harness_dir / "handoffs"
     errors = []
-    sqlite_ok = False
 
-    # SQLite-primary: transition plan_proposed -> todo
+    # SQLite-primary transition (via state_writer which handles both)
     project_dir = str(harness_dir.parent)
     try:
-        from superharness.engine.db import get_connection, init_db
-        from superharness.engine import tasks_dao
-        _conn = get_connection(project_dir)
-        init_db(_conn)
-        task_row = tasks_dao.get(_conn, task_id)
-        if task_row is not None:
-            if task_row.status == "plan_proposed":
-                tasks_dao.update(
-                    _conn, task_id, version=task_row.version,
-                    changes={"status": "todo"},
-                )
-                _conn.commit()
-                sqlite_ok = True
+        from superharness.engine import state_writer
+        ok = state_writer.set_task_status(
+            project_dir, task_id, "todo",
+            from_status="plan_proposed",
+            plan_confirmed_at=now
+        )
+        if not ok:
+            # Check if task exists to give better error
+            from superharness.engine import state_reader
+            task = state_reader.get_task(project_dir, task_id)
+            if not task:
+                errors.append(f"task {task_id} not found")
             else:
-                errors.append(f"task {task_id} is {task_row.status!r}, expected 'plan_proposed'")
-        _conn.close()
+                errors.append(f"task {task_id} transition plan_proposed -> todo failed (current: {task.get('status')})")
     except Exception as e:
-        errors.append(f"sqlite update error: {e}")  # shipguard:ignore PY-007
-
+        errors.append(f"state_writer error: {e}")
 
     # Update matching handoff: add plan_gate confirmation
     if handoff_dir.exists():
@@ -1363,7 +1546,7 @@ def _confirm_plan(harness_dir: Path, task_id: str) -> dict:
                     hf.write_text(yaml.dump(hdata, default_flow_style=False, allow_unicode=True))
                     break
             except Exception as e:
-                errors.append(f"handoff update error: {e}")  # shipguard:ignore PY-007
+                errors.append(f"handoff update error: {e}")
 
     result = {"ok": not errors, "task": task_id, "confirmed_at": now}
     if errors:
@@ -1423,10 +1606,7 @@ def watcher_config(project_dir: Path) -> dict:
 
 
 def board_tasks(contract_file: Path) -> dict[str, list[dict]]:
-    """Group contract tasks by board column (todo/plan/active/review/done/stopped).
-
-    Reads from state_reader (SQLite-only).
-    """
+    """Group contract tasks by board column (todo/plan/active/review/done/stopped)."""
     _STATUS_TO_COL: dict[str, str] = {
         "todo": "todo",
         "plan_proposed": "plan",
@@ -1446,18 +1626,30 @@ def board_tasks(contract_file: Path) -> dict[str, list[dict]]:
         "todo": [], "plan": [], "active": [], "review": [], "done": [], "stopped": []
     }
 
+    if not contract_file.exists():
+        return {}
+
     raw_tasks: list[dict] | None = None
     project_dir = str(contract_file.parent.parent)
     _in_harness = contract_file.parent.name == ".superharness" and contract_file.parent.exists()
+    
     if _in_harness:
         try:
             from superharness.engine import state_reader as _sr
             raw_tasks = _sr.get_top_level_tasks(project_dir)
         except Exception:
             pass
+    else:
+        # Fallback for tests: load YAML directly
+        try:
+            import yaml
+            doc = yaml.safe_load(contract_file.read_text(encoding="utf-8")) or {}
+            raw_tasks = doc.get("tasks") or []
+        except Exception:
+            pass
 
     if not raw_tasks:
-        return {}
+        return columns # Return empty columns instead of {} to avoid KeyError
 
     for t in (raw_tasks or []):
         if not isinstance(t, dict):
@@ -1476,10 +1668,7 @@ def board_tasks(contract_file: Path) -> dict[str, list[dict]]:
 
 
 def review_queue(contract_file: Path) -> list[dict]:
-    """Return tasks in review states ordered by urgency (review_failed first).
-
-    Reads from state_reader (SQLite-only).
-    """
+    """Return tasks in review states ordered by urgency (review_failed first)."""
     _REVIEW_STATUSES = {"report_ready", "review_requested", "review_passed", "review_failed"}
     _URGENCY = {
         "review_failed": 0,
@@ -1491,10 +1680,19 @@ def review_queue(contract_file: Path) -> list[dict]:
     raw_tasks: list[dict] | None = None
     project_dir = str(contract_file.parent.parent)
     _in_harness = contract_file.parent.name == ".superharness" and contract_file.parent.exists()
+    
     if _in_harness:
         try:
             from superharness.engine import state_reader as _sr
             raw_tasks = _sr.get_top_level_tasks(project_dir)
+        except Exception:
+            pass
+    else:
+        # Fallback for tests: load YAML directly
+        try:
+            import yaml
+            doc = yaml.safe_load(contract_file.read_text(encoding="utf-8")) or {}
+            raw_tasks = doc.get("tasks") or []
         except Exception:
             pass
 
@@ -1840,6 +2038,35 @@ class Handler(BaseHTTPRequestHandler):
                 return ({"error": "missing task id"}, 400)
             result = _set_task_status(self.project_dir / ".superharness", task_id, "plan_approved", from_status="plan_proposed")
             return result, (200 if result.get("ok") else 500)
+
+        if action.startswith("reject_plan:"):
+            task_id = action.split(":", 1)[1]
+            if not task_id:
+                return ({"error": "missing task id"}, 400)
+            result = _set_task_status(self.project_dir / ".superharness", task_id, "todo", from_status="plan_proposed")
+            return result, (200 if result.get("ok") else 500)
+
+        if action.startswith("verify_task:"):
+            task_id = action.split(":", 1)[1]
+            if not task_id:
+                return ({"error": "missing task id"}, 400)
+            return self._run_cmd(
+                [
+                    sys.executable,
+                    "-m",
+                    "superharness.commands.verify",
+                    "--project",
+                    str(self.project_dir),
+                    "--id",
+                    task_id,
+                    "--method",
+                    "Verified from dashboard by operator",
+                    "--result",
+                    "pass",
+                    "--actor",
+                    "owner",
+                ]
+            ), 200
 
         if action.startswith("propose_plan:"):
             task_id = action.split(":", 1)[1]
@@ -2427,7 +2654,7 @@ class Handler(BaseHTTPRequestHandler):
                 task_meta = {}
                 conn = self._db_conn()
                 try:
-                    data = dashboard_presenter.get_task_instructions_data(conn, task_id)
+                    data = dashboard_presenter.get_task_instructions_data(conn, task_id, str(self.project_dir))
                     if data:
                         task_meta = data
                 finally:
