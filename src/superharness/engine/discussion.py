@@ -245,8 +245,114 @@ def cmd_submit_round(
         except Exception:
             pass
 
+    # Auto-transition to consensus if all participants submitted
+    _check_all_submitted_and_set_consensus(discussion_dir, state, round_)
+
     print(json.dumps({"submitted": True, "round": round_, "agent": agent, "verdict": verdict}, separators=(", ", ": ")))
     return 0
+
+
+def _check_all_submitted_and_set_consensus(discussion_dir: str, state: dict, round_: int) -> None:
+    """If all participants submitted this round, auto-set discussion to consensus."""
+    participants = state.get("participants") or []
+    submitted = 0
+    for agent in participants:
+        rf = _round_file(discussion_dir, round_, agent)
+        if os.path.exists(rf):
+            submitted += 1
+    if submitted < len(participants):
+        return  # not all submitted yet
+
+    # All submitted — set consensus
+    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    state["status"] = "consensus"
+    state["consensus_at"] = now
+    state["consensus_verdict"] = f"consensus — all {submitted} participants submitted round {round_}"
+    with _file_lock(_state_file(discussion_dir)):
+        _atomic_write(_state_file(discussion_dir), yaml.dump(state))
+
+    # Sync to SQLite
+    try:
+        from superharness.engine.db import get_connection, init_db
+        project_dir = discussion_dir.rsplit("/.superharness/discussions/", 1)[0]
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            conn.execute(
+                "UPDATE discussions SET status='consensus' WHERE id=?",
+                (state.get("id", ""),),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+    print(f"[discussion] auto-consensus: all {submitted} participants submitted round {round_} → consensus", file=__import__('sys').stderr)
+
+    # Auto-create a contract task from consensus points so the discussion becomes actionable
+    _create_consensus_task(discussion_dir, state, round_, submitted)
+
+
+def _create_consensus_task(discussion_dir: str, state: dict, round_: int, submitted: int) -> None:
+    """Auto-create a contract task from discussion consensus."""
+    try:
+        project_dir = discussion_dir.rsplit("/.superharness/discussions/", 1)[0]
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import tasks_dao
+        from superharness.engine.tasks_dao import TaskRow
+
+        disc_id = state.get("id", "unknown")
+        task_id = f"impl-{disc_id[:30]}"
+
+        # Collect consensus points — only non-agree points need implementation
+        all_points = []
+        has_actionable = False
+        for agent in state.get("participants") or []:
+            rf = _round_file(discussion_dir, round_, agent)
+            if os.path.exists(rf):
+                try:
+                    sub = yaml.safe_load(open(rf).read()) or {}
+                    for p in sub.get("points", []):
+                        if isinstance(p, dict):
+                            v = p.get("verdict", "agree")
+                            all_points.append({"id": p.get("id", ""), "verdict": v})
+                            if v != "agree":
+                                has_actionable = True
+                except Exception:
+                    pass
+
+        # Skip task creation if all points are "agree" (confirmation-only discussion)
+        if not has_actionable:
+            return  # nothing to implement
+
+        # Build criteria from non-agree or all points
+        criteria = [f"Implement consensus from {disc_id}"]
+        for p in all_points:
+            criteria.append(f"  * {p['id']} [{p['verdict']}]")
+
+        owner = (state.get("participants") or ["claude-code"])[0]
+        topic = str(state.get("topic", ""))[:80]
+        now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            tasks_dao.upsert(conn, TaskRow(
+                id=task_id, title=f"Implement: {topic}", owner=owner,
+                status="todo", effort="medium", project_path=project_dir,
+                development_method="tdd",
+                acceptance_criteria=list(criteria),
+                test_types=[], out_of_scope=[], definition_of_done=[],
+                context=f"Auto-created from discussion {disc_id} (consensus)",
+                tdd=None, version=1, created_at=now,
+            ))
+            conn.commit()
+            print(f"[discussion] auto-task: {task_id}", file=__import__('sys').stderr)
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[discussion] auto-task failed: {e}", file=__import__('sys').stderr)
 
 
 def cmd_check_round(discussion_dir: str, round_: int) -> int:

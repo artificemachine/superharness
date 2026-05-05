@@ -196,12 +196,12 @@ def test_upsert_handoff_writes_file(clean_harness: Path) -> None:
 # 3e — default backend is dual; sqlite_only is opt-in via profile.yaml
 # ---------------------------------------------------------------------------
 
-def test_state_reader_default_backend_is_dual(clean_harness: Path) -> None:
-    """Without STATE_BACKEND env var or profile.yaml override, state_reader uses dual."""
+def test_state_reader_default_backend_is_sqlite_only(clean_harness: Path) -> None:
+    """Without STATE_BACKEND env var or profile.yaml override, state_reader uses sqlite_only."""
     os.environ.pop("STATE_BACKEND", None)
     from superharness.engine import state_reader
     backend = state_reader._get_backend(str(clean_harness))
-    assert backend == "dual"
+    assert backend == "sqlite_only"
 
 
 def test_state_reader_profile_yaml_opt_in_to_sqlite_only(clean_harness: Path) -> None:
