@@ -1,17 +1,27 @@
 # superharness
 
-**Multi-agent task coordination for Claude Code and Codex CLI**
+**Multi-agent task coordination for Claude Code, Codex CLI, Gemini CLI, and OpenCode**
 
-superharness lets AI coding assistants work on the same project without stepping on each other. It provides a shared contract, queue-based delegation, and handoff/ledger state so tasks survive across sessions.
+superharness lets AI coding assistants work on the same project without stepping on each other. It provides a shared contract (SQLite-backed), queue-based delegation, lifecycle rules, and handoff/ledger state so tasks survive across sessions and auto-manage themselves.
+
+## What's New in v1.44.21
+
+- **Auto-mode**: 6 lifecycle rules (in_progress 3h, waiting_input 8h, report_ready 24h, todo 2h, deadline, review) auto-manage tasks without human intervention
+- **`shux status`**: Comprehensive health dashboard with 10 issue types, `--fix` auto-clean, and `--check` CI mode
+- **Discussion panel**: Agent submissions, chronological timeline, live agents, auto-consensus → auto-task pipeline
+- **Split-brain closed**: SQLite is the sole runtime data path. YAML is export-only. CI-enforced.
+- **6 plan iterations**: Loop detector, handoff generator, FTS5 recall, JSONL event stream, policy gates, skill metrics
+- **151 tests** preventing 9 bug classes from recurring
 
 ---
 
 ## ⚡ 1-Minute Quickstart
 
 **Why use superharness?** 
-*   **Prevent Overlaps**: Different agents (Claude, Codex) won't edit the same files at the same time.
+*   **Prevent Overlaps**: Different agents (Claude, Codex, Gemini, OpenCode) won't edit the same files at the same time.
 *   **Persistent State**: If an agent crashes or hits a limit, the next one knows exactly where to pick up.
-*   **Headless Future**: The engine can autonomously move through a project roadmap without human intervention.
+*   **Auto-Mode**: Lifecycle rules auto-archive stale tasks, auto-fail deadlines, auto-close consensus discussions, and auto-clean orphans.
+*   **Full Visibility**: `shux status` gives a complete health dashboard in one command.
 
 ### 1. Install
 ```bash
@@ -24,17 +34,18 @@ Inside your project:
 shux onboard
 ```
 
-### 3. Coordinate (The Guardian Workflow)
-Superharness now features a self-healing **Operator** that manages your entire background stack.
-
+### 3. Start the stack
 ```bash
-# 1. Start the stack (Watcher + Dashboard + Guardian)
 shux operator start --port 8787
-
-# 2. Open the UI
 open http://localhost:8787
 ```
-Once the Operator is active, tasks will move through the lifecycle (**Planning → Approval → Implementation**) automatically based on your project policy.
+
+### 4. Check health
+```bash
+shux status          # Full health dashboard
+shux status --fix    # Auto-clean orphans, stale items, consensus discussions
+shux status --check  # CI mode (exit 1 if issues found)
+```
 
 ---
 
@@ -307,6 +318,6 @@ CONFIRM_NON_INTERACTIVE=yes bash scripts/install-systemd-inbox-watcher.sh \
 
 ## Current Version
 
-Current version: **v1.29.0**
+Current version: **v1.44.21** — 151 tests, 9 bugs fixed, 6 plan iterations, split-brain closed.
 
 See [CHANGELOG.md](CHANGELOG.md) for the full iteration log.

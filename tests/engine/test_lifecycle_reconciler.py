@@ -319,3 +319,31 @@ def test_taskrow_updated_at_survives_asdict(clean_harness: Path) -> None:
     d2 = asdict(task2)
     assert "deadline_minutes" in d2
     assert d2["deadline_minutes"] == 480
+
+
+def test_todo_task_after_120m_is_archived(clean_harness: Path) -> None:
+    """todo > 120m → archived (new rule added v1.44.20)."""
+    from superharness.engine.lifecycle_rules import reconcile_lifecycle
+
+    _write_contract(clean_harness, [{
+        "id": "feat.stale-todo", "owner": "claude-code",
+        "status": "todo", "created_at": past_iso(121),
+    }])
+    n = reconcile_lifecycle(str(clean_harness))
+    assert n >= 1
+    doc = _read_contract(clean_harness)
+    assert doc["tasks"][0]["status"] == "archived"
+    assert "todo timeout" in doc["tasks"][0].get("archived_reason", "")
+
+
+def test_todo_task_within_120m_is_unchanged(clean_harness: Path) -> None:
+    """todo under 120m must not be touched."""
+    from superharness.engine.lifecycle_rules import reconcile_lifecycle
+
+    _write_contract(clean_harness, [{
+        "id": "feat.fresh-todo", "owner": "claude-code",
+        "status": "todo", "created_at": past_iso(60),
+    }])
+    reconcile_lifecycle(str(clean_harness))
+    doc = _read_contract(clean_harness)
+    assert doc["tasks"][0]["status"] == "todo"
