@@ -69,10 +69,14 @@ All YAML runtime read/write paths eliminated. YAML is export-only.
 | `_yaml_writes_enabled` in inbox_watch.py | ✅ Gated by is_sqlite_only |
 
 ### High priority (from plans)
-| Source | Feature | Effort |
-|--------|---------|--------|
-| Protocol plan | `CONTRACT.md` ↔ `contract.yaml` Markdown sync | 2 days |
-| Protocol plan | MCP server for superharness state | 1 day |
+| Source | Feature | Effort | Blocked? |
+|--------|---------|--------|----------|
+| Protocol plan | `CONTRACT.md` ↔ SQLite Markdown sync | 1-2 days | No — SQLite is SoT, Markdown is export/view layer only |
+| Protocol plan | MCP server for superharness state | 1 day | No — agents call MCP tools instead of `shux` CLI commands |
+
+> **Note**: Both are now UX improvements, not architectural fixes.
+> Split-brain is closed. Markdown sync = friendlier export format.
+> MCP server = native protocol instead of shell commands.
 
 ### Medium priority
 | Source | Feature |
