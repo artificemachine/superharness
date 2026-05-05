@@ -164,10 +164,10 @@ def _step_init(project: Path, state: dict) -> None:
         sh.mkdir(exist_ok=True)
         contract = sh / "contract.yaml"
         if not contract.exists():
-            contract.write_text("id: main\ntasks: []\n")
+            contract.write_text("id: main\ntasks: []\n", encoding="utf-8")
         ledger = sh / "ledger.md"
         if not ledger.exists():
-            ledger.write_text("# Ledger\n")
+            ledger.write_text("# Ledger\n", encoding="utf-8")
         decisions = sh / "decisions.yaml"
         if not decisions.exists():
             decisions.write_text("[]\n")
@@ -193,7 +193,7 @@ def _step_init(project: Path, state: dict) -> None:
     # Always write AGENTS.md if missing — this is what tells Claude/Codex to use shux
     agents_md = project / "AGENTS.md"
     if not agents_md.exists():
-        agents_md.write_text(_AGENTS_MD_TEMPLATE)
+        agents_md.write_text(_AGENTS_MD_TEMPLATE, encoding="utf-8")
         click.echo("[init] Wrote AGENTS.md")
         click.echo("  → AGENTS.md tells Claude Code and Codex CLI to use shux commands.")
         click.echo("  → Without it, agents won't know superharness is installed.")
