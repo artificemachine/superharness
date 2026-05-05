@@ -86,7 +86,7 @@ def close(
     now: str,
 ) -> bool:
     cursor = conn.execute(
-        "UPDATE discussions SET status='closed', consensus=?, closed_at=? WHERE id=? AND status='active'",
+        "UPDATE discussions SET status='closed', consensus=?, closed_at=? WHERE id=? AND status IN ('active', 'consensus')",
         (consensus, now, id),
     )
     return cursor.rowcount > 0

@@ -44,3 +44,11 @@ json
 
 .token-budget
 .superharness/failures.yaml
+
+# Runtime state database — contains operational data, not source code
+.superharness/state.sqlite3
+.superharness/state.sqlite3-shm
+.superharness/state.sqlite3-wal
+
+# JSONL event stream — runtime data, not source
+.superharness/events.jsonl

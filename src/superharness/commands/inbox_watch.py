@@ -1158,7 +1158,7 @@ def _auto_close_report_ready(project_dir: str) -> None:
 
         # Autonomous Peer Review selection (cross-pollination)
         if not peer_reviewers and autonomy == "ai_driven":
-            known_agents = ["claude-code", "codex-cli", "gemini-cli"]
+            known_agents = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
             owner = str(task.get("owner", ""))
             peers = [a for a in known_agents if a != owner]
             if peers:
@@ -1589,11 +1589,10 @@ def _sqlite_tick(project_dir: str, now: str) -> None:
     """
     try:
         from superharness.engine.db import get_connection, init_db
-        from superharness.engine import ledger_dao, watcher_singleton
+        from superharness.engine import watcher_singleton
         conn = get_connection(project_dir)
         try:
             init_db(conn)
-            ledger_dao.record(conn, agent="watcher", action="tick", now=now)
             watcher_singleton.heartbeat(conn, os.getpid(), now)
             conn.commit()
         finally:
@@ -2091,6 +2090,12 @@ def _run_scripts(
     except Exception as e:
         print(f"Warning: stale inbox cleanup failed: {e}", file=sys.stderr)
 
+    # Cancel pending items for agents without dispatch scripts (will never dispatch)
+    try:
+        _cancel_undispatchable_agents(project_dir)
+    except Exception as e:
+        print(f"Warning: undispatchable agent cleanup failed: {e}", file=sys.stderr)
+
     # Dispatch — check budget before launching agents
     targets = []
     if target == "both":
@@ -2121,6 +2126,23 @@ def _run_scripts(
                 continue
             elif agent_budget.status == BudgetStatus.WARN:
                 print(f"budget-gate: {t} WARN — ${agent_budget.used_today:.2f} / ${agent_budget.daily_limit:.2f}")
+        except Exception as e:
+            _log_watcher_error(project_dir, "watcher", str(e))
+
+        # Loop detection: check launcher logs for the task before dispatching
+        try:
+            from superharness.engine.loop_detector import detect_loop
+            log_dir = os.path.join(project_dir, ".superharness", "launcher-logs")
+            if os.path.isdir(log_dir):
+                for lf in sorted(os.listdir(log_dir)):
+                    if lf.endswith(".log") and t in lf:
+                        loop = detect_loop(os.path.join(log_dir, lf))
+                        if loop["loop_detected"]:
+                            from superharness.engine.policy_gate import check_agent_policy
+                            gate = check_agent_policy(t, loop_detected=True)
+                            print(f"loop-guard: BLOCKED {t} — {gate['reason']} (pattern: {loop['pattern']})")
+                            continue
+                        break
         except Exception as e:
             _log_watcher_error(project_dir, "watcher", str(e))
 
@@ -2605,6 +2627,49 @@ def _auto_delete_stale_inbox(project_dir: str) -> int:
             conn.close()
     except Exception as e:
         print(f"auto-delete-stale: failed: {e}", file=sys.stderr)
+        return 0
+
+
+def _cancel_undispatchable_agents(project_dir: str) -> int:
+    """Cancel pending inbox items for agents that have no dispatch script.
+
+    Agents like 'opencode' or user-defined agents may not have a delegate-to-*.sh
+    script. Their inbox items will never be dispatched, so cancel them.
+    Returns count of items canceled.
+    """
+    import glob as _glob
+    scripts_dir = _find_scripts_dir()
+    known_agents = set()
+    for script in _glob.glob(os.path.join(scripts_dir, "delegate-to-*.sh")):
+        name = os.path.basename(script).replace("delegate-to-", "").replace(".sh", "")
+        known_agents.add(name)
+    # Also add agents from known_agents list
+    known_agents.update(["claude-code", "codex-cli", "gemini-cli"])
+
+    try:
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            rows = conn.execute(
+                "SELECT id, target_agent FROM inbox WHERE status='pending' AND target_agent NOT IN ({})".format(
+                    ",".join(f"'{a}'" for a in known_agents)
+                )
+            ).fetchall()
+            canceled = 0
+            for row in rows:
+                conn.execute("UPDATE inbox SET status='stale', failed_reason=? WHERE id=?",
+                             (f"agent '{row[1]}' has no dispatch adapter", row[0]))
+                canceled += 1
+            if canceled > 0:
+                conn.commit()
+                agents = set(r[1] for r in rows)
+                print(f"undispatchable-cleanup: canceled {canceled} item(s) for unknown agent(s): {agents}")
+            return canceled
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"undispatchable-cleanup: failed: {e}", file=sys.stderr)
         return 0
 
 

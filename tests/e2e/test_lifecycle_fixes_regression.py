@@ -331,63 +331,26 @@ def test_deadline_enforcement_fails_task(clean_harness: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_dashboard_status_mapping_covers_all_statuses() -> None:
-    """Every defined status must map to a valid dashboard column."""
-    from superharness.engine.next_action import ALL_STATUSES
-
-    # From dashboard-ui.py board_view
-    STATUS_TO_COL = {
-        "todo": "todo",
-        "plan_proposed": "plan",
-        "plan_approved": "plan",
-        "plan_confirmed": "plan",
-        "in_progress": "in_progress",
-        "launched": "in_progress",
-        "running": "in_progress",
-        "report_ready": "review",
-        "review_requested": "review",
-        "review_passed": "review",
-        "review_failed": "review",
-        "done": "done",
-        "stopped": "done",
-        "failed": "done",
-        "archived": "done",
-        "waiting_input": "in_progress",
-        "pending_user_approval": "in_progress",
-        "blocked": "todo",
-        "paused": "in_progress",
-        "pr_open": "review",
-    }
+    """Every defined status must map to a valid dashboard column — checked against canonical source."""
+    from superharness.engine.next_action import ALL_STATUSES, STATUS_TO_COL
 
     for status in ALL_STATUSES:
         assert status in STATUS_TO_COL, (
-            f"BUG-4 REGRESSION: status '{status}' missing from dashboard _STATUS_TO_COL"
+            f"BUG-4 REGRESSION: status '{status}' missing from canonical STATUS_TO_COL in next_action.py"
         )
 
 
 def test_dashboard_js_status_groups_cover_all_statuses() -> None:
-    """JavaScript STATUS_GROUPS must have an entry for every status."""
-    from superharness.engine.next_action import ALL_STATUSES
-
-    # Mirrors the JS STATUS_GROUPS definition
-    JS_GROUPS = {
-        "archived": ["archived"],
-        "done": ["done"],
-        "failed": ["failed"],
-        "stopped": ["stopped"],
-        "pr_open": ["pr_open"],
-        "review": ["report_ready", "review_requested", "review_passed", "review_failed"],
-        "in_progress": ["in_progress", "launched", "running", "waiting_input", "paused", "pending_user_approval"],
-        "plan": ["plan_proposed", "plan_approved"],
-        "todo": ["todo", "blocked"],
-    }
+    """JavaScript STATUS_GROUPS must have an entry for every status — checked against canonical source."""
+    from superharness.engine.next_action import ALL_STATUSES, STATUS_GROUPS
 
     covered = set()
-    for statuses in JS_GROUPS.values():
-        covered.update(statuses)
+    for g in STATUS_GROUPS:
+        covered.update(g["statuses"])
 
     for status in ALL_STATUSES:
         assert status in covered, (
-            f"BUG-4 REGRESSION: status '{status}' not in any JS STATUS_GROUPS group"
+            f"BUG-4 REGRESSION: status '{status}' not in any canonical STATUS_GROUPS group"
         )
 
 

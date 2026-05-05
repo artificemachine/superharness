@@ -12,7 +12,7 @@ from superharness.engine.state_errors import ConnectionError, SchemaError
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 5
+CURRENT_SCHEMA_VERSION = 6
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -369,10 +369,26 @@ def _migration_v5(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "tasks", "deadline_minutes", "INTEGER")
 
 
+def _migration_v5(conn: sqlite3.Connection) -> None:
+    """Add deadline_minutes column to tasks table."""
+    _add_column_if_missing(conn, "tasks", "deadline_minutes", "INTEGER")
+
+
+def _migration_v6(conn: sqlite3.Connection) -> None:
+    """Add FTS5 virtual table for full-text search over handoffs and ledger."""
+    conn.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS handoffs_fts USING fts5(
+            id, task_id, agent, summary, content,
+            content=handoffs, content_rowid=rowid
+        )
+    """)
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
     _migration_v3,
     _migration_v4,
     _migration_v5,
+    _migration_v6,
 ]

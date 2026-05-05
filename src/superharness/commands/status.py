@@ -521,7 +521,7 @@ def _collect_issues(project_dir: str,
 
     # Tasks: stuck in_progress
     if task_health["stuck_inprogress"]:
-        long_running = [t for t in task_health["stuck_inprogress"] if t.get("age_min", 0) >= 180]
+        long_running = [t for t in task_health["stuck_inprogress"] if (t.get("age_min") or 0) >= 180]
         if long_running:
             ids = ", ".join(f"{t['id']}({t['age_min']}m)" for t in long_running[:3])
             add(f"{len(long_running)} task(s) in_progress >3h — should auto-archive next watcher cycle: {ids}")
@@ -686,6 +686,25 @@ def _auto_fix(project_dir: str, inbox_health: dict, disc_health: dict) -> int:
                 conn.close()
         except Exception as e:
             print(f"  Warning: failed to delete stale items: {e}", file=sys.stderr)
+
+    # Cancel stale pending items (pending > 1h, never dispatched)
+    if inbox_health["stale_pending"]:
+        n = 0
+        try:
+            from superharness.engine.db import get_connection, init_db
+            conn = get_connection(project_dir)
+            try:
+                init_db(conn)
+                for sp in inbox_health["stale_pending"]:
+                    conn.execute("UPDATE inbox SET status='stale' WHERE id=?", (sp["inbox_id"],))
+                    n += 1
+                conn.commit()
+                print(f"  Canceled {n} stale pending item(s) (undispatched > 1h)")
+                fixed += n
+            finally:
+                conn.close()
+        except Exception as e:
+            print(f"  Warning: failed to cancel stale pending: {e}", file=sys.stderr)
 
     return fixed
 

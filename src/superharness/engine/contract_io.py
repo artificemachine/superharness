@@ -100,6 +100,8 @@ def _task_row_from_dict(
         failed_reason=t.get("failed_reason"),
         archived_at=t.get("archived_at"),
         archived_reason=t.get("archived_reason"),
+        model_tier=t.get("model_tier"),
+        pause_reason=t.get("pause_reason"),
     )
 
 
@@ -139,8 +141,9 @@ def _sqlite_sync_tasks(path: str, doc: object) -> None:
             conn.commit()
         finally:
             conn.close()
-    except Exception:
-        pass
+    except Exception as e:
+        import sys
+        print(f"[WARNING] _sqlite_sync_tasks failed: {e}", file=sys.stderr)
 
 
 def write_contract(path: str, doc: object) -> None:
