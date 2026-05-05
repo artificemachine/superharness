@@ -206,7 +206,7 @@
           <span style="color:var(--muted);font-size:11px">▾</span>
         </div>
       </div>
-      <div id="recentFailuresBody" style="display:block">
+      <div id="recentFailuresBody" style="display:none">
         <div id="recentFailuresList" style="font-size:12px"></div>
       </div>
     </div>
@@ -292,6 +292,22 @@
     </div>
 
     <div class="card" style="margin-top:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="togglePanel('skillBody',this)">
+        <h2 style="margin:0">skill insights <span id="skillSummary" style="font-weight:normal;font-size:0.85em;color:var(--muted)"></span></h2><span style="color:var(--muted);font-size:11px">▾</span>
+      </div>
+      <div id="skillBody" style="display:block;margin-top:8px;max-height:200px;overflow-y:auto">
+        <table id="skillTable" style="width:100%;border-collapse:collapse;font-size:0.85em;">
+          <thead><tr style="text-align:left;">
+            <th style="padding:2px 6px;">skill</th>
+            <th style="padding:2px 6px;text-align:right;">uses</th>
+            <th style="padding:2px 6px;text-align:right;">success</th>
+          </tr></thead>
+          <tbody id="skillRows"><tr><td colspan="3">-</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="togglePanel('activityBody',this)">
         <h2 style="margin:0">activity feed</h2>
         <div style="display:flex;align-items:center;gap:8px">
@@ -299,7 +315,7 @@
           <span style="color:var(--muted);font-size:11px">▸</span>
         </div>
       </div>
-      <div id="activityBody" style="display:none;margin-top:8px">
+      <div id="activityBody" style="display:block;margin-top:8px">
         <div id="activityFeed" style="max-height:200px;overflow-y:auto;font-size:12px;font-family:monospace;"></div>
       </div>
     </div>
@@ -308,19 +324,19 @@
       <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="togglePanel('ledgerBody',this)">
         <h2 style="margin:0">ledger tail</h2><span style="color:var(--muted);font-size:11px">▸</span>
       </div>
-      <div id="ledgerBody" style="display:none;margin-top:8px;max-height:200px;overflow-y:auto"><pre id="ledger">-</pre></div>
+      <div id="ledgerBody" style="display:block;margin-top:8px;max-height:200px;overflow-y:auto"><pre id="ledger">-</pre></div>
     </div>
     <div class="card" style="margin-top:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="togglePanel('actionOutBody',this)">
         <h2 style="margin:0">action output</h2><span style="color:var(--muted);font-size:11px">▸</span>
       </div>
-      <div id="actionOutBody" style="display:none;margin-top:8px;max-height:200px;overflow-y:auto"><pre id="actionOut">-</pre></div>
+      <div id="actionOutBody" style="display:block;margin-top:8px;max-height:200px;overflow-y:auto"><pre id="actionOut">-</pre></div>
     </div>
     <div class="card" style="margin-top:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="togglePanel('outBody',this)">
         <h2 style="margin:0">watcher out.log tail</h2><span style="color:var(--muted);font-size:11px">▸</span>
       </div>
-      <div id="outBody" style="display:none;margin-top:8px;max-height:200px;overflow-y:auto"><pre id="out">-</pre></div>
+      <div id="outBody" style="display:block;margin-top:8px;max-height:200px;overflow-y:auto"><pre id="out">-</pre></div>
     </div>
     <div class="card" style="margin-top:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="togglePanel('errBody',this)">
@@ -344,8 +360,9 @@
           <tbody id="costRows"><tr><td colspan="5">-</td></tr></tbody>
         </table>
       </div>
+      </div>
     </div>
-  </div>
+
 <script>
 // Single source of truth for known agents — extended from API data on first refresh.
 let KNOWN_AGENTS = ['claude-code', 'codex-cli', 'gemini-cli'];
@@ -482,6 +499,7 @@ async function refresh() {
     if (_currentView === 'board') loadBoardView();
     renderTaskOverview(d.contract_tasks || []);
     renderActivityFeed(d.activity_feed || []);
+    loadSkillInsights();
 
     document.getElementById('ledger').textContent = (d.ledger_tail || []).join('\n');
     document.getElementById('out').textContent = (d.out_tail || []).join('\n');
@@ -1191,7 +1209,7 @@ function applySort(tasks) {
   if (_reverseSort) sorted.reverse();
   return sorted;
 }
-let _hiddenGroups = new Set(['archived']);
+let _hiddenGroups = new Set(['archived', 'done', 'failed']);
 let _reviewMode = 'all';
 
 // Discussions dismissed from queue (persisted in localStorage)
@@ -1209,7 +1227,7 @@ function dismissDiscussion(id) {
 
 function setReviewMode(mode) {
   _reviewMode = mode;
-  if (mode === 'all') _hiddenGroups = new Set(['archived']);
+  if (mode === 'all') _hiddenGroups = new Set(['archived', 'done', 'failed']);
   document.querySelectorAll('.review-tab').forEach(b => {
     b.style.borderColor = b.dataset.mode === mode ? 'var(--accent)' : 'var(--line)';
     b.style.background = b.dataset.mode === mode ? 'var(--accent)18' : 'var(--btn)';
@@ -1501,7 +1519,7 @@ async function requestReview(taskId) {
   dlg.style.cssText = 'background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:20px;min-width:280px;';
   dlg.innerHTML = `
     <h3 style="margin:0 0 12px">Request review for "${taskId}"</h3>
-    <label style="display:block;margin-bottom:8px;font-size:13px;">Reviewer:</label>
+    <label style="display:none;margin-bottom:8px;font-size:13px;">Reviewer:</label>
     <select id="reviewerSelect" style="width:100%;padding:6px 8px;font-size:14px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;">
       ${KNOWN_AGENTS.map(a => `<option value="${a}">${a}</option>`).join('')}
     </select>
@@ -1953,7 +1971,7 @@ function renderTaskGraph(tasks) {
   const markerColors = { blue: '#4a9eff', purple: '#a78bfa', gray: '#4a6fa5', yellow: '#d29922', red: '#da3633' };
   const pickMarker = c => c.includes('4a9e') ? 'blue' : c.includes('a78b') ? 'purple' : c.includes('d299') ? 'yellow' : c.includes('da36') ? 'red' : 'gray';
 
-  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" style="display:block">
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" style="display:none">
   <defs>
     ${Object.entries(markerColors).map(([k,c]) =>
       `<marker id="arr-${k}" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="${c}"/></marker>`
@@ -2011,6 +2029,26 @@ function renderTaskOverview(tasks) {
   const visible = tasks.filter(t => t.status !== 'archived' && t.status !== 'done');
   if (countEl) countEl.textContent = `${visible.length} task${visible.length === 1 ? '' : 's'}`;
   renderTaskGraph(tasks);
+}
+
+async function loadSkillInsights() {
+  try {
+    const r = await fetch('/api/skill-insights');
+    const d = await r.json();
+    const tbody = document.getElementById('skillRows');
+    const summary = document.getElementById('skillSummary');
+    if (!d.skills || d.skills.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="3">no data yet</td></tr>';
+      if (summary) summary.textContent = '';
+      return;
+    }
+    if (summary) summary.textContent = `(${d.skills.length} skills)`;
+    tbody.innerHTML = d.skills.map(s => `<tr>
+      <td style="padding:2px 6px;">${s.skill}</td>
+      <td style="padding:2px 6px;text-align:right;">${s.uses}</td>
+      <td style="padding:2px 6px;text-align:right;">${(s.success_rate*100).toFixed(0)}%</td>
+    </tr>`).join('');
+  } catch(e) { document.getElementById('skillRows').innerHTML = '<tr><td colspan="3">(error)</td></tr>'; }
 }
 
 function renderActivityFeed(events) {

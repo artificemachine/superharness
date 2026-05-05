@@ -23,6 +23,10 @@ from typing import Optional
 import click
 import yaml
 
+from superharness.engine.db import get_connection, init_db
+from superharness.engine import tasks_dao, inbox_dao
+from superharness.engine.tasks_dao import TaskRow
+
 
 # ---------------------------------------------------------------------------
 # Step status helpers
@@ -36,6 +40,10 @@ _INNER_GITIGNORE_ENTRIES = [
     "daemon-state.json",
     "operator-state.json",
     "onboarding.yaml",
+    "state.sqlite3",
+    "state.sqlite3-shm",
+    "state.sqlite3-wal",
+    "events.jsonl",
 ]
 
 
@@ -168,6 +176,16 @@ def _step_init(project: Path, state: dict) -> None:
             failures.write_text("[]\n")
         handoffs = sh / "handoffs"
         handoffs.mkdir(exist_ok=True)
+        
+        # Initialize SQLite DB
+        try:
+            conn = get_connection(str(project))
+            init_db(conn, str(project))
+            conn.close()
+            click.echo("[init] Initialized SQLite state database")
+        except Exception as e:
+            click.echo(f"[init] Warning: could not initialize SQLite database: {e}")
+
         click.echo("[init] Initialized .superharness/")
         click.echo("  → contract.yaml  tracks every task and its status.")
         click.echo("  → ledger.md      is the session history agents read first.")
@@ -329,6 +347,32 @@ def _step_task(project: Path, state: dict, task_title: Optional[str]) -> Optiona
     tasks.append(task)
     doc["tasks"] = tasks
     contract_file.write_text(yaml.dump(doc, default_flow_style=False))
+
+    # Mirror to SQLite
+    try:
+        conn = get_connection(str(project))
+        tasks_dao.upsert(conn, TaskRow(
+            id=task_id,
+            title=task_title,
+            owner="claude-code",
+            status="todo",
+            effort="medium",
+            project_path=str(project),
+            development_method="quick",
+            acceptance_criteria=[],
+            test_types=[],
+            out_of_scope=[],
+            definition_of_done=[],
+            context=None,
+            tdd=None,
+            version=1,
+            created_at=now,
+        ))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        click.echo(f"[task] Warning: could not mirror task to SQLite: {e}")
+
     click.echo(f"[task] Created task '{task_title}' (id: {task_id})")
     click.echo(f"  → Task lives in contract.yaml. Run 'shux contract' to see it.")
     click.echo(f"  → Next: approve the plan, then 'shux delegate {task_id}' to dispatch.")
@@ -362,6 +406,23 @@ def _step_delegate(project: Path, state: dict, enqueue: bool, task_id: Optional[
     }
     items.append(item)
     inbox.write_text(yaml.dump(items, default_flow_style=False))
+
+    # Mirror to SQLite
+    try:
+        conn = get_connection(str(project))
+        inbox_dao.enqueue(
+            conn,
+            id=f"auto-{uuid.uuid4().hex[:6]}",
+            task_id=task_id,
+            target_agent="claude-code",
+            project_path=str(project),
+            now=now,
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        click.echo(f"[delegate] Warning: could not mirror inbox item to SQLite: {e}")
+
     click.echo(f"[delegate] Enqueued task {task_id} to inbox.yaml")
     click.echo("  → The watcher picks this up within 30s and launches the agent.")
     click.echo("  → Run 'shux daemon start' to keep the watcher running in the background.")

@@ -231,3 +231,63 @@ def plan_only_allowed_statuses(workflow: str) -> set[str]:
     if workflow == "implementation":
         return {"todo", "plan_proposed", "plan_approved", "review_failed"}
     return allowed_statuses_for_workflow(workflow)
+
+
+# ---------------------------------------------------------------------------
+# Canonical status → dashboard column mapping
+#
+# Single source of truth for all dashboard views and JS rendering.
+# When adding a new status to ALL_STATUSES, also add it to STATUS_TO_COL
+# and STATUS_TO_GROUP below. The E2E test `test_dashboard_status_mapping_*`
+# enforces this at CI time.
+# ---------------------------------------------------------------------------
+
+# Maps each status to its board column (board_view / board_tasks / JS columns)
+STATUS_TO_COL: dict[str, str] = {
+    "todo": "todo",
+    "plan_proposed": "plan",
+    "plan_approved": "plan",
+    "plan_confirmed": "plan",
+    "in_progress": "in_progress",
+    "launched": "in_progress",
+    "running": "in_progress",
+    "waiting_input": "in_progress",
+    "pending_user_approval": "in_progress",
+    "paused": "in_progress",
+    "report_ready": "review",
+    "review_requested": "review",
+    "review_passed": "review",
+    "review_failed": "review",
+    "pr_open": "review",
+    "done": "done",
+    "stopped": "done",
+    "failed": "done",
+    "archived": "done",
+    "blocked": "todo",
+}
+
+# Maps column name → list of statuses (inverse of STATUS_TO_COL)
+# Also serves as the JS STATUS_GROUPS definition
+STATUS_GROUPS: list[dict] = [
+    {"key": "archived", "label": "📁 archived", "statuses": ["archived"]},
+    {"key": "done",     "label": "✅ done",     "statuses": ["done"]},
+    {"key": "failed",   "label": "❌ failed",   "statuses": ["failed"]},
+    {"key": "stopped",  "label": "⛔ stopped",   "statuses": ["stopped"]},
+    {"key": "pr_open",  "label": "🔀 pr open",   "statuses": ["pr_open"]},
+    {"key": "review",   "label": "🔍 review",    "statuses": ["report_ready", "review_requested", "review_passed", "review_failed"]},
+    {"key": "in_progress", "label": "🔄 in progress", "statuses": ["in_progress", "launched", "running", "waiting_input", "paused", "pending_user_approval"]},
+    {"key": "plan",     "label": "📋 plan",      "statuses": ["plan_proposed", "plan_approved"]},
+    {"key": "todo",     "label": "🕐 todo",      "statuses": ["todo", "blocked"]},
+]
+
+
+def dashboard_status_mapping() -> dict:
+    """Return the canonical status mapping for dashboard use.
+
+    Returns a dict with ``cols`` (status→column) and ``groups`` (column→statuses)
+    so dashboard code never hardcodes its own copy.
+    """
+    return {
+        "cols": STATUS_TO_COL,
+        "groups": [{**g} for g in STATUS_GROUPS],  # shallow copy
+    }
