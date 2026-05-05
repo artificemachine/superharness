@@ -7,64 +7,47 @@ from typing import Any
 from collections import defaultdict
 from pathlib import Path
 
-from superharness.engine import tasks_dao, inbox_dao, handoffs_dao, failures_dao, decisions_dao, ledger_dao, discussions_dao
+from superharness.engine import tasks_dao, inbox_dao, failures_dao, decisions_dao, ledger_dao, state_reader
 
 def get_dashboard_status_snapshot(conn: sqlite3.Connection, project_dir: str) -> dict[str, Any]:
     """Return a comprehensive snapshot of the project state for the dashboard.
     
-    This replaces multiple YAML reads with a single set of SQLite queries.
+    Uses state_reader to merge YAML definitions with SQLite runtime state.
     """
-    # 1. Tasks
-    all_tasks = tasks_dao.get_all(conn)
-    tasks_as_dict = [asdict(t) for t in all_tasks]
+    # 1. Tasks & Contract ID
+    tasks_as_dict = state_reader.get_tasks(project_dir)
     
+    contract_id = "unknown"
+    try:
+        doc = state_reader.get_contract_doc(project_dir)
+        contract_id = str(doc.get("id", "initial-setup"))
+    except Exception:
+        pass
+
     # 2. Inbox
-    all_inbox = inbox_dao.get_all(conn)
-    inbox_as_dict = [asdict(i) for i in all_inbox]
+    inbox_as_dict = state_reader.get_inbox_items(project_dir)
     
-    # 3. Active discussions — read from YAML state files (discussions not yet in SQLite)
+    # 3. Active discussions — read from SQLite (canonical source)
     active_discussions = []
     try:
-        import yaml as _yaml
-        disc_root = Path(project_dir) / ".superharness" / "discussions"
-        if disc_root.exists():
-            for state_file in disc_root.glob("*/state.yaml"):
-                try:
-                    st = _yaml.safe_load(state_file.read_text(encoding="utf-8", errors="replace")) or {}
-                    if st.get("status") in ("active", "consensus", "cancelled", "closed"):
-                        disc_id = st.get("id", state_file.parent.name)
-                        participants = st.get("participants") or []
-                        current_round = st.get("current_round", 1)
-                        # Collect round verdicts from submission files
-                        verdicts: dict = {}
-                        for agent in participants:
-                            rf = state_file.parent / f"round-{current_round}-{agent}.yaml"
-                            if rf.exists():
-                                try:
-                                    rs = _yaml.safe_load(rf.read_text(encoding="utf-8", errors="replace")) or {}
-                                    verdicts[agent] = rs.get("verdict", "")
-                                except Exception:
-                                    pass
-                        submitted = list(verdicts.keys())
-                        all_submitted = len(submitted) == len(participants) and len(participants) > 0
-                        all_consensus = all_submitted and all(v == "consensus" for v in verdicts.values())
-                        active_discussions.append({
-                            "id": disc_id,
-                            "topic": st.get("topic", ""),
-                            "status": st.get("status", ""),
-                            "current_round": current_round,
-                            "max_rounds": st.get("max_rounds", "?"),
-                            "participants": participants,
-                            "created_at": st.get("created_at", ""),
-                            "task_id": st.get("task_id"),
-                            "verdicts": verdicts,
-                            "submitted_count": len(submitted),
-                            "all_submitted": all_submitted,
-                            "all_consensus": all_consensus,
-                            "closed_at": st.get("closed_at", ""),
-                        })
-                except Exception:
-                    pass
+        from superharness.engine import discussions_dao
+        for row in discussions_dao.get_all(conn):
+            if row.status in ("active", "consensus"):
+                active_discussions.append({
+                    "id": row.id,
+                    "topic": row.topic or "",
+                    "status": row.status,
+                    "current_round": row.current_round or 1,
+                    "max_rounds": row.max_rounds or "?",
+                    "participants": (row.participants or "").split(","),
+                    "created_at": row.created_at or "",
+                    "task_id": row.task_id,
+                    "verdicts": {},
+                    "submitted_count": 0,
+                    "all_submitted": False,
+                    "all_consensus": False,
+                    "closed_at": row.closed_at or "",
+                })
     except Exception:
         pass
 
@@ -73,11 +56,11 @@ def get_dashboard_status_snapshot(conn: sqlite3.Connection, project_dir: str) ->
     decisions = [asdict(d) for d in decisions_dao.get_recent(conn, limit=50)]
     
     # 4. Activity Feed (Unified ledger)
-    ledger = ledger_dao.get_recent(conn, limit=100)
+    ledger = state_reader.get_ledger_entries(project_dir, limit=100)
     activity: list[dict[str, Any]] = []
     for l in ledger:
-        # Determine type from action
-        action_lower = l.action.lower()
+        action = str(l.get("action", ""))
+        action_lower = action.lower()
         if "gc" in action_lower:
             etype = "gc"
         elif "dispatch" in action_lower or "claim" in action_lower:
@@ -88,29 +71,30 @@ def get_dashboard_status_snapshot(conn: sqlite3.Connection, project_dir: str) ->
             etype = "ledger"
             
         details_str = ""
-        if l.details:
-            if "error" in l.details:
-                details_str = f" — Error: {l.details['error']}"
-            elif "task" in l.details:
-                details_str = f" — {l.details['task']}"
+        details = l.get("details")
+        if isinstance(details, dict):
+            if "error" in details:
+                details_str = f" — Error: {details['error']}"
+            elif "task" in details:
+                details_str = f" — {details['task']}"
                 
         activity.append({
-            "time": l.created_at,
+            "time": str(l.get("created_at", "")),
             "type": etype,
-            "message": f"{l.action}{details_str}"
+            "message": f"{action}{details_str}"
         })
     
     # Derived stats
     inbox_counts: dict[str, int] = defaultdict(int)
     inbox_owners: dict[str, int] = defaultdict(int)
-    for i in all_inbox:
-        inbox_counts[i.status] += 1
-        inbox_owners[i.target_agent] += 1
+    for i in inbox_as_dict:
+        inbox_counts[str(i.get("status", ""))] += 1
+        inbox_owners[str(i.get("to", ""))] += 1
         
-    active_inbox_tasks = [i.task_id for i in all_inbox if i.status in ("pending", "launched", "running")]
-    paused_inbox_tasks = [i.task_id for i in all_inbox if i.status == "paused"]
-    failed_inbox_tasks = [i.task_id for i in all_inbox if i.status in ("failed", "stale")]
-    done_inbox_tasks = [i.task_id for i in all_inbox if i.status == "done"]
+    active_inbox_tasks = [str(i.get("task", "")) for i in inbox_as_dict if i.get("status") in ("pending", "launched", "running")]
+    paused_inbox_tasks = [str(i.get("task", "")) for i in inbox_as_dict if i.get("status") == "paused"]
+    failed_inbox_tasks = [str(i.get("task", "")) for i in inbox_as_dict if i.get("status") in ("failed", "stale")]
+    done_inbox_tasks = [str(i.get("task", "")) for i in inbox_as_dict if i.get("status") == "done"]
     
     # Board columns — map raw statuses to the 6 display columns
     _STATUS_TO_COL = {
@@ -126,20 +110,21 @@ def get_dashboard_status_snapshot(conn: sqlite3.Connection, project_dir: str) ->
         "todo": [], "plan": [], "active": [], "review": [], "done": [], "stopped": []
     }
     for t in tasks_as_dict:
-        col = _STATUS_TO_COL.get(t["status"], "todo")
+        st = str(t.get("status", "todo"))
+        col = _STATUS_TO_COL.get(st, "todo")
         board_columns[col].append(t)
         
     # Review queue
-    review_queue = [t for t in tasks_as_dict if t["status"] in {"review_requested", "review_passed", "review_failed"}]
+    review_queue = [t for t in tasks_as_dict if str(t.get("status", "")) in {"report_ready", "review_requested", "review_passed", "review_failed"}]
     
     # All task owners
-    KNOWN_AGENTS = ["claude-code", "codex-cli", "gemini-cli"]
-    all_task_owners = list(set(KNOWN_AGENTS) | set(t["owner"] for t in tasks_as_dict if t["owner"]) | set(i.target_agent for i in all_inbox))
+    KNOWN_AGENTS = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
+    all_task_owners = list(set(KNOWN_AGENTS) | set(str(t.get("owner", "")) for t in tasks_as_dict if t.get("owner")) | set(str(i.get("to", "")) for i in inbox_as_dict if i.get("to")))
 
-    return {
-        "contract_id": "initial-setup", # Hardcoded until contract table has metadata
+    snapshot = {
+        "contract_id": contract_id,
         "contract_tasks": tasks_as_dict,
-        "contract_owners": list(set(t["owner"] for t in tasks_as_dict if t["owner"])),
+        "contract_owners": list(set(str(t.get("owner", "")) for t in tasks_as_dict if t.get("owner"))),
         "all_task_owners": all_task_owners,
         "active_inbox_tasks": active_inbox_tasks,
         "paused_inbox_tasks": paused_inbox_tasks,
@@ -155,40 +140,65 @@ def get_dashboard_status_snapshot(conn: sqlite3.Connection, project_dir: str) ->
         "active_discussions": active_discussions,
         "failures": failures,
         "decisions": decisions,
-        "ledger_tail": [f"- {l.created_at} — {l.action} ({l.agent or 'system'})" for l in ledger[:18]]
+        "ledger_tail": [f"- {l.get('created_at', '')} — {l.get('action', '')} ({l.get('agent', 'system')})"
+                        for l in ledger[:50]
+                        if l.get('action', '') != 'tick'][:18],
     }
 
-def get_task_report_data(conn: sqlite3.Connection, task_id: str) -> dict[str, Any] | None:
+    # Attach log tails from watcher/daemon output files
+    _attach_log_tails(snapshot, project_dir)
+
+    return snapshot
+
+
+def _attach_log_tails(snapshot: dict, project_dir: str) -> None:
+    """Attach daemon out/err log tails to the snapshot."""
+    import os
+    log_dir = os.path.join(project_dir, ".superharness", "launcher-logs")
+    for key, filename in [("out_tail", "daemon.out.log"), ("err_tail", "daemon.err.log")]:
+        path = os.path.join(log_dir, filename)
+        if os.path.isfile(path):
+            try:
+                with open(path, "r", errors="replace") as f:
+                    lines = f.readlines()[-50:]  # last 50 lines
+                snapshot[key] = [l.rstrip("\n") for l in lines]
+            except Exception:
+                snapshot[key] = []
+        else:
+            snapshot[key] = []
+
+def get_task_report_data(conn: sqlite3.Connection, task_id: str, project_dir: str) -> dict[str, Any] | None:
     """Return task data structured for the task report UI."""
-    task = tasks_dao.get(conn, task_id)
+    task = state_reader.get_task(project_dir, task_id)
     if not task:
         return None
         
     result = {
-        "contract_status":   task.status,
-        "contract_title":    task.title,
-        "contract_owner":    task.owner or "",
-        "blocked_by":        task.blocked_by,
-        "acceptance_criteria": task.acceptance_criteria,
-        "test_types":        task.test_types,
-        "tdd":               task.tdd or {},
-        "plan_proposed_at":  task.plan_proposed_at,
-        "plan_approved_at":  task.plan_approved_at,
-        "in_progress_at":    task.in_progress_at,
-        "report_ready_at":   task.report_ready_at,
-        "done_at":           task.done_at,
+        "contract_status":   task.get("status", "todo"),
+        "contract_title":    task.get("title", ""),
+        "contract_owner":    task.get("owner", ""),
+        "contract_summary":  task.get("summary", ""),
+        "blocked_by":        task.get("blocked_by", []),
+        "acceptance_criteria": task.get("acceptance_criteria", []),
+        "test_types":        task.get("test_types", []),
+        "tdd":               task.get("tdd", {}),
+        "plan_proposed_at":  task.get("plan_proposed_at"),
+        "plan_approved_at":  task.get("plan_approved_at"),
+        "in_progress_at":    task.get("in_progress_at"),
+        "report_ready_at":   task.get("report_ready_at"),
+        "done_at":           task.get("done_at"),
     }
     return result
 
-def get_task_instructions_data(conn: sqlite3.Connection, task_id: str) -> dict[str, Any] | None:
-    """Get metadata for task instructions from SQLite."""
-    task = tasks_dao.get(conn, task_id)
+def get_task_instructions_data(conn: sqlite3.Connection, task_id: str, project_dir: str) -> dict[str, Any] | None:
+    """Get metadata for task instructions from state_reader."""
+    task = state_reader.get_task(project_dir, task_id)
     if not task:
         return None
     return {
-        "title": task.title,
-        "acceptance_criteria": task.acceptance_criteria,
-        "owner": task.owner or "claude-code",
-        "status": task.status,
-        "workflow": "implementation", # default
+        "title": task.get("title", ""),
+        "acceptance_criteria": task.get("acceptance_criteria", []),
+        "owner": task.get("owner", "claude-code"),
+        "status": task.get("status", "todo"),
+        "workflow": task.get("workflow", "implementation"),
     }

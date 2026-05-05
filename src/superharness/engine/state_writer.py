@@ -29,6 +29,38 @@ def _now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+_ACTIVE_WORK_STATES = frozenset({"in_progress", "launched", "running", "waiting_input", "pending_user_approval"})
+
+
+def _ensure_active_inbox(project_dir: str, task_id: str, owner: str, now: str) -> None:
+    """Ensure an active inbox item exists for a task entering an active work state.
+
+    Called by set_task_status when transitioning to in_progress, waiting_input, etc.
+    Silently skipped if an active inbox item already exists for this task.
+    """
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import inbox_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            existing = conn.execute(
+                "SELECT COUNT(*) FROM inbox WHERE task_id=? AND status IN ('pending','launched','running','paused')",
+                (task_id,),
+            ).fetchone()
+            if not existing or existing[0] == 0:
+                import uuid
+                iid = f"auto-{uuid.uuid4().hex[:6]}"
+                inbox_dao.enqueue(conn, id=iid, task_id=task_id,
+                    target_agent=owner, priority=2, max_retries=3,
+                    project_path=project_dir, plan_only=False, now=now)
+                conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
 def set_task_status(
     project_dir: str,
     task_id: str,
@@ -105,7 +137,23 @@ def set_task_status(
         tasks_dao.update(conn, task_id, version=task_row.version, changes=changes)
         conn.commit()
 
-        _export_contract_yaml(project_dir)
+        # Write event stream
+        try:
+            from superharness.engine.event_stream import write_event
+            write_event(project_dir, "status_change", task_id=task_id,
+                        from_status=task_row.status, to_status=status)
+        except Exception:
+            pass
+
+        # Guard: active states must have matching inbox item
+        _ACTIVE_WORK = frozenset({"in_progress", "launched", "running", "waiting_input", "pending_user_approval"})
+        if status in _ACTIVE_WORK:
+            _ensure_active_inbox(project_dir, task_id, task_row.owner or "claude-code", now)
+
+        # YAML export — only in non-sqlite_only mode
+        from superharness.engine.sqlite_only import is_sqlite_only
+        if not is_sqlite_only():
+            _export_contract_yaml(project_dir)
         return True
     except Exception:
         return False
@@ -200,15 +248,24 @@ def set_inbox_status(
             conn.execute(f"UPDATE inbox SET {placeholders} WHERE id=?", values)
 
         conn.commit()
-        _export_inbox_yaml(project_dir)
+        from superharness.engine.sqlite_only import is_sqlite_only
+        if not is_sqlite_only():
+            _export_inbox_yaml(project_dir)
         return True
     except Exception:
         return False
     finally:
         conn.close()
 def _export_contract_yaml(project_dir: str) -> None:
-    """Regenerate contract.yaml from the current SQLite state."""
+    """Regenerate contract.yaml from the current SQLite state (export only).
+
+    In sqlite_only mode, skips the write entirely — YAML is generated
+    only on explicit `shux export-yaml` command.
+    """
     try:
+        from superharness.engine.sqlite_only import is_sqlite_only
+        if is_sqlite_only():
+            return  # SQLite is SoT — YAML is not needed for runtime
         from superharness.engine import state_reader, contract_io
         doc = state_reader.get_contract_doc(project_dir)
         contract_path = os.path.join(project_dir, ".superharness", "contract.yaml")
@@ -218,8 +275,15 @@ def _export_contract_yaml(project_dir: str) -> None:
 
 
 def _export_inbox_yaml(project_dir: str) -> None:
-    """Regenerate inbox.yaml from the current SQLite state."""
+    """Regenerate inbox.yaml from the current SQLite state (export only).
+
+    In sqlite_only mode, skips the write entirely — YAML is generated
+    only on explicit `shux export-yaml` command.
+    """
     try:
+        from superharness.engine.sqlite_only import is_sqlite_only
+        if is_sqlite_only():
+            return  # SQLite is SoT — YAML is not needed for runtime
         from superharness.engine import state_reader
         items = state_reader.get_inbox_items(project_dir)
         inbox_path = os.path.join(project_dir, ".superharness", "inbox.yaml")

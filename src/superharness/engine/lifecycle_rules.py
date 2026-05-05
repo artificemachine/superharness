@@ -92,6 +92,18 @@ LIFECYCLE_RULES: list[LifecycleRule] = [
             "no review activity"
         ),
     ),
+    LifecycleRule(
+        state="todo",
+        timeout_minutes=120,  # 2 hours
+        on_timeout="archive",
+        source="contract",
+        timestamp_field="created_at",
+        profile_key="todo_timeout_minutes",
+        fail_reason_template=(
+            "todo timeout ({age_minutes}m >= {limit_minutes}m) — "
+            "task was never dispatched"
+        ),
+    ),
 ]
 
 # Non-terminal states that are eligible for deadline enforcement.

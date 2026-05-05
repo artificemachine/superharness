@@ -45,6 +45,8 @@ class TaskRow:
     failed_reason: str | None = None
     archived_at: str | None = None
     archived_reason: str | None = None
+    model_tier: str | None = None
+    pause_reason: str | None = None
 
 def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
     """Insert or update a task. Bumps version on update."""
@@ -290,4 +292,6 @@ def _row_to_task(conn: sqlite3.Connection, row: sqlite3.Row, blocked_by: list[st
         failed_reason=row["failed_reason"] if "failed_reason" in keys else None,
         archived_at=row["archived_at"] if "archived_at" in keys else None,
         archived_reason=row["archived_reason"] if "archived_reason" in keys else None,
+        model_tier=row["model_tier"] if "model_tier" in keys else None,
+        pause_reason=row["pause_reason"] if "pause_reason" in keys else None,
     )

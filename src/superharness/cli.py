@@ -168,6 +168,7 @@ _cmd("benchmark",       "Show dispatch cost and duration leaderboard.",         
 _cmd("diff",            "Preview agent changes for a task before closing.",        module="superharness.commands.diff")
 _cmd("adapter-payload", "Emit project state as stable JSON payload (schema v1.0).", module="superharness.commands.adapter_payload")
 _cmd("handoff-write",   "Author a plan or report handoff YAML (adapter-safe).",     module="superharness.commands.handoff_write")
+_cmd("handoff-generate", "Generate a structured handoff from task state.",           module="superharness.commands.handoff_generate")
 _cmd("handoff",         "Handoff subcommand group (write).",                        module="superharness.commands.handoff_write")
 _cmd("subtask-cancel",  "Mark a subtask cancelled with a mandatory reason.",        module="superharness.commands.subtask_cancel")
 
