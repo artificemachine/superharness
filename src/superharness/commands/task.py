@@ -19,7 +19,7 @@ from superharness.engine.next_action import ALL_STATUSES
 # Validation helpers
 # ---------------------------------------------------------------------------
 
-VALID_OWNERS = {"owner", "claude-code", "codex-cli", "gemini-cli"}
+VALID_OWNERS = {"owner", "claude-code", "codex-cli", "gemini-cli", "opencode"}
 VALID_CREATE_STATUSES = {"todo", "in_progress", "pending_user_approval", "done"}
 VALID_WORKFLOWS = {"implementation", "quick", "discussion", "review", "approval", "note"}
 VALID_AUTONOMY = {"ai_driven", "oversight", "hands_on"}
@@ -215,6 +215,7 @@ def create(
         task["context"] = context
     if timeout_minutes is not None:
         task["timeout_minutes"] = timeout_minutes
+        task["deadline_minutes"] = timeout_minutes  # also set deadline for lifecycle enforcement
     if ship_on_complete:
         task["ship_on_complete"] = True
     # Write as "tdd" key for backward compat (Pydantic reads via alias into plan field)
@@ -233,6 +234,22 @@ def create(
     tasks.append(task)
     doc["tasks"] = tasks  # type: ignore[index]
     _write_contract(contract_file, doc)
+
+    # Ensure task is mirrored to SQLite immediately (prevents split-brain on enqueue)
+    try:
+        from superharness.engine.contract_io import _task_row_from_dict
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import tasks_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            now = __import__('datetime').datetime.now(__import__('datetime').timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            tasks_dao.upsert(conn, _task_row_from_dict(task, project_dir, now))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass  # best-effort — YAML is already written
 
     print(f"Created task '{task_id}' (owner={owner}, status={status}, blocked_by={blocked})")
     return 0

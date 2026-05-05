@@ -52,7 +52,7 @@ def _ensure_python_with_yaml() -> None:
 HTML = (Path(__file__).parent / "dashboard.html").read_text(encoding="utf-8")
 
 # Registry of known agent names — add new agents here as the ecosystem grows.
-KNOWN_AGENTS: list[str] = ["claude-code", "codex-cli", "gemini-cli"]
+KNOWN_AGENTS: list[str] = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
 
 # Inbox item statuses that mean "still in flight or queued" (not terminal).
 INBOX_ACTIVE_STATUSES: frozenset[str] = frozenset({"pending", "launched", "running", "paused"})
@@ -1385,28 +1385,10 @@ def board_view(contract_file: Path) -> dict:
     totals: per-column task count.
     Prefers state_reader (SQLite-aware); falls back to YAML.
     """
-    _STATUS_TO_COL = {
-        "todo": "todo",
-        "plan_proposed": "plan",
-        "plan_approved": "plan",
-        "plan_confirmed": "plan",
-        "in_progress": "in_progress",
-        "launched": "in_progress",
-        "running": "in_progress",
-        "report_ready": "review",
-        "review_requested": "review",
-        "review_passed": "review",
-        "review_failed": "review",
-        "done": "done",
-        "stopped": "done",
-        "failed": "done",
-        "archived": "done",
-        "waiting_input": "in_progress",
-        "pending_user_approval": "in_progress",
-        "blocked": "todo",
-        "paused": "in_progress",
-        "pr_open": "review",
-    }
+    from superharness.engine.next_action import STATUS_TO_COL as _STATUS_TO_COL
+    # Add plan_confirmed alias (legacy status)
+    _STATUS_TO_COL = dict(_STATUS_TO_COL)
+    _STATUS_TO_COL["plan_confirmed"] = "plan"
     _REVIEW_QUEUE_STATUSES = {"review_requested", "review_passed", "review_failed"}
     empty: dict = {col: [] for col in ("todo", "plan", "in_progress", "review", "done")}
 
@@ -1607,21 +1589,12 @@ def watcher_config(project_dir: Path) -> dict:
 
 def board_tasks(contract_file: Path) -> dict[str, list[dict]]:
     """Group contract tasks by board column (todo/plan/active/review/done/stopped)."""
-    _STATUS_TO_COL: dict[str, str] = {
-        "todo": "todo",
-        "plan_proposed": "plan",
-        "plan_approved": "plan",
-        "in_progress": "active",
-        "launched": "active",
-        "running": "active",
-        "report_ready": "review",
-        "review_requested": "review",
-        "review_passed": "review",
-        "review_failed": "review",
-        "done": "done",
-        "failed": "done",
-        "stopped": "stopped",
-    }
+    from superharness.engine.next_action import STATUS_TO_COL
+    # Adapt canonical mapping to board_tasks column names
+    _COL_ADAPT = {"in_progress": "active"}
+    _STATUS_TO_COL = {k: _COL_ADAPT.get(v, v) for k, v in STATUS_TO_COL.items()}
+    # Add stopped as a separate column
+    _STATUS_TO_COL["stopped"] = "stopped"
     columns: dict[str, list[dict]] = {
         "todo": [], "plan": [], "active": [], "review": [], "done": [], "stopped": []
     }
@@ -2744,6 +2717,15 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(result)
             except Exception as exc:
                 self._json({"error": f"discussion fetch failed: {exc}"}, 500)
+            return
+
+        if p == "/api/skill-insights":
+            try:
+                from superharness.engine.skill_metrics import get_skill_insights
+                insights = get_skill_insights(str(self.project_dir))
+                self._json({"skills": insights})
+            except Exception as e:
+                self._json({"skills": [], "error": str(e)})
             return
 
         if p == "/api/board":
