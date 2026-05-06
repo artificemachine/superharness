@@ -101,9 +101,13 @@ while True:
     exit_code = proc.wait()
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     log_path = os.path.join(project_dir, ".superharness", "watcher-errors.log")
+    if exit_code == 0:
+        msg = "watcher exited cleanly (rc=0), restarting in 5s"
+    else:
+        msg = f"watcher crashed (rc={{exit_code}}), restarting in 5s"
     try:
         with open(log_path, "a") as lf:
-            lf.write(f"[{{ts}}] daemon: watcher crashed (rc={{exit_code}}), restarting in 5s\\n")
+            lf.write(f"[{{ts}}] daemon: {{msg}}\\n")
     except Exception:
         pass
     time.sleep(5)
