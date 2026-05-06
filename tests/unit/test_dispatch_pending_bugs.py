@@ -190,3 +190,25 @@ def test_operator_start_calls_start_stack_once(tmp_path):
         f"start_stack() was called {len(call_count)} times — expected exactly 1. "
         "Duplicate calls spawn the watcher twice and monitor the wrong instance."
     )
+
+
+# ---------------------------------------------------------------------------
+# Bug 4 — dispatch must pass project_dir to is_sqlite_only()
+# ---------------------------------------------------------------------------
+
+def test_dispatch_passes_project_dir_to_is_sqlite_only(tmp_path, monkeypatch):
+    """inbox_dispatch must call is_sqlite_only(project_dir=project_dir).
+    Calling is_sqlite_only() without project_dir returns False (when
+    STATE_BACKEND is unset), making dispatch fall to the broken YAML
+    path even though SQLite is the source of truth."""
+    project = _make_project(tmp_path)
+    # No STATE_BACKEND env, no inbox.yaml — only SQLite.
+    monkeypatch.delenv("STATE_BACKEND", raising=False)
+    src = (REPO_ROOT / "src" / "superharness" / "commands" / "inbox_dispatch.py").read_text()
+    # The call must include project_dir keyword
+    assert "is_sqlite_only(project_dir=project_dir)" in src or \
+           "is_sqlite_only(project_dir=" in src, (
+        "inbox_dispatch.py must call is_sqlite_only(project_dir=...) — "
+        "calling without an arg returns False and dispatch silently uses "
+        "the YAML path even when SQLite is the only source of truth."
+    )
