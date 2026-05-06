@@ -10,13 +10,13 @@ capabilities:
 model_tiers:
   mini:
     versions:
-      "*": { id: claude-haiku-4-5, label: "Haiku 4.5 (via opencode)" }
+      "*": { id: deepseek/deepseek-chat, label: "DeepSeek Chat (via opencode)" }
   standard:
     versions:
-      "*": { id: claude-sonnet-4-6, label: "Sonnet 4.6 (via opencode)" }
+      "*": { id: deepseek/deepseek-v4-pro, label: "DeepSeek V4 Pro (via opencode)" }
   max:
     versions:
-      "*": { id: claude-opus-4-7, label: "Opus 4.7 (via opencode)" }
+      "*": { id: deepseek/deepseek-v4-pro, label: "DeepSeek V4 Pro (via opencode)" }
 requires:
   bin: opencode
   env: []
