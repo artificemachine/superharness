@@ -50,41 +50,9 @@ for arg in "$@"; do
 done
 
 # Build Claude CLI command
-CLAUDE_ARGS=()
-PROMPT=""
-
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --project)
-      # Claude uses current directory as project root
-      cd "$2"
-      shift 2
-      ;;
-    --prompt)
-      PROMPT="$2"
-      shift 2
-      ;;
-    --yolo)
-      # Map to Claude's dangerously-skip-permissions
-      CLAUDE_ARGS+=("--dangerously-skip-permissions")
-      shift
-      ;;
-    --plan-only)
-      # In newer Claude CLI versions, plan mode is a subcommand or positional arg
-      # but providing a prompt in a clean dir usually defaults to planning.
-      shift
-      ;;
-    --non-interactive)
-      # Use -p flag for non-interactive (print) mode
-      CLAUDE_ARGS+=("-p")
-      shift
-      ;;
-    *)
-      # Ignore other Superharness-specific flags
-      shift
-      ;;
-  esac
-done
-
-# Launch Claude
-exec claude ${CLAUDE_ARGS[@]+"${CLAUDE_ARGS[@]}"} "$PROMPT"
+# Delegate to the Python `superharness delegate` command which builds the
+# proper prompt from the task context, then invokes claude with the prompt
+# as a positional arg (avoids the "Input must be provided either through
+# stdin or as a prompt argument" error from `claude --print` with empty
+# stdin). Mirrors the codex adapter's structure.
+exec "$PYTHON3" -m superharness.commands.delegate --to claude-code "$@"
