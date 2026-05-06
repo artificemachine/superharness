@@ -202,6 +202,10 @@ def _start_daemon(project_dir: Path, interval: int) -> None:
             env=env,
         )
 
+    from superharness.logging_utils import get_logger, get_audit_logger
+    log = get_logger("daemon")
+    audit = get_audit_logger()
+
     proc = _spawn_watcher()
 
     _write_state(project_dir, {
@@ -211,6 +215,8 @@ def _start_daemon(project_dir: Path, interval: int) -> None:
         "log_out": str(out_log),
         "log_err": str(err_log),
     })
+    log.info("daemon started: pid=%d interval=%ds project=%s", proc.pid, interval, project_dir)
+    audit.info("daemon spawn: pid=%d project=%s", proc.pid, project_dir)
     click.echo(f"daemon: started  pid={proc.pid}  interval={interval}s")
     click.echo(f"  logs: {out_log}")
     click.echo(f"  stop: shux daemon stop --project {project_dir}")

@@ -150,6 +150,7 @@ _cmd("hygiene",         "Check contract hygiene.",                   module="sup
 # ── Fully ported Python command modules (cross-platform) ─────────────────────
 
 _cmd("init",            "Initialize project protocol files.",        module="superharness.commands.init_project")
+_cmd("logs",            "Show or tail the centralized superharness log.", module="superharness.commands.logs")
 _cmd("watcher-worker",  "Build watcher worker and install watcher.", module="superharness.commands.watcher_worker")
 _cmd("heartbeat",       "Run proactive watcher checks.",             module="superharness.commands.heartbeat")
 _cmd("agent-pulse",     "Write/read agent liveness signal (Phase 2 heartbeat).", module="superharness.commands.agent_pulse")
