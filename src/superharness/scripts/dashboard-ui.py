@@ -2655,6 +2655,76 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"errors": content, "lines": lines, "path": str(errors_path)})
             return
 
+        if p == "/api/logs":
+            # One-shot read of central superharness log (tail -n).
+            from superharness.logging_utils import _resolve_log_file
+            qs = parse_qs(parsed.query)
+            audit = qs.get("audit", ["0"])[0] in ("1", "true")
+            n = int(qs.get("n", ["200"])[0])
+            level = qs.get("level", [""])[0].upper()
+            log_path = _resolve_log_file(
+                "SUPERHARNESS_AUDIT_LOG_FILE" if audit else "SUPERHARNESS_LOG_FILE",
+                "superharness-audit.log" if audit else "superharness.log",
+            )
+            content = ""
+            if log_path.is_file():
+                try:
+                    all_lines = log_path.read_text(errors="replace").splitlines()
+                    if level:
+                        rank = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3, "CRITICAL": 4}
+                        min_rank = rank.get(level, -1)
+                        all_lines = [
+                            ln for ln in all_lines
+                            if any(f" {lv} " in ln and rank[lv] >= min_rank for lv in rank)
+                        ] if min_rank >= 0 else all_lines
+                    content = "\n".join(all_lines[-n:])
+                except Exception as e:
+                    content = f"(error reading log: {e})"
+            self._json({"lines": content, "path": str(log_path), "audit": audit, "level": level})
+            return
+
+        if p == "/api/logs/stream":
+            # Server-Sent Events: stream new log lines as they arrive.
+            from superharness.logging_utils import _resolve_log_file
+            qs = parse_qs(parsed.query)
+            audit = qs.get("audit", ["0"])[0] in ("1", "true")
+            log_path = _resolve_log_file(
+                "SUPERHARNESS_AUDIT_LOG_FILE" if audit else "SUPERHARNESS_LOG_FILE",
+                "superharness-audit.log" if audit else "superharness.log",
+            )
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.send_header("X-Accel-Buffering", "no")
+            self.end_headers()
+            try:
+                if not log_path.is_file():
+                    log_path.parent.mkdir(parents=True, exist_ok=True)
+                    log_path.touch()
+                with log_path.open("r", encoding="utf-8", errors="replace") as f:
+                    f.seek(0, os.SEEK_END)
+                    while True:
+                        line = f.readline()
+                        if not line:
+                            try:
+                                self.wfile.write(b": ping\n\n")
+                                self.wfile.flush()
+                            except (BrokenPipeError, ConnectionResetError):
+                                return
+                            time.sleep(1.0)
+                            continue
+                        # Escape newlines in payload per SSE spec
+                        payload = line.rstrip("\n").replace("\r", "")
+                        try:
+                            self.wfile.write(f"data: {payload}\n\n".encode("utf-8"))
+                            self.wfile.flush()
+                        except (BrokenPipeError, ConnectionResetError):
+                            return
+            except Exception:
+                return
+            return
+
         if p == "/api/discussion-status":
             from urllib.parse import parse_qs as _pqs
             qs = _pqs(parsed.query)
