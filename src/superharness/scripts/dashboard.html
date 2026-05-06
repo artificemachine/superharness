@@ -156,6 +156,24 @@
       </div>
     </div>
 
+    <div class="card" style="margin-top:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="togglePanel('liveLogsBody',this)">
+        <h2 style="margin:0">live logs <span id="liveLogsStatus" style="font-size:11px;color:var(--muted);font-weight:normal;margin-left:8px">(disconnected)</span></h2>
+        <span style="display:flex;align-items:center;gap:8px">
+          <span class="task-actions" style="gap:4px">
+            <button onclick="event.stopPropagation();liveLogsToggleChannel(this)" data-channel="main">main</button>
+            <button onclick="event.stopPropagation();liveLogsToggleStream(this)">pause</button>
+            <button onclick="event.stopPropagation();document.getElementById('liveLogs').textContent='';" class="muted">clear</button>
+            <button onclick="event.stopPropagation();copyPanel('liveLogs',this)" class="muted">copy</button>
+          </span>
+          <span style="color:var(--muted);font-size:11px">▾</span>
+        </span>
+      </div>
+      <div id="liveLogsBody" style="margin-top:8px">
+        <pre id="liveLogs" style="font-size:11px;color:var(--text);max-height:300px;overflow-y:auto;margin:0;white-space:pre-wrap;background:var(--btn);padding:8px;border-radius:6px">(connecting...)</pre>
+      </div>
+    </div>
+
 
     <div class="card" style="margin-top:10px;display:none;">
       <h2>plans to confirm</h2>
@@ -423,6 +441,79 @@ async function loadWatcherErrors() {
 }
 setInterval(loadWatcherErrors, 30000);
 loadWatcherErrors();
+
+// ── Live logs SSE stream ────────────────────────────────────────────────
+let liveLogsSource = null;
+let liveLogsChannel = 'main';
+let liveLogsPaused = false;
+const LIVE_LOGS_MAX_LINES = 500;
+
+function liveLogsAppend(line) {
+  const el = document.getElementById('liveLogs');
+  if (!el) return;
+  if (el.textContent === '(connecting...)' || el.textContent === '(disconnected)') {
+    el.textContent = '';
+  }
+  el.textContent += line + '\n';
+  // Cap line count to prevent unbounded memory growth
+  const lines = el.textContent.split('\n');
+  if (lines.length > LIVE_LOGS_MAX_LINES) {
+    el.textContent = lines.slice(-LIVE_LOGS_MAX_LINES).join('\n');
+  }
+  el.scrollTop = el.scrollHeight;
+}
+
+function liveLogsConnect() {
+  if (liveLogsSource) {
+    try { liveLogsSource.close(); } catch(e) {}
+    liveLogsSource = null;
+  }
+  if (liveLogsPaused) return;
+  const status = document.getElementById('liveLogsStatus');
+  if (status) status.textContent = '(connecting...)';
+  // Seed with last 30 lines, then attach the live stream
+  fetch('/api/logs?n=30' + (liveLogsChannel === 'audit' ? '&audit=1' : ''))
+    .then(r => r.json())
+    .then(d => {
+      const el = document.getElementById('liveLogs');
+      if (el) el.textContent = (d.lines || '') + '\n';
+      el.scrollTop = el.scrollHeight;
+    })
+    .catch(() => {})
+    .finally(() => {
+      const url = '/api/logs/stream' + (liveLogsChannel === 'audit' ? '?audit=1' : '');
+      liveLogsSource = new EventSource(url);
+      liveLogsSource.onopen = () => {
+        if (status) status.textContent = '(streaming ' + liveLogsChannel + ')';
+      };
+      liveLogsSource.onmessage = (e) => liveLogsAppend(e.data);
+      liveLogsSource.onerror = () => {
+        if (status) status.textContent = '(disconnected — retrying)';
+        setTimeout(liveLogsConnect, 3000);
+      };
+    });
+}
+
+function liveLogsToggleChannel(btn) {
+  liveLogsChannel = (liveLogsChannel === 'main') ? 'audit' : 'main';
+  if (btn) btn.textContent = liveLogsChannel;
+  document.getElementById('liveLogs').textContent = '(switching to ' + liveLogsChannel + '...)';
+  liveLogsConnect();
+}
+
+function liveLogsToggleStream(btn) {
+  liveLogsPaused = !liveLogsPaused;
+  if (btn) btn.textContent = liveLogsPaused ? 'resume' : 'pause';
+  if (liveLogsPaused) {
+    if (liveLogsSource) { try { liveLogsSource.close(); } catch(e) {} liveLogsSource = null; }
+    const status = document.getElementById('liveLogsStatus');
+    if (status) status.textContent = '(paused)';
+  } else {
+    liveLogsConnect();
+  }
+}
+
+liveLogsConnect();
 let knownOwners = [];
 const AUTH_TOKEN = __AUTH_TOKEN__;
 
