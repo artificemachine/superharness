@@ -217,6 +217,8 @@ def _log_watcher_error(project_dir, component, error):
 
 
 def _abort(msg: str, code: int = 1) -> None:
+    from superharness.logging_utils import get_logger
+    get_logger("inbox_watch").error("abort: %s", msg)
     print(msg, file=sys.stderr)
     sys.exit(code)
 
