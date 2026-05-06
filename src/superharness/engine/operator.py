@@ -105,7 +105,8 @@ class Operator:
         cmd = [
             sys.executable, "-m", "superharness.commands.inbox_watch",
             "--project", str(self.project_dir),
-            "--interval", "15"
+            "--interval", "15",
+            "--non-interactive",
         ]
         self.processes["watcher"] = subprocess.Popen(
             cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
