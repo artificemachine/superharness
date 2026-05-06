@@ -65,7 +65,7 @@ def main(argv: list[str] | None = None) -> None:
 
     # Install watcher via OS-aware service installer
     from superharness.engine.service_installer import install as _install_service
-    _install_service(
+    install_ok = _install_service(
         project_dir=project_dir,
         worker_dir=worker_dir,
         scripts_dir=scripts_dir,
@@ -76,6 +76,12 @@ def main(argv: list[str] | None = None) -> None:
         to=opts.to,
         codex_bypass=opts.codex_bypass,
     )
+    if not install_ok:
+        print(
+            "Watcher worker install FAILED — see stderr above for details.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     # Write watcher.yaml
     from superharness.engine.runtime_probe import probe_runtime, persist_runtime
