@@ -187,11 +187,30 @@ def _git_worktree_add(project_dir: str, task_id: str) -> str | None:
     if r.returncode != 0:
         print(f"git worktree add failed: {r.stderr.strip()}", file=sys.stderr)
         return None
-    # Symlink .superharness/ so the agent sees contract, inbox, handoffs
+    # Symlink .superharness/ so the agent sees contract, inbox, handoffs.
+    # Be defensive: replace any pre-existing dst that isn't already a symlink
+    # to the correct source. A non-symlink dst can happen if a hook (e.g.
+    # session-start.sh) raced ahead and mkdir'd .superharness/, which would
+    # otherwise leave the worktree with an empty .superharness/ and break
+    # the lifecycle gate (it'd see empty status and reject every dispatch).
     src_harness = os.path.join(project_dir, ".superharness")
     dst_harness = os.path.join(worktree_dir, ".superharness")
-    if os.path.isdir(src_harness) and not os.path.exists(dst_harness):
-        os.symlink(src_harness, dst_harness)
+    if os.path.isdir(src_harness):
+        try:
+            if os.path.islink(dst_harness):
+                if os.readlink(dst_harness) != src_harness:
+                    os.unlink(dst_harness)
+                    os.symlink(src_harness, dst_harness)
+            elif os.path.isdir(dst_harness):
+                # Replace an unintended real dir (likely created by a hook).
+                # Only safe because worktrees are always under tempfile.gettempdir().
+                import shutil as _shutil
+                _shutil.rmtree(dst_harness, ignore_errors=True)
+                os.symlink(src_harness, dst_harness)
+            elif not os.path.exists(dst_harness):
+                os.symlink(src_harness, dst_harness)
+        except OSError as e:
+            print(f"warning: failed to symlink .superharness/ in worktree: {e}", file=sys.stderr)
     return worktree_dir
 
 
