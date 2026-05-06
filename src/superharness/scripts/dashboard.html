@@ -497,18 +497,26 @@ function liveLogsConnect() {
 function liveLogsToggleChannel(btn) {
   liveLogsChannel = (liveLogsChannel === 'main') ? 'audit' : 'main';
   if (btn) btn.textContent = liveLogsChannel;
-  document.getElementById('liveLogs').textContent = '(switching to ' + liveLogsChannel + '...)';
+  const el = document.getElementById('liveLogs');
+  const status = document.getElementById('liveLogsStatus');
+  if (liveLogsPaused) {
+    if (el) el.textContent = '(PAUSED — channel set to ' + liveLogsChannel + '. Click resume to stream.)';
+    if (status) status.textContent = '(paused — ' + liveLogsChannel + ')';
+    return;
+  }
+  if (el) el.textContent = '(switching to ' + liveLogsChannel + '...)';
   liveLogsConnect();
 }
 
 function liveLogsToggleStream(btn) {
   liveLogsPaused = !liveLogsPaused;
   if (btn) btn.textContent = liveLogsPaused ? 'resume' : 'pause';
+  const status = document.getElementById('liveLogsStatus');
   if (liveLogsPaused) {
     if (liveLogsSource) { try { liveLogsSource.close(); } catch(e) {} liveLogsSource = null; }
-    const status = document.getElementById('liveLogsStatus');
-    if (status) status.textContent = '(paused)';
+    if (status) status.textContent = '(paused — ' + liveLogsChannel + ')';
   } else {
+    if (status) status.textContent = '(connecting...)';
     liveLogsConnect();
   }
 }
