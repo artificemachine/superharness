@@ -6,10 +6,13 @@ byte-for-byte so that parity tests pass.
 from __future__ import annotations
 
 import glob
+import logging
 import os
 import sys
 
 from superharness.engine.yaml_helpers import safe_load
+
+_log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -42,6 +45,7 @@ def task_project_path(file: str, task: str) -> int:
         return 0
     val = row.get("project_path")
     if val is None:
+        _log.warning("contract: task %s has no project_path", task)
         print(f"contract: task {task} has no project_path", file=sys.stderr)
     print(str(val) if val is not None else "")
     return 0
@@ -59,6 +63,7 @@ def task_owner(file: str, task: str) -> int:
         return 0
     val = row.get("owner")
     if val is None:
+        _log.warning("contract: task %s has no owner", task)
         print(f"contract: task {task} has no owner", file=sys.stderr)
     print(str(val) if val is not None else "")
     return 0
@@ -76,6 +81,7 @@ def task_status(file: str, task: str) -> int:
         return 0
     val = row.get("status")
     if val is None:
+        _log.warning("contract: task %s has no status", task)
         print(f"contract: task {task} has no status", file=sys.stderr)
     print(str(val) if val is not None else "")
     return 0

@@ -17,9 +17,12 @@ Unknown fields return an empty string.
 """
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 FIELD_DEFAULTS: dict[str, str] = {
     "autonomy":      "approval-gated",
@@ -36,6 +39,7 @@ def read_field(project_dir: Path, field: str) -> str:
         import yaml
         doc = yaml.safe_load(profile_path.read_text()) or {}
     except Exception as e:
+        _log.warning("could not parse profile.yaml at %s: %s", profile_path, e)
         print(f"Warning: could not parse profile.yaml: {e}", file=sys.stderr)
         return FIELD_DEFAULTS.get(field, "")
     if not isinstance(doc, dict):

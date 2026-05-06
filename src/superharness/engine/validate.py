@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import glob
+import logging
 import os
 import re
 import sys
 from datetime import datetime, timezone
 
 import yaml as _yaml
+
+_log = logging.getLogger(__name__)
 
 from superharness.engine.yaml_helpers import safe_load
 from superharness.engine.taxonomy import VALID_EFFORTS as _VALID_EFFORTS
@@ -88,10 +91,12 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
 
     for path in (harness_dir, contract_file, handoff_dir, ledger_file):
         if not os.path.exists(path):
+            _log.error("validate: missing required path: %s", path)
             print(f"Missing required path: {path}", file=sys.stderr)
             return 1
 
     if not (os.path.isfile(decisions_file) and os.path.isfile(failures_file)):
+        _log.error("validate: missing decisions/failures store under %s", harness_dir)
         print(f"Missing decisions/failures store under {harness_dir}", file=sys.stderr)
         return 1
 
