@@ -1,0 +1,25 @@
+name: opencode
+version: "1"
+description: "OpenCode CLI — open-source AI coding agent (multi-provider)"
+type: native
+launcher_script: delegate-to-opencode.sh
+capabilities:
+  - code_generation
+  - file_editing
+  - test_execution
+model_tiers:
+  mini:
+    versions:
+      "*": { id: claude-haiku-4-5, label: "Haiku 4.5 (via opencode)" }
+  standard:
+    versions:
+      "*": { id: claude-sonnet-4-6, label: "Sonnet 4.6 (via opencode)" }
+  max:
+    versions:
+      "*": { id: claude-opus-4-7, label: "Opus 4.7 (via opencode)" }
+requires:
+  bin: opencode
+  env: []
+validation:
+  check_bin: false # Don't block if not installed yet
+  check_env: false
