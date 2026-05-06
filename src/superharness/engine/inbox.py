@@ -176,3 +176,36 @@ def enqueue(file: str, id: str, to: str, task: str, project: str, priority: int,
         conn.close()
 
 
+if __name__ == "__main__":
+    import argparse as _ap
+    _p = _ap.ArgumentParser()
+    _p.add_argument("command")
+    _p.add_argument("--file", required=True)
+    _p.add_argument("--to", default=None)
+    _args = _p.parse_args()
+
+    if _args.command == "next_pending":
+        _file = _args.file
+        _target = _args.to
+        try:
+            with open(_file, encoding="utf-8") as _f:
+                _items = yaml.safe_load(_f) or []
+            if not isinstance(_items, list):
+                _items = []
+            for _item in _items:
+                if not isinstance(_item, dict):
+                    continue
+                if _item.get("status") != "pending":
+                    continue
+                if _target and str(_item.get("to", "")) != _target:
+                    continue
+                _item["status"] = "launched"
+                with open(_file, "w", encoding="utf-8") as _f:
+                    _f.write(HEADER)
+                    yaml.dump(_items, _f, default_flow_style=False, sort_keys=True)
+                print(json.dumps(_item))
+                sys.exit(0)
+        except Exception as _e:
+            print(f"next_pending error: {_e}", file=sys.stderr)
+            sys.exit(1)
+        sys.exit(0)

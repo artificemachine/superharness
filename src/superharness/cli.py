@@ -821,15 +821,6 @@ def operator_start(project, port, no_open):
     from superharness.engine.operator import Operator
     op = Operator(project)
     op.start_stack(dashboard_port=port, no_open=no_open)
-
-    click.echo(f"dashboard: http://127.0.0.1:{port}")
-    click.echo(f"monitor pid: {os.getpid()}")
-
-    # Start dashboard + watcher as detached subprocesses via operator
-    from superharness.engine.operator import Operator
-    op = Operator(project)
-    op.start_stack(dashboard_port=port, no_open=no_open)
-    # Run monitor loop in this process — the operator keeps dashboard and watcher alive
     click.echo(f"dashboard: http://127.0.0.1:{port}")
     click.echo(f"monitor pid: {os.getpid()}")
     click.echo("  (watcher cycles every 15s, dashboard auto-restarts on crash)")
