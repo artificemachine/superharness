@@ -9,6 +9,7 @@ Output format is byte-for-byte identical to the Ruby version for parity.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import tempfile
@@ -21,6 +22,8 @@ import yaml
 from superharness.engine.yaml_helpers import safe_load_normalized
 
 import yaml
+
+_log = logging.getLogger(__name__)
 
 HEADER = "# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n"
 ARCHIVE_HEADER = "# Inbox archive\n"

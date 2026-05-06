@@ -6,12 +6,15 @@ from __future__ import annotations
 
 import importlib.resources as _importlib_resources
 import json
+import logging
 import os
 import signal
 import subprocess
 import sys
 import time
 from datetime import datetime, timezone
+
+_log = logging.getLogger(__name__)
 
 DIRTY_WORKTREE_REASON = "dirty_worktree_requires_user_confirmation"
 
@@ -32,6 +35,7 @@ def _now_utc() -> str:
 
 
 def _abort(msg: str, code: int = 1) -> None:
+    _log.error("abort: %s", msg)
     print(msg, file=sys.stderr)
     sys.exit(code)
 
