@@ -2030,6 +2030,7 @@ def _run_scripts(
         _log_watcher_error(project_dir, "watcher", str(e))
 
     # Reconcile paused dead-pid items — read from SQLite, write to SQLite
+    try:
         from dataclasses import asdict
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao
@@ -2101,7 +2102,11 @@ def _run_scripts(
     # Dispatch — check budget before launching agents
     targets = []
     if target == "both":
-        targets = ["claude-code", "codex-cli", "gemini-cli"]
+        try:
+            from superharness.engine.adapter_registry import list_adapters
+            targets = list_adapters()
+        except Exception:
+            targets = ["claude-code", "codex-cli", "gemini-cli"]
     else:
         targets = [target]
 
@@ -2635,18 +2640,23 @@ def _auto_delete_stale_inbox(project_dir: str) -> int:
 def _cancel_undispatchable_agents(project_dir: str) -> int:
     """Cancel pending inbox items for agents that have no dispatch script.
 
-    Agents like 'opencode' or user-defined agents may not have a delegate-to-*.sh
-    script. Their inbox items will never be dispatched, so cancel them.
+    Uses the adapter registry as the canonical source of valid agent names.
+    Falls back to script-glob + hardcoded names if the registry is unavailable.
     Returns count of items canceled.
     """
-    import glob as _glob
-    scripts_dir = _find_scripts_dir()
     known_agents = set()
-    for script in _glob.glob(os.path.join(scripts_dir, "delegate-to-*.sh")):
-        name = os.path.basename(script).replace("delegate-to-", "").replace(".sh", "")
-        known_agents.add(name)
-    # Also add agents from known_agents list
-    known_agents.update(["claude-code", "codex-cli", "gemini-cli"])
+    try:
+        from superharness.engine.adapter_registry import list_adapters
+        known_agents.update(list_adapters())
+    except Exception:
+        pass
+    if not known_agents:
+        import glob as _glob
+        scripts_dir = _find_scripts_dir()
+        for script in _glob.glob(os.path.join(scripts_dir, "delegate-to-*.sh")):
+            name = os.path.basename(script).replace("delegate-to-", "").replace(".sh", "")
+            known_agents.add(name)
+        known_agents.update(["claude-code", "codex-cli", "gemini-cli"])
 
     try:
         from superharness.engine.db import get_connection, init_db
