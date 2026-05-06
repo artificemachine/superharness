@@ -943,7 +943,20 @@ def _do_dispatch(
             return 1
 
         final_state = ""
-        if os.path.exists(contract_file):
+        if is_discussion:
+            # For discussion rounds the task isn't in the contract.
+            # Check whether the agent wrote its submission YAML instead.
+            # item_task = "discuss-<id>/round-N"
+            parts = item_task.split("/")
+            if len(parts) == 2:
+                discuss_id, round_slug = parts
+                submission_path = os.path.join(
+                    exec_project, ".superharness", "discussions",
+                    discuss_id, f"{round_slug}-{item_to}.yaml"
+                )
+                if os.path.exists(submission_path):
+                    final_state = "done"
+        elif os.path.exists(contract_file):
             cr = subprocess.run(
                 [_get_python(), "-m", "superharness.engine.contract", "task_status",
                  "--file", contract_file, "--task", item_task],
