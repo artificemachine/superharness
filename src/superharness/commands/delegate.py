@@ -682,6 +682,25 @@ def delegate(
     doc, _ = _read_contract(contract_file)
     task_obj = next((t for t in ((doc or {}).get("tasks") or []) if isinstance(t, dict) and str(t.get("id", "")) == task_id), None)
 
+    # Post-migration fallback: tasks created via SQLite-only paths (e.g.
+    # shux discuss start writes round-N subtasks straight to the DB) are not
+    # in contract.yaml. Fall back to the SQLite tasks table so the lifecycle
+    # gate can read the real status and not reject with empty status.
+    if task_obj is None:
+        try:
+            from superharness.engine.db import get_connection
+            from superharness.engine import tasks_dao
+            _conn = get_connection(project_dir)
+            try:
+                _row = tasks_dao.get(_conn, task_id)
+            finally:
+                _conn.close()
+            if _row is not None:
+                from dataclasses import asdict
+                task_obj = asdict(_row)
+        except Exception:
+            pass
+
     # Collect blocker IDs from both blocked_by (new) and depends_on (legacy)
     _blocked_by_val = task_obj.get("blocked_by") if task_obj else None
     _depends_on_val = task_obj.get("depends_on") if task_obj else None
