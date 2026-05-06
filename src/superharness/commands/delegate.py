@@ -528,6 +528,15 @@ def _launch_agent(
         rc = launch_agent(["claude"] + model_args + [prompt], cwd=project_dir)
         sys.exit(rc)
 
+    elif target == "gemini-cli":
+        gemini_script = str(Path(__file__).parent.parent / "scripts" / "delegate-to-gemini.sh")
+        gemini_args: list[str] = ["bash", gemini_script, "--project", project_dir, "--prompt", prompt]
+        if non_interactive:
+            gemini_args.append("--non-interactive")
+        print(f"Launching Gemini{display_label}...")
+        rc = launch_agent(gemini_args, cwd=project_dir)
+        sys.exit(rc)
+
     else:  # codex-cli
         if not _cmd_exists("codex"):
             _abort("codex CLI is not installed or not on PATH")
