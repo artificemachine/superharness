@@ -1,77 +1,80 @@
-# Handoff — superharness v1.44.18 (2026-05-01)
+# Handoff — superharness v1.47.4 (2026-05-06)
 
 > Branch: `main`
-> Published: v1.44.18 on PyPI + GitHub
-> Installed locally: `pipx install superharness` (v1.44.18)
-> Morpheme: v0.10.0 on GitHub (artificemachine/morpheme, private)
+> Latest local: v1.47.4 (not yet shipped — ready to `/ship`)
+> Last published: v1.47.1 on PyPI
+> Installed locally (pipx): v1.47.1
 
 ## Session summary
 
-Executed the dashboard YAML→SQLite migration plan (docs/plans/dashboard-yaml-to-sqlite.md). 4-step TDD migration: added 3 new state_reader functions, removed dead YAML fallbacks from 10 dashboard functions, migrated inbox reads, and fixed 6 read-modify-write paths to use SQLite exclusively. 14 new tests, zero regressions. Post-audit found and fixed 3 gaps. Published to PyPI as v1.44.18.
+Fixed a cascade of dispatch bugs that surfaced after the v1.47.0 opencode adapter landed and the cross-agent discussion infrastructure started actually working. Ran a full cross-agent discussion on `docs/ARCH-superharness-maintainability-refactor.md` — all 4 agents (claude-code, codex-cli, gemini-cli, opencode via DeepSeek V4 Pro) filed round-1 submissions with unanimous consensus. Each bug fix was TDD: test first, fix second, regression test added to `tests/unit/test_adapter_polish.py`.
 
-## What was shipped
+## What is uncommitted and ready to ship
 
-| PR | What | Version |
-|----|------|---------|
-| #1 | **Idempotent migrations** — `_column_exists`, `_add_column_if_missing`, pre-migration backups, savepoint per version | v1.44.12 |
-| #2-A | **Dropped obsolete test** — `test_parallel_checkout_safety.py` (548 lines, v1.42 inbox primitives) | v1.44.13 |
-| #5 | **Daemon detached subprocess** — replaced `threading.Thread` with `os.fork` + `os.setsid` + `os.execvpe`. Monitor now survives CLI exit. 2 new tests. | v1.44.14 |
-| #2-B | **Split-brain conftest** — auto-seeds SQLite from YAML in `clean_harness` fixture. Partial fix; 20 tests still need individual rewrites. | v1.44.15 (test-only, no release tag) |
-| #4 (morpheme) | **Poller visibility + /health** — `errorCount`, `lastErrorMessage`, `lastSuccessAt` tracked. `GET /health` returns 200/503. 152/152 tests pass. | v0.10.0 |
-| #3 | **Dashboard YAML→SQLite migration** — 14 dead YAML reads removed from dashboard-ui.py. Added `get_failures()`, `get_decisions()`, `get_ledger_entries()` to state_reader. Fixed 6 read-modify-write paths (set_task_status, contract_task, kanban_board, task delete, set_owner, owner removal, discussion-close archival). 14 new TDD tests. Post-audit gap fixes: removed YAML write in cleanup_inbox, removed inbox_file.exists() guard, bumped __version__, updated CLAUDE.md. | v1.44.18 |
+| Version | Files changed | Fix |
+|---------|---------------|-----|
+| v1.47.2 | `inbox_dispatch.py` | Discussion reconciler checked contract task status — discussions have no contract entry so it always fell to "failed". Now checks submission YAML on disk (`discussions/<id>/<round>-<agent>.yaml`). Claude-code, codex-cli, and gemini-cli all had successful submissions falsely labelled failed. |
+| v1.47.3 | `inbox_watch.py`, `adapter_manifests/opencode.yaml` | Watcher `"both"` target hardcoded `["claude-code", "codex-cli", "gemini-cli"]` — opencode inbox items were never dispatched. Fixed by calling `list_adapters()`. Also fixed `_cancel_undispatchable_agents` to use registry as primary source. OpenCode manifest updated from Anthropic (not configured on this machine) to DeepSeek V4 Pro. |
+| v1.47.4 | `inbox_watch.py` | `inbox_watch.py:2033` indentation bug: paused dead-pid reconciler was nested inside the `except` block of `_analyze_task_logs` — it only ran when the log analyzer threw. Fixed with standalone `try/except`. Flagged by gemini-cli + opencode in the discussion. |
 
-## How to continue
+All changes have regression tests. 10 tests in `tests/unit/test_adapter_polish.py`, all pass.
 
-### Remaining roadmap items (deferred)
+## State: cross-agent discussion
 
-1. **PR #2-B — split-brain test fixtures (remaining 20 tests)**
-   - Files: `tests/unit/test_task_workflow_v2_phase1.py` (8 failing), `tests/unit/test_task_failed_reason.py` (12 failing)
-   - Pattern: each test writes contract.yaml, runs shux commands, and asserts against YAML — but shux reads SQLite. Fix: add `seed_sqlite_from_yaml(project)` after YAML write, change assertions to use `get_task_from_sqlite`.
-   - Helper already exists in `tests/helpers.py`
+Discussion `discuss-20260506T135220Z-50383-232040761` — **round 1 complete, 4/4 submissions on disk**.
 
-2. **PR #2-C — reconciler bugs**
-   - `_reconcile_zombies(project_dir)` called at `inbox_watch.py:1931` but never defined/imported — NameError at runtime
-   - Reconciler files (`zombie_reconcile.py`, `watcher_gc.py`) don't exist — logic is inline or missing
-   - Tests: `test_zombie_reconcile.py` (2 failing), `test_watcher_auto_gc.py` (9 failing)
+Inbox status shows `failed` (false-failed — fixed in v1.47.2, but the fix wasn't installed when they ran). Submissions are real and complete at `.superharness/discussions/discuss-20260506T135220Z-50383-232040761/`.
 
-3. **PR #3 — dashboard YAML→SQLite** ✅ DONE
-   - Remaining YAML reads in dashboard-ui.py: 12 (all legitimate — handoffs, discussions, agent-pulse). Verified with `tests/unit/dashboard/test_dashboard_sqlite_only.py`.
-   - Bonus: removed YAML from `inbox_counts()` and `inbox_owner_counts()` (not in original plan).
-   - Gap fixes applied: removed dead YAML write in `cleanup_inbox` handler, removed `inbox_file.exists()` guard in `task_instructions()`.
-   - Static check: only `_tasks_from_yaml()` (non-harness fallback) reads `contract.yaml` via `yaml.safe_load`.
+**Round 1 consensus (unanimous across all 4 agents):**
 
-4. **PR #3-B — Next-wave: ancillary commands YAML→SQLite** (new)
-   - Files still reading/writing tombstone YAML:
-     | File | Severity | What |
-     |------|----------|------|
-     | `commands/onboard.py:315-331` | **HIGH** | Full read-modify-write to contract.yaml, no SQLite mirroring |
-     | `commands/inbox_watch.py:1543-1586` | **HIGH** | Reads contract.yaml, mutates, yaml.dump back, then mirrors to SQLite |
-     | `commands/inbox_watch.py:2328-2361` | **HIGH** | Discussion reconcile: same inverted pattern |
-     | `commands/handoff_write.py:88,116` | Medium | Reads contract.yaml for TDD policy + task existence |
-     | `commands/recap.py:53,96` | Medium | Reads inbox.yaml + contract.yaml for recap |
-     | `engine/preflight.py:154` | Medium | Reads contract.yaml for dependency checking |
-     | `engine/recall.py:109` | Medium | Reads contract.yaml for title-matching recall |
-   - Approach: migrate each to use `state_reader` for reads, `tasks_dao`/`inbox_dao` for writes
+1. **Unify `_launch_agent()` in `delegate.py`** with `resolve_launcher()`. Watcher path is already manifest-driven via `adapter_registry.resolve_launcher()`; direct CLI dispatch still uses a hardcoded if/elif chain (claude-code → gemini-cli → opencode → else codex-cli). Model prefix transform (`anthropic/`, `openai/`, `google/`) should move to a shared utility callable by both paths. Scope: ~90 lines in `_launch_agent` + shared utility.
 
-### Quick setup for next session
+2. **Decompose `_do_dispatch()` in `inbox_dispatch.py`** into 4 staged units: claim_item → prepare_dispatch_context → run_launcher → record_outcome. Currently ~425 lines with 8+ interleaved concerns. 3 consecutive patch releases (v1.46.5, v1.47.0, v1.47.1) concentrated bugs here.
+
+**Also flagged by opencode (new finding):** `auto_dispatch.py:20` has `_VALID_AGENTS = ("claude-code", "codex-cli")` missing gemini-cli and opencode. `auto_dispatch._classify_task()` has its own hardcoded agent mapping (mini→codex-cli, standard/max→claude-code) — also missing gemini-cli and opencode. Both should be fixed as part of the adapter unification sprint.
+
+**Deferred (all 4 agents disagree):** SQLite/YAML unification, dashboard monolith split, inbox_watch.py full split.
+
+## What to do next session
+
+1. **Run `/ship`** — commits v1.47.2–v1.47.4, opens PR, merges, tags, publishes to PyPI.
+
+2. **Start the adapter unification sprint** (two tracked tasks, sequential):
+   - Task A: Unify `_launch_agent()` in `delegate.py` + fix `auto_dispatch.py` hardcoded agents
+   - Task B: Decompose `_do_dispatch()` into 4 stages
+
+3. Optionally start **round 2** of the discussion after task A lands to get agent feedback on the decomposition design before implementing task B.
+
+## Key files changed this session
+
+| File | Change |
+|------|--------|
+| `src/superharness/commands/inbox_dispatch.py` | v1.47.2: submission-YAML reconcile for discussion rounds |
+| `src/superharness/commands/inbox_watch.py` | v1.47.3: `list_adapters()` in "both" target + `_cancel_undispatchable_agents` registry fix; v1.47.4: indentation bug fixed |
+| `src/superharness/adapter_manifests/opencode.yaml` | v1.47.3: DeepSeek V4 Pro model tiers (Anthropic not configured in opencode) |
+| `tests/unit/test_adapter_polish.py` | 10 regression tests covering bugs 1–5 |
+| `CHANGELOG.md` | Entries for v1.47.2, v1.47.3, v1.47.4 |
+
+## Known remaining issues
+
+- `auto_dispatch.py` hardcoded `_VALID_AGENTS` and `_classify_task()` agent mapping — tracked for next sprint.
+- Watcher lock hash differs between Python environments (pyenv 3.11 vs pipx homebrew 3.14) — two processes can each believe they hold the lock for the same project. Short-term: manual cleanup. Long-term: normalize to `os.path.realpath()` in `watcher_lock_path()`.
+- `find_tier_for_model` import warning in dispatch log — non-blocking.
+
+## Quick setup for next session
 
 ```bash
-cd ~/DevOpsSec/superharness && git checkout main && git pull
-pipx upgrade superharness          # should install v1.44.18
-shux --version                     # should be 1.44.18
-uv run pytest tests/unit/dashboard/ -q  # should be 14 passed
+cd ~/DevOpsSec/superharness
+shux daemon stop --project .
+pipx upgrade superharness          # should install v1.47.4 after shipping
+shux --version                     # verify 1.47.4
+pytest tests/unit/test_adapter_polish.py -q  # should be 10 passed
 ```
 
-### Current test baseline
-- Dashboard unit: 14/14 pass (all new), 0 regressions
-- Unit (relevant subsets): 401 passed, 53 pre-existing failures (parity deprecated, yaml_sync deprecated, dashboard port-detection, stale-YAML integration tests)
-- ShipGuard: 2 CRITICAL — false positives in `test_redact.py`
+## Previous roadmap items (from v1.44.18 handoff)
 
-### New files
-- `tests/unit/dashboard/test_state_reader_coverage.py` — 7 tests for new state_reader functions
-- `tests/unit/dashboard/test_dashboard_sqlite_only.py` — 7 tests verifying no contract/inbox YAML reads
+Still relevant — deferred during the dispatch/adapter sprint:
 
-### Files to ignore
-- `.superharness/state.sqlite3*` — daemon runtime state
-- `.superharness/daemon-monitor.py` — auto-generated, harmless in .superharness/
-- `uv.lock` — dev dependency lock
+- **PR #2-B**: split-brain test fixtures (20 tests in `test_task_workflow_v2_phase1.py` + `test_task_failed_reason.py`)
+- **PR #2-C**: reconciler bugs (`_reconcile_zombies` never defined, `zombie_reconcile.py` missing)
+- **PR #3-B**: ancillary commands YAML→SQLite (`onboard.py`, `inbox_watch.py` contract mutations, `handoff_write.py`, `recap.py`, `preflight.py`, `recall.py`)
