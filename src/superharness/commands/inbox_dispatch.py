@@ -700,9 +700,15 @@ def _do_dispatch(
     if launcher_timeout == 0 and os.path.exists(contract_file):
         effective_timeout = _get_task_effort_timeout(contract_file, item_task)
 
-    # Worktree isolation: if dirty, dispatch in a temporary worktree
+    # Worktree isolation: if dirty, dispatch in a temporary worktree.
+    # Skip for discussion rounds — agents must write their submission YAML
+    # to .superharness/discussions/ which is the live source, and several
+    # agents (codex with its sandbox) refuse to write through the worktree's
+    # symlinked .superharness/. Discussions are read-mostly anyway, so the
+    # isolation has little value for them.
     worktree_dir = None
-    if non_interactive and not print_only and _has_dirty_worktree(exec_project):
+    is_discussion = "/round-" in item_task or item_task.startswith("discuss-")
+    if not is_discussion and non_interactive and not print_only and _has_dirty_worktree(exec_project):
         worktree_dir = _git_worktree_add(exec_project, item_task)
         if worktree_dir:
             print(f"Dispatching in worktree: {worktree_dir} (main worktree is dirty)")
