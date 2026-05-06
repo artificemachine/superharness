@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).parent.parent.parent
-EXPECTED_ADAPTERS = {"claude-code", "codex-cli", "gemini-cli"}
+EXPECTED_ADAPTERS = {"claude-code", "codex-cli", "gemini-cli", "opencode"}
 
 
 @pytest.fixture(scope="module")
@@ -55,7 +55,7 @@ def test_built_wheel_contains_adapter_manifests(built_wheel: Path):
         )
 
 
-def test_installed_wheel_list_adapters_returns_all_three(built_wheel: Path, tmp_path):
+def test_installed_wheel_list_adapters_returns_all_supported(built_wheel: Path, tmp_path):
     """Install the wheel into a clean venv and assert list_adapters() returns
     the expected three names. Exercises the real import path."""
     venv_dir = tmp_path / "venv"
@@ -83,3 +83,22 @@ def test_installed_wheel_list_adapters_returns_all_three(built_wheel: Path, tmp_
         f"Installed wheel exposes adapters={adapters}, expected {EXPECTED_ADAPTERS}. "
         f"Missing: {EXPECTED_ADAPTERS - adapters}"
     )
+
+
+# ---------------------------------------------------------------------------
+# All 4 supported agents are shipped in the wheel
+# ---------------------------------------------------------------------------
+
+def test_wheel_includes_all_four_agent_manifests(built_wheel):
+    """All 4 owners listed in VALID_OWNERS that map to real agents must
+    have a manifest in the wheel: claude-code, codex-cli, gemini-cli, opencode."""
+    import zipfile
+    expected = {"claude-code", "codex-cli", "gemini-cli", "opencode"}
+    with zipfile.ZipFile(built_wheel) as z:
+        names = set(z.namelist())
+    for adapter in expected:
+        assert f"superharness/adapter_manifests/{adapter}.yaml" in names, (
+            f"wheel missing manifest for {adapter}. "
+            f"VALID_OWNERS in task.py advertises this owner but the wheel "
+            f"can't dispatch it."
+        )
