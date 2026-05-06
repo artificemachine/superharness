@@ -12,6 +12,12 @@ import sys
 import click
 
 from superharness import __version__
+from superharness.logging_utils import get_logger as _bootstrap_logger
+
+# Bootstrap the central logger once so every `logging.getLogger("superharness.*")`
+# call in any module propagates to the rotating file handler. Modules don't
+# need to know the logger exists — stdlib hierarchy does the routing.
+_bootstrap_logger("superharness").debug("cli bootstrap")
 
 # Model shorthand → full model ID used by `shux run --model <shorthand>`.
 # "opus" resolves to the current-generation max-tier model.
