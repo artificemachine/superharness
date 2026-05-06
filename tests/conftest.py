@@ -12,6 +12,10 @@ from tests.helpers import REPO_ROOT, SCRIPTS_DIR, seed_sqlite_from_yaml
 # running the test suite, even when individual tests restrict PATH to /usr/bin:/bin.
 os.environ.setdefault("SUPERHARNESS_PYTHON", sys.executable)
 
+# Block tests from auto-installing real LaunchAgents on the user's system.
+# session-start.sh and friends honor this flag and skip ensure-launchd-inbox-watcher.sh.
+os.environ["SUPERHARNESS_NO_AUTO_INSTALL"] = "1"
+
 
 @pytest.fixture
 def repo_root() -> Path:

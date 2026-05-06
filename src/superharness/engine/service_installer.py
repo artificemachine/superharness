@@ -101,7 +101,14 @@ def _install_launchd(
         args += ["--codex-bypass", "--confirm-codex-bypass", "yes"]
 
     result = subprocess.run(args, check=False)
-    return result.returncode == 0
+    if result.returncode != 0:
+        print(
+            f"ERROR: launchd watcher install failed (returncode={result.returncode}). "
+            f"Script: {script}",
+            file=sys.stderr,
+        )
+        return False
+    return True
 
 
 def _uninstall_launchd(project_dir: Path, scripts_dir: Path) -> bool:

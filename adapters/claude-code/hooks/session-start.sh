@@ -109,9 +109,13 @@ except Exception as e:
 fi
 
 # Ensure launchd watcher exists for this project (macOS). Non-fatal.
+# SUPERHARNESS_NO_AUTO_INSTALL=1 disables auto-install (used by tests so a
+# pytest tmp_path .superharness/ never registers a real plist).
 WATCHER_STATUS=""
 ENSURE_WATCHER="$SUPERHARNESS_ROOT/src/superharness/scripts/ensure-launchd-inbox-watcher.sh"
-if [ -d "$PROJECT_DIR/.superharness" ] && [ -x "$ENSURE_WATCHER" ]; then
+if [ -n "${SUPERHARNESS_NO_AUTO_INSTALL:-}" ]; then
+  WATCHER_STATUS="Auto-install skipped (SUPERHARNESS_NO_AUTO_INSTALL set)."
+elif [ -d "$PROJECT_DIR/.superharness" ] && [ -x "$ENSURE_WATCHER" ]; then
   # Pass confirmation flags so the installer can auto-reinstall a missing plist without prompting.
   # These flags mirror the defaults used by install-launchd-inbox-watcher.sh.
   ENSURE_OUT=$(bash "$ENSURE_WATCHER" \
