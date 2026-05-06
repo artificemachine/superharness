@@ -4,6 +4,7 @@ Enqueue an inbox item, with optional contract validation.
 """
 from __future__ import annotations
 
+import logging
 import os
 import platform
 import re
@@ -11,6 +12,8 @@ import secrets
 import subprocess
 import sys
 from datetime import datetime, timezone
+
+_log = logging.getLogger(__name__)
 
 from superharness.engine.next_action import (
     TERMINAL_STATUSES,
