@@ -81,8 +81,13 @@ def _install_launchd(
     to: str,
     codex_bypass: bool,
 ) -> bool:
+    from superharness.logging_utils import get_logger, get_audit_logger
+    log = get_logger("service_installer")
+    audit = get_audit_logger()
+
     script = _resolve_script(scripts_dir, "install-launchd-inbox-watcher.sh")
     if not script.is_file():
+        log.warning("launchd install script not found: %s", script)
         print(f"Warning: launchd install script not found: {script}", file=sys.stderr)
         return False
 
@@ -99,9 +104,13 @@ def _install_launchd(
     ]
     if codex_bypass:
         args += ["--codex-bypass", "--confirm-codex-bypass", "yes"]
+        audit.info("launchd install with --codex-bypass: project=%s worker=%s", project_dir, worker_dir)
 
+    audit.info("launchd install: project=%s worker=%s to=%s", project_dir, worker_dir, to)
     result = subprocess.run(args, check=False)
     if result.returncode != 0:
+        log.error("launchd watcher install failed: returncode=%d script=%s", result.returncode, script)
+        audit.warning("launchd install FAILED: project=%s returncode=%d", project_dir, result.returncode)
         print(
             f"ERROR: launchd watcher install failed (returncode={result.returncode}). "
             f"Script: {script}",
