@@ -560,7 +560,10 @@ def dispatch(
     if not _sqlite_primary:
         try:
             from superharness.engine.sqlite_only import is_sqlite_only
-            _sqlite_primary = is_sqlite_only()
+            # Must pass project_dir so detection can fall back to checking
+            # for state.sqlite3 — without it, returns False and dispatch
+            # silently takes the broken YAML path.
+            _sqlite_primary = is_sqlite_only(project_dir=project_dir)
         except Exception:
             pass
 
