@@ -6,11 +6,14 @@ and enqueues next-round inbox items for all participants.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import secrets
 import subprocess
 import sys
 from datetime import datetime, timezone
+
+_log = logging.getLogger(__name__)
 
 
 def _now_utc() -> str:

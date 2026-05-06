@@ -1,9 +1,12 @@
 """Recover stale launched inbox items — reads from SQLite via state_reader."""
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from datetime import datetime, timezone
+
+_log = logging.getLogger(__name__)
 
 
 def main(argv: list[str] | None = None) -> None:
