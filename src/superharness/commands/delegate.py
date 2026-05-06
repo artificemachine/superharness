@@ -547,6 +547,17 @@ def _launch_agent(
         rc = launch_agent(gemini_args, cwd=project_dir)
         sys.exit(rc)
 
+    elif target == "opencode":
+        if not _cmd_exists("opencode"):
+            _abort("opencode CLI is not installed or not on PATH")
+        oc_args: list[str] = ["opencode", "run"]
+        if model:
+            oc_args += ["--model", model]
+        oc_args.append(prompt)
+        print(f"Launching OpenCode{display_label}...")
+        rc = launch_agent(oc_args, cwd=project_dir)
+        sys.exit(rc)
+
     else:  # codex-cli
         if not _cmd_exists("codex"):
             _abort("codex CLI is not installed or not on PATH")
@@ -1347,11 +1358,11 @@ def main(argv: list[str] | None = None) -> None:
 
     if opts.target is None:
         parser.error("--to is required")
-    if opts.target not in ("claude-code", "codex-cli", "gemini-cli"):
+    if opts.target not in ("claude-code", "codex-cli", "gemini-cli", "opencode"):
         if _JSON_MODE:
             from superharness.utils.json_output import emit_error
-            emit_error("--to must be one of: claude-code, codex-cli, gemini-cli", exit_code=2, **_JSON_CTX)
-        print("--to must be one of: claude-code, codex-cli, gemini-cli", file=sys.stderr)
+            emit_error("--to must be one of: claude-code, codex-cli, gemini-cli, opencode", exit_code=2, **_JSON_CTX)
+        print("--to must be one of: claude-code, codex-cli, gemini-cli, opencode", file=sys.stderr)
         sys.exit(2)
 
     project_dir = os.path.realpath(opts.project or os.getcwd())
