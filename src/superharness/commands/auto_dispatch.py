@@ -17,11 +17,20 @@ from superharness.engine.contract_io import read_contract as _read_contract
 from superharness.engine.taxonomy import VALID_EFFORTS, EFFORT_ORDER
 
 
-_VALID_AGENTS = ("claude-code", "codex-cli")
+def _get_valid_agents() -> tuple[str, ...]:
+    """Return all registered adapter names from the manifest directory."""
+    try:
+        from superharness.engine.adapter_registry import list_adapters
+        adapters = list_adapters()
+        return tuple(adapters) if adapters else ("claude-code", "codex-cli")
+    except Exception:
+        return ("claude-code", "codex-cli")
+
+
+_VALID_AGENTS = _get_valid_agents()
 
 # Effort levels that trigger orchestrator decomposition before enqueue
 _DECOMPOSE_EFFORTS = {"high", "max"}
-
 
 
 def _todo_tasks(contract: dict) -> list[dict]:
@@ -32,11 +41,15 @@ def _todo_tasks(contract: dict) -> list[dict]:
 
 
 def _classify_task(task: dict, project_dir: str) -> tuple[str, str]:
-    """Return (agent, model_tier) for a task. Falls back to profile defaults."""
+    """Return (agent, model_tier) for a task. Falls back to profile defaults.
+
+    Tier-to-agent heuristic: mini → codex-cli (lightweight), standard/max → claude-code.
+    Override with --agent to route to any registered adapter (gemini-cli, opencode, etc.).
+    """
     try:
         from superharness.engine.model_router import classify_task
         tier, effort = classify_task(task, project_dir=project_dir)
-        # Map tier → preferred agent (mini → codex-cli, standard/max → claude-code)
+        # Heuristic default: mini tasks go to codex-cli, heavier tasks to claude-code.
         agent = "codex-cli" if tier == "mini" else "claude-code"
         return agent, tier
     except Exception:
