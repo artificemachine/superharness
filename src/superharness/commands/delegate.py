@@ -552,7 +552,17 @@ def _launch_agent(
             _abort("opencode CLI is not installed or not on PATH")
         oc_args: list[str] = ["opencode", "run"]
         if model:
-            oc_args += ["--model", model]
+            # OpenCode expects provider/model format ("anthropic/claude-sonnet-4-6").
+            # Auto-prefix Claude models with anthropic/ if no provider is set.
+            oc_model = model
+            if "/" not in oc_model:
+                if oc_model.startswith("claude-"):
+                    oc_model = f"anthropic/{oc_model}"
+                elif oc_model.startswith("gpt-") or oc_model.startswith("o1-") or oc_model.startswith("o3-"):
+                    oc_model = f"openai/{oc_model}"
+                elif oc_model.startswith("gemini-"):
+                    oc_model = f"google/{oc_model}"
+            oc_args += ["--model", oc_model]
         oc_args.append(prompt)
         print(f"Launching OpenCode{display_label}...")
         rc = launch_agent(oc_args, cwd=project_dir)
