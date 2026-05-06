@@ -224,3 +224,32 @@ def test_paused_reconciler_not_nested_inside_analyze_task_logs_except():
         "as a standalone block, not '        try:' (8-space, inside except). "
         f"Got: {repr(code_line)}"
     )
+
+
+def test_auto_dispatch_valid_agents_includes_all_adapters():
+    """auto_dispatch._VALID_AGENTS must be derived from adapter_registry.list_adapters(),
+    not a hardcoded two-element tuple. This ensures --agent opencode / --agent gemini-cli
+    are accepted by the argparse CLI without manual updates."""
+    import importlib
+    from superharness.engine.adapter_registry import list_adapters
+    # Reload to pick up the live value (avoid cached module state)
+    import superharness.commands.auto_dispatch as ad
+    importlib.reload(ad)
+    registered = set(list_adapters())
+    valid = set(ad._VALID_AGENTS)
+    missing = registered - valid
+    assert not missing, (
+        f"_VALID_AGENTS is missing adapters that are registered in the manifest dir: {missing}. "
+        "Use _get_valid_agents() to derive _VALID_AGENTS dynamically."
+    )
+
+
+def test_auto_dispatch_valid_agents_not_hardcoded_two_agents():
+    """Regression: _VALID_AGENTS must NOT be the literal string '(\"claude-code\", \"codex-cli\")'
+    in the source. It must be computed via _get_valid_agents() so new adapters are picked up
+    automatically."""
+    src = (REPO_ROOT / "src" / "superharness" / "commands" / "auto_dispatch.py").read_text()
+    assert '_VALID_AGENTS = ("claude-code", "codex-cli")' not in src, (
+        "_VALID_AGENTS must not be a hardcoded 2-element tuple. "
+        "Use _get_valid_agents() so all registered adapters (opencode, gemini-cli, etc.) are included."
+    )
