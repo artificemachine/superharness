@@ -143,6 +143,7 @@ def _sqlite_sync_tasks(path: str, doc: object) -> None:
             conn.close()
     except Exception as e:
         import sys
+        logger.warning("_sqlite_sync_tasks failed: %s", e)
         print(f"[WARNING] _sqlite_sync_tasks failed: {e}", file=sys.stderr)
 
 
