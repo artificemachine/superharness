@@ -121,7 +121,18 @@ fi
 if [[ -z "$PROMPT" ]]; then
   PROMPT="Read GEMINI.md for the full task protocol. Find your task in .superharness/contract.yaml (owner: gemini-cli, status: todo or plan_approved) and begin."
 fi
+# Retry once on transient network failures (ETIMEDOUT, ECONNRESET) before
+# giving up. Gemini calls cloudcode-pa.googleapis.com which can hiccup.
+_attempt() {
+  gemini ${GEMINI_ARGS[@]+"${GEMINI_ARGS[@]}"} "$PROMPT" < /dev/null
+}
+if _attempt; then
+  exit 0
+fi
+_rc=$?
+echo "Gemini launch failed (rc=$_rc), retrying once after 10s..." >> /tmp/shux-launcher-error.log
+sleep 10
 exec gemini ${GEMINI_ARGS[@]+"${GEMINI_ARGS[@]}"} "$PROMPT" < /dev/null || {
-  echo "Gemini launch failed with exit code $?" >> /tmp/shux-launcher-error.log
+  echo "Gemini launch failed twice (rc=$?)" >> /tmp/shux-launcher-error.log
   exit 1
 }
