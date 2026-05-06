@@ -500,7 +500,17 @@ def _launch_agent(
     display_label = f" {label}" if label else ""
 
     from superharness.engine.platform_runtime import launch_agent, expand_agent_path
+    from superharness.logging_utils import get_logger, get_audit_logger, redact
+    log = get_logger("delegate")
+    audit = get_audit_logger()
     expand_agent_path()
+
+    audit.info(
+        "dispatch: target=%s project=%s non_interactive=%s codex_bypass=%s model=%s",
+        target, project_dir, non_interactive, codex_bypass, model or "<default>",
+    )
+    log.info("launch_agent target=%s prompt_len=%d", target, len(prompt))
+    log.debug("prompt redacted=%s", redact(prompt[:300]))
 
     if target == "claude-code":
         if not _cmd_exists("claude"):

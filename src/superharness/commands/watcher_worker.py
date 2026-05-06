@@ -24,11 +24,17 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--codex-bypass", action="store_true")
     opts = p.parse_args(argv)
 
+    from superharness.logging_utils import get_logger
+    log = get_logger("watcher_worker")
+
     project_dir = Path(opts.project).resolve()
     if not project_dir.is_dir():
+        log.error("project directory does not exist: %s", opts.project)
         sys.exit(f"Project directory does not exist: {opts.project}")
     if not (project_dir / ".superharness").is_dir():
+        log.error("missing .superharness in project: %s", project_dir)
         sys.exit(f"Missing .superharness in project: {project_dir}")
+    log.info("watcher-worker invoked: project=%s", project_dir)
 
     package_scripts_dir = Path(__file__).resolve().parent.parent / "scripts"
     root = Path(__file__).resolve().parent.parent.parent.parent
@@ -77,11 +83,13 @@ def main(argv: list[str] | None = None) -> None:
         codex_bypass=opts.codex_bypass,
     )
     if not install_ok:
+        log.error("watcher-worker install FAILED for project %s", project_dir)
         print(
             "Watcher worker install FAILED — see stderr above for details.",
             file=sys.stderr,
         )
         sys.exit(1)
+    log.info("watcher-worker install OK: worker=%s", worker_dir)
 
     # Write watcher.yaml
     from superharness.engine.runtime_probe import probe_runtime, persist_runtime
