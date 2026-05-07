@@ -535,11 +535,13 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
         if hours < _STALE_NO_HANDOFF_HOURS:
             continue
 
-        # Check if handoff exists for this task
+        # Check if a report/completion handoff exists (plan-phase handoffs don't count)
         pattern = os.path.join(handoff_dir, f"{task.id}*.yaml")
         handoffs = glob.glob(pattern)
-        if handoffs:
-            continue  # Has a handoff — agent produced output
+        report_handoffs = [h for h in handoffs if "-report-" in os.path.basename(h)
+                           or "-done-" in os.path.basename(h)]
+        if report_handoffs:
+            continue  # Has a completion handoff — agent produced output
 
         # No handoff after timeout — archive it
         try:
@@ -1813,10 +1815,39 @@ def auto_enqueue_approved(project_dir: str) -> int:
         if item.get("status") in ("pending", "launched", "running", "paused"):
             active_tasks.add(str(item.get("task", "")))
 
+    # Track per-task failure counts to enforce a retry cap.
+    # Without this guard, every failed item exits active_tasks and the next
+    # watcher tick creates a fresh item with retry_count=0 — causing an
+    # infinite flood of new items for permanently-failing tasks.
+    # Prefer SQLite (authoritative in production); fall back to YAML items.
+    failed_counts: dict[str, int] = {}
+    _default_max_retries = 3
+    _db_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
+    if os.path.isfile(_db_path):
+        try:
+            _fc = get_connection(project_dir)
+            try:
+                init_db(_fc)
+                for row in _fc.execute(
+                    "SELECT task_id, COUNT(*) FROM inbox WHERE status='failed' GROUP BY task_id"
+                ).fetchall():
+                    failed_counts[str(row[0])] = int(row[1])
+            finally:
+                _fc.close()
+        except Exception:
+            pass
+    else:
+        for item in inbox_items:
+            if not isinstance(item, dict):
+                continue
+            if item.get("status") == "failed":
+                tid = str(item.get("task", ""))
+                failed_counts[tid] = failed_counts.get(tid, 0) + 1
+
     added = 0
     now = _now_utc()
     new_items = []
-    
+
     conn = get_connection(project_dir)
     try:
         init_db(conn)
@@ -1825,6 +1856,10 @@ def auto_enqueue_approved(project_dir: str) -> int:
                 continue
             task_id = str(task.get("id", ""))
             if not task_id or task_id in active_tasks:
+                continue
+            # Stop re-enqueueing tasks that have already exhausted their retry budget.
+            max_retries = int(task.get("max_retries", _default_max_retries))
+            if failed_counts.get(task_id, 0) >= max_retries:
                 continue
             
             # Check dependencies
@@ -1857,11 +1892,16 @@ def auto_enqueue_approved(project_dir: str) -> int:
             # 1. Mirror task to SQLite if missing
             _ensure_task_in_sqlite(conn, task_id, project_dir, now)
             
-            # 2. Enqueue in SQLite
-            inbox_dao.enqueue(conn, id=item_id, task_id=task_id,
-                              target_agent=owner, priority=2, max_retries=3,
-                              project_path=project_dir, plan_only=False, now=now)
-            
+            # 2. Enqueue in SQLite; catch duplicate if another process raced us.
+            try:
+                inbox_dao.enqueue(conn, id=item_id, task_id=task_id,
+                                  target_agent=owner, priority=2, max_retries=3,
+                                  project_path=project_dir, plan_only=False, now=now)
+            except Exception as _enq_err:
+                # StateError (duplicate) or any other DB error — skip silently.
+                active_tasks.add(task_id)
+                continue
+
             new_items.append({
                 "id": item_id, "task": task_id, "to": owner, "status": "pending",
                 "priority": 2, "retry_count": 0, "max_retries": 3, "created_at": now,
@@ -1880,6 +1920,13 @@ def auto_enqueue_approved(project_dir: str) -> int:
         try:
             with _inbox_lock(inbox_file):
                 current_items = state_reader.get_inbox_items(project_dir)
+                # state_reader in test mode only merges SQLite items that already
+                # exist in YAML — new_items are SQLite-only and would be dropped.
+                # Explicitly append any new_items not already present.
+                existing_ids = {str(i.get("id")) for i in current_items if isinstance(i, dict)}
+                for ni in new_items:
+                    if str(ni.get("id")) not in existing_ids:
+                        current_items.append(ni)
                 with open(inbox_file, "w", encoding="utf-8") as _f:
                     _f.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
                     _yaml.dump(current_items, _f, default_flow_style=False, sort_keys=True)
@@ -2257,9 +2304,11 @@ def _analyze_task_logs(project_dir: str) -> None:
 def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
     """Reconcile launched inbox items that have no running process.
 
-    Three checks in order:
+    Checks in order:
     1. Contract says done → mark inbox done
     2. PID set but process dead → mark inbox failed
+    2b. PID alive + plan-only + age > 15 min → kill and fail
+    2c. PID alive + non-plan-only + age > 2 hours → kill and fail
     3. No PID + launched > max_age_seconds ago → mark inbox failed
 
     Returns count of reconciled items.
@@ -2356,6 +2405,26 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
                         reconciled += 1
                         changed = True
                         print(f"zombie-reconcile: {item_id} ({task_id}) → failed (plan-only timeout, {int(age)}s)")
+                except (ValueError, TypeError):
+                    pass
+            # Check 2c: non-plan-only task alive but running beyond max wall-clock cap → kill and fail
+            elif launched_at:
+                _MAX_LAUNCH_AGE_SECONDS = 7200  # 2 hours
+                try:
+                    lt = datetime.fromisoformat(launched_at.replace("Z", "+00:00"))
+                    age = (now - lt).total_seconds()
+                    if age > _MAX_LAUNCH_AGE_SECONDS:
+                        try:
+                            os.kill(pid_int, signal.SIGTERM)
+                        except Exception:
+                            pass
+                        item["status"] = "failed"
+                        item["failed_at"] = _now_utc()
+                        item["pid"] = ""
+                        item["failed_reason"] = f"max launch age exceeded ({int(age)}s > {_MAX_LAUNCH_AGE_SECONDS}s)"
+                        reconciled += 1
+                        changed = True
+                        print(f"zombie-reconcile: {item_id} ({task_id}) → failed (max age, {int(age)}s)")
                 except (ValueError, TypeError):
                     pass
             continue
