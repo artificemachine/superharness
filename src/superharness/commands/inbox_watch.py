@@ -2603,33 +2603,37 @@ def _auto_close_consensus_discussions(project_dir: str) -> int:
         state = disc["state"]
         state_path = disc["path"]
 
-        # Check age: use closed_at or last consensus timestamp
-        # Fall back to file mtime if no timestamp
-        age_min = None
-        consensus_at = state.get("consensus_at", "")
-        if not consensus_at:
-            # Check round timestamps
-            rounds = state.get("rounds") or []
-            if isinstance(rounds, list) and rounds:
-                last_round = rounds[-1]
-                if isinstance(last_round, dict):
-                    consensus_at = last_round.get("created_at", "")
-        if consensus_at:
-            try:
-                t = datetime.fromisoformat(str(consensus_at).replace("Z", "+00:00"))
-                age_min = int((now - t).total_seconds() / 60)
-            except (ValueError, TypeError):
-                pass
-        if age_min is None:
-            # Fall back to file modification time
-            try:
-                mtime = os.path.getmtime(state_path)
-                age_min = int((now.timestamp() - mtime) / 60)
-            except OSError:
-                age_min = 99999  # can't determine age, close anyway
+        # If closed_at is already stamped but status wasn't updated, close immediately —
+        # this repairs data inconsistency where a past write set closed_at without
+        # flipping status to "closed".
+        age_min: int | None = None
+        if state.get("closed_at"):
+            pass  # fall through to close block below
 
-        if age_min < _CONSENSUS_GRACE_MINUTES:
-            continue
+        else:
+            # Check age: use consensus_at, round timestamps, or file mtime as fallback
+            age_min = None
+            consensus_at = state.get("consensus_at", "")
+            if not consensus_at:
+                rounds = state.get("rounds") or []
+                if isinstance(rounds, list) and rounds:
+                    last_round = rounds[-1]
+                    if isinstance(last_round, dict):
+                        consensus_at = last_round.get("created_at", "")
+            if consensus_at:
+                try:
+                    t = datetime.fromisoformat(str(consensus_at).replace("Z", "+00:00"))
+                    age_min = int((now - t).total_seconds() / 60)
+                except (ValueError, TypeError):
+                    pass
+            if age_min is None:
+                try:
+                    mtime = os.path.getmtime(state_path)
+                    age_min = int((now.timestamp() - mtime) / 60)
+                except OSError:
+                    age_min = 99999
+            if age_min < _CONSENSUS_GRACE_MINUTES:
+                continue
 
         # Close the discussion
         state["status"] = "closed"
@@ -2655,7 +2659,8 @@ def _auto_close_consensus_discussions(project_dir: str) -> int:
 
         closed += 1
         topic = str(state.get("topic", ""))[:60]
-        print(f"discussion-auto-close: {disc_id} → closed (consensus for {age_min}m, grace={_CONSENSUS_GRACE_MINUTES}m) — {topic}")
+        _age_str = f"{age_min}m" if age_min is not None else "closed_at already set"
+        print(f"discussion-auto-close: {disc_id} → closed ({_age_str}) — {topic}")
 
     if conn:
         try:
