@@ -24,19 +24,21 @@ TIMEOUT_LOW_EFFORT = 900       # 15 minutes
 TIMEOUT_MEDIUM_EFFORT = 1800   # 30 minutes
 TIMEOUT_HIGH_EFFORT = 3600     # 60 minutes
 
+DISCUSSION_ROUND_TIMEOUT_SECONDS = 900  # 15 min hard cap per discussion round
+
 
 @dataclass
 class DispatchContext:
     project_dir: str
     inbox_file: str
     contract_file: str
-    target_filter: str | None
     print_only: bool
     non_interactive: bool
     codex_bypass: bool
     launcher_timeout: int
     script_dir: str
     sqlite_primary: bool
+    target_filter: str | None = None
 
     # Mutated during stages
     item: dict = field(default_factory=dict)
@@ -696,7 +698,7 @@ def _do_dispatch(
         return rc
 
     # 4. Prepare
-    _prepare_execution(ctx)
+    _prepare_launch_context(ctx)
 
     # 5. Execute
     _execute_agent(ctx)
@@ -1153,6 +1155,68 @@ def _log_dispatch_error(project_dir: str, error: str) -> None:
             f.write(f"[{ts}] dispatch: {error}\n")
     except Exception:
         pass
+
+
+# ---------------------------------------------------------------------------
+# Discussion dispatch helpers
+# ---------------------------------------------------------------------------
+
+def _classify_launch_failure(exit_code: int, log_tail: str) -> dict:
+    """Classify a launcher failure by exit code and log output.
+
+    Returns {"action": "pause"|"fail", "retry_after_minutes": int}.
+    Quota exhaustion (exit 1 + quota keyword) → pause so the watcher retries
+    after the quota resets instead of burning the retry budget immediately.
+    """
+    import re as _re
+
+    _QUOTA_KEYWORDS = (
+        "quota_exhausted",
+        "quota will reset",
+        "terminalquotaerror",
+        "exhausted your capacity",
+    )
+    log_lower = log_tail.lower()
+    is_quota = exit_code == 1 and any(kw in log_lower for kw in _QUOTA_KEYWORDS)
+    if is_quota:
+        m = _re.search(r"reset after\s+(\d+)m", log_lower)
+        retry_minutes = int(m.group(1)) if m else 30
+        return {"action": "pause", "retry_after_minutes": retry_minutes}
+    return {"action": "fail", "retry_after_minutes": 0}
+
+
+def _agent_already_submitted(disc_dir: str, round_num: int, agent: str) -> bool:
+    """Return True if *agent* already has a submission for *round_num* in state.yaml."""
+    if not os.path.isdir(disc_dir):
+        return False
+    try:
+        import yaml as _yaml
+        state_path = os.path.join(disc_dir, "state.yaml")
+        with open(state_path, encoding="utf-8") as fh:
+            state = _yaml.safe_load(fh) or {}
+        for r in state.get("rounds") or []:
+            if not isinstance(r, dict) or r.get("round") != round_num:
+                continue
+            return any(s.get("agent") == agent for s in (r.get("submissions") or []))
+    except Exception:
+        pass
+    return False
+
+
+def _prepare_launch_context(ctx: DispatchContext) -> None:
+    """Build launch args, apply discussion-specific timeout and model overrides."""
+    # Bug 4 fix: discussion rounds get a hard timeout when none was set
+    if ctx.is_discussion and ctx.effective_timeout == 0:
+        ctx.effective_timeout = DISCUSSION_ROUND_TIMEOUT_SECONDS
+
+    _prepare_execution(ctx)
+
+    # Bug 1 fix: claude-code discussion rounds need an explicit --model so the
+    # CLI doesn't pause at the interactive /model prompt.
+    if ctx.is_discussion and ctx.item_to == "claude-code":
+        model = os.environ.get("SUPERHARNESS_CLAUDE_MODEL", "claude-sonnet-4-6")
+        ctx.launch_args = ctx.launch_args + ["--model", model]
+
 
 # ---------------------------------------------------------------------------
 # CLI

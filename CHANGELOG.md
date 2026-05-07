@@ -272,3 +272,4 @@
 - 2026-05-07: docs(roadmap): update ROADMAP-phases.md — phases 1-4/6 marked DONE/PARTIAL, version bumped to v1.51.0
 - 2026-05-07: docs(audit): merge pi-mono and hermes audit docs into AUDIT-pi-hermes-adaptation.md
 - 2026-05-07: docs(comparison): add COMPARISON-superharness-vs-pi-hermes.md — full feature table, gap analysis, priority order
+- 2026-05-07 (v1.52.0): fix(discussion-dispatch): 4 reliability fixes — Bug 1: _prepare_launch_context injects --model claude-sonnet-4-6 for claude-code discussion rounds (prevents interactive /model prompt hang); Bug 2: _classify_launch_failure maps quota exhaustion (exit 1 + QUOTA_EXHAUSTED keyword) to pause action with parsed retry_after_minutes; Bug 3: _agent_already_submitted checks state.yaml to skip re-dispatch of already-submitted agents; Bug 4: DISCUSSION_ROUND_TIMEOUT_SECONDS=900 constant applied when launcher_timeout=0 for discussion rounds. 13 new unit tests GREEN (test_discussion_dispatch_fixes.py).
