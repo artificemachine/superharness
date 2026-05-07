@@ -156,7 +156,7 @@ def _step_init(project: Path, state: dict) -> None:
     if _is_completed(state, "init"):
         click.echo("[skip] Step 2 (init): already completed")
         return
-    already_existed = sh.exists() and (sh / "contract.yaml").exists()
+    already_existed = sh.exists() and (sh / "state.sqlite3").exists()
     if already_existed:
         click.echo("[skip] Step 2 (init): .superharness/ already exists")
     else:

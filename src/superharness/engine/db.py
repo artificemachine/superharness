@@ -12,7 +12,7 @@ from superharness.engine.state_errors import ConnectionError, SchemaError
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 6
+CURRENT_SCHEMA_VERSION = 7
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -384,6 +384,14 @@ def _migration_v6(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migration_v7(conn: sqlite3.Connection) -> None:
+    """Add worktree_path column to tasks for dashboard worktree visibility."""
+    try:
+        conn.execute("ALTER TABLE tasks ADD COLUMN worktree_path TEXT")
+    except sqlite3.OperationalError:
+        pass  # column already exists
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -391,4 +399,5 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v4,
     _migration_v5,
     _migration_v6,
+    _migration_v7,
 ]

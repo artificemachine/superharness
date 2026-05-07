@@ -69,49 +69,7 @@ def set_task_status(
     from_status: str | None = None,
     **fields,
 ) -> bool:
-    """Update a contract task's status. Handles both Test and Production modes."""
-    if _is_running_tests():
-        # Dual mode for tests: write to YAML first, mirror to SQLite
-        contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
-        if not os.path.isfile(contract_file):
-            return False
-
-        try:
-            with open(contract_file, encoding="utf-8") as f:
-                doc = yaml.safe_load(f.read()) or {}
-        except Exception:
-            return False
-
-        tasks = doc.get("tasks") or []
-        found = False
-        for task in tasks:
-            if not isinstance(task, dict): continue
-            if str(task.get("id")) != task_id: continue
-            if from_status and task.get("status") != from_status: return False
-            
-            now = _now_utc()
-            task["status"] = status
-            task["updated_at"] = now
-            # Lifecycle timestamps
-            ts_map = {"plan_proposed": "plan_proposed_at", "plan_approved": "plan_approved_at", "in_progress": "in_progress_at", "report_ready": "report_ready_at", "done": "done_at", "failed": "failed_at", "stopped": "stopped_at", "archived": "archived_at", "waiting_input": "updated_at"}
-            if status in ts_map: task[ts_map[status]] = now
-            for k, v in fields.items(): task[k] = v
-            found = True
-            break
-        
-        if not found: return False
-        
-        try:
-            with open(contract_file, "w", encoding="utf-8") as f:
-                yaml.dump(doc, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
-        except Exception:
-            return False
-            
-        # Best-effort mirror to SQLite for tests that check DB
-        _mirror_task_to_sqlite(project_dir, task_id, status, **fields)
-        return True
-
-    # Phase 4 Production: SQLite is SoT
+    """Update a contract task's status via SQLite (post-YAML removal)."""
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
 
@@ -127,7 +85,6 @@ def set_task_status(
             return False
 
         changes = {"status": status, "updated_at": now}
-
 
         # Lifecycle timestamps
         ts_map = {"plan_proposed": "plan_proposed_at", "plan_approved": "plan_approved_at", "in_progress": "in_progress_at", "report_ready": "report_ready_at", "done": "done_at", "failed": "failed_at", "stopped": "stopped_at", "archived": "archived_at", "waiting_input": "updated_at"}
@@ -150,10 +107,6 @@ def set_task_status(
         if status in _ACTIVE_WORK:
             _ensure_active_inbox(project_dir, task_id, task_row.owner or "claude-code", now)
 
-        # YAML export — only in non-sqlite_only mode
-        from superharness.engine.sqlite_only import is_sqlite_only
-        if not is_sqlite_only():
-            _export_contract_yaml(project_dir)
         return True
     except Exception:
         return False
@@ -165,49 +118,7 @@ def set_inbox_status(
     status: str,
     **fields,
 ) -> bool:
-    """Update an inbox item's status. Handles both Test and Production modes."""
-    if _is_running_tests():
-        # Dual mode for tests
-        inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
-        if not os.path.isfile(inbox_file):
-            return False
-
-        try:
-            with open(inbox_file, encoding="utf-8") as f:
-                items = yaml.safe_load(f.read()) or []
-        except Exception:
-            return False
-
-        if not isinstance(items, list): return False
-
-        found = False
-        for item in items:
-            if not isinstance(item, dict): continue
-            if str(item.get("id")) != item_id: continue
-            
-            item["status"] = status
-            now = _now_utc()
-            if status == "paused": item.setdefault("paused_at", now)
-            elif status == "launched": item["launched_at"] = now
-            elif status == "failed": item["failed_at"] = now
-            elif status == "done": item["done_at"] = now
-            for k, v in fields.items(): item[k] = v
-            found = True
-            break
-            
-        if not found: return False
-        
-        try:
-            with open(inbox_file, "w", encoding="utf-8") as f:
-                yaml.dump(items, f, default_flow_style=False, allow_unicode=True)
-        except Exception:
-            return False
-            
-        # Best-effort mirror
-        _mirror_inbox_to_sqlite(project_dir, item_id, status, **fields)
-        return True
-
-    # Phase 4 Production: SQLite is SoT
+    """Update an inbox item's status via SQLite (post-YAML removal)."""
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import inbox_dao
 

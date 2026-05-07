@@ -148,6 +148,7 @@ _cmd("export-yaml",     "Export YAML snapshot from SQLite state.",       module=
 _cmd("import-yaml",     "Import YAML state files into SQLite.",          module="superharness.commands.yaml_io")
 _cmd("uninstall",       "Remove system-level artifacts.",            module="superharness.commands.uninstall")
 _cmd("status",          "Show watcher and inbox health summary.",    module="superharness.commands.status")
+_cmd("rules",           "List, show, or search project rules.",        module="superharness.commands.rules")
 _cmd("notify",          "Send alerts for watcher/retry issues.",     module="superharness.commands.notify")
 _cmd("install-wrapper", "Symlink superharness into PATH.",           module="superharness.commands.install_wrapper")
 _cmd("recall",          "Search handoffs and ledger by keyword.",    module="superharness.engine.recall")

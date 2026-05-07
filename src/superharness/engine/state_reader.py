@@ -54,18 +54,21 @@ def _get_backend(project_dir: str) -> str:
 
 
 def _ensure_ingested(project_dir: str) -> None:
-    """Ensure YAML state is ingested into SQLite if it exists."""
+    """Ensure YAML state is ingested into SQLite (only if DB is empty)."""
     sh_dir = os.path.join(project_dir, ".superharness")
     if not os.path.isdir(sh_dir):
         return
 
     from superharness.engine.db import get_connection, init_db
     from superharness.engine.migrate_yaml import migrate_all_to_sqlite
-    
+
     conn = get_connection(project_dir)
     try:
         init_db(conn)
-        migrate_all_to_sqlite(conn, project_dir)
+        # Only migrate if the DB has no tasks yet (first read after YAML tests)
+        count = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+        if count == 0:
+            migrate_all_to_sqlite(conn, project_dir)
     except Exception:
         pass
     finally:
@@ -73,35 +76,12 @@ def _ensure_ingested(project_dir: str) -> None:
 
 
 def get_inbox_items(project_dir: str) -> list[dict]:
-    """Return inbox items from the environment-appropriate source."""
-    if _is_running_tests():
-        # Tests: YAML fixtures are the test setup mechanism
-        yaml_items = _inbox_from_yaml(project_dir)
-        if _has_sqlite_db(project_dir):
-            try:
-                sqlite_items = _inbox_from_sqlite(project_dir)
-                sm = {str(i.get("id")): i for i in sqlite_items}
-                for yi in yaml_items:
-                    si = sm.get(str(yi.get("id")))
-                    if si: yi.update(si)
-            except Exception:
-                pass
-        return yaml_items
-
-    # Production: SQLite is SoT — no YAML auto-ingestion
-    if not _has_sqlite_db(project_dir):
-        return _inbox_from_yaml(project_dir)
+    """Return inbox items from SQLite (post-YAML removal). Auto-ingests YAML fixtures in tests."""
+    _ensure_ingested(project_dir)
     try:
         return _inbox_from_sqlite(project_dir)
     except Exception:
-        return _inbox_from_yaml(project_dir)
-    try:
-        return _inbox_from_sqlite(project_dir)
-    except Exception:
-        backend = _get_backend(project_dir)
-        if backend == "sqlite_only":
-            raise  # loud failure — no silent YAML fallback
-        return _inbox_from_yaml(project_dir)
+        return []
 
 
 def _inbox_row_to_yaml_shape(row: dict) -> dict:
@@ -137,51 +117,20 @@ def _is_running_tests() -> bool:
 
 
 def get_tasks(project_dir: str) -> list[dict]:
-    """Return all tasks. Primary source depends on environment."""
-    if _is_running_tests():
-        # Tests: YAML fixtures are the test setup mechanism.
-        # SQLite data is overlaid to keep tests aligned with production.
-        yaml_tasks = _tasks_from_yaml(project_dir)
-        if _has_sqlite_db(project_dir):
-            try:
-                sqlite_tasks = _tasks_from_sqlite(project_dir)
-                sm = {str(t.get("id")): t for t in sqlite_tasks}
-                for yt in yaml_tasks:
-                    st = sm.get(str(yt.get("id")))
-                    if st:
-                        yt["status"] = st.get("status", yt.get("status"))
-                        yt["verified"] = st.get("verified", yt.get("verified"))
-                        yt["verified_at"] = st.get("verified_at")
-            except Exception:
-                pass
-        return yaml_tasks
-
-    # Production: SQLite is SoT
+    """Return all tasks from SQLite (post-YAML removal). Auto-ingests YAML fixtures in tests."""
+    _ensure_ingested(project_dir)
     try:
         return _tasks_from_sqlite(project_dir)
     except Exception:
-        if _get_backend(project_dir) == "sqlite_only":
-            raise  # loud failure — no silent YAML fallback
-        return _tasks_from_yaml(project_dir)
+        return []
 
 
 def get_task(project_dir: str, task_id: str) -> dict | None:
-    """Return a single task by ID."""
-    if _is_running_tests():
-        tasks = get_tasks(project_dir)
-        for t in tasks:
-            if str(t.get("id")) == task_id: return t
-        return None
-
+    """Return a single task by ID from SQLite (post-YAML removal)."""
+    _ensure_ingested(project_dir)
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
     from dataclasses import asdict
-
-    if not _has_sqlite_db(project_dir):
-        tasks = _tasks_from_yaml(project_dir)
-        for t in tasks:
-            if str(t.get("id")) == task_id: return t
-        return None
 
     conn = get_connection(project_dir)
     try:
@@ -189,9 +138,6 @@ def get_task(project_dir: str, task_id: str) -> dict | None:
         row = tasks_dao.get(conn, task_id)
         if row:
             return asdict(row)
-        tasks = _tasks_from_yaml(project_dir)
-        for t in tasks:
-            if str(t.get("id")) == task_id: return t
         return None
     finally:
         conn.close()
@@ -201,38 +147,18 @@ def get_task(project_dir: str, task_id: str) -> dict | None:
 def get_contract_doc(project_dir: str) -> dict:
     """Return the full contract document reconstructed from SQLite."""
     tasks = get_tasks(project_dir)
-    
-    # Try to get the original ID from YAML if it exists
-    contract_id = "contract"
-    try:
-        path = os.path.join(project_dir, ".superharness", "contract.yaml")
-        if os.path.isfile(path):
-            import yaml
-            with open(path, encoding="utf-8") as f:
-                doc = yaml.safe_load(f) or {}
-                if isinstance(doc, dict):
-                    contract_id = str(doc.get("id", contract_id))
-    except Exception:
-        pass
-        
+    # Derive contract ID from project metadata
+    contract_id = "contract"  # default
     return {"id": contract_id, "tasks": tasks}
 
 
 def get_top_level_tasks(project_dir: str) -> list[dict]:
     """Return only top-level tasks (parent_id IS NULL), excluding subtasks."""
-    backend = _get_backend(project_dir)
-    if backend == "yaml_only":
-        return _tasks_from_yaml(project_dir)
-    if not _has_sqlite_db(project_dir):
-        if backend == "sqlite_only":
-            raise RuntimeError(f"sqlite_only mode but no DB at {project_dir!r}")
-        return _tasks_from_yaml(project_dir)
+    _ensure_ingested(project_dir)
     try:
         return _tasks_from_sqlite(project_dir, top_level_only=True)
     except Exception:
-        if backend == "sqlite_only":
-            raise
-        return _tasks_from_yaml(project_dir)
+        return []
 
 
 def _tasks_from_sqlite(project_dir: str, *, top_level_only: bool = False) -> list[dict]:
