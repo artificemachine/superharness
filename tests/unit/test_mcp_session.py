@@ -1,0 +1,75 @@
+"""Tests for MCP SessionManager — Iteration 1."""
+from __future__ import annotations
+
+import sqlite3
+import pytest
+from pathlib import Path
+
+from superharness.mcp.session import SessionManager, PolicyError
+
+
+def _make_project(tmp_path: Path) -> Path:
+    """Create a minimal project with a state.sqlite3."""
+    proj = tmp_path / "proj"
+    sh = proj / ".superharness"
+    sh.mkdir(parents=True)
+    conn = sqlite3.connect(str(sh / "state.sqlite3"))
+    conn.execute("CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY)")
+    conn.close()
+    return proj
+
+
+def test_init_session_valid_project(tmp_path):
+    proj = _make_project(tmp_path)
+    sm = SessionManager()
+    conn_id = sm.init_session("conn-1", str(proj), agent="claude-code")
+    assert conn_id == "conn-1"
+    assert sm.get_connection("conn-1") is not None
+
+
+def test_init_session_invalid_project(tmp_path):
+    sm = SessionManager()
+    with pytest.raises((ValueError, FileNotFoundError)):
+        sm.init_session("conn-x", str(tmp_path / "missing"), agent="claude-code")
+
+
+def test_two_sessions_same_project_isolated_conns(tmp_path):
+    proj = _make_project(tmp_path)
+    sm = SessionManager()
+    sm.init_session("conn-a", str(proj), agent="claude-code")
+    sm.init_session("conn-b", str(proj), agent="codex-cli")
+    conn_a = sm.get_connection("conn-a")
+    conn_b = sm.get_connection("conn-b")
+    assert conn_a is not conn_b
+
+
+def test_two_sessions_different_projects_isolated(tmp_path):
+    proj_a = _make_project(tmp_path / "a")
+    proj_b = _make_project(tmp_path / "b")
+    sm = SessionManager()
+    sm.init_session("a1", str(proj_a), agent="claude-code")
+    sm.init_session("b1", str(proj_b), agent="claude-code")
+    assert sm.get_session("a1").project_path != sm.get_session("b1").project_path
+
+
+def test_close_session_releases_connection(tmp_path):
+    proj = _make_project(tmp_path)
+    sm = SessionManager()
+    sm.init_session("conn-c", str(proj), agent="claude-code")
+    sm.close_session("conn-c")
+    with pytest.raises(KeyError):
+        sm.get_connection("conn-c")
+
+
+def test_get_connection_unknown_raises_key_error(tmp_path):
+    sm = SessionManager()
+    with pytest.raises(KeyError):
+        sm.get_connection("does-not-exist")
+
+
+def test_session_stores_agent_name(tmp_path):
+    proj = _make_project(tmp_path)
+    sm = SessionManager()
+    sm.init_session("conn-d", str(proj), agent="gemini-cli")
+    session = sm.get_session("conn-d")
+    assert session.agent == "gemini-cli"
