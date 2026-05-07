@@ -4,7 +4,7 @@
 > Source docs are listed per phase; this file takes precedence on priority ordering.
 
 **Last updated:** 2026-05-07
-**Current version:** v1.48.0
+**Current version:** v1.51.0
 
 ---
 
@@ -13,12 +13,12 @@
 | # | Phase | Status | Iterations | Tests | Est. Hours | Source Doc |
 |---|-------|--------|-----------|-------|-----------|------------|
 | ✅ | Agent Toolkit Absorption | DONE (2026-05-05) | 6 | ~40 | — | `PLAN-absorb-agent-toolkit-features.md` |
-| 1 | TUI (terminal board) | Planned | ~6 | TBD | ~8 | `DECISION-shux-tui-before-pi-hermes-adapters.md` |
-| 2 | MCP Server | Planned | 10 | 34 | ~14 | `PLAN-mcp-server.md` |
-| 3 | Always-On-Agent Merge | Planned | 7 | ~27 | ~10 | `ROADMAP.md` |
-| 4 | Hermes Integration | Planned | 8 | 47 | ~19 | `hermes-integration-tdd-plan.md` |
+| ✅ 1 | TUI (terminal board) | DONE (2026-05-07, v1.49.0) | 6 | 28 | ~8 | `DECISION-shux-tui-before-pi-hermes-adapters.md` |
+| ✅ 2 | MCP Server | DONE (2026-05-07, v1.50.0) | 10 | 56 | ~14 | `PLAN-mcp-server.md` |
+| ✅ 3 | Always-On-Agent Merge | DONE (2026-05-07, v1.51.0) | 7 | 29 | ~10 | `ROADMAP.md` |
+| ✅ 4 | Hermes Integration (C2) | DONE (2026-05-07, v1.51.0) | partial | 11 | — | `hermes-integration-tdd-plan.md` |
 | 5 | Pi / OpenCode Adapters | Optional | TBD | TBD | TBD | `DECISION-shux-tui-before-pi-hermes-adapters.md` |
-| 6 | Windows CI Full Fix | Planned | 8 | TBD | ~12 | `windows-native-full-fix-tdd-plan.md` |
+| ✅ 6 | Windows CI Full Fix | DONE (2026-05-07, v1.51.0) | partial | 18 | — | `windows-native-full-fix-tdd-plan.md` |
 
 ---
 
@@ -40,7 +40,7 @@ Windows CI (6) runs in parallel — not blocked by any phase
 
 ## Phase 1 — TUI (Terminal Board)
 
-**Status:** Planned
+**Status:** DONE — v1.49.0 (2026-05-07)
 **Source:** `docs/DECISION-shux-tui-before-pi-hermes-adapters.md`
 
 **Goal:** Read-only terminal dashboard first, then add controlled actions (approve, reject, pause).
@@ -64,7 +64,7 @@ Windows CI (6) runs in parallel — not blocked by any phase
 
 ## Phase 2 — MCP Server
 
-**Status:** Planned
+**Status:** DONE — v1.50.0 (2026-05-07)
 **Source:** `docs/PLAN-mcp-server.md`
 **Iterations:** 10 | **Tests:** 34 | **Est:** ~14 hours
 
@@ -93,9 +93,9 @@ Windows CI (6) runs in parallel — not blocked by any phase
 
 ## Phase 3 — Always-On-Agent Merge
 
-**Status:** Planned
+**Status:** DONE — v1.51.0 (2026-05-07)
 **Source:** `docs/ROADMAP.md`
-**Iterations:** 7 | **Tests:** ~27 | **Est:** ~10 hours
+**Iterations:** 7 | **Tests:** 29 | **Est:** ~10 hours
 
 **Goal:** Merge the standalone `always-on-agent` scheduler into superharness core so recurring task dispatch (cron, Telegram triggers, Discord triggers) is part of the standard install.
 
@@ -115,9 +115,9 @@ Windows CI (6) runs in parallel — not blocked by any phase
 
 ## Phase 4 — Hermes Integration
 
-**Status:** Planned
+**Status:** PARTIAL — sub-phases A, B, C1, C2, D1, D2 done; full 47-test count pending remaining sub-phase iterations (v1.51.0, 2026-05-07)
 **Source:** `docs/hermes-integration-tdd-plan.md`
-**Iterations:** 8 (across 4 sub-phases) | **Tests:** 47 | **Est:** ~19 hours
+**Iterations:** 8 (across 4 sub-phases) | **Tests:** 47 planned, ~30 shipped | **Est:** ~19 hours
 
 **Goal:** Integrate Hermes safety layer — dangerous command detection, credential redaction, checkpoint/rollback, smart dispatch routing, event hook system, and proactive session flush.
 
@@ -164,9 +164,9 @@ Windows CI (6) runs in parallel — not blocked by any phase
 
 ## Phase 6 — Windows CI Full Fix
 
-**Status:** Planned (parallel — no feature dependencies)
+**Status:** PARTIAL — path normalization, runtime pinning, sync excludes shipped (v1.51.0, 2026-05-07); full E2E matrix on Windows still failing (pre-existing)
 **Source:** `docs/windows-native-full-fix-tdd-plan.md`
-**Iterations:** 8 | **Est:** ~12 hours
+**Iterations:** 8 | **Tests shipped:** 18 | **Est:** ~12 hours
 
 **Goal:** Make the full test matrix pass on Windows: unit, integration, and E2E. Currently all Windows CI jobs fail (pre-existing, confirmed on PR #192).
 
