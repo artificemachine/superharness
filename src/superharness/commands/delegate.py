@@ -520,8 +520,9 @@ def _launch_agent(
     except Exception as e:
         _abort(f"Failed to resolve launcher for '{target}': {e}")
 
-    # Unified model prefixing
-    if model:
+    # Model prefixing: only for adapters that expect provider/model format (e.g. opencode).
+    # Claude CLI rejects anthropic/ prefix — pass bare model names for claude-code.
+    if model and target != "claude-code":
         model = apply_model_prefix(model)
 
     launch_args = ["bash", launcher, "--project", project_dir, "--prompt", prompt]
