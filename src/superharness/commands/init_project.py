@@ -266,6 +266,53 @@ def main(argv: list[str] | None = None) -> None:
             encoding="utf-8"
         )
 
+        # .gitignore — runtime state only; contract/handoffs/discussions remain tracked
+        gitignore_path = harness / ".gitignore"
+        if not gitignore_path.exists():
+            gitignore_path.write_text(
+                "# Security — never commit secrets\n"
+                ".env\n"
+                "*.key\n"
+                "*.pem\n"
+                "*.p12\n"
+                "*.pfx\n"
+                "\n"
+                "# Runtime state — not version controlled\n"
+                "launcher-logs/\n"
+                "*.flock\n"
+                "*.heartbeat\n"
+                "heartbeat.yaml\n"
+                "watcher.heartbeat\n"
+                "watcher.heartbeat.yaml\n"
+                "monitor-health.log\n"
+                "session-progress.md\n"
+                "session-summary-*.md\n"
+                "watcher.yaml\n"
+                "inbox.yaml\n"
+                "modules/\n"
+                "contracts/\n"
+                "review-lenses/\n"
+                "benchmark.jsonl\n"
+                "onboarding.yaml\n"
+                "daemon.pid.json\n"
+                "daemon-state.json\n"
+                "operator-state.json\n"
+                "trace.jsonl\n"
+                "*.lock.d/\n"
+                "\n"
+                "# SQLite database (WAL files included)\n"
+                "state.sqlite3\n"
+                "state.sqlite3-shm\n"
+                "state.sqlite3-wal\n"
+                "\n"
+                "# Runtime control files\n"
+                "circuit-breaker.json\n"
+                ".launchagents_snapshot\n"
+                "daemon-monitor.py\n",
+                encoding="utf-8"
+            )
+            print("Created: .superharness/.gitignore (runtime state excluded from git)")
+
         # ledger.md
         ledger_tmpl = template_dir / "ledger.md"
         if ledger_tmpl.is_file():
@@ -324,6 +371,53 @@ def main(argv: list[str] | None = None) -> None:
         print(f"  Project:  {project_name}")
         print(f"  Dir:      {project_dir}")
         print()
+
+        # Backfill .gitignore if missing (added in v1.47.8+)
+        gitignore_path = harness / ".gitignore"
+        if not gitignore_path.exists():
+            gitignore_path.write_text(
+                "# Security — never commit secrets\n"
+                ".env\n"
+                "*.key\n"
+                "*.pem\n"
+                "*.p12\n"
+                "*.pfx\n"
+                "\n"
+                "# Runtime state — not version controlled\n"
+                "launcher-logs/\n"
+                "*.flock\n"
+                "*.heartbeat\n"
+                "heartbeat.yaml\n"
+                "watcher.heartbeat\n"
+                "watcher.heartbeat.yaml\n"
+                "monitor-health.log\n"
+                "session-progress.md\n"
+                "session-summary-*.md\n"
+                "watcher.yaml\n"
+                "inbox.yaml\n"
+                "modules/\n"
+                "contracts/\n"
+                "review-lenses/\n"
+                "benchmark.jsonl\n"
+                "onboarding.yaml\n"
+                "daemon.pid.json\n"
+                "daemon-state.json\n"
+                "operator-state.json\n"
+                "trace.jsonl\n"
+                "*.lock.d/\n"
+                "\n"
+                "# SQLite database (WAL files included)\n"
+                "state.sqlite3\n"
+                "state.sqlite3-shm\n"
+                "state.sqlite3-wal\n"
+                "\n"
+                "# Runtime control files\n"
+                "circuit-breaker.json\n"
+                ".launchagents_snapshot\n"
+                "daemon-monitor.py\n",
+                encoding="utf-8"
+            )
+            print("Created: .superharness/.gitignore (runtime state excluded from git)")
 
     # Read identity block for template rendering
     identity_src = template_dir / "identity-core.md"
@@ -499,7 +593,7 @@ def main(argv: list[str] | None = None) -> None:
     print("Next steps (terminal):")
     print("  superharness doctor --project .   ← verify setup")
     print('  superharness task create --project . --id my-task --title "..." --owner codex-cli')
-    print("  Add .superharness/ to .gitignore OR commit it (your choice)")
+    print("  .superharness/.gitignore already created — runtime state excluded, protocol files tracked")
     print()
     if platform.system() != "Darwin":
         print("Tip: To enable a background watcher (macOS only), re-run with --with-watcher")
