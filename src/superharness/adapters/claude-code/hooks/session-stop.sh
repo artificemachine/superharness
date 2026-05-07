@@ -97,7 +97,7 @@ fi
 
 # --- Stop active Claude-owned tasks and write handoffs ---
 STOPPED_TASK_IDS=""
-if [ -f "$SH_DIR/contract.yaml" ] && command -v python3 >/dev/null 2>&1; then
+if [ -f "$SH_DIR/state.sqlite3" ] && command -v python3 >/dev/null 2>&1; then
   export SH_SESSION_STOP_TIMESTAMP="$TIMESTAMP"
   export SH_SESSION_STOP_HARNESS_DIR="$SH_DIR"
   export SH_SESSION_STOP_TASK_CONTEXT="$TASK_CONTEXT"
@@ -105,7 +105,6 @@ if [ -f "$SH_DIR/contract.yaml" ] && command -v python3 >/dev/null 2>&1; then
   export SH_SESSION_STOP_GIT_STATUS="${GIT_STATUS:-}"
   export SH_SESSION_STOP_GIT_LOG="${GIT_LOG:-}"
   STOPPED_TASK_IDS="$(python3 - <<'PY'
-import io
 import os
 import sys
 import yaml
@@ -117,7 +116,7 @@ branch = (os.environ.get("SH_SESSION_STOP_BRANCH") or "").strip()
 git_status = (os.environ.get("SH_SESSION_STOP_GIT_STATUS") or "").strip()
 git_log = (os.environ.get("SH_SESSION_STOP_GIT_LOG") or "").strip()
 
-contract_path = os.path.join(harness_dir, "contract.yaml")
+project_dir = os.path.dirname(harness_dir)
 handoffs_dir = os.path.join(harness_dir, "handoffs")
 os.makedirs(handoffs_dir, exist_ok=True)
 timestamp_safe = (timestamp or "unknown").replace(":", "-")
@@ -133,21 +132,12 @@ context = (
 )
 
 try:
-    try:
-        import ruamel.yaml as _ry
-        _yaml = _ry.YAML()
-        _yaml.preserve_quotes = True
-        with open(contract_path, encoding="utf-8") as fh:
-            doc = _yaml.load(fh) or {}
-        use_ruamel = True
-    except ImportError:
-        with open(contract_path, encoding="utf-8") as fh:
-            doc = yaml.safe_load(fh) or {}
-        use_ruamel = False
+    from superharness.engine import state_reader, state_writer
 
-    changed = False
     stopped_ids = []
-    for task in (doc.get("tasks") or []):
+    tasks = state_reader.get_tasks(project_dir)
+
+    for task in tasks:
         if not isinstance(task, dict):
             continue
         if str(task.get("owner", "")) != "claude-code":
@@ -158,11 +148,15 @@ try:
         if not task_id:
             continue
 
-        task["status"] = "stopped"
-        task["stopped_reason"] = "session_stopped"
-        task["stopped_at"] = timestamp
-        task["summary"] = summary
-        changed = True
+        # Write status to SQLite via state_writer (canonical path)
+        try:
+            state_writer.set_task_status(project_dir, task_id, "stopped",
+                stopped_at=timestamp,
+                stopped_reason="session_stopped",
+                summary=summary)
+        except Exception:
+            pass
+
         stopped_ids.append(task_id)
 
         handoff = {
@@ -183,15 +177,6 @@ try:
         )
         with open(handoff_path, "w", encoding="utf-8") as fh:
             yaml.safe_dump(handoff, fh, default_flow_style=False, allow_unicode=True, sort_keys=False)
-
-    if changed:
-        with open(contract_path, "w", encoding="utf-8") as fh:
-            if use_ruamel:
-                buf = io.StringIO()
-                _yaml.dump(doc, buf)
-                fh.write(buf.getvalue())
-            else:
-                fh.write(yaml.dump(doc, default_flow_style=False, allow_unicode=True, sort_keys=False))
 
     for task_id in stopped_ids:
         print(task_id)

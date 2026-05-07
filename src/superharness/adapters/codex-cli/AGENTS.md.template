@@ -21,25 +21,24 @@ When reviewing Claude's work: check for over-abstraction, unnecessary layers, ve
 When Claude reviews YOUR work: expect challenges on edge cases and architectural impact. Take them seriously.
 
 Protocol files are in `.superharness/`.
-- Read `contract.yaml` before starting any work. Find YOUR assigned tasks.
-- Read `failures.yaml` before implementing — search for past failures with this technology.
-- Read `decisions.yaml` for architectural context.
+- Run `shux contract` to see all tasks. Run `shux context <id>` for full task context.
+- Run `shux recall KEYWORDS` to search past handoffs, failures, and decisions.
 - Read any handoffs in `handoffs/` addressed to `codex-cli`.
-- When you make a decision between alternatives: log it in the contract's decisions section.
-- When something fails: log it in the contract's failures section.
-- When you finish a task: update contract status, write a handoff YAML, append to `ledger.md`.
+- When you make a decision between alternatives: write a handoff and append to ledger.
+- When something fails: record it via `shux verify --id <id> --result fail --method "..."`.
+- When you finish a task: run `shux task status --id <id> --status report_ready`. Run `shux close <id>` when verified.
 - When creating/updating contract tasks: always set `project_path` to the absolute project directory.
 - When reviewing: use the review lenses assigned to the task in the contract. Never rubber-stamp.
 
 ## Delegation Prompting Rule
 When the user asks to read the contract (or equivalent), do this:
-1. Read `.superharness/contract.yaml`.
+1. Run `shux contract` to see all tasks.
 2. Summarize contract id, status, and tasks with owner/status.
 3. If any task is `todo` or `in_progress` and owner is `claude-code`, ask:
    "I detected owner is claude-code. Do you want to delegate `<task_id>` now?"
    Do not use generic alternatives like "Want me to tackle...".
 4. If user says yes:
-   - set task status to `in_progress` (if needed),
+   - run `shux task status --id <id> --status in_progress` (if needed),
    - create/update `.superharness/handoffs/<DATE>-<TASK_ID>.yaml` addressed to `claude-code`,
    - append one line to `.superharness/ledger.md`,
    - return the exact Claude kickoff prompt.
