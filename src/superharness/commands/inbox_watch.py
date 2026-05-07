@@ -2183,20 +2183,28 @@ def _run_scripts(
         except Exception as e:
             _log_watcher_error(project_dir, "watcher", str(e))
 
-        # Loop detection: check launcher logs for the task before dispatching
+        # Loop detection: stateful warn→block using LoopGuard
         try:
-            from superharness.engine.loop_detector import detect_loop
-            log_dir = os.path.join(project_dir, ".superharness", "launcher-logs")
+            from superharness.engine.loop_detector import detect_loop, LoopGuard
+            sh_dir = os.path.join(project_dir, ".superharness")
+            guard = LoopGuard(state_dir=sh_dir)
+            log_dir = os.path.join(sh_dir, "launcher-logs")
+            _loop_action = "allow"
             if os.path.isdir(log_dir):
-                for lf in sorted(os.listdir(log_dir)):
+                for lf in sorted(os.listdir(log_dir), reverse=True):
                     if lf.endswith(".log") and t in lf:
                         loop = detect_loop(os.path.join(log_dir, lf))
-                        if loop["loop_detected"]:
+                        decision = guard.check(t, loop)
+                        _loop_action = decision["action"]
+                        if _loop_action == "warn":
+                            print(f"loop-guard: WARN {t} — {decision['reason']} (pattern: {loop['pattern']})")
+                        elif _loop_action == "block":
                             from superharness.engine.policy_gate import check_agent_policy
-                            gate = check_agent_policy(t, loop_detected=True)
-                            print(f"loop-guard: BLOCKED {t} — {gate['reason']} (pattern: {loop['pattern']})")
-                            continue
+                            check_agent_policy(t, loop_detected=True)
+                            print(f"loop-guard: BLOCKED {t} — {decision['reason']} (pattern: {loop['pattern']})")
                         break
+            if _loop_action == "block":
+                continue
         except Exception as e:
             _log_watcher_error(project_dir, "watcher", str(e))
 
