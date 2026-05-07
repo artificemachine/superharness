@@ -155,6 +155,7 @@ _cmd("hygiene",         "Check contract hygiene.",                   module="sup
 
 # ── Fully ported Python command modules (cross-platform) ─────────────────────
 
+_cmd("tui",             "Terminal board — live task view with keyboard actions.", module="superharness.commands.tui")
 _cmd("init",            "Initialize project protocol files.",        module="superharness.commands.init_project")
 _cmd("logs",            "Show or tail the centralized superharness log.", module="superharness.commands.logs")
 _cmd("watcher-worker",  "Build watcher worker and install watcher.", module="superharness.commands.watcher_worker")
@@ -688,6 +689,7 @@ def cmd_shux():
   shux continue            ← resume active contract and run full session lifecycle
   shux status              ← dashboard: contract, tasks, watcher, profile
   shux dashboard           ← open browser dashboard (auto-detects project, opens browser)
+  shux tui                 ← terminal board — live task view with keyboard actions
   shux test-type <id>      ← set mandatory test types for a task (interactive prompt)
   shux enhance             ← list, enable, disable modules (integrations)
   shux run "<prompt>"      ← run a prompt via SDK (auto-detect, falls back to CLI)
