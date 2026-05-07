@@ -37,36 +37,8 @@ def _ensure_task_in_sqlite(conn, task_id: str, project_dir: str, now: str) -> No
         import yaml as _yaml
         if tasks_dao.get(conn, task_id) is not None:
             return
-        contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
-        if not os.path.exists(contract_file):
-            return
-        with open(contract_file, encoding="utf-8") as _f:
-            doc = _yaml.safe_load(_f) or {}
-        td = next(
-            (t for t in (doc.get("tasks") or []) if isinstance(t, dict) and t.get("id") == task_id),
-            None,
-        )
-        if td is None:
-            return
-        row = tasks_dao.TaskRow(
-            id=task_id,
-            title=str(td.get("title", task_id)),
-            owner=td.get("owner"),
-            status=str(td.get("status", "todo")),
-            effort=td.get("effort"),
-            project_path=td.get("project_path"),
-            development_method=td.get("development_method"),
-            acceptance_criteria=td.get("acceptance_criteria") or [],
-            test_types=td.get("test_types") or [],
-            out_of_scope=td.get("out_of_scope") or [],
-            definition_of_done=td.get("definition_of_done") or [],
-            context=td.get("context"),
-            tdd=td.get("tdd"),
-            version=1,
-            created_at=td.get("created_at") or now,
-            blocked_by=td.get("blocked_by") or [],
-        )
-        tasks_dao.upsert(conn, row)
+        # Task not in SQLite — skip (no YAML fallback)
+        return
     except Exception:
         pass
 
