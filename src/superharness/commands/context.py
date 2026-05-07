@@ -143,9 +143,9 @@ def task_context(
         return f"No .superharness/ found at {project_dir}"
 
     contract_path = sh_dir / "contract.yaml"
-    contract = _load_yaml_safe(contract_path) if contract_path.exists() else {}
-    if not isinstance(contract, dict):
-        contract = {}
+    from superharness.engine import state_reader
+    tasks = state_reader.get_tasks(str(project_dir))
+    contract = {"tasks": tasks}
 
     # Auto-select task if not specified
     if not task_id:

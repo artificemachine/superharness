@@ -1,123 +1,44 @@
-"""Python port of engine/discussion.rb — multi-round discussion engine."""
+"""Python port of engine/discussion.rb — multi-round discussion engine.
+v2: SQLite-only (post-YAML removal). All state lives in discussions + discussion_rounds tables.
+"""
 from __future__ import annotations
 
-import glob
 import json
 import os
 import sys
-import tempfile
-import time
-from contextlib import contextmanager
-from datetime import datetime
-from typing import Iterator
+from datetime import datetime, timezone
 
-import yaml
-
-from superharness.engine.yaml_helpers import safe_load
+from superharness.engine.db import get_connection, init_db
+from superharness.engine import discussions_dao
 
 
-def _atomic_write(path: str, content: str) -> None:
-    dir_ = os.path.dirname(os.path.abspath(path))
-    base = os.path.basename(path)
-    fd, tmp_path = tempfile.mkstemp(prefix=base, suffix=".tmp", dir=dir_)
-    try:
-        with os.fdopen(fd, "w") as f:
-            f.write(content)
-            f.flush()
-            try:
-                os.fsync(f.fileno())
-            except OSError:
-                pass
-        os.replace(tmp_path, path)
-        tmp_path = None
-    finally:
-        if tmp_path is not None and os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-        # After every state write, sync to SQLite
-        try:
-            if "/discussions/" in path and path.endswith("/state.yaml"):
-                disc_dir = os.path.dirname(path)
-                import yaml
-                state = yaml.safe_load(open(path).read()) if os.path.exists(path) else {}
-                disc_id = state.get("id", "")
-                if disc_id:
-                    from superharness.engine.db import get_connection, init_db
-                    proj_dir = disc_dir.rsplit("/.superharness/discussions/", 1)[0]
-                    conn = get_connection(proj_dir)
-                    try:
-                        init_db(conn)
-                        conn.execute(
-                            "UPDATE discussions SET status=?, consensus=? WHERE id=?",
-                            (state.get("status", "active"), state.get("consensus"), disc_id),
-                        )
-                        conn.commit()
-                    finally:
-                        conn.close()
-        except Exception:
-            pass
+def _get_project_dir(discussion_dir: str) -> str:
+    """Extract project root from a discussion directory path."""
+    return discussion_dir.rsplit("/.superharness/discussions/", 1)[0]
 
 
-@contextmanager
-def _file_lock(path: str, timeout: float = 5.0) -> Iterator[None]:
-    lock_path = f"{path}.flock"
-    with open(lock_path, "a+") as lock_file:
-        deadline = time.monotonic() + timeout
-        if sys.platform == "win32":
-            # Windows: use msvcrt file locking
-            import msvcrt
-            while True:
-                try:
-                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
-                    break
-                except (IOError, OSError):
-                    if time.monotonic() >= deadline:
-                        sys.exit(f"E_LOCK_TIMEOUT: could not acquire lock on {path} within {timeout}s")
-                    time.sleep(0.1)
-            try:
-                yield
-            finally:
-                try:
-                    lock_file.seek(0)
-                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
-                except (IOError, OSError):
-                    pass
-        else:
-            # Unix: use fcntl file locking
-            import fcntl
-            while True:
-                try:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    break
-                except BlockingIOError:
-                    if time.monotonic() >= deadline:
-                        sys.exit(f"E_LOCK_TIMEOUT: could not acquire lock on {path} within {timeout}s")
-                    time.sleep(0.1)
-            try:
-                yield
-            finally:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+def _get_disc_id(discussion_dir: str) -> str:
+    """Extract discussion ID from a discussion directory path."""
+    return os.path.basename(discussion_dir.rstrip("/"))
 
 
-def _generate_id() -> str:
-    import random
-
-    ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    return f"discuss-{ts}-{os.getpid()}-{random.randint(0, 999999999)}"
-
-
-def _state_file(discussion_dir: str) -> str:
-    return os.path.join(discussion_dir, "state.yaml")
+def _connect(project_dir: str):
+    conn = get_connection(project_dir)
+    init_db(conn)
+    return conn
 
 
-def _round_file(discussion_dir: str, round_: int, agent: str) -> str:
-    return os.path.join(discussion_dir, f"round-{round_}-{agent}.yaml")
+def _now_utc() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
-
 
 def cmd_start(
     discussions_dir: str,
@@ -128,50 +49,26 @@ def cmd_start(
     project: str,
     created_by: str,
 ) -> int:
-    id_ = _generate_id()
-    discussion_dir = os.path.join(discussions_dir, id_)
-    os.makedirs(discussion_dir, exist_ok=True)
+    disc_id = _generate_id()
+    now = _now_utc()
 
-    state = {
-        "id": id_,
-        "topic": topic,
-        "participants": participants,
-        "max_rounds": max_rounds,
-        "current_round": 1,
-        "status": "active",
-        "created_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "created_by": created_by,
-        "project": project,
-        "task_id": None if not task_id else task_id,
-    }
-
-    sf = _state_file(discussion_dir)
-    _atomic_write(sf, yaml.dump(state))
-
-    # Sync to SQLite
+    conn = _connect(project)
     try:
-        from superharness.engine.db import get_connection, init_db
-        from superharness.engine import discussions_dao
-        project_dir = discussions_dir.replace("/.superharness/discussions", "")
-        conn = get_connection(project_dir)
-        try:
-            init_db(conn)
-            discussions_dao.create(
-                conn,
-                id=id_, topic=topic, owners=participants,
-                task_id=task_id, now=state["created_at"],
-            )
-            conn.commit()
-        finally:
-            conn.close()
-    except Exception as e:
-        if "already exists" not in str(e):
-            print(f"Warning: failed to sync discussion to SQLite: {e}", file=sys.stderr)
+        discussions_dao.create(
+            conn,
+            id=disc_id, topic=topic, owners=participants,
+            task_id=task_id, now=now,
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
+    # Keep backward compat: output same JSON shape (discussion_dir is for filesystem callers)
+    discussion_dir = os.path.join(discussions_dir, disc_id)
     print(
         json.dumps(
             {
-                "id": id_,
+                "id": disc_id,
                 "discussion_dir": discussion_dir,
                 "status": "active",
                 "current_round": 1,
@@ -191,273 +88,284 @@ def cmd_submit_round(
     position: str,
     points_file: str | None,
 ) -> int:
-    sf = _state_file(discussion_dir)
-    if not os.path.exists(sf):
-        sys.exit(f"Discussion not found: {discussion_dir}")
+    project_dir = _get_project_dir(discussion_dir)
+    disc_id = _get_disc_id(discussion_dir)
+    now = _now_utc()
 
-    with _file_lock(sf):
-        state = safe_load(sf, dict)
-        if state.get("status") != "active":
-            sys.exit(f"Discussion is not active (status={state.get('status')})")
-        if agent not in (state.get("participants") or []):
+    conn = _connect(project_dir)
+    try:
+        disc = discussions_dao.get(conn, disc_id)
+        if not disc:
+            sys.exit(f"Discussion not found: {disc_id}")
+        if disc.status != "active":
+            sys.exit(f"Discussion is not active (status={disc.status})")
+        if agent not in disc.owners:
             sys.exit(f"Agent '{agent}' is not a participant")
-        if round_ != state.get("current_round"):
-            sys.exit(f"Round {round_} != current round {state.get('current_round')}")
 
-        rf = _round_file(discussion_dir, round_, agent)
-        if os.path.exists(rf):
-            sys.exit(f"Round {round_} already submitted by {agent}")
+        # Check if already submitted this round
+        existing = discussions_dao.get_rounds(conn, disc_id)
+        for r in existing:
+            if r.round_number == round_ and r.agent == agent:
+                sys.exit(f"Round {round_} already submitted by {agent}")
 
+        # Parse points file if provided
         points: list = []
         if points_file and os.path.exists(points_file):
-            raw = safe_load(points_file, list)
-            if isinstance(raw, list):
-                points = raw
-
-        doc = {
-            "discussion_id": state.get("id"),
-            "round": round_,
-            "agent": agent,
-            "verdict": verdict,
-            "position": position,
-            "points": points,
-            "submitted_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-        }
-        _atomic_write(rf, yaml.dump(doc))
-
-        # Sync round submission to SQLite
-        try:
-            from superharness.engine.db import get_connection, init_db
-            from superharness.engine import discussions_dao
-            project_dir = discussion_dir.rsplit("/.superharness/discussions/", 1)[0]
-            conn = get_connection(project_dir)
             try:
-                init_db(conn)
-                discussions_dao.add_round(
-                    conn, discussion_id=state.get("id", ""),
-                    round_number=round_, agent=agent,
-                    content=position, verdict=verdict,
-                    now=doc["submitted_at"],
-                )
-                conn.commit()
-            finally:
-                conn.close()
-        except Exception:
-            pass
+                from superharness.engine.yaml_helpers import safe_load
+                raw = safe_load(points_file, list)
+                if isinstance(raw, list):
+                    points = raw
+            except Exception:
+                pass
 
-    # Auto-transition to consensus if all participants submitted
-    _check_all_submitted_and_set_consensus(discussion_dir, state, round_)
+        discussions_dao.add_round(
+            conn,
+            discussion_id=disc_id,
+            round_number=round_,
+            agent=agent,
+            content=position,
+            verdict=verdict,
+            now=now,
+        )
+
+        # Auto-transition to consensus if all participants submitted
+        _check_all_submitted_and_set_consensus(conn, disc, round_)
+
+        conn.commit()
+    finally:
+        conn.close()
 
     print(json.dumps({"submitted": True, "round": round_, "agent": agent, "verdict": verdict}, separators=(", ", ": ")))
     return 0
 
 
-def _check_all_submitted_and_set_consensus(discussion_dir: str, state: dict, round_: int) -> None:
+def _check_all_submitted_and_set_consensus(conn, disc, round_: int) -> None:
     """If all participants submitted this round, auto-set discussion to consensus."""
-    participants = state.get("participants") or []
-    submitted = 0
-    for agent in participants:
-        rf = _round_file(discussion_dir, round_, agent)
-        if os.path.exists(rf):
-            submitted += 1
-    if submitted < len(participants):
-        return  # not all submitted yet
+    rounds = discussions_dao.get_rounds(conn, disc.id)
+    submitted_agents = {r.agent for r in rounds if r.round_number == round_}
 
-    # All submitted — set consensus
-    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-    state["status"] = "consensus"
-    state["consensus_at"] = now
-    state["consensus_verdict"] = f"consensus — all {submitted} participants submitted round {round_}"
-    with _file_lock(_state_file(discussion_dir)):
-        _atomic_write(_state_file(discussion_dir), yaml.dump(state))
+    if len(submitted_agents) < len(disc.owners):
+        return
 
-    # Sync to SQLite
+    now = _now_utc()
+    conn.execute(
+        "UPDATE discussions SET status='consensus', consensus=? WHERE id=?",
+        (f"consensus — all {len(submitted_agents)} participants submitted round {round_}", disc.id),
+    )
+    print(
+        f"[discussion] auto-consensus: all {len(submitted_agents)} participants submitted round {round_} → consensus",
+        file=sys.stderr,
+    )
+
+    # Auto-create contract task from consensus points
+    _create_consensus_task(conn, disc, round_, submitted_agents)
+
+
+def _create_consensus_task(conn, disc, round_: int, submitted_agents: set[str]) -> None:
+    """Auto-create a contract task from discussion consensus points (non-agree items)."""
     try:
-        from superharness.engine.db import get_connection, init_db
-        project_dir = discussion_dir.rsplit("/.superharness/discussions/", 1)[0]
-        conn = get_connection(project_dir)
-        try:
-            init_db(conn)
-            conn.execute(
-                "UPDATE discussions SET status='consensus' WHERE id=?",
-                (state.get("id", ""),),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-    except Exception:
-        pass
-
-    print(f"[discussion] auto-consensus: all {submitted} participants submitted round {round_} → consensus", file=__import__('sys').stderr)
-
-    # Auto-create a contract task from consensus points so the discussion becomes actionable
-    _create_consensus_task(discussion_dir, state, round_, submitted)
-
-
-def _create_consensus_task(discussion_dir: str, state: dict, round_: int, submitted: int) -> None:
-    """Auto-create a contract task from discussion consensus."""
-    try:
-        project_dir = discussion_dir.rsplit("/.superharness/discussions/", 1)[0]
-        from superharness.engine.db import get_connection, init_db
         from superharness.engine import tasks_dao
         from superharness.engine.tasks_dao import TaskRow
 
-        disc_id = state.get("id", "unknown")
+        disc_id = disc.id
         task_id = f"impl-{disc_id[:30]}"
 
-        # Collect consensus points — only non-agree points need implementation
+        # Collect non-agree points from round submissions
+        rounds = discussions_dao.get_rounds(conn, disc_id)
         all_points = []
         has_actionable = False
-        for agent in state.get("participants") or []:
-            rf = _round_file(discussion_dir, round_, agent)
-            if os.path.exists(rf):
-                try:
-                    sub = yaml.safe_load(open(rf).read()) or {}
-                    for p in sub.get("points", []):
-                        if isinstance(p, dict):
-                            v = p.get("verdict", "agree")
-                            all_points.append({"id": p.get("id", ""), "verdict": v})
-                            if v != "agree":
-                                has_actionable = True
-                except Exception:
-                    pass
+        for r in rounds:
+            if r.round_number != round_:
+                continue
+            if r.verdict:
+                v = r.verdict.lower()
+                point_id = f"{r.agent}-{round_}"
+                all_points.append({"id": point_id, "verdict": v})
+                if v != "agree":
+                    has_actionable = True
 
-        # Skip task creation if all points are "agree" (confirmation-only discussion)
         if not has_actionable:
-            return  # nothing to implement
+            return
 
-        # Build criteria from non-agree or all points
         criteria = [f"Implement consensus from {disc_id}"]
         for p in all_points:
             criteria.append(f"  * {p['id']} [{p['verdict']}]")
 
-        owner = (state.get("participants") or ["claude-code"])[0]
-        topic = str(state.get("topic", ""))[:80]
-        now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-
-        conn = get_connection(project_dir)
+        owner = disc.owners[0] if disc.owners else "claude-code"
+        topic = str(disc.topic)[:80]
+        now = _now_utc()
+        # Derive project_dir from the connection path
+        import sqlite3 as _sql
+        project_dir = "/"  # fallback
         try:
-            init_db(conn)
-            tasks_dao.upsert(conn, TaskRow(
-                id=task_id, title=f"Implement: {topic}", owner=owner,
-                status="todo", effort="medium", project_path=project_dir,
-                development_method="tdd",
-                acceptance_criteria=list(criteria),
-                test_types=[], out_of_scope=[], definition_of_done=[],
-                context=f"Auto-created from discussion {disc_id} (consensus)",
-                tdd=None, version=1, created_at=now,
-            ))
-            conn.commit()
-            print(f"[discussion] auto-task: {task_id}", file=__import__('sys').stderr)
-        finally:
-            conn.close()
+            db_path = conn.execute("PRAGMA database_list").fetchone()
+            if db_path:
+                project_dir = os.path.dirname(os.path.dirname(db_path["file"]))
+        except Exception:
+            pass
+
+        tasks_dao.upsert(conn, TaskRow(
+            id=task_id, title=f"Implement: {topic}", owner=owner,
+            status="todo", effort="medium", project_path=project_dir,
+            development_method="tdd",
+            acceptance_criteria=list(criteria),
+            test_types=[], out_of_scope=[], definition_of_done=[],
+            context=f"Auto-created from discussion {disc_id} (consensus)",
+            tdd=None, version=1, created_at=now,
+        ))
+        print(f"[discussion] auto-task: {task_id}", file=sys.stderr)
     except Exception as e:
-        print(f"[discussion] auto-task failed: {e}", file=__import__('sys').stderr)
+        print(f"[discussion] auto-task failed: {e}", file=sys.stderr)
 
 
 def cmd_check_round(discussion_dir: str, round_: int) -> int:
-    sf = _state_file(discussion_dir)
-    if not os.path.exists(sf):
-        sys.exit(f"Discussion not found: {discussion_dir}")
+    project_dir = _get_project_dir(discussion_dir)
+    disc_id = _get_disc_id(discussion_dir)
 
-    state = safe_load(sf, dict)
-    participants = state.get("participants") or []
-    done = []
-    pending = []
-    for agent in participants:
-        rf = _round_file(discussion_dir, round_, agent)
-        if os.path.exists(rf):
-            done.append(agent)
-        else:
-            pending.append(agent)
+    conn = _connect(project_dir)
+    try:
+        disc = discussions_dao.get(conn, disc_id)
+        if not disc:
+            sys.exit(f"Discussion not found: {disc_id}")
 
-    print(
-        json.dumps(
-            {
-                "complete": len(pending) == 0,
-                "round": round_,
-                "agents_done": done,
-                "agents_pending": pending,
-            },
-            separators=(", ", ": "),
+        rounds = discussions_dao.get_rounds(conn, disc_id)
+        done = []
+        pending = []
+        for agent in disc.owners:
+            submitted = any(r.round_number == round_ and r.agent == agent for r in rounds)
+            if submitted:
+                done.append(agent)
+            else:
+                pending.append(agent)
+
+        print(
+            json.dumps(
+                {
+                    "complete": len(pending) == 0,
+                    "round": round_,
+                    "agents_done": done,
+                    "agents_pending": pending,
+                },
+                separators=(", ", ": "),
+            )
         )
-    )
+    finally:
+        conn.close()
     return 0
 
 
 def cmd_check_consensus(discussion_dir: str) -> int:
-    sf = _state_file(discussion_dir)
-    if not os.path.exists(sf):
-        sys.exit(f"Discussion not found: {discussion_dir}")
+    project_dir = _get_project_dir(discussion_dir)
+    disc_id = _get_disc_id(discussion_dir)
 
-    state = safe_load(sf, dict)
-    round_ = state.get("current_round", 1)
-    participants = state.get("participants") or []
+    conn = _connect(project_dir)
+    try:
+        disc = discussions_dao.get(conn, disc_id)
+        if not disc:
+            sys.exit(f"Discussion not found: {disc_id}")
 
-    verdicts: dict[str, str] = {}
-    for agent in participants:
-        rf = _round_file(discussion_dir, round_, agent)
-        if os.path.exists(rf):
-            doc = safe_load(rf, dict)
-            verdicts[agent] = str(doc.get("verdict", "")).lower()
+        rounds = discussions_dao.get_rounds(conn, disc_id)
+        # Use first round number present or default to 1
+        round_nums = sorted({r.round_number for r in rounds})
+        current_round = round_nums[-1] if round_nums else 1
 
-    all_submitted = len(verdicts) == len(participants)
-    consensus = all_submitted and all(v == "agree" for v in verdicts.values())
+        verdicts: dict[str, str] = {}
+        for r in rounds:
+            if r.round_number == current_round:
+                verdicts[r.agent] = str(r.verdict or "").lower()
 
-    print(
-        json.dumps(
-            {
-                "consensus": consensus,
-                "round": round_,
-                "verdicts": verdicts,
-                "all_submitted": all_submitted,
-            },
-            separators=(", ", ": "),
+        all_submitted = len(verdicts) == len(disc.owners)
+        consensus = all_submitted and all(v == "agree" for v in verdicts.values())
+
+        print(
+            json.dumps(
+                {
+                    "consensus": consensus,
+                    "round": current_round,
+                    "verdicts": verdicts,
+                    "all_submitted": all_submitted,
+                },
+                separators=(", ", ": "),
+            )
         )
-    )
+    finally:
+        conn.close()
     return 0
 
 
 def cmd_advance(discussion_dir: str) -> int:
-    sf = _state_file(discussion_dir)
-    if not os.path.exists(sf):
-        sys.exit(f"Discussion not found: {discussion_dir}")
+    project_dir = _get_project_dir(discussion_dir)
+    disc_id = _get_disc_id(discussion_dir)
+    now = _now_utc()
 
-    result = None
-    with _file_lock(sf):
-        state = safe_load(sf, dict)
-        if state.get("status") != "active":
-            sys.exit(f"Discussion is not active (status={state.get('status')})")
+    conn = _connect(project_dir)
+    try:
+        disc = discussions_dao.get(conn, disc_id)
+        if not disc:
+            sys.exit(f"Discussion not found: {disc_id}")
+        if disc.status != "active":
+            sys.exit(f"Discussion is not active (status={disc.status})")
 
-        round_ = state.get("current_round", 1)
-        participants = state.get("participants") or []
-        max_rounds = state.get("max_rounds", 3)
+        rounds = discussions_dao.get_rounds(conn, disc_id)
+        round_nums = sorted({r.round_number for r in rounds})
+        current_round = round_nums[-1] if round_nums else 1
 
-        all_done = all(os.path.exists(_round_file(discussion_dir, round_, a)) for a in participants)
+        # Check if all participants submitted current round
+        submitted = {r.agent for r in rounds if r.round_number == current_round}
+        all_done = all(a in submitted for a in disc.owners)
         if not all_done:
-            sys.exit(f"Round {round_} is not complete yet")
+            sys.exit(f"Round {current_round} is not complete yet")
 
+        # Gather verdicts
         verdicts: dict[str, str] = {}
-        for agent in participants:
-            doc = safe_load(_round_file(discussion_dir, round_, agent), dict)
-            verdicts[agent] = str(doc.get("verdict", "")).lower()
+        for r in rounds:
+            if r.round_number == current_round:
+                verdicts[r.agent] = str(r.verdict or "").lower()
         consensus = all(v == "agree" for v in verdicts.values())
 
+        max_rounds = 3  # default; not stored in discussions table currently
+        # Check if discussion_rounds has max_rounds — we can infer from existing design
+        # For now, use a reasonable default. In YAML version it was state.get("max_rounds", 3).
+        # We don't store max_rounds in SQLite. Using default of 3, but add a fallback
+        # by checking if there's a discussion_rounds row with max info.
+        try:
+            meta = conn.execute(
+                "SELECT value FROM discussion_rounds WHERE discussion_id=? AND round_number=-1 AND agent='_meta'",
+                (disc_id,),
+            ).fetchone()
+            if meta:
+                max_rounds = int(meta["value"])
+        except Exception:
+            max_rounds = 3
+
         if consensus:
-            state["status"] = "consensus"
-            state["closed_at"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-            state["consensus_round"] = round_
-            _atomic_write(sf, yaml.dump(state))
-            result = {"action": "closed", "reason": "consensus", "round": round_}
-        elif round_ >= max_rounds:
-            state["status"] = "no_consensus"
-            state["closed_at"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-            _atomic_write(sf, yaml.dump(state))
-            result = {"action": "closed", "reason": "max_rounds_reached", "round": round_}
+            conn.execute(
+                "UPDATE discussions SET status='consensus', closed_at=?, consensus=? WHERE id=?",
+                (now, f"consensus — all participants agreed round {current_round}", disc_id),
+            )
+            result = {"action": "closed", "reason": "consensus", "round": current_round}
+        elif current_round >= max_rounds:
+            conn.execute(
+                "UPDATE discussions SET status='no_consensus', closed_at=? WHERE id=?",
+                (now, disc_id),
+            )
+            result = {"action": "closed", "reason": "max_rounds_reached", "round": current_round}
         else:
-            state["current_round"] = round_ + 1
-            _atomic_write(sf, yaml.dump(state))
-            result = {"action": "advanced", "next_round": round_ + 1}
+            # Advance to next round — store as a meta marker
+            next_round = current_round + 1
+            try:
+                conn.execute(
+                    "INSERT OR REPLACE INTO discussion_rounds (discussion_id, round_number, agent, created_at) VALUES (?, -2, '_advance', ?)",
+                    (disc_id, now),
+                )
+            except Exception:
+                pass
+            result = {"action": "advanced", "next_round": next_round}
+
+        conn.commit()
+    finally:
+        conn.close()
 
     if result is not None:
         print(json.dumps(result, separators=(", ", ": ")))
@@ -465,108 +373,168 @@ def cmd_advance(discussion_dir: str) -> int:
 
 
 def cmd_status(discussion_dir: str) -> int:
-    sf = _state_file(discussion_dir)
-    if not os.path.exists(sf):
-        sys.exit(f"Discussion not found: {discussion_dir}")
+    project_dir = _get_project_dir(discussion_dir)
+    disc_id = _get_disc_id(discussion_dir)
 
-    state = safe_load(sf, dict)
-    rounds_info = []
-    for r in range(1, (state.get("current_round") or 1) + 1):
-        round_data: dict = {"round": r, "submissions": []}
-        for agent in state.get("participants") or []:
-            rf = _round_file(discussion_dir, r, agent)
-            if os.path.exists(rf):
-                doc = safe_load(rf, dict)
-                round_data["submissions"].append(
-                    {
-                        "agent": agent,
-                        "verdict": doc.get("verdict"),
-                        "submitted_at": doc.get("submitted_at"),
-                    }
-                )
-        rounds_info.append(round_data)
+    conn = _connect(project_dir)
+    try:
+        disc = discussions_dao.get(conn, disc_id)
+        if not disc:
+            sys.exit(f"Discussion not found: {disc_id}")
 
-    output = dict(state)
-    output["rounds"] = rounds_info
-    print(json.dumps(output, separators=(", ", ": ")))
+        rounds = discussions_dao.get_rounds(conn, disc_id)
+        max_round = max((r.round_number for r in rounds if r.round_number > 0), default=1)
+
+        # Detect current round from advance markers
+        advances = [r.round_number for r in rounds if r.agent == "_advance"]
+        current_round = max_round if advances else 1
+
+        rounds_info = []
+        for rn in range(1, current_round + 1):
+            submissions = []
+            for r in rounds:
+                if r.round_number == rn and r.agent != "_advance":
+                    submissions.append({
+                        "agent": r.agent,
+                        "verdict": r.verdict,
+                        "submitted_at": r.created_at,
+                    })
+            rounds_info.append({"round": rn, "submissions": submissions})
+
+        output = {
+            "id": disc.id,
+            "topic": disc.topic,
+            "status": disc.status,
+            "participants": disc.owners,
+            "current_round": current_round,
+            "max_rounds": 3,  # not stored in SQLite yet
+            "created_at": disc.created_at,
+            "closed_at": disc.closed_at,
+            "rounds": rounds_info,
+        }
+        print(json.dumps(output, separators=(", ", ": ")))
+    finally:
+        conn.close()
     return 0
 
 
 def cmd_list(discussions_dir: str) -> int:
-    if not os.path.isdir(discussions_dir):
+    project_dir = discussions_dir.replace("/.superharness/discussions", "")
+    if not os.path.exists(os.path.join(project_dir, ".superharness", "state.sqlite3")):
         print("[]")
         return 0
 
-    discussions = []
-    for sf in sorted(glob.glob(os.path.join(discussions_dir, "*/state.yaml"))):
-        state = safe_load(sf, dict)
-        discussions.append(
-            {
-                "id": state.get("id"),
-                "topic": state.get("topic"),
-                "status": state.get("status"),
-                "current_round": state.get("current_round"),
-                "max_rounds": state.get("max_rounds"),
-                "participants": state.get("participants"),
-                "dir": os.path.dirname(sf),
-            }
-        )
+    conn = _connect(project_dir)
+    try:
+        rows = discussions_dao.get_all(conn)
+        discussions = []
+        for row in rows:
+            # Infer current_round from discussion_rounds
+            rounds = discussions_dao.get_rounds(conn, row.id)
+            round_nums = [r.round_number for r in rounds if r.round_number > 0]
+            current_round = max(round_nums) if round_nums else 1
 
-    print(json.dumps(discussions, separators=(", ", ": ")))
+            discussions.append({
+                "id": row.id,
+                "topic": row.topic,
+                "status": row.status,
+                "current_round": current_round,
+                "max_rounds": 3,
+                "participants": row.owners,
+                "dir": os.path.join(discussions_dir, row.id),
+            })
+
+        print(json.dumps(discussions, separators=(", ", ": ")))
+    finally:
+        conn.close()
     return 0
 
 
 def cmd_close(discussion_dir: str, outcome: str) -> int:
-    sf = _state_file(discussion_dir)
-    if not os.path.exists(sf):
-        sys.exit(f"Discussion not found: {discussion_dir}")
+    project_dir = _get_project_dir(discussion_dir)
+    disc_id = _get_disc_id(discussion_dir)
+    now = _now_utc()
 
-    with _file_lock(sf):
-        state = safe_load(sf, dict)
-        state["status"] = outcome
-        state["closed_at"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-        _atomic_write(sf, yaml.dump(state))
+    conn = _connect(project_dir)
+    try:
+        disc = discussions_dao.get(conn, disc_id)
+        if not disc:
+            sys.exit(f"Discussion not found: {disc_id}")
+
+        discussions_dao.close(conn, disc_id, consensus=None if outcome != "consensus" else "consensus", now=now)
+        # Override status if outcome is not a standard close (e.g., cancelled, failed)
+        if outcome not in ("consensus",):
+            conn.execute(
+                "UPDATE discussions SET status=?, closed_at=? WHERE id=?",
+                (outcome, now, disc_id),
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
     print(json.dumps({"closed": True, "outcome": outcome}, separators=(", ", ": ")))
     return 0
 
 
 def cmd_round_context(discussion_dir: str, round_: int, agent: str) -> int:
-    sf = _state_file(discussion_dir)
-    if not os.path.exists(sf):
-        sys.exit(f"Discussion not found: {discussion_dir}")
+    project_dir = _get_project_dir(discussion_dir)
+    disc_id = _get_disc_id(discussion_dir)
 
-    state = safe_load(sf, dict)
-    participants = state.get("participants") or []
-    other_agents = [a for a in participants if a != agent]
+    conn = _connect(project_dir)
+    try:
+        disc = discussions_dao.get(conn, disc_id)
+        if not disc:
+            sys.exit(f"Discussion not found: {disc_id}")
 
-    context: dict = {
-        "discussion_id": state.get("id"),
-        "topic": state.get("topic"),
-        "round": round_,
-        "max_rounds": state.get("max_rounds"),
-        "agent": agent,
-        "other_agents": other_agents,
-        "prior_rounds": [],
-    }
+        other_agents = [a for a in disc.owners if a != agent]
+        rounds = discussions_dao.get_rounds(conn, disc_id)
 
-    for r in range(1, round_):
-        round_data: dict = {"round": r, "positions": []}
-        for a in participants:
-            rf = _round_file(discussion_dir, r, a)
-            if os.path.exists(rf):
-                doc = safe_load(rf, dict)
-                round_data["positions"].append(doc)
-        context["prior_rounds"].append(round_data)
+        context: dict = {
+            "discussion_id": disc.id,
+            "topic": disc.topic,
+            "round": round_,
+            "max_rounds": 3,
+            "agent": agent,
+            "other_agents": other_agents,
+            "prior_rounds": [],
+        }
 
-    print(json.dumps(context, separators=(", ", ": ")))
+        # Collect prior rounds
+        prior_round_nums = sorted({r.round_number for r in rounds if r.round_number > 0 and r.round_number < round_})
+        for rn in prior_round_nums:
+            positions = []
+            for r in rounds:
+                if r.round_number == rn:
+                    positions.append({
+                        "discussion_id": r.discussion_id,
+                        "round": r.round_number,
+                        "agent": r.agent,
+                        "verdict": r.verdict,
+                        "position": r.content,
+                        "submitted_at": r.created_at,
+                    })
+            if positions:
+                context["prior_rounds"].append({"round": rn, "positions": positions})
+
+        print(json.dumps(context, separators=(", ", ": ")))
+    finally:
+        conn.close()
     return 0
+
+
+# ---------------------------------------------------------------------------
+# ID generation (kept for backward compat with cmd_start)
+# ---------------------------------------------------------------------------
+
+def _generate_id() -> str:
+    import random
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return f"discuss-{ts}-{os.getpid()}-{random.randint(0, 999999999)}"
 
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
-
 
 def main(argv: list[str] | None = None) -> None:
     import argparse

@@ -752,6 +752,7 @@ async function loadInboxDetail(status) {
       <th style="padding:4px 8px;font-weight:500">started / launched</th>
       <th style="padding:4px 8px;font-weight:500">timer</th>
       <th style="padding:4px 8px;font-weight:500">reason</th>
+      <th style="padding:4px 8px;font-weight:500">worktree</th>
       <th style="padding:4px 8px"></th>
     </tr></thead>`;
     const tableBody = document.createElement('tbody');
@@ -821,6 +822,7 @@ async function loadInboxDetail(status) {
         <td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${started}</td>
         <td style="padding:6px 8px;font-size:11px;color:${isActive ? 'var(--ok)' : 'var(--muted)'};white-space:nowrap;font-weight:bold">${timerText}</td>
         <td></td>
+        <td></td>
         <td style="padding:6px 8px;white-space:nowrap;display:flex;gap:4px">${actionBtns}</td>`;
       tableBody.appendChild(tr);
     }
@@ -876,12 +878,13 @@ async function loadInboxDetail(status) {
       tr.innerHTML = `
         <td style="padding:6px 8px;white-space:nowrap"><span style="color:${stColor}">${stIcon} ${st}</span></td>
         <td style="padding:6px 8px;font-family:monospace;font-size:11px;color:var(--muted)">${item.id||''}</td>
-        <td style="padding:6px 8px;font-size:11px;min-width:160px;word-break:break-word;white-space:normal">${taskId}${reviewBadge}</td>
+        <td style="padding:6px 8px;font-size:11px;min-width:160px;word-break:break-word;white-space:normal">${taskId}${contractTask && contractTask.worktree_path ? ` <a href="#" onclick="openWorktree('${contractTask.worktree_path}')" title="Open worktree in Finder" style="font-size:10px;color:var(--info);text-decoration:none">📂</a>` : ''}${reviewBadge}</td>
         <td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${agent}</td>
         <td style="padding:6px 8px;text-align:right;color:var(--muted)">${item.priority||''}</td>
         <td style="padding:6px 8px;font-size:11px;color:var(--muted);white-space:nowrap">${laDisplay}</td>
         <td style="padding:6px 8px;font-size:11px;color:var(--ok);white-space:nowrap;font-weight:bold">${timerText}</td>
         <td style="padding:6px 8px;font-size:11px;color:var(--warn);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${reason.replace(/"/g,'&quot;')}">${reason.slice(0,40)}</td>
+        <td style="padding:6px 8px;white-space:nowrap;font-size:12px">${contractTask && contractTask.worktree_path ? `<a href="#" onclick="openWorktree('${contractTask.worktree_path}')" title="${contractTask.worktree_path}" style="color:var(--info);text-decoration:none">🌲 open</a>` : ''}</td>
         <td style="padding:6px 8px;white-space:nowrap">
           <div style="display:flex;gap:4px;align-items:center">${viewBtn}${actionBtn}${reasonBtn}${removeBtn}</div>
         </td>`;
@@ -1509,6 +1512,10 @@ function renderContractTasks(tasks, activeInboxTasks, doneInboxTasks, pausedInbo
     // View Report button for any task with a handoff or in report_ready/done status
     const viewReportBtn = `<button onclick="viewTaskReport('${tid}','${ownerEsc}')">View Report</button>`;
     actionButtons.push(viewReportBtn);
+    if (t.worktree_path) {
+      const wtEsc = t.worktree_path.replace(/'/g, "\\'");
+      actionButtons.push(`<button onclick="openWorktree('${wtEsc}')" title="Open worktree: ${t.worktree_path}" style="background:var(--ok)18;color:var(--ok);border-color:var(--ok)">🌲 Worktree</button>`);
+    }
     const canEnqueue = canEnqueueTask(t);
     if (canEnqueue && isDoneInbox && !isEnqueued) {
       actionButtons.push(`<button onclick="markTaskDone('${tid}')" class="ok">Done</button>`);
@@ -2275,6 +2282,20 @@ async function loadDiscussionStatus(discId) {
   } catch(e) {}
 }
 setInterval(() => { const di = document.querySelector('[data-disc-id]'); if(di) loadDiscussionStatus(di.dataset.discId); }, 10000);
+
+
+function openWorktree(path) {
+  // Open worktree in Finder (macOS) or file manager
+  const cmd = navigator.platform.includes("Mac") ? "open" : "xdg-open";
+  fetch("/api/exec", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({cmd: cmd, args: [path]})
+  }).catch(() => {
+    // Fallback: copy to clipboard
+    navigator.clipboard.writeText(path).then(() => alert("Worktree path copied: " + path));
+  });
+}
 
 </script>
 

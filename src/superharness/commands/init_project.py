@@ -233,38 +233,9 @@ def main(argv: list[str] | None = None) -> None:
         (harness / "handoffs").mkdir(parents=True, exist_ok=True)
         (harness / "contracts").mkdir(parents=True, exist_ok=True)
         (harness / "review-lenses").mkdir(parents=True, exist_ok=True)
+        (harness / "rules").mkdir(parents=True, exist_ok=True)
 
-        # failures.yaml
-        (harness / "failures.yaml").write_text(
-            "# Cross-agent failure memory\n"
-            "# Both Claude Code and Codex CLI read/write this file.\n"
-            "# Format:\n"
-            "#   - what: \"brief description\"\n"
-            "#     why_failed: \"root cause\"\n"
-            "#     date: YYYY-MM-DD\n"
-            "#     agent: claude-code | codex-cli\n"
-            "#     tech: \"technology/library involved\"\n"
-            "#     severity: minor | major | critical\n"
-            "#     promoted: false  # set true when added to CLAUDE.md/AGENTS.md \"Do Not\" section\n"
-            "failures: []\n",
-            encoding="utf-8"
-        )
-
-        # decisions.yaml
-        (harness / "decisions.yaml").write_text(
-            "# Cross-agent decision records (ADR-lite)\n"
-            "# Both Claude Code and Codex CLI read/write this file.\n"
-            "# Format:\n"
-            "#   - id: \"short-kebab-id\"\n"
-            "#     what: \"decision title\"\n"
-            "#     why: \"rationale\"\n"
-            "#     alternatives: [\"alt1\", \"alt2\"]\n"
-            "#     date: YYYY-MM-DD\n"
-            "#     by: claude-code | codex-cli | owner\n"
-            "#     status: accepted | superseded | deprecated\n"
-            "decisions: []\n",
-            encoding="utf-8"
-        )
+        # State lives in SQLite (post-YAML removal). No contract/inbox/failures/decisions YAML created.
 
         # .gitignore — runtime state only; contract/handoffs/discussions remain tracked
         gitignore_path = harness / ".gitignore"
@@ -288,7 +259,6 @@ def main(argv: list[str] | None = None) -> None:
                 "session-progress.md\n"
                 "session-summary-*.md\n"
                 "watcher.yaml\n"
-                "inbox.yaml\n"
                 "modules/\n"
                 "contracts/\n"
                 "review-lenses/\n"
@@ -328,29 +298,7 @@ def main(argv: list[str] | None = None) -> None:
         if hb_tmpl.is_file():
             shutil.copy2(str(hb_tmpl), str(harness / "heartbeat.yaml"))
 
-        # contract.yaml
-        contract_tmpl = template_dir / "contract.yaml"
-        contract_dst = harness / "contract.yaml"
-        if contract_tmpl.is_file():
-            _render_template(contract_tmpl, contract_dst, project_name, tech_stack, status, project_dir, today)
-        else:
-            contract_dst.write_text(
-                f"# Active contract for {project_name}\n"
-                f"id: initial-setup\n"
-                f"created: {today}\n"
-                f"created_by: owner\n"
-                f"status: draft\n\n"
-                f'goal: "TBD — describe the current objective"\n\n'
-                f"tasks: []\n\ndecisions: []\n\nfailures: []\n\n"
-                f"# Task schema (recommended):\n"
-                f"# tasks:\n"
-                f"#   - id: \"task-id\"\n"
-                f"#     title: \"Task title\"\n"
-                f'#     status: "todo|in_progress|done"\n'
-                f'#     owner: "claude-code|codex-cli"\n'
-                f'#     project_path: "{project_dir}"\n',
-                encoding="utf-8"
-            )
+        # State lives in SQLite — no contract.yaml created
 
         # features.json — project feature definition of done
         features_dst = harness / "features.json"
@@ -394,7 +342,6 @@ def main(argv: list[str] | None = None) -> None:
                 "session-progress.md\n"
                 "session-summary-*.md\n"
                 "watcher.yaml\n"
-                "inbox.yaml\n"
                 "modules/\n"
                 "contracts/\n"
                 "review-lenses/\n"
@@ -439,7 +386,7 @@ def main(argv: list[str] | None = None) -> None:
                 f"- Stack: {tech_stack}\n"
                 f"- Status: {status}\n\n"
                 f"## Cross-Agent Protocol\n"
-                f"- Read `.superharness/contract.yaml` before starting work.\n"
+                f"- Run `shux contract` before starting work.\n"
                 f"- Keep task status, ledger, and handoff updated before stopping.\n",
                 encoding="utf-8"
             )
@@ -462,7 +409,7 @@ def main(argv: list[str] | None = None) -> None:
                 f"- Stack: {tech_stack}\n"
                 f"- Status: {status}\n\n"
                 f"## Cross-Agent Protocol\n"
-                f"- Read `.superharness/contract.yaml` before starting work.\n"
+                f"- Run `shux contract` before starting work.\n"
                 f"- Keep task status, ledger, and handoff updated before stopping.\n",
                 encoding="utf-8"
             )

@@ -976,7 +976,7 @@ def delegate(
                 f"\n"
                 f"If you agree with everything, set verdict: agree. "
                 f"Otherwise set verdict: disagree or partial and explain in points.\n"
-                f"Read .superharness/discussions/{discussion_id}/state.yaml for the full discussion context.\n"
+                f"Run `shux context {discussion_id}` for the full discussion context.\n"
                 f"Read the handoff referenced in .superharness/contract.yaml for the task details."
                 f"{auto_directive}"
             )
@@ -1005,7 +1005,7 @@ def delegate(
                 f"  points: list of {{id, verdict, rationale}} for each sub-point\n"
                 f"  submitted_at: (current UTC ISO 8601 timestamp)\n"
                 f"\n"
-                f"Read .superharness/discussions/{discussion_id}/state.yaml for full context."
+                f"Run `shux context {discussion_id}` for full context."
                 f"{auto_directive}"
             )
 
@@ -1033,7 +1033,8 @@ def delegate(
                     f"continue contract\n"
                     f"Read the latest handoff addressed to claude-code and execute task {task_id}.\n"
                     f"Use scope, commands, and acceptance criteria from the handoff.\n"
-                    f"Update .superharness/contract.yaml task status, append .superharness/ledger.md, "  # shipguard:ignore PY-007
+                    f"Run `shux rules` to see project constraints before starting.\n"
+                    f"Use `shux contract` to update task status. Append .superharness/ledger.md, "  # shipguard:ignore PY-007
                     f"and refresh the handoff with outcomes.\n"
                     f"Contract id: {contract_id}."
                     f"{acceptance_criteria}{context_hint}{user_instructions}{auto_directive}"
@@ -1042,8 +1043,9 @@ def delegate(
                 prompt = (
                     f"continue contract\n"
                     f"No handoff exists yet for task {task_id}.\n"
-                    f"Read .superharness/contract.yaml directly and execute task {task_id}.\n"
-                    f"Update .superharness/contract.yaml task status, append .superharness/ledger.md, "  # shipguard:ignore PY-007
+                    f"Run `shux rules` to see project constraints before starting.\n"
+                    f"Use `shux contract` and `shux context {task_id}` to understand the task.\n"
+                    f"Use `shux contract` to update task status. Append .superharness/ledger.md, "  # shipguard:ignore PY-007
                     f"and create a new handoff with outcomes.\n"  # shipguard:ignore PY-007
                     f"Contract id: {contract_id}."
                     f"{acceptance_criteria}{context_hint}{user_instructions}{auto_directive}"
@@ -1054,7 +1056,8 @@ def delegate(
                     f"continue contract\n"
                     f"Read the latest handoff addressed to gemini-cli and execute task {task_id}.\n"
                     f"Use scope, commands, and acceptance criteria from the handoff.\n"
-                    f"Update .superharness/contract.yaml task status, append .superharness/ledger.md, "  # shipguard:ignore PY-007
+                    f"Run `shux rules` to see project constraints before starting.\n"
+                    f"Use `shux contract` to update task status. Append .superharness/ledger.md, "  # shipguard:ignore PY-007
                     f"and refresh the handoff with outcomes.\n"
                     f"Contract id: {contract_id}."
                     f"{acceptance_criteria}{context_hint}{user_instructions}{auto_directive}"
@@ -1063,8 +1066,9 @@ def delegate(
                 prompt = (
                     f"continue contract\n"
                     f"No handoff exists yet for task {task_id}.\n"
-                    f"Read .superharness/contract.yaml directly and execute task {task_id}.\n"
-                    f"Update .superharness/contract.yaml task status, append .superharness/ledger.md, "  # shipguard:ignore PY-007
+                    f"Run `shux rules` to see project constraints before starting.\n"
+                    f"Use `shux contract` and `shux context {task_id}` to understand the task.\n"
+                    f"Use `shux contract` to update task status. Append .superharness/ledger.md, "  # shipguard:ignore PY-007
                     f"and create a new handoff with outcomes.\n"  # shipguard:ignore PY-007
                     f"Contract id: {contract_id}."
                     f"{acceptance_criteria}{context_hint}{user_instructions}{auto_directive}"
@@ -1084,8 +1088,9 @@ def delegate(
                 prompt = (
                     f"continue contract\n"
                     f"No handoff exists yet for task {task_id}.\n"
-                    f"Read .superharness/contract.yaml directly and execute task {task_id}.\n"
-                    f"Update .superharness/contract.yaml task status, append .superharness/ledger.md, "  # shipguard:ignore PY-007
+                    f"Run `shux rules` to see project constraints before starting.\n"
+                    f"Use `shux contract` and `shux context {task_id}` to understand the task.\n"
+                    f"Use `shux contract` to update task status. Append .superharness/ledger.md, "  # shipguard:ignore PY-007
                     f"and create a new handoff with outcomes.\n"  # shipguard:ignore PY-007
                     f"Contract id: {contract_id}."
                     f"{acceptance_criteria}{user_instructions}"

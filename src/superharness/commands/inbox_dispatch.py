@@ -1136,6 +1136,19 @@ def _resolve_execution_context(ctx: DispatchContext) -> int | None:
         if ctx.worktree_dir:
             print(f"Dispatching in worktree: {ctx.worktree_dir} (main worktree is dirty)")
             ctx.exec_project = ctx.worktree_dir
+            # Record worktree path on task for dashboard visibility
+            try:
+                from superharness.engine.db import get_connection, init_db
+                conn = get_connection(ctx.project_dir)
+                init_db(conn)
+                conn.execute(
+                    "UPDATE tasks SET worktree_path=? WHERE id=?",
+                    (ctx.worktree_dir, ctx.item_task),
+                )
+                conn.commit()
+                conn.close()
+            except Exception:
+                pass
         else:
             # Worktree creation failed — fall back to pause
             pause_now = _now_utc()
@@ -1183,24 +1196,6 @@ def _classify_launch_failure(exit_code: int, log_tail: str) -> dict:
         retry_minutes = int(m.group(1)) if m else 30
         return {"action": "pause", "retry_after_minutes": retry_minutes}
     return {"action": "fail", "retry_after_minutes": 0}
-
-
-def _agent_already_submitted(disc_dir: str, round_num: int, agent: str) -> bool:
-    """Return True if *agent* already has a submission for *round_num* in state.yaml."""
-    if not os.path.isdir(disc_dir):
-        return False
-    try:
-        import yaml as _yaml
-        state_path = os.path.join(disc_dir, "state.yaml")
-        with open(state_path, encoding="utf-8") as fh:
-            state = _yaml.safe_load(fh) or {}
-        for r in state.get("rounds") or []:
-            if not isinstance(r, dict) or r.get("round") != round_num:
-                continue
-            return any(s.get("agent") == agent for s in (r.get("submissions") or []))
-    except Exception:
-        pass
-    return False
 
 
 def _prepare_launch_context(ctx: DispatchContext) -> None:

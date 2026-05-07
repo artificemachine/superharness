@@ -1241,6 +1241,7 @@ def contract_tasks(contract_file: Path) -> list[dict]:
             "scheduled_after": str(t.get("scheduled_after", "")),
             "due_by": str(t.get("due_by", "")),
             "depends_on": (t.get("blocked_by") or t.get("depends_on") or []) if isinstance(t.get("blocked_by") or t.get("depends_on"), list) else [x.strip() for x in str(t.get("blocked_by") or t.get("depends_on") or "").strip("[]").split(",") if x.strip()],
+            "worktree_path": str(t.get("worktree_path", "")),
         })
     return tasks
 

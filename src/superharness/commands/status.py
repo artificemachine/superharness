@@ -262,8 +262,7 @@ def _deep_inbox_health(project_dir: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def _deep_discussion_health(project_dir: str) -> dict:
-    """Full discussion health scan."""
-    discussions_dir = os.path.join(project_dir, ".superharness", "discussions")
+    """Full discussion health scan (SQLite-only, post-YAML removal)."""
     result: dict = {
         "counts": {},
         "consensus_unclosed": [],
@@ -271,58 +270,38 @@ def _deep_discussion_health(project_dir: str) -> dict:
     }
     now = datetime.now(timezone.utc)
 
-    # Try SQLite first, fall back to filesystem
+    # SQLite-only (YAML removal v1.41+)
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import discussions_dao
+    conn = get_connection(project_dir)
     try:
-        from superharness.engine.db import get_connection, init_db
-        from superharness.engine import discussions_dao
-        conn = get_connection(project_dir)
-        try:
-            init_db(conn)
-            for row in discussions_dao.get_all(conn):
-                st = row.status
-                if st:
-                    result["counts"][st] = result["counts"].get(st, 0) + 1
-                if st == "consensus":
-                    result["consensus_unclosed"].append({
-                        "id": row.id,
-                        "topic": row.topic or "(no topic)",
-                        "round": f"{row.current_round}/{row.max_rounds}",
-                    })
-                if st == "active":
-                    # Check age from created_at
-                    created = getattr(row, "created_at", None)
-                    if created:
-                        try:
-                            t = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
-                            age_h = (now - t).total_seconds() / 3600
-                            if age_h >= 24:
-                                result["stale_active"].append({
-                                    "id": row.id,
-                                    "topic": row.topic or "(no topic)",
-                                    "age_h": int(age_h),
-                                })
-                        except (ValueError, TypeError):
-                            pass
-        finally:
-            conn.close()
-    except Exception:
-        # Filesystem fallback
-        if os.path.isdir(discussions_dir):
-            for path in sorted(glob.glob(os.path.join(discussions_dir, "*/state.yaml"))):
-                try:
-                    y = safe_load(path, dict)
-                    st = str(y.get("status", ""))
-                    if st:
-                        result["counts"][st] = result["counts"].get(st, 0) + 1
-                    if st == "consensus":
-                        disc_id = os.path.basename(os.path.dirname(path))
-                        result["consensus_unclosed"].append({
-                            "id": disc_id,
-                            "topic": str(y.get("topic", "(no topic)"))[:80],
-                            "round": f"{y.get('current_round','?')}/{y.get('max_rounds','?')}",
-                        })
-                except Exception:
-                    continue
+        init_db(conn)
+        for row in discussions_dao.get_all(conn):
+            st = row.status
+            if st:
+                result["counts"][st] = result["counts"].get(st, 0) + 1
+            if st == "consensus":
+                result["consensus_unclosed"].append({
+                    "id": row.id,
+                    "topic": row.topic or "(no topic)",
+                })
+            if st == "active":
+                # Check age from created_at
+                created = getattr(row, "created_at", None)
+                if created:
+                    try:
+                        t = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
+                        age_h = (now - t).total_seconds() / 3600
+                        if age_h >= 24:
+                            result["stale_active"].append({
+                                "id": row.id,
+                                "topic": row.topic or "(no topic)",
+                                "age_h": int(age_h),
+                            })
+                    except (ValueError, TypeError):
+                        pass
+    finally:
+        conn.close()
 
     return result
 

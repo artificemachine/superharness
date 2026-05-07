@@ -3,6 +3,15 @@
 ## Identity
 Read `SOUL.md` for operating constraints, guardrails, and identity context.
 
+## Project Rules
+Before starting any work, run `shux rules` to see all project constraints.
+Key rules:
+- State lives in SQLite — contract.yaml, inbox.yaml, failures.yaml, decisions.yaml are DEAD
+- Discussions live in SQLite, not YAML files
+- CHANGELOG.md is append-only
+- Never merge to main without owner approval
+- Decompose tasks >3 criteria or >4 files
+
 # Identity Core — Project Owner
 
 Project owner context. Keep personal/company details out of committed files.
@@ -16,6 +25,14 @@ Project owner context. Keep personal/company details out of committed files.
 - Never edit `.env`, credentials, or secrets.
 - Never push directly to `main`.
 - Run required checks before handoff/commit.
+
+## Problem Triage Rule (Strict)
+When a task, discussion, or test problem surfaces:
+1. **State what you observe** — one or two sentences describing the problem.
+2. **Check auto-mode first** — can the watcher, reconciler, CI, or scheduled job resolve it without intervention? If yes, say so and wait.
+3. **Propose action only if auto-mode has a gap** — then suggest the smallest intervention and wait for confirmation.
+
+Never jump straight to "want me to dispatch / fix / re-run X?" without going through steps 1 and 2 first.
 
 ---
 See also: `SOUL.md.template` for the separate soul file approach (preferred for new projects).

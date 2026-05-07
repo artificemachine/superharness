@@ -623,6 +623,14 @@ def build_payload(project_path: str) -> dict:
     tasks             = _build_tasks(raw_tasks, handoffs_by_task)
     project_settings  = _load_project_settings(sh_dir)
 
+    # Load project rules for agent context (Pi-style self-configuration)
+    rules_text = ""
+    try:
+        from superharness.commands.rules import all_rules_text
+        rules_text = all_rules_text(str(sh_dir.parent))
+    except Exception:
+        pass
+
     return {
         "schema_version":   SCHEMA_VERSION,
         "project_settings": project_settings,
@@ -635,6 +643,7 @@ def build_payload(project_path: str) -> dict:
         "decisions":      _load_decisions(sh_dir),
         "inbox":          _load_inbox(sh_dir),
         "agent_pulse":    _load_agent_pulse(sh_dir),
+        "rules":          rules_text,
     }
 
 
