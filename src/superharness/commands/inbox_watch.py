@@ -2370,29 +2370,28 @@ def _reconcile_discussion_contract(project_dir: str) -> int:
 
     When a discussion is cancelled or closed via CLI (not dashboard), the contract
     task linked to it stays in_progress. This reconciler catches that gap.
+    Reads discussion state from SQLite (post-YAML removal).
     Returns count of tasks updated.
     """
     from superharness.engine import state_reader, state_writer
-    import yaml as _yaml
-
-    disc_base = os.path.join(project_dir, ".superharness", "discussions")
-    if not os.path.isdir(disc_base):
-        return 0
+    from superharness.engine.db import get_connection, init_db
 
     terminal = {"cancelled", "closed", "consensus", "deadlock", "failed"}
 
-    # Collect discussion IDs whose state is terminal
+    # Collect terminal discussion IDs from SQLite
     terminal_disc_ids: set[str] = set()
-    for disc_id in os.listdir(disc_base):
-        state_path = os.path.join(disc_base, disc_id, "state.yaml")
-        if not os.path.isfile(state_path):
-            continue
-        try:
-            state = _yaml.safe_load(open(state_path, encoding="utf-8").read()) or {}
-            if state.get("status") in terminal:
-                terminal_disc_ids.add(disc_id)
-        except Exception:
-            continue
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        rows = conn.execute(
+            "SELECT id FROM discussions WHERE status IN (?, ?, ?, ?, ?)",
+            tuple(terminal),
+        ).fetchall()
+        terminal_disc_ids = {r["id"] for r in rows}
+    except Exception:
+        return 0
+    finally:
+        conn.close()
 
     if not terminal_disc_ids:
         return 0
@@ -2447,116 +2446,61 @@ _CONSENSUS_GRACE_MINUTES = 60  # auto-close consensus discussions after 1h
 def _auto_close_consensus_discussions(project_dir: str) -> int:
     """Close discussions that have been in consensus state beyond the grace period.
 
-    Reads discussion state from SQLite (primary) with filesystem fallback.
-    Updates both SQLite and the on-disk state.yaml.
+    Reads discussion state from SQLite (post-YAML removal).
     Returns count of discussions closed.
     """
-    import yaml as _yaml
     from datetime import datetime, timezone
     from superharness.engine.db import get_connection, init_db
+    from superharness.engine import discussions_dao
 
     now = datetime.now(timezone.utc)
     now_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     closed = 0
 
-    disc_base = os.path.join(project_dir, ".superharness", "discussions")
-    if not os.path.isdir(disc_base):
-        return 0
-
-    # Collect consensus discussions from filesystem (always up-to-date)
-    consensus_discs: list[dict] = []
-    for disc_id in os.listdir(disc_base):
-        state_path = os.path.join(disc_base, disc_id, "state.yaml")
-        if not os.path.isfile(state_path):
-            continue
-        try:
-            state = _yaml.safe_load(open(state_path, encoding="utf-8").read()) or {}
-            if str(state.get("status", "")) == "consensus":
-                consensus_discs.append({"id": disc_id, "state": state, "path": state_path})
-        except Exception:
-            continue
-
-    if not consensus_discs:
-        return 0
-
-    conn = None
+    conn = get_connection(project_dir)
     try:
-        conn = get_connection(project_dir)
         init_db(conn)
-    except Exception:
-        conn = None
+        rows = discussions_dao.get_all(conn, status="consensus")
+        if not rows:
+            return 0
 
-    for disc in consensus_discs:
-        disc_id = disc["id"]
-        state = disc["state"]
-        state_path = disc["path"]
+        for row in rows:
+            disc_id = row.id
 
-        # If closed_at is already stamped but status wasn't updated, close immediately —
-        # this repairs data inconsistency where a past write set closed_at without
-        # flipping status to "closed".
-        age_min: int | None = None
-        if state.get("closed_at"):
-            pass  # fall through to close block below
-
-        else:
-            # Check age: use consensus_at, round timestamps, or file mtime as fallback
-            age_min = None
-            consensus_at = state.get("consensus_at", "")
-            if not consensus_at:
-                rounds = state.get("rounds") or []
-                if isinstance(rounds, list) and rounds:
-                    last_round = rounds[-1]
-                    if isinstance(last_round, dict):
-                        consensus_at = last_round.get("created_at", "")
-            if consensus_at:
-                try:
-                    t = datetime.fromisoformat(str(consensus_at).replace("Z", "+00:00"))
-                    age_min = int((now - t).total_seconds() / 60)
-                except (ValueError, TypeError):
-                    pass
-            if age_min is None:
-                try:
-                    mtime = os.path.getmtime(state_path)
-                    age_min = int((now.timestamp() - mtime) / 60)
-                except OSError:
+            # If closed_at is already stamped but status wasn't updated, close immediately
+            # (repairs SQLite-only drift where close() set closed_at but status stayed consensus)
+            age_min: int | None = None
+            if row.closed_at:
+                pass  # fall through to close below
+            else:
+                # Use created_at for age (no consensus_at column in current schema)
+                created = row.created_at
+                if created:
+                    try:
+                        t = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
+                        age_min = int((now - t).total_seconds() / 60)
+                    except (ValueError, TypeError):
+                        age_min = 99999
+                else:
                     age_min = 99999
-            if age_min < _CONSENSUS_GRACE_MINUTES:
-                continue
+                if age_min < _CONSENSUS_GRACE_MINUTES:
+                    continue
 
-        # Close the discussion
-        state["status"] = "closed"
-        state["closed_at"] = now_str
-        try:
-            with open(state_path, "w", encoding="utf-8") as f:
-                _yaml.dump(state, f, default_flow_style=False, sort_keys=False)
-        except Exception as e:
-            print(f"discussion-auto-close: failed to write {state_path}: {e}", file=sys.stderr)
-            continue
+            discussions_dao.close(
+                conn, disc_id,
+                consensus=row.consensus or "consensus",
+                now=now_str,
+            )
+            closed += 1
+            topic = (row.topic or "")[:60]
+            _age_str = f"{age_min}m" if age_min is not None else "closed_at already set"
+            print(f"discussion-auto-close: {disc_id} → closed ({_age_str}) — {topic}")
 
-        # Update SQLite if available
-        if conn:
-            try:
-                from superharness.engine import discussions_dao
-                discussions_dao.close(
-                    conn, disc_id,
-                    consensus=state.get("consensus_verdict", "consensus"),
-                    now=now_str,
-                )
-            except Exception:
-                pass
-
-        closed += 1
-        topic = str(state.get("topic", ""))[:60]
-        _age_str = f"{age_min}m" if age_min is not None else "closed_at already set"
-        print(f"discussion-auto-close: {disc_id} → closed ({_age_str}) — {topic}")
-
-    if conn:
-        try:
-            conn.commit()
-        except Exception:
-            pass
-        finally:
-            conn.close()
+        conn.commit()
+    except Exception as e:
+        print(f"discussion-auto-close: error: {e}", file=sys.stderr)
+    finally:
+        conn.close()
 
     return closed
 
