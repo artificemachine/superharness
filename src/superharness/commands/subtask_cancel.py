@@ -112,8 +112,8 @@ def main(argv: list[str] | None = None) -> None:
     project_dir = os.path.realpath(opts.project or os.getcwd())
     contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
 
-    if not os.path.exists(contract_file):
-        print(f"Missing contract file: {contract_file}", file=sys.stderr)
+    if not os.path.exists(os.path.join(project_dir, ".superharness", "state.sqlite3")):
+        print(f"Missing project state: {project_dir}/.superharness/state.sqlite3", file=sys.stderr)
         sys.exit(1)
 
     rc = cancel_subtask(
