@@ -155,6 +155,30 @@ def resolve_tier(model_name: str) -> str | None:
     return None
 
 
+def find_tier_for_model(target: str, model_name: str, project_dir: str | None = None) -> str:
+    """Reverse lookup: find the tier name (mini/standard/max) for a given model ID.
+    
+    Checks project-specific map first, then defaults.
+    """
+    mmap = _load_model_map(project_dir)
+    target_map = mmap.get(target, {})
+    for tier, m_id in target_map.items():
+        if m_id == model_name:
+            return tier
+            
+    # Fallback to default MODEL_MAP
+    target_map = MODEL_MAP.get(target, {})
+    for tier, m_id in target_map.items():
+        if m_id == model_name:
+            return tier
+            
+    # If the model_name itself is a tier, return it
+    if model_name in VALID_TIERS:
+        return model_name
+        
+    return _FALLBACK_TIER
+
+
 def classify_complexity(task: dict) -> str:
     """Classify task complexity: simple, medium, or complex.
 

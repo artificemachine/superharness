@@ -140,6 +140,64 @@ def _task_is_dispatch_ready(project_dir: str, task_id: str) -> bool:
         return False
 
 
+def normalize(file: str, drop_statuses: list[str] | None = None,
+              drop_prefixes: list[str] | None = None,
+              archive_file: str | None = None, now: str | None = None) -> int:
+    """Normalize inbox by dropping/archiving rows. (Re-implemented)."""
+    items = safe_load_normalized(file, list)
+    if not isinstance(items, list):
+        items = []
+
+    new_items = []
+    dropped_items = []
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        drop = False
+        if drop_statuses and item.get("status") in drop_statuses:
+            drop = True
+        if drop_prefixes:
+            item_id = str(item.get("id", ""))
+            if any(item_id.startswith(p) for p in drop_prefixes):
+                drop = True
+
+        if drop:
+            dropped_items.append(item)
+        else:
+            new_items.append(item)
+
+    with open(file, "w", encoding="utf-8") as f:
+        f.write(HEADER)
+        yaml.dump(new_items, f, default_flow_style=False, sort_keys=True)
+
+    if archive_file and dropped_items:
+        with open(archive_file, "a", encoding="utf-8") as f:
+            if os.path.getsize(archive_file) == 0:
+                f.write(ARCHIVE_HEADER)
+            yaml.dump(dropped_items, f, default_flow_style=False, sort_keys=True)
+
+    return 0
+
+
+def set_field(file: str, id: str, key: str, value: str) -> int:
+    """Compatibility shim for set_field."""
+    items = safe_load_normalized(file, list)
+    if not isinstance(items, list):
+        items = []
+    found = False
+    for item in items:
+        if isinstance(item, dict) and str(item.get("id")) == id:
+            item[key] = value
+            found = True
+            break
+    if found:
+        with open(file, "w", encoding="utf-8") as f:
+            f.write(HEADER)
+            yaml.dump(items, f, default_flow_style=False, sort_keys=True)
+    return 0 if found else 1
+
+
 # Compatibility shims — used by discuss.py, task.py, inbox_enqueue.py
 HEADER = "# Delegation inbox\n"
 
@@ -185,14 +243,15 @@ if __name__ == "__main__":
     _p.add_argument("command")
     _p.add_argument("--file", required=True)
     _p.add_argument("--to", default=None)
+    _p.add_argument("--id", default=None)
+    _p.add_argument("--now", default=None)
     _args = _p.parse_args()
 
     if _args.command == "next_pending":
         _file = _args.file
         _target = _args.to
         try:
-            with open(_file, encoding="utf-8") as _f:
-                _items = yaml.safe_load(_f) or []
+            _items = safe_load_normalized(_file, list)
             if not isinstance(_items, list):
                 _items = []
             for _item in _items:
@@ -212,3 +271,32 @@ if __name__ == "__main__":
             print(f"next_pending error: {_e}", file=sys.stderr)
             sys.exit(1)
         sys.exit(0)
+
+    if _args.command == "launch":
+        _file = _args.file
+        _id = _args.id
+        _now = _args.now or datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        try:
+            _items = safe_load_normalized(_file, list)
+            if not isinstance(_items, list):
+                _items = []
+            _found = False
+            for _item in _items:
+                if isinstance(_item, dict) and str(_item.get("id")) == _id:
+                    _item["status"] = "launched"
+                    _item["launched_at"] = _now
+                    _found = True
+                    break
+            if _found:
+                with open(_file, "w", encoding="utf-8") as _f:
+                    _f.write(HEADER)
+                    yaml.dump(_items, _f, default_flow_style=False, sort_keys=True)
+                print(f"Launched {_id} at {_now}")
+                sys.exit(0)
+            else:
+                print(f"Item {_id} not found", file=sys.stderr)
+                sys.exit(1)
+        except Exception as _e:
+            print(f"launch error: {_e}", file=sys.stderr)
+            sys.exit(1)
+
