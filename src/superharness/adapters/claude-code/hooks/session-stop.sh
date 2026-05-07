@@ -262,6 +262,7 @@ fi
 # Kill MCP children spawned for this Claude session.
 # Global kill (not tty-scoped) because the tty is gone by the time this runs.
 # Safe for single-operator dev MacBook.
+pkill -TERM -f "keylogger-mcp-wrapper" 2>/dev/null || true
 pkill -TERM -f "serena start-mcp-server" 2>/dev/null || true
 pkill -TERM -f "KotlinLanguageServer" 2>/dev/null || true
 pkill -TERM -f "kotlin_language_server" 2>/dev/null || true
