@@ -44,7 +44,7 @@ def _assert_no_yaml_files(project_dir: Path) -> None:
 
 
 def _create_task(project_dir: str, title: str, owner: str = "claude-code") -> str:
-    """Create a task via the API and return its ID."""
+    """Create a simple task via tasks_dao and return its ID."""
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
     from datetime import datetime, timezone
@@ -71,6 +71,53 @@ def _create_task(project_dir: str, title: str, owner: str = "claude-code") -> st
     return task_id
 
 
+def _create_rich_task(
+    project_dir: str, title: str, owner: str = "claude-code",
+    workflow: str = "implementation", acceptance_criteria: list[str] | None = None,
+    test_types: list[str] | None = None, blocked_by: list[str] | None = None,
+    tdd: dict | None = None, parent_id: str | None = None,
+    out_of_scope: list[str] | None = None,
+    definition_of_done: list[str] | None = None,
+) -> str:
+    """Create a task with full metadata via tasks_dao."""
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import tasks_dao
+    from datetime import datetime, timezone
+    import uuid
+
+    task_id = f"t-{uuid.uuid4().hex[:6]}"
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        tasks_dao.upsert(conn, tasks_dao.TaskRow(
+            id=task_id, title=title, owner=owner, status="todo",
+            effort="medium", project_path=project_dir,
+            development_method=workflow,
+            acceptance_criteria=acceptance_criteria or [],
+            test_types=test_types or [],
+            out_of_scope=out_of_scope or [],
+            definition_of_done=definition_of_done or [],
+            context=None,
+            tdd=tdd or {},
+            version=1, created_at=now,
+            blocked_by=[],  # dependencies go in task_dependencies table
+            parent_id=parent_id,
+        ))
+        # Insert dependencies separately (blocked_by lives in task_dependencies table)
+        for dep_id in (blocked_by or []):
+            conn.execute(
+                "INSERT OR IGNORE INTO task_dependencies (dependent_task_id, prerequisite_task_id) VALUES (?, ?)",
+                (task_id, dep_id),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return task_id
+
+
 def _get_tasks(project_dir: str) -> list[dict]:
     """Get tasks directly from SQLite, bypassing test-mode YAML requirement."""
     from superharness.engine.db import get_connection, init_db
@@ -87,7 +134,7 @@ def _get_tasks(project_dir: str) -> list[dict]:
 
 
 def _advance_task(project_dir: str, task_id: str, status: str) -> None:
-    """Advance a task's status directly via tasks_dao (bypasses test-mode YAML requirement)."""
+    """Advance a task's status directly via tasks_dao."""
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
     from datetime import datetime, timezone
@@ -99,7 +146,6 @@ def _advance_task(project_dir: str, task_id: str, status: str) -> None:
         if row is None:
             raise ValueError(f"Task {task_id} not found")
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        # Build updated row with new status
         ts_map = {
             "plan_proposed": "plan_proposed_at", "plan_approved": "plan_approved_at",
             "in_progress": "in_progress_at", "report_ready": "report_ready_at",
@@ -134,17 +180,14 @@ def test_tasks_persist_in_sqlite_without_contract_yaml(tmp_path: Path) -> None:
 
     task_id = _create_task(str(tmp_path), "SQLite Only Task")
 
-    # Verify via _get_tasks (SQLite direct, bypasses test-mode YAML requirement)
     tasks = _get_tasks(str(tmp_path))
     assert any(t.get("id") == task_id for t in tasks), "Task not found in SQLite"
 
-    # Advance status
     _advance_task(str(tmp_path), task_id, "plan_proposed")
     _advance_task(str(tmp_path), task_id, "plan_approved")
     _advance_task(str(tmp_path), task_id, "in_progress")
     _advance_task(str(tmp_path), task_id, "report_ready")
 
-    # Verify status
     tasks = _get_tasks(str(tmp_path))
     task = next(t for t in tasks if t.get("id") == task_id)
     assert task.get("status") == "report_ready", f"Expected report_ready, got {task.get('status')}"
@@ -222,13 +265,11 @@ def test_inbox_status_transitions_in_sqlite(tmp_path: Path) -> None:
                          max_retries=3, project_path=str(tmp_path),
                          plan_only=False, now=now, model_override="")
 
-        # Claim (pending → launched)
         claimed = inbox_dao.claim_next(conn, target_agent="claude-code",
                                        pid=12345, now=now)
         assert claimed is not None, "claim_next returned None"
         assert claimed.status == "launched"
 
-        # Complete (launched → done)
         ok = inbox_dao.update_status(conn, item_id, from_status="launched",
                                      to_status="done", now=now)
         assert ok, "update_status failed"
@@ -303,8 +344,6 @@ def test_session_stop_via_state_writer(tmp_path: Path) -> None:
     task_id = _create_task(str(tmp_path), "Hook Task")
     _advance_task(str(tmp_path), task_id, "plan_approved")
     _advance_task(str(tmp_path), task_id, "in_progress")
-
-    # Simulate session-stop by directly setting status to stopped
     _advance_task(str(tmp_path), task_id, "stopped")
 
     tasks = _get_tasks(str(tmp_path))
@@ -369,5 +408,268 @@ def test_no_yaml_created_by_inbox_operations(tmp_path: Path) -> None:
         conn.commit()
     finally:
         conn.close()
+
+    _assert_no_yaml_files(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# Different task types — verify all metadata fields survive SQLite round-trip
+# ---------------------------------------------------------------------------
+
+def test_implementation_workflow_with_tdd(tmp_path: Path) -> None:
+    """Implementation task with TDD, acceptance criteria, test types, DoD."""
+    _bootstrap_sqlite_only(tmp_path)
+
+    task_id = _create_rich_task(
+        str(tmp_path), "Implement Login",
+        workflow="implementation",
+        acceptance_criteria=[
+            "User can log in with email and password",
+            "Invalid credentials show error",
+            "Rate limiting after 5 failed attempts",
+        ],
+        test_types=["unit", "integration"],
+        tdd={
+            "red": "Write failing tests for login flow",
+            "green": "Implement password hashing and session tokens",
+            "refactor": "Extract auth helpers, add rate limit middleware",
+        },
+        definition_of_done=["All tests pass", "Code reviewed", "Deployed to staging"],
+    )
+
+    tasks = _get_tasks(str(tmp_path))
+    task = next(t for t in tasks if t.get("id") == task_id)
+
+    assert task.get("development_method") == "implementation"
+    assert len(task.get("acceptance_criteria", [])) == 3
+    assert "unit" in task.get("test_types", [])
+    assert task.get("tdd", {}).get("red") is not None
+    assert len(task.get("definition_of_done", [])) == 3
+
+    _assert_no_yaml_files(tmp_path)
+
+
+def test_quick_workflow_task(tmp_path: Path) -> None:
+    """Quick workflow task — no TDD, minimal metadata."""
+    _bootstrap_sqlite_only(tmp_path)
+
+    task_id = _create_rich_task(
+        str(tmp_path), "Fix Typo in README",
+        workflow="quick",
+        acceptance_criteria=["Typo recieve → receive"],
+        out_of_scope=["Rewriting entire README"],
+    )
+
+    tasks = _get_tasks(str(tmp_path))
+    task = next(t for t in tasks if t.get("id") == task_id)
+
+    assert task.get("development_method") == "quick"
+    assert len(task.get("out_of_scope", [])) == 1
+    # tdd may be None (SQLite NULL) — both None and {} are valid empty states
+    assert task.get("tdd") in (None, {})
+
+    _assert_no_yaml_files(tmp_path)
+
+
+def test_discussion_task_type(tmp_path: Path) -> None:
+    """Discussion workflow task persists correctly."""
+    _bootstrap_sqlite_only(tmp_path)
+
+    task_id = _create_rich_task(
+        str(tmp_path), "Discussion: SQLite vs PostgreSQL for state backend",
+        workflow="discussion",
+        acceptance_criteria=[
+            "Evaluate migration complexity",
+            "Compare query performance",
+            "Decision documented with rationale",
+        ],
+    )
+
+    tasks = _get_tasks(str(tmp_path))
+    task = next(t for t in tasks if t.get("id") == task_id)
+    assert task.get("development_method") == "discussion"
+
+    _assert_no_yaml_files(tmp_path)
+
+
+def test_review_workflow_task(tmp_path: Path) -> None:
+    """Review workflow task persists correctly."""
+    _bootstrap_sqlite_only(tmp_path)
+
+    task_id = _create_rich_task(
+        str(tmp_path), "Review: PR #200 security audit",
+        workflow="review",
+        acceptance_criteria=[
+            "No SQL injection vectors",
+            "All inputs validated",
+            "Auth checks on every endpoint",
+        ],
+    )
+
+    tasks = _get_tasks(str(tmp_path))
+    task = next(t for t in tasks if t.get("id") == task_id)
+    assert task.get("development_method") == "review"
+
+    _assert_no_yaml_files(tmp_path)
+
+
+def test_tasks_with_dependencies(tmp_path: Path) -> None:
+    """Tasks with blocked_by dependencies persist correctly."""
+    _bootstrap_sqlite_only(tmp_path)
+
+    dep_id = _create_task(str(tmp_path), "Database Schema")
+    task_id = _create_rich_task(
+        str(tmp_path), "API Endpoint",
+        blocked_by=[dep_id],
+    )
+
+    tasks = _get_tasks(str(tmp_path))
+    task = next(t for t in tasks if t.get("id") == task_id)
+    assert dep_id in task.get("blocked_by", [])
+
+    _assert_no_yaml_files(tmp_path)
+
+
+def test_multi_level_dependencies(tmp_path: Path) -> None:
+    """Tasks with multiple levels of blocked_by chain correctly."""
+    _bootstrap_sqlite_only(tmp_path)
+
+    a_id = _create_task(str(tmp_path), "Task A — foundation")
+    b_id = _create_rich_task(str(tmp_path), "Task B — middleware", blocked_by=[a_id])
+    c_id = _create_rich_task(str(tmp_path), "Task C — frontend", blocked_by=[b_id])
+
+    tasks = _get_tasks(str(tmp_path))
+    by_id = {t.get("id"): t for t in tasks}
+
+    assert a_id in by_id[b_id].get("blocked_by", [])
+    assert b_id in by_id[c_id].get("blocked_by", [])
+
+    _assert_no_yaml_files(tmp_path)
+
+
+def test_subtasks_persist(tmp_path: Path) -> None:
+    """Subtasks with parent_id persist correctly."""
+    _bootstrap_sqlite_only(tmp_path)
+
+    parent_id = _create_task(str(tmp_path), "Orchestrator Decomposition")
+    sub_id = _create_rich_task(
+        str(tmp_path), "Subtask: Parse input",
+        parent_id=parent_id,
+    )
+
+    tasks = _get_tasks(str(tmp_path))
+    sub = next(t for t in tasks if t.get("id") == sub_id)
+    assert sub.get("parent_id") == parent_id
+
+    _assert_no_yaml_files(tmp_path)
+
+
+def test_multi_agent_ownership(tmp_path: Path) -> None:
+    """Tasks owned by claude-code, codex-cli, gemini-cli coexist."""
+    _bootstrap_sqlite_only(tmp_path)
+
+    ids = {
+        "claude-code": _create_task(str(tmp_path), "Claude Task", owner="claude-code"),
+        "codex-cli": _create_task(str(tmp_path), "Codex Task", owner="codex-cli"),
+        "gemini-cli": _create_task(str(tmp_path), "Gemini Task", owner="gemini-cli"),
+    }
+
+    tasks = _get_tasks(str(tmp_path))
+    owners = {t.get("id"): t.get("owner") for t in tasks}
+
+    for agent, tid in ids.items():
+        assert owners.get(tid) == agent, f"Task {tid} should be owned by {agent}"
+
+    _assert_no_yaml_files(tmp_path)
+
+
+def test_task_with_all_metadata_fields(tmp_path: Path) -> None:
+    """Every TaskRow field survives a SQLite round-trip."""
+    _bootstrap_sqlite_only(tmp_path)
+
+    dep_id = _create_task(str(tmp_path), "Pretend Dependency")
+    task_id = _create_rich_task(
+        str(tmp_path), "Full Metadata Task",
+        workflow="review",
+        acceptance_criteria=["AC1", "AC2", "AC3", "AC4", "AC5"],
+        test_types=["unit", "integration", "e2e"],
+        blocked_by=[dep_id],
+        out_of_scope=["Refactoring unrelated modules", "Updating docs"],
+        definition_of_done=["All tests green", "PR approved", "CHANGELOG updated"],
+        tdd={
+            "red": "Failing tests for edge cases",
+            "green": "Implementation with error handling",
+            "refactor": "Extract shared validators",
+        },
+    )
+
+    tasks = _get_tasks(str(tmp_path))
+    task = next(t for t in tasks if t.get("id") == task_id)
+
+    assert task.get("status") == "todo"
+    assert task.get("development_method") == "review"
+    assert len(task.get("acceptance_criteria", [])) == 5
+    assert len(task.get("test_types", [])) == 3
+    assert dep_id in task.get("blocked_by", [])
+    assert len(task.get("out_of_scope", [])) == 2
+    assert len(task.get("definition_of_done", [])) == 3
+    assert task.get("tdd", {}).get("refactor") is not None
+    assert task.get("project_path") == str(tmp_path)
+
+    _assert_no_yaml_files(tmp_path)
+
+
+def test_multiple_tasks_mixed_workflows(tmp_path: Path) -> None:
+    """Multiple tasks with different workflows coexist in SQLite."""
+    _bootstrap_sqlite_only(tmp_path)
+
+    _create_rich_task(str(tmp_path), "Quick Fix", workflow="quick")
+    _create_rich_task(str(tmp_path), "Full Feature", workflow="implementation",
+                      acceptance_criteria=["AC1", "AC2"],
+                      test_types=["unit"],
+                      tdd={"red": "test", "green": "impl", "refactor": "clean"})
+    _create_rich_task(str(tmp_path), "Design Discussion", workflow="discussion")
+    _create_rich_task(str(tmp_path), "Code Review", workflow="review")
+
+    tasks = _get_tasks(str(tmp_path))
+    workflows = {t.get("title"): t.get("development_method") for t in tasks}
+
+    assert workflows.get("Quick Fix") == "quick"
+    assert workflows.get("Full Feature") == "implementation"
+    assert workflows.get("Design Discussion") == "discussion"
+    assert workflows.get("Code Review") == "review"
+
+    _assert_no_yaml_files(tmp_path)
+
+
+def test_task_advance_preserves_metadata(tmp_path: Path) -> None:
+    """Advancing a task's status doesn't lose metadata fields."""
+    _bootstrap_sqlite_only(tmp_path)
+
+    task_id = _create_rich_task(
+        str(tmp_path), "Preserve Metadata",
+        workflow="implementation",
+        acceptance_criteria=["AC1", "AC2"],
+        test_types=["unit"],
+        tdd={"red": "tests", "green": "code", "refactor": "clean"},
+        out_of_scope=["Deploy to prod"],
+        definition_of_done=["Tests pass"],
+    )
+
+    _advance_task(str(tmp_path), task_id, "plan_proposed")
+    _advance_task(str(tmp_path), task_id, "plan_approved")
+    _advance_task(str(tmp_path), task_id, "in_progress")
+    _advance_task(str(tmp_path), task_id, "report_ready")
+    _advance_task(str(tmp_path), task_id, "done")
+
+    tasks = _get_tasks(str(tmp_path))
+    task = next(t for t in tasks if t.get("id") == task_id)
+
+    assert task.get("status") == "done"
+    assert task.get("development_method") == "implementation"
+    assert len(task.get("acceptance_criteria", [])) == 2
+    assert "unit" in task.get("test_types", [])
+    assert task.get("tdd", {}).get("green") == "code"
+    assert task.get("done_at") is not None
 
     _assert_no_yaml_files(tmp_path)
