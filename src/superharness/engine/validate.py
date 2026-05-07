@@ -100,6 +100,25 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
         print(f"Missing decisions/failures store under {harness_dir}", file=sys.stderr)
         return 1
 
+    # .gitignore check: runtime state must be excluded from git tracking (non-fatal warning)
+    _REQUIRED_GITIGNORE_PATTERNS = {"state.sqlite3", "circuit-breaker.json"}
+    gitignore_path = os.path.join(harness_dir, ".gitignore")
+    if not os.path.isfile(gitignore_path):
+        print(
+            "Warning: .superharness/.gitignore is missing — runtime state (state.sqlite3, "
+            "circuit-breaker.json, etc.) may be committed accidentally. "
+            "Run: shux init --refresh to create it."
+        )
+    else:
+        with open(gitignore_path) as _gf:
+            _gitignore_text = _gf.read()
+        _missing = [p for p in sorted(_REQUIRED_GITIGNORE_PATTERNS) if p not in _gitignore_text]
+        if _missing:
+            print(
+                f"Warning: .superharness/.gitignore is missing required patterns: "
+                f"{', '.join(_missing)} — runtime state may be committed accidentally."
+            )
+
     contract = safe_load(contract_file, dict)
     raw_tasks = contract.get("tasks")
     if raw_tasks is None:
