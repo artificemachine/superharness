@@ -22,6 +22,18 @@ uv run python -m superharness demo     # zero-config walkthrough
 
 The full suite has 4 pre-existing failures (dashboard-port detection — ignores these).
 
+## Project Rules
+Run `shux rules` to list all project constraints. Rules in `.superharness/rules/` are
+the authoritative source for policies, conventions, and architecture facts.
+When you need to know how something works or what's allowed, check rules first.
+
+Key rules (full list via `shux rules`):
+- `state-backend` — SQLite is SoT; contract/inbox/failures/decisions YAML are DEAD
+- `discussion-state` — discussions live in SQLite, not YAML files
+- `changelog-policy` — CHANGELOG.md is append-only
+- `branch-policy` — never merge to main without owner approval
+- `task-scope` — decompose tasks >3 criteria or >4 files
+
 ## State Backend: SQLite (post-YAML migration)
 
 As of v1.41+, all project state lives in `.superharness/state.sqlite3`. YAML files

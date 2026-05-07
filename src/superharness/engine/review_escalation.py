@@ -61,17 +61,12 @@ def escalate_stale_reviews(project_dir: str, timeout_minutes: int | None = None)
     if timeout_minutes <= 0:
         return 0
 
-    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
-    if not os.path.isfile(contract_file):
-        return 0
-
+    from superharness.engine import state_reader
     try:
-        with open(contract_file, encoding="utf-8") as f:
-            doc = yaml.safe_load(f.read()) or {}
+        tasks = state_reader.get_tasks(project_dir)
     except Exception:
         return 0
 
-    tasks = doc.get("tasks") or []
     changed = 0
 
     for task in tasks:

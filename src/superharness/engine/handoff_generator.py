@@ -81,6 +81,14 @@ def _build_compaction(task: dict) -> dict:
     }
 
 
+def _load_rules(project_dir: str) -> str:
+    """Load project rules for agent context injection (Pi-style)."""
+    try:
+        from superharness.commands.rules import all_rules_text
+        return all_rules_text(project_dir)
+    except Exception:
+        return ""
+
 def generate_handoff(project_dir: str, task_id: str) -> dict:
     """Generate a structured handoff for a task.
 
@@ -119,4 +127,5 @@ def generate_handoff(project_dir: str, task_id: str) -> dict:
         "status": status,
         "generated_at": now,
         "compaction": _build_compaction(task),
+        "rules": _load_rules(project_dir),
     }
