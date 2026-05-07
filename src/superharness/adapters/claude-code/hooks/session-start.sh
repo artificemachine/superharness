@@ -22,25 +22,23 @@ fi
 # Detect if this project has an active superharness contract; inject full context
 TASK_CONTEXT=""
 PROJECT_DIR="$(pwd)"
-if [ -f "$PROJECT_DIR/.superharness/contract.yaml" ]; then
+if [ -f "$PROJECT_DIR/.superharness/state.sqlite3" ]; then
   ACTIVE_TASK=$(python3 -c "
 import sys
 try:
-    import yaml
-    doc = yaml.safe_load(open('$PROJECT_DIR/.superharness/contract.yaml'))
-    tasks = doc.get('tasks') or []
-    for t in tasks:
+    from superharness.engine import state_reader as _sr
+    tasks = _sr.get_tasks('$PROJECT_DIR')
+    for t in (tasks or []):
         if t.get('status') in ('in_progress','plan_proposed','plan_approved','report_ready'):
             print(t.get('id',''))
             break
 except: pass
 " 2>/dev/null || true)
   if [ -n "$ACTIVE_TASK" ]; then
-    # Use python -m to bypass entrypoint issues
     TASK_CONTEXT=$(python3 -m superharness.cli context --project "$PROJECT_DIR" "$ACTIVE_TASK" 2>/dev/null || true)
   fi
   if [ -z "$TASK_CONTEXT" ]; then
-    TASK_CONTEXT="Active contract found at .superharness/contract.yaml — run: shux context"
+    TASK_CONTEXT="Active contract found — run: shux context"
   fi
 fi
 CONTRACT_STATUS="$TASK_CONTEXT"
@@ -63,14 +61,18 @@ OBSIDIAN_DASH="${OBSIDIAN_DASH_URL:-http://localhost:8484}"
 if command -v curl >/dev/null 2>&1; then
   # Extract active task title from contract.yaml for the search query
   TASK_QUERY=""
-  if [ -f "$PROJECT_DIR/.superharness/contract.yaml" ]; then
+  if [ -f "$PROJECT_DIR/.superharness/state.sqlite3" ]; then
     TASK_QUERY=$(python3 -c "
-import sys, re
+import sys
 try:
-    text = open('$PROJECT_DIR/.superharness/contract.yaml').read()
-    # Find first in-progress or plan_proposed task title
-    m = re.search(r'title:\s*[\"\'']?([^\n\"\']+)[\"\'']?', text)
-    if m: print(m.group(1).strip()[:80])
+    from superharness.engine import state_reader as _sr
+    tasks = _sr.get_tasks('$PROJECT_DIR')
+    for t in (tasks or []):
+        if t.get('status') in ('in_progress','plan_proposed','plan_approved','report_ready'):
+            title = t.get('title','')
+            if title:
+                print(title[:80])
+                break
 except: pass
 " 2>/dev/null || true)
   fi
@@ -187,12 +189,13 @@ Your weaknesses: can over-engineer, verbose, context rot on long sessions, can h
 When reviewing Codex's work: check for naive implementations, missed edge cases, architectural blind spots, security shortcuts.
 When Codex reviews YOUR work: expect challenges on over-abstraction and unnecessary complexity. Take them seriously.
 
-Protocol files live in .superharness/ (contract.yaml, handoffs/, ledger.md, failures.yaml, decisions.yaml).
-- Before starting: read contract.yaml, failures.yaml, decisions.yaml, and any handoffs addressed to you.
-- Before implementing: search failures.yaml for past failures with this technology/approach.
-- When done with a task: write a handoff for the next agent + append to ledger.md.
-- When you make a decision between alternatives: log it in the contract decisions section.
-- When something fails: log it in the contract failures section.
+Protocol files live in .superharness/ (state.sqlite3, handoffs/, ledger.md).
+- Before starting: run `shux contract` to see all tasks. Run `shux context <id>` for full task context.
+- Use `shux recall KEYWORDS` to search past handoffs and failures.
+- Before implementing: check `shux context <id>` for past failures with this technology/approach.
+- When done with a task: run `shux task status --id <id> --status report_ready`. Run `shux close <id>` when verified.
+- When you make a decision between alternatives: write a handoff and append to ledger.
+- When something fails: run `shux verify --id <id> --result fail --method "..."` to record it.
 - When reviewing: use the review lenses assigned in the contract (security, architecture, performance, tests, error-handling, devops, api-contract). Read the diff, challenge decisions, log findings. Never rubber-stamp.
 
 ## Enforcement hooks active:

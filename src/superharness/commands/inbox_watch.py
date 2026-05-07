@@ -18,13 +18,6 @@ def _now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _yaml_writes_enabled(project_dir: str) -> bool:
-    """Return True if YAML writes are enabled (dual or yaml_only mode)."""
-    env = os.environ.get("STATE_BACKEND")
-    if env == "sqlite_only":
-        return False
-    return True
-
 
 def _load_tasks(project_dir: str) -> list[dict]:
     """Return all contract tasks via state_reader (SQLite-aware) or YAML fallback."""
@@ -603,21 +596,11 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
         return 0
 
     inbox_items: list[dict] = []
-    if not _yaml_writes_enabled(project_dir):
-        try:
-            from superharness.engine.state_reader import get_inbox_items
-            inbox_items = get_inbox_items(project_dir)
-        except Exception:
-            inbox_items = []
-        # Continue to compute added items even if YAML is disabled
-    else:
-        # YAML mode: read existing items if file exists
-        if os.path.exists(inbox_file):
-            try:
-                from superharness.engine.yaml_helpers import safe_load_normalized
-                inbox_items = safe_load_normalized(inbox_file, list) or []
-            except Exception:
-                inbox_items = []
+    try:
+        from superharness.engine.state_reader import get_inbox_items
+        inbox_items = get_inbox_items(project_dir)
+    except Exception:
+        inbox_items = []
 
     added = 0
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -668,18 +651,7 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
         print(f"auto-dispatch: enqueued todo {task_id} for planning → {owner} (item {item_id})")
 
     if added > 0:
-        import yaml as _yaml
         new_items = [i for i in inbox_items if i.get("id") in new_item_ids]
-        if _yaml_writes_enabled(project_dir):
-            try:
-                from superharness.engine.inbox import _inbox_lock
-                with _inbox_lock(inbox_file):
-                    with open(inbox_file, "w", encoding="utf-8") as _f:
-                        _f.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
-                        _yaml.dump(inbox_items, _f, default_flow_style=False, sort_keys=True)
-            except Exception as e:
-                print(f"auto-dispatch: failed to write inbox: {e}", file=sys.stderr)
-                return 0
         _sqlite_mirror_inbox_enqueue(project_dir, new_items, now)
 
     return added
@@ -1254,60 +1226,8 @@ def _auto_retry_failed(project_dir: str) -> None:
     if not auto_retry:
         return
 
-    if not _yaml_writes_enabled(project_dir):
-        # Post-archive (sqlite_only): reset failed items directly in SQLite
-        _auto_retry_failed_sqlite(project_dir)
-        return
-
-    inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
-    if not os.path.isfile(inbox_file):
-        return
-
-    try:
-        with _inbox_lock(inbox_file):
-            with open(inbox_file, encoding="utf-8") as _f:
-                items = _yaml.safe_load(_f.read()) or []
-
-            changed = False
-            retried_items: list[dict] = []
-            for item in items:
-                if not isinstance(item, dict):
-                    continue
-                if item.get("status") != "failed":
-                    continue
-                # Skip items with a manual pause reason — they were intentionally
-                # stopped and should not be auto-retried.
-                if item.get("reason"):
-                    continue
-                # Skip items the failure_classifier flagged as not retryable
-                # (permanent_block, quota, no_op).
-                if item.get("failure_class") in ("permanent_block", "quota", "no_op"):
-                    continue
-                retry_count = int(item.get("retry_count", 0) or 0)
-                max_retries = int(item.get("max_retries", 3) or 3)
-                if retry_count >= max_retries:
-                    # Exhausted — leave as failed, visible in dashboard
-                    continue
-                item["status"] = "pending"
-                item.pop("failed_at", None)
-                item.pop("failed_reason", None)
-                retried_items.append({"id": str(item.get("id", "")), "retry_count": retry_count})
-                task_id = item.get("task", item.get("id", "?"))
-                print(
-                    f"auto-retry: re-queued '{task_id}' "
-                    f"(attempt {retry_count + 1}/{max_retries})"
-                )
-                changed = True
-
-            if changed:
-                with open(inbox_file, "w", encoding="utf-8") as _f:
-                    _yaml.dump(items, _f, default_flow_style=False, allow_unicode=True)
-    except Exception as exc:
-        print(f"auto-retry: error: {exc}", file=sys.stderr)
-        return
-
-    if retried_items:
-        _sqlite_mirror_inbox_retry(project_dir, retried_items, _now_utc())
+    # Reset failed items directly in SQLite
+    _auto_retry_failed_sqlite(project_dir)
 
 
 def _auto_retry_failed_sqlite(project_dir: str) -> None:
@@ -1755,19 +1675,6 @@ def auto_enqueue_todo(project_dir: str) -> int:
     finally:
         conn.close()
 
-    if added > 0 and _yaml_writes_enabled(project_dir):
-        # Update inbox.yaml with all active items (legacy shape)
-        from superharness.engine.inbox import _inbox_lock
-        try:
-            with _inbox_lock(inbox_file):
-                # Reload fresh items to ensure we don't clobber
-                current_items = state_reader.get_inbox_items(project_dir)
-                with open(inbox_file, "w", encoding="utf-8") as _f:
-                    _f.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
-                    _yaml.dump(current_items, _f, default_flow_style=False, sort_keys=True)
-        except Exception:
-            pass
-
     return added
 
 def auto_enqueue_approved(project_dir: str) -> int:
@@ -1914,24 +1821,6 @@ def auto_enqueue_approved(project_dir: str) -> int:
         conn.commit()
     finally:
         conn.close()
-
-    if added > 0 and _yaml_writes_enabled(project_dir):
-        from superharness.engine.inbox import _inbox_lock
-        try:
-            with _inbox_lock(inbox_file):
-                current_items = state_reader.get_inbox_items(project_dir)
-                # state_reader in test mode only merges SQLite items that already
-                # exist in YAML — new_items are SQLite-only and would be dropped.
-                # Explicitly append any new_items not already present.
-                existing_ids = {str(i.get("id")) for i in current_items if isinstance(i, dict)}
-                for ni in new_items:
-                    if str(ni.get("id")) not in existing_ids:
-                        current_items.append(ni)
-                with open(inbox_file, "w", encoding="utf-8") as _f:
-                    _f.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
-                    _yaml.dump(current_items, _f, default_flow_style=False, sort_keys=True)
-        except Exception:
-            pass
 
     return added
 

@@ -206,48 +206,69 @@ def task_context(
         lines.append("")
         lines.append("Last handoff: (none found)")
 
-    # Decisions
-    decisions_path = sh_dir / "decisions.yaml"
-    if decisions_path.exists():
-        doc = _load_yaml_safe(decisions_path)
-        decisions = (doc.get("decisions") or []) if isinstance(doc, dict) else []
-        relevant = _filter_entries(decisions, lookup_id)
-        if relevant:
-            lines.append("")
-            lines.append("Decisions relevant to this task:")
-            for d in relevant[:5]:
-                if isinstance(d, dict):
-                    date_s = str(d.get("date", ""))[:10]
-                    text = d.get("decision") or d.get("description") or str(d)
-                    lines.append(f"  - [{date_s}] {text}")
+    # Decisions (from SQLite)
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import decisions_dao
+        conn = get_connection(str(project_dir))
+        try:
+            init_db(conn)
+            rows = decisions_dao.get_recent(conn, limit=100)
+            decisions = []
+            for row in rows:
+                if row.task_id == lookup_id:
+                    decisions.append({"date": row.created_at[:10] if row.created_at else "",
+                                     "decision": row.decision or "", "reason": row.reason or ""})
+        finally:
+            conn.close()
+    except Exception:
+        decisions = []
+    if decisions:
+        lines.append("")
+        lines.append("Decisions relevant to this task:")
+        for d in decisions[:5]:
+            date_s = str(d.get("date", ""))[:10]
+            text = d.get("decision") or str(d)
+            lines.append(f"  - [{date_s}] {text}")
 
-    # Failures
-    failures_path = sh_dir / "failures.yaml"
-    if failures_path.exists():
-        doc = _load_yaml_safe(failures_path)
-        failures = (doc.get("failures") or []) if isinstance(doc, dict) else []
-        
-        # Build set of relevant task IDs (self + blockers)
-        relevant_ids = [lookup_id]
-        blocked_by = task.get("blocked_by") or task.get("depends_on")
-        if blocked_by and str(blocked_by).lower() != "none":
-            if isinstance(blocked_by, str):
-                relevant_ids.extend([d.strip() for d in blocked_by.split(",") if d.strip()])
-            elif isinstance(blocked_by, list):
-                relevant_ids.extend([str(d).strip() for d in blocked_by if d])
-        
-        relevant = _filter_failures(failures, relevant_ids, failures_only)
-        if relevant:
-            lines.append("")
-            lines.append("Failures relevant to this task:")
-            for f in relevant[:5]:
-                if isinstance(f, dict):
-                    date_s = str(f.get("date", ""))[:10]
-                    sev = f.get("severity", "minor")
-                    patterns = ", ".join(f.get("patterns", []))
-                    task_label = f" [{f.get('task')}]" if f.get("task") != lookup_id else ""
-                    text = f.get("failure") or f.get("description") or f.get("error_snippet") or str(f)
-                    lines.append(f"  - [{date_s}] ({sev}){task_label} {patterns}: {text}")
+    # Failures (from SQLite)
+    try:
+        from superharness.engine import failures_dao
+        conn2 = get_connection(str(project_dir))
+        try:
+            init_db(conn2)
+            rows = failures_dao.get_recent(conn2, task_id=lookup_id, limit=10)
+            failures = []
+            for row in rows:
+                failures.append({"pattern": row.pattern or "unknown",
+                                "error_snippet": row.error_snippet or "",
+                                "created_at": row.created_at or ""})
+        finally:
+            conn2.close()
+    except Exception:
+        failures = []
+
+    # Build set of relevant task IDs (self + blockers)
+    relevant_ids = [lookup_id]
+    blocked_by = task.get("blocked_by") or task.get("depends_on")
+    if blocked_by and str(blocked_by).lower() != "none":
+        if isinstance(blocked_by, str):
+            relevant_ids.extend([d.strip() for d in blocked_by.split(",") if d.strip()])
+        elif isinstance(blocked_by, list):
+            relevant_ids.extend([str(d).strip() for d in blocked_by if d])
+
+    relevant = _filter_failures(failures, relevant_ids, failures_only)
+    if relevant:
+        lines.append("")
+        lines.append("Failures relevant to this task:")
+        for f in relevant[:5]:
+            if isinstance(f, dict):
+                date_s = str(f.get("date", ""))[:10]
+                sev = f.get("severity", "minor")
+                patterns = ", ".join(f.get("patterns", []))
+                task_label = f" [{f.get('task')}]" if f.get("task") != lookup_id else ""
+                text = f.get("failure") or f.get("description") or f.get("error_snippet") or str(f)
+                lines.append(f"  - [{date_s}] ({sev}){task_label} {patterns}: {text}")
 
     # Ledger
     ledger_path = sh_dir / "ledger.md"
