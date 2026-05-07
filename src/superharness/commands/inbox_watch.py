@@ -2898,7 +2898,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--project", "-p", required=True)
     parser.add_argument("--to", default="both", dest="target")
     parser.add_argument("--print-only", action="store_true", default=False)
-    parser.add_argument("--non-interactive", action="store_true", default=False)
+    parser.add_argument("--non-interactive", action="store_true", default=True)
     parser.add_argument("--codex-bypass", action="store_true", default=False)
     parser.add_argument("--recover-timeout-minutes", default="20", dest="recover_timeout_minutes")
     parser.add_argument("--recover-action", default="stale")
