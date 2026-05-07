@@ -826,8 +826,8 @@ def main(argv: list[str] | None = None) -> None:
 
     project_dir = os.path.realpath(opts.project or os.getcwd())
     contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
-    if not os.path.exists(contract_file):
-        _abort(f"Missing contract file: {contract_file}")
+    if not os.path.exists(os.path.join(project_dir, ".superharness", "state.sqlite3")):
+        _abort(f"Missing project state: {project_dir}/.superharness/state.sqlite3")
 
     if opts.subcmd == "create":
         owner = opts.owner or ""

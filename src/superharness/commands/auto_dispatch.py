@@ -119,8 +119,8 @@ def run_auto_dispatch(
     agent_override: Optional[str] = None,
 ) -> int:
     contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
-    if not os.path.exists(contract_file):
-        print(f"auto-dispatch: contract not found at {contract_file}", file=sys.stderr)
+    if not os.path.exists(os.path.join(project_dir, ".superharness", "state.sqlite3")):
+        print(f"auto-dispatch: project state not found at {project_dir}/.superharness/", file=sys.stderr)
         return 1
 
     contract, _ = _read_contract(contract_file)

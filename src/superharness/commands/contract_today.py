@@ -67,13 +67,14 @@ def contract_today(
     import yaml
 
     contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
-    if not os.path.isfile(contract_file):
-        print(f"Missing contract file: {contract_file}", file=sys.stderr)
+    state_file = os.path.join(project_dir, ".superharness", "state.sqlite3")
+    if not os.path.isfile(state_file):
+        print(f"Missing project state: {state_file}", file=sys.stderr)
         return 1
 
     try:
-        with open(contract_file) as f:
-            doc = yaml.safe_load(f) or {}
+        from superharness.engine.state_reader import get_contract_doc
+        doc = get_contract_doc(project_dir)
     except Exception as e:
         print(f"Failed to parse contract: {e}", file=sys.stderr)
         return 1
