@@ -258,8 +258,8 @@ def main(argv: list[str] | None = None) -> None:
         _JSON_MODE = True
         _JSON_CTX = {"task_id": opts.task_id, "actor": opts.actor}
 
-    if not os.path.exists(contract_file):
-        _abort(f"Missing contract file: {contract_file}")
+    if not os.path.exists(os.path.join(project_dir, ".superharness", "state.sqlite3")):
+        _abort(f"Missing project state: {project_dir}/.superharness/state.sqlite3")
 
     if _JSON_MODE:
         import io

@@ -598,8 +598,8 @@ def delegate(
     contract_file = os.path.join(harness_dir, "contract.yaml")
     handoff_dir = os.path.join(harness_dir, "handoffs")
 
-    if not os.path.isfile(contract_file):
-        _abort(f"Missing contract file: {contract_file}")
+    if not os.path.isfile(os.path.join(harness_dir, "state.sqlite3")):
+        _abort(f"Missing project state: {harness_dir}/state.sqlite3")
     if not os.path.isdir(handoff_dir):
         _abort(f"Missing handoff directory: {handoff_dir}")
 
