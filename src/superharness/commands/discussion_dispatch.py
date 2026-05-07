@@ -61,17 +61,23 @@ def _enqueue_for_agent(
 
 
 def dispatch(project_dir: str) -> int:
-    discussions_dir = os.path.join(project_dir, ".superharness", "discussions")
-    if not os.path.isdir(discussions_dir):
-        return 0
+    """Scan active discussions from SQLite and dispatch round completions."""
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import discussions_dao
 
+    discussions_dir = os.path.join(project_dir, ".superharness", "discussions")
     inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
 
-    for entry in sorted(os.listdir(discussions_dir)):
-        discussion_dir = os.path.join(discussions_dir, entry)
-        state_file = os.path.join(discussion_dir, "state.yaml")
-        if not os.path.isfile(state_file):
-            continue
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        active = discussions_dao.get_all(conn, status="active")
+    finally:
+        conn.close()
+
+    for disc in active:
+        disc_id = disc.id
+        discussion_dir = os.path.join(discussions_dir, disc_id)
 
         # Get status
         status_result = _run_engine(["status", "--discussion-dir", discussion_dir])
@@ -85,7 +91,6 @@ def dispatch(project_dir: str) -> int:
         if status_json.get("status") != "active":
             continue
 
-        disc_id = status_json.get("id", entry)
         current_round = int(status_json.get("current_round", 1))
         participants = status_json.get("participants") or []
 
