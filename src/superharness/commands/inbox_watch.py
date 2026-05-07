@@ -20,19 +20,10 @@ def _now_utc() -> str:
 
 
 def _load_tasks(project_dir: str) -> list[dict]:
-    """Return all contract tasks via state_reader (SQLite-aware) or YAML fallback."""
+    """Return all contract tasks via state_reader (SQLite)."""
     try:
         from superharness.engine.state_reader import get_tasks
         return get_tasks(project_dir)
-    except Exception:
-        pass
-    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
-    if not os.path.exists(contract_file):
-        return []
-    try:
-        import yaml as _yaml
-        doc = _yaml.safe_load(open(contract_file, encoding="utf-8").read()) or {}
-        return [t for t in (doc.get("tasks") or []) if isinstance(t, dict)]
     except Exception:
         return []
 
