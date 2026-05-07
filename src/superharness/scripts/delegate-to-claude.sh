@@ -8,51 +8,43 @@ export PYTHONPATH="${SRC_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 # Ensure agent binaries are findable under launchd's stripped PATH
 export PATH="/Applications/cmux.app/Contents/Resources/bin:${HOME}/.local/bin:${HOME}/.nvm/versions/node/v25.2.1/bin:${HOME}/.pyenv/shims:${HOME}/.pyenv/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
 
-resolve_python() {
-  if [[ -n "${SUPERHARNESS_PYTHON:-}" ]]; then
-    echo "${SUPERHARNESS_PYTHON}"
-    return
-  fi
+# Build Claude CLI command
+CLAUDE_ARGS=()
+PROMPT=""
 
-  local shux_bin shebang candidate resolved
-  shux_bin="$(command -v shux 2>/dev/null || true)"
-  if [[ -n "$shux_bin" && -r "$shux_bin" ]]; then
-    IFS= read -r shebang < "$shux_bin" || true
-    if [[ "$shebang" == '#!'*python* ]]; then
-      candidate="${shebang#\#!}"
-      if [[ "$candidate" == "/usr/bin/env "* ]]; then
-        candidate="${candidate#"/usr/bin/env "}"
-        candidate="${candidate%% *}"
-        resolved="$(command -v "$candidate" 2>/dev/null || true)"
-        if [[ -n "$resolved" ]]; then
-          echo "$resolved"
-          return
-        fi
-      elif [[ -x "$candidate" ]]; then
-        echo "$candidate"
-        return
-      fi
-    fi
-  fi
-
-  echo "python3"
-}
-
-PYTHON3="$(resolve_python)"
-
-# Fast-path: print usage and exit before touching claude binary
-for arg in "$@"; do
-  if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
-    echo "Usage: delegate-to-claude.sh [--project DIR] [--task ID] [--prompt TEXT] [--model MODEL] [--plan-only] [--non-interactive]"
-    echo "Delegates a superharness task to the Claude Code CLI agent."
-    exit 0
-  fi
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --project)
+      cd "$2"
+      shift 2
+      ;;
+    --prompt)
+      PROMPT="$2"
+      shift 2
+      ;;
+    --model)
+      CLAUDE_ARGS+=("--model" "$2")
+      shift 2
+      ;;
+    --effort)
+      CLAUDE_ARGS+=("--effort" "$2")
+      shift 2
+      ;;
+    --non-interactive)
+      # In non-interactive mode, bypass permission prompts
+      CLAUDE_ARGS+=("-p" "--dangerously-skip-permissions")
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
 done
 
-# Build Claude CLI command
-# Delegate to the Python `superharness delegate` command which builds the
-# proper prompt from the task context, then invokes claude with the prompt
-# as a positional arg (avoids the "Input must be provided either through
-# stdin or as a prompt argument" error from `claude --print` with empty
-# stdin). Mirrors the codex adapter's structure.
-exec "$PYTHON3" -m superharness.commands.delegate --to claude-code "$@"
+if [[ -z "$PROMPT" ]]; then
+  echo "Error: No prompt provided to delegate-to-claude.sh" >&2
+  exit 1
+fi
+
+# Execute Claude directly
+exec claude "${CLAUDE_ARGS[@]}" "$PROMPT"
