@@ -203,6 +203,17 @@ def _register_daemon():
 _register_daemon()
 
 
+# MCP server — Click group
+def _register_mcp():
+    try:
+        from superharness.mcp.cli import cmd_mcp
+        main.add_command(cmd_mcp)
+    except Exception:
+        pass
+
+_register_mcp()
+
+
 # onboard runs in-process so CliRunner captures output correctly
 def _register_onboard():
     try:
