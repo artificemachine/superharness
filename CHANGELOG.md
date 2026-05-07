@@ -271,3 +271,4 @@
 - 2026-05-07 (v1.51.0): feat(phases-3-4-6): Phase 3 (model fallback chain, Discord trigger adapter, schedule quiet-hours), Phase 4 (smart dispatch routing by manifest skill match), Phase 6 (Windows path normalization + runtime pinning validation). New modules: engine/model_fallback.py, engine/smart_dispatch.py, modules/actions/discord.py. schedule.py gains _in_quiet_window + quiet_hours param on cmd_run. 58 new unit tests GREEN: test_model_fallback (11), test_smart_dispatch (11), test_discord_trigger (7), test_schedule_quiet_hours (11), test_windows_path_normalization (18).
 - 2026-05-07: docs(roadmap): update ROADMAP-phases.md — phases 1-4/6 marked DONE/PARTIAL, version bumped to v1.51.0
 - 2026-05-07: docs(audit): merge pi-mono and hermes audit docs into AUDIT-pi-hermes-adaptation.md
+- 2026-05-07: docs(comparison): add COMPARISON-superharness-vs-pi-hermes.md — full feature table, gap analysis, priority order
