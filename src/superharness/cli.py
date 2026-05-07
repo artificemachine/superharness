@@ -151,6 +151,7 @@ _cmd("status",          "Show watcher and inbox health summary.",    module="sup
 _cmd("notify",          "Send alerts for watcher/retry issues.",     module="superharness.commands.notify")
 _cmd("install-wrapper", "Symlink superharness into PATH.",           module="superharness.commands.install_wrapper")
 _cmd("recall",          "Search handoffs and ledger by keyword.",    module="superharness.engine.recall")
+_cmd("insights",        "Task/dispatch/agent analytics from SQLite.", module="superharness.commands.insights")
 _cmd("hygiene",         "Check contract hygiene.",                   module="superharness.engine.validate")
 
 # ── Fully ported Python command modules (cross-platform) ─────────────────────
