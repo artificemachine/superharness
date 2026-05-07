@@ -28,3 +28,13 @@ daemon-state.json
 operator-state.json
 trace.jsonl
 *.lock.d/
+
+# SQLite database (WAL files included)
+state.sqlite3
+state.sqlite3-shm
+state.sqlite3-wal
+
+# Runtime control files
+circuit-breaker.json
+.launchagents_snapshot
+daemon-monitor.py
