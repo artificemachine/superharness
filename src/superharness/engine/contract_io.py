@@ -153,9 +153,14 @@ def write_contract(path: str, doc: object) -> None:
     from superharness.engine.sqlite_only import is_sqlite_only
 
     if is_sqlite_only():
-        # SQLite-only mode: skip YAML file write, write directly to SQLite.
+        # SQLite-only mode (default since v1.43): skip YAML file write, write directly to SQLite.
         _sqlite_sync_tasks(path, doc)
         return
+
+    # Legacy path: write contract.yaml to disk, then sync to SQLite.
+    # Only reached when STATE_BACKEND is explicitly set to 'yaml_only' or 'dual'.
+    # DEPRECATED: contract.yaml is no longer the source of truth. This path will
+    # be removed in a future release once all callers route through sqlite_only mode.
 
     dir_ = os.path.dirname(os.path.abspath(path))
     base = os.path.basename(path)

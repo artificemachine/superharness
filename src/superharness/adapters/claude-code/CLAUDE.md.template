@@ -11,25 +11,24 @@
 
 ## Cross-Agent Protocol
 This project uses superharness. Protocol files are in `.superharness/`.
-- Read `contract.yaml` before starting any work.
-- Read `failures.yaml` before implementing — search for past failures with this technology.
-- Read `decisions.yaml` for architectural context.
+- Run `shux contract` to see all tasks. Run `shux context <id>` for full task context.
+- Run `shux recall KEYWORDS` to search past handoffs, failures, and decisions.
 - Read any handoffs in `handoffs/` addressed to `claude-code`.
-- When you make a decision between alternatives: log it in the contract's decisions section.
-- When something fails: log it in the contract's failures section.
-- When you finish a task: update contract status, write a handoff, append to ledger.
+- When you make a decision between alternatives: write a handoff and append to ledger.
+- When something fails: record it via `shux verify --id <id> --result fail --method "..."`.
+- When you finish a task: run `shux task status --id <id> --status report_ready`. Run `shux close <id>` when verified.
 - When creating/updating contract tasks: always set `project_path` to the absolute project directory.
 - When reviewing Codex's work: use the review lenses assigned to the task in the contract.
 
 ## Delegation Prompting Rule
 When the user asks to read the contract (or equivalent), do this:
-1. Read `.superharness/contract.yaml`.
+1. Run `shux contract` to see all tasks.
 2. Summarize contract id, status, and tasks with owner/status.
 3. If any task is `todo` or `in_progress` and owner is `codex-cli`, ask:
    "I detected owner is codex-cli. Do you want to delegate `<task_id>` now?"
    Do not use generic alternatives like "Want me to tackle...".
 4. If user says yes:
-   - set task status to `in_progress` (if needed),
+   - run `shux task status --id <id> --status in_progress` (if needed),
    - create/update `.superharness/handoffs/<DATE>-<TASK_ID>.yaml` addressed to `codex-cli`,
    - append one line to `.superharness/ledger.md`,
    - return the exact Codex kickoff prompt.

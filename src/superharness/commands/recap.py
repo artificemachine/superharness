@@ -90,11 +90,13 @@ def run_recap(project_dir: str | Path, hours: int = 4) -> dict:
         summary["handoffs"] = len(recent_handoffs)
 
     # 4. Task status changes
-    contract_file = harness / "contract.yaml"
     recent_tasks: list[str] = []
-    if contract_file.exists():
-        contract = yaml.safe_load(contract_file.read_text()) or {}
-        for task in contract.get("tasks") or []:
+    try:
+        from superharness.engine import state_reader as _sr
+        tasks = _sr.get_tasks(str(project_dir))
+    except Exception:
+        tasks = []
+    for task in tasks:
             if not isinstance(task, dict):
                 continue
             status = task.get("status", "")

@@ -330,7 +330,11 @@ def _step_task(project: Path, state: dict, task_title: Optional[str]) -> Optiona
 
     sh = project / ".superharness"
     contract_file = sh / "contract.yaml"
-    doc = yaml.safe_load(contract_file.read_text()) if contract_file.exists() else {"id": "main", "tasks": []}
+    try:
+        from superharness.engine import state_reader as _sr
+        doc = _sr.get_contract_doc(str(project))
+    except Exception:
+        doc = yaml.safe_load(contract_file.read_text()) if contract_file.exists() else {"id": "main", "tasks": []}
     doc = doc or {"id": "main", "tasks": []}
     tasks = doc.get("tasks") or []
 
@@ -346,32 +350,12 @@ def _step_task(project: Path, state: dict, task_title: Optional[str]) -> Optiona
     }
     tasks.append(task)
     doc["tasks"] = tasks
-    contract_file.write_text(yaml.dump(doc, default_flow_style=False))
-
-    # Mirror to SQLite
+    # Write contract through canonical path (syncs YAML + SQLite)
     try:
-        conn = get_connection(str(project))
-        tasks_dao.upsert(conn, TaskRow(
-            id=task_id,
-            title=task_title,
-            owner="claude-code",
-            status="todo",
-            effort="medium",
-            project_path=str(project),
-            development_method="quick",
-            acceptance_criteria=[],
-            test_types=[],
-            out_of_scope=[],
-            definition_of_done=[],
-            context=None,
-            tdd=None,
-            version=1,
-            created_at=now,
-        ))
-        conn.commit()
-        conn.close()
+        from superharness.engine.contract_io import write_contract as _wc
+        _wc(str(contract_file), doc)
     except Exception as e:
-        click.echo(f"[task] Warning: could not mirror task to SQLite: {e}")
+        click.echo(f"[task] Warning: could not write contract: {e}")
 
     click.echo(f"[task] Created task '{task_title}' (id: {task_id})")
     click.echo(f"  → Task lives in contract.yaml. Run 'shux contract' to see it.")
@@ -405,9 +389,8 @@ def _step_delegate(project: Path, state: dict, enqueue: bool, task_id: Optional[
         "project_path": str(project),
     }
     items.append(item)
-    inbox.write_text(yaml.dump(items, default_flow_style=False))
 
-    # Mirror to SQLite
+    # Write to SQLite via inbox_dao (canonical path)
     try:
         conn = get_connection(str(project))
         inbox_dao.enqueue(
