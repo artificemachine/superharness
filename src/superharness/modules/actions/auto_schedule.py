@@ -36,30 +36,26 @@ def check_scheduled_tasks(context: dict[str, Any], settings: dict[str, Any]) -> 
     project_dir = Path(context.get("project_dir", "."))
     harness_dir = project_dir / ".superharness"
 
-    contract_file = harness_dir / "contract.yaml"
-    inbox_file = harness_dir / "inbox.yaml"
+    # Load tasks from state_reader (SQLite)
+    try:
+        from superharness.engine import state_reader as _sr
+        tasks = _sr.get_tasks(str(project_dir))
+    except Exception:
+        logger.warning("Could not load tasks from state_reader")
+        return {"success": False, "error": "Could not load tasks"}
 
-    if not contract_file.exists():
-        logger.warning(f"No contract found at {contract_file}")
-        return {"success": False, "error": "No contract found"}
-
-    # Load contract
-    from superharness.engine.yaml_helpers import safe_load
-    contract = safe_load(str(contract_file), dict)
-
-    tasks = contract.get("tasks", [])
     if not tasks:
         logger.debug("No tasks in contract")
         return {"success": True, "enqueued_tasks": []}
 
-    # Load inbox
-    if inbox_file.exists():
-        inbox = safe_load(str(inbox_file), list)
-    else:
+    # Load active inbox items from state_reader (SQLite)
+    try:
+        inbox = _sr.get_inbox_items(str(project_dir))
+    except Exception:
         inbox = []
 
     # Build set of task IDs already in inbox
-    enqueued_task_ids = {item["task"] for item in inbox if isinstance(item, dict) and "task" in item}
+    enqueued_task_ids = {str(item.get("task", "")) for item in inbox if isinstance(item, dict) and item.get("task")}
 
     # Build map of task statuses for dependency checking
     task_status_map = {}
@@ -135,12 +131,26 @@ def check_scheduled_tasks(context: dict[str, Any], settings: dict[str, Any]) -> 
         inbox.append(inbox_item)
         enqueued_tasks.append(task_id)
 
-    # Write updated inbox
+    # Write updated inbox via inbox_dao (SQLite)
     if enqueued_tasks:
-        import yaml
-        with open(inbox_file, "w") as f:
-            f.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
-            yaml.dump(inbox, f, default_flow_style=False, allow_unicode=True)
+        try:
+            from superharness.engine.db import get_connection, init_db
+            from superharness.engine import inbox_dao as _idao
+            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            conn = get_connection(str(project_dir))
+            try:
+                init_db(conn)
+                for item in inbox[-len(enqueued_tasks):]:  # only the newly added items
+                    _idao.enqueue(conn, id=str(item["id"]), task_id=str(item["task"]),
+                                 target_agent=str(item["to"]), priority=int(item.get("priority", 2)),
+                                 max_retries=int(item.get("max_retries", 3)),
+                                 project_path=str(item.get("project", "")),
+                                 plan_only=False, now=now_str, model_override="")
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning(f"Failed to enqueue to SQLite: {e}")
         logger.info(f"Enqueued {len(enqueued_tasks)} task(s): {', '.join(enqueued_tasks)}")
 
     return {

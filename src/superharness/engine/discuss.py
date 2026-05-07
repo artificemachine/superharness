@@ -213,71 +213,63 @@ def cmd_approve(
                         t["summary"] = f"User approval granted at {now} by {actor}: {note}"
                     else:
                         t["summary"] = f"User approval granted at {now} by {actor}"
-                _atomic_write(contract_file, yaml.dump(contract_doc))
+                from superharness.engine.contract_io import write_contract as _write_contract
+                _write_contract(contract_file, contract_doc)
 
         inbox_doc: list = []
         changed = False
 
-        if os.path.exists(inbox_file):
-            inbox_doc = safe_load(inbox_file, list)  # type: ignore[assignment]
-            for item in inbox_doc:
-                if not isinstance(item, dict):
-                    continue
-                if str(item.get("task", "")) != task_id:
-                    continue
-                if str(item.get("status", "")) != "paused":
-                    continue
-                if str(item.get("pause_reason", "")) != "awaiting_user_approval":
-                    continue
-                item["status"] = "pending"
-                item["resumed_at"] = now
-                resumed_count += 1
-                changed = True
-
-            if resumed_count == 0 and task_owner and task_status_val in ("todo", "in_progress"):
-                active = any(
-                    isinstance(item, dict)
-                    and str(item.get("task", "")) == task_id
-                    and str(item.get("to", "")) == task_owner
-                    and str(item.get("status", "")) in ("pending", "paused", "launched", "running")
-                    for item in inbox_doc
-                )
-                if not active:
-                    enqueued_id = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{task_id}-{os.getpid()}-{random.randint(0, 999999999)}"
-                    inbox_doc.append(
-                        {
-                            "id": enqueued_id,
-                            "to": task_owner,
-                            "task": task_id,
-                            "project": task_project,
-                            "status": "pending",
-                            "priority": 1,
-                            "retry_count": 0,
-                            "max_retries": 3,
-                            "created_at": now,
-                        }
-                    )
+        # Check for paused items in SQLite inbox and resume them
+        try:
+            from superharness.engine.db import get_connection as _gci, init_db as _idbi
+            from superharness.engine import inbox_dao as _idao
+            _conn = _gci(project_dir)
+            try:
+                _idbi(_conn)
+                paused_items = _idao.get_all(_conn, status="paused")
+                for row in paused_items:
+                    if str(row.task_id) != task_id:
+                        continue
+                    _idao.update_status(_conn, row.id, from_status="paused",
+                                       to_status="pending", now=now)
+                    resumed_count += 1
                     changed = True
 
-            if changed:
-                _atomic_write(inbox_file, yaml.dump(inbox_doc))
+                if resumed_count == 0 and task_owner and task_status_val in ("todo", "in_progress"):
+                    active = any(
+                        str(r.task_id) == task_id and r.status in ("pending", "paused", "launched", "running")
+                        for r in _idao.get_all(_conn)
+                    )
+                    if not active:
+                        enqueued_id = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{task_id}-{os.getpid()}-{random.randint(0, 999999999)}"
+                        _idao.enqueue(_conn, id=enqueued_id, task_id=task_id,
+                                     target_agent=str(task_owner), priority=1,
+                                     max_retries=3, project_path=str(task_project),
+                                     plan_only=False, now=now, model_override="")
+                        changed = True
 
-        elif task_owner and task_status_val in ("todo", "in_progress"):
-            enqueued_id = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{task_id}-{os.getpid()}-{random.randint(0, 999999999)}"
-            inbox_doc = [
-                {
-                    "id": enqueued_id,
-                    "to": task_owner,
-                    "task": task_id,
-                    "project": task_project,
-                    "status": "pending",
-                    "priority": 1,
-                    "retry_count": 0,
-                    "max_retries": 3,
-                    "created_at": now,
-                }
-            ]
-            _atomic_write(inbox_file, yaml.dump(inbox_doc))
+                if changed:
+                    _conn.commit()
+            finally:
+                _conn.close()
+        except Exception:
+            pass
+
+        if not changed and task_owner and task_status_val in ("todo", "in_progress"):
+            try:
+                _conn2 = _gci(project_dir)
+                try:
+                    _idbi(_conn2)
+                    enqueued_id = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{task_id}-{os.getpid()}-{random.randint(0, 999999999)}"
+                    _idao.enqueue(_conn2, id=enqueued_id, task_id=task_id,
+                                 target_agent=str(task_owner), priority=1,
+                                 max_retries=3, project_path=str(task_project),
+                                 plan_only=False, now=now, model_override="")
+                    _conn2.commit()
+                finally:
+                    _conn2.close()
+            except Exception:
+                pass
 
     # Acquire locks in order
     def _with_locks(paths: list[str], fn) -> None:  # type: ignore[type-arg]

@@ -8,7 +8,7 @@
 # Output: JSON with decision (allow/warn/block) and optional message
 
 PROJECT_DIR="$(pwd)"
-CONTRACT="$PROJECT_DIR/.superharness/contract.yaml"
+CONTRACT="$PROJECT_DIR/.superharness/state.sqlite3"
 
 # Read tool input from stdin
 INPUT=$(cat)

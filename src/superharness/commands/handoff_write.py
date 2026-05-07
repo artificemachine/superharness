@@ -80,13 +80,25 @@ def _validate_id(name: str, value: str) -> None:
 _TDD_ENFORCED_WORKFLOWS = {"implementation", "review"}
 
 
+def _load_contract_doc(contract_file: Path) -> dict:
+    """Load contract doc from state_reader (SQLite), falling back to YAML."""
+    try:
+        from superharness.engine import state_reader as _sr
+        project_dir = str(contract_file.parent.parent)
+        return _sr.get_contract_doc(project_dir)
+    except Exception:
+        if not contract_file.is_file() or yaml is None:
+            return {}
+        try:
+            return yaml.safe_load(contract_file.read_text()) or {}
+        except Exception:
+            return {}
+
+
 def _load_task_policy(contract_file: Path, task_id: str) -> tuple[bool, str]:
     """Return (require_tdd, workflow) for the given task. Defaults: (True, 'quick')."""
-    if not contract_file.is_file() or yaml is None:
-        return (True, "quick")
-    try:
-        doc = yaml.safe_load(contract_file.read_text()) or {}
-    except Exception:
+    doc = _load_contract_doc(contract_file)
+    if not doc:
         return (True, "quick")
     task = None
     try:
@@ -109,12 +121,9 @@ def _load_task_policy(contract_file: Path, task_id: str) -> tuple[bool, str]:
 
 
 def _task_exists(contract_file: Path, task_id: str) -> bool:
-    """Return True if task_id resolves in contract.yaml (top-level or subtask)."""
-    if not contract_file.is_file() or yaml is None:
-        return False
-    try:
-        doc = yaml.safe_load(contract_file.read_text()) or {}
-    except Exception:
+    """Return True if task_id resolves in contract (top-level or subtask)."""
+    doc = _load_contract_doc(contract_file)
+    if not doc:
         return False
     try:
         from superharness.engine.subtask import find_task_or_subtask

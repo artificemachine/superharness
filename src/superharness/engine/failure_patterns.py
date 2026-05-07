@@ -278,36 +278,29 @@ def record_failure(
     agent: str = "claude-code",
     extra: dict | None = None,
 ) -> list[FailurePattern]:
-    """Analyze error_text, match against pattern library, and append to failures.yaml.
+    """Analyze error_text, match against pattern library, and record to SQLite.
 
     Returns the list of matched patterns (empty if no match).
     """
-    failures_file = str(Path(project_dir) / ".superharness" / "failures.yaml")
-    data = _load_failures(failures_file)
-
     matched = match_patterns(error_text)
     pattern_ids = [p.id for p in matched]
 
-    _sev_rank = {"minor": 0, "major": 1, "critical": 2}
-    entry: dict[str, Any] = {
-        "task": task_id,
-        "agent": agent,
-        "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "patterns": pattern_ids if pattern_ids else ["unknown"],
-        "error_snippet": strip_ansi(error_text[:500]).strip(),
-        "severity": max((p.severity for p in matched), default="minor",
-                        key=lambda s: _sev_rank.get(s, 0)),
-    }
-    # Only allow safe extra keys — never overwrite core fields
-    _safe_extra_keys = {"context", "retry_count", "slot_index", "model"}
-    if extra:
-        for k, v in extra.items():
-            if k in _safe_extra_keys:
-                entry[k] = v
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    error_snippet = strip_ansi(error_text[:500]).strip()
+    pattern_str = ",".join(pattern_ids) if pattern_ids else "unknown"
 
-    data["failures"].append(entry)
     try:
-        _save_failures(failures_file, data)
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import failures_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            failures_dao.record(conn, task_id=task_id, agent=agent,
+                              pattern=pattern_str,
+                              error_snippet=error_snippet, now=now)
+            conn.commit()
+        finally:
+            conn.close()
     except Exception:
         pass
 
@@ -320,15 +313,23 @@ def get_failure_hints(project_dir: str, task_id: str) -> list[str]:
     Called by _build_context_hint in delegate.py to inject remediation advice
     into the next dispatch prompt.
     """
-    failures_file = str(Path(project_dir) / ".superharness" / "failures.yaml")
-    data = _load_failures(failures_file)
-
-    # Collect pattern_ids from all failures matching this task
+    # Collect pattern_ids from all failures matching this task in SQLite
     seen_pattern_ids: set[str] = set()
-    for entry in data.get("failures", []):
-        if entry.get("task") == task_id:
-            for pid in entry.get("patterns", []):
-                seen_pattern_ids.add(pid)
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import failures_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            rows = failures_dao.get_recent(conn, task_id=task_id)
+            for row in rows:
+                if row.pattern:
+                    for pid in row.pattern.split(","):
+                        seen_pattern_ids.add(pid.strip())
+        finally:
+            conn.close()
+    except Exception:
+        pass
 
     hints = []
     if "unknown" in seen_pattern_ids and not seen_pattern_ids.difference({"unknown"}):

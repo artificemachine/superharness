@@ -150,9 +150,10 @@ def _check_dependencies(task: dict, contract_file: str) -> list[PreflightCheck]:
         return checks
 
     try:
-        import yaml
-        doc = yaml.safe_load(Path(contract_file).read_text(encoding="utf-8")) or {}
-        tasks_by_id = {str(t.get("id", "")): t for t in (doc.get("tasks") or []) if isinstance(t, dict)}
+        from superharness.engine import state_reader as _sr
+        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(contract_file)))
+        tasks = _sr.get_tasks(project_dir)
+        tasks_by_id = {str(t.get("id", "")): t for t in tasks if isinstance(t, dict)}
     except Exception:
         tasks_by_id = {}
 
