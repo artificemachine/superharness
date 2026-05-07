@@ -5,45 +5,62 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 export PYTHONPATH="${SRC_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 
-resolve_python() {
-  if [[ -n "${SUPERHARNESS_PYTHON:-}" ]]; then
-    echo "${SUPERHARNESS_PYTHON}"
-    return
-  fi
+# Ensure agent binaries are findable under launchd's stripped PATH
+export PATH="/Applications/cmux.app/Contents/Resources/bin:${HOME}/.local/bin:${HOME}/.nvm/versions/node/v25.2.1/bin:${HOME}/.pyenv/shims:${HOME}/.pyenv/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
 
-  local shux_bin shebang candidate resolved
-  shux_bin="$(command -v shux 2>/dev/null || true)"
-  if [[ -n "$shux_bin" && -r "$shux_bin" ]]; then
-    IFS= read -r shebang < "$shux_bin" || true
-    if [[ "$shebang" == '#!'*python* ]]; then
-      candidate="${shebang#\#!}"
-      if [[ "$candidate" == "/usr/bin/env "* ]]; then
-        candidate="${candidate#"/usr/bin/env "}"
-        candidate="${candidate%% *}"
-        resolved="$(command -v "$candidate" 2>/dev/null || true)"
-        if [[ -n "$resolved" ]]; then
-          echo "$resolved"
-          return
-        fi
-      elif [[ -x "$candidate" ]]; then
-        echo "$candidate"
-        return
-      fi
-    fi
-  fi
+# Build Codex CLI command
+MODEL_ARGS=()
+PROMPT=""
+PROJECT_DIR="."
+NON_INTERACTIVE=0
+BYPASS=0
 
-  echo "python3"
-}
-
-PYTHON3="$(resolve_python)"
-
-# Fast-path: print usage and exit before touching codex binary
-for arg in "$@"; do
-  if [[ "$arg" == "--help" || "$arg" == "-h" ]]; then
-    echo "Usage: delegate-to-codex.sh [--project DIR] [--task ID] [--prompt TEXT] [--model MODEL] [--plan-only] [--non-interactive]"
-    echo "Delegates a superharness task to the Codex CLI agent."
-    exit 0
-  fi
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --project)
+      PROJECT_DIR="$2"
+      shift 2
+      ;;
+    --prompt)
+      PROMPT="$2"
+      shift 2
+      ;;
+    --model)
+      MODEL_ARGS+=("--model" "$2")
+      shift 2
+      ;;
+    --non-interactive)
+      NON_INTERACTIVE=1
+      shift
+      ;;
+    --codex-bypass)
+      BYPASS=1
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
 done
 
-exec "$PYTHON3" -m superharness.commands.delegate --to codex-cli "$@"
+if [[ -z "$PROMPT" ]]; then
+  echo "Error: No prompt provided to delegate-to-codex.sh" >&2
+  exit 1
+fi
+
+if [[ $NON_INTERACTIVE -eq 1 ]]; then
+  # Build execution command with automation flags
+  CODEX_ARGS=("exec" "--skip-git-repo-check" "-C" "$PROJECT_DIR")
+  CODEX_ARGS+=("${MODEL_ARGS[@]}")
+  
+  if [[ $BYPASS -eq 1 ]]; then
+    CODEX_ARGS+=("--dangerously-bypass-approvals-and-sandbox")
+  else
+    CODEX_ARGS+=("--full-auto")
+  fi
+  
+  exec codex "${CODEX_ARGS[@]}" "$PROMPT"
+else
+  # Regular interactive session
+  exec codex -C "$PROJECT_DIR" "${MODEL_ARGS[@]}" "$PROMPT"
+fi
