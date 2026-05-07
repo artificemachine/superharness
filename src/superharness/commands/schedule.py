@@ -192,7 +192,34 @@ def cmd_remove(project_dir: str, task_id: str) -> int:
     return 0
 
 
-def cmd_run(project_dir: str, dry_run: bool = False) -> int:
+def _in_quiet_window(now: datetime, quiet_hours: list[dict] | None) -> bool:
+    """Return True if *now* falls inside any configured quiet window.
+
+    Each entry in *quiet_hours* is a dict with ``start`` and ``end`` as
+    "HH:MM" strings in UTC.  Example: ``[{"start": "22:00", "end": "06:00"}]``.
+    """
+    if not quiet_hours:
+        return False
+    now_hm = now.hour * 60 + now.minute
+    for window in quiet_hours:
+        try:
+            sh, sm = (int(x) for x in window["start"].split(":"))
+            eh, em = (int(x) for x in window["end"].split(":"))
+        except (KeyError, ValueError, TypeError):
+            continue
+        start_m = sh * 60 + sm
+        end_m = eh * 60 + em
+        if start_m <= end_m:
+            if start_m <= now_hm < end_m:
+                return True
+        else:
+            if now_hm >= start_m or now_hm < end_m:
+                return True
+    return False
+
+
+def cmd_run(project_dir: str, dry_run: bool = False,
+            quiet_hours: list[dict] | None = None) -> int:
     """Evaluate all schedules; enqueue any whose next_run has passed.
 
     Called by the watcher (or manually) to fire due dispatches.
@@ -206,6 +233,10 @@ def cmd_run(project_dir: str, dry_run: bool = False) -> int:
     now = _now_utc()
     enqueued = 0
     updated = False
+
+    if _in_quiet_window(now, quiet_hours):
+        print("Quiet window active — skipping scheduled dispatch.")
+        return 0
 
     for s in schedules:
         task_id = s.get("task_id")
