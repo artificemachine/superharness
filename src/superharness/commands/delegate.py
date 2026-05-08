@@ -702,6 +702,12 @@ def delegate(
             )
             for b in blockers:
                 print(f"   - {b}", file=sys.stderr)
+            try:
+                from superharness.engine.ledger_dao import decision_log
+                decision_log(project_dir, "gate_block", task_id=task_id, agent=target,
+                             reason=f"unfinished dependencies: {', '.join(blockers)}")
+            except Exception:
+                pass
             return 1
 
     # Gate 4: minimum content — plan-only dispatch requires acceptance criteria
@@ -717,7 +723,13 @@ def delegate(
                 f"Add at least one before dispatching.",
                 file=sys.stderr,
             )
-            return EXIT_PERMANENT_BLOCK
+            try:
+                from superharness.engine.ledger_dao import decision_log
+                decision_log(project_dir, "gate_block", task_id=task_id, agent=target,
+                             reason="empty task: no AC, DoD, or context for plan-only dispatch")
+            except Exception:
+                pass
+            return EXIT_PERMANENT_BLOCK  # Gate 4: minimum content
 
     # Gate 5: status lifecycle — dispatch is workflow-aware.
     # Terminal statuses (done/failed/stopped) pass through — reconcile handles them.
@@ -747,6 +759,13 @@ def delegate(
                 file=sys.stderr,
             )
         # Permanent lifecycle block — non-retryable.
+        try:
+            from superharness.engine.ledger_dao import decision_log
+            _allowed = ", ".join(sorted(_DISPATCH_ALLOWED_STATUSES))
+            decision_log(project_dir, "gate_block", task_id=task_id, agent=target,
+                         reason=f"status '{_task_status}' not allowed for workflow '{_workflow}' (allowed: {_allowed})")
+        except Exception:
+            pass
         return EXIT_PERMANENT_BLOCK
 
     # -----------------------------------------------------------------------
@@ -765,6 +784,12 @@ def delegate(
             if pf.status != "pass":
                 print(pf.format_summary(verbose=False), file=sys.stderr)
             if not pf.can_dispatch:
+                try:
+                    from superharness.engine.ledger_dao import decision_log
+                    decision_log(project_dir, "gate_block", task_id=task_id, agent=target,
+                                 reason=f"preflight: {pf.format_summary(verbose=False)}")
+                except Exception:
+                    pass
                 return 1
             # Surface fanout hint if complexity suggests parallel
             if pf.suggested_mode != "single":

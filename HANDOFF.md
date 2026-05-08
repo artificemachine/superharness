@@ -1,10 +1,71 @@
-# Handoff — superharness (2026-05-07)
+# Handoff — superharness
 
-> Status: branch `feat/test-unification-task`, uncommitted changes
+> Latest: 2026-05-08 PM — planning-only session for portable-paths cleanup
+> Previous: 2026-05-07 — branch `feat/test-unification-task`, uncommitted changes
 > PyPI latest: v1.47.5
-> `shux status`: clean — no issues, no active tasks, inbox clear
 
-## What just happened (this session)
+---
+
+## 2026-05-08 PM session: Portable-paths cleanup planning
+
+### What was added
+
+Two planning docs in `docs/`. **No code changes to superharness in this session**
+(a `fix/session-stop-no-mcp-kill` branch was created and immediately reverted
+once the user pointed out that the upstream pkill block should not be silently
+patched in their dev source tree).
+
+| File | Purpose |
+|------|---------|
+| `docs/PLAN-portable-adapter-paths.md` | Per-project context: superharness needs a `superharness adapter-path <host> <hook>` CLI subcommand so external configs can resolve hook paths without hardcoding repo locations. Acceptance test included. |
+| `docs/PLAN-portable-paths-cleanup.md` | Master TDD plan for the cross-repo cleanup. 4 phases: (1) superharness CLI, (2) obsidian-semantic-mcp launcher, (3) voice-toolkit docs, (4) agent-config migration. Phases 1-3 are independent; phase 4 depends on 1-3. |
+
+### Why this matters
+
+Agent configs (`~/.claude/settings.json`, `~/.claude.json`, `~/.opencode.json`,
+`~/.pi/agent/mcp.json`) hardcode absolute paths to this repo's adapter hook
+scripts. The same problem affects three projects. This session diagnosed the
+root cause and wrote the cross-cutting plan but did NOT execute on superharness.
+
+Specifically, `~/.claude/settings.json` lines 209/245/277/287/308 reference
+`bash /Users/airm2max/DevOpsSec/superharness/src/superharness/adapters/claude-code/hooks/<hook>.sh`
+which breaks under (a) repo moves, (b) release installs (`pip install
+superharness`), (c) temp worktrees (a stale worktree path was already found and
+fixed in `settings.json` earlier this session).
+
+### What other projects shipped this session (for context)
+
+- **voice-toolkit** — `chore/portable-mcp-config` branch (uncommitted): `_find_binary()` resolution order fixed (PATH-installed > source-relative). 5 new tests pass.
+- **obsidian-semantic-mcp** — `chore/portable-mcp-config` branch (uncommitted): stdin reader rewritten to use `anyio.to_thread.run_sync(readline)`, fixing the 30s pipe-stdin hang that broke MCP over `docker exec`. 7 new tests. Image rebuild still pending.
+
+### What the next session should do (superharness-specific)
+
+1. **Phase 1 — implement `superharness adapter-path` CLI** per
+   `docs/PLAN-portable-adapter-paths.md`. RED test, GREEN minimal impl
+   using `importlib.resources`, REFACTOR to consume manifests from
+   `adapter_manifests/*.yaml`.
+2. **Phase 4 (after phase 1 ships)** — migrate `~/.claude/settings.json`
+   to call `bash $(superharness adapter-path claude-code <hook>)` instead
+   of hardcoded paths. The Stop hook is currently routed through
+   `~/.claude/hooks/superharness-stop-no-mcp-kill.sh` (a local wrapper
+   that strips the MCP-kill block from `session-stop.sh`); that wrapper
+   should also be updated to use `superharness adapter-path` once
+   phase 1 ships.
+3. **Consider an upstream fix** to `session-stop.sh`: drop the trailing
+   `pkill -TERM -f` block entirely. Claude Code already cleans up stdio
+   MCP children on CLI exit, and the Stop event fires per-turn (not at
+   session end), so pkill-ing here breaks long-lived MCP connections
+   between turns. If accepted upstream, the local wrapper can be deleted.
+
+### Cross-cutting follow-ups (not superharness's responsibility)
+
+- Rebuild & publish obsidian-semantic-mcp image (owner-driven).
+- Re-register voice-toolkit in `~/.opencode.json` to overwrite the stale
+  absolute path now that `_find_binary()` resolves correctly.
+
+---
+
+## 2026-05-07 session: Watcher bug fixes
 
 Three watcher bug fixes + regression test suites. All changes are on `feat/test-unification-task`, not yet committed.
 
