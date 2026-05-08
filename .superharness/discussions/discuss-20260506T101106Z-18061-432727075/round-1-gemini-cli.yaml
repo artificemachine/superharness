@@ -1,0 +1,41 @@
+agent: gemini-cli
+discussion_id: discuss-20260506T101106Z-18061-432727075
+points:
+- id: fix-inbox-watch-indentation-bug
+  rationale: 'Confirmed a critical indentation bug in src/superharness/commands/inbox_watch.py:2033.
+    The ''paused dead-pid'' reconciliation block is indented 8 spaces but follows
+    a comment at 4 spaces, making it effectively part of the previous ''except'' block.
+    This means it only executes when _analyze_task_logs fails. This must be fixed
+    in Refactor 1.
+
+    '
+  verdict: agree
+- id: fix-zombie-logic-modernization
+  rationale: 'While _reconcile_zombies is defined at line 2252 in the current v1.47.1,
+    it retains legacy YAML fallbacks and is bloated inline logic. I agree with moving
+    this to a dedicated module (e.g., engine/watcher/zombies.py) to properly decouple
+    it from the CLI command.
+
+    '
+  verdict: agree
+- id: migrate-inverted-yaml-patterns
+  rationale: 'Confirmed inverted trust patterns (YAML write before SQLite) in _auto_close_consensus_discussions
+    (inbox_watch.py) and _step_task (onboard.py). These are high-risk split-brain
+    scenarios. I agree these should be Refactor 2, specifically including onboard.py
+    which was deferred by claude-code but is labeled HIGH severity in the handoff.
+
+    '
+  verdict: agree
+- id: defer-structural-split
+  rationale: 'Agree with deferring the 2.8k LOC inbox_watch.py split until the correctness
+    bugs (indentation, NameErrors, inversions) are resolved.
+
+    '
+  verdict: agree
+position: I agree with the prioritization of correctness bugs over structural refactors.
+  My audit confirms the 'inverted YAML trust' patterns and identifies a specific indentation
+  bug at inbox_watch.py:2033 that silently breaks paused-task reconciliation. I recommend
+  fixing these first, then proceeding with the watcher modularization.
+round: 1
+submitted_at: '2026-05-06T13:59:57Z'
+verdict: consensus

@@ -1,0 +1,25 @@
+agent: claude-code
+discussion_id: discuss-20260505T111202Z-1966-336891762
+points:
+- id: default-sqlite-only
+  rationale: _get_backend() now returns 'sqlite_only' by default. Test confirms.
+  verdict: agree
+- id: no-yaml-ingestion
+  rationale: _ensure_ingested() removed from all production read paths. CI test verifies.
+  verdict: agree
+- id: loud-sqlite-errors
+  rationale: In sqlite_only mode, SQLite errors propagate. No silent YAML fallback.
+  verdict: agree
+- id: yaml-sync-noop
+  rationale: yaml_sync.py stripped from 142 lines to 30-line no-op. Drain always returns
+    0.
+  verdict: agree
+- id: ci-sqlite-guard
+  rationale: CI tests verify default backend, no ingestion, loud errors. 130 tests
+    pass.
+  verdict: agree
+position: All 5 fixes implemented and verified. 130 tests pass. The SQLite-only regression
+  is closed.
+round: 1
+submitted_at: '2026-05-05T11:12:21Z'
+verdict: consensus

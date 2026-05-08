@@ -1,0 +1,37 @@
+task: t-docs-sqlite
+phase: session_stop
+status: stopped
+from: claude-code
+to: owner
+date: '2026-05-03T22:13:49Z'
+summary: Session ended before task completion; task marked stopped by session-stop
+  hook.
+outcome: Claude Code session ended while the task was still in progress. The task
+  was marked stopped for operator review.
+context: "Session snapshot: .superharness/session-progress.md\nTask context:\n════════════════════════════════════════════\n\
+  \ Context: t-docs-sqlite  (owner: claude-code)\n════════════════════════════════════════════\n\
+  Status: in_progress\nTitle:  Document Phase 4 SQLite-SoT architecture\n\nLast handoff:\
+  \ (none found)\n\nChanged files (git log):\n  .superharness/state.sqlite3\n  .superharness/state.sqlite3-shm\n\
+  \  CHANGELOG.md\n  CLAUDE.md\n  HANDOFF.md\n  docs/plans/dashboard-yaml-to-sqlite.md\n\
+  \  pyproject.toml\n  src/superharness/__init__.py\n  src/superharness/commands/adapter_payload.py\n\
+  \  src/superharness/commands/daemon.py\n  src/superharness/commands/inbox_watch.py\n\
+  \  src/superharness/commands/task.py\n  src/superharness/engine/db.py\n  src/superharness/engine/state_reader.py\n\
+  \  src/superharness/scripts/dashboard-ui.py\n  src/superharness/scripts/inbox-deadline-check.sh\n\
+  \  tests/conftest.py\n  tests/unit/daemon/test_daemon_lifecycle.py\n  tests/unit/dashboard/test_dashboard_sqlite_only.py\n\
+  \  tests/unit/dashboard/test_state_reader_coverage.py\n════════════════════════════════════════════\n\
+  \nBranch:\nmain\n\nUncommitted changes:\nM .superharness/.dashboard_auth_token\n\
+  \ M .superharness/contract.yaml\n M .superharness/state.sqlite3\n M .superharness/state.sqlite3-shm\n\
+  \ M src/superharness/commands/delegate.py\n M src/superharness/commands/handoff_write.py\n\
+  \ M src/superharness/commands/inbox_enqueue.py\n M src/superharness/commands/inbox_gc.py\n\
+  \ M src/superharness/commands/inbox_watch.py\n M src/superharness/commands/notify.py\n\
+  \ M src/superharness/commands/notify_desktop.py\n M src/superharness/commands/onboard.py\n\
+  \ M src/superharness/commands/recap.py\n M src/superharness/engine/dashboard_presenter.py\n\
+  \ M src/superharness/engine/db.py\n M src/superharness/engine/inbox.py\n M src/superharness/engine/lifecycle_rules.py\n\
+  \ M src/superharness/engine/preflight.py\n M src/superharness/engine/recall.py\n\
+  \ M src/superharness/engine/sqlite_only.py\n\nRecent commits:\n75b5261 chore: sync\
+  \ __version__ to 1.44.19 in __init__.py\nf5fa7f1 chore(release): v1.44.19 — daemon\
+  \ deadline crash fix\n8f2ed94 fix(daemon): handle empty inbox.yaml JSON in sqlite_only\
+  \ mode\nf27c442 docs: update HANDOFF.md for v1.44.18 release\nd2e2835 chore(release):\
+  \ bump version to 1.44.18\n"
+artifacts:
+- .superharness/session-progress.md

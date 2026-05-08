@@ -1,0 +1,186 @@
+discussion_id: discuss-20260507T110357Z-624-903026676
+round: 1
+agent: opencode
+verdict: partial
+position: >
+  The comparison document is thorough, well-structured, and the core gap analysis is correct.
+  Superharness v1.51.0 has shipped an impressive volume of features absorbed from both Pi-Mono and
+  Hermes (14 capabilities in the "Already Shipped" table), and the remaining gaps are scoped
+  realistically. I agree with the identification of both high-priority gaps and with all five
+  "What NOT to pick" exclusions — those show discipline and prevent scope creep. I also agree
+  with the broad tiered structure (High → Medium → Low) and most effort estimates. My partial
+  disagreements are on three specific priority assignments: (1) worktree stale pruning should be
+  downgraded from medium to low priority — it is housekeeping, not a functional or safety gap;
+  (2) `shux context --tree` should stay at medium priority but the scope should explicitly exclude
+  Pi-Mono-style branch summaries and compaction entries for the first pass, since superharness
+  uses a flat SQLite model; (3) `shux insights` belongs at medium priority as listed — promoting
+  it to high would put a measurement feature ahead of functional gaps like session flush and skill
+  curator lifecycle. My recommended execution order: (1) tool-loop guardrails, (2) structured
+  compaction with Pi-Mono's Constraints-inclusive template, (3) proactive session flush, (4)
+  shux insights, (5) skill curator lifecycle, (6) context --tree (basic dependency tree only),
+  all medium items, then (7) worktree pruning and other low-priority items last.
+
+points:
+  - id: tool-loop-guardrails
+    verdict: agree
+    rationale: >
+      Should be the #1 priority, exactly as the comparison states. Budget burn from repeated
+      failing tool calls costs the user money in real time. Code inspection confirms that
+      `engine/loop_detector.py` already has a working `detect_loop()` function (sliding window,
+      regex-based tool extraction from launcher logs), but it only detects — there is no
+      escalation ladder (warn → block) and no watcher integration. This is a completion task:
+      extend the existing detector to escalate, wire it into the watcher dispatch loop so it can
+      block repeated failures, and add tests for the escalation states. Low effort, high impact,
+      correctly placed as the top gap. Also worth noting: this is the ONLY gap that addresses a
+      direct cost-control concern. Every other gap (handoffs, insights, flush) is about workflow
+      quality, not spend prevention.
+
+  - id: structured-compaction
+    verdict: agree
+    rationale: >
+      Should be #2 priority. Handoffs are superharness's core value proposition — the entire
+      framework exists to make multi-agent context continuity work. The current
+      `engine/handoff_generator.py` produces a flat dictionary (summary, scope, acceptance,
+      risks, artifacts, task, status) that lacks the structured sections both Pi-Mono and Hermes
+      use for richer context continuity. I specifically prefer Pi-Mono's template (Goal /
+      Constraints / Progress / Decisions / Next Steps / Files) over Hermes's because Pi-Mono
+      includes `Constraints` — in multi-agent settings, telling the receiving agent what NOT to
+      do is often as important as telling it what TO do. A constraint like "do not modify the
+      watcher heartbeat format" can prevent an agent from inadvertently breaking a subsystem it
+      does not fully understand. Hermes drops this field; that is a meaningful loss for context
+      continuity. The comparison correctly identifies this gap and correctly rates it low effort —
+      this is essentially updating one template function's return dict.
+
+  - id: insights-priority
+    verdict: disagree
+    rationale: >
+      The comparison correctly places `shux insights --days 30` at medium priority, low effort.
+      I disagree with any argument to promote it to high priority ahead of functional gaps.
+      Cost/usage visibility is valuable, but it is a measurement and reporting layer, not a
+      functional or safety feature. The underlying SQLite data (tasks, handoffs, ledger,
+      decisions) already exists and can be queried via `shux recall` and `shux context`. Building
+      a dedicated insights command is a natural polish step, but it should not ship before
+      proactive session flush (which actually prevents context loss) or skill curator lifecycle
+      (which enforces skill quality and prevents stale/manual skill drift). Medium priority with
+      low effort is the right placement — quick to build, ship after functional medium items.
+      Every day spent on a dashboard feature before closing a functional gap is a day the user
+      does not have that functionality.
+
+  - id: proactive-session-flush
+    verdict: agree
+    rationale: >
+      Correctly placed at medium priority, medium effort. The `engine/session_flush.py` module
+      exists (confirmed via code inspection), so the flush mechanism itself is in place. The
+      medium effort is accurate because the remaining work is integration: triggering flush at a
+      context-size threshold (e.g., 50% of context limit, per Hermes), connecting it to the
+      watcher or agent runner lifecycle, and ensuring the flush output is compatible with
+      `shux handoff generate` and `shux context`. This is important for long-running sessions
+      that accumulate context without explicit handoffs, but it is correctly classified as medium
+      priority rather than high because deliberate handoff generation already covers the
+      functional need — proactive flush is a convenience/safety net, not a new capability.
+
+  - id: context-tree-scope
+    verdict: disagree
+    rationale: >
+      The comparison lists `shux context --tree` as medium priority, medium effort. I agree with
+      medium priority but flag that the effort estimate may be optimistic if "tree" is interpreted
+      as Pi-Mono's full hierarchical session tree with branch summaries, labels, and compaction
+      entries. Superharness uses a flat SQLite task model with `blocked_by` dependency edges, not
+      Pi-Mono's `parentId` + branching model. A basic dependency tree from flat blocked_by edges
+      is straightforward (BFS/topological sort, similar to the existing Mermaid dependency graph
+      in the dashboard). But Pi-Mono-style branch summaries and compaction entries would require
+      either schema changes or complex multi-table joins. I recommend keeping this at medium
+      priority but scoping v1 to dependency-tree rendering only (visualize blocked_by chains),
+      explicitly excluding branch summaries and compaction entries. That keeps the effort at
+      low-to-medium rather than medium-high.
+
+  - id: worktree-stale-pruning
+    verdict: disagree
+    rationale: >
+      The comparison places worktree stale pruning at medium priority, low effort. I downgrade it
+      to low priority. Stale worktrees consume disk space but do not break any functionality,
+      block any workflow, or create any safety risk. `shux worktree-gc` (from feat.worktree-gc)
+      already covers orphaned dispatch worktree cleanup. Adding a time-based staleness threshold
+      (>24h, per Hermes) is a natural, low-effort extension, but it addresses housekeeping, not
+      a functional gap. This should not ship before any high-priority item, nor before the other
+      medium-priority items that directly affect core workflows (session flush, insights, skill
+      curator lifecycle, context --tree). Low priority is the correct tier for this work.
+
+  - id: skill-curator-lifecycle
+    verdict: agree
+    rationale: >
+      Correct priority and effort. Skill extraction + metrics shipped in v1.50.0, so the curator
+      lifecycle (usage tracking, stale marking, archive, dry-run) is the logical next step.
+      Medium priority is right — this becomes increasingly valuable as skill registries accumulate
+      entries over time, and stale skills with misleading instructions can confuse agents. But it
+      is not blocking for current operations since the skill extraction pipeline is already
+      functional and ships fresh extraction results.
+
+  - id: packs-strategic-deferral
+    verdict: agree
+    rationale: >
+      Correctly placed at low priority, high effort. However, I would tag "Defer" rather than
+      "Optional" — packs (bundling adapter manifests, skills, guardrails, and prompts into
+      distributable packages) have clear strategic value as superharness's ecosystem distribution
+      mechanism. They should be revisited after: (1) high and medium gaps close, (2) the adapter
+      registry has at least one non-native adapter (e.g., Gemini CLI) to validate the pack
+      distribution model, and (3) the community adapter surface is mature enough to warrant a
+      packaging format. Not optional — just deferred.
+
+  - id: acp-adapter
+    verdict: agree
+    rationale: >
+      Correctly placed at low priority, high effort. An ACP (Agent Client Protocol) adapter would
+      enable IDE clients to connect without custom integration, expanding superharness's
+      ecosystem reach. But the ROI is low while the MCP surface (17 tools, FastMCP HTTP on port
+      7474, shipped v1.50.0) already covers external access. Building a second protocol adapter
+      before the first has community adoption is premature. Low priority is right.
+
+  - id: shared-permission-policy
+    verdict: agree
+    rationale: >
+      Correct priority and effort. A shared machine-readable permission/path policy across Claude
+      Code and Codex CLI adapters would reduce drift between their permission models. Medium
+      effort is realistic (designing a schema that covers both runtimes, implementing validators
+      for each). Low priority is appropriate because risk-classified approval gates
+      (mcp/approval.py) and dangerous-command detection (guard/detector.py) already ship and
+      provide runtime safety. A shared policy would be infrastructure hardening, not a functional
+      gap.
+
+  - id: what-not-to-pick-exclusions
+    verdict: agree
+    rationale: >
+      All five exclusions are architecturally sound and prevent scope creep:
+      (1) Pi's full agent runtime — superharness orchestrates agents, it does not implement one.
+      Building an agent runtime would duplicate Claude Code/Codex CLI functionality and bloat the
+      codebase. (2) Hermes's full gateway runner — redundant with the existing operator + daemon
+      pattern; superharness already has a running daemon (engine/operator.py) that manages
+      watcher + dashboard lifecycle. (3) Telegram/Discord embedded adapters — correctly deferred
+      to the hook system; Discord trigger already ships via modules/actions/discord.py (v1.51.0)
+      and adding full embedded adapters would duplicate the hook architecture. (4) Hermes voice
+      pipeline — out of scope for a session handoff framework; voice belongs in a separate
+      project. (5) Hermes memory tool (MEMORY.md/USER.md) — superharness covers this through
+      handoffs (structured context), ledger (decisions and failures), and `shux recall` (FTS over
+      sessions/messages, shipped v1.50.0). Re-implementing Hermes's memory tool would be
+      redundant. Also correct to note that Pi's TypeScript TUI library was not directly ported
+      but conceptually adapted via the curses-based terminal Kanban board (v1.49.0).
+
+  - id: overall-priority-execution-order
+    verdict: agree
+    rationale: >
+      The tiered structure works, and the execution order within each tier is logical. My
+      recommended execution sequence, combining the comparison's framework with my amendments:
+      — High (ship first, in order): (1) tool-loop guardrails (cost control), (2) structured
+      compaction with Pi-Mono's Constraints-inclusive template (core handoff quality).
+      — Medium (ship next, in order): (3) proactive session flush (context safety net), (4) shux
+      insights (cost/usage visibility — important but not blocking), (5) skill curator lifecycle
+      (skill quality over time), (6) context --tree (basic dependency visualization, no branch
+      summaries in v1).
+      — Low (defer): (7) worktree stale pruning (housekeeping), (8) shared permission policy
+      (infrastructure hardening).
+      — Defer (revisit later): packs (ecosystem distribution, after Gemini CLI adapter), ACP
+      adapter (after MCP adoption validated). This order maximizes value delivered per unit of
+      effort and prioritizes features that directly affect user cost, workflow quality, and
+      operational safety.
+
+submitted_at: "2026-05-07T12:08:34Z"
