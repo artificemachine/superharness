@@ -66,8 +66,13 @@ _MAPPING: dict[str, tuple[Optional[str], list[str], str]] = {
     ),
     "in_progress": (
         None,
-        ["report_ready", "pending_user_approval", "stopped", "failed"],
+        ["report_ready", "pending_user_approval", "stopped", "failed", "waiting_input"],
         "agent is working; wait for report_ready or pending_user_approval",
+    ),
+    "todo": (
+        "plan_proposed",
+        ["plan_proposed", "waiting_input"],
+        "author a plan handoff before dispatch",
     ),
     "pending_user_approval": (
         "in_progress",
@@ -116,7 +121,7 @@ _MAPPING: dict[str, tuple[Optional[str], list[str], str]] = {
     ),
     "waiting_input": (
         None,
-        ["in_progress", "pending_user_approval"],
+        ["in_progress", "pending_user_approval", "todo", "plan_proposed"],
         "waiting for external input",
     ),
     "paused": (
@@ -291,3 +296,25 @@ def dashboard_status_mapping() -> dict:
         "cols": STATUS_TO_COL,
         "groups": [{**g} for g in STATUS_GROUPS],  # shallow copy
     }
+
+
+def validate_status_transition(current: str, new: str) -> None:
+    """Raise ValueError if `new` is not a legal transition from `current`.
+    
+    Uses the authoritative _MAPPING from this module.
+    Terminal statuses accept no transitions.
+    Unknown current statuses accept any transition (fail open).
+    """
+    if new not in ALL_STATUSES:
+        raise ValueError(
+            f"Invalid status '{new}'. Valid statuses: {', '.join(ALL_STATUSES)}"
+        )
+    info = _MAPPING.get(current)
+    if info is None:
+        return  # unknown current status — fail open
+    legal = info[1]
+    if new not in legal:
+        raise ValueError(
+            f"Illegal transition: '{current}' → '{new}'. "
+            f"Legal transitions from '{current}': {', '.join(legal)}"
+        )

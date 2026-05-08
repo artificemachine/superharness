@@ -84,6 +84,14 @@ def set_task_status(
         if from_status is not None and task_row.status != from_status:
             return False
 
+        # Validate transition against legal status graph
+        try:
+            from superharness.engine.next_action import validate_status_transition
+            validate_status_transition(task_row.status, status)
+        except ValueError as e:
+            print(f"status transition rejected: {task_id}: {e}", file=sys.stderr)
+            return False
+
         changes = {"status": status, "updated_at": now}
 
         # Lifecycle timestamps
