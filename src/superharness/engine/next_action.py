@@ -229,7 +229,7 @@ def plan_only_allowed_statuses(workflow: str) -> set[str]:
     workflows inherit their normal allowed set (plan-only is a no-op there).
     """
     if workflow == "implementation":
-        return {"todo", "plan_proposed", "plan_approved", "review_failed"}
+        return {"todo", "plan_proposed", "plan_approved", "review_failed", "in_progress"}
     return allowed_statuses_for_workflow(workflow)
 
 
