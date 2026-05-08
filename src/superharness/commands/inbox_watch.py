@@ -2532,7 +2532,7 @@ def _reconcile_discussion_contract(project_dir: str) -> int:
     from superharness.engine import state_reader, state_writer
     from superharness.engine.db import get_connection, init_db
 
-    terminal = {"cancelled", "closed", "consensus", "deadlock", "failed"}
+    terminal = {"cancelled", "closed", "consensus", "deadlock", "failed", "failed_participant"}
 
     # Collect terminal discussion IDs from SQLite
     terminal_disc_ids: set[str] = set()
