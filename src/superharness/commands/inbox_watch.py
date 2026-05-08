@@ -1457,6 +1457,76 @@ def _reconcile_permanent_blocks(project_dir: str) -> int:
     return count
 
 
+def _auto_bootstrap_empty_tasks(project_dir: str) -> int:
+    """For tasks escalated to waiting_input with empty AC, dispatch a plan-only
+    agent to propose acceptance criteria, definition of done, and context.
+
+    This closes the loop: Gate 4 blocks empty tasks → auto-recovery escalates
+    → auto-bootstrap dispatches AC-proposal agent → task gets content → re-dispatch.
+    Returns count of tasks bootstrapped.
+    """
+    count = 0
+    try:
+        from superharness.engine.db import get_connection, init_db, now_iso as _now_iso
+        from superharness.engine import inbox_dao, tasks_dao
+        import uuid
+
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            tasks = tasks_dao.get_all(conn, status="waiting_input")
+            now = _now_iso()
+            for task in tasks:
+                reason = (task.failed_reason or "").lower()
+                # Only bootstrap Gate 4 blocks (empty content)
+                if "nothing to plan" not in reason and "empty task" not in reason and "no acceptance criteria" not in reason:
+                    continue
+                # Only if task has no AC yet
+                ac = task.acceptance_criteria or []
+                dod = task.definition_of_done or []
+                ctx = task.context or ""
+                if ac or dod or ctx:
+                    continue  # already has content
+                # Create plan-only inbox item for AC proposal
+                item_id = f"bootstrap-{task.id}-{uuid.uuid4().hex[:8]}"
+                inbox_dao.enqueue(
+                    conn,
+                    id=item_id,
+                    task_id=task.id,
+                    target_agent=task.owner,
+                    priority=1,
+                    max_retries=1,
+                    project_path="",
+                    plan_only=True,
+                    now=now,
+                )
+                # Revert task to plan_proposed so watcher can auto-dispatch it
+                conn.execute(
+                    "UPDATE tasks SET status='plan_proposed', failed_reason=NULL, "
+                    "in_progress_at=NULL WHERE id=?",
+                    (task.id,),
+                )
+                count += 1
+                print(
+                    f"auto-bootstrap: dispatching AC-proposal for '{task.id}' "
+                    f"→ {task.owner} (plan_only)"
+                )
+                try:
+                    from superharness.engine.ledger_dao import record as _lr
+                    _lr(conn, task_id=task.id, agent="watcher",
+                        action="auto_bootstrap",
+                        details={"reason": reason, "item_id": item_id},
+                        now=now)
+                except Exception:
+                    pass
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as exc:
+        print(f"auto-bootstrap: error: {exc}", file=sys.stderr)
+    return count
+
+
 def _check_ship_on_complete_tasks(project_dir: str) -> None:
     """For ship_on_complete tasks at report_ready with no PR URL, mark failed."""
     from superharness.engine import state_reader, state_writer
@@ -1971,6 +2041,12 @@ def _run_scripts(
         _auto_recover_exhausted_failures_sqlite(project_dir)
     except Exception as e:
         print(f"Warning: auto_recover_exhausted_failures failed: {e}", file=sys.stderr)
+
+    # Auto-bootstrap: dispatch AC-proposal for tasks escalated with empty content
+    try:
+        _auto_bootstrap_empty_tasks(project_dir)
+    except Exception as e:
+        print(f"Warning: auto_bootstrap_empty_tasks failed: {e}", file=sys.stderr)
 
     # Auto-close report_ready tasks with tests_passed: true in their handoff
     try:
