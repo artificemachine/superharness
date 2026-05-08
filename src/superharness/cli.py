@@ -182,6 +182,31 @@ _cmd("handoff-generate", "Generate a structured handoff from task state.",      
 _cmd("handoff",         "Handoff subcommand group (write).",                        module="superharness.commands.handoff_write")
 _cmd("subtask-cancel",  "Mark a subtask cancelled with a mandatory reason.",        module="superharness.commands.subtask_cancel")
 
+# operator-memory and operator-forget run in-process (need argparse, not module passthrough)
+def _register_operator_memory():
+    try:
+        from superharness.commands.operator_memory_cli import cmd_operator_memory, cmd_operator_forget
+        import click as _click
+
+        @_click.command("operator-memory", context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
+        @_click.argument("args", nargs=-1, type=_click.UNPROCESSED)
+        def _om_cmd(args):
+            """Show operator memory (learned failure patterns)."""
+            cmd_operator_memory(list(args))
+
+        @_click.command("operator-forget", context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
+        @_click.argument("args", nargs=-1, type=_click.UNPROCESSED)
+        def _of_cmd(args):
+            """Forget a learned failure pattern."""
+            cmd_operator_forget(list(args))
+
+        main.add_command(_om_cmd)
+        main.add_command(_of_cmd)
+    except Exception:
+        pass
+
+_register_operator_memory()
+
 # explain runs in-process (no subprocess) so CliRunner captures output correctly
 def _register_explain():
     try:

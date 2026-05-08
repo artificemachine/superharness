@@ -229,6 +229,20 @@
       </div>
     </div>
 
+    <div class="card" style="margin-top:10px;" id="operatorMemoryCard">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;margin-bottom:6px" onclick="togglePanel('operatorMemoryBody',this)">
+        <h2 style="margin:0">operator memory <span style="font-size:11px;color:var(--muted);font-weight:normal">(learned patterns)</span></h2>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="small" id="operatorMemoryCount" style="color:var(--muted);font-size:11px;">-</span>
+          <button onclick="event.stopPropagation();copyPanel('operatorMemoryBody',this)" style="font-size:11px;padding:2px 8px">Copy</button>
+          <span style="color:var(--muted);font-size:11px">▾</span>
+        </div>
+      </div>
+      <div id="operatorMemoryBody" style="display:none">
+        <div id="operatorMemoryList" style="font-size:12px"></div>
+      </div>
+    </div>
+
     <div class="card" style="margin-top:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;margin-bottom:6px" onclick="togglePanel('workQueueBody',this)">
         <h2 style="margin:0">active work queue</h2>
@@ -1115,6 +1129,34 @@ async function refreshRecentFailures() {
   } catch (e) {
     const list = document.getElementById('recentFailuresList');
     if (list) list.innerHTML = '<div style="color:var(--bad);padding:8px 0">Error loading failures: ' + e + '</div>';
+  }
+}
+
+async function refreshOperatorMemory() {
+  try {
+    const d = await api('/api/operator-memory');
+    const list = document.getElementById('operatorMemoryList');
+    const count = document.getElementById('operatorMemoryCount');
+    const patterns = d.patterns || [];
+    if (count) count.textContent = patterns.length ? `${patterns.length} pattern${patterns.length === 1 ? '' : 's'}` : 'none';
+    if (!patterns.length) {
+      list.innerHTML = '<div style="color:var(--muted);padding:8px 0">No patterns learned yet. Memory seeds when failures match known signatures during watcher cycles.</div>';
+      return;
+    }
+    const confColor = (c) => c >= 0.8 ? 'var(--ok)' : c >= 0.5 ? 'var(--warn)' : 'var(--bad)';
+    list.innerHTML = '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:4px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--line);padding-bottom:4px;margin-bottom:4px"><span>SIGNATURE</span><span>CONFIDENCE</span><span>HITS/MISSES</span><span>RESOLUTION</span></div>' +
+      patterns.map(p => {
+        const c = confColor(p.confidence);
+        return `<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:4px;padding:4px 0;border-bottom:1px solid var(--line);font-size:11px;align-items:center">
+          <span style="font-weight:bold;color:var(--text)">${p.pattern_signature}</span>
+          <span style="color:${c}">${(p.confidence*100).toFixed(0)}%</span>
+          <span style="color:var(--muted)">${p.hit_count}/${p.miss_count+ p.hit_count}</span>
+          <span style="color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(p.resolution || '').replace(/"/g,'&quot;')}">${(p.resolution || '').slice(0,60)}</span>
+        </div>`;
+      }).join('');
+  } catch (e) {
+    const list = document.getElementById('operatorMemoryList');
+    if (list) list.innerHTML = '<div style="color:var(--bad);padding:8px 0">Error loading operator memory: ' + e + '</div>';
   }
 }
 
@@ -2077,7 +2119,7 @@ function renderTaskGraph(tasks) {
   const markerColors = { blue: '#4a9eff', purple: '#a78bfa', gray: '#4a6fa5', yellow: '#d29922', red: '#da3633' };
   const pickMarker = c => c.includes('4a9e') ? 'blue' : c.includes('a78b') ? 'purple' : c.includes('d299') ? 'yellow' : c.includes('da36') ? 'red' : 'gray';
 
-  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" style="display:none">
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}">
   <defs>
     ${Object.entries(markerColors).map(([k,c]) =>
       `<marker id="arr-${k}" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="${c}"/></marker>`
@@ -2240,9 +2282,11 @@ async function refreshCosts() {
 refresh();
 refreshCosts();
 refreshRecentFailures();
+refreshOperatorMemory();
 setInterval(refresh, 3000);
 setInterval(refreshCosts, 30000);
 setInterval(refreshRecentFailures, 10000);
+setInterval(refreshOperatorMemory, 30000);
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {

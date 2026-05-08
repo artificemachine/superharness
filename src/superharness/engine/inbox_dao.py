@@ -16,6 +16,7 @@ class InboxRow:
     priority: int
     retry_count: int
     max_retries: int
+    recovery_count: int
     pid: int | None
     project_path: str | None
     plan_only: bool
@@ -226,6 +227,7 @@ def _row_to_inbox(row: sqlite3.Row) -> InboxRow:
         priority=row["priority"],
         retry_count=row["retry_count"],
         max_retries=row["max_retries"],
+        recovery_count=row["recovery_count"] if "recovery_count" in row.keys() else 0,
         pid=row["pid"],
         project_path=row["project_path"],
         plan_only=bool(row["plan_only"]),
