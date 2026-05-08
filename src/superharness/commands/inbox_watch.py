@@ -1268,6 +1268,58 @@ _AGENT_FALLBACK: dict[str, list[str]] = {
 }
 
 _RECOVERY_MAX = 2  # max recovery attempts before escalating to operator
+_ABSOLUTE_MAX_RETRIES = 12  # hard cap on inbox.max_retries to prevent runaway loops
+_IDENTICAL_FAILURE_THRESHOLD = 4  # N identical error_snippets in a row → escalate
+
+
+def _has_identical_failure_loop(conn, task_id: str) -> bool:
+    """Return True when the last N failures for this task share an
+    identical error_snippet — indicates the failure is environmental
+    (missing dir, missing CLI, bad config) and no agent reroute will fix it."""
+    try:
+        rows = conn.execute(
+            "SELECT error_snippet FROM failures WHERE task_id = ? "
+            "ORDER BY created_at DESC LIMIT ?",
+            (task_id, _IDENTICAL_FAILURE_THRESHOLD),
+        ).fetchall()
+    except Exception:
+        return False
+    if len(rows) < _IDENTICAL_FAILURE_THRESHOLD:
+        return False
+    snippets = {(r["error_snippet"] or "").strip() for r in rows}
+    # All identical (and non-empty) → loop
+    return len(snippets) == 1 and next(iter(snippets)) != ""
+
+
+def _escalate_runaway_inbox(conn, row, reason_label: str, now: str) -> None:
+    """Mark task as waiting_input and close the inbox row so a human can
+    act. Called when auto-recover hits an absolute ceiling or detects
+    that no reroute will help."""
+    try:
+        from superharness.engine import tasks_dao
+        from superharness.engine.next_action import validate_status_transition
+        task = tasks_dao.get(conn, row.task_id)
+        if task and task.status in ("in_progress", "todo"):
+            try:
+                validate_status_transition(task.status, "waiting_input")
+                conn.execute(
+                    "UPDATE tasks SET status='waiting_input', in_progress_at=NULL, "
+                    "failed_reason=? WHERE id=?",
+                    (f"auto-recover: {reason_label} ({row.failed_reason or 'unknown'})",
+                     row.task_id),
+                )
+            except Exception:
+                pass
+        conn.execute(
+            "UPDATE inbox SET status='failed', failed_reason=?, failed_at=? WHERE id=?",
+            (f"escalated: {reason_label}", now, row.id),
+        )
+        print(
+            f"auto-recover: ESCALATED '{row.task_id}' → waiting_input "
+            f"(reason: {reason_label})"
+        )
+    except Exception as exc:
+        print(f"auto-recover: escalation failed for {row.id}: {exc}", file=sys.stderr)
 
 def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
     """Recover failed inbox items that have exhausted retries.
@@ -1295,14 +1347,16 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                 if row.retry_count < row.max_retries:
                     continue  # _auto_retry_failed handles these
 
-                # Parse recovery_count from failed_reason or use 0
-                recovery_count = 0
-                reason = (row.failed_reason or "").lower()
-                # Check for existing recovery markers stored in reason text
+                # Read recovery_count from its own column (durable across
+                # failed_reason overwrites). Fall back to legacy parse for
+                # rows that pre-date the migration backfill.
                 import re
-                rc_match = re.search(r"recovery_(\d+)", reason)
-                if rc_match:
-                    recovery_count = int(rc_match.group(1))
+                recovery_count = getattr(row, "recovery_count", 0) or 0
+                reason = (row.failed_reason or "").lower()
+                if recovery_count == 0:
+                    rc_match = re.search(r"recovery_(\d+)", reason)
+                    if rc_match:
+                        recovery_count = int(rc_match.group(1))
 
                 # Skip permanent failures — agent routing won't help
                 # But revert stuck in_progress tasks so they can be re-dispatched
@@ -1310,6 +1364,8 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                     task_pb = tasks_dao.get(conn, row.task_id)
                     if task_pb and task_pb.status in ("in_progress", "todo"):
                         try:
+                            from superharness.engine.next_action import validate_status_transition
+                            validate_status_transition(task_pb.status, "waiting_input")
                             gate_reason = row.failed_reason or "lifecycle gate rejected"
                             conn.execute(
                                 "UPDATE tasks SET status='waiting_input', in_progress_at=NULL, "
@@ -1382,17 +1438,35 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                             )
                         except Exception:
                             pass
-                # Recover: re-enqueue to fallback agent with raw SQL
+                # Hard cap absolute retry budget so a runaway loop can't
+                # bump max_retries indefinitely (was the cause of max_retries=65).
+                if row.max_retries >= _ABSOLUTE_MAX_RETRIES:
+                    _escalate_runaway_inbox(conn, row, "absolute retry ceiling reached", now)
+                    escalated += 1
+                    continue
+
+                # Identical-error escalation: if the same error_snippet has
+                # repeated >= _IDENTICAL_FAILURE_THRESHOLD times for this
+                # task, no agent reroute will help — escalate to operator.
+                if _has_identical_failure_loop(conn, row.task_id):
+                    _escalate_runaway_inbox(conn, row, "identical-error loop detected", now)
+                    escalated += 1
+                    continue
+
+                # Recover: re-enqueue to fallback agent. Counter lives in
+                # its own column now so subsequent failures can't wipe it
+                # by overwriting failed_reason.
                 new_recovery = recovery_count + 1
                 new_reason = f"recovery_{new_recovery}:{current_agent}_to_{next_agent}"
                 conn.execute(
                     """UPDATE inbox
                        SET status = 'pending', retry_count = 0,
                            max_retries = max_retries + 1,
+                           recovery_count = ?,
                            target_agent = ?, failed_reason = ?,
                            pid = NULL, failed_at = NULL
                        WHERE id = ?""",
-                    (next_agent, new_reason, row.id)
+                    (new_recovery, next_agent, new_reason, row.id)
                 )
                 print(
                     f"auto-recover: re-routed '{row.task_id}' "
@@ -1438,6 +1512,8 @@ def _reconcile_permanent_blocks(project_dir: str) -> int:
                 task = tasks_dao.get(conn, row.task_id)
                 if not task or task.status not in ("in_progress", "todo"):
                     continue
+                from superharness.engine.next_action import validate_status_transition as _vst2
+                _vst2(task.status, "waiting_input")
                 conn.execute(
                     "UPDATE tasks SET status='waiting_input', in_progress_at=NULL, "
                     "failed_reason=? WHERE id=?",
@@ -1497,6 +1573,8 @@ def _auto_bootstrap_empty_tasks(project_dir: str) -> int:
                     now=now,
                 )
                 # Revert task to plan_proposed so watcher can auto-dispatch it
+                from superharness.engine.next_action import validate_status_transition as _vst3
+                _vst3("waiting_input", "plan_proposed")
                 conn.execute(
                     "UPDATE tasks SET status='plan_proposed', failed_reason=NULL, "
                     "in_progress_at=NULL WHERE id=?",
@@ -2026,6 +2104,16 @@ def _run_scripts(
     except Exception as e:
         print(f"Warning: on_watcher_tick hook failed: {e}", file=sys.stderr)
 
+    # Operator memory: check known failure patterns before retry/recovery
+    try:
+        if _should_run("operator_memory", cooldown=15):
+            _check_operator_memory(project_dir)
+            _learn_from_recovery(project_dir)
+            if _watcher_cycle_count[0] % 20 == 0:
+                _prune_operator_memory(project_dir)
+    except Exception:
+        pass  # never block the watcher cycle on memory errors
+
     # Auto-retry failed inbox items that still have retries remaining
     try:
         if _should_run("auto_retry", cooldown=10):
@@ -2267,6 +2355,143 @@ def _run_scripts(
 
 
 _TASK_LOG_STALE_MINUTES = 15  # mark as failed if no activity for this long
+
+
+# ---------------------------------------------------------------------------
+# Operator memory check
+# ---------------------------------------------------------------------------
+
+def _check_operator_memory(project_dir: str) -> None:
+    """Scan inbox items with failed_reason against operator_memory.
+
+    If a known pattern matches with high confidence, log the fix hint.
+    This runs before auto-retry so the watcher can surface known solutions.
+    """
+    db_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
+    if not os.path.isfile(db_path):
+        return
+
+    from superharness.engine.operator_memory import OperatorMemory
+    from superharness.engine.failure_patterns import match_patterns
+
+    om = OperatorMemory(db_path)
+    om.ensure_table()
+
+    # Read inbox items (SQLite)
+    try:
+        from superharness.engine.state_reader import get_inbox_items
+        items = get_inbox_items(project_dir)
+    except Exception:
+        return
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        failed_reason = str(item.get("failed_reason", "") or "")
+        if not failed_reason:
+            continue
+
+        # Match against failure pattern library, plus the unknown:<hash>
+        # signature derived from the failed_reason text. The unknown
+        # signature lets memory learn about repeated environmental
+        # failures (missing dirs/CLIs) the regex library doesn't catch.
+        from superharness.engine.failure_patterns import unknown_signature
+        matched = match_patterns(failed_reason)
+        signatures = [p.id for p in matched]
+        if not signatures:
+            signatures = [unknown_signature(failed_reason)]
+
+        for sig in signatures:
+            mem = om.find_pattern(sig)
+            if mem is None:
+                continue
+            if mem["confidence"] >= 0.7:
+                print(
+                    f"operator-memory: known fix for '{sig}' "
+                    f"(confidence={mem['confidence']:.2f}) -> {mem['resolution'][:120]}"
+                )
+
+            # Record a miss for every auto-retry -- confidence will drop
+            # if the fix keeps failing. The watcher records hits after
+            # successful recovery.
+            om.record_match(sig, success=False)
+
+def _learn_from_recovery(project_dir: str) -> None:
+    """Record hits for failure patterns whose tasks have since recovered.
+
+    Scans the failures table for tasks that were previously failed but
+    are now done. Records a hit for each pattern, raising confidence.
+    """
+    db_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
+    if not os.path.isfile(db_path):
+        return
+
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import failures_dao
+        from superharness.engine import tasks_dao
+        from superharness.engine.operator_memory import OperatorMemory
+
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            rows = failures_dao.get_recent(conn, limit=9999)
+            om = OperatorMemory(db_path)
+            om.ensure_table()
+            recorded = set()
+
+            for row in rows:
+                task_id = row.task_id
+                if not task_id or task_id in recorded:
+                    continue
+                task = tasks_dao.get(conn, task_id)
+                if task is None:
+                    continue
+                if getattr(task, "status", None) != "done":
+                    continue
+
+                patterns = (row.pattern or "").split(",")
+                # Build candidate signatures: matched pattern ids + the
+                # unknown:<hash> signature derived from the error_snippet.
+                candidates: list[str] = []
+                for pid in patterns:
+                    pid = pid.strip()
+                    if not pid or pid == "unknown":
+                        continue
+                    candidates.append(pid)
+                if (not candidates) and getattr(row, "error_snippet", None):
+                    from superharness.engine.failure_patterns import unknown_signature
+                    candidates.append(unknown_signature(row.error_snippet))
+
+                for sig in candidates:
+                    mem = om.find_pattern(sig)
+                    if mem is not None:
+                        om.record_match(sig, success=True)
+                        recorded.add(task_id)
+
+            if recorded:
+                print(f"operator-memory: learned from {len(recorded)} recovered task(s)")
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
+def _prune_operator_memory(project_dir: str) -> None:
+    """Remove low-confidence patterns from operator memory."""
+    db_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
+    if not os.path.isfile(db_path):
+        return
+
+    try:
+        from superharness.engine.operator_memory import OperatorMemory
+        om = OperatorMemory(db_path)
+        om.ensure_table()
+        removed = om.prune_stale(threshold=0.3)
+        if removed:
+            print(f"operator-memory: pruned {removed} low-confidence pattern(s)")
+    except Exception:
+        pass
 
 
 def _analyze_task_logs(project_dir: str) -> None:
