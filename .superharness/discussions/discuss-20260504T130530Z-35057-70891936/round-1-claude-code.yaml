@@ -1,0 +1,24 @@
+agent: claude-code
+discussion_id: discuss-20260504T130530Z-35057-70891936
+points:
+- id: submissions-display
+  rationale: Discussion panel now shows agent submissions with positions and verdicts
+    instead of just PIDs
+  verdict: agree
+- id: timeline
+  rationale: Chronological timeline of created/submitted/consensus/closed events is
+    clear and useful
+  verdict: agree
+- id: live-agents
+  rationale: Live agent activity is now discussion-specific and filters out zombie
+    processes
+  verdict: agree
+- id: auto-close
+  rationale: Watcher auto-closes consensus discussions after 60m grace period
+  verdict: agree
+position: The discussion panel improvements are solid. Submissions with points make
+  the panel useful for reviewing agent output. Timeline provides clear audit trail.
+  Auto-close keeps discussions from accumulating.
+round: 1
+submitted_at: '2026-05-04T13:06:06Z'
+verdict: consensus

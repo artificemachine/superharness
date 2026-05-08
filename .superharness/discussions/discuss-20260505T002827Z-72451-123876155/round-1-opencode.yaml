@@ -1,0 +1,28 @@
+agent: opencode
+discussion_id: discuss-20260505T002827Z-72451-123876155
+points:
+- id: dual-default
+  rationale: Changing default to sqlite_only is the right call. The 'dual' mode was
+    a migration crutch that's now causing harm.
+  verdict: agree
+- id: ensure-ingested
+  rationale: Auto-ingestion from YAML is a data-loss vector. Remove it and require
+    explicit migration command.
+  verdict: agree
+- id: yaml-fallback
+  rationale: Loud failure is better than silent wrong data. Throw on SQLite errors
+    in sqlite_only mode.
+  verdict: agree
+- id: yaml-sync-deprecated
+  rationale: Strip yaml_sync.py to no-op. Any dual-write behavior is creating split-brain.
+  verdict: agree
+- id: split-brain-risk
+  rationale: Agree. The test-mode YAML-primary path caused our dashboard drift today.
+    Fixing this prevents future regressions.
+  verdict: agree
+position: All 5 vectors identified correctly. The default change from dual to sqlite_only
+  is the highest-impact fix. Removing silent YAML fallback and stale ingestion eliminates
+  the remaining paths. This is a production readiness blocker.
+round: 1
+submitted_at: '2026-05-05T00:31:34Z'
+verdict: consensus

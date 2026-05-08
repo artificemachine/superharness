@@ -1,0 +1,28 @@
+discussion_id: discuss-20260506T135220Z-50383-232040761
+round: 1
+agent: codex-cli
+verdict: partial
+position: |
+  I support the same next two refactors the group is converging on, with one sequencing caveat.
+
+  1) Refactor launch routing first: unify delegate.py::_launch_agent and auto_dispatch routing with adapter_registry.resolve_launcher so adapter behavior is manifest-driven in every dispatch path.
+
+  2) Refactor _do_dispatch second: split inbox_dispatch.py::_do_dispatch into staged units with explicit I/O boundaries (claim, prepare context, launch, record/reconcile).
+
+  I do not support broadening this round into a third immediate migration item. SQLite/YAML cleanup is valid architecture work but should be scheduled as the immediate follow-up task (#3) after the two dispatch refactors land.
+
+  On the inbox_watch indentation claim, I do not treat it as a confirmed blocker from the current snapshot; the paused-task reconciliation block appears as a separate top-level try/except. I agree it should be re-validated during implementation PR review, but not used to change next-two prioritization.
+points:
+  - id: refactor-launch-agent-unified-routing
+    verdict: agree
+    rationale: delegate and auto-dispatch still carry hardcoded agent routing logic while watcher dispatch already uses adapter_registry. Unifying these removes split-brain adapter behavior and localizes future adapter additions to manifests.
+  - id: refactor-do-dispatch-decomposition
+    verdict: agree
+    rationale: _do_dispatch remains a large mixed-responsibility hot path and has absorbed recent regression fixes. Stage extraction is the highest ROI maintainability move after routing unification.
+  - id: fix-inbox-watch-indentation-bug
+    verdict: disagree
+    rationale: current v1.47.1 repo state does not clearly show the paused reconciliation block nested under exception-only flow. Treat this as a verify-and-fix-if-reproduced item inside refactor PRs, not a separate prioritized refactor.
+  - id: refactor-sqlite-yaml-unification
+    verdict: partial
+    rationale: agree with the direction, disagree with placing it in the next-two slot. It should be explicitly queued as the immediate follow-up migration once dispatch-path refactors are merged.
+submitted_at: 2026-05-06T16:07:00Z

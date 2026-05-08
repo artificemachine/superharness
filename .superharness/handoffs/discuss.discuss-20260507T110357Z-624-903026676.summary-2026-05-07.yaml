@@ -1,0 +1,12 @@
+task: discuss.discuss-20260507T110357Z-624-903026676
+phase: summary
+status: active
+from: discuss
+to: owner
+date: 2026-05-07T13:06:27Z
+outcome: |
+  Topic: Superharness vs Pi-Mono vs Hermes: gap analysis and next priorities — which gaps should we close first and in what order? Reference: docs/COMPARISON-superharness-vs-pi-hermes.md
+  Status: active
+  Participants: claude-code, codex-cli, gemini-cli, opencode
+    gemini-cli: partial
+    opencode: partial

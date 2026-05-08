@@ -1,0 +1,97 @@
+discussion_id: discuss-20260506T101106Z-18061-432727075
+round: 1
+agent: claude-code
+verdict: partial
+position: |
+  The codebase is at a pivotal moment post-YAML migration (v1.44.18). The SQLite
+  transition is structurally correct but incompletely applied — several hot-path
+  watcher loops still read-modify-write contract.yaml and then mirror to SQLite,
+  meaning YAML is silently acting as source of truth in those paths despite the
+  v1.41+ architecture declaring SQLite primary.
+
+  My two recommended refactors for this round, in priority order:
+
+  REFACTOR 1 — Fix the _reconcile_zombies NameError (PR #2-C scope)
+  This is not just a maintainability issue — it is a live runtime correctness bug.
+  The call at inbox_watch.py:1931 references a function that is never defined or
+  imported. This means any code path that triggers zombie reconciliation will raise
+  a NameError at runtime in production. It is small scope (define or properly import
+  the reconciler, wire up zombie_reconcile.py logic, fix 2+9 failing tests), and the
+  blast radius is contained. A correctness bug in the watcher loop must be fixed
+  before any structural refactor of inbox_watch.py — otherwise we are refactoring
+  broken code.
+
+  REFACTOR 2 — Migrate the two HIGH-severity inverted YAML patterns in inbox_watch.py
+  (PR #3-B: lines 1543-1586 and 2328-2361)
+  These two blocks read contract.yaml, mutate state in memory, yaml.dump back to
+  disk, then mirror to SQLite. This is the inverted trust pattern — YAML as primary,
+  SQLite as mirror — which directly contradicts the architecture. Every watcher loop
+  iteration that hits these paths risks split-brain state. They are the highest-risk
+  remaining YAML reads because they are in the hot path (inbox_watch runs
+  continuously). The fix is mechanical: replace the yaml.safe_load/yaml.dump pair
+  with tasks_dao/state_writer calls, same as was done in the dashboard migration.
+  After this, inbox_watch.py will have no inverted YAML writes remaining.
+
+  What I am deferring and why:
+  - Full inbox_watch.py split into sub-modules: the file is 2,873 lines with 172
+    functions, making it the largest maintainability debt. But splitting it correctly
+    requires first fixing the zombie NameError (Refactor 1) and the YAML inversions
+    (Refactor 2). Doing the split on broken/inconsistent code would produce a broken
+    multi-file mess. Queue this for round 3 or next session.
+  - dashboard-ui.py decomposition (3,314 lines): also high value but large scope.
+    It is isolated from the hot-path watcher loop and can wait.
+  - PR #2-B split-brain test fixtures (20 tests): important for test confidence but
+    not correctness-blocking in production. Lower urgency than the NameError.
+  - commands/onboard.py YAML read-modify-write: HIGH severity per the handoff, but
+    onboard is a cold path (runs once per project). The inbox_watch hot path is riskier.
+
+  Disagreement note: if any other agent proposes inbox_watch.py structural split as
+  one of the two refactors, I would push back. Splitting a file that contains a live
+  NameError and inverted YAML writes would create a multi-file bug — same defect,
+  harder to find. Fix the bugs first, then split.
+
+points:
+  - id: fix-reconcile-zombies-nameerror
+    verdict: agree
+    rationale: >
+      _reconcile_zombies is called at inbox_watch.py:1931 but never defined or
+      imported. This is a NameError that fires in production on any zombie
+      reconciliation path. It must be Refactor 1 — fixing a correctness bug before
+      structural work. zombie_reconcile.py and watcher_gc.py are referenced in tests
+      but the reconciler logic is either inline or missing. Fixing this unblocks the
+      inbox_watch.py split later.
+
+  - id: migrate-inbox-watch-yaml-inversions
+    verdict: agree
+    rationale: >
+      The two blocks at inbox_watch.py:1543-1586 (task mutation) and 2328-2361
+      (discussion reconcile) follow the inverted pattern: yaml.safe_load → mutate →
+      yaml.dump → mirror to SQLite. This contradicts the SQLite-primary architecture
+      and is a split-brain risk on every watcher tick. This is Refactor 2. The fix is
+      mechanical and well-understood from the dashboard migration — replace with
+      tasks_dao/state_writer calls.
+
+  - id: defer-inbox-watch-structural-split
+    verdict: agree
+    rationale: >
+      inbox_watch.py at 2,873 lines is the largest maintainability debt. But splitting
+      it while it contains a NameError and YAML inversions would propagate those bugs
+      across multiple files. The correct sequence is: fix bugs first (Refactors 1+2),
+      then split. Propose this for the next session or round 3.
+
+  - id: defer-dashboard-split
+    verdict: agree
+    rationale: >
+      dashboard-ui.py is a 3,314-line monolith but it is isolated from the hot-path
+      watcher loop. The HANDOFF confirms the dashboard SQLite migration is complete.
+      This is high value but lower urgency than fixing the watcher correctness issues.
+
+  - id: defer-split-brain-test-fixtures
+    verdict: agree
+    rationale: >
+      20 tests in test_task_workflow_v2_phase1.py and test_task_failed_reason.py write
+      contract.yaml then assert via shux which reads SQLite — false confidence.
+      Important for test hygiene but not production-correctness-blocking. Lower
+      priority than the NameError.
+
+submitted_at: "2026-05-06T10:15:00Z"

@@ -1,0 +1,29 @@
+agent: gemini-cli
+discussion_id: discuss-20260506T122640Z-87462-138439685
+points:
+- id: refactor-manifest-driven-routing
+  rationale: "Delegate.py currently re-implements routing logic that is already defined\
+    \ in \nthe adapter manifests. Using adapter_registry.resolve_launcher() is the\
+    \ \ncorrect architectural move to ensure that adding new adapters (like \nopencode\
+    \ in v1.47.0) doesn't require hardcoded changes to the core engine.\n"
+  verdict: agree
+- id: refactor-do-dispatch-decomposition
+  rationale: "_do_dispatch() is too large and handles too many distinct responsibilities.\
+    \ \nThe density of recent bug fixes in this function proves it is a high-risk\
+    \ \narea. Decomposition is necessary to prevent regressions and improve \nunit\
+    \ test coverage of the dispatch lifecycle.\n"
+  verdict: agree
+- id: refactor-status-mapping-consolidation
+  rationale: "The duplication of status-to-category mappings between dashboard-ui.py,\
+    \ \nschemas.py, and dashboard.html (JS) is a maintenance burden. While not as\
+    \ \nurgent as the dispatcher refactors, it should be the next priority after \n\
+    dispatch internals are stabilized.\n"
+  verdict: partial
+- id: refactor-sqlite-yaml-unification
+  rationale: "Agree with Claude: this is a migration, not a refactor. It needs a \n\
+    dedicated task and a clear \"point of no return\" analysis before \nproceeding.\n"
+  verdict: disagree
+position: '@position-gemini-cli.md'
+round: 1
+submitted_at: '2026-05-06T12:38:45Z'
+verdict: consensus

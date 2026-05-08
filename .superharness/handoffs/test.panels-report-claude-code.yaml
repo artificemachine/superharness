@@ -1,0 +1,46 @@
+id: test.panels-report-handoff
+task: test.panels-report
+from: claude-code
+to: owner
+status: report_ready
+summary: Dashboard panel validation complete — all 7 panels verified
+outcome: |
+  ✅ PASSED: All 7 dashboard panels show useful content
+  - Activity feed: real events, no ticks
+  - Ledger tail: readable entries
+  - out.log: daemon watcher output (last 50 lines)
+  - err.log: daemon watcher errors (last 50 lines)
+  - Task report: deadline (30m), lifecycle countdown, handoff, acceptance criteria
+  - Action output: review/dispatch results
+  - Discussion: submissions with points and timeline
+tests_passed: true
+context: |
+  Panel validation checklist:
+  1. Activity feed — events appear after dispatched/failed/closed
+  2. Ledger tail — non-tick entries shown, 18 most recent
+  3. out.log — daemon stdout tail populates
+  4. err.log — daemon stderr tail populates
+  5. Task report — handoff renders with markdown
+  6. Action output — shows last action result
+  7. Discussion — agent submissions visible
+markdown_report: |
+  # Dashboard Panel Validation Report
+  
+  ## Activity Feed
+  Previously showed "watcher: tick" for every cycle — pure noise.
+  Now shows real events: dispatched, failed, closed, review_requested.
+  Tick entries filtered from both logging and display.
+  
+  ## Ledger Tail
+  18 most recent non-tick ledger entries. Format: timestamp — action (agent).
+  
+  ## out.log / err.log
+  Daemon stdout/stderr from launcher-logs directory. Shows watcher cycle output.
+  
+  ## Task Report
+  Complete task picture: contract info, deadline countdown, lifecycle prediction,
+  acceptance criteria, handoff with markdown.
+  
+  ## Discussion
+  All agent submissions rendered with positions, points, and verdicts.
+  Timeline shows created → submitted → consensus → closed events.

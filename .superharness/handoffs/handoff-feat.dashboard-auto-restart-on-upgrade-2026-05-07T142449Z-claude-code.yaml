@@ -1,0 +1,48 @@
+id: feat.dashboard-auto-restart-on-upgrade
+timestamp: "2026-05-07T14:24:49Z"
+from: claude-code
+to: owner
+task_id: feat.dashboard-auto-restart-on-upgrade
+status: done
+
+summary: >-
+  All three acceptance criteria satisfied. The feature was already implemented
+  in autohealth_loop inside src/superharness/scripts/dashboard-ui.py and the
+  unit test file tests/unit/test_dashboard_autohealth_version.py covers all
+  cases. 8/8 tests pass.
+
+acceptance_criteria_verification:
+  - criterion: Daemon/monitor detects version mismatch between running process and installed package at each heartbeat
+    status: PASS
+    evidence: >-
+      autohealth_loop calls _get_installed_version() on every sleep interval and
+      compares with running_version captured at startup.
+  - criterion: Auto-restarts the dashboard process when mismatch detected
+    status: PASS
+    evidence: >-
+      On mismatch, _restart_proc() terminates the current Popen and starts a
+      fresh one. test_autohealth_restarts_on_version_mismatch asserts
+      procs[0].terminate.assert_called().
+  - criterion: Logs the restart with old and new version to ledger
+    status: PASS
+    evidence: >-
+      _append_ledger writes a line of the form
+      "- <ts> — autohealth — auto-restart — version mismatch: <old> -> <new>"
+      to .superharness/ledger.md. test_autohealth_version_mismatch_logged_to_ledger
+      asserts "auto-restart", old version, and new version appear in ledger.
+
+tests:
+  file: tests/unit/test_dashboard_autohealth_version.py
+  count: 8
+  result: 8 passed
+
+files_touched:
+  - src/superharness/scripts/dashboard-ui.py
+  - tests/unit/test_dashboard_autohealth_version.py
+  - .superharness/contract.yaml
+  - .superharness/ledger.md
+
+notes: >-
+  No new code was written this session — the implementation and tests were
+  already present on the branch. Contract status updated from plan_approved to
+  done and ledger entry appended.

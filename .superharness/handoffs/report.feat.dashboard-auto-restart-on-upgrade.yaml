@@ -1,0 +1,25 @@
+task: feat.dashboard-auto-restart-on-upgrade
+phase: report
+status: report_ready
+from: claude-code
+to: owner
+date: '2026-05-07T12:44:04Z'
+outcome: |
+  Feature already fully implemented and all tests passing. No new code was written.
+  Implementation found in:
+  - src/superharness/scripts/dashboard-ui.py — autohealth_loop() (lines 3055-3131),
+    _get_installed_version() (lines 3025-3031), _append_ledger() (lines 3034+)
+  Tests in:
+  - tests/unit/test_dashboard_autohealth_version.py — 8 tests, all green
+context: |
+  The autohealth_loop function checks the installed package version at each heartbeat
+  interval. If it differs from running_version (captured at startup), it terminates
+  the dashboard subprocess, starts a fresh one, logs the old->new version to
+  .superharness/ledger.md, and updates running_version. Triggered via --autohealth flag.
+  No gaps found against acceptance criteria.
+outcomes:
+  - Daemon detects version mismatch at each heartbeat via _get_installed_version()
+  - Dashboard subprocess is auto-restarted on mismatch via _restart_proc()
+  - Restart logged with old and new version to ledger via _append_ledger()
+  - 8 unit tests covering all three acceptance criteria pass
+tests_passed: true

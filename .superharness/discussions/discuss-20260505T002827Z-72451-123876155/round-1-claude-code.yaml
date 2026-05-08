@@ -1,0 +1,29 @@
+agent: claude-code
+discussion_id: discuss-20260505T002827Z-72451-123876155
+points:
+- id: dual-default
+  rationale: Defaulting to 'dual' instead of 'sqlite_only' is the root cause. production
+    should be sqlite_only, not dual.
+  verdict: agree
+- id: ensure-ingested
+  rationale: _ensure_ingested() re-migrates stale YAML into SQLite on every read.
+    This can silently overwrite current state with old exports.
+  verdict: agree
+- id: yaml-fallback
+  rationale: Falling back to _tasks_from_yaml() on SQLite error hides real DB failures.
+    Should fail loudly in sqlite_only mode.
+  verdict: agree
+- id: yaml-sync-deprecated
+  rationale: yaml_sync.py is supposed to be a no-op stub during transition but it
+    still has active sync/writeback behavior.
+  verdict: agree
+- id: split-brain-risk
+  rationale: Different commands see different state depending on env vars and test
+    mode. This caused the dashboard drift today (test mode YAML vs production SQLite).
+  verdict: agree
+position: 'The audit identifies 5 concrete split-brain vectors. Priority: (1) change
+  default to sqlite_only, (2) remove _ensure_ingested auto-migration, (3) make SQLite
+  errors loud not silent YAML fallback, (4) hard-remove deprecated yaml_sync behavior.'
+round: 1
+submitted_at: '2026-05-05T00:28:54Z'
+verdict: consensus

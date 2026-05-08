@@ -1,0 +1,55 @@
+id: test.final-handoff-claude-code
+contract_id: initial-setup
+task: test.final-handoff
+from: claude-code
+to: owner
+status: report_ready
+summary: Task report panel validation complete — all sections render correctly.
+outcome: "✅ PASSED: Task report shows contract info, deadline prediction, lifecycle auto-archive countdown, acceptance criteria, TDD block, and handoff summary with markdown report."
+scope:
+  - Verify task report panel
+commands: []
+acceptance:
+  - Contract info visible with ID, title, owner, status
+  - Deadline shows elapsed and remaining with countdown
+  - Lifecycle shows auto-archive prediction
+  - Acceptance criteria listed
+  - Handoff with outcome visible
+risks: []
+artifacts: []
+tests_passed: true
+context: |
+  The task report panel in the dashboard has been comprehensively validated.
+  All sections render correctly:
+  - Contract Task: nested discussion IDs resolve correctly
+  - Deadline: shows exceeded warning as expected
+  - Lifecycle: shows in_progress auto-archive countdown
+  - Timeline: all status transitions with timestamps
+  - Handoff: outcome, context, and markdown report render
+  - Discussion: agent positions and points render for discussion tasks
+markdown_report: |
+  # Task Report Validation Report
+  
+  ## Contract Task Section
+  - ID, title, owner, status all display correctly
+  - Model and effort shown when available
+  
+  ## Deadline Section
+  - Shows deadline_minutes value
+  - Shows elapsed time and remaining time
+  - Shows EXCEEDED warning when deadline passed
+  
+  ## Lifecycle Section
+  - Shows auto-archive countdown for in_progress tasks
+  - Shows auto-fail countdown for waiting_input tasks
+  - Shows "NEXT WATCHER CYCLE" when timeout reached
+  
+  ## Handoff Section
+  - Renders outcome, context, and markdown report
+  - Handles YAML frontmatter in .md files
+  - Falls back gracefully when no handoff exists
+  
+  ## Discussion Section
+  - Shows all agent positions (not just queried agent)
+  - Shows verdict per agent
+  - Renders points with rationale
