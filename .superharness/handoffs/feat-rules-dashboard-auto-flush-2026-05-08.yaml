@@ -1,0 +1,10 @@
+task: feat-rules-dashboard
+phase: auto-flush
+status: todo
+date: '2026-05-08T00:34:43Z'
+context: '[auto-flush] Task nearing lifecycle timeout. Current state: todo. Partial
+  work preserved for next session.'
+task_snapshot:
+  status: todo
+  acceptance_criteria: []
+  context: null

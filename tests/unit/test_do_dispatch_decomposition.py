@@ -1,0 +1,122 @@
+"""Tests for _do_dispatch() staged decomposition.
+
+Verifies that _do_dispatch is decomposed into discrete stage helpers and
+that each stage can be called independently with a DispatchContext.
+"""
+from __future__ import annotations
+
+import inspect
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from superharness.commands.inbox_dispatch import (
+    DispatchContext,
+    _claim_next_item,
+    _do_dispatch,
+    _execute_agent,
+    _handle_failure,
+    _MkdirLock,
+    _prepare_execution,
+    _reconcile_state,
+    _resolve_execution_context,
+    _transition_to_launched,
+)
+
+
+def _make_ctx(tmp_path, **kwargs) -> DispatchContext:
+    harness = tmp_path / ".superharness"
+    harness.mkdir(exist_ok=True)
+    inbox = str(harness / "inbox.yaml")
+    contract = str(harness / "contract.yaml")
+    defaults = dict(
+        project_dir=str(tmp_path),
+        inbox_file=inbox,
+        contract_file=contract,
+        target_filter=None,
+        print_only=False,
+        non_interactive=False,
+        codex_bypass=False,
+        launcher_timeout=0,
+        script_dir="/fake/scripts",
+        sqlite_primary=False,
+    )
+    defaults.update(kwargs)
+    return DispatchContext(**defaults)
+
+
+# ---------------------------------------------------------------------------
+# Structural: each stage function exists and is callable
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name,fn", [
+    ("_claim_next_item", _claim_next_item),
+    ("_resolve_execution_context", _resolve_execution_context),
+    ("_transition_to_launched", _transition_to_launched),
+    ("_prepare_execution", _prepare_execution),
+    ("_execute_agent", _execute_agent),
+    ("_handle_failure", _handle_failure),
+    ("_reconcile_state", _reconcile_state),
+])
+def test_stage_helper_is_callable(name, fn):
+    """Each stage helper must be a callable function."""
+    assert callable(fn), f"{name} must be callable"
+
+
+def test_do_dispatch_delegates_to_stage_helpers():
+    """_do_dispatch must call the stage helpers, not inline all logic."""
+    src = inspect.getsource(_do_dispatch)
+    for helper in (
+        "_claim_next_item",
+        "_resolve_execution_context",
+        "_transition_to_launched",
+        "_prepare_execution",
+        "_execute_agent",
+        "_reconcile_state",
+    ):
+        assert helper in src, f"_do_dispatch must delegate to {helper}"
+
+
+def test_do_dispatch_has_no_orphaned_return_none():
+    """_do_dispatch source must not have orphaned bare 'return None' stubs."""
+    src = inspect.getsource(_do_dispatch)
+    lines = src.splitlines()
+    bare_returns = [l.strip() for l in lines if l.strip() == "return None"]
+    # The only legitimate bare return None is after the last stage call.
+    # More than 2 indicates leftover stubs from an incomplete decomposition.
+    assert len(bare_returns) <= 2, (
+        f"Found {len(bare_returns)} bare 'return None' lines — likely dead stubs"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Functional: _claim_next_item returns 0 on empty inbox (no pending items)
+# ---------------------------------------------------------------------------
+
+def test_claim_next_item_returns_zero_on_empty_inbox(tmp_path):
+    """_claim_next_item must return 0 (not None) when inbox has nothing pending."""
+    ctx = _make_ctx(tmp_path)
+    with patch(
+        "superharness.commands.inbox_dispatch.subprocess.run",
+        return_value=MagicMock(returncode=0, stdout="", stderr=""),
+    ):
+        rc = _claim_next_item(ctx)
+    assert rc == 0
+
+
+# ---------------------------------------------------------------------------
+# Functional: _execute_agent honours print_only flag
+# ---------------------------------------------------------------------------
+
+def test_execute_agent_print_only_sets_rc_zero(tmp_path):
+    """_execute_agent must set launcher_rc=0 in print_only mode without spawning."""
+    ctx = _make_ctx(tmp_path, print_only=True)
+    ctx.launch_args = ["fake-cmd"]
+    ctx.wrapped_args = ["fake-cmd"]
+    ctx.spawn_env = {}
+    ctx.effective_timeout = 0
+    ctx.item_id = "item-1"
+
+    _execute_agent(ctx)
+
+    assert ctx.launcher_rc == 0

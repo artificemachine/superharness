@@ -89,8 +89,8 @@ class TestPermanentBlockRecovery:
         assert task["status"] == "in_progress", "Retryable failures should not change task status"
         conn.close()
 
-    def test_only_escalates_in_progress_tasks(self, project_with_blocked_task: Path):
-        """Tasks not in in_progress should not be affected."""
+    def test_only_escalates_in_progress_and_todo_tasks(self, project_with_blocked_task: Path):
+        """Tasks not in in_progress/todo should not be affected."""
         from superharness.commands.inbox_watch import _reconcile_permanent_blocks
         
         project = str(project_with_blocked_task)
@@ -102,6 +102,25 @@ class TestPermanentBlockRecovery:
         
         count = _reconcile_permanent_blocks(project)
         assert count == 0, "Done tasks should not be escalated"
+    
+    def test_escalates_todo_tasks(self, project_with_blocked_task: Path):
+        """Permanent block on todo tasks should also escalate to waiting_input."""
+        from superharness.commands.inbox_watch import _reconcile_permanent_blocks
+        
+        project = str(project_with_blocked_task)
+        conn = get_connection(project)
+        init_db(conn)
+        conn.execute("UPDATE tasks SET status='todo' WHERE id='blocked-task'")
+        conn.commit()
+        conn.close()
+        
+        count = _reconcile_permanent_blocks(project)
+        assert count == 1, "todo tasks should also be escalated"
+        conn2 = get_connection(project)
+        init_db(conn2)
+        task = conn2.execute("SELECT status FROM tasks WHERE id='blocked-task'").fetchone()
+        assert task["status"] == "waiting_input"
+        conn2.close()
 
     def test_waiting_input_not_auto_dispatched(self, project_with_blocked_task: Path):
         """waiting_input tasks must not be auto-dispatched by the watcher.
