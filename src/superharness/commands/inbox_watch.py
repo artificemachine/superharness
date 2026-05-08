@@ -1292,7 +1292,26 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                     recovery_count = int(rc_match.group(1))
 
                 # Skip permanent failures — agent routing won't help
-                if "permanent_block" in reason or "no_op" in reason:
+                # But revert stuck in_progress tasks so they can be re-dispatched
+                if "permanent_block" in reason or "no_op" in reason or "permanent block" in reason:
+                    task_pb = tasks_dao.get(conn, row.task_id)
+                    if task_pb and task_pb.status == "in_progress":
+                        try:
+                            gate_reason = row.failed_reason or "lifecycle gate rejected"
+                            conn.execute(
+                                "UPDATE tasks SET status='waiting_input', in_progress_at=NULL, "
+                                "failed_reason=? WHERE id=?",
+                                (gate_reason, row.task_id),
+                            )
+                            # Mark inbox as done so it doesn't block re-dispatch
+                            conn.execute("UPDATE inbox SET status='done' WHERE id=?", (row.id,))
+                            print(
+                                f"auto-recover: permanent block escalated '{row.task_id}' "
+                                f"in_progress → waiting_input (lifecycle gate)"
+                            )
+                            recovered += 1
+                        except Exception:
+                            pass
                     continue
 
                 # Skip if parent task is no longer dispatch-ready
@@ -1371,6 +1390,50 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
             conn.close()
     except Exception as exc:
         print(f"auto-recover: error: {exc}", file=sys.stderr)
+
+
+def _reconcile_permanent_blocks(project_dir: str) -> int:
+    """Revert in_progress tasks stuck behind permanent-block inbox failures.
+
+    Returns count of tasks reverted.
+    Public entry point for the watcher loop and tests.
+    Delegates to _auto_recover_exhausted_failures_sqlite.
+    """
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import tasks_dao, inbox_dao
+
+    count = 0
+    try:
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            failed = inbox_dao.get_all(conn, status="failed")
+            for row in failed:
+                if row.retry_count < row.max_retries:
+                    continue
+                reason = (row.failed_reason or "").lower()
+                if "permanent_block" not in reason and "no_op" not in reason and "permanent block" not in reason:
+                    continue
+                task = tasks_dao.get(conn, row.task_id)
+                if not task or task.status != "in_progress":
+                    continue
+                conn.execute(
+                    "UPDATE tasks SET status='waiting_input', in_progress_at=NULL, "
+                    "failed_reason=? WHERE id=?",
+                    (row.failed_reason or "lifecycle gate rejected", row.task_id),
+                )
+                conn.execute("UPDATE inbox SET status='done' WHERE id=?", (row.id,))
+                count += 1
+                print(
+                    f"reconcile-permanent-block: escalated '{row.task_id}' "
+                    f"in_progress → waiting_input"
+                )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as exc:
+        print(f"reconcile-permanent-block: error: {exc}", file=sys.stderr)
+    return count
 
 
 def _check_ship_on_complete_tasks(project_dir: str) -> None:
