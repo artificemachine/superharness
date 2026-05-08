@@ -704,7 +704,22 @@ def delegate(
                 print(f"   - {b}", file=sys.stderr)
             return 1
 
-    # Gate 4: status lifecycle — dispatch is workflow-aware.
+    # Gate 4: minimum content — plan-only dispatch requires acceptance criteria
+    # or definition of done. Empty tasks produce empty plans, wasting an agent cycle.
+    if plan_only and task_obj:
+        ac = task_obj.get("acceptance_criteria") or []
+        dod = task_obj.get("definition_of_done") or []
+        context = task_obj.get("context") or ""
+        if not ac and not dod and not context:
+            print(
+                f"blocked: task '{task_id}' has no acceptance criteria, "
+                f"definition of done, or context — nothing to plan. "
+                f"Add at least one before dispatching.",
+                file=sys.stderr,
+            )
+            return EXIT_PERMANENT_BLOCK
+
+    # Gate 5: status lifecycle — dispatch is workflow-aware.
     # Terminal statuses (done/failed/stopped) pass through — reconcile handles them.
     # --plan-only: relax the allowed set so the agent can propose a plan on a
     # todo/implementation task without first needing plan_approved.
