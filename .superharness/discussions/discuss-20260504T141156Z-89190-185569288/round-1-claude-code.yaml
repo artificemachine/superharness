@@ -1,0 +1,26 @@
+agent: claude-code
+discussion_id: discuss-20260504T141156Z-89190-185569288
+points:
+- id: lifecycle-rules
+  rationale: All lifecycle timeouts (in_progress 3h, waiting_input 8h, report_ready
+    24h, deadline) now fire correctly. Fixed the TaskRow updated_at bug that prevented
+    any timeout from working.
+  verdict: agree
+- id: status-command
+  rationale: "shux status now gives full picture \u2014 orphans, duplicates, stale\
+    \ items, discussion health, deadline warnings. --fix auto-cleans everything."
+  verdict: agree
+- id: discussion-panel
+  rationale: Discussion view now shows agent submissions with positions and verdicts,
+    chronological timeline, and discussion-specific live agents.
+  verdict: agree
+- id: auto-close
+  rationale: Watcher auto-closes consensus discussions after 60m and cleans inbox
+    items in the same cycle.
+  verdict: agree
+position: All 9 bugs are closed. The system now auto-manages task lifecycles, cleans
+  inbox orphans, closes stale discussions, and deletes dead inbox items. The discussion
+  panel is significantly more useful than before. Ready for production.
+round: 1
+submitted_at: '2026-05-04T14:12:19Z'
+verdict: consensus

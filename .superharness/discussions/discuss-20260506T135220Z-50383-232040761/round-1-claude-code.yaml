@@ -1,0 +1,113 @@
+discussion_id: discuss-20260506T135220Z-50383-232040761
+round: 1
+agent: claude-code
+verdict: partial
+submitted_at: "2026-05-06T13:55:00Z"
+
+position: |
+  Cross-referenced all four agents' round-1 submissions and the working tree state.
+  Consensus across all agents is unusually strong — four independent audits converged
+  on the same two refactors without coordination.
+
+  CONFIRMED FINDINGS:
+
+  1. delegate.py _launch_agent() (lines 515-594): hardcoded if/elif chain for
+     claude-code, gemini-cli, opencode, codex-cli. The model-prefix transform is
+     inline in the opencode branch. inbox_dispatch.py:1133 already calls
+     resolve_launcher() from adapter_registry, creating a documented split-brain.
+     Working tree already extracted apply_model_prefix and converted the else-branch
+     to resolve_launcher() — but the named if/elif blocks remain. The remaining work
+     is well-scoped.
+
+  2. inbox_dispatch.py _do_dispatch(): 484-518 lines (estimates vary by version) with
+     8+ interleaved responsibilities. Source of bugs in three consecutive patch
+     releases: v1.46.5, v1.47.0, v1.47.1. Working tree already has a full
+     decomposition (DispatchContext dataclass + staged helpers), which matches exactly
+     what all agents proposed independently.
+
+  INDENTATION BUG STATUS:
+  Gemini-cli correctly identified the bug in v1.47.1 (paused dead-pid reconciliation
+  block missing its try: opener, making it run only inside the preceding except
+  handler). Fixed in commit 6014f7f (v1.47.4). Codex-cli and opencode saw post-fix
+  code. No further action needed — confirmed closed.
+
+  PICKS CONFIRMED — PICK 1 then PICK 2:
+
+  PICK 1: Complete routing unification in delegate.py.
+  Replace the if/elif blocks for all named adapters with resolve_launcher() calls.
+  Wire the apply_model_prefix transform into the registry-driven path in
+  inbox_dispatch. After this, adapter manifests alone drive routing.
+
+  PICK 2: Commit and test the _do_dispatch decomposition from the working tree.
+  The DispatchContext + staged helpers pattern already exists. The remaining work is
+  boundary tests for each stage, then commit. The discussion-worktree-skip conditional
+  (previously buried in a 400-line function) is now in _resolve_execution_context
+  where it can be independently validated.
+
+  SEQUENCING NOTE:
+  All agents support tracking SQLite-only state service as PICK 3 immediately after
+  PICK 2 merges — not deferred indefinitely. Decomposed dispatch stages will introduce
+  new state I/O call sites; retrofitting them later costs more than sequencing the
+  state service while the decomposition is fresh. I support creating a shux task for
+  #3 before PICK 2 is closed.
+
+  NOT recommending for next-2 slot:
+  - SQLite/YAML unification: large migration, 20+ call sites, needs its own task.
+  - inbox_watch.py split: operationally stable, right to sequence after dispatch work.
+  - dashboard-ui.py restructure: product/UX scope, separate track.
+
+points:
+  - id: refactor-launch-agent-unified-routing
+    verdict: agree
+    rationale: |
+      Confirmed by all four agents independently: delegate.py:515-594 has a hardcoded
+      if/elif chain that bypasses adapter_registry while inbox_dispatch.py:1133
+      already routes via resolve_launcher(). Working tree partially done (else-branch
+      converted, model-prefix extracted). Completing the unification closes the
+      split-brain and makes adapter YAML manifests the single source of truth.
+      Risk is bounded: resolve_launcher() is already production-tested via every
+      watcher dispatch cycle.
+
+  - id: refactor-do-dispatch-decomposition
+    verdict: agree
+    rationale: |
+      _do_dispatch at 484-518 lines with 8+ interleaved concerns has been the
+      bug concentration zone for three consecutive patch releases. Working tree
+      already has the decomposition (DispatchContext dataclass, staged helpers for
+      claim/resolve/transition/prepare/execute/handle_failure/reconcile). Each stage
+      now has a clear I/O contract and is independently testable. Action: review
+      working tree changes, add boundary tests, commit.
+
+  - id: fix-inbox-watch-indentation-bug
+    verdict: disagree
+    rationale: |
+      Bug was real in v1.47.1 (confirmed by gemini-cli and prior claude-code audit).
+      Fixed in commit 6014f7f (v1.47.4): added missing try: at line 2030, making the
+      paused dead-pid reconciliation block an independent top-level try/except.
+      Codex-cli and opencode reviewed the post-fix state and correctly saw no bug.
+      No further action needed. Not a separate refactor item.
+
+  - id: refactor-sqlite-yaml-unification
+    verdict: disagree
+    rationale: |
+      Correct long-term direction, wrong sprint. Touches inbox_dao, state_reader,
+      state_writer, inbox_dispatch, inbox_watch, and 20+ YAML utility sites. This is
+      a data migration requiring explicit rollback criteria. Runtime split-brain is
+      largely closed; remaining YAML usage is mostly export/legacy. Schedule as an
+      immediate follow-up task (#3) after PICK 2 merges, not in the next-2 slot.
+
+  - id: refactor-inbox-watch-split
+    verdict: disagree
+    rationale: |
+      inbox_watch.py at ~2,883 LOC is operationally stable after the v1.47.4
+      indentation fix. The correct sequence: stabilize dispatch (PICK 1 and 2),
+      then the watch-loop split becomes lower risk because dispatch concerns will
+      have been extracted. Not a next-2 or next-3 candidate for this sprint.
+
+  - id: refactor-dashboard-restructure
+    verdict: disagree
+    rationale: |
+      dashboard-ui.py monolith (~3,314 LOC with inline HTML/CSS/JS) is a product and
+      UX concern with routing design dependencies. Restructuring requires UX review
+      independent of the backend dispatch refactors. Decouple entirely from this
+      sprint. Assign to a separate product-track task.
