@@ -948,6 +948,16 @@ def _handle_failure(ctx: DispatchContext) -> int:
     else:
         fail_reason = f"{failure_class}: {failure_explain}"
     new_lock = _MkdirLock(ctx.inbox_file + ".lock.d")
+    # Record failure in decision ledger for debugging
+    try:
+        from superharness.engine.ledger_dao import decision_log
+        decision_log(ctx.project_dir, "dispatch_failed", task_id=ctx.item_task,
+                     agent=ctx.item_to,
+                     reason=fail_reason,
+                     details={"exit_code": ctx.launcher_rc, "item_id": ctx.item_id,
+                              "classification": failure_class})
+    except Exception:
+        pass
     _mark_item_failed(ctx.inbox_file, ctx.item_id, fail_now, new_lock, reason=fail_reason)
     # Stamp structured failure metadata for auto_retry and dashboard surface
     try:

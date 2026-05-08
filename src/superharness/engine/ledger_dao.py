@@ -80,3 +80,47 @@ def _row_to_ledger(row: sqlite3.Row) -> LedgerRow:
         details=cast("dict[str, Any] | None", details),
         created_at=row["created_at"]
     )
+
+
+def decision_log(
+    project_dir: str,
+    action: str,
+    *,
+    task_id: str | None = None,
+    agent: str = "watcher",
+    reason: str = "",
+    details: dict[str, Any] | None = None,
+) -> None:
+    """Fire-and-forget decision recording. Never raises.
+
+    Wraps ledger_dao.record() with automatic connection lifecycle.
+    Use this at every decision point — gate blocks, auto-retries,
+    escalations, cancellations, failures.
+    """
+    try:
+        from superharness.engine.db import get_connection, init_db
+
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            payload: dict[str, Any] = {"reason": reason}
+            if details:
+                payload.update(details)
+            record(
+                conn,
+                task_id=task_id,
+                agent=agent,
+                action=action,
+                details=payload,
+                now=_now_utc(),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
+def _now_utc() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
