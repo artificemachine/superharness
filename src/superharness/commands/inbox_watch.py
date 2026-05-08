@@ -1213,7 +1213,7 @@ def _auto_retry_failed(project_dir: str) -> None:
         except Exception:
             return
 
-    auto_retry = profile.get("auto_retry", profile.get("autonomy") == "autonomous")
+    auto_retry = profile.get("auto_retry", False)  # opt-in, not default
     if not auto_retry:
         return
 
@@ -2028,19 +2028,22 @@ def _run_scripts(
 
     # Auto-retry failed inbox items that still have retries remaining
     try:
-        _auto_retry_failed(project_dir)
+        if _should_run("auto_retry", cooldown=10):
+            _auto_retry_failed(project_dir)
     except Exception as e:
         _log_watcher_error(project_dir, "watcher", str(e))
 
     # Auto-recover exhausted failures: re-route to a different agent
     try:
-        _auto_recover_exhausted_failures_sqlite(project_dir)
+        if _should_run("auto_recover", cooldown=15):
+            _auto_recover_exhausted_failures_sqlite(project_dir)
     except Exception as e:
         print(f"Warning: auto_recover_exhausted_failures failed: {e}", file=sys.stderr)
 
     # Auto-bootstrap: dispatch AC-proposal for tasks escalated with empty content
     try:
-        _auto_bootstrap_empty_tasks(project_dir)
+        if _should_run("auto_bootstrap", cooldown=30) and not _circuit_breaker_tripped(project_dir):
+            _auto_bootstrap_empty_tasks(project_dir)
     except Exception as e:
         print(f"Warning: auto_bootstrap_empty_tasks failed: {e}", file=sys.stderr)
 
@@ -2078,19 +2081,22 @@ def _run_scripts(
 
     # Auto-enqueue todo tasks for planning when auto_dispatch=True and autonomy=autonomous
     try:
-        auto_enqueue_todo(project_dir)
+        if _should_run("auto_enqueue_todo", cooldown=15) and not _circuit_breaker_tripped(project_dir):
+            auto_enqueue_todo(project_dir)
     except Exception as e:
         print(f"Warning: auto_enqueue_todo failed: {e}", file=sys.stderr)
 
     # Auto peer-approve plan_proposed tasks: dispatch to a different max-tier agent for review
     try:
-        _auto_peer_approve_plans(project_dir)
+        if _should_run("auto_peer_approve", cooldown=30) and not _circuit_breaker_tripped(project_dir):
+            _auto_peer_approve_plans(project_dir)
     except Exception as e:
         print(f"Warning: peer_approve_plans failed: {e}", file=sys.stderr)
 
     # Auto-enqueue plan_approved tasks when auto_dispatch=True in profile.yaml
     try:
-        auto_enqueue_approved(project_dir)
+        if _should_run("auto_enqueue_approved", cooldown=15) and not _circuit_breaker_tripped(project_dir):
+            auto_enqueue_approved(project_dir)
     except Exception as e:
         print(f"Warning: auto_enqueue_approved failed: {e}", file=sys.stderr)
 
@@ -2597,6 +2603,50 @@ def _reconcile_discussion_contract(project_dir: str) -> int:
 
 
 _CONSENSUS_GRACE_MINUTES = 60  # auto-close consensus discussions after 1h
+_CIRCUIT_BREAKER_THRESHOLD = 20  # consecutive failures in 5 minutes trips breaker
+_CIRCUIT_BREAKER_WINDOW_MINUTES = 5
+
+# === Auto-action cooldown tracking ===
+# Each auto_* function has a minimum interval between runs.
+# Prevents cascading loops when action A triggers action B.
+_AUTO_COOLDOWNS: dict[str, float] = {}
+_AUTO_DEFAULT_COOLDOWN = 10  # seconds — most auto-actions need at least this
+
+def _should_run(action: str, cooldown: int = 0) -> bool:
+    """Return True if enough time has passed since last run of this action."""
+    import time as _time
+    now = _time.monotonic()
+    threshold = cooldown or _AUTO_DEFAULT_COOLDOWN
+    last = _AUTO_COOLDOWNS.get(action, 0)
+    if now - last < threshold:
+        return False
+    _AUTO_COOLDOWNS[action] = now
+    return True
+
+
+
+_ACTIVE_DISCUSSION_TIMEOUT_HOURS = 24  # auto-close active discussions after 24h
+
+
+def _circuit_breaker_tripped(project_dir: str) -> bool:
+    try:
+        from superharness.engine.db import get_connection, init_db, now_iso
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            now = now_iso()
+            count = conn.execute(
+                "SELECT COUNT(*) FROM inbox WHERE status='failed' AND failed_at > datetime(?, ? || ' minutes')",
+                (now, f"-{_CIRCUIT_BREAKER_WINDOW_MINUTES}"),
+            ).fetchone()[0]
+            if count >= _CIRCUIT_BREAKER_THRESHOLD:
+                print(f"circuit-breaker: TRIPPED — {count} failures in {_CIRCUIT_BREAKER_WINDOW_MINUTES}min")
+                return True
+            return False
+        finally:
+            conn.close()
+    except Exception:
+        return False
 
 
 def _auto_close_consensus_discussions(project_dir: str) -> int:
