@@ -116,8 +116,15 @@ def claim_next(
     pid: int,
     now: str,
 ) -> InboxRow | None:
-    """Atomically claim the next pending inbox item for an agent."""
+    """Atomically claim the next pending inbox item for an agent.
+    
+    Uses a single atomic UPDATE with subquery. Safe for concurrent watchers:
+    SQLite serializes writes; only one claimer per pending item.
+    """
     try:
+        # Ensure serialized write access for concurrent watchers
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
         # Atomic claim pattern
         cursor = conn.execute(
             """
