@@ -1298,7 +1298,7 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                 # But revert stuck in_progress tasks so they can be re-dispatched
                 if "permanent_block" in reason or "no_op" in reason or "permanent block" in reason:
                     task_pb = tasks_dao.get(conn, row.task_id)
-                    if task_pb and task_pb.status == "in_progress":
+                    if task_pb and task_pb.status in ("in_progress", "todo"):
                         try:
                             gate_reason = row.failed_reason or "lifecycle gate rejected"
                             conn.execute(
@@ -1418,7 +1418,7 @@ def _reconcile_permanent_blocks(project_dir: str) -> int:
                 if "permanent_block" not in reason and "no_op" not in reason and "permanent block" not in reason:
                     continue
                 task = tasks_dao.get(conn, row.task_id)
-                if not task or task.status != "in_progress":
+                if not task or task.status not in ("in_progress", "todo"):
                     continue
                 conn.execute(
                     "UPDATE tasks SET status='waiting_input', in_progress_at=NULL, "

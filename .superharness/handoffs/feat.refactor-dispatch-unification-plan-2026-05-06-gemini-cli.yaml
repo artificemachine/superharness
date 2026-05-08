@@ -1,0 +1,16 @@
+task: feat.refactor-dispatch-unification
+phase: plan
+status: plan_proposed
+from: gemini-cli
+to: owner
+date: '2026-05-06T15:50:47Z'
+plan: Unify delegate.py routing with adapter_registry. Replace hardcoded if/elif in
+  _launch_agent() with resolve_launcher(). Extract model-prefix transform to shared
+  utility.
+tdd:
+  red: 'tests/integration/test_delegate_unification.py: assert correct launcher and
+    model prefix for all 4 agents.'
+  green: Extract utility, update delegate.py and inbox_dispatch.py.
+  refactor: Remove hardcoded _VALID_AGENTS in auto_dispatch.py (already partially
+    done) and unify other agent lists.
+risks: Ensure PTY wrap and timeout behavior remains identical.

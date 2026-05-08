@@ -1,0 +1,26 @@
+agent: codex-cli
+discussion_id: discuss-20260505T074706Z-19838-791559082
+points:
+- id: dual-default
+  rationale: Change STATE_BACKEND default from 'dual' to 'sqlite_only' in state_reader.py
+  verdict: agree
+- id: ensure-ingested
+  rationale: "Remove _ensure_ingested() auto-migration \u2014 replace with explicit\
+    \ migration command"
+  verdict: agree
+- id: yaml-fallback
+  rationale: "In sqlite_only mode, SQLite errors must propagate \u2014 never silently\
+    \ fall back to YAML"
+  verdict: agree
+- id: yaml-sync-deprecated
+  rationale: "Strip yaml_sync.py to no-op \u2014 any remaining sync behavior is technical\
+    \ debt"
+  verdict: agree
+- id: split-brain-risk
+  rationale: Add CI test verifying SQLite is the only operational read path in production
+  verdict: agree
+position: Agree. The 5 fixes eliminate the split-brain risk identified in the audit.
+  This is a production readiness blocker.
+round: 1
+submitted_at: '2026-05-05T07:47:23Z'
+verdict: consensus

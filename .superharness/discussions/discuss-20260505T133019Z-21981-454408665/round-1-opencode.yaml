@@ -1,0 +1,30 @@
+agent: opencode
+discussion_id: discuss-20260505T133019Z-21981-454408665
+points:
+- id: loop-detector
+  rationale: Loop detector imported, tested, wired into watcher. Blocks agents on
+    repeated tool calls.
+  verdict: agree
+- id: handoff-generate
+  rationale: Handoff generator creates structured YAML from task state. CLI registered.
+  verdict: agree
+- id: fts-recall
+  rationale: FTS5 migration v6. Recall search returns matching results.
+  verdict: agree
+- id: event-stream
+  rationale: JSONL event stream fires on every status change. Wired into set_task_status.
+  verdict: agree
+- id: policy-gate
+  rationale: Policy gate blocks on cost limit and loop detection. Wired into watcher.
+  verdict: agree
+- id: skill-metrics
+  rationale: Skill metrics records usage per agent/task/outcome. Dashboard panel added.
+  verdict: agree
+- id: undispatchable-fix
+  rationale: Watcher auto-cancels pending items for agents without dispatch scripts.
+  verdict: agree
+position: All 7 fixes verified. Production-ready. opencode tasks were auto-canceled
+  by the new undispatchable agent detection.
+round: 1
+submitted_at: '2026-05-05T13:30:53Z'
+verdict: consensus
