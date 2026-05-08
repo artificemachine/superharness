@@ -1237,6 +1237,16 @@ def _auto_retry_failed_sqlite(project_dir: str) -> None:
                     # Preserve the original failure reason so operator can see it
                     preserved_reason = row.failed_reason or "auto-retry (reason unavailable)"
                     inbox_dao.set_retry(conn, row.id, new_count, preserved_reason, now)
+                    try:
+                        from superharness.engine.ledger_dao import record as _ledger_record
+                        _now = now
+                        import json as _json
+                        _ledger_record(conn, task_id=row.task_id, agent="watcher",
+                                       action="auto_retry",
+                                       details={"reason": preserved_reason, "attempt": f"{new_count}/{row.max_retries}", "item_id": row.id},
+                                       now=_now)
+                    except Exception:
+                        pass
                     # Discussion round tasks must not be plan_only
                     if "/round-" in str(row.task_id) or "round-" in str(row.task_id):
                         conn.execute("UPDATE inbox SET plan_only=0 WHERE id=?", (row.id,))
@@ -1312,6 +1322,14 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                                 f"auto-recover: permanent block escalated '{row.task_id}' "
                                 f"in_progress → waiting_input (lifecycle gate)"
                             )
+                            try:
+                                from superharness.engine.ledger_dao import record as _ledger_record2
+                                _ledger_record2(conn, task_id=row.task_id, agent="watcher",
+                                               action="escalate",
+                                               details={"reason": gate_reason, "from_status": "in_progress", "to_status": "waiting_input", "item_id": row.id},
+                                               now=now)
+                            except Exception:
+                                pass
                             recovered += 1
                         except Exception:
                             pass
