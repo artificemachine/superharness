@@ -63,8 +63,12 @@ def cmd_start(
     finally:
         conn.close()
 
-    # Keep backward compat: output same JSON shape (discussion_dir is for filesystem callers)
+    # Filesystem dir is the scratch location where each agent writes
+    # round-N-<agent>.yaml submissions during dispatch. State of record
+    # lives in SQLite, but the dir must exist or delegate.py aborts
+    # with "Discussion directory not found".
     discussion_dir = os.path.join(discussions_dir, disc_id)
+    os.makedirs(discussion_dir, exist_ok=True)
     print(
         json.dumps(
             {

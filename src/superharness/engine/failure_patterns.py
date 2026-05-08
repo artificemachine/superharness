@@ -304,7 +304,78 @@ def record_failure(
     except Exception:
         pass
 
+    # Seed operator memory. For matched patterns use the pattern id; for
+    # unknown failures derive a stable signature from the error_snippet
+    # so repeated identical unknown failures still cluster and the
+    # watcher can detect runaway loops via confidence dropoff.
+    try:
+        if matched:
+            _seed_operator_memory(project_dir, matched)
+        elif error_snippet:
+            _seed_unknown_signature(project_dir, error_snippet)
+    except Exception:
+        pass  # never let operator memory break failure recording
+
     return matched
+
+
+def unknown_signature(error_snippet: str) -> str:
+    """Stable signature for an unclassified error. Hash the first 500 chars
+    of the cleaned snippet so repeated identical errors share a key."""
+    import hashlib
+    h = hashlib.sha256((error_snippet or "")[:500].encode("utf-8")).hexdigest()[:16]
+    return f"unknown:{h}"
+
+
+def _seed_unknown_signature(project_dir: str, error_snippet: str) -> None:
+    """Seed operator_memory with an unknown:<hash> signature so the
+    watcher learns from repeated identical environmental failures
+    (missing dirs, missing CLIs, etc.) that the regex library doesn't
+    classify."""
+    db_path = str(Path(project_dir) / ".superharness" / "state.sqlite3")
+    if not Path(db_path).exists():
+        return
+    from superharness.engine.operator_memory import OperatorMemory
+    om = OperatorMemory(db_path)
+    om.ensure_table()
+    sig = unknown_signature(error_snippet)
+    if om.find_pattern(sig) is None:
+        try:
+            # Resolution = first line of the snippet; gives a human a hint
+            resolution = (error_snippet.splitlines()[0] if error_snippet else "")[:200]
+            om.record_new(sig, resolution or "unclassified failure")
+        except ValueError:
+            pass  # race
+
+
+# ---------------------------------------------------------------------------
+# Operator memory seeding
+# ---------------------------------------------------------------------------
+
+def _seed_operator_memory(project_dir: str, patterns: list[FailurePattern]) -> None:
+    """Ensure each matched pattern exists in operator_memory.
+
+    If the pattern signature is unknown, create an entry. If it already
+    exists, skip (the watcher handles confidence updates via record_match).
+    """
+    db_path = str(Path(project_dir) / ".superharness" / "state.sqlite3")
+    if not Path(db_path).exists():
+        return
+
+    from superharness.engine.operator_memory import OperatorMemory
+
+    om = OperatorMemory(db_path)
+    om.ensure_table()
+
+    for pat in patterns:
+        sig = pat.id
+        if om.find_pattern(sig) is not None:
+            continue  # already known
+        resolution = pat.remediation or pat.hint
+        try:
+            om.record_new(sig, resolution)
+        except ValueError:
+            pass  # race: another process added it
 
 
 def get_failure_hints(project_dir: str, task_id: str) -> list[str]:

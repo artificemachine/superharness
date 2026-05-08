@@ -12,7 +12,7 @@ from superharness.engine.state_errors import ConnectionError, SchemaError
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 7
+CURRENT_SCHEMA_VERSION = 8
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -182,6 +182,7 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
             priority        INTEGER NOT NULL DEFAULT 2,
             retry_count     INTEGER NOT NULL DEFAULT 0,
             max_retries     INTEGER NOT NULL DEFAULT 3,
+            recovery_count  INTEGER NOT NULL DEFAULT 0,
             pid             INTEGER,
             project_path    TEXT,
             plan_only       INTEGER NOT NULL DEFAULT 0,
@@ -392,6 +393,25 @@ def _migration_v7(conn: sqlite3.Connection) -> None:
         pass  # column already exists
 
 
+def _migration_v8(conn: sqlite3.Connection) -> None:
+    """Add recovery_count column to inbox so the auto-recover counter
+    is no longer stored inside the failed_reason text (which gets wiped
+    every time a new failure overwrites it)."""
+    _add_column_if_missing(conn, "inbox", "recovery_count", "INTEGER NOT NULL DEFAULT 0")
+    # Backfill from any pre-existing 'recovery_N:...' markers in failed_reason.
+    import re as _re
+    rows = conn.execute(
+        "SELECT id, failed_reason FROM inbox WHERE failed_reason LIKE 'recovery_%'"
+    ).fetchall()
+    for row in rows:
+        m = _re.match(r"recovery_(\d+)", row["failed_reason"] or "")
+        if m:
+            conn.execute(
+                "UPDATE inbox SET recovery_count = ? WHERE id = ?",
+                (int(m.group(1)), row["id"]),
+            )
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -400,4 +420,5 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v5,
     _migration_v6,
     _migration_v7,
+    _migration_v8,
 ]
