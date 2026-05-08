@@ -1477,11 +1477,7 @@ def _auto_bootstrap_empty_tasks(project_dir: str) -> int:
             tasks = tasks_dao.get_all(conn, status="waiting_input")
             now = _now_iso()
             for task in tasks:
-                reason = (task.failed_reason or "").lower()
-                # Only bootstrap Gate 4 blocks (empty content)
-                if "nothing to plan" not in reason and "empty task" not in reason and "no acceptance criteria" not in reason:
-                    continue
-                # Only if task has no AC yet
+                # Only bootstrap tasks with genuinely empty content
                 ac = task.acceptance_criteria or []
                 dod = task.definition_of_done or []
                 ctx = task.context or ""
@@ -1515,7 +1511,7 @@ def _auto_bootstrap_empty_tasks(project_dir: str) -> int:
                     from superharness.engine.ledger_dao import record as _lr
                     _lr(conn, task_id=task.id, agent="watcher",
                         action="auto_bootstrap",
-                        details={"reason": reason, "item_id": item_id},
+                        details={"reason": task.failed_reason or "empty content", "item_id": item_id},
                         now=now)
                 except Exception:
                     pass
