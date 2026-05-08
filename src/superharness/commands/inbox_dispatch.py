@@ -942,6 +942,16 @@ def _handle_failure(ctx: DispatchContext) -> int:
     if ctx.launcher_rc == 124:
         fail_reason = f"launcher timed out after {ctx.effective_timeout}s"
         print(f"Launcher timed out after {ctx.effective_timeout}s for {ctx.item_id}", file=sys.stderr)
+    elif ctx.launcher_rc < 0:
+        # Signal death: killed by SIGKILL (-9), SIGTERM (-15), etc.
+        import signal as _signal_mod
+        sig_name = ""
+        try:
+            sig_name = _signal_mod.Signals(-ctx.launcher_rc).name
+        except (ValueError, AttributeError):
+            sig_name = str(ctx.launcher_rc)
+        fail_reason = f"launcher killed by signal {sig_name}"
+        print(f"Launcher killed by signal {sig_name} for {ctx.item_id}", file=sys.stderr)
     elif permanent_block:
         fail_reason = f"permanent block (lifecycle gate): {failure_explain}"
         print(f"Permanent block for {ctx.item_id}: lifecycle gate rejected. Not retrying.", file=sys.stderr)
