@@ -794,9 +794,12 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
         try:
             from superharness.engine.db import get_connection, init_db
             from superharness.engine import inbox_dao
+            from superharness.engine.burst_guard import task_burst_suppressed
             conn = get_connection(project_dir)
             try:
                 init_db(conn)
+                if task_burst_suppressed(conn, task_id):
+                    continue
                 item_id = f"peer-review-{task_id.replace('.','-')}-{uuid.uuid4().hex[:8]}"
                 inbox_dao.enqueue(
                     conn,
@@ -1927,8 +1930,13 @@ def auto_enqueue_todo(project_dir: str) -> int:
             
             # 1. Mirror task to SQLite if missing
             _ensure_task_in_sqlite(conn, task_id, project_dir, now)
-            
-            # 2. Enqueue in SQLite
+
+            # 2. Burst guard: skip if this task has had too many recent failures
+            from superharness.engine.burst_guard import task_burst_suppressed
+            if task_burst_suppressed(conn, task_id):
+                continue
+
+            # 3. Enqueue in SQLite
             inbox_dao.enqueue(conn, id=item_id, task_id=task_id,
                               target_agent=owner, priority=2, max_retries=3,
                               project_path=project_dir, plan_only=True, now=now)
