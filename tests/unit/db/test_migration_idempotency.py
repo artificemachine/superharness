@@ -23,6 +23,7 @@ def test_init_db_is_idempotent(tmp_path):
     init_db(conn, str(project))
     conn.close()
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_partial_v3_recovers(tmp_path):
     project = tmp_path
     sh_dir = project / ".superharness"

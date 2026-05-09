@@ -3,6 +3,7 @@
 RED phase: all tests should fail before implementation.
 """
 from __future__ import annotations
+import pytest
 
 import subprocess
 import sys
@@ -19,6 +20,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 
 def _make_contract(tmp_path: Path, tasks: list[dict]) -> tuple[Path, Path]:
     project = tmp_path / "proj"

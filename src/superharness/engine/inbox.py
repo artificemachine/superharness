@@ -404,6 +404,36 @@ if __name__ == "__main__":
             print(f"deadline_fail error: {_e}", file=sys.stderr)
             sys.exit(1)
 
+    if _args.command == "list_launched":
+        # Emit a JSON array of launched inbox items in the YAML-shape that
+        # consumer scripts expect: id, task, to, project, priority,
+        # launched_at. Source: SQLite (post-migration). Empty array on
+        # missing DB is fine — inbox-deadline-check.sh handles that case.
+        try:
+            from superharness.engine.db import get_connection, init_db
+            from superharness.engine import inbox_dao
+            conn = get_connection(_project_dir)
+            try:
+                init_db(conn)
+                rows = inbox_dao.get_all(conn, status="launched")
+                out = []
+                for r in rows:
+                    out.append({
+                        "id": r.id,
+                        "task": r.task_id,
+                        "to": r.target_agent,
+                        "project": r.project_path or _project_dir,
+                        "priority": r.priority,
+                        "launched_at": r.launched_at,
+                    })
+                print(json.dumps(out))
+                sys.exit(0)
+            finally:
+                conn.close()
+        except Exception as _e:
+            print(f"list_launched error: {_e}", file=sys.stderr)
+            sys.exit(1)
+
     # ... Other commands omitted for brevity, adding the most critical ones first
     print(f"Command {_args.command} not fully implemented in CLI yet", file=sys.stderr)
     sys.exit(1)

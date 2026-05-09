@@ -634,8 +634,11 @@ def build_payload(project_path: str) -> dict:
     return {
         "schema_version":   SCHEMA_VERSION,
         "project_settings": project_settings,
-        "contract_id":      contract_doc.get("id") or contract_meta.get("id", ""),
-        "goal":             contract_doc.get("goal") or contract_meta.get("goal") or "",
+        # contract.yaml metadata wins over the hardcoded "contract" default
+        # state_reader returns post-migration. Fall back to contract_doc only
+        # when no metadata file exists.
+        "contract_id":      contract_meta.get("id") or contract_doc.get("id") or "",
+        "goal":             contract_meta.get("goal") or contract_doc.get("goal") or "",
         "tasks":          tasks,
         "edges":          _build_edges(tasks),
         "ledger":         _parse_ledger(sh_dir),
@@ -669,6 +672,15 @@ def main(argv=None):
         help="Path to the project root containing .superharness/ (default: .)",
     )
     opts = parser.parse_args(argv)
+
+    # Pre-flight: an explicit non-existent --project should error fast,
+    # not silently emit an empty payload (the adapter contract is "fail
+    # nonzero with a stderr error" so callers don't trust empty data).
+    import os as _os
+    proj = _os.path.abspath(opts.project)
+    if not _os.path.isdir(proj):
+        print(f"error: project not found: {proj}", file=sys.stderr)
+        sys.exit(1)
 
     try:
         payload = build_payload(opts.project)

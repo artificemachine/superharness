@@ -12,7 +12,7 @@ from superharness.engine.state_errors import ConnectionError, SchemaError
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 8
+CURRENT_SCHEMA_VERSION = 11
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -412,6 +412,33 @@ def _migration_v8(conn: sqlite3.Connection) -> None:
             )
 
 
+def _migration_v9(conn: sqlite3.Connection) -> None:
+    """Add blocked_by_raw column to tasks for informational dependency
+    references (test fixtures and pre-migration projects often list
+    blocked_by IDs that don't exist as tasks; the strict FK on
+    task_dependencies rejects those, so we keep a soft copy here)."""
+    _add_column_if_missing(conn, "tasks", "blocked_by_raw", "TEXT")
+
+
+def _migration_v10(conn: sqlite3.Connection) -> None:
+    """Stamped per-task workflow/autonomy/require_tdd. These were
+    previously inferred at runtime; storing them on the row lets the
+    adapter payload report what was set when the task was created
+    rather than the project default."""
+    _add_column_if_missing(conn, "tasks", "workflow", "TEXT")
+    _add_column_if_missing(conn, "tasks", "autonomy", "TEXT")
+    _add_column_if_missing(conn, "tasks", "require_tdd", "INTEGER")
+
+
+def _migration_v11(conn: sqlite3.Connection) -> None:
+    """Generic JSON extras column for nested per-task metadata that
+    doesn't deserve its own column: subtasks, classifier, decomposer,
+    retry. The adapter payload merges this into each task dict so
+    consumers (Morpheme, dashboard) see the structured blocks they
+    expect without us forcing a strict schema for every nested shape."""
+    _add_column_if_missing(conn, "tasks", "extras_json", "TEXT")
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -421,4 +448,7 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v6,
     _migration_v7,
     _migration_v8,
+    _migration_v9,
+    _migration_v10,
+    _migration_v11,
 ]

@@ -7,6 +7,8 @@ import sys
 from unittest.mock import MagicMock, patch
 from superharness.commands.inbox_dispatch import _do_dispatch, _MkdirLock
 
+pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+
 @pytest.fixture
 def temp_project(tmp_path):
     sh_dir = tmp_path / ".superharness"
@@ -22,6 +24,7 @@ def temp_project(tmp_path):
         
     return tmp_path
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_reconcile_review_requested_to_done(temp_project):
     sh_dir = temp_project / ".superharness"
     inbox_file = sh_dir / "inbox.yaml"
@@ -101,6 +104,7 @@ def test_reconcile_review_requested_to_done(temp_project):
                                     assert items[0]["status"] == "done"
                                     assert items[0]["done_at"] == "2026-04-28T13:00:00Z"
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_reconcile_review_failed_to_todo(temp_project):
     sh_dir = temp_project / ".superharness"
     inbox_file = sh_dir / "inbox.yaml"

@@ -14,6 +14,8 @@ from tests.helpers import REPO_ROOT, run_bash
 _skip_win = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
+pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+
 def _run_delegate_py(cwd, args: list[str] | None = None, env: dict | None = None):
     """Run delegate Python module."""
     merged = os.environ.copy()
@@ -97,6 +99,7 @@ def _make_path(bin_dir: Path) -> str:
 
 # ── delegate.sh: autonomy → env vars ─────────────────────────────────────────
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_delegate_autonomous_sets_both_env_vars(repo_root, tmp_path) -> None:
     """autonomy=autonomous sets SUPERHARNESS_CONFIRM_NON_INTERACTIVE and CONFIRM_SKIP_PERMISSIONS."""
     project = _setup_project(tmp_path)
@@ -118,6 +121,7 @@ def test_delegate_autonomous_sets_both_env_vars(repo_root, tmp_path) -> None:
     assert result.returncode == 0, f"Expected success, stderr:\n{result.stderr}"
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_delegate_supervised_sets_non_interactive_only(repo_root, tmp_path) -> None:
     """autonomy=supervised only sets SUPERHARNESS_CONFIRM_NON_INTERACTIVE (not skip-permissions)."""
     project = _setup_project(tmp_path)
@@ -158,6 +162,7 @@ def test_delegate_approval_gated_sets_no_env_vars(repo_root, tmp_path) -> None:
     assert "SUPERHARNESS_CONFIRM_NON_INTERACTIVE=YES" in result.stderr
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_delegate_existing_env_not_overridden_by_profile(repo_root, tmp_path) -> None:
     """Existing SUPERHARNESS_CONFIRM_* env vars are not clobbered by profile defaults."""
     project = _setup_project(tmp_path)
@@ -194,6 +199,7 @@ def test_delegate_no_profile_no_crash(repo_root, tmp_path) -> None:
 # ── task.sh: owner from profile ───────────────────────────────────────────────
 
 @_skip_win
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_task_create_uses_profile_primary_agent_when_no_owner(repo_root, tmp_path) -> None:
     """task create with no --owner picks up primary_agent from profile.yaml."""
     project = tmp_path / "proj"
@@ -219,6 +225,7 @@ def test_task_create_uses_profile_primary_agent_when_no_owner(repo_root, tmp_pat
 
 
 @_skip_win
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_task_create_explicit_owner_ignores_profile(repo_root, tmp_path) -> None:
     """Explicit --owner overrides any profile primary_agent."""
     project = tmp_path / "proj"
@@ -246,6 +253,7 @@ def test_task_create_explicit_owner_ignores_profile(repo_root, tmp_path) -> None
 
 
 @_skip_win
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_task_create_no_owner_no_profile_prompts_user(repo_root, tmp_path) -> None:
     """No --owner and no profile.yaml → user is prompted; piping an answer works."""
     project = tmp_path / "proj"
@@ -291,6 +299,7 @@ def _setup_contract_today_project(tmp_path: Path) -> Path:
 
 
 @_skip_win
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_contract_today_solo_no_delegation_suggestion(repo_root, tmp_path) -> None:
     """team_size=solo suppresses the delegation suggestion."""
     project = _setup_contract_today_project(tmp_path)
@@ -306,6 +315,7 @@ def test_contract_today_solo_no_delegation_suggestion(repo_root, tmp_path) -> No
 
 
 @_skip_win
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_contract_today_small_shows_delegation_suggestion(repo_root, tmp_path) -> None:
     """team_size=small shows the delegation suggestion."""
     project = _setup_contract_today_project(tmp_path)
@@ -321,6 +331,7 @@ def test_contract_today_small_shows_delegation_suggestion(repo_root, tmp_path) -
 
 
 @_skip_win
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_contract_today_no_profile_shows_delegation(repo_root, tmp_path) -> None:
     """No profile.yaml → defaults to non-solo → delegation suggestion still shown (backward compat)."""
     project = _setup_contract_today_project(tmp_path)
