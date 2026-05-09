@@ -11,8 +11,6 @@ import yaml
 from click.testing import CliRunner
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 @pytest.fixture
 def runner():
     return CliRunner()

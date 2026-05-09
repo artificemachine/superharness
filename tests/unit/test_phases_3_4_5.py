@@ -17,8 +17,6 @@ import yaml
 # ---------------------------------------------------------------------------
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 def _make_project(tmp_path: Path, tasks: list[dict] | None = None) -> Path:
     project = tmp_path / "proj"
     harness = project / ".superharness"

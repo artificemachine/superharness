@@ -66,8 +66,6 @@ SAMPLE_DECOMPOSITION = {
 # ---------------------------------------------------------------------------
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 class TestOrchestratorDecompose:
     def test_decompose_returns_subtasks(self):
         orch = Orchestrator(project_dir="/tmp/test")

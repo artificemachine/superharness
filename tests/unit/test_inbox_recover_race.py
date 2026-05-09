@@ -18,8 +18,6 @@ import yaml
 HEADER = "# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n\n"
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 def _make_inbox(tmp_path: Path, items: list[dict]) -> Path:
     project = tmp_path / "proj"
     harness = project / ".superharness"

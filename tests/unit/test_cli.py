@@ -31,8 +31,6 @@ from superharness.cli import (
 )
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 @pytest.fixture
 def runner():
     """Provide a Click CLI test runner."""

@@ -22,8 +22,6 @@ from superharness.engine.cost_estimator import CostEstimate
 # Helpers
 # ---------------------------------------------------------------------------
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 def _setup_project(tmp_path: Path) -> Path:
     """Create a minimal .superharness project structure."""
     harness = tmp_path / ".superharness"
