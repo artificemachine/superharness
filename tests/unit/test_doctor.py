@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 
-from tests.helpers import REPO_ROOT
+from tests.helpers import REPO_ROOT, seed_sqlite_from_yaml
 
 
 def _run_python(args: list[str], *, env: dict | None = None) -> "subprocess.CompletedProcess[str]":

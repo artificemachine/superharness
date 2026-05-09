@@ -101,12 +101,20 @@ def _migrate_contract(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[
             dod = json.dumps(t.get("definition_of_done", []))
             tdd = json.dumps(t.get("tdd")) if t.get("tdd") else None
             
+            # Carry over lifecycle timestamps from YAML so reconcile_lifecycle
+            # sees the actual age of the task instead of the migration timestamp.
+            updated_at = t.get("updated_at") or now
+            in_progress_at = t.get("in_progress_at")
+            archived_at = t.get("archived_at")
+            created_at = t.get("created_at") or now
+
             conn.execute("""
                 INSERT INTO tasks (
-                    id, title, owner, status, effort, project_path, 
+                    id, title, owner, status, effort, project_path,
                     development_method, acceptance_criteria, test_types,
-                    out_of_scope, definition_of_done, context, tdd, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    out_of_scope, definition_of_done, context, tdd, created_at,
+                    updated_at, in_progress_at, archived_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     title=excluded.title, owner=excluded.owner, status=excluded.status,
                     effort=excluded.effort, project_path=excluded.project_path,
@@ -114,12 +122,38 @@ def _migrate_contract(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[
                     acceptance_criteria=excluded.acceptance_criteria,
                     test_types=excluded.test_types, out_of_scope=excluded.out_of_scope,
                     definition_of_done=excluded.definition_of_done,
-                    context=excluded.context, tdd=excluded.tdd
+                    context=excluded.context, tdd=excluded.tdd,
+                    updated_at=excluded.updated_at,
+                    in_progress_at=excluded.in_progress_at,
+                    archived_at=excluded.archived_at
             """, (
                 t["id"], t.get("title", "Untitled"), t.get("owner"), t.get("status", "todo"),
                 t.get("effort"), t.get("project_path"), t.get("development_method"),
-                ac, tt, oos, dod, t.get("context"), tdd, now
+                ac, tt, oos, dod, t.get("context"), tdd, created_at,
+                updated_at, in_progress_at, archived_at
             ))
+
+            # Carry over any remaining scalar lifecycle fields whose names
+            # match real columns (deadline_minutes, failed_reason, plan_*_at,
+            # report_ready_at, review_requested_at, etc.). Skips fields that
+            # belong to the structured INSERT above and any unknown keys.
+            _scalar_passthrough = {
+                "deadline_minutes", "failed_at", "failed_reason",
+                "plan_proposed_at", "plan_approved_at", "report_ready_at",
+                "review_requested_at", "done_at", "cancelled_at",
+                "stopped_at", "pause_reason", "archived_reason",
+                "model_tier", "worktree_path", "verified", "verified_at",
+                "verified_by", "parent_id", "version",
+            }
+            for _k in _scalar_passthrough:
+                if _k in t and t[_k] is not None:
+                    try:
+                        conn.execute(
+                            f"UPDATE tasks SET {_k} = ? WHERE id = ?",
+                            (t[_k], t["id"]),
+                        )
+                    except sqlite3.OperationalError:
+                        pass  # column missing on this schema version
             
             # Dependencies
             blocked_by = t.get("blocked_by", "none")

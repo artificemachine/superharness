@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers import REPO_ROOT, run_bash
+from tests.helpers import REPO_ROOT, run_bash, seed_sqlite_from_yaml
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 

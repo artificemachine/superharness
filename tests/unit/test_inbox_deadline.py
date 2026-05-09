@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from tests.helpers import run_bash
+from tests.helpers import run_bash, seed_sqlite_from_yaml
 import sys
 import pytest
 
