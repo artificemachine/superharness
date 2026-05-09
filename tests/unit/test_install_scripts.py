@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from tests.helpers import REPO_ROOT, run_bash, run_cmd
+from tests.helpers import REPO_ROOT, run_bash, run_cmd, seed_sqlite_from_yaml
 import pytest
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")

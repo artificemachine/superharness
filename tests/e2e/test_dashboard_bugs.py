@@ -52,6 +52,29 @@ def _setup_test_project(tmp_path: Path) -> Path:
     (harness / "contract.yaml").write_text(yaml.dump(contract))
     (harness / "inbox.yaml").write_text("[]\n")
     (harness / "ledger.md").write_text("ledger")
+
+    # Seed SQLite (post-migration source of truth) so dashboard endpoints
+    # which read from the DB can see the fixtures. The dashboard uses the
+    # production read path which does not auto-ingest YAML.
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import tasks_dao
+    from superharness.engine.tasks_dao import TaskRow
+    _conn = get_connection(str(project))
+    try:
+        init_db(_conn, str(project))
+        for t in contract["tasks"]:
+            tasks_dao.upsert(_conn, TaskRow(
+                id=t["id"], title=t.get("title", t["id"]), owner=t.get("owner"),
+                status=t.get("status", "todo"), effort="medium",
+                project_path=t.get("project_path", str(project)),
+                development_method="tdd",
+                acceptance_criteria=[], test_types=[], out_of_scope=[],
+                definition_of_done=[], context=None, tdd=None,
+                version=1, created_at="2026-01-01T00:00:00Z",
+            ))
+        _conn.commit()
+    finally:
+        _conn.close()
     return project
 
 
@@ -120,10 +143,12 @@ def test_e2e_owner_swap_affects_modal_initialization(repo_root, tmp_path):
         assert status == 200
         assert data["task_meta"]["owner"] == "gemini-cli"
         
-        # 5. Verify the physical contract file on disk was updated
-        contract = yaml.safe_load((project / ".superharness" / "contract.yaml").read_text())
-        t1_disk = next(t for t in contract["tasks"] if t["id"] == "task-1")
-        assert t1_disk["owner"] == "gemini-cli"
+        # 5. Verify SQLite (post-migration source of truth) was updated.
+        import sqlite3 as _sql
+        _db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
+        _row = _db.execute("SELECT owner FROM tasks WHERE id='task-1'").fetchone()
+        _db.close()
+        assert _row is not None and _row[0] == "gemini-cli"
 
     finally:
         server.shutdown()
@@ -154,12 +179,20 @@ def test_e2e_archived_dependency_does_not_block(repo_root, tmp_path):
     module = _load_monitor_module(repo_root)
     project = _setup_test_project(tmp_path)
     
-    # Update contract: task-1 depends on task-archived (which is archived)
-    harness = project / ".superharness"
-    contract = yaml.safe_load((harness / "contract.yaml").read_text())
-    t1 = next(t for t in contract["tasks"] if t["id"] == "task-1")
-    t1["blocked_by"] = ["task-archived"]
-    (harness / "contract.yaml").write_text(yaml.dump(contract))
+    # task-1 depends on task-archived (which is archived). Write the dep
+    # directly to SQLite — contract.yaml is no longer the source of truth
+    # in sqlite_only mode.
+    import sqlite3 as _sql
+    _db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
+    try:
+        _db.execute(
+            "INSERT INTO task_dependencies (dependent_task_id, prerequisite_task_id) "
+            "VALUES (?, ?)",
+            ("task-1", "task-archived"),
+        )
+        _db.commit()
+    finally:
+        _db.close()
     
     server, thread, base_url = _start_server(module, repo_root, project)
 
@@ -210,10 +243,15 @@ def test_e2e_gemini_cli_enqueuing_supported(repo_root, tmp_path):
             print(f"DEBUG gemini-enqueue stderr: {data.get('stderr')}")
         assert data["exit_code"] == 0
         
-        # Verify it exists in the inbox for gemini-cli
-        inbox = yaml.safe_load((project / ".superharness" / "inbox.yaml").read_text())
-        item = next(i for i in inbox if i["task"] == "task-1")
-        assert item["to"] == "gemini-cli"
+        # Verify it exists in the inbox for gemini-cli (SQLite is the
+        # post-migration source of truth; inbox.yaml is no longer written).
+        import sqlite3 as _sql
+        _db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
+        row = _db.execute(
+            "SELECT target_agent FROM inbox WHERE task_id='task-1'"
+        ).fetchone()
+        _db.close()
+        assert row is not None and row[0] == "gemini-cli"
 
     finally:
         server.shutdown()

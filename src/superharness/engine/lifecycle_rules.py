@@ -262,7 +262,15 @@ def _scan_contract(project_dir: str, rules: list[LifecycleRule], profile: dict) 
                         k: v for k, v in task.items()
                         if k in ("failed_reason", "failed_at", "archived_reason", "archived_at")
                     }
-                    state_writer.set_task_status(project_dir, task_id, new_status, from_status=original_status, **_lifecycle_fields)
+                    # System-driven transition (timeout): bypass the
+                    # interactive transition graph since e.g. in_progress→archived
+                    # is not a legal user move but is the whole point of
+                    # the reconciler.
+                    state_writer.set_task_status(
+                        project_dir, task_id, new_status,
+                        from_status=original_status, force=True,
+                        **_lifecycle_fields,
+                    )
                     changed += 1
                     break
 
@@ -330,7 +338,7 @@ def _check_deadlines(project_dir: str, profile: dict) -> int:
 
         state_writer.set_task_status(
             project_dir, task_id, "failed",
-            from_status=status,
+            from_status=status, force=True,
             failed_reason=reason,
             failed_at=_now_utc_str(),
         )

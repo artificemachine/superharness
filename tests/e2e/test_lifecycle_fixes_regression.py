@@ -96,7 +96,10 @@ def test_updated_at_survives_state_writer_roundtrip(clean_harness: Path) -> None
     _init_sqlite(clean_harness)
 
     from superharness.engine.state_writer import set_task_status
-    result = set_task_status(str(clean_harness), "test-bug1-rt", "in_progress")
+    # force=True because this test exercises the roundtrip plumbing,
+    # not the user-facing transition graph (todo → in_progress is not
+    # a legal interactive transition; the proper path is via plan_*).
+    result = set_task_status(str(clean_harness), "test-bug1-rt", "in_progress", force=True)
     assert result is True
 
     from superharness.engine.state_reader import get_tasks
@@ -186,12 +189,9 @@ def test_set_inbox_status_writes_through_sqlite(clean_harness: Path) -> None:
     from superharness.engine.lifecycle_rules import reconcile_lifecycle
     reconcile_lifecycle(str(clean_harness))
 
-    # Verify YAML was updated
-    items = yaml.safe_load((clean_harness / ".superharness" / "inbox.yaml").read_text()) or []
-    item = next(i for i in items if i["id"] == "item-bug3")
-    assert item["status"] == "failed", (
-        "BUG-3 REGRESSION: set_inbox_status didn't write to YAML"
-    )
+    # Post-migration: SQLite is the source of truth; YAML is no longer
+    # written. The original BUG-3 was about set_inbox_status silently
+    # dropping writes — now we just check the SQLite row updated below.
 
     # Verify SQLite was updated
     conn2 = get_connection(str(clean_harness))
@@ -378,6 +378,22 @@ def test_discussion_auto_close_cleans_inbox(clean_harness: Path) -> None:
         "closed_at": "2026-01-01T01:00:00Z",
     }
     (disc_dir / "state.yaml").write_text(yaml.dump(state))
+
+    # Post-migration: _reconcile_discussion_contract reads from the SQLite
+    # discussions table, not from state.yaml. Seed the row directly.
+    from superharness.engine.db import get_connection as _gc, init_db as _idb
+    _conn = _gc(str(clean_harness))
+    try:
+        _idb(_conn, str(clean_harness))
+        _conn.execute(
+            "INSERT INTO discussions (id, topic, status, owners, created_at) "
+            "VALUES (?, ?, 'closed', ?, ?)",
+            (disc_id, state["topic"],
+             yaml.dump(state["participants"]), state["created_at"]),
+        )
+        _conn.commit()
+    finally:
+        _conn.close()
 
     # Create contract tasks for discussion rounds
     _write_contract(clean_harness, [
