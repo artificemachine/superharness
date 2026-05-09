@@ -1590,13 +1590,20 @@ def _auto_bootstrap_empty_tasks(project_dir: str) -> int:
             init_db(conn)
             tasks = tasks_dao.get_all(conn, status="waiting_input")
             now = _now_iso()
-            from superharness.engine.next_action import infer_workflow as _infer_workflow
+            from superharness.engine.next_action import (
+                infer_workflow as _infer_workflow,
+                plan_only_allowed_statuses as _plan_only_allowed,
+            )
             for task in tasks:
-                # Skip discussion sub-tasks: they have no AC by design (they're
-                # rounds, not implementations). Bootstrapping them sets status
-                # to plan_proposed, which is outside the discussion workflow's
-                # allowed dispatch set {todo, in_progress} — trapping the task.
-                if _infer_workflow(task.id, {"workflow": task.workflow}) == "discussion":
+                # Bootstrap demotes status to plan_proposed and dispatches a
+                # plan-only inbox row. That's safe only when plan_proposed is
+                # in the workflow's plan-only-dispatch set — otherwise the
+                # lifecycle gate rejects every subsequent dispatch, trapping
+                # the task. Only the implementation workflow includes
+                # plan_proposed in its plan_only set; discussion/quick/note/
+                # review/approval all exclude it.
+                workflow = _infer_workflow(task.id, {"workflow": task.workflow})
+                if "plan_proposed" not in _plan_only_allowed(workflow):
                     continue
                 # Only bootstrap tasks with genuinely empty content
                 ac = task.acceptance_criteria or []
