@@ -165,3 +165,123 @@ class TestModelMapCompleteness:
         for target, tier_map in MODEL_MAP.items():
             for tier in VALID_TIERS:
                 assert tier in tier_map, f"{target} missing tier {tier}"
+
+
+# ---------------------------------------------------------------------------
+# Codex auth-mode detection + ChatGPT-account routing override
+# ---------------------------------------------------------------------------
+
+
+class TestDetectCodexAuthMode:
+    def setup_method(self):
+        from superharness.engine.model_router import _reset_codex_auth_cache
+        _reset_codex_auth_cache()
+
+    def teardown_method(self):
+        from superharness.engine.model_router import _reset_codex_auth_cache
+        _reset_codex_auth_cache()
+
+    def test_chatgpt_account_detected(self):
+        from superharness.engine.model_router import detect_codex_auth_mode
+        fake = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="Logged in using ChatGPT", stderr="",
+        )
+        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake):
+            assert detect_codex_auth_mode() == "chatgpt"
+
+    def test_apikey_detected(self):
+        from superharness.engine.model_router import detect_codex_auth_mode
+        fake = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="Logged in using API key", stderr="",
+        )
+        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake):
+            assert detect_codex_auth_mode() == "apikey"
+
+    def test_unknown_when_codex_not_installed(self):
+        from superharness.engine.model_router import detect_codex_auth_mode
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run",
+            side_effect=FileNotFoundError(),
+        ):
+            assert detect_codex_auth_mode() == "unknown"
+
+    def test_memoized_across_calls(self):
+        from superharness.engine.model_router import detect_codex_auth_mode
+        fake = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="Logged in using ChatGPT", stderr="",
+        )
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run", return_value=fake,
+        ) as run:
+            detect_codex_auth_mode()
+            detect_codex_auth_mode()
+            detect_codex_auth_mode()
+        assert run.call_count == 1, "auth mode lookup must be memoized"
+
+
+class TestChatgptAuthOverride:
+    def setup_method(self):
+        from superharness.engine.model_router import _reset_codex_auth_cache
+        _reset_codex_auth_cache()
+
+    def teardown_method(self):
+        from superharness.engine.model_router import _reset_codex_auth_cache
+        _reset_codex_auth_cache()
+
+    def _project_with_overrides(self, tmp_path, overrides: dict[str, str]):
+        import yaml as _yaml
+        sh = tmp_path / ".superharness"
+        sh.mkdir(parents=True, exist_ok=True)
+        (sh / "models.yaml").write_text(_yaml.safe_dump({
+            "model_map": {
+                "codex-cli": {
+                    "mini": "gpt-5.1-codex-mini",
+                    "standard": "gpt-5.3-codex",
+                    "max": "gpt-5.4",
+                },
+            },
+            "chatgpt_account_overrides": overrides,
+        }))
+        return tmp_path
+
+    def test_no_override_when_map_empty(self, tmp_path):
+        proj = self._project_with_overrides(tmp_path, {})
+        fake = subprocess.CompletedProcess(args=[], returncode=0,
+                                           stdout="Logged in using ChatGPT", stderr="")
+        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake):
+            from superharness.engine.model_router import resolve_model, _load_model_map
+            _load_model_map.__globals__["_cached_project_maps"].clear()
+            assert resolve_model("codex-cli", "standard", str(proj)) == "gpt-5.3-codex"
+
+    def test_override_applied_on_chatgpt_auth(self, tmp_path):
+        proj = self._project_with_overrides(
+            tmp_path, {"gpt-5.3-codex": "gpt-5-codex"},
+        )
+        fake = subprocess.CompletedProcess(args=[], returncode=0,
+                                           stdout="Logged in using ChatGPT", stderr="")
+        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake):
+            from superharness.engine.model_router import resolve_model, _load_model_map
+            _load_model_map.__globals__["_cached_project_maps"].clear()
+            assert resolve_model("codex-cli", "standard", str(proj)) == "gpt-5-codex"
+
+    def test_override_skipped_on_apikey_auth(self, tmp_path):
+        proj = self._project_with_overrides(
+            tmp_path, {"gpt-5.3-codex": "gpt-5-codex"},
+        )
+        fake = subprocess.CompletedProcess(args=[], returncode=0,
+                                           stdout="Logged in using API key", stderr="")
+        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake):
+            from superharness.engine.model_router import resolve_model, _load_model_map
+            _load_model_map.__globals__["_cached_project_maps"].clear()
+            assert resolve_model("codex-cli", "standard", str(proj)) == "gpt-5.3-codex"
+
+    def test_override_does_not_affect_other_targets(self, tmp_path):
+        proj = self._project_with_overrides(
+            tmp_path, {"gpt-5.3-codex": "gpt-5-codex"},
+        )
+        fake = subprocess.CompletedProcess(args=[], returncode=0,
+                                           stdout="Logged in using ChatGPT", stderr="")
+        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake):
+            from superharness.engine.model_router import resolve_model, _load_model_map
+            _load_model_map.__globals__["_cached_project_maps"].clear()
+            assert resolve_model("claude-code", "standard", str(proj)) == "claude-sonnet-4-6"
