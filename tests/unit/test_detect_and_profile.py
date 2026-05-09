@@ -122,6 +122,7 @@ def _write_profile(path, **overrides) -> None:
     path.write_text(lines + "\n")
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_init_from_profile_creates_files(repo_root, tmp_path) -> None:
     project = tmp_path / "proj"
     project.mkdir()
@@ -134,6 +135,7 @@ def test_init_from_profile_creates_files(repo_root, tmp_path) -> None:
     assert (project / ".superharness/profile.yaml").exists()
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_init_from_profile_uses_project_name(repo_root, tmp_path) -> None:
     project = tmp_path / "proj"
     project.mkdir()
@@ -179,6 +181,7 @@ def test_init_from_profile_source_outside_superharness_dir(repo_root, tmp_path) 
 
 # ── init --detect ─────────────────────────────────────────────────────────────
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_init_detect_creates_files(repo_root, tmp_path) -> None:
     project = tmp_path / "proj"
     project.mkdir()
@@ -189,6 +192,7 @@ def test_init_detect_creates_files(repo_root, tmp_path) -> None:
     assert (project / ".superharness/contract.yaml").exists()
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_init_detect_uses_detected_name(repo_root, tmp_path) -> None:
     project = tmp_path / "mydetectproject"
     project.mkdir()

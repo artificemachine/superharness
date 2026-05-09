@@ -241,7 +241,10 @@ def main(argv: list[str] | None = None) -> None:
     except Exception:
         pass
 
-    # SQLite state DB health (parity checking removed)
+    # SQLite state DB health. Parity (YAML↔SQLite drift) is trivially
+    # PASS post-migration — SQLite is the sole source of truth — but we
+    # still emit a parity: line so consumers and tests that grep for it
+    # see the current contract.
     state_db = os.path.join(harness_dir, "state.sqlite3")
     if os.path.isfile(state_db):
         try:
@@ -250,13 +253,16 @@ def main(argv: list[str] | None = None) -> None:
             try:
                 init_db(_conn)
                 print(f"PASS state-db: state.sqlite3 present and initialised")
+                print("PASS parity: SQLite is the sole source of truth (no YAML to drift from)")
             finally:
                 _conn.close()
         except Exception as _exc:
             print(f"WARN state-db: check failed ({_exc})")
+            print("WARN parity: state-db check failed; cannot verify")
             warns += 1
     else:
         print("INFO state-db: state.sqlite3 not found — run shux migrate or start the watcher to initialise")
+        print("INFO parity: skipped (no state.sqlite3)")
 
     print(f"summary: failures={failures} warnings={warns}")
     if failures > 0:

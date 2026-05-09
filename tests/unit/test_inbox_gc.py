@@ -25,11 +25,37 @@ def _make_project(tmp_path: Path, tasks: list[dict], inbox_items: list[dict]) ->
     }
     (harness / "contract.yaml").write_text(yaml.dump(contract, default_flow_style=False))
     (harness / "inbox.yaml").write_text(yaml.dump(inbox_items, default_flow_style=False))
+    # Post-migration: SQLite is the source of truth. Hydrate from YAML.
+    from tests.helpers import seed_sqlite_from_yaml
+    seed_sqlite_from_yaml(tmp_path)
     return tmp_path
 
 
 def _load_inbox(tmp_path: Path) -> list[dict]:
-    return yaml.safe_load((tmp_path / ".superharness" / "inbox.yaml").read_text())
+    """Read inbox from SQLite (post-migration source of truth)."""
+    import sqlite3 as _sql
+    db = _sql.connect(str(tmp_path / ".superharness" / "state.sqlite3"))
+    rows = db.execute(
+        "SELECT id, task_id AS task, target_agent AS to_, status, created_at FROM inbox ORDER BY created_at"
+    ).fetchall()
+    db.close()
+    return [{"id": r[0], "task": r[1], "to": r[2], "status": r[3], "created_at": r[4]} for r in rows]
+
+
+def _load_ledger(tmp_path: Path) -> str:
+    """Read ledger entries from SQLite, formatted as text for grep-style asserts."""
+    import sqlite3 as _sql
+    db = _sql.connect(str(tmp_path / ".superharness" / "state.sqlite3"))
+    try:
+        rows = db.execute(
+            "SELECT created_at, agent, action, task_id, details FROM ledger"
+        ).fetchall()
+    finally:
+        db.close()
+    parts = []
+    for r in rows:
+        parts.append(f"{r[0]} {r[1]} {r[2]} task={r[3] or ''} {r[4] or ''}")
+    return "\n".join(parts)
 
 
 # ── Core GC behavior ──
@@ -213,6 +239,6 @@ def test_gc_writes_ledger_entry(tmp_path):
     )
     run_gc(project)
 
-    ledger = (tmp_path / ".superharness" / "ledger.md").read_text()
+    ledger = _load_ledger(tmp_path)
     assert "item-1" in ledger
     assert "gc" in ledger.lower()

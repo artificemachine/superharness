@@ -53,11 +53,22 @@ def run_gc(project_dir: str | Path, dry_run: bool = False) -> dict:
                 # Write to SQLite directly
                 try:
                     from superharness.engine.db import get_connection, init_db
-                    from superharness.engine import inbox_dao
+                    from superharness.engine import inbox_dao, ledger_dao
                     conn = get_connection(str(project_dir))
                     try:
                         init_db(conn)
                         inbox_dao.update_status(conn, item_id, from_status=status, to_status="done", now=now)
+                        # Audit each reconcile in the ledger so consumers and
+                        # tests can see what GC touched.
+                        try:
+                            ledger_dao.record(
+                                conn, agent="inbox_gc", action="gc_reconcile",
+                                task_id=task_id,
+                                details={"item_id": item_id, "from": status, "to": "done"},
+                                now=now,
+                            )
+                        except Exception:
+                            pass
                         conn.commit()
                         reconciled += 1
                         details.append({"id": item_id, "task": task_id, "from": status, "to": "done"})

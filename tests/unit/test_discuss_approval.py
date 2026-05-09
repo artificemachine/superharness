@@ -161,12 +161,18 @@ def test_discuss_approve_updates_handoff_contract_and_inbox(repo_root, tmp_path)
     assert "status: approved" in handoff_text
     assert "approved_by_user: true" in handoff_text
 
-    contract_text = (project / ".superharness" / "contract.yaml").read_text()
-    assert "status: todo" in contract_text
-
-    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
-    assert "status: pending" in inbox_text
-    assert "resumed_at:" in inbox_text
+    # Post-migration: contract + inbox state in SQLite, not YAML.
+    import sqlite3 as _sql
+    db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
+    task_status = db.execute(
+        "SELECT status FROM tasks WHERE id='approval-task'"
+    ).fetchone()
+    inbox_row = db.execute(
+        "SELECT status FROM inbox WHERE task_id='approval-task'"
+    ).fetchone()
+    db.close()
+    assert task_status is not None and task_status[0] == "todo"
+    assert inbox_row is not None and inbox_row[0] == "pending"
 
 
 def test_contract_today_shows_user_approval_required(repo_root, tmp_path) -> None:
@@ -196,10 +202,18 @@ def test_discuss_approve_auto_enqueues_when_no_paused_items(repo_root, tmp_path)
 
     assert result.returncode == 0, result.stderr
     assert "Auto-enqueued inbox item:" in result.stdout
-    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
-    assert "task: approval-task" in inbox_text
-    assert "to: codex-cli" in inbox_text
-    assert "status: pending" in inbox_text
+    # SQLite is the post-migration source of truth.
+    import sqlite3 as _sql
+    db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
+    rows = db.execute(
+        "SELECT target_agent, status FROM inbox WHERE task_id='approval-task'"
+    ).fetchall()
+    db.close()
+    assert rows, "expected an enqueued inbox row for approval-task"
+    targets = {r[0] for r in rows}
+    statuses = {r[1] for r in rows}
+    assert "codex-cli" in targets
+    assert "pending" in statuses
 
 
 def test_discuss_start_requires_topic(repo_root, tmp_path) -> None:
@@ -230,12 +244,20 @@ def test_discuss_start_enqueues_round_one_for_both_agents(repo_root, tmp_path) -
     assert "Enqueued round 1 for claude-code:" in result.stdout
     assert "Enqueued round 1 for codex-cli:" in result.stdout
 
-    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
-    assert "task: discuss-" in inbox_text
-    assert "/round-1" in inbox_text
-    assert "to: claude-code" in inbox_text
-    assert "to: codex-cli" in inbox_text
-    assert "status: pending" in inbox_text
+    # Inbox is SQLite-backed post-migration.
+    import sqlite3 as _sql
+    db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
+    rows = db.execute(
+        "SELECT task_id, target_agent, status FROM inbox "
+        "WHERE task_id LIKE 'discuss-%/round-1'"
+    ).fetchall()
+    db.close()
+    assert rows, f"expected discuss-*/round-1 rows, got {rows}"
+    targets = {r[1] for r in rows}
+    statuses = {r[2] for r in rows}
+    assert "claude-code" in targets
+    assert "codex-cli" in targets
+    assert "pending" in statuses
 
 
 def test_discuss_importable_without_fcntl():

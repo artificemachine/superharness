@@ -212,3 +212,34 @@ def test_dispatch_passes_project_dir_to_is_sqlite_only(tmp_path, monkeypatch):
         "calling without an arg returns False and dispatch silently uses "
         "the YAML path even when SQLite is the only source of truth."
     )
+
+
+# ---------------------------------------------------------------------------
+# Bug 5 — auto_dispatch must import uuid and pass project_dir to classify_task
+# ---------------------------------------------------------------------------
+
+def test_auto_dispatch_imports_uuid_and_passes_project_dir(tmp_path):
+    """auto_dispatch.py must import uuid (for item_id generation) and pass
+    project_dir to classify_task (so the router can load project-specific
+    model maps)."""
+    from superharness.commands.auto_dispatch import _classify_task, _enqueue
+    from unittest.mock import patch
+
+    # 1. Verify uuid import (by attempting to enqueue)
+    _make_project(tmp_path, task_id="task-uuid")
+    with patch("superharness.engine.inbox_dao.enqueue") as mock_enqueue:
+        # This calls uuid.uuid4(). If uuid is not imported, it raises NameError.
+        _enqueue(str(tmp_path), "task-uuid", "claude-code")
+        assert mock_enqueue.called
+
+    # 2. Verify project_dir pass to classify_task
+    task = {"title": "Test", "id": "t1"}
+    with patch("superharness.engine.model_router.classify_task") as mock_classify:
+        mock_classify.return_value = ("mini", "low")
+        _classify_task(task, str(tmp_path))
+        # Ensure project_dir was passed as keyword arg
+        kwargs = mock_classify.call_args.kwargs
+        assert kwargs.get("project_dir") == str(tmp_path), (
+            "auto_dispatch._classify_task must pass project_dir to classify_task "
+            "to support project-specific model mappings."
+        )

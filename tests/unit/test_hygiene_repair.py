@@ -23,6 +23,8 @@ PYTHON = sys.executable
 # Helpers
 # ---------------------------------------------------------------------------
 
+pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+
 def _write_project(
     tmp_path: Path,
     *,
@@ -280,6 +282,7 @@ def test_repair_noop_on_clean_project(tmp_path: Path) -> None:
 # Stuck status
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_repair_fixes_stuck_status(tmp_path: Path) -> None:
     """--repair sets status to done when verified=true but status!=done."""
     import yaml

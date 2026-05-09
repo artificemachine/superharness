@@ -90,7 +90,14 @@ def _task_row_from_dict(
         review_requested_at=t.get("review_requested_at"),
         done_at=t.get("done_at"),
         cancelled_at=t.get("cancelled_at"),
-        blocked_by=list(t.get("blocked_by") or []),
+        blocked_by=list(t.get("blocked_by") or t.get("dependency") or []) if isinstance(
+            t.get("blocked_by") or t.get("dependency"), list
+        ) else (
+            [str(t.get("blocked_by") or t.get("dependency")).strip()]
+            if (t.get("blocked_by") or t.get("dependency"))
+            and str(t.get("blocked_by") or t.get("dependency")).strip().lower() not in ("none", "null", "~", "")
+            else []
+        ),
         verified=bool(t.get("verified", False)),
         verified_at=t.get("verified_at"),
         verified_by=t.get("verified_by"),

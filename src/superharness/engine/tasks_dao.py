@@ -49,6 +49,18 @@ class TaskRow:
     pause_reason: str | None = None
     # v7
     worktree_path: str | None = None
+    # v9: soft (informational) blocked_by storage — JSON-encoded list,
+    # may include refs to non-existent task IDs that the strict
+    # task_dependencies FK would reject.
+    blocked_by_raw: str | None = None
+    # v10: per-task stamping
+    workflow: str | None = None
+    autonomy: str | None = None
+    require_tdd: bool | None = None
+    # v11: nested metadata (subtasks, classifier, decomposer, retry)
+    # stored as a JSON string on the row; consumers merge it into the
+    # task dict at read time.
+    extras_json: str | None = None
 
 def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
     """Insert or update a task. Bumps version on update."""
@@ -297,4 +309,9 @@ def _row_to_task(conn: sqlite3.Connection, row: sqlite3.Row, blocked_by: list[st
         model_tier=row["model_tier"] if "model_tier" in keys else None,
         pause_reason=row["pause_reason"] if "pause_reason" in keys else None,
         worktree_path=row["worktree_path"] if "worktree_path" in keys else None,
+        blocked_by_raw=row["blocked_by_raw"] if "blocked_by_raw" in keys else None,
+        workflow=row["workflow"] if "workflow" in keys else None,
+        autonomy=row["autonomy"] if "autonomy" in keys else None,
+        require_tdd=(bool(row["require_tdd"]) if row["require_tdd"] is not None else None) if "require_tdd" in keys else None,
+        extras_json=row["extras_json"] if "extras_json" in keys else None,
     )
