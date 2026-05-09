@@ -70,6 +70,7 @@ def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
     dod = json.dumps(task.definition_of_done)
     tdd = json.dumps(task.tdd) if task.tdd else None
     
+    require_tdd_val = (int(task.require_tdd) if task.require_tdd is not None else None)
     try:
         cursor = conn.execute("""
             INSERT INTO tasks (
@@ -78,8 +79,9 @@ def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
                 out_of_scope, definition_of_done, context, tdd, created_at,
                 updated_at, plan_proposed_at, plan_approved_at, in_progress_at,
                 report_ready_at, done_at, cancelled_at, version, parent_id,
-                verified, verified_at, verified_by, deadline_minutes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                verified, verified_at, verified_by, deadline_minutes,
+                workflow, autonomy, require_tdd
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 title=excluded.title, owner=excluded.owner, status=excluded.status,
                 effort=excluded.effort, project_path=excluded.project_path,
@@ -100,6 +102,9 @@ def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
                 verified_at=excluded.verified_at,
                 verified_by=excluded.verified_by,
                 deadline_minutes=excluded.deadline_minutes,
+                workflow=excluded.workflow,
+                autonomy=excluded.autonomy,
+                require_tdd=excluded.require_tdd,
                 version=tasks.version + 1
             RETURNING *
         """, (
@@ -110,6 +115,7 @@ def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
             task.report_ready_at, task.done_at, task.cancelled_at, task.version, task.parent_id,
             int(task.verified), task.verified_at, task.verified_by,
             task.deadline_minutes,
+            task.workflow, task.autonomy, require_tdd_val,
         ))
         row = cursor.fetchone()
         if not row:
