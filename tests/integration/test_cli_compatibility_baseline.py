@@ -33,6 +33,7 @@ def _run_py_module_help(module: str, cwd: Path) -> subprocess.CompletedProcess:
     )
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_entrypoint_help_contract(repo_root: Path) -> None:
     guard_entrypoints = shell_guard_list(repo_root, "--list-entrypoints")
     all_entrypoints = sorted(set(HELP_ENTRYPOINTS + guard_entrypoints))

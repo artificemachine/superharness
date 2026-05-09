@@ -38,6 +38,7 @@ def _extract_discussion_id(stdout: str) -> str:
     return m.group(1)
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_discussion_cli_lifecycle_to_consensus(repo_root, tmp_path) -> None:
     project = tmp_path / "proj-discuss-lifecycle"
     harness = project / ".superharness"

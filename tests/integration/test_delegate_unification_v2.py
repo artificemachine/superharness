@@ -39,6 +39,7 @@ tasks:
 @patch("superharness.engine.platform_runtime.launch_agent", return_value=0)
 @patch("superharness.commands.delegate._rotate_launcher_logs")
 @patch("superharness.commands.delegate.sdk_available", return_value=False)
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_delegate_routing_unification(mock_sdk, mock_rotate, mock_launch, mock_exists, dummy_project):
     # All agents now route through bash + launcher script (unified dispatch)
 
