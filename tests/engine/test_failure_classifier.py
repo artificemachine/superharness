@@ -75,3 +75,21 @@ def test_classifier_returns_explanation_string_for_dashboard(classify) -> None:
     for rc, err, log in cases:
         r = classify(launcher_rc=rc, error_text=err, log_tail=log)
         assert isinstance(r.explain, str) and len(r.explain) > 0
+
+
+def test_classifies_codex_chatgpt_account_model_rejection_as_permanent_block(classify) -> None:
+    """Codex CLI rejects API-only models (gpt-5.3-codex) when authed via ChatGPT account.
+
+    Without this rule the classifier reports "unknown" → identical-error loop fires →
+    auto-recover demotes discussion sub-tasks to plan_proposed → lifecycle gate
+    rejects every subsequent dispatch (the runaway we saw on 2026-05-09).
+    """
+    log_tail = (
+        'ERROR: {"type":"error","status":400,"error":{"type":"invalid_request_error",'
+        '"message":"The \'openai/gpt-5.3-codex\' model is not supported when using '
+        'Codex with a ChatGPT account."}}'
+    )
+    r = classify(launcher_rc=1, error_text="", log_tail=log_tail)
+    assert r.category == "permanent_block"
+    assert r.retryable is False
+    assert "model" in r.explain.lower() and ("chatgpt" in r.explain.lower() or "auth" in r.explain.lower())
