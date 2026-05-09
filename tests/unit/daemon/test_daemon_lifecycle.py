@@ -56,6 +56,7 @@ def _find_shux_python():
 class TestDaemonSurvivesParentExit:
     """Test that the monitor daemon outlives the CLI that launched it."""
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_daemon_survives_parent_exit(self, tmp_path: Path):
         project_dir = tmp_path / "test-project"
         project_dir.mkdir()

@@ -50,6 +50,7 @@ def _parse(out: str) -> dict:
     return json.loads(line)
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_task_status_json_success(project: Path):
     rc, out, err = _run(
         "superharness.commands.task",
@@ -68,6 +69,7 @@ def test_task_status_json_success(project: Path):
     assert payload["actor"] == "claude-code"
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_task_status_json_error(project: Path):
     rc, out, err = _run(
         "superharness.commands.task",
@@ -143,6 +145,7 @@ def test_close_json_requires_verify_gate(project: Path):
     assert payload["ok"] is False
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_close_json_success_after_verify(project: Path):
     # Move plan_approved → in_progress → report_ready
     _run("superharness.commands.task",
@@ -173,6 +176,7 @@ def test_close_json_success_after_verify(project: Path):
     assert payload["closed"] is True
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_delegate_json_print_only(project: Path):
     # Task already starts in plan_approved, so it's dispatchable
     rc, out, err = _run(

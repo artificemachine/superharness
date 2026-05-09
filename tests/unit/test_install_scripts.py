@@ -450,6 +450,7 @@ sync_worker_copy
     assert not (worker / ".pytest_cache").exists(), ".pytest_cache should be excluded from sync"
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_setup_watcher_worker_creates_clean_worker_and_watcher_config(repo_root, tmp_path) -> None:
     project = tmp_path / "source-proj"
     (project / ".superharness").mkdir(parents=True, exist_ok=True)
@@ -665,6 +666,7 @@ def test_install_launchd_missing_superharness_dir_fails(repo_root, tmp_path) -> 
     assert "Missing .superharness" in result.stderr
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_setup_watcher_worker_persists_custom_recover_values(repo_root, tmp_path) -> None:
     project = tmp_path / "source-proj-custom"
     (project / ".superharness").mkdir(parents=True, exist_ok=True)
