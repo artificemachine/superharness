@@ -109,6 +109,9 @@ def _task_row_from_dict(
         archived_reason=t.get("archived_reason"),
         model_tier=t.get("model_tier"),
         pause_reason=t.get("pause_reason"),
+        workflow=t.get("workflow"),
+        autonomy=t.get("autonomy"),
+        require_tdd=(bool(t["require_tdd"]) if "require_tdd" in t and t["require_tdd"] is not None else None),
     )
 
 
