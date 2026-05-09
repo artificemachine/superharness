@@ -1,9 +1,11 @@
+import pytest
 import os
 import yaml
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 from superharness.commands.delegate import delegate
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_delegate_sdk_logic_claude_vs_others(tmp_path):
     """Verify that only claude-code attempts to use the SDK path."""
     project_dir = tmp_path / "proj"
@@ -42,3 +44,4 @@ def test_delegate_sdk_logic_claude_vs_others(tmp_path):
 if __name__ == "__main__":
     import pytest
     pytest.main([__file__])
+

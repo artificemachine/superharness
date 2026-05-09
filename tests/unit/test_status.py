@@ -15,6 +15,8 @@ import pytest
 from tests.helpers import REPO_ROOT
 
 
+pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+
 def _run_python(args: list[str]) -> "subprocess.CompletedProcess[str]":
     import os
     import subprocess

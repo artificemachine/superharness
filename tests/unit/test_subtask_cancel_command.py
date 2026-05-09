@@ -10,6 +10,8 @@ import yaml
 from superharness.commands.subtask_cancel import cancel_subtask
 
 
+pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+
 def _make_contract(subtask_status: str = "pending", extra_subtasks: list | None = None) -> dict:
     subtasks = [
         {

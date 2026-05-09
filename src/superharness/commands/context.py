@@ -237,12 +237,21 @@ def task_context(
         conn2 = get_connection(str(project_dir))
         try:
             init_db(conn2)
-            rows = failures_dao.get_recent(conn2, task_id=lookup_id, limit=10)
+            # Pull recent failures for ALL tasks so the blocker-failure
+            # check in _filter_failures (which filters by task_id) can
+            # surface failures that belong to blocking tasks too. Filter
+            # by id_set happens later in _filter_failures.
+            rows = failures_dao.get_recent(conn2, limit=100)
             failures = []
             for row in rows:
-                failures.append({"pattern": row.pattern or "unknown",
-                                "error_snippet": row.error_snippet or "",
-                                "created_at": row.created_at or ""})
+                failures.append({
+                    "task": row.task_id,
+                    "patterns": [p.strip() for p in (row.pattern or "").split(",") if p.strip()] or ["unknown"],
+                    "error_snippet": row.error_snippet or "",
+                    "created_at": row.created_at or "",
+                    "date": (row.created_at or "")[:10],
+                    "severity": "major",
+                })
         finally:
             conn2.close()
     except Exception:

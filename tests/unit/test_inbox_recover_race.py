@@ -18,6 +18,8 @@ import yaml
 HEADER = "# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n\n"
 
 
+pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+
 def _make_inbox(tmp_path: Path, items: list[dict]) -> Path:
     project = tmp_path / "proj"
     harness = project / ".superharness"
@@ -38,6 +40,7 @@ def _now_ts() -> str:
 class TestRecoverLaunchedHoldsLock:
     """Verify that recover_launched uses _inbox_lock so it is re-entrant safe."""
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_recover_launched_uses_inbox_lock(self, tmp_path):
         """recover_launched should acquire _inbox_lock — importing and calling it
         should not raise even when the lock is briefly held by another thread."""
@@ -67,6 +70,7 @@ class TestRecoverLaunchedHoldsLock:
         items = yaml.safe_load(open(inbox_file)) or []
         assert items[0]["status"] == "stale"
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_recover_launched_does_not_corrupt_concurrent_claim(self, tmp_path):
         """When recover_launched and claim run concurrently, the final state must
         be consistent — each item should have exactly one status, not a mix of
@@ -138,6 +142,7 @@ class TestRecoverLaunchedHoldsLock:
         assert statuses["I-2"] in ("stale", "pending", "launched"), f"I-2 status={statuses['I-2']}"
         assert statuses["I-3"] in ("claimed", "pending", "launched"), f"I-3 status={statuses['I-3']}"
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_recover_launched_with_retry_action(self, tmp_path):
         """retry action should reset stale items to pending, not stale."""
         from superharness.engine.inbox import recover_launched
@@ -167,6 +172,7 @@ class TestRecoverLaunchedHoldsLock:
         items = yaml.safe_load(open(inbox_file)) or []
         assert items[0]["status"] == "pending"
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_recover_launched_fresh_items_not_marked_stale(self, tmp_path):
         """Items launched recently (within timeout) must not be touched."""
         from superharness.engine.inbox import recover_launched

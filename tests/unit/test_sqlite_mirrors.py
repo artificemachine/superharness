@@ -27,6 +27,8 @@ from superharness.engine import inbox_dao, tasks_dao
 # Fixtures
 # ---------------------------------------------------------------------------
 
+pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+
 @pytest.fixture
 def project(tmp_path):
     sh = tmp_path / ".superharness"

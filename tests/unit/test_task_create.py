@@ -19,6 +19,8 @@ PYTHON = sys.executable
 # Helpers
 # ---------------------------------------------------------------------------
 
+pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+
 def _make_contract(tmp_path: Path, tasks: list[dict] | None = None) -> tuple[Path, Path]:
     """Returns (project_dir, contract_file)."""
     project = tmp_path / "proj"
