@@ -12,6 +12,15 @@ model_map:
     standard: gemini-2.0-pro
     max: gemini-ultra
 
+# Optional: per-project override applied only when codex-cli is authed via a
+# ChatGPT account (detected by `codex login status`). Use this when a model
+# rejects with "is not supported when using Codex with a ChatGPT account".
+# Empty by default — populate only when a stable incompatibility is observed.
+#
+# chatgpt_account_overrides:
+#   gpt-5.3-codex: gpt-5-codex      # API-only model → ChatGPT-compatible
+chatgpt_account_overrides: {}
+
 pricing:
   claude-opus-4-7:
     input: 15.00

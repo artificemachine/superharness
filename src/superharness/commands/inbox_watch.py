@@ -723,6 +723,7 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
     enqueued = 0
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    from superharness.engine.next_action import infer_workflow as _infer_workflow
     for task in tasks:
         if not isinstance(task, dict):
             continue
@@ -733,6 +734,11 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
             continue
         if task_id in active_tasks:
             continue  # Already has an active inbox item
+        # Discussion sub-tasks are already a multi-agent flow — never spawn
+        # peer-review rows for them (they have no AC, so every dispatch fails
+        # gate 4, producing the inbox flood we saw on 2026-05-09).
+        if _infer_workflow(task_id, task) == "discussion":
+            continue
 
         owner = str(task.get("owner") or "claude-code")
         peer = _PEER_AGENTS.get(owner, "gemini-cli")
@@ -1552,7 +1558,14 @@ def _auto_bootstrap_empty_tasks(project_dir: str) -> int:
             init_db(conn)
             tasks = tasks_dao.get_all(conn, status="waiting_input")
             now = _now_iso()
+            from superharness.engine.next_action import infer_workflow as _infer_workflow
             for task in tasks:
+                # Skip discussion sub-tasks: they have no AC by design (they're
+                # rounds, not implementations). Bootstrapping them sets status
+                # to plan_proposed, which is outside the discussion workflow's
+                # allowed dispatch set {todo, in_progress} — trapping the task.
+                if _infer_workflow(task.id, {"workflow": task.workflow}) == "discussion":
+                    continue
                 # Only bootstrap tasks with genuinely empty content
                 ac = task.acceptance_criteria or []
                 dod = task.definition_of_done or []
