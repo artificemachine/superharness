@@ -104,6 +104,22 @@ LIFECYCLE_RULES: list[LifecycleRule] = [
             "task was never dispatched"
         ),
     ),
+    # Operator-stopped tasks stay in `stopped` forever otherwise — they
+    # accumulate in `shux contract` and the dashboard's Active Tasks view.
+    # 7 days gives the operator plenty of room to resume; after that the
+    # task gets archived (still recoverable, just out of the active list).
+    LifecycleRule(
+        state="stopped",
+        timeout_minutes=10080,  # 7 days
+        on_timeout="archive",
+        source="contract",
+        timestamp_field="stopped_at",
+        profile_key="stopped_timeout_minutes",
+        fail_reason_template=(
+            "stopped timeout ({age_minutes}m >= {limit_minutes}m) — "
+            "operator-halted task auto-archived"
+        ),
+    ),
 ]
 
 # Non-terminal states that are eligible for deadline enforcement.
