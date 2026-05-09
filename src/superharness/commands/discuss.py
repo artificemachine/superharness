@@ -59,7 +59,35 @@ def cmd_approve(
 
 
 def _read_contract_owners(contract_file: str) -> list[str]:
-    """Return distinct owner values from contract tasks, in order."""
+    """Return distinct owner values from contract tasks, in order.
+
+    Tries SQLite (the post-migration source of truth) first; falls back to
+    contract.yaml for legacy / partially-initialised projects."""
+    seen: dict[str, None] = {}
+
+    # SQLite path: contract_file lives at <project>/.superharness/contract.yaml,
+    # so the project root is two levels up.
+    try:
+        import os
+        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(contract_file)))
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import tasks_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            for task in tasks_dao.get_all(conn):
+                owner = getattr(task, "owner", None)
+                if owner:
+                    seen[owner] = None
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+    if seen:
+        return list(seen.keys())
+
+    # Legacy YAML fallback
     try:
         import yaml
         with open(contract_file) as f:
@@ -67,7 +95,6 @@ def _read_contract_owners(contract_file: str) -> list[str]:
     except Exception:
         return []
     tasks = doc.get("tasks") or []
-    seen: dict[str, None] = {}
     for t in tasks:
         if isinstance(t, dict) and t.get("owner"):
             seen[t["owner"]] = None

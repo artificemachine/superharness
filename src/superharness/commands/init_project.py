@@ -235,7 +235,19 @@ def main(argv: list[str] | None = None) -> None:
         (harness / "review-lenses").mkdir(parents=True, exist_ok=True)
         (harness / "rules").mkdir(parents=True, exist_ok=True)
 
-        # State lives in SQLite (post-YAML removal). No contract/inbox/failures/decisions YAML created.
+        # State lives in SQLite (post-YAML removal). Create the DB now so
+        # downstream commands (task create, delegate, close, etc.) which
+        # _abort with "Missing project state" don't fire on a fresh project.
+        try:
+            from superharness.engine.db import get_connection, init_db
+            _conn = get_connection(str(project_dir))
+            try:
+                init_db(_conn, str(project_dir))
+                _conn.commit()
+            finally:
+                _conn.close()
+        except Exception as _e:
+            print(f"warning: failed to initialise state.sqlite3: {_e}", file=sys.stderr)
 
         # .gitignore — runtime state only; contract/handoffs/discussions remain tracked
         gitignore_path = harness / ".gitignore"

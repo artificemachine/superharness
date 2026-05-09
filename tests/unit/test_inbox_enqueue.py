@@ -265,12 +265,15 @@ def test_enqueue_marks_item_plan_only_in_inbox(repo_root, tmp_path) -> None:
     ])
     assert r.returncode == 0, r.stderr
 
-    import yaml
-    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
-    data = yaml.safe_load(inbox_text) or []
-    items = [x for x in data if isinstance(x, dict)]
-    assert len(items) == 1
-    assert items[0].get("plan_only") is True
+    # Post-migration the inbox is in SQLite, not inbox.yaml.
+    import sqlite3 as _sql
+    db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
+    rows = db.execute(
+        "SELECT id, plan_only FROM inbox WHERE task_id='feat.needs-plan'"
+    ).fetchall()
+    db.close()
+    assert len(rows) == 1
+    assert rows[0][1] == 1  # SQLite stores plan_only as INTEGER
 
 
 # ── owner-mismatch guard ─────────────────────────────────────────────────────

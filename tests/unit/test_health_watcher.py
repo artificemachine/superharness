@@ -6,7 +6,7 @@ import os
 import time
 from pathlib import Path
 
-from tests.helpers import run_bash, parse_json_output
+from tests.helpers import run_bash, parse_json_output, seed_sqlite_from_yaml
 import sys
 import pytest
 
