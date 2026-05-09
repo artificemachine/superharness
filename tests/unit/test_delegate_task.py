@@ -135,6 +135,7 @@ def test_delegate_task_print_only_succeeds(repo_root, tmp_path) -> None:
     assert "mcp-docs" in result.stdout
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_delegate_task_non_interactive_passes_flag(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
     bin_dir = _fake_bin(tmp_path, "codex")

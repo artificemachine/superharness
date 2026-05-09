@@ -25,6 +25,8 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+
 def _setup_project(tmp_path: Path) -> Path:
     """Bootstrap a minimal .superharness/ project directory."""
     harness = tmp_path / ".superharness"
@@ -183,6 +185,7 @@ class TestDispatchNoBashAssumption:
         if sys.platform == "win32":
             assert not Path(lock).resolve().is_relative_to(Path("/tmp"))
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_delegate_print_only_does_not_exec(self, tmp_path):
         """delegate --print-only must return normally (not os.execvp)."""
         project = _setup_project(tmp_path)

@@ -144,6 +144,7 @@ def _migrate_contract(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[
                 "stopped_at", "pause_reason", "archived_reason",
                 "model_tier", "worktree_path", "verified", "verified_at",
                 "verified_by", "parent_id", "version",
+                "workflow", "autonomy",
             }
             for _k in _scalar_passthrough:
                 if _k in t and t[_k] is not None:
@@ -154,13 +155,63 @@ def _migrate_contract(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[
                         )
                     except sqlite3.OperationalError:
                         pass  # column missing on this schema version
+            # require_tdd is bool→int
+            if "require_tdd" in t and t["require_tdd"] is not None:
+                try:
+                    conn.execute(
+                        "UPDATE tasks SET require_tdd = ? WHERE id = ?",
+                        (1 if t["require_tdd"] else 0, t["id"]),
+                    )
+                except sqlite3.OperationalError:
+                    pass
+            # Nested metadata (subtasks / classifier / decomposer / retry)
+            # → extras_json. Pulled apart at read time by state_reader.
+            extras = {k: t[k] for k in ("subtasks", "classifier",
+                                        "decomposer", "retry")
+                      if k in t and t[k] is not None}
+            if extras:
+                try:
+                    conn.execute(
+                        "UPDATE tasks SET extras_json = ? WHERE id = ?",
+                        (json.dumps(extras), t["id"]),
+                    )
+                except sqlite3.OperationalError:
+                    pass
             
-            # Dependencies
-            blocked_by = t.get("blocked_by", "none")
-            if blocked_by and blocked_by != "none":
-                deps = [d.strip() for d in str(blocked_by).split(",") if d.strip()]
+            # Dependencies. Treat sentinels (none/null/~/[]) as no deps.
+            # If a list is provided, normalize. Skip FK inserts when the
+            # prerequisite task isn't (yet) in the tasks table — pytest
+            # fixtures often refer to never-defined IDs and FK on
+            # task_dependencies is RESTRICT, which would roll back the
+            # whole migration transaction. Always store the normalized
+            # list as JSON in tasks.blocked_by_raw so consumers can
+            # surface even soft references (informational only).
+            # Accept both `blocked_by` (canonical) and `dependency` (legacy alias).
+            blocked_by = t.get("blocked_by") or t.get("dependency")
+            deps: list[str] = []
+            if isinstance(blocked_by, list):
+                deps = [str(d).strip() for d in blocked_by
+                        if d and str(d).strip() and str(d).strip().lower() not in ("none", "null", "~")]
+            elif blocked_by:
+                raw = str(blocked_by).strip()
+                if raw.lower() not in ("none", "null", "~", "", "[]"):
+                    deps = [d.strip() for d in raw.split(",") if d.strip()
+                            and d.strip().lower() not in ("none", "null", "~")]
+            try:
+                conn.execute(
+                    "UPDATE tasks SET blocked_by_raw = ? WHERE id = ?",
+                    (json.dumps(deps), t["id"]),
+                )
+            except sqlite3.OperationalError:
+                pass  # column missing on this schema version
+            if deps:
                 conn.execute("DELETE FROM task_dependencies WHERE dependent_task_id = ?", (t["id"],))
                 for dep in deps:
+                    exists = conn.execute(
+                        "SELECT 1 FROM tasks WHERE id = ?", (dep,)
+                    ).fetchone()
+                    if not exists:
+                        continue  # silently skip unknown prerequisites
                     conn.execute(
                         "INSERT OR IGNORE INTO task_dependencies (dependent_task_id, prerequisite_task_id) VALUES (?, ?)",
                         (t["id"], dep)

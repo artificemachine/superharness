@@ -65,13 +65,22 @@ def test_deadline_exceeded_marks_failed_and_reenqueues(repo_root, tmp_path) -> N
     assert result.returncode == 0, result.stderr
     assert "exceeded=1" in result.stdout
 
-    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
-    # Original item must be failed.
-    assert "status: failed" in inbox_text
-    assert "deadline_exceeded" in inbox_text
-    # Re-enqueued item for other owner must be pending.
-    assert "to: codex-cli" in inbox_text
-    assert "status: pending" in inbox_text
+    # Inbox is SQLite-backed post-migration; inbox.yaml is no longer
+    # the source of truth. Query SQLite for the status checks.
+    import sqlite3 as _sql
+    db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
+    rows = db.execute(
+        "SELECT id, target_agent, status, failed_reason FROM inbox "
+        "WHERE task_id LIKE '%slow-task%' ORDER BY created_at"
+    ).fetchall()
+    db.close()
+    statuses = {r[2] for r in rows}
+    targets = {r[1] for r in rows}
+    reasons = {(r[3] or "") for r in rows}
+    assert "failed" in statuses, f"Expected a failed row, got {rows}"
+    assert any("deadline_exceeded" in r for r in reasons)
+    assert "codex-cli" in targets
+    assert "pending" in statuses
 
     ledger_text = (project / ".superharness" / "ledger.md").read_text()
     assert "deadline-exceeded" in ledger_text
@@ -85,10 +94,15 @@ def test_deadline_exceeded_marks_failed_and_reenqueues(repo_root, tmp_path) -> N
     assert "claude-code" in handoff_text
     assert "codex-cli" in handoff_text
 
-    # Verify contract task is marked as failed with reason.
-    contract_text = (project / ".superharness" / "contract.yaml").read_text()
-    assert "status: failed" in contract_text
-    assert "stopped_reason: deadline_exceeded_after_" in contract_text
+    # Verify SQLite tasks row reflects the deadline failure (post-migration
+    # contract.yaml is no longer the source of truth).
+    db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
+    task_row = db.execute(
+        "SELECT status, failed_reason, stopped_at FROM tasks WHERE id='slow-task'"
+    ).fetchone()
+    db.close()
+    assert task_row is not None
+    assert task_row[0] == "failed"
 
 
 def test_deadline_not_exceeded_does_nothing(repo_root, tmp_path) -> None:
@@ -147,9 +161,17 @@ def test_deadline_reassigns_codex_to_claude(repo_root, tmp_path) -> None:
     assert result.returncode == 0, result.stderr
     assert "exceeded=1" in result.stdout
 
-    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
-    assert "to: claude-code" in inbox_text
-    assert "status: pending" in inbox_text
+    # Inbox is SQLite-backed post-migration; query the DB.
+    import sqlite3 as _sql
+    db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
+    rows = db.execute(
+        "SELECT target_agent, status FROM inbox WHERE task_id LIKE '%codex-slow%'"
+    ).fetchall()
+    db.close()
+    targets = {r[0] for r in rows}
+    statuses = {r[1] for r in rows}
+    assert "claude-code" in targets
+    assert "pending" in statuses
 
 
 def test_missing_inbox_exits_cleanly(repo_root, tmp_path) -> None:

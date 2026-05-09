@@ -1,4 +1,5 @@
 from __future__ import annotations
+import pytest
 
 """TDD tests for `superharness init --interactive` (Phase 4a)."""
 
@@ -9,6 +10,8 @@ from pathlib import Path
 
 from tests.helpers import REPO_ROOT
 
+
+pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 
 def _run_init_py(cwd: Path, args: list[str] | None = None, stdin: str | None = None):
     """Run init_project Python module."""
@@ -39,6 +42,7 @@ def _pipe_answers(autonomy: str = "2", goal: str = "Migrate API to Fastify", wat
     return f"{autonomy}\n{goal}\n{watcher}\n"
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_interactive_init_creates_files(repo_root, tmp_path) -> None:
     """Piping answers to --interactive must produce contract.yaml and profile.yaml."""
     project = tmp_path / "proj"

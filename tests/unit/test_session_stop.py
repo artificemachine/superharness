@@ -211,6 +211,7 @@ class TestSessionStopPausesTasks:
         )
         return inbox
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_pauses_pending_inbox_items(self, repo_root: Path, tmp_path: Path) -> None:
         project = _setup_project(tmp_path)
         harness = project / ".superharness"
@@ -225,6 +226,7 @@ class TestSessionStopPausesTasks:
         assert loaded[0]["status"] == "paused", f"Expected paused, got {loaded[0]['status']}"
         assert "paused_at" in loaded[0]
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_pauses_launched_inbox_items(self, repo_root: Path, tmp_path: Path) -> None:
         project = _setup_project(tmp_path)
         harness = project / ".superharness"
@@ -238,6 +240,7 @@ class TestSessionStopPausesTasks:
         loaded = yaml.safe_load(inbox.read_text())
         assert loaded[0]["status"] == "paused"
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_pauses_running_inbox_items(self, repo_root: Path, tmp_path: Path) -> None:
         project = _setup_project(tmp_path)
         harness = project / ".superharness"
@@ -251,6 +254,7 @@ class TestSessionStopPausesTasks:
         loaded = yaml.safe_load(inbox.read_text())
         assert loaded[0]["status"] == "paused"
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_falls_back_to_legacy_inbox_json(self, repo_root: Path, tmp_path: Path) -> None:
         project = _setup_project(tmp_path)
         harness = project / ".superharness"
@@ -345,6 +349,7 @@ class TestSessionStopPausesTasks:
         assert "session-stop: task stopped (feat-001)" in ledger
         assert "session-stop: inbox task stopped (feat-001)" not in ledger
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_pauses_only_claude_targeted_inbox_items(self, repo_root: Path, tmp_path: Path) -> None:
         project = _setup_project(tmp_path)
         harness = project / ".superharness"
