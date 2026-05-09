@@ -1607,20 +1607,14 @@ def board_tasks(contract_file: Path) -> dict[str, list[dict]]:
     project_dir = str(contract_file.parent.parent)
     _in_harness = contract_file.parent.name == ".superharness" and contract_file.parent.exists()
     
-    if _in_harness:
-        try:
-            from superharness.engine import state_reader as _sr
-            raw_tasks = _sr.get_top_level_tasks(project_dir)
-        except Exception:
-            pass
-    else:
-        # Fallback for tests: load YAML directly
-        try:
-            import yaml
-            doc = yaml.safe_load(contract_file.read_text(encoding="utf-8")) or {}
-            raw_tasks = doc.get("tasks") or []
-        except Exception:
-            pass
+    # SQLite is the canonical source of truth (post-YAML migration). The
+    # legacy YAML fallback was removed — any test fixture must seed SQLite
+    # via tasks_dao.upsert, not write contract.yaml.
+    try:
+        from superharness.engine import state_reader as _sr
+        raw_tasks = _sr.get_top_level_tasks(project_dir)
+    except Exception:
+        pass
 
     if not raw_tasks:
         return columns # Return empty columns instead of {} to avoid KeyError
@@ -1655,20 +1649,14 @@ def review_queue(contract_file: Path) -> list[dict]:
     project_dir = str(contract_file.parent.parent)
     _in_harness = contract_file.parent.name == ".superharness" and contract_file.parent.exists()
     
-    if _in_harness:
-        try:
-            from superharness.engine import state_reader as _sr
-            raw_tasks = _sr.get_top_level_tasks(project_dir)
-        except Exception:
-            pass
-    else:
-        # Fallback for tests: load YAML directly
-        try:
-            import yaml
-            doc = yaml.safe_load(contract_file.read_text(encoding="utf-8")) or {}
-            raw_tasks = doc.get("tasks") or []
-        except Exception:
-            pass
+    # SQLite is the canonical source of truth (post-YAML migration). The
+    # legacy YAML fallback was removed — any test fixture must seed SQLite
+    # via tasks_dao.upsert, not write contract.yaml.
+    try:
+        from superharness.engine import state_reader as _sr
+        raw_tasks = _sr.get_top_level_tasks(project_dir)
+    except Exception:
+        pass
 
     if not raw_tasks:
         return []

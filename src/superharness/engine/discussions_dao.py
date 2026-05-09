@@ -39,6 +39,15 @@ def create(
     task_id: str | None = None,
     now: str,
 ) -> DiscussionRow:
+    # If a task_id is provided but the row doesn't exist, treat the FK as
+    # SET NULL upfront — tasks() may be created later (or may live only in
+    # YAML before migration). The FK is intentionally nullable.
+    if task_id:
+        exists = conn.execute(
+            "SELECT 1 FROM tasks WHERE id = ?", (task_id,)
+        ).fetchone()
+        if not exists:
+            task_id = None
     try:
         conn.execute(
             """

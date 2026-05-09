@@ -135,7 +135,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install pytest pytest-cov pyyaml click ruamel.yaml
+        run: pip install pytest pytest-cov pyyaml click ruamel.yaml && pip install -e .
 
       - name: Run e2e tests
         run: python3 -m pytest tests/e2e -q

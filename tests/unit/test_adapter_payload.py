@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers import REPO_ROOT
+from tests.helpers import REPO_ROOT, seed_sqlite_from_yaml
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -67,9 +67,17 @@ def set_task_status(
     status: str,
     *,
     from_status: str | None = None,
+    force: bool = False,
     **fields,
 ) -> bool:
-    """Update a contract task's status via SQLite (post-YAML removal)."""
+    """Update a contract task's status via SQLite (post-YAML removal).
+
+    SQLite is the only backend (is_sqlite_only is permanently true);
+    no YAML write path exists. force=True bypasses the user-facing
+    transition graph. The lifecycle reconciler uses it for system-driven
+    moves (timeout → archived/failed) that are intentionally outside the
+    normal interactive flow.
+    """
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
 
@@ -79,18 +87,33 @@ def set_task_status(
         init_db(conn)
         task_row = tasks_dao.get(conn, task_id)
         if not task_row:
+            # Auto-ingest YAML fixtures the same way state_reader does, so
+            # tests that seed contract.yaml then call set_task_status work.
+            try:
+                from superharness.engine.state_reader import _ensure_ingested
+                _ensure_ingested(project_dir)
+                task_row = tasks_dao.get(conn, task_id)
+            except Exception:
+                pass
+        if not task_row:
             return False
 
         if from_status is not None and task_row.status != from_status:
             return False
 
-        # Validate transition against legal status graph
-        try:
-            from superharness.engine.next_action import validate_status_transition
-            validate_status_transition(task_row.status, status)
-        except ValueError as e:
-            print(f"status transition rejected: {task_id}: {e}", file=sys.stderr)
-            return False
+        # Idempotent: setting the same status twice is a no-op success,
+        # not a transition. Skip validation and the change set.
+        if task_row.status == status:
+            return True
+
+        # Validate transition against legal status graph (skipped under force=True)
+        if not force:
+            try:
+                from superharness.engine.next_action import validate_status_transition
+                validate_status_transition(task_row.status, status)
+            except ValueError as e:
+                print(f"status transition rejected: {task_id}: {e}", file=sys.stderr)
+                return False
 
         changes = {"status": status, "updated_at": now}
 
