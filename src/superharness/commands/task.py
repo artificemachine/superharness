@@ -472,42 +472,57 @@ def set_owner(contract_file: str, task_id: str, new_owner: str) -> int:
     _write_contract(contract_file, doc)
     print(f"Reassigned task '{task_id}': {old_owner} → {new_owner}")
 
-    # Scan inbox for active items that were dispatched to the old owner and cancel them.
+    # Cancel active inbox rows that were dispatched to the old owner.
+    # SQLite is the source of truth post-YAML migration; engine/inbox._load_items
+    # and _write_items were removed in that cutover, which broke this code path
+    # silently until 2026-05-09 (docs/BUG-set-owner-inbox-cleanup.md).
     harness_dir = os.path.dirname(contract_file)
     project_dir = os.path.dirname(harness_dir)
-    inbox_file = os.path.join(harness_dir, "inbox.yaml")
+    db_path = os.path.join(harness_dir, "state.sqlite3")
 
-    if not os.path.exists(inbox_file):
+    if not os.path.exists(db_path):
         return 0
 
-    from superharness.engine.inbox import _inbox_lock, _load_items, _write_items
-
-    ACTIVE = {"pending", "launched", "running"}
+    ACTIVE = ("pending", "launched", "running")
     removed_ids: list[str] = []
 
-    with _inbox_lock(inbox_file):
-        items = _load_items(inbox_file)
-        keep = []
-        for item in items:
-            if not isinstance(item, dict):
-                keep.append(item)
-                continue
-            if str(item.get("task", "")) == task_id and item.get("status") in ACTIVE:
-                pid_str = item.get("pid")
-                if pid_str:
+    try:
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            placeholders = ",".join("?" * len(ACTIVE))
+            rows = conn.execute(
+                f"SELECT id, pid FROM inbox WHERE task_id = ? "
+                f"AND target_agent = ? AND status IN ({placeholders})",
+                (task_id, old_owner, *ACTIVE),
+            ).fetchall()
+            for row in rows:
+                item_id, pid = row[0], row[1]
+                if pid:
                     try:
-                        os.kill(int(pid_str), _signal.SIGTERM)
-                        print(f"  stopped pid={pid_str} (item {item['id']})")
+                        os.kill(int(pid), _signal.SIGTERM)
+                        print(f"  stopped pid={pid} (item {item_id})")
                     except (ProcessLookupError, PermissionError, ValueError):
                         pass
-                removed_ids.append(str(item["id"]))
-            else:
-                keep.append(item)
-        if removed_ids:
-            _write_items(inbox_file, keep)
+                removed_ids.append(str(item_id))
+            if removed_ids:
+                # Cancel (don't delete) — preserves audit trail in the inbox table.
+                now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                conn.executemany(
+                    "UPDATE inbox SET status='canceled', failed_at=? WHERE id=?",
+                    [(now, rid) for rid in removed_ids],
+                )
+                conn.commit()
+        finally:
+            conn.close()
+    except Exception as exc:
+        # Don't swallow silently. The original bug masked an ImportError —
+        # surface failures clearly so the operator knows cleanup didn't run.
+        print(f"  warning: inbox cleanup failed: {exc}", file=sys.stderr)
 
     if removed_ids:
-        print(f"  removed {len(removed_ids)} inbox item(s) for old owner '{old_owner}': {', '.join(removed_ids)}")
+        print(f"  canceled {len(removed_ids)} inbox item(s) for old owner '{old_owner}': {', '.join(removed_ids)}")
 
     # Re-enqueue to the new owner when the task is dispatch-ready.
     if removed_ids:
