@@ -177,3 +177,61 @@ class OperatorMemory:
         )
         conn.commit()
         return cursor.rowcount
+
+    def observe_and_promote(
+        self,
+        signature: str,
+        *,
+        error_snippet: str = "",
+        threshold: int = 3,
+    ) -> str | None:
+        """Record one observation of an unknown signature and decide if it
+        should be promoted to permanent_block.
+
+        Closes the feedback loop the watcher was missing: signatures were
+        being seeded but never read back at dispatch time. Now, after the
+        same `unknown:<sha256>` has been observed `threshold` times total
+        (any combination of hits and misses), the next failure with that
+        signature is classified as `permanent_block` so the inbox row
+        fails fast and stops triggering identical-error escalation loops.
+
+        Behavior:
+          - Signature unknown to memory → seed it, return None.
+          - Signature known but observation count < threshold → bump
+            miss_count, return None.
+          - Signature known and observation count ≥ threshold → bump
+            miss_count, return "permanent_block".
+
+        The threshold is generous on purpose: we want to tolerate a few
+        legitimate transient failures before locking in a verdict.
+        """
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT hit_count, miss_count FROM operator_memory "
+            "WHERE pattern_signature = ?",
+            (signature,),
+        ).fetchone()
+        if row is None:
+            try:
+                resolution = (error_snippet.splitlines()[0] if error_snippet else "")[:200]
+                self.record_new(signature, resolution or "unclassified failure")
+            except ValueError:
+                pass  # race: another process beat us to it
+            return None
+
+        # Bump miss_count (treat each post-seed observation as another miss
+        # against the implicit "no fix found" hypothesis).
+        new_miss = int(row["miss_count"]) + 1
+        total = int(row["hit_count"]) + new_miss
+        confidence = (int(row["hit_count"]) / total) if total > 0 else 0.0
+        now = _now_utc()
+        conn.execute(
+            "UPDATE operator_memory SET miss_count=?, confidence=?, last_used_at=? "
+            "WHERE pattern_signature=?",
+            (new_miss, confidence, now, signature),
+        )
+        conn.commit()
+
+        if total >= threshold:
+            return "permanent_block"
+        return None
