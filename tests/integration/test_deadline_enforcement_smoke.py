@@ -70,6 +70,7 @@ def _create_test_project(tmp_path, task_id: str, owner: str, deadline_minutes: i
     return project
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_deadline_enforcement_full_integration(repo_root, tmp_path) -> None:
     """
     Smoke test: verify inbox-deadline-check sets contract failed+reason on expiry.

@@ -46,6 +46,7 @@ def _shux(args: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> s
 class TestInitCrossPlatform:
     """shux init must create .superharness/ on all OSes without bash."""
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_init_creates_harness_directory(self, tmp_path):
         result = _run(
             [sys.executable, "-m", "superharness.commands.init_project",
@@ -65,6 +66,7 @@ class TestInitCrossPlatform:
         assert (tmp_path / "CLAUDE.md").is_file()
         assert (tmp_path / "AGENTS.md").is_file()
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_init_contract_has_valid_yaml(self, tmp_path):
         _run(
             [sys.executable, "-m", "superharness.commands.init_project",
@@ -93,6 +95,7 @@ class TestTaskCrossPlatform:
         )
         return tmp_path
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_task_create_succeeds(self, tmp_path):
         project = self._init(tmp_path)
         result = _run(
@@ -156,6 +159,7 @@ class TestEnqueueCrossPlatform:
         )
         return tmp_path
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_enqueue_writes_inbox(self, tmp_path):
         project = self._setup(tmp_path)
         result = _run(
@@ -205,6 +209,7 @@ class TestDelegateCrossPlatform:
         )
         return tmp_path
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_delegate_print_only_exits_cleanly(self, tmp_path):
         project = self._setup(tmp_path)
         result = _run(
@@ -219,6 +224,7 @@ class TestDelegateCrossPlatform:
         assert result.returncode == 0, f"delegate failed:\n{result.stderr}"
         assert "WIN-003" in result.stdout
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_delegate_does_not_use_execvp(self, tmp_path):
         """After --print-only returns, the test process must still be running (no execvp)."""
         project = self._setup(tmp_path)

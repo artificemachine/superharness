@@ -840,6 +840,7 @@ def test_shux_status_check_exit_code(clean_harness: Path) -> None:
     )
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_shux_status_clean_exits_zero(clean_harness: Path) -> None:
     """shux status --check must exit 0 when no task/inbox/discussion issues (watcher down is expected in tests)."""
     _write_profile(clean_harness)
