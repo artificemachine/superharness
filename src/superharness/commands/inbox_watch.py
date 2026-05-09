@@ -2763,16 +2763,20 @@ def _reconcile_discussion_contract(project_dir: str) -> int:
     from superharness.engine import state_reader, state_writer
     from superharness.engine.db import get_connection, init_db
 
-    terminal = {"cancelled", "closed", "consensus", "deadlock", "failed", "failed_participant"}
+    terminal = ("cancelled", "closed", "consensus", "deadlock", "failed", "failed_participant")
 
-    # Collect terminal discussion IDs from SQLite
+    # Collect terminal discussion IDs from SQLite. Build placeholders
+    # dynamically so adding/removing terminal statuses can't desync from
+    # the literal "?, ?, ?" count (the previous version had 5 placeholders
+    # for 6 values, silently failing inside the bare except).
     terminal_disc_ids: set[str] = set()
     conn = get_connection(project_dir)
     try:
         init_db(conn)
+        placeholders = ",".join("?" * len(terminal))
         rows = conn.execute(
-            "SELECT id FROM discussions WHERE status IN (?, ?, ?, ?, ?)",
-            tuple(terminal),
+            f"SELECT id FROM discussions WHERE status IN ({placeholders})",
+            terminal,
         ).fetchall()
         terminal_disc_ids = {r["id"] for r in rows}
     except Exception:
@@ -2795,7 +2799,8 @@ def _reconcile_discussion_contract(project_dir: str) -> int:
         tid = str(task.get("id", ""))
         for disc_id in terminal_disc_ids:
             if tid.startswith(disc_id + "/") or tid == disc_id:
-                if state_writer.set_task_status(project_dir, tid, "archived", from_status="in_progress"):
+                if state_writer.set_task_status(project_dir, tid, "archived",
+                                                from_status="in_progress", force=True):
                     updated += 1
                     print(f"discussion-reconcile: {tid} → archived (discussion {disc_id} is terminal)")
                 break

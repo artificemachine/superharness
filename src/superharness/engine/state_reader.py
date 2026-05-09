@@ -76,12 +76,14 @@ def _ensure_ingested(project_dir: str) -> None:
 
 
 def get_inbox_items(project_dir: str) -> list[dict]:
-    """Return inbox items from SQLite (post-YAML removal). Auto-ingests YAML fixtures in tests."""
-    _ensure_ingested(project_dir)
-    try:
+    """Return inbox items from SQLite (post-YAML removal).
+
+    Production (sqlite_only) reads SQLite directly. The legacy ingest
+    helper runs only inside pytest test fixtures.
+    """
+    if _production_path(project_dir):
         return _inbox_from_sqlite(project_dir)
-    except Exception:
-        return []
+    return _legacy_ingest_then_inbox(project_dir)
 
 
 def _inbox_row_to_yaml_shape(row: dict) -> dict:
@@ -116,8 +118,20 @@ def _is_running_tests() -> bool:
     return "pytest" in sys.modules or os.environ.get("PYTEST_CURRENT_TEST") is not None
 
 
-def get_tasks(project_dir: str) -> list[dict]:
-    """Return all tasks from SQLite (post-YAML removal). Auto-ingests YAML fixtures in tests."""
+def _production_path(project_dir: str) -> bool:
+    """Return True for production reads. False inside pytest sessions or
+    when sqlite_only is explicitly off (so YAML auto-ingest can hydrate
+    legacy test fixtures)."""
+    if _is_running_tests():
+        return False
+    from superharness.engine.sqlite_only import is_sqlite_only as _iso
+    return _iso(project_dir)
+
+
+def _legacy_ingest_then_tasks(project_dir: str) -> list[dict]:
+    """Pytest-only path: hydrate SQLite from contract.yaml fixtures, then
+    read. Wrapped with a swallowing try/except to keep legacy test setups
+    working when migrations are partial. Production must not call this."""
     _ensure_ingested(project_dir)
     try:
         return _tasks_from_sqlite(project_dir)
@@ -125,9 +139,34 @@ def get_tasks(project_dir: str) -> list[dict]:
         return []
 
 
-def get_task(project_dir: str, task_id: str) -> dict | None:
-    """Return a single task by ID from SQLite (post-YAML removal)."""
+def _legacy_ingest_then_inbox(project_dir: str) -> list[dict]:
     _ensure_ingested(project_dir)
+    try:
+        return _inbox_from_sqlite(project_dir)
+    except Exception:
+        return []
+
+
+def get_tasks(project_dir: str) -> list[dict]:
+    """Return all tasks from SQLite (post-YAML removal).
+
+    In sqlite_only mode (production) we read SQLite directly and let
+    SQLite errors propagate — there is no silent YAML fallback. The
+    legacy YAML auto-ingest path runs only inside pytest test fixtures.
+    """
+    # sqlite_only: production path raises on SQLite errors instead of
+    # silently returning [] like the legacy test path does.
+    if _production_path(project_dir):
+        return _tasks_from_sqlite(project_dir)
+    return _legacy_ingest_then_tasks(project_dir)
+
+
+def get_task(project_dir: str, task_id: str) -> dict | None:
+    """Return a single task by ID from SQLite (post-YAML removal).
+    Production reads SQLite directly; sqlite_only enforces no YAML."""
+    if not _production_path(project_dir):
+        # Pytest fixtures may seed contract.yaml; hydrate before reading.
+        _legacy_ingest_then_tasks(project_dir)
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
     from dataclasses import asdict
@@ -154,7 +193,8 @@ def get_contract_doc(project_dir: str) -> dict:
 
 def get_top_level_tasks(project_dir: str) -> list[dict]:
     """Return only top-level tasks (parent_id IS NULL), excluding subtasks."""
-    _ensure_ingested(project_dir)
+    if not _production_path(project_dir):
+        _legacy_ingest_then_tasks(project_dir)  # hydrate legacy fixtures
     try:
         return _tasks_from_sqlite(project_dir, top_level_only=True)
     except Exception:
@@ -170,7 +210,26 @@ def _tasks_from_sqlite(project_dir: str, *, top_level_only: bool = False) -> lis
     try:
         init_db(conn)
         rows = tasks_dao.get_all(conn, top_level_only=top_level_only)
-        return [asdict(r) for r in rows]
+        # Enrich each task with its prerequisites (task_dependencies row).
+        # The dashboard expects `blocked_by` / `depends_on`; without this the
+        # dependency graph is invisible after the YAML→SQLite migration.
+        deps_by_dependent: dict[str, list[str]] = {}
+        for r in conn.execute(
+            "SELECT dependent_task_id, prerequisite_task_id FROM task_dependencies"
+        ):
+            deps_by_dependent.setdefault(r["dependent_task_id"], []).append(
+                r["prerequisite_task_id"]
+            )
+        out: list[dict] = []
+        for r in rows:
+            d = asdict(r)
+            deps = deps_by_dependent.get(r.id, [])
+            # Both names are populated for back-compat: dashboard reads
+            # `depends_on`, contract.yaml callers read `blocked_by`.
+            d["blocked_by"] = deps
+            d["depends_on"] = deps
+            out.append(d)
+        return out
     finally:
         conn.close()
 

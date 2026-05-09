@@ -89,20 +89,22 @@ def test_set_task_status_rejects_version_mismatch(clean_harness: Path) -> None:
     """state_writer.set_task_status must return False on version conflict."""
     _write_profile(clean_harness)
     _init_sqlite(clean_harness)
+    # Seed at plan_approved so plan_approved → in_progress is legal in the
+    # canonical transition graph.
     _write_contract(clean_harness, [{
-        "id": "test-v2", "owner": "claude-code", "status": "todo",
+        "id": "test-v2", "owner": "claude-code", "status": "plan_approved",
     }])
 
     from superharness.engine.state_writer import set_task_status
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
 
-    # First update — should succeed
+    # First update — legal transition, should succeed
     result1 = set_task_status(str(clean_harness), "test-v2", "in_progress")
     assert result1 is True
 
-    # Second update with from_status that doesn't match
-    result2 = set_task_status(str(clean_harness), "test-v2", "done", from_status="todo")
+    # Second update with from_status that doesn't match the now-current state
+    result2 = set_task_status(str(clean_harness), "test-v2", "stopped", from_status="plan_approved")
     assert result2 is False, "set_task_status should reject when from_status doesn't match"
 
 
@@ -186,14 +188,15 @@ def test_set_task_status_idempotent_same_status(clean_harness: Path) -> None:
     """Setting the same status twice must not break anything."""
     _write_profile(clean_harness)
     _init_sqlite(clean_harness)
+    # Seed task in plan_approved so plan_approved → in_progress is legal.
     _write_contract(clean_harness, [{
-        "id": "test-idem", "owner": "claude-code", "status": "todo",
+        "id": "test-idem", "owner": "claude-code", "status": "plan_approved",
     }])
 
     from superharness.engine.state_writer import set_task_status
     from superharness.engine.state_reader import get_tasks
 
-    # Set same status twice
+    # First call: legal transition. Second call: same target → no-op (idempotent).
     set_task_status(str(clean_harness), "test-idem", "in_progress")
     set_task_status(str(clean_harness), "test-idem", "in_progress")
 
@@ -413,10 +416,10 @@ def test_set_task_status_does_not_orphan_inbox(clean_harness: Path) -> None:
     sh = clean_harness / ".superharness"
     sh.mkdir(parents=True, exist_ok=True)
     (sh / "contract.yaml").write_text(yaml.dump({"tasks": [
-        {"id": "test-consistency", "owner": "claude-code", "status": "todo"},
+        {"id": "test-consistency", "owner": "claude-code", "status": "plan_approved"},
     ]}))
 
-    # Transition to in_progress
+    # Transition to in_progress (legal from plan_approved)
     set_task_status(str(clean_harness), "test-consistency", "in_progress")
 
     # Verify task exists
@@ -454,14 +457,14 @@ def test_transition_to_active_state_creates_inbox_item() -> None:
     try:
         sh = d / '.superharness'; sh.mkdir()
         (sh / 'profile.yaml').write_text('project_name: test\ncreated: 2026-01-01\nprimary_agent: claude-code\nstack: python\nautonomy: autonomous\n')
-        (sh / 'contract.yaml').write_text(yaml.dump({'tasks': [{'id': 'inv-test', 'owner': 'claude-code', 'status': 'todo'}]}))
+        (sh / 'contract.yaml').write_text(yaml.dump({'tasks': [{'id': 'inv-test', 'owner': 'claude-code', 'status': 'plan_approved'}]}))
 
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import tasks_dao
         from superharness.engine.tasks_dao import TaskRow
         conn = get_connection(str(d))
         init_db(conn)
-        tasks_dao.upsert(conn, TaskRow(id='inv-test', title='T', owner='claude-code', status='todo', effort='medium', project_path=str(d), development_method='tdd', acceptance_criteria=[], test_types=[], out_of_scope=[], definition_of_done=[], context=None, tdd=None, version=1, created_at='2026-01-01T00:00:00Z'))
+        tasks_dao.upsert(conn, TaskRow(id='inv-test', title='T', owner='claude-code', status='plan_approved', effort='medium', project_path=str(d), development_method='tdd', acceptance_criteria=[], test_types=[], out_of_scope=[], definition_of_done=[], context=None, tdd=None, version=1, created_at='2026-01-01T00:00:00Z'))
         conn.commit()
         conn.close()
 
@@ -611,16 +614,15 @@ def test_discussion_auto_consensus_on_all_submissions():
         disc_dir = d / ".superharness" / "discussions" / "test-auto-consensus"
         disc_dir.mkdir(parents=True)
 
-        state = {
-            "id": "test-auto-consensus",
-            "topic": "Test auto-consensus",
-            "status": "active",
-            "participants": ["claude-code", "codex-cli"],
-            "current_round": 1,
-            "max_rounds": 1,
-            "created_at": "2026-01-01T00:00:00Z",
-        }
-        (disc_dir / "state.yaml").write_text(yaml.dump(state))
+        # Seed discussion in SQLite (post-migration source of truth) instead
+        # of the legacy state.yaml fixture file.
+        from superharness.engine.db import get_connection as _gc, init_db as _idb
+        from superharness.engine import discussions_dao as _dd
+        _conn = _gc(str(d)); _idb(_conn, str(d))
+        _dd.create(_conn, id="test-auto-consensus", topic="Test auto-consensus",
+                   owners=["claude-code", "codex-cli"], task_id=None,
+                   now="2026-01-01T00:00:00Z")
+        _conn.commit(); _conn.close()
 
         from superharness.engine.discussion import cmd_submit_round
 
@@ -631,8 +633,13 @@ def test_discussion_auto_consensus_on_all_submissions():
         assert rc == 0
 
         # State should still be active (not all submitted)
-        state_after_1 = yaml.safe_load((disc_dir / "state.yaml").read_text()) or {}
-        assert state_after_1["status"] == "active", "Should remain active after first submission"
+        from superharness.engine.db import get_connection as _gc2
+        _c = _gc2(str(d))
+        try:
+            row = _c.execute("SELECT status FROM discussions WHERE id='test-auto-consensus'").fetchone()
+            assert row["status"] == "active", "Should remain active after first submission"
+        finally:
+            _c.close()
 
         # Submit agent 2 with another non-agree point
         points_file2 = disc_dir / "points2.yaml"
@@ -641,8 +648,12 @@ def test_discussion_auto_consensus_on_all_submissions():
         assert rc == 0
 
         # State should now be consensus
-        state_after_2 = yaml.safe_load((disc_dir / "state.yaml").read_text()) or {}
-        assert state_after_2["status"] == "consensus"
+        _c = _gc2(str(d))
+        try:
+            row = _c.execute("SELECT status FROM discussions WHERE id='test-auto-consensus'").fetchone()
+            assert row["status"] == "consensus"
+        finally:
+            _c.close()
 
         # Verify auto-task was created (because there's a non-agree point)
         from superharness.engine.db import get_connection
@@ -667,16 +678,13 @@ def test_discussion_not_consensus_on_partial_submission():
         disc_dir = d / ".superharness" / "discussions" / "test-partial"
         disc_dir.mkdir(parents=True)
 
-        state = {
-            "id": "test-partial",
-            "topic": "Test partial",
-            "status": "active",
-            "participants": ["claude-code", "codex-cli", "opencode"],
-            "current_round": 1,
-            "max_rounds": 1,
-            "created_at": "2026-01-01T00:00:00Z",
-        }
-        (disc_dir / "state.yaml").write_text(yaml.dump(state))
+        from superharness.engine.db import get_connection as _gc, init_db as _idb
+        from superharness.engine import discussions_dao as _dd
+        _conn = _gc(str(d)); _idb(_conn, str(d))
+        _dd.create(_conn, id="test-partial", topic="Test partial",
+                   owners=["claude-code", "codex-cli", "opencode"],
+                   task_id=None, now="2026-01-01T00:00:00Z")
+        _conn.commit(); _conn.close()
 
         from superharness.engine.discussion import cmd_submit_round
 
@@ -685,10 +693,14 @@ def test_discussion_not_consensus_on_partial_submission():
         cmd_submit_round(str(disc_dir), 1, "codex-cli", "consensus", "P2", None)
 
         # State should NOT be consensus
-        state_after = yaml.safe_load((disc_dir / "state.yaml").read_text()) or {}
-        assert state_after["status"] == "active", (
-            f"Should remain active with partial submissions, got {state_after['status']}"
-        )
+        _c = _gc(str(d))
+        try:
+            row = _c.execute("SELECT status FROM discussions WHERE id='test-partial'").fetchone()
+            assert row["status"] == "active", (
+                f"Should remain active with partial submissions, got {row['status']}"
+            )
+        finally:
+            _c.close()
     finally:
         import shutil; shutil.rmtree(d)
 
@@ -703,33 +715,31 @@ def test_all_agree_discussion_skips_auto_task():
         disc_dir = d / ".superharness" / "discussions" / "test-all-agree"
         disc_dir.mkdir(parents=True)
 
-        state = {
-            "id": "test-all-agree",
-            "topic": "Test all agree",
-            "status": "active",
-            "participants": ["claude-code", "codex-cli"],
-            "current_round": 1,
-            "max_rounds": 1,
-            "created_at": "2026-01-01T00:00:00Z",
-        }
-        (disc_dir / "state.yaml").write_text(yaml.dump(state))
+        from superharness.engine.db import get_connection as _gc, init_db as _idb
+        from superharness.engine import discussions_dao as _dd
+        _conn = _gc(str(d)); _idb(_conn, str(d))
+        _dd.create(_conn, id="test-all-agree", topic="Test all agree",
+                   owners=["claude-code", "codex-cli"], task_id=None,
+                   now="2026-01-01T00:00:00Z")
+        _conn.commit(); _conn.close()
 
         from superharness.engine.discussion import cmd_submit_round
 
         points_file = disc_dir / "points.yaml"
         points_file.write_text(yaml.dump([{"id": "ok-1", "verdict": "agree", "rationale": "Good"}]))
-        cmd_submit_round(str(disc_dir), 1, "claude-code", "consensus", "P1", str(points_file))
-        cmd_submit_round(str(disc_dir), 1, "codex-cli", "consensus", "P2", str(points_file))
+        cmd_submit_round(str(disc_dir), 1, "claude-code", "agree", "P1", str(points_file))
+        cmd_submit_round(str(disc_dir), 1, "codex-cli", "agree", "P2", str(points_file))
 
         # Should auto-consensus but NOT create task
-        state_after = yaml.safe_load((disc_dir / "state.yaml").read_text()) or {}
-        assert state_after["status"] == "consensus"
-
         from superharness.engine.db import get_connection
         conn = get_connection(str(d))
-        task = conn.execute("SELECT COUNT(*) FROM tasks WHERE id LIKE 'impl-test-all-agree%'").fetchone()
-        assert task[0] == 0, "All-agree discussions must not create auto-tasks"
-        conn.close()
+        try:
+            row = conn.execute("SELECT status FROM discussions WHERE id='test-all-agree'").fetchone()
+            assert row["status"] == "consensus"
+            task = conn.execute("SELECT COUNT(*) FROM tasks WHERE id LIKE 'impl-test-all-agree%'").fetchone()
+            assert task[0] == 0, "All-agree discussions must not create auto-tasks"
+        finally:
+            conn.close()
     finally:
         import shutil; shutil.rmtree(d)
 
@@ -748,13 +758,15 @@ def test_set_task_status_rejects_invalid_transition(clean_harness: Path) -> None
     ])
 
     from superharness.engine.state_writer import set_task_status
-    # todo → in_progress, but with wrong from_status
-    result = set_task_status(str(clean_harness), "test-transition", "in_progress", from_status="done")
+    # todo → plan_proposed, but with wrong from_status
+    result = set_task_status(str(clean_harness), "test-transition", "plan_proposed", from_status="done")
     assert result is False, "from_status='done' should reject when task is 'todo'"
 
-    # Correct from_status → succeeds
-    result = set_task_status(str(clean_harness), "test-transition", "in_progress", from_status="todo")
-    assert result is True, "from_status='todo' should allow todo → in_progress"
+    # Correct from_status + legal transition → succeeds.
+    # (todo → in_progress is no longer a legal interactive transition; tasks
+    # must go through plan_proposed → plan_approved before in_progress.)
+    result = set_task_status(str(clean_harness), "test-transition", "plan_proposed", from_status="todo")
+    assert result is True, "from_status='todo' should allow todo → plan_proposed"
 
 
 def test_set_task_status_accepts_valid_transition(clean_harness: Path) -> None:
@@ -767,8 +779,12 @@ def test_set_task_status_accepts_valid_transition(clean_harness: Path) -> None:
     ])
 
     from superharness.engine.state_writer import set_task_status
-    # Walk full pipeline
-    pipeline = ["plan_proposed", "plan_approved", "in_progress", "report_ready", "done"]
+    # Walk the full canonical pipeline. report_ready → done is not legal;
+    # the path goes through review_passed first.
+    pipeline = [
+        "plan_proposed", "plan_approved", "in_progress",
+        "report_ready", "review_passed", "done",
+    ]
     for step in pipeline:
         result = set_task_status(str(clean_harness), "test-valid-trans", step)
         assert result is True, f"Valid transition to {step} should succeed"
@@ -1409,19 +1425,22 @@ def test_event_stream_wired_into_set_task_status() -> None:
     try:
         sh = d / ".superharness"; sh.mkdir()
         (sh / "profile.yaml").write_text("project_name: test\ncreated: 2026-01-01\nprimary_agent: claude-code\nstack: python\nautonomy: autonomous\n")
-        (sh / "contract.yaml").write_text(yaml.dump({"tasks": [{"id": "test-ev", "owner": "claude-code", "status": "todo"}]}))
+        # Seed at plan_approved so plan_approved → in_progress is legal in
+        # the canonical transition graph.
+        (sh / "contract.yaml").write_text(yaml.dump({"tasks": [{"id": "test-ev", "owner": "claude-code", "status": "plan_approved"}]}))
 
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import tasks_dao
         from superharness.engine.tasks_dao import TaskRow
         conn = get_connection(str(d))
         init_db(conn)
-        tasks_dao.upsert(conn, TaskRow(id="test-ev", title="T", owner="claude-code", status="todo", effort="medium", project_path=str(d), development_method="tdd", acceptance_criteria=[], test_types=[], out_of_scope=[], definition_of_done=[], context=None, tdd=None, version=1, created_at="2026-01-01T00:00:00Z"))
+        tasks_dao.upsert(conn, TaskRow(id="test-ev", title="T", owner="claude-code", status="plan_approved", effort="medium", project_path=str(d), development_method="tdd", acceptance_criteria=[], test_types=[], out_of_scope=[], definition_of_done=[], context=None, tdd=None, version=1, created_at="2026-01-01T00:00:00Z"))
         conn.commit()
         conn.close()
 
         from superharness.engine.state_writer import set_task_status
-        set_task_status(str(d), "test-ev", "in_progress")
+        ok = set_task_status(str(d), "test-ev", "in_progress")
+        assert ok, "plan_approved → in_progress must succeed"
 
         from superharness.engine.event_stream import read_events
         events = read_events(str(d))

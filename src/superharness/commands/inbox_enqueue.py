@@ -31,14 +31,46 @@ _JSON_CTX: dict = {}
 
 
 def _ensure_task_in_sqlite(conn, task_id: str, project_dir: str, now: str) -> None:
-    """Upsert a minimal task row if it is not yet in SQLite. Never raises."""
+    """Upsert a minimal task row if it is not yet in SQLite.
+
+    Reads contract.yaml as a one-shot seed when the SQLite tasks table
+    doesn't yet contain the task — otherwise inbox.enqueue would fail
+    the FK constraint on task_id. This handles legacy projects whose
+    contract.yaml hasn't been migrated, plus pytest fixtures that seed
+    contract.yaml directly. Never raises.
+    """
     try:
         from superharness.engine import tasks_dao
-        import yaml as _yaml
+        from superharness.engine.tasks_dao import TaskRow
+        import yaml as _yaml, os as _os, json as _json
         if tasks_dao.get(conn, task_id) is not None:
             return
-        # Task not in SQLite — skip (no YAML fallback)
-        return
+        contract_path = _os.path.join(project_dir, ".superharness", "contract.yaml")
+        if not _os.path.isfile(contract_path):
+            return
+        with open(contract_path, encoding="utf-8") as _f:
+            doc = _yaml.safe_load(_f.read()) or {}
+        for t in (doc.get("tasks") or []):
+            if not isinstance(t, dict) or t.get("id") != task_id:
+                continue
+            tasks_dao.upsert(conn, TaskRow(
+                id=task_id,
+                title=str(t.get("title", task_id)),
+                owner=str(t.get("owner", "") or "") or None,
+                status=str(t.get("status", "todo")),
+                effort=str(t.get("effort", "") or ""),
+                project_path=str(t.get("project_path", "") or project_dir),
+                development_method=str(t.get("development_method", "tdd")),
+                acceptance_criteria=list(t.get("acceptance_criteria", []) or []),
+                test_types=list(t.get("test_types", []) or []),
+                out_of_scope=list(t.get("out_of_scope", []) or []),
+                definition_of_done=list(t.get("definition_of_done", []) or []),
+                context=t.get("context"),
+                tdd=t.get("tdd"),
+                version=1,
+                created_at=now,
+            ))
+            return
     except Exception:
         pass
 
@@ -132,10 +164,28 @@ def _validate_contract(
     """
     from superharness.engine.yaml_helpers import safe_load
 
+    # Read tasks from contract.yaml (carries workflow / project_path /
+    # other fields not present in the SQLite tasks table). Then enrich
+    # the matched task's `owner` from SQLite so dashboard-driven owner
+    # changes (which write SQLite only) propagate to the enqueue gate.
     doc = safe_load(contract_file, dict)
     tasks = doc.get("tasks") or []
-
     task = next((t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == task_id), None)
+    if task is not None:
+        try:
+            from superharness.engine.db import get_connection, init_db
+            from superharness.engine import tasks_dao
+            project_dir = os.path.dirname(os.path.dirname(os.path.abspath(contract_file)))
+            _conn = get_connection(project_dir)
+            try:
+                init_db(_conn)
+                _row = tasks_dao.get(_conn, task_id)
+                if _row and _row.owner:
+                    task["owner"] = _row.owner
+            finally:
+                _conn.close()
+        except Exception:
+            pass
     if task is None:
         print(
             f"Warning: task '{task_id}' not found in contract. Enqueuing anyway.",

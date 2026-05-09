@@ -34,7 +34,8 @@ def test_bootstrap_and_hook_install_flow(repo_root, tmp_path) -> None:
     init_res = _run_init_py(project, args=["Demo", "Python", "active"])
     assert init_res.returncode == 0, init_res.stderr
 
-    assert (project / ".superharness/contract.yaml").exists()
+    # Post-migration: state lives in SQLite, not contract.yaml.
+    assert (project / ".superharness/state.sqlite3").exists()
     assert (project / "CLAUDE.md").exists()
     assert (project / "AGENTS.md").exists()
 
@@ -115,9 +116,18 @@ def test_bootstrap_discuss_start_enqueues_round_one_for_both_agents(repo_root, t
     assert "Enqueued round 1 for claude-code:" in start_res.stdout
     assert "Enqueued round 1 for codex-cli:" in start_res.stdout
 
-    inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
-    assert "task: discuss-" in inbox_text
-    assert "/round-1" in inbox_text
-    assert "to: claude-code" in inbox_text
-    assert "to: codex-cli" in inbox_text
-    assert "status: pending" in inbox_text
+    # Inbox is SQLite-backed post-migration; the YAML file (if present) is no
+    # longer the source of truth. Query SQLite directly.
+    import sqlite3 as _sql
+    db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
+    rows = db.execute(
+        "SELECT task_id, target_agent, status FROM inbox "
+        "WHERE task_id LIKE 'discuss-%/round-1'"
+    ).fetchall()
+    db.close()
+    assert rows, f"expected a discuss-*/round-1 row in inbox, got {rows}"
+    targets = {r[1] for r in rows}
+    statuses = {r[2] for r in rows}
+    assert "claude-code" in targets
+    assert "codex-cli" in targets
+    assert "pending" in statuses

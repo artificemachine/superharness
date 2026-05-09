@@ -24,3 +24,9 @@ def enqueue_op(conn: Any, *, op_type: str, payload: dict, now: str) -> None:
 def drain(conn: Any, project_dir: str, *, max_ops: int = 500) -> DrainResult:
     """No-op: YAML sync queue is deprecated."""
     return DrainResult(applied=0, failed=0)
+
+
+def drain_queue(project_dir: str, *, max_ops: int = 500) -> DrainResult:
+    """No-op compatibility shim for pre-migration callers that passed
+    only project_dir. The queue is deprecated; applied/failed are always 0."""
+    return DrainResult(applied=0, failed=0)

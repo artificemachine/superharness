@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers import run_bash
+from tests.helpers import run_bash, seed_sqlite_from_yaml
 
 
 def _setup_project(tmp_path: Path) -> Path:
