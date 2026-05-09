@@ -22,8 +22,6 @@ INBOX_HEADER = (
 # Helpers
 # ---------------------------------------------------------------------------
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 def _make_project(tmp_path: Path, contract_yaml: str | None = None) -> Path:
     project = tmp_path / "proj"
     project.mkdir(parents=True, exist_ok=True)

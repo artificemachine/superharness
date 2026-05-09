@@ -9,9 +9,6 @@ from tests.helpers import seed_sqlite_from_yaml
 from tests.helpers import REPO_ROOT
 import pytest
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
-
 def _run_delegate_py(cwd, args: list[str] | None = None, env: dict | None = None):
     """Run delegate Python module."""
     merged = os.environ.copy()

@@ -7,8 +7,6 @@ import sys
 from unittest.mock import MagicMock, patch
 from superharness.commands.inbox_dispatch import _do_dispatch, _MkdirLock
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 @pytest.fixture
 def temp_project(tmp_path):
     sh_dir = tmp_path / ".superharness"

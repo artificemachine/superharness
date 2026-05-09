@@ -24,8 +24,6 @@ from superharness.commands.inbox_dispatch import (
 )
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 def _make_ctx(tmp_path, **kwargs) -> DispatchContext:
     harness = tmp_path / ".superharness"
     harness.mkdir(exist_ok=True)
