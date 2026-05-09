@@ -6,8 +6,6 @@ from pathlib import Path
 from tests.helpers import run_cmd, seed_sqlite_from_yaml
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 def _write_project(tmp_path: Path, *, tasks: str = "", decisions: str = "[]", failures: str = "[]") -> Path:
     project = tmp_path / "proj"
     project.mkdir()

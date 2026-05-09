@@ -11,8 +11,6 @@ from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
 PYTHON = sys.executable
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 def _write_project(
     tmp_path: Path,
     *,

@@ -50,8 +50,6 @@ from superharness.engine.db import get_connection, init_db
 
 # ── panel toggle logic ────────────────────────────────────────────────────────
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 class PanelState:
     """Minimal Python model of the JS panel toggle state."""
     def __init__(self, visible: bool = True):

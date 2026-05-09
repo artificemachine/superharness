@@ -7,8 +7,6 @@ import sys
 from tests.helpers import REPO_ROOT
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 def _run_init_py(cwd, args: list[str] | None = None, stdin: str | None = None, env: dict | None = None):
     """Run init_project Python module."""
     import os

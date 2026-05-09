@@ -26,8 +26,6 @@ MONITOR_FORM = "1236 /usr/bin/python3 -u /home/user/.local/share/superharness/sc
 UNRELATED    = "9999 /usr/bin/python3 some-other-script.py"
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 def _lsof_for(pid: int, port: int) -> str:
     return f"Python {pid} user 3u IPv4 0x1 0t0 TCP localhost:{port} (LISTEN)\n"
 

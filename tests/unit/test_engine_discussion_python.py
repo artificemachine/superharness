@@ -11,8 +11,6 @@ from pathlib import Path
 PYTHON = sys.executable
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 def _run_discussion(cmd: str, args: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(
         [PYTHON, "-m", "superharness.engine.discussion", cmd] + args,
