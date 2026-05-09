@@ -6,8 +6,6 @@ from datetime import datetime, timedelta
 
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 class TestAutoScheduleModule:
     """Test auto-schedule module (watcher tick hook)."""
 

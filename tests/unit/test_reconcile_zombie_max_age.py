@@ -26,8 +26,6 @@ sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
 # Helpers
 # ---------------------------------------------------------------------------
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 def _write_contract(project: Path, tasks: list[dict]) -> None:
     (project / ".superharness").mkdir(parents=True, exist_ok=True)
     (project / ".superharness" / "contract.yaml").write_text(
