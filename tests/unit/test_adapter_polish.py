@@ -34,8 +34,6 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 # Bug 1 — opencode model auto-prefix
 # ---------------------------------------------------------------------------
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_opencode_branch_prefixes_claude_with_anthropic():
     """delegate.py must prefix bare claude-* model names with anthropic/

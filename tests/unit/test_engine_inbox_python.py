@@ -16,8 +16,6 @@ INBOX_HEADER = (
 )
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 def _inbox_file(tmp_path: Path, items_yaml: str = "") -> Path:
     f = tmp_path / "inbox.yaml"
     f.write_text(INBOX_HEADER + items_yaml)

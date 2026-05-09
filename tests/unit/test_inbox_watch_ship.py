@@ -9,8 +9,6 @@ from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
 from superharness.commands.inbox_watch import _check_ship_on_complete_tasks
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 def _make_project(tmp_path: Path) -> Path:
     project = tmp_path / "proj"
     (project / ".superharness" / "handoffs").mkdir(parents=True)

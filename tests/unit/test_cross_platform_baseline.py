@@ -25,8 +25,6 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 def _setup_project(tmp_path: Path) -> Path:
     """Bootstrap a minimal .superharness/ project directory."""
     harness = tmp_path / ".superharness"

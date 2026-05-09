@@ -30,8 +30,6 @@ from superharness.engine.adapter_registry import (
 )
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 class TestListAdapters:
     def test_returns_builtin_adapter_names(self):
         """list_adapters() returns at least claude-code and codex-cli."""

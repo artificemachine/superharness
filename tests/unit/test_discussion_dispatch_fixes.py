@@ -22,8 +22,6 @@ DISC_ID = "discuss-20260507T110357Z-624-903026676"
 ROUND_TASK = f"{DISC_ID}/round-1"
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-
 def _make_discussion_dir(tmp_path: Path, submissions: list[dict] | None = None) -> Path:
     disc_dir = tmp_path / ".superharness" / "discussions" / DISC_ID
     disc_dir.mkdir(parents=True)
