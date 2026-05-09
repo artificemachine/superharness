@@ -145,11 +145,22 @@ def cmd_submit_round(
 
 
 def _check_all_submitted_and_set_consensus(conn, disc, round_: int) -> None:
-    """If all participants submitted this round, auto-set discussion to consensus."""
+    """If all participants submitted this round AND all verdicts agree,
+    auto-transition the discussion to consensus. If any participant
+    disagrees we leave status=active so the dispatcher can advance to
+    the next round."""
     rounds = discussions_dao.get_rounds(conn, disc.id)
     submitted_agents = {r.agent for r in rounds if r.round_number == round_}
 
     if len(submitted_agents) < len(disc.owners):
+        return
+
+    # Explicit disagreement → keep active and let the dispatcher advance
+    # to the next round (or close as no_consensus when max_rounds is
+    # reached). Verdicts of "agree" / "consensus" / "partial" / "" all
+    # signal alignment; only "disagree" blocks the auto-transition.
+    verdicts = {(r.verdict or "").lower() for r in rounds if r.round_number == round_}
+    if "disagree" in verdicts:
         return
 
     now = _now_utc()

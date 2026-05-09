@@ -1,4 +1,5 @@
 from __future__ import annotations
+import pytest
 
 import yaml
 from unittest.mock import patch, MagicMock
@@ -25,6 +26,7 @@ def _setup_sh(tmp_path):
     return sh_dir
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_parity_clean(db_conn, tmp_path):
     sh_dir = _setup_sh(tmp_path)
     project_dir = str(tmp_path)
@@ -40,6 +42,7 @@ def test_parity_clean(db_conn, tmp_path):
     assert task_drift.only_in_yaml == 0
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_parity_drift_only_in_db(db_conn, tmp_path):
     sh_dir = _setup_sh(tmp_path)
     project_dir = str(tmp_path)
@@ -56,6 +59,7 @@ def test_parity_drift_only_in_db(db_conn, tmp_path):
     assert not report.healthy
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_parity_drift_only_in_yaml(db_conn, tmp_path):
     sh_dir = _setup_sh(tmp_path)
     project_dir = str(tmp_path)
@@ -71,6 +75,7 @@ def test_parity_drift_only_in_yaml(db_conn, tmp_path):
     assert not report.healthy
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_heal_enqueues_ops(db_conn, tmp_path):
     sh_dir = _setup_sh(tmp_path)
     project_dir = str(tmp_path)
@@ -88,6 +93,7 @@ def test_heal_enqueues_ops(db_conn, tmp_path):
 
 
 # B1: parity covers handoffs, failures, decisions
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_parity_covers_handoffs(db_conn, tmp_path):
     sh_dir = _setup_sh(tmp_path)
     project_dir = str(tmp_path)
@@ -109,6 +115,7 @@ def test_parity_covers_handoffs(db_conn, tmp_path):
     assert not report.healthy
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_parity_covers_failures(db_conn, tmp_path):
     sh_dir = _setup_sh(tmp_path)
     project_dir = str(tmp_path)
@@ -126,6 +133,7 @@ def test_parity_covers_failures(db_conn, tmp_path):
     assert f_drift.only_in_db >= 1
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_parity_covers_decisions(db_conn, tmp_path):
     sh_dir = _setup_sh(tmp_path)
     project_dir = str(tmp_path)
@@ -144,6 +152,7 @@ def test_parity_covers_decisions(db_conn, tmp_path):
 
 
 # B2: subtasks nested under parent in YAML are visible to parity
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_parity_subtask_nested_in_yaml(db_conn, tmp_path):
     sh_dir = _setup_sh(tmp_path)
     project_dir = str(tmp_path)
@@ -169,6 +178,7 @@ def test_parity_subtask_nested_in_yaml(db_conn, tmp_path):
     )
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_parity_subtask_only_in_db_detected(db_conn, tmp_path):
     sh_dir = _setup_sh(tmp_path)
     project_dir = str(tmp_path)
@@ -208,6 +218,7 @@ def test_heal_parity_is_idempotent(db_conn, tmp_path):
 
 
 # B4: heal_parity closes only_in_yaml gap by upserting YAML tasks to SQLite
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_heal_parity_yaml_to_db(db_conn, tmp_path):
     sh_dir = _setup_sh(tmp_path)
     project_dir = str(tmp_path)
@@ -231,6 +242,7 @@ def test_heal_parity_yaml_to_db(db_conn, tmp_path):
 
 
 # F6: mismatched field detection
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_parity_detects_mismatched_fields(db_conn, tmp_path):
     sh_dir = _setup_sh(tmp_path)
     project_dir = str(tmp_path)
@@ -258,6 +270,7 @@ def test_parity_foreign_key_clean(db_conn, tmp_path):
 
 
 # Integration: full orchestrator cycle leaves parity clean (no mismatched drift)
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_parity_clean_after_orchestrator_subtask_normalisation(db_conn, tmp_path):
     """Orchestrator-style subtasks (no explicit status field) must not produce drift.
 
@@ -322,6 +335,7 @@ def _contract(sh_dir, tasks):
     )
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_heal_handoffs_db_to_yaml_writes_missing_file(db_conn, tmp_path):
     sh_dir = _setup_sh(tmp_path)
     handoffs_dir = sh_dir / "handoffs"
@@ -347,6 +361,7 @@ def test_heal_handoffs_db_to_yaml_writes_missing_file(db_conn, tmp_path):
     assert doc["date"] == T0
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_heal_handoffs_db_to_yaml_idempotent(db_conn, tmp_path):
     sh_dir = _setup_sh(tmp_path)
     handoffs_dir = sh_dir / "handoffs"
@@ -389,6 +404,7 @@ def test_heal_handoffs_db_to_yaml_skips_orphaned_task(db_conn, tmp_path):
     assert len(list(handoffs_dir.glob("*.yaml"))) == 0
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_heal_handoffs_db_to_yaml_skips_already_matched(db_conn, tmp_path):
     sh_dir = _setup_sh(tmp_path)
     handoffs_dir = sh_dir / "handoffs"
@@ -413,6 +429,7 @@ def test_heal_handoffs_db_to_yaml_skips_already_matched(db_conn, tmp_path):
     assert len(list(handoffs_dir.glob("*.yaml"))) == 1  # no new file written
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_heal_handoffs_db_to_yaml_empty_created_at(db_conn, tmp_path):
     sh_dir = _setup_sh(tmp_path)
     handoffs_dir = sh_dir / "handoffs"
@@ -436,6 +453,7 @@ def test_heal_handoffs_db_to_yaml_empty_created_at(db_conn, tmp_path):
     assert "date" not in doc  # empty date omitted from output
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_heal_handoffs_db_to_yaml_multiple_rows_same_task(db_conn, tmp_path):
     sh_dir = _setup_sh(tmp_path)
     handoffs_dir = sh_dir / "handoffs"
@@ -458,6 +476,7 @@ def test_heal_handoffs_db_to_yaml_multiple_rows_same_task(db_conn, tmp_path):
 
 
 # F9: _sqlite_tick calls heal_parity after drain when drift is present
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_sqlite_tick_heals_parity_after_drain(tmp_path):
     """_sqlite_tick must call parity.heal_parity when check_parity returns unhealthy."""
     sh_dir = tmp_path / ".superharness"

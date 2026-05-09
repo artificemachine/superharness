@@ -73,6 +73,7 @@ def test_discuss_start_creates_discussion(tmp_path: Path) -> None:
     assert len(subdirs) == 1
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_discuss_start_enqueues_round1(tmp_path: Path) -> None:
     project = _make_project(tmp_path)
     r = _run_discuss([

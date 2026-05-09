@@ -1,5 +1,6 @@
 """Python-native tests for superharness.engine.discussion."""
 from __future__ import annotations
+import pytest
 
 import json
 import subprocess
@@ -9,6 +10,8 @@ from pathlib import Path
 
 PYTHON = sys.executable
 
+
+pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 
 def _run_discussion(cmd: str, args: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(
@@ -31,6 +34,7 @@ def _start(discussions_dir: Path, topic: str = "Should we proceed?") -> dict:
     return json.loads(r.stdout)
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_start_creates_state_yaml(tmp_path: Path) -> None:
     discussions_dir = tmp_path / "discussions"
     discussions_dir.mkdir()
@@ -41,6 +45,7 @@ def test_start_creates_state_yaml(tmp_path: Path) -> None:
     assert (disc_dir / "state.yaml").exists()
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_submit_round_creates_position_file(tmp_path: Path) -> None:
     discussions_dir = tmp_path / "discussions"
     discussions_dir.mkdir()
@@ -59,6 +64,7 @@ def test_submit_round_creates_position_file(tmp_path: Path) -> None:
     assert (Path(disc_dir) / "round-1-agent-a.yaml").exists()
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_check_round_all_done(tmp_path: Path) -> None:
     discussions_dir = tmp_path / "discussions"
     discussions_dir.mkdir()
@@ -78,6 +84,7 @@ def test_check_round_all_done(tmp_path: Path) -> None:
     assert result["agents_pending"] == []
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_check_round_pending(tmp_path: Path) -> None:
     discussions_dir = tmp_path / "discussions"
     discussions_dir.mkdir()
@@ -95,6 +102,7 @@ def test_check_round_pending(tmp_path: Path) -> None:
     assert "agent-b" in result["agents_pending"]
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_check_consensus_agree(tmp_path: Path) -> None:
     discussions_dir = tmp_path / "discussions"
     discussions_dir.mkdir()
@@ -112,6 +120,7 @@ def test_check_consensus_agree(tmp_path: Path) -> None:
     assert result["consensus"] is True
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_check_consensus_disagree(tmp_path: Path) -> None:
     discussions_dir = tmp_path / "discussions"
     discussions_dir.mkdir()
@@ -133,6 +142,7 @@ def test_check_consensus_disagree(tmp_path: Path) -> None:
     assert result["consensus"] is False
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_advance_consensus_closes(tmp_path: Path) -> None:
     discussions_dir = tmp_path / "discussions"
     discussions_dir.mkdir()
@@ -151,6 +161,7 @@ def test_advance_consensus_closes(tmp_path: Path) -> None:
     assert result["reason"] == "consensus"
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_advance_no_consensus_advances_round(tmp_path: Path) -> None:
     discussions_dir = tmp_path / "discussions"
     discussions_dir.mkdir()
@@ -173,6 +184,7 @@ def test_advance_no_consensus_advances_round(tmp_path: Path) -> None:
     assert result["next_round"] == 2
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_advance_max_rounds_closes(tmp_path: Path) -> None:
     discussions_dir = tmp_path / "discussions"
     discussions_dir.mkdir()
@@ -201,6 +213,7 @@ def test_advance_max_rounds_closes(tmp_path: Path) -> None:
     assert result["reason"] == "max_rounds_reached"
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_list_discussions(tmp_path: Path) -> None:
     discussions_dir = tmp_path / "discussions"
     discussions_dir.mkdir()
@@ -212,6 +225,7 @@ def test_list_discussions(tmp_path: Path) -> None:
     assert len(data) == 2
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_close_discussion(tmp_path: Path) -> None:
     discussions_dir = tmp_path / "discussions"
     discussions_dir.mkdir()

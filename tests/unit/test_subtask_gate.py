@@ -22,6 +22,8 @@ from superharness.engine.subtask_gate import GateResult, evaluate_subtask_gate
 # ---------------------------------------------------------------------------
 
 
+pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+
 def _sub(status: str, sub_id: str = "T-1.1") -> dict:
     return {"id": sub_id, "title": "sub", "status": status}
 

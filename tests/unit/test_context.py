@@ -73,6 +73,7 @@ class TestContextCommand:
             "    task: feat-001\n"
             "    decision: use lock directory approach for feat-001\n"
         )
+        seed_sqlite_from_yaml(project)  # re-ingest after YAML update
         result = _run_cmd(["--project", str(project), "feat-001"])
         assert result.returncode == 0, result.stderr
         assert "lock directory" in result.stdout.lower()
@@ -86,6 +87,7 @@ class TestContextCommand:
             "    task: feat-001\n"
             "    failure: atomic rename breaks on NFS mounts for feat-001\n"
         )
+        seed_sqlite_from_yaml(project)
         result = _run_cmd(["--project", str(project), "feat-001"])
         assert result.returncode == 0, result.stderr
         assert "atomic rename" in result.stdout.lower()
@@ -111,6 +113,19 @@ class TestContextCommand:
             "    task: other-task\n"
             "    failure: unrelated failure\n"
         )
+        # Seed the dependency directly so the post-migration read path
+        # (state_reader.get_tasks → joins task_dependencies) sees it.
+        import sqlite3 as _sql
+        seed_sqlite_from_yaml(project)
+        _db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
+        try:
+            _db.execute(
+                "INSERT OR IGNORE INTO task_dependencies (dependent_task_id, prerequisite_task_id) VALUES (?, ?)",
+                ("feat-002", "feat-001"),
+            )
+            _db.commit()
+        finally:
+            _db.close()
         result = _run_cmd(["--project", str(project), "feat-002"])
         assert result.returncode == 0, result.stderr
         assert "blocker failure context" in result.stdout.lower()

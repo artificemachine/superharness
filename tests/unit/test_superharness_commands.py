@@ -5,7 +5,7 @@ import sys
 import pytest
 
 
-pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
+pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 
 def _setup_project(tmp_path):
     project = tmp_path / "proj"

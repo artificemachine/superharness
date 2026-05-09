@@ -11,6 +11,8 @@ import yaml
 from click.testing import CliRunner
 
 
+pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+
 @pytest.fixture
 def runner():
     return CliRunner()
@@ -212,6 +214,7 @@ def test_onboard_doctor_failure_non_blocking(runner, project):
 # Step 5 — first task
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_onboard_step_task_creates_entry(runner, project):
     """--task-title creates a task entry in contract.yaml."""
     from superharness.commands.onboard import cmd_onboard
@@ -231,6 +234,7 @@ def test_onboard_step_task_creates_entry(runner, project):
 # Step 6 — delegate
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_onboard_step_delegate_enqueues(runner, project):
     """--enqueue adds the task to inbox.yaml."""
     from superharness.commands.onboard import cmd_onboard

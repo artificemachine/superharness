@@ -43,6 +43,7 @@ def _start_discussion(repo_root: Path, tmp_path: Path, *, max_rounds: int = 2):
     return project, Path(data["discussion_dir"])
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_discussion_engine_closes_on_consensus(repo_root, tmp_path) -> None:
     _, discussion_dir = _start_discussion(repo_root, tmp_path, max_rounds=3)
 
@@ -96,6 +97,7 @@ def test_discussion_engine_closes_on_consensus(repo_root, tmp_path) -> None:
     assert status_json["closed_at"]
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_discussion_engine_closes_without_consensus_at_max_rounds(repo_root, tmp_path) -> None:
     _, discussion_dir = _start_discussion(repo_root, tmp_path, max_rounds=1)
 

@@ -186,9 +186,16 @@ def get_task(project_dir: str, task_id: str) -> dict | None:
 def get_contract_doc(project_dir: str) -> dict:
     """Return the full contract document reconstructed from SQLite."""
     tasks = get_tasks(project_dir)
+    decisions = get_decisions(project_dir)
+    failures = get_failures(project_dir)
     # Derive contract ID from project metadata
     contract_id = "contract"  # default
-    return {"id": contract_id, "tasks": tasks}
+    return {
+        "id": contract_id,
+        "tasks": tasks,
+        "decisions": decisions,
+        "failures": failures,
+    }
 
 
 def get_top_level_tasks(project_dir: str) -> list[dict]:
@@ -220,14 +227,60 @@ def _tasks_from_sqlite(project_dir: str, *, top_level_only: bool = False) -> lis
             deps_by_dependent.setdefault(r["dependent_task_id"], []).append(
                 r["prerequisite_task_id"]
             )
+        # Pull the soft (informational) blocked_by list per task —
+        # references that may not exist as task rows themselves but
+        # which adapters / dashboards still want to surface.
+        blocked_by_raw_by_id: dict[str, list[str]] = {}
+        stamped_by_id: dict[str, dict] = {}
+        try:
+            for r in conn.execute(
+                "SELECT id, blocked_by_raw, workflow, autonomy, require_tdd FROM tasks"
+            ):
+                if r["blocked_by_raw"]:
+                    try:
+                        import json as _j
+                        val = _j.loads(r["blocked_by_raw"])
+                        if isinstance(val, list):
+                            blocked_by_raw_by_id[r["id"]] = [str(x) for x in val]
+                    except Exception:
+                        pass
+                stamp = {}
+                if r["workflow"]:
+                    stamp["workflow"] = r["workflow"]
+                if r["autonomy"]:
+                    stamp["autonomy"] = r["autonomy"]
+                if r["require_tdd"] is not None:
+                    stamp["require_tdd"] = bool(r["require_tdd"])
+                if stamp:
+                    stamped_by_id[r["id"]] = stamp
+        except Exception:
+            pass  # column may not exist on older schema
+
         out: list[dict] = []
         for r in rows:
             d = asdict(r)
-            deps = deps_by_dependent.get(r.id, [])
-            # Both names are populated for back-compat: dashboard reads
-            # `depends_on`, contract.yaml callers read `blocked_by`.
+            deps_strict = deps_by_dependent.get(r.id, [])
+            # Soft (raw) references win — they include scalar blocked_by
+            # that don't yet exist as task rows. Falls back to the
+            # strict task_dependencies join.
+            soft = blocked_by_raw_by_id.get(r.id)
+            deps = soft if soft is not None else deps_strict
             d["blocked_by"] = deps
             d["depends_on"] = deps
+            # Layer the stamped fields (workflow/autonomy/require_tdd)
+            # on top — the v10 schema stores them per-task; older rows
+            # simply have None and the adapter uses defaults.
+            d.update(stamped_by_id.get(r.id, {}))
+            # v11: pull subtasks/classifier/decomposer/retry from extras_json
+            extras_json = getattr(r, "extras_json", None)
+            if extras_json:
+                try:
+                    import json as _jx
+                    extras = _jx.loads(extras_json)
+                    if isinstance(extras, dict):
+                        d.update(extras)
+                except Exception:
+                    pass
             out.append(d)
         return out
     finally:

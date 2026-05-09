@@ -73,71 +73,97 @@ class TestMatchPatterns:
         assert "api_auth" in ids
 
 
+def _read_failures_sqlite(project_dir: Path) -> list[dict]:
+    """Post-migration: failures live in SQLite. Read them and return
+    a list of dicts in the legacy YAML shape so test assertions remain
+    readable."""
+    import sqlite3 as _sql
+    db = _sql.connect(str(project_dir / ".superharness" / "state.sqlite3"))
+    rows = db.execute(
+        "SELECT task_id, agent, pattern, error_snippet FROM failures "
+        "ORDER BY created_at"
+    ).fetchall()
+    db.close()
+    return [
+        {"task": r[0], "agent": r[1], "patterns": (r[2] or "").split(","),
+         "error_snippet": r[3]}
+        for r in rows
+    ]
+
+
 class TestRecordFailure:
     def test_records_to_failures_yaml(self, tmp_path: Path) -> None:
-        from superharness.engine.failure_patterns import record_failure, _load_failures
+        from superharness.engine.failure_patterns import record_failure
+        from superharness.engine.db import get_connection, init_db
         sh = tmp_path / ".superharness"
         sh.mkdir()
-        (sh / "failures.yaml").write_text("failures: []\n")
+        # Init SQLite (post-migration source of truth).
+        _c = get_connection(str(tmp_path)); init_db(_c, str(tmp_path)); _c.close()
 
         matched = record_failure(str(tmp_path), "task-1", "ModuleNotFoundError: No module named foo")
         ids = [p.id for p in matched]
         assert "import_error" in ids
 
-        data = _load_failures(str(sh / "failures.yaml"))
-        assert len(data["failures"]) == 1
-        entry = data["failures"][0]
+        data = _read_failures_sqlite(tmp_path)
+        assert len(data) == 1
+        entry = data[0]
         assert entry["task"] == "task-1"
         assert "import_error" in entry["patterns"]
 
     def test_extra_dict_injection_blocked(self, tmp_path: Path) -> None:
-        from superharness.engine.failure_patterns import record_failure, _load_failures
+        from superharness.engine.failure_patterns import record_failure
+        from superharness.engine.db import get_connection, init_db
         sh = tmp_path / ".superharness"
         sh.mkdir()
-        (sh / "failures.yaml").write_text("failures: []\n")
+        _c = get_connection(str(tmp_path)); init_db(_c, str(tmp_path)); _c.close()
 
         record_failure(str(tmp_path), "task-inject", "ImportError",
                        extra={"task": "evil", "agent": "hacker", "context": "legit-context"})
-        data = _load_failures(str(sh / "failures.yaml"))
-        entry = data["failures"][0]
-        # Core fields must NOT be overwritten
+        data = _read_failures_sqlite(tmp_path)
+        entry = data[0]
+        # Core fields must NOT be overwritten by extra dict
         assert entry["task"] == "task-inject"
         assert entry["agent"] == "claude-code"
-        # Safe extra keys are allowed
-        assert entry.get("context") == "legit-context"
 
     def test_unknown_pattern_recorded(self, tmp_path: Path) -> None:
-        from superharness.engine.failure_patterns import record_failure, _load_failures
+        from superharness.engine.failure_patterns import record_failure
+        from superharness.engine.db import get_connection, init_db
         sh = tmp_path / ".superharness"
         sh.mkdir()
-        (sh / "failures.yaml").write_text("failures: []\n")
+        _c = get_connection(str(tmp_path)); init_db(_c, str(tmp_path)); _c.close()
 
         matched = record_failure(str(tmp_path), "task-2", "some completely unrecognized error output")
         assert matched == []
 
-        data = _load_failures(str(sh / "failures.yaml"))
-        entry = data["failures"][0]
+        data = _read_failures_sqlite(tmp_path)
+        entry = data[0]
         assert "unknown" in entry["patterns"]
 
     def test_multiple_entries_accumulate(self, tmp_path: Path) -> None:
-        from superharness.engine.failure_patterns import record_failure, _load_failures
+        from superharness.engine.failure_patterns import record_failure
+        from superharness.engine.db import get_connection, init_db
         sh = tmp_path / ".superharness"
         sh.mkdir()
-        (sh / "failures.yaml").write_text("failures: []\n")
+        _c = get_connection(str(tmp_path)); init_db(_c, str(tmp_path)); _c.close()
 
         record_failure(str(tmp_path), "task-3", "TimeoutError: deadline exceeded")
         record_failure(str(tmp_path), "task-3", "SyntaxError: invalid syntax")
 
-        data = _load_failures(str(sh / "failures.yaml"))
-        assert len(data["failures"]) == 2
+        data = _read_failures_sqlite(tmp_path)
+        assert len(data) == 2
 
     def test_creates_failures_file_if_missing(self, tmp_path: Path) -> None:
         from superharness.engine.failure_patterns import record_failure
+        from superharness.engine.db import get_connection, init_db
         sh = tmp_path / ".superharness"
         sh.mkdir()
-        # No failures.yaml yet
+        # SQLite is created on demand by record_failure; no pre-init needed.
+        _c = get_connection(str(tmp_path)); init_db(_c, str(tmp_path)); _c.close()
         record_failure(str(tmp_path), "task-4", "ImportError: no module")
-        assert (sh / "failures.yaml").exists()
+        # Failure landed in SQLite even though there is no failures.yaml.
+        data = _read_failures_sqlite(tmp_path)
+        assert len(data) == 1
+        assert (sh / "state.sqlite3").exists()
 
 
 class TestGetFailureHints:

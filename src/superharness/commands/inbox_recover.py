@@ -96,3 +96,7 @@ def _recover(*, project_dir: str, now: str, timeout_minutes: int, action: str) -
             print(f"recover: failed for {item.get('id')}: {e}", file=sys.stderr)
 
     return 0 if updated > 0 else 0
+
+
+if __name__ == "__main__":
+    main()

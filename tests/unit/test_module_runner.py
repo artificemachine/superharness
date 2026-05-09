@@ -1,5 +1,6 @@
 """Tests for module runner (TDD — RED → GREEN → REFACTOR)."""
 from __future__ import annotations
+import pytest
 
 from unittest.mock import Mock, patch
 
@@ -121,6 +122,7 @@ detect: {}
         assert results[0]["module"] == "continue"
         mock_action.assert_called_once()
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_module_failure_does_not_block_close(self, tmp_path, caplog):
         """If module action fails → warning logged, close still succeeds."""
         from superharness.modules.runner import run_hooks

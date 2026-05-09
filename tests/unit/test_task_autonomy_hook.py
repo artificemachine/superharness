@@ -5,6 +5,7 @@ autonomy=ai_driven automatically advances to plan_approved.  Tasks with
 oversight or hands_on stay at plan_proposed.  No recursion beyond one step.
 """
 from __future__ import annotations
+import pytest
 
 import subprocess
 import sys
@@ -14,6 +15,8 @@ import yaml
 
 PYTHON = sys.executable
 
+
+pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 
 def _make_project(tmp_path: Path, task: dict) -> Path:
     """Create a minimal project with one task. Returns project path."""

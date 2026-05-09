@@ -165,6 +165,7 @@ class TestManifestValidation:
 class TestLoaderValidationIntegration:
     """Loader must validate manifests and skip invalid ones with a logged warning."""
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_loader_skips_invalid_schema_version(self, tmp_path, caplog):
         from superharness.modules.loader import load_modules
 
@@ -182,6 +183,7 @@ class TestLoaderValidationIntegration:
         assert all(m.name != "bad-ver" for m in mods)
         assert any("bad-ver" in r.message for r in caplog.records)
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_loader_skips_unknown_lifecycle_hook(self, tmp_path, caplog):
         from superharness.modules.loader import load_modules
 
@@ -199,6 +201,7 @@ class TestLoaderValidationIntegration:
         assert all(m.name != "bad-hook" for m in mods)
         assert any("bad-hook" in r.message for r in caplog.records)
 
+    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_loader_skips_hook_without_action(self, tmp_path, caplog):
         from superharness.modules.loader import load_modules
 

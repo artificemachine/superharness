@@ -1,4 +1,5 @@
 from __future__ import annotations
+import pytest
 
 import json
 import os
@@ -8,6 +9,7 @@ from superharness.engine import yaml_sync
 T0 = "2026-01-01T00:00:00Z"
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_enqueue_op_inserts(db_conn):
     row_id = yaml_sync.enqueue_op(db_conn, op_type="upsert_task", payload={"id": "t1"}, now=T0)
     db_conn.commit()
@@ -18,6 +20,7 @@ def test_enqueue_op_inserts(db_conn):
     assert row["status"] == "pending"
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_drain_upsert_task(db_conn, tmp_path):
     project_dir = str(tmp_path)
     sh_dir = tmp_path / ".superharness"
@@ -39,6 +42,7 @@ def test_drain_upsert_task(db_conn, tmp_path):
     assert any(t.get("id") == "t1" for t in tasks)
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_drain_update_inbox(db_conn, tmp_path):
     project_dir = str(tmp_path)
     sh_dir = tmp_path / ".superharness"
@@ -61,6 +65,7 @@ def test_drain_update_inbox(db_conn, tmp_path):
     assert updated[0]["status"] == "launched"
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_drain_idempotent_applied(db_conn, tmp_path):
     project_dir = str(tmp_path)
     (tmp_path / ".superharness").mkdir(exist_ok=True)

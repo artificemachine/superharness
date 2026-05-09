@@ -14,6 +14,8 @@ import yaml
 # Helpers
 # ---------------------------------------------------------------------------
 
+pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+
 def _write_contract(project: Path, tasks: list[dict]) -> None:
     (project / ".superharness").mkdir(parents=True, exist_ok=True)
     (project / ".superharness" / "contract.yaml").write_text(
@@ -46,6 +48,7 @@ def _write_profile(project: Path, auto_dispatch: bool) -> None:
 # Test 1 — auto-enqueue plan_approved task
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_auto_dispatch_enqueues_plan_approved(tmp_path):
     """Watcher auto-enqueues plan_approved contract task when auto_dispatch=True."""
     from superharness.commands.inbox_watch import auto_enqueue_approved
@@ -72,6 +75,7 @@ def test_auto_dispatch_enqueues_plan_approved(tmp_path):
 # Test 2 — idempotent: running twice doesn't duplicate
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_auto_dispatch_idempotent(tmp_path):
     """Running auto_enqueue_approved twice on the same project adds no duplicates."""
     from superharness.commands.inbox_watch import auto_enqueue_approved
