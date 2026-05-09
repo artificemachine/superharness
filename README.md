@@ -316,6 +316,21 @@ CONFIRM_NON_INTERACTIVE=yes bash scripts/install-systemd-inbox-watcher.sh \
 
 ---
 
+## Prior art and influences
+
+superharness draws on ideas from several open agent harnesses and patterns. Each link points to the specific extraction or comparison doc.
+
+- [Nous Research / hermes-agent](https://github.com/nousresearch/hermes-agent) — agent lifecycle and tool-use shape. See [docs/AUDIT-pi-hermes-adaptation.md](docs/AUDIT-pi-hermes-adaptation.md), [docs/COMPARISON-superharness-vs-pi-hermes.md](docs/COMPARISON-superharness-vs-pi-hermes.md), [docs/hermes-integration-tdd-plan.md](docs/hermes-integration-tdd-plan.md)
+- [earendil-works/pi](https://github.com/earendil-works/pi) — multi-agent coordination patterns
+- [obra/superpowers](https://github.com/obra/superpowers) — composable `SKILL.md` files, two-stage review (spec compliance, then code quality), TDD enforcement. See [docs/CONCEPT-superpowers-extraction.md](docs/CONCEPT-superpowers-extraction.md)
+- [paperclipai/paperclip](https://github.com/paperclipai/paperclip) — adapter breadth, plugin SDK shape, dashboard control plane. See [docs/AUDIT-paperclip-gap-analysis.md](docs/AUDIT-paperclip-gap-analysis.md)
+- [Charlie85270/Dorothy](https://github.com/Charlie85270/Dorothy) — parallel-agent Kanban UI, SQLite FTS5 knowledge store. See [docs/comparison-dorothy.md](docs/comparison-dorothy.md)
+- **Ralph Loops** ([Chris Parsons workshop](https://youtu.be/2TLXsxkz0zI), [Jeffrey Huntley](https://ghuntley.com/)) — "next most important task" dispatch, sub-agent validation against confirmation bias, fresh-context discipline
+
+See [ATTRIBUTIONS.md](ATTRIBUTIONS.md) for the full extract list — what each source contributed, and what we deliberately did not adopt.
+
+---
+
 ## Current Version
 
 Current version: **v1.44.21** — 151 tests, 9 bugs fixed, 6 plan iterations, split-brain closed.

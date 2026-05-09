@@ -90,11 +90,13 @@ def classify_task(
     criteria: list[str] | None = None,
     files: list[str] | None = None,
     previously_failed: bool = False,
+    project_dir: str | None = None,
 ) -> tuple[str, str]:
     """Ask Haiku which tier and effort should handle this task.
 
     Returns (tier, effort). Defaults to ('standard', 'medium') on any failure.
     """
+    mmap = _load_model_map(project_dir)
     criteria_str = ", ".join(criteria) if criteria else "none"
     files_str = ", ".join(files) if files else "none"
     failed_str = "yes" if previously_failed else "no"
@@ -129,23 +131,92 @@ def classify_task(
         return _FALLBACK_TIER, _FALLBACK_EFFORT
 
 
+_CODEX_AUTH_MODE_CACHE: str | None = None
+
+
+def detect_codex_auth_mode() -> str:
+    """Return codex auth mode: 'chatgpt' | 'apikey' | 'unknown'.
+
+    Codex CLI exposes this via `codex login status`. ChatGPT-account auth
+    rejects API-only models (e.g. observed: gpt-5.3-codex) with HTTP 400.
+    Memoized at module level — auth state doesn't change mid-process and
+    the subprocess takes ~1s.
+
+    Note: do not read ~/.codex directly (CLAUDE.md rule 11). Shelling out
+    to the codex binary is the supported entry point.
+    """
+    global _CODEX_AUTH_MODE_CACHE
+    if _CODEX_AUTH_MODE_CACHE is not None:
+        return _CODEX_AUTH_MODE_CACHE
+    try:
+        r = subprocess.run(
+            ["codex", "login", "status"],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+        out = (r.stdout + " " + r.stderr).lower()
+        if "chatgpt" in out:
+            _CODEX_AUTH_MODE_CACHE = "chatgpt"
+        elif "api key" in out or "api-key" in out or "apikey" in out:
+            _CODEX_AUTH_MODE_CACHE = "apikey"
+        else:
+            _CODEX_AUTH_MODE_CACHE = "unknown"
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        _CODEX_AUTH_MODE_CACHE = "unknown"
+    return _CODEX_AUTH_MODE_CACHE
+
+
+def _reset_codex_auth_cache() -> None:
+    """Test-only hook to clear the auth-mode memoization."""
+    global _CODEX_AUTH_MODE_CACHE
+    _CODEX_AUTH_MODE_CACHE = None
+
+
+def _apply_chatgpt_auth_override(target: str, model: str, project_dir: str | None) -> str:
+    """If target is codex-cli on chatgpt-account auth and the model has a
+    project-configured override for ChatGPT auth, swap to the override.
+
+    The override map lives at models.yaml under `chatgpt_account_overrides:`.
+    Empty by default — populate when a stable incompatibility is observed.
+    Example:
+        chatgpt_account_overrides:
+          gpt-5.3-codex: gpt-5-codex   # API-only model → ChatGPT-compatible fallback
+    """
+    if target != "codex-cli":
+        return model
+    config = load_yaml_config(
+        bundled_pkg="superharness",
+        bundled_filename="engine/models.yaml",
+        project_dir=project_dir,
+        project_filename="models.yaml",
+        fallback={},
+    )
+    overrides = config.get("chatgpt_account_overrides") or {}
+    if not overrides or model not in overrides:
+        return model
+    if detect_codex_auth_mode() != "chatgpt":
+        return model
+    return overrides[model]
+
+
 def resolve_model(target: str, tier: str, project_dir: str | None = None) -> str:
     """Map a tier to the agent's actual model name via YAML config or adapter registry.
 
     1. Check _load_model_map (bundled or project override).
     2. Fall back to adapter registry.
     3. Fall back to MODEL_MAP then sonnet.
+    4. For codex-cli: apply chatgpt_account_overrides if user is on ChatGPT auth.
     """
     mmap = _load_model_map(project_dir)
     if target in mmap and tier in mmap[target]:
-        return mmap[target][tier]
+        return _apply_chatgpt_auth_override(target, mmap[target][tier], project_dir)
 
     from superharness.engine.adapter_registry import resolve_model as _resolve
     res = _resolve(target, tier)
     model_id = res.get("id", "")
     if not model_id or model_id == tier:
-        return mmap.get(target, {}).get(tier, MODEL_MAP.get(target, {}).get(tier, "claude-sonnet-4-6"))
-    return model_id
+        fallback = mmap.get(target, {}).get(tier, MODEL_MAP.get(target, {}).get(tier, "claude-sonnet-4-6"))
+        return _apply_chatgpt_auth_override(target, fallback, project_dir)
+    return _apply_chatgpt_auth_override(target, model_id, project_dir)
 
 
 def resolve_tier(model_name: str) -> str | None:

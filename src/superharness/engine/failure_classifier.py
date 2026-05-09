@@ -78,6 +78,12 @@ _PATTERNS: list[tuple[str, Category, bool, str]] = [
         False,
         "agent quota or rate limit exceeded",
     ),
+    (
+        r"model is not supported when using Codex with a ChatGPT account",
+        "permanent_block",
+        False,
+        "agent model not authorized (Codex with ChatGPT account does not support this model — change model or switch auth)",
+    ),
     # agent_crash
     (
         r"Traceback \(most recent call last\)|Segmentation fault|panic:",
