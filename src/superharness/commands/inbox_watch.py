@@ -654,6 +654,11 @@ _PEER_AGENTS: dict[str, str] = {
     "codex-cli":   "claude-code", # Codex proposes → Claude reviews
 }
 
+# Cooldown window after a peer-review row fails. Prevents the auto-spawn loop
+# (each fast lifecycle-gate failure ~14s would otherwise unblock the next
+# enqueue, producing 19 rows in 4m40s on feat-rules-dashboard 2026-05-08).
+_PEER_REVIEW_COOLDOWN_MIN = 15
+
 _PEER_REVIEW_PROMPT = """Review this plan and approve or reject it.
 
 The task owner ({owner}) proposed a plan for: {task_title}
@@ -686,7 +691,7 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
     Returns count of review tasks enqueued.
     """
     import uuid
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
 
     profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
     if not os.path.exists(profile_file):
@@ -720,6 +725,31 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
     except Exception:
         pass
 
+    # Circuit breaker: skip tasks where a peer-review row failed in the last
+    # _PEER_REVIEW_COOLDOWN_MIN minutes. Without this, each fast-failing row
+    # (~14s lifecycle-gate rejection) vanishes from active_tasks and the next
+    # watcher cycle queues another one — the runaway pattern that hit
+    # feat-rules-dashboard on 2026-05-08 (19 rows in 4m40s).
+    recent_peer_failure_tasks: set[str] = set()
+    try:
+        from superharness.engine.db import get_connection, init_db as _init_db
+        _conn = get_connection(project_dir)
+        try:
+            _init_db(_conn)
+            cutoff = (datetime.now(timezone.utc) - timedelta(minutes=_PEER_REVIEW_COOLDOWN_MIN)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            for (tid,) in _conn.execute(
+                "SELECT DISTINCT task_id FROM inbox "
+                "WHERE id LIKE 'peer-review-%' AND status='failed' "
+                "AND failed_at IS NOT NULL AND failed_at > ?",
+                (cutoff,),
+            ).fetchall():
+                if tid:
+                    recent_peer_failure_tasks.add(str(tid))
+        finally:
+            _conn.close()
+    except Exception:
+        pass
+
     enqueued = 0
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -734,6 +764,8 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
             continue
         if task_id in active_tasks:
             continue  # Already has an active inbox item
+        if task_id in recent_peer_failure_tasks:
+            continue  # Circuit breaker: recent peer-review failure
         # Discussion sub-tasks are already a multi-agent flow — never spawn
         # peer-review rows for them (they have no AC, so every dispatch fails
         # gate 4, producing the inbox flood we saw on 2026-05-09).
