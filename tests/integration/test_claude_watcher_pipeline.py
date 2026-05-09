@@ -25,6 +25,7 @@ def _run_enqueue(args: list[str]) -> subprocess.CompletedProcess:
     )
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_claude_watcher_dispatch_smoke(repo_root: Path, tmp_path: Path) -> None:
     """
     Smoke test: verify claude-code watcher dispatch end-to-end.

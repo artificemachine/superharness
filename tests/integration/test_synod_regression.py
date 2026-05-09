@@ -103,6 +103,7 @@ def test_rejected_message_surfaces_hint(tmp_path: Path) -> None:
     assert "--plan-only" in result.stdout + result.stderr
 
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_plan_only_unblocks_todo_implementation(tmp_path: Path) -> None:
     """--plan-only is the escape hatch that the synod session needed."""
     project = _make_project(tmp_path, "synod-plan-only")

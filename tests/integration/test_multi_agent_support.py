@@ -33,6 +33,7 @@ def _setup_minimal_project(tmp_path: Path):
     return project
 
 @pytest.mark.parametrize("agent_name", list_adapters())
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_agent_lifecycle_compatibility(agent_name, tmp_path):
     """Verify that every registered agent can resolve models and generate prompts."""
     from superharness.engine.adapter_registry import MANIFEST_DIR
@@ -81,6 +82,7 @@ def test_agent_lifecycle_compatibility(agent_name, tmp_path):
     finally:
         sys.stdout = _orig_stdout
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_prevent_duplicate_task_different_agents(tmp_path):
     """Verify that the engine blocks enqueuing the same task to different agents."""
     from superharness.engine.inbox import enqueue

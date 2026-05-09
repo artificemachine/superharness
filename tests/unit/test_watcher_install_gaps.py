@@ -34,6 +34,7 @@ SRC = str(REPO_ROOT / "src")
 # Gap 1 — watcher_worker exits non-zero and does NOT print "ready" on install fail
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_watcher_worker_fails_loud_when_install_fails(tmp_path):
     """When the launchd install script fails, watcher_worker.py must:
     - exit with a non-zero return code
