@@ -61,6 +61,9 @@ class TaskRow:
     # stored as a JSON string on the row; consumers merge it into the
     # task dict at read time.
     extras_json: str | None = None
+    # v12: contract lock — snapshot of acceptance_criteria + tdd frozen at plan_approved
+    locked_contract: str | None = None
+    contract_locked_at: str | None = None
 
 def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
     """Insert or update a task. Bumps version on update."""
@@ -171,6 +174,8 @@ def get_all(
         
     return [_row_to_task(conn, row, deps_map[row["id"]]) for row in rows]
 
+_CONTRACT_LOCKED_FIELDS = frozenset({"acceptance_criteria", "tdd"})
+
 def update(
     conn: sqlite3.Connection,
     id: str,
@@ -178,6 +183,17 @@ def update(
     changes: dict[str, Any],
 ) -> TaskRow:
     """Update specific fields of a task with optimistic concurrency check."""
+    from superharness.engine.state_errors import ContractLockError
+    locked_fields = _CONTRACT_LOCKED_FIELDS & changes.keys()
+    if locked_fields:
+        row = conn.execute(
+            "SELECT contract_locked_at FROM tasks WHERE id = ?", (id,)
+        ).fetchone()
+        if row and row["contract_locked_at"]:
+            raise ContractLockError(
+                f"Cannot modify {sorted(locked_fields)} on task '{id}': "
+                f"contract locked at {row['contract_locked_at']}"
+            )
     if not changes:
         task = get(conn, id)
         if not task: raise StateError(f"Task {id} not found")
@@ -320,4 +336,6 @@ def _row_to_task(conn: sqlite3.Connection, row: sqlite3.Row, blocked_by: list[st
         autonomy=row["autonomy"] if "autonomy" in keys else None,
         require_tdd=(bool(row["require_tdd"]) if row["require_tdd"] is not None else None) if "require_tdd" in keys else None,
         extras_json=row["extras_json"] if "extras_json" in keys else None,
+        locked_contract=row["locked_contract"] if "locked_contract" in keys else None,
+        contract_locked_at=row["contract_locked_at"] if "contract_locked_at" in keys else None,
     )

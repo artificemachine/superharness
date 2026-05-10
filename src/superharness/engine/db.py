@@ -12,7 +12,7 @@ from superharness.engine.state_errors import ConnectionError, SchemaError
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 11
+CURRENT_SCHEMA_VERSION = 12
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -439,6 +439,14 @@ def _migration_v11(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "tasks", "extras_json", "TEXT")
 
 
+def _migration_v12(conn: sqlite3.Connection) -> None:
+    """Contract lock: snapshot acceptance_criteria + tdd at plan_approved time.
+    locked_contract stores a JSON snapshot; contract_locked_at is the timestamp.
+    Once set, guarded fields (acceptance_criteria, tdd) are immutable."""
+    _add_column_if_missing(conn, "tasks", "locked_contract", "TEXT")
+    _add_column_if_missing(conn, "tasks", "contract_locked_at", "TEXT")
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -451,4 +459,5 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v9,
     _migration_v10,
     _migration_v11,
+    _migration_v12,
 ]
