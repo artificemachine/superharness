@@ -117,7 +117,7 @@ def generate_handoff(project_dir: str, task_id: str) -> dict:
         "archived": "Task has been archived.",
     }
 
-    return {
+    handoff = {
         "summary": f"{title}: {status_summary.get(status, f'Status: {status}')}",
         "scope": criteria if criteria else [f"Implement {title}"],
         "acceptance": criteria if criteria else ["Task accepted"],
@@ -129,3 +129,10 @@ def generate_handoff(project_dir: str, task_id: str) -> dict:
         "compaction": _build_compaction(task),
         "rules": _load_rules(project_dir),
     }
+    # Attach the locked contract verbatim for review-phase consumers so
+    # the validator grades against what was agreed pre-implementation,
+    # not what the code happens to do now.
+    if status in ("review_requested", "review_passed", "review_failed"):
+        locked = task.get("locked_contract")
+        handoff["validation_contract"] = locked if locked else None
+    return handoff

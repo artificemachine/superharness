@@ -20,3 +20,6 @@ class ParityError(StateError):
 
 class SingletonConflict(StateError):
     """Raised when two watchers try to hold the singleton lease simultaneously."""
+
+class ContractLockError(StateError):
+    """Raised when a write targets a field frozen at plan_approved time."""
