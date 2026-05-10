@@ -61,14 +61,19 @@ jobs:
 
       - name: Validate decisions and failures YAML
         if: steps.check_harness.outputs.has_harness == 'true'
-        # failures.yaml is gitignored runtime state (removed from tracking in
-        # #130); only validate it when present.
+        # decisions.yaml and failures.yaml were removed when state migrated to
+        # SQLite (state.sqlite3 is the source of truth). Skip validation when
+        # absent so the job does not regress on the migrated layout.
         run: |
           echo "Validating decisions.yaml and failures.yaml..."
-          python3 -c "import yaml; yaml.safe_load(open('.superharness/decisions.yaml').read())"
+          if [ -f .superharness/decisions.yaml ]; then
+            python3 -c "import yaml; yaml.safe_load(open('.superharness/decisions.yaml').read())"
+          else
+            echo "  (decisions.yaml absent — superseded by SQLite, skipping)"
+          fi
           if [ -f .superharness/failures.yaml ]; then
             python3 -c "import yaml; yaml.safe_load(open('.superharness/failures.yaml').read())"
           else
-            echo "  (failures.yaml absent — skipping)"
+            echo "  (failures.yaml absent — superseded by SQLite, skipping)"
           fi
           echo "✓ decisions.yaml and failures.yaml are valid"
