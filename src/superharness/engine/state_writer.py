@@ -121,6 +121,16 @@ def set_task_status(
         ts_map = {"plan_proposed": "plan_proposed_at", "plan_approved": "plan_approved_at", "in_progress": "in_progress_at", "report_ready": "report_ready_at", "done": "done_at", "failed": "failed_at", "stopped": "stopped_at", "archived": "archived_at", "waiting_input": "updated_at"}
         if status in ts_map: changes[ts_map[status]] = now
 
+        # Contract lock: freeze acceptance_criteria + tdd at plan_approved time
+        if status == "plan_approved" and not task_row.contract_locked_at:
+            import json as _json
+            snapshot = {
+                "acceptance_criteria": task_row.acceptance_criteria,
+                "tdd": task_row.tdd,
+            }
+            changes["locked_contract"] = _json.dumps(snapshot)
+            changes["contract_locked_at"] = now
+
         changes.update(fields)
         tasks_dao.update(conn, task_id, version=task_row.version, changes=changes)
         conn.commit()
