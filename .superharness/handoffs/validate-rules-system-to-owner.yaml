@@ -54,5 +54,3 @@ rules_in_effect:
   - changelog-policy: CHANGELOG.md is append-only
   - state-backend: All state lives in SQLite
   - task-scope: Tasks with >3 criteria should be decomposed
-</content>
-</invoke>
