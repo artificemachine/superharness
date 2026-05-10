@@ -181,7 +181,18 @@ def set_field(file: str, id: str, key: str, value: str) -> int:
 HEADER = "# Delegation inbox\n"
 
 from contextlib import contextmanager
-import fcntl as _fcntl
+
+# Cross-platform exclusive file lock. fcntl is POSIX-only; msvcrt provides
+# the equivalent on Windows. Without this guard, importing the inbox module
+# on Windows raised ModuleNotFoundError ('fcntl') and broke every command
+# that touches the inbox.
+try:
+    import fcntl as _fcntl
+    _HAS_FCNTL = True
+except ImportError:
+    _fcntl = None
+    _HAS_FCNTL = False
+    import msvcrt as _msvcrt
 
 
 @contextmanager
@@ -189,11 +200,23 @@ def _inbox_lock(path: str):
     """File lock for inbox operations. Compatibility shim."""
     lock_path = f"{path}.flock"
     with open(lock_path, "a+") as lock_file:
-        _fcntl.flock(lock_file.fileno(), _fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            _fcntl.flock(lock_file.fileno(), _fcntl.LOCK_UN)
+        if _HAS_FCNTL:
+            _fcntl.flock(lock_file.fileno(), _fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                _fcntl.flock(lock_file.fileno(), _fcntl.LOCK_UN)
+        else:
+            # Windows: msvcrt locks a byte range from the current file
+            # offset. Seek to 0 and lock the first byte; LK_LOCK blocks
+            # until the lock can be acquired.
+            lock_file.seek(0)
+            _msvcrt.locking(lock_file.fileno(), _msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                lock_file.seek(0)
+                _msvcrt.locking(lock_file.fileno(), _msvcrt.LK_UNLCK, 1)
 
 
 def enqueue(file: str, id: str, to: str, task: str, project: str, priority: int,
