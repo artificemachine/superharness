@@ -205,6 +205,7 @@ superharness delegate --to claude-code --project /path/to/project
 - `--effort <low|medium|high>` — override thinking effort
 - `--no-auto-model` — skip Haiku auto-classification, use profile defaults
 - `--orchestrate` — Opus orchestrator mode: decompose the task into subtasks, assign each a model tier (mini/standard/max), estimate cost, write subtasks to `contract.yaml`, then dispatch
+- `--role <orchestrator|worker|validator|code_reviewer>` — set agent role; drives model selection and dispatch payload policy. `validator`/`code_reviewer` enforce fresh worktree + minimal payload (locked contract + diff only, no worker context). Defaults to `worker`.
 - `--force` — bypass a daily budget BLOCK and dispatch anyway (use sparingly)
 
 **Budget guard:** Before dispatching, `delegate` checks today's total spend (summed from `benchmark.jsonl`) against `budget.daily_limit` in `profile.yaml`:

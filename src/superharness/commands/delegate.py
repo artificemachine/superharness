@@ -591,6 +591,7 @@ def delegate(
     force: bool = False,
     plan_only: bool = False,
     ship_on_complete: bool = False,
+    role: str = "worker",
 ) -> int:
     project_dir = os.path.realpath(project_dir)
 
@@ -808,7 +809,17 @@ def delegate(
     resolved_effort = ""
     model_source = "fallback"
 
-    # 1. CLI flag
+    # 0. Role-based routing (lower priority than explicit CLI flag)
+    if role and role != "worker" and not model_override:
+        try:
+            from superharness.engine.model_router_roles import ModelRouter
+            _router = ModelRouter.from_project(project_dir)
+            resolved_model = _router.model_for(role)
+            model_source = f"role:{role}"
+        except Exception:
+            pass
+
+    # 1. CLI flag (overrides role routing)
     if model_override:
         resolved_model = model_override
         model_source = "manual"
@@ -1300,6 +1311,12 @@ def _build_parser() -> "argparse.ArgumentParser":
         help="Force dispatch method (default: auto-detect — SDK if installed, CLI otherwise)",
     )
     parser.add_argument(
+        "--role", default="worker",
+        choices=["orchestrator", "worker", "validator", "code_reviewer"],
+        help="Agent role: drives model selection and dispatch payload policy. "
+             "validator/code_reviewer enforce fresh-worktree + minimal payload.",
+    )
+    parser.add_argument(
         "--orchestrate", action="store_true", default=False,
         help="Opus orchestrator mode: decompose task into subtasks, assign model tiers, estimate cost",
     )
@@ -1398,6 +1415,7 @@ def main(argv: list[str] | None = None) -> None:
                 force=opts.force,
                 plan_only=opts.plan_only,
                 ship_on_complete=opts.ship_on_complete,
+                role=getattr(opts, "role", "worker") or "worker",
             )
             captured = sys.stdout.getvalue()
         finally:
@@ -1412,6 +1430,7 @@ def main(argv: list[str] | None = None) -> None:
             "print_only": bool(opts.print_only),
             "plan_only": bool(opts.plan_only),
             "orchestrate": bool(opts.orchestrate),
+            "role": getattr(opts, "role", "worker") or "worker",
             "prompt": prompt_text,
             "prompt_length": len(prompt_text),
         }, ok=(rc == 0), exit_code=rc)
@@ -1433,6 +1452,7 @@ def main(argv: list[str] | None = None) -> None:
         force=opts.force,
         plan_only=opts.plan_only,
         ship_on_complete=opts.ship_on_complete,
+        role=getattr(opts, "role", "worker") or "worker",
     )
     sys.exit(rc)
 
