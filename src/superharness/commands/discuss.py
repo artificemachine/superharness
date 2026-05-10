@@ -131,7 +131,15 @@ def cmd_start(
     from superharness.engine.inbox import HEADER, _inbox_lock, enqueue
 
     # Derive participants from explicit owners or the contract, applying exclusions.
-    all_owners = _normalize_owners(owners) or _read_contract_owners(contract_file)
+    norm_owners = _normalize_owners(owners)
+    if "all" in norm_owners:
+        from superharness.engine.adapter_registry import list_adapters
+        all_owners = list_adapters()
+    elif not norm_owners:
+        all_owners = _read_contract_owners(contract_file)
+    else:
+        all_owners = norm_owners
+
     exclude_set = set(exclude or [])
     participants = [o for o in all_owners if o not in exclude_set]
 

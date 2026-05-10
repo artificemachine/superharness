@@ -2207,6 +2207,13 @@ def _run_scripts(
     except Exception as e:
         _log_watcher_error(project_dir, "watcher", str(e))
 
+    # Advance orphaned discussion rounds (inbox done, verdicts never submitted)
+    # to pending-review consensus so the operator can validate and close.
+    try:
+        _auto_advance_orphaned_rounds(project_dir)
+    except Exception as e:
+        print(f"Warning: discussion orphan-advance failed: {e}", file=sys.stderr)
+
     # Auto-close consensus discussions after grace period
     try:
         _auto_close_consensus_discussions(project_dir)
@@ -2893,6 +2900,8 @@ def _reconcile_discussion_contract(project_dir: str) -> int:
 
 
 _CONSENSUS_GRACE_MINUTES = 60  # auto-close consensus discussions after 1h
+_ORPHAN_ROUND_GRACE_MINUTES = 5  # advance orphaned rounds (inbox done, no verdicts) after 5m
+_CONSENSUS_PENDING_REVIEW_PREFIX = "auto-pending-review:"
 _CIRCUIT_BREAKER_THRESHOLD = 20  # consecutive failures in 5 minutes trips breaker
 _CIRCUIT_BREAKER_WINDOW_MINUTES = 5
 
@@ -2939,6 +2948,118 @@ def _circuit_breaker_tripped(project_dir: str) -> bool:
         return False
 
 
+def _auto_advance_orphaned_rounds(project_dir: str) -> int:
+    """Detect active discussions whose round-N inbox items all finished but no
+    verdicts were submitted, and advance them to a 'pending review' consensus
+    state so the operator gets a clear validation signal.
+
+    This closes a real gap: an agent that completes its dispatched round task
+    without calling `shux discuss submit` leaves the discussion stuck in
+    'active' forever, because the verdict-driven auto-consensus path inside
+    cmd_submit never runs. The reconciler treats unanimous inbox completion
+    past a short grace period as a valid signal that the round is done, and
+    surfaces it for explicit operator close (not silent auto-close).
+
+    Returns count of discussions advanced.
+    """
+    from datetime import datetime, timezone, timedelta
+    import re
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import discussions_dao
+
+    now = datetime.now(timezone.utc)
+    cutoff_iso = (now - timedelta(minutes=_ORPHAN_ROUND_GRACE_MINUTES)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    advanced = 0
+    round_re = re.compile(r"/round-(\d+)$")
+
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        active = discussions_dao.get_all(conn, status="active")
+        if not active:
+            return 0
+
+        for disc in active:
+            owners = list(disc.owners or [])
+            if not owners:
+                continue
+
+            # Find the highest round number with inbox activity for this discussion
+            inbox_rows = conn.execute(
+                """
+                SELECT task_id, target_agent, status, done_at
+                FROM inbox
+                WHERE task_id LIKE ?
+                """,
+                (f"{disc.id}/round-%",),
+            ).fetchall()
+            if not inbox_rows:
+                continue
+
+            by_round: dict[int, list] = {}
+            for r in inbox_rows:
+                m = round_re.search(r["task_id"] or "")
+                if not m:
+                    continue
+                by_round.setdefault(int(m.group(1)), []).append(r)
+            if not by_round:
+                continue
+
+            round_n = max(by_round.keys())
+            round_items = by_round[round_n]
+
+            # Every owner must have an inbox item for this round, all in 'done'
+            agents_done = {r["target_agent"] for r in round_items if r["status"] == "done"}
+            if not set(owners).issubset(agents_done):
+                continue
+
+            # Latest done_at across this round must be older than the grace window
+            latest_done = max(
+                (r["done_at"] for r in round_items if r["done_at"]),
+                default=None,
+            )
+            if not latest_done or latest_done > cutoff_iso:
+                continue
+
+            # If the verdict path already covered this round for every owner,
+            # let the normal flow handle it — don't interfere.
+            verdict_agents = {
+                rr.agent for rr in discussions_dao.get_rounds(conn, disc.id)
+                if rr.round_number == round_n
+            }
+            if set(owners).issubset(verdict_agents):
+                continue
+
+            missing = [a for a in owners if a not in verdict_agents]
+            consensus_msg = (
+                f"{_CONSENSUS_PENDING_REVIEW_PREFIX} round {round_n} inbox complete "
+                f"({len(owners) - len(missing)}/{len(owners)} verdicts) — "
+                f"operator review required"
+            )
+            conn.execute(
+                "UPDATE discussions SET status='consensus', consensus=? "
+                "WHERE id=? AND status='active'",
+                (consensus_msg, disc.id),
+            )
+            advanced += 1
+            print(
+                f"discussion-orphan-advance: {disc.id} → consensus (pending review, "
+                f"round {round_n}, missing verdicts: {missing})",
+                file=sys.stderr,
+            )
+
+        if advanced:
+            conn.commit()
+    except Exception as e:
+        print(f"discussion-orphan-advance: error: {e}", file=sys.stderr)
+    finally:
+        conn.close()
+
+    return advanced
+
+
 def _auto_close_consensus_discussions(project_dir: str) -> int:
     """Close discussions that have been in consensus state beyond the grace period.
 
@@ -2962,6 +3083,12 @@ def _auto_close_consensus_discussions(project_dir: str) -> int:
 
         for row in rows:
             disc_id = row.id
+
+            # Skip rows flagged for explicit operator review — these were auto-advanced
+            # because the round's inbox completed without verdicts being submitted.
+            # Closing them silently would lose the validation step the operator wants.
+            if (row.consensus or "").startswith(_CONSENSUS_PENDING_REVIEW_PREFIX):
+                continue
 
             # If closed_at is already stamped but status wasn't updated, close immediately
             # (repairs SQLite-only drift where close() set closed_at but status stayed consensus)

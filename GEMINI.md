@@ -5,6 +5,17 @@ Read this file fully before doing anything else.
 
 ---
 
+## 0. Core Philosophy: Host, Not Agent
+
+**superharness is a host (orchestrator), not a standalone agent runtime.**
+
+- **Goal:** Provide the infrastructure (SQLite contracts, queue-based delegation, TDD lifecycle gates, and cross-agent memory) for professional agents to work safely and persistently.
+- **Role:** It orchestrates external agents (`Claude Code`, `Codex CLI`, `Gemini CLI`). It does **not** implement its own standalone agent loop.
+- **Dispatch:** Automation is achieved through `shux watch` (auto-dispatching tasks to external agents) or the MCP server, not by running superharness as a primary agent.
+- **Non-Goal:** Do not attempt to add features that turn superharness into a standalone agent runtime. This would duplicate specialized agent functionality and bloat the core orchestration layer.
+
+---
+
 ## 1. Find Your Task
 
 ```bash
