@@ -17,13 +17,24 @@ from superharness.engine import discussions_dao
 # ---------------------------------------------------------------------------
 
 def _get_project_dir(discussion_dir: str) -> str:
-    """Extract project root from a discussion directory path."""
-    return discussion_dir.rsplit("/.superharness/discussions/", 1)[0]
+    """Extract project root from a discussion directory path.
+
+    Cross-platform: normalise both Windows backslashes and POSIX slashes
+    before splitting. Without this, Windows paths fall through unchanged
+    and the engine connects to an empty SQLite DB.
+    """
+    normalised = discussion_dir.replace("\\", "/")
+    return normalised.rsplit("/.superharness/discussions/", 1)[0]
 
 
 def _get_disc_id(discussion_dir: str) -> str:
-    """Extract discussion ID from a discussion directory path."""
-    return os.path.basename(discussion_dir.rstrip("/"))
+    """Extract discussion ID from a discussion directory path.
+
+    Strips trailing separators and normalises backslashes to forward slashes
+    so basename works regardless of platform — POSIX os.path.basename does
+    not treat `\\` as a separator.
+    """
+    return os.path.basename(discussion_dir.rstrip("/\\").replace("\\", "/"))
 
 
 def _connect(project_dir: str):
