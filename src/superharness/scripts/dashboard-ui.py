@@ -3157,7 +3157,20 @@ def main() -> int:
     _my_pid = os.getpid()
     try:
         import subprocess as _sp
-        _ps = _sp.run(["ps", "ax", "-o", "pid=,args="], capture_output=True, text=True).stdout
+        # Use Popen+communicate instead of run(timeout=) — on macOS CI runners ps
+        # can enter an uninterruptible kernel wait that ignores SIGKILL.  subprocess.run
+        # calls process.wait() after kill(), which hangs forever in that case.
+        # Popen.communicate() does NOT call wait() after kill on POSIX, so we can
+        # safely abandon the process and skip the guard.
+        _ps_proc = _sp.Popen(
+            ["ps", "ax", "-o", "pid=,args="],
+            stdout=_sp.PIPE, stderr=_sp.DEVNULL, text=True,
+        )
+        try:
+            _ps, _ = _ps_proc.communicate(timeout=10)
+        except _sp.TimeoutExpired:
+            _ps_proc.kill()
+            _ps = ""  # guard skipped — ps timed out
         for _line in _ps.splitlines():
             _line = _line.strip()
             _is_dash = (
@@ -3185,7 +3198,7 @@ def main() -> int:
                 # Find its port via lsof
                 _lsof = _sp.run(
                     ["lsof", "-a", "-i", "TCP", "-sTCP:LISTEN", "-n", "-P", "-p", str(_other_pid)],
-                    capture_output=True, text=True,
+                    capture_output=True, text=True, timeout=10,
                 ).stdout
                 _existing_port = None
                 for _ll in _lsof.splitlines():

@@ -1,86 +1,37 @@
 """Integration tests for the dashboard /api/logs and /api/logs/stream endpoints."""
 from __future__ import annotations
 
+import importlib.util
+import json
 import os
-import socket
-import subprocess
-import sys
+import threading
 import time
 import urllib.request
+import uuid
 from pathlib import Path
 
 import pytest
 
-# TODO(macos-flake): the dashboard subprocess never becomes responsive on
-# macos GitHub runners and produces no stdout/stderr even with
-# PYTHONUNBUFFERED=1, defeating both the timeout-bump and stream-capture
-# diagnostics. The same dashboard runs cleanly on ubuntu and on
-# Windows-Native E2E. Skipping until the macos-specific stall is rooted
-# out — the dashboard endpoints themselves are exercised on linux, and
-# real macos coverage comes from the local pre-merge run.
-pytestmark = pytest.mark.skipif(
-    sys.platform == "darwin" and os.environ.get("CI") == "true",
-    reason="dashboard subprocess silently hangs on macos GitHub runners; tracked as follow-up",
-)
-
 REPO_ROOT = Path(__file__).parent.parent.parent
-SRC = str(REPO_ROOT / "src")
 
 
-def _free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def _read_tail(p: Path | None) -> str:
-    if p is None or not p.exists():
-        return "<absent>"
-    try:
-        return p.read_text()[-2000:]
-    except Exception as exc:
-        return f"<read error: {exc}>"
-
-
-def _wait_until_alive(
-    port: int,
-    timeout: float = 30.0,
-    *,
-    proc=None,
-    stderr_path: Path | None = None,
-    stdout_path: Path | None = None,
-) -> None:
-    """Poll the dashboard's /api/status until it responds or timeout elapses.
-
-    macOS GitHub runners are noticeably slower at subprocess startup than
-    ubuntu — 10s was tight enough to flake regularly even on a healthy run.
-    Bumped to 30s. Also surfaces subprocess crash reasons so future failures
-    are diagnosable instead of silent.
-    """
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if proc is not None and proc.poll() is not None:
-            raise RuntimeError(
-                f"dashboard subprocess exited with code {proc.returncode} "
-                f"before becoming live.\n"
-                f"--- stdout ---\n{_read_tail(stdout_path)}\n"
-                f"--- stderr ---\n{_read_tail(stderr_path)}"
-            )
-        try:
-            urllib.request.urlopen(f"http://127.0.0.1:{port}/api/status", timeout=1).read()
-            return
-        except Exception:
-            time.sleep(0.2)
-    raise TimeoutError(
-        f"dashboard never came up on port {port} within {timeout}s.\n"
-        f"--- stdout ---\n{_read_tail(stdout_path)}\n"
-        f"--- stderr ---\n{_read_tail(stderr_path)}"
-    )
+def _load_dashboard_module():
+    script = REPO_ROOT / "src" / "superharness" / "scripts" / "dashboard-ui.py"
+    spec = importlib.util.spec_from_file_location("dashboard_ui_module", script)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 @pytest.fixture
 def dashboard(tmp_path):
-    """Spawn the dashboard pointed at a tmp project + isolated log files."""
+    """Start an in-process dashboard server pointed at a tmp project.
+
+    Avoids spawning a subprocess so the test is not sensitive to startup timing
+    or platform differences in process session handling (the macOS CI subprocess
+    hang that plagued earlier versions of this file).
+    """
     project = tmp_path / "proj"
     harness = project / ".superharness"
     (harness / "handoffs").mkdir(parents=True)
@@ -88,48 +39,48 @@ def dashboard(tmp_path):
 
     log_main = tmp_path / "main.log"
     log_audit = tmp_path / "audit.log"
-    log_main.parent.mkdir(parents=True, exist_ok=True)
     log_main.touch()
     log_audit.touch()
 
-    port = _free_port()
-    env = os.environ.copy()
-    env["PYTHONPATH"] = SRC
-    env["SUPERHARNESS_LOG_FILE"] = str(log_main)
-    env["SUPERHARNESS_AUDIT_LOG_FILE"] = str(log_audit)
-    env["SUPERHARNESS_NO_AUTO_INSTALL"] = "1"
-    # When stdout/stderr are pipes (not a terminal) Python block-buffers
-    # them — without unbuffering, any prints from the dashboard's startup
-    # path get lost when the test terminate()s the proc on timeout, and
-    # the failure looks like "empty stdout/stderr". Force line buffering
-    # so diagnostic prints reach the log files immediately.
-    env["PYTHONUNBUFFERED"] = "1"
+    # /api/logs resolves log paths from os.environ at request time; set them
+    # here and restore on teardown.
+    _saved = {
+        "SUPERHARNESS_LOG_FILE": os.environ.get("SUPERHARNESS_LOG_FILE"),
+        "SUPERHARNESS_AUDIT_LOG_FILE": os.environ.get("SUPERHARNESS_AUDIT_LOG_FILE"),
+    }
+    os.environ["SUPERHARNESS_LOG_FILE"] = str(log_main)
+    os.environ["SUPERHARNESS_AUDIT_LOG_FILE"] = str(log_audit)
 
-    stdout_log = tmp_path / "dashboard.stdout"
-    stderr_log = tmp_path / "dashboard.stderr"
-    stdout_fh = open(stdout_log, "wb")
-    stderr_fh = open(stderr_log, "wb")
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "superharness.scripts.dashboard-ui",
-         "--port", str(port), "--project", str(project), "--no-open"],
-        env=env, stdout=stdout_fh, stderr=stderr_fh,
-        start_new_session=True,
-    )
+    module = _load_dashboard_module()
+    module.Handler.project_dir = project
+    module.Handler.label = module.project_label(project)
+    module.Handler.refresh_seconds = 3
+    module.Handler.scripts_dir = REPO_ROOT / "src" / "superharness" / "scripts"
+    module.Handler.auth_token = f"test-{uuid.uuid4().hex}"
+
     try:
-        _wait_until_alive(port, proc=proc, stderr_path=stderr_log, stdout_path=stdout_log)
-        yield {"port": port, "main": log_main, "audit": log_audit, "proc": proc}
+        server = module.ThreadingHTTPServer(("127.0.0.1", 0), module.Handler)
+    except PermissionError as exc:
+        pytest.skip(f"Socket bind not permitted in this environment: {exc}")
+
+    host, port = server.server_address
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    try:
+        yield {"port": port, "main": log_main, "audit": log_audit}
     finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-        stdout_fh.close()
-        stderr_fh.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+        for key, val in _saved.items():
+            if val is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = val
 
 
 def _get_json(port: int, path: str) -> dict:
-    import json
     with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=5) as r:
         return json.loads(r.read())
 
