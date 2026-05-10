@@ -29,6 +29,15 @@ while [[ $# -gt 0 ]]; do
       MODEL_ARGS+=("--model" "$2")
       shift 2
       ;;
+    --effort)
+      # Map superharness effort to codex config override
+      local _eff="$2"
+      if [[ "$_eff" == "max" ]]; then
+        _eff="xhigh"
+      fi
+      MODEL_ARGS+=("-c" "model_reasoning_effort=\"$_eff\"")
+      shift 2
+      ;;
     --non-interactive)
       NON_INTERACTIVE=1
       shift
