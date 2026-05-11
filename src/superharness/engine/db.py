@@ -12,7 +12,7 @@ from superharness.engine.state_errors import ConnectionError, SchemaError
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 12
+CURRENT_SCHEMA_VERSION = 14
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -447,6 +447,51 @@ def _migration_v12(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "tasks", "contract_locked_at", "TEXT")
 
 
+def _migration_v13(conn: sqlite3.Connection) -> None:
+    """task_observations table: per-task observation snapshots, written at
+    lifecycle transitions (e.g. report_ready) by future auto-capture or by
+    explicit callers today. Storage-only in this iteration; no transition
+    hook and no summarizer adapter."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS task_observations (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id     TEXT    NOT NULL,
+            phase       TEXT    NOT NULL,
+            summary     TEXT    NOT NULL,
+            created_at  TEXT    NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_task_observations_task_id "
+        "ON task_observations(task_id, created_at)"
+    )
+
+
+def _migration_v14(conn: sqlite3.Connection) -> None:
+    """summarizer_calls table: per-call log used by the cross-process
+    rate limiter and by future cost-tracking surfaces (shux insights).
+    Captures provider, model, success, and optional token usage."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS summarizer_calls (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            provider        TEXT    NOT NULL,
+            model           TEXT,
+            called_at       TEXT    NOT NULL,
+            success         INTEGER NOT NULL,
+            input_tokens    INTEGER,
+            output_tokens   INTEGER
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_summarizer_calls_provider_called_at "
+        "ON summarizer_calls(provider, called_at)"
+    )
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -460,4 +505,6 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v10,
     _migration_v11,
     _migration_v12,
+    _migration_v13,
+    _migration_v14,
 ]

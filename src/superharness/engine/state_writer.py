@@ -143,6 +143,18 @@ def set_task_status(
         except Exception:
             pass
 
+        # Auto-capture observation snapshot on report_ready transition.
+        # Defensive: capture_observation never raises, but the import
+        # could fail in unusual environments. project_dir is threaded
+        # through so the rate limiter can use the cross-process
+        # SQLite-backed bucket.
+        if status == "report_ready":
+            try:
+                from superharness.engine.observation_capture import capture_observation
+                capture_observation(conn, task_id, "report_ready", project_dir=project_dir)
+            except Exception:
+                pass
+
         # Guard: active states must have matching inbox item
         _ACTIVE_WORK = frozenset({"in_progress", "launched", "running", "waiting_input", "pending_user_approval"})
         if status in _ACTIVE_WORK:

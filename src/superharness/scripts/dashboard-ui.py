@@ -2492,6 +2492,47 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if p.startswith("/api/observation/"):
+            raw_id = p[len("/api/observation/"):]
+            from superharness.commands.observation import route_observation
+            conn = self._db_conn()
+            try:
+                payload, status = route_observation(conn, raw_id)
+            finally:
+                conn.close()
+            self._json(payload, status)
+            return
+
+        # Citation sibling routes for handoff, decision, failure.
+        # Each takes an integer id and returns the row as JSON.
+        for _prefix, _kind in (
+            ("/api/handoff/", "handoff"),
+            ("/api/decision/", "decision"),
+            ("/api/failure/", "failure"),
+        ):
+            if p.startswith(_prefix):
+                raw_id = p[len(_prefix):]
+                from superharness.commands.citation import route_citation
+                conn = self._db_conn()
+                try:
+                    payload, status = route_citation(conn, _kind, raw_id)
+                finally:
+                    conn.close()
+                self._json(payload, status)
+                return
+
+        # Per-task observation list: /api/task/<task_id>/observations
+        if p.startswith("/api/task/") and p.endswith("/observations"):
+            task_id = p[len("/api/task/"):-len("/observations")]
+            from superharness.commands.citation import route_task_observations
+            conn = self._db_conn()
+            try:
+                payload, status = route_task_observations(conn, task_id)
+            finally:
+                conn.close()
+            self._json(payload, status)
+            return
+
         if p == "/api/status":
             now_utc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             runtime = watcher_runtime(self.label)
