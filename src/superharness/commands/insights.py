@@ -64,6 +64,21 @@ def _print_insights(data: dict) -> None:
     else:
         print("  no failures recorded")
 
+    print("\n── summarizer ─────────────────────────")
+    summarizer = data.get("summarizer", [])
+    if summarizer:
+        for row in summarizer:
+            provider = row.get("provider", "?")
+            calls = row.get("calls", 0)
+            successes = row.get("successes", 0)
+            failures = row.get("failures", 0)
+            in_tok = row.get("input_tokens", 0)
+            out_tok = row.get("output_tokens", 0)
+            tok = f"in={in_tok} out={out_tok}" if (in_tok or out_tok) else "tokens=n/a"
+            print(f"  {provider:<14} calls={calls}  ok={successes}  fail={failures}  {tok}")
+    else:
+        print("  no summarizer calls recorded")
+
 
 if __name__ == "__main__":
     main()

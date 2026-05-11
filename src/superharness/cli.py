@@ -262,6 +262,16 @@ def _register_config():
 _register_config()
 
 
+def _register_observation():
+    try:
+        from superharness.commands.observation import cmd_observation_group
+        main.add_command(cmd_observation_group)
+    except Exception:
+        pass
+
+_register_observation()
+
+
 def _register_workflow():
     try:
         import click as _click

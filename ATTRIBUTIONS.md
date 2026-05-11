@@ -113,6 +113,33 @@ Sources:
 
 ---
 
+## thedotmack — claude-mem
+
+Repo: <https://github.com/thedotmack/claude-mem>
+
+**Adopted**
+- Privacy tag stripping (`<private>...</private>` spans). Applied at every superharness write boundary in `utils/privacy.py` instead of at a hook layer, so the strip happens once and is not bypassable by skipping a hook.
+- Env-var driven multi-profile isolation. Their `CLAUDE_MEM_DATA_DIR` and per-user port derivation became `SUPERHARNESS_DATA_DIR` and `SUPERHARNESS_DASHBOARD_PORT` in `utils/paths.py`. Pure resolvers, no callers refactored eagerly.
+- Per-task observation snapshot as a first-class storage primitive. The `task_observations` table (schema v13) stores a phase-scoped summary per task, addressable by id, with the privacy strip applied at insert.
+- Citation URL pattern. Their `/api/observation/{id}` becomes our `/api/observation/<id>` dashboard route plus `shux observation show <id>` CLI, sharing one pure route helper so behaviour stays consistent across surfaces. The id-parser is the natural extension point for sibling routes (`/api/handoff/<id>`, `/api/decision/<id>`, `/api/failure/<id>`).
+- Plan-then-implement framing under TDD. Our `docs/PLAN-claude-mem-integration.md` mirrors the iteration-by-iteration discipline they enforce in their own CLAUDE.md but anchored to the superharness lifecycle.
+
+**Did not adopt**
+- Auto-injection of prior observations into the next session's system prompt. This is the core mechanism of claude-mem but it fights operator gating, which is the thing superharness exists to enforce. Snapshots are stored and retrievable; they do not steer the next session unless an operator references them.
+- Express + React viewer UI on a worker port. The existing dashboard at `:8787` already covers the surface.
+- OAuth token injection into a long-running worker subprocess. Tokens stay in the operator's keychain.
+- `curl | bash` installer. `pipx install superharness` is the canonical path.
+- "Auto-bump every dependency to latest, including majors, daily" policy from their CLAUDE.md. The opposite of how a system other agents trust should run.
+- 30-language README translation pipeline. Cosmetic, out of scope.
+- BullMQ + ioredis + Postgres stack. SQLite stays the sole runtime data path.
+
+**Comparison docs**
+- [docs/AUDIT-claude-mem-adaptation.md](docs/AUDIT-claude-mem-adaptation.md)
+- [docs/CONCEPT-claude-mem-integration.md](docs/CONCEPT-claude-mem-integration.md)
+- [docs/PLAN-claude-mem-integration.md](docs/PLAN-claude-mem-integration.md)
+
+---
+
 ## How to add a new attribution
 
 When extracting from a new source:
