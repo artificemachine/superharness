@@ -198,9 +198,21 @@
     </div>
 
     <div class="card report-scroll" style="margin-top:10px; display:none;" id="taskReportCard">
-      <h2 style="position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;">task report <button onclick="if(_liveLogInterval){clearInterval(_liveLogInterval);_liveLogInterval=null;}document.getElementById('taskReportCard').style.display='none'" style="font-size:11px;padding:2px 8px;float:right">close</button><button onclick="copyPanel('taskReportBody',this)" style="font-size:11px;padding:2px 8px;float:right;margin-right:4px">Copy</button></h2>
+      <h2 style="position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;">task report <button onclick="if(_liveLogInterval){clearInterval(_liveLogInterval);_liveLogInterval=null;}document.getElementById('taskReportCard').style.display='none'" style="font-size:11px;padding:2px 8px;float:right">close</button><button onclick="copyPanel('taskReportBody',this)" style="font-size:11px;padding:2px 8px;float:right;margin-right:4px">Copy</button><button id="taskReportObservationsBtn" onclick="loadObservationsForCurrentTask()" style="font-size:11px;padding:2px 8px;float:right;margin-right:4px">Observations</button></h2>
       <div class="small" id="taskReportMeta" style="position:sticky;top:28px;background:var(--panel);padding-bottom:4px;z-index:1;">-</div>
       <pre id="taskReportBody">-</pre>
+    </div>
+
+    <div class="card report-scroll" style="margin-top:10px; display:none;" id="observationsCard">
+      <h2 style="position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;">observations <button onclick="document.getElementById('observationsCard').style.display='none'" style="font-size:11px;padding:2px 8px;float:right">close</button><button onclick="copyPanel('observationsBody',this)" style="font-size:11px;padding:2px 8px;float:right;margin-right:4px">Copy</button></h2>
+      <div class="small" id="observationsMeta" style="position:sticky;top:28px;background:var(--panel);padding-bottom:4px;z-index:1;">-</div>
+      <div id="observationsBody">-</div>
+    </div>
+
+    <div class="card report-scroll" style="margin-top:10px; display:none;" id="citationCard">
+      <h2 style="position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;">citation <button onclick="document.getElementById('citationCard').style.display='none'" style="font-size:11px;padding:2px 8px;float:right">close</button><button onclick="copyPanel('citationBody',this)" style="font-size:11px;padding:2px 8px;float:right;margin-right:4px">Copy</button></h2>
+      <div class="small" id="citationMeta" style="position:sticky;top:28px;background:var(--panel);padding-bottom:4px;z-index:1;">-</div>
+      <pre id="citationBody" style="white-space:pre-wrap;word-break:break-word;">-</pre>
     </div>
 
     <div class="card report-scroll" style="margin-top:10px; display:none;" id="discussionCard">
@@ -1172,6 +1184,88 @@ function copyPanel(bodyId, btn) {
     btn.textContent = 'Error';
     setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
   });
+}
+
+// ── Observations panel (claude-mem integration iter 10) ────────────────────
+// Reads /api/task/<id>/observations and renders one card per snapshot.
+// Auto-detects citation patterns like "decision/42" or "handoff/17" in the
+// summary text and turns them into clickable links that open the citation
+// panel via the iter-8 sibling routes.
+
+function _obsEscapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function _obsLinkifyCitations(escapedText) {
+  // Matches kind/<digits> where kind is one of the four citation kinds.
+  // escapedText has already been HTML-escaped so this regex works on the
+  // sanitised string; the replacement injects safe href-less anchors.
+  return escapedText.replace(
+    /\b(observation|handoff|decision|failure)\/(\d+)\b/g,
+    (match, kind, id) =>
+      `<a href="#" onclick="event.preventDefault();showCitation('${kind}','${id}');return false" style="color:var(--accent,#4ea1ff);text-decoration:underline">${match}</a>`
+  );
+}
+
+function _obsRenderCard(o) {
+  const summary = _obsLinkifyCitations(_obsEscapeHtml(o.summary || ''));
+  const meta = `#${o.id} · ${_obsEscapeHtml(o.phase || '')} · ${_obsEscapeHtml(o.created_at || '')}`;
+  return `<div style="border:1px solid var(--border,#333);border-radius:4px;padding:8px;margin-bottom:6px">
+    <div class="small" style="color:var(--muted,#888);font-size:11px">${meta}</div>
+    <div style="margin-top:4px;font-size:13px;white-space:pre-wrap;word-break:break-word">${summary}</div>
+  </div>`;
+}
+
+async function loadObservations(taskId) {
+  const card = document.getElementById('observationsCard');
+  const meta = document.getElementById('observationsMeta');
+  const body = document.getElementById('observationsBody');
+  if (!card) return;
+  meta.textContent = `task=${taskId}`;
+  body.innerHTML = '<div class="small" style="color:var(--muted,#888)">loading...</div>';
+  card.style.display = 'block';
+  card.scrollIntoView({behavior:'smooth', block:'start'});
+  try {
+    const d = await api('/api/task/' + encodeURIComponent(taskId) + '/observations');
+    const rows = d.observations || [];
+    if (rows.length === 0) {
+      body.innerHTML = '<div class="small" style="color:var(--muted,#888)">no observations yet — they are captured on report_ready transitions.</div>';
+      return;
+    }
+    body.innerHTML = rows.map(_obsRenderCard).join('');
+  } catch (e) {
+    body.innerHTML = `<div class="small" style="color:var(--err,#e55)">error: ${_obsEscapeHtml(e.message || String(e))}</div>`;
+  }
+}
+
+function loadObservationsForCurrentTask() {
+  // Pull the task id from the currently-open task report meta line.
+  const meta = document.getElementById('taskReportMeta');
+  if (!meta) return;
+  const m = (meta.textContent || meta.innerText || '').match(/task=([^\s]+)/);
+  if (!m) {
+    alert('open a task report first');
+    return;
+  }
+  loadObservations(m[1]);
+}
+
+async function showCitation(kind, id) {
+  const card = document.getElementById('citationCard');
+  const meta = document.getElementById('citationMeta');
+  const body = document.getElementById('citationBody');
+  if (!card) return;
+  meta.textContent = `${kind} #${id}`;
+  body.textContent = 'loading...';
+  card.style.display = 'block';
+  card.scrollIntoView({behavior:'smooth', block:'start'});
+  try {
+    const d = await api('/api/' + encodeURIComponent(kind) + '/' + encodeURIComponent(id));
+    body.textContent = JSON.stringify(d, null, 2);
+  } catch (e) {
+    body.textContent = 'error: ' + (e.message || String(e));
+  }
 }
 
 async function closeDiscussionConsensus(discId, btn) {
