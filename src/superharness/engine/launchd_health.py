@@ -51,7 +51,11 @@ def _launch_agents_dir() -> Path:
 
 
 def _uid() -> int:
-    return os.getuid()
+    # os.getuid is POSIX-only — guarded with getattr so unit tests on
+    # Windows can monkey-patch platform.system() to "Darwin" without
+    # the heal() code path AttributeError'ing here.
+    getter = getattr(os, "getuid", None)
+    return getter() if getter else 0
 
 
 def _run(cmd: list[str], timeout: float = 5.0) -> subprocess.CompletedProcess:
