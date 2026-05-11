@@ -911,6 +911,42 @@ def _reconcile_state(ctx: DispatchContext) -> int:
 
 def _handle_failure(ctx: DispatchContext) -> int:
     fail_now = _now_utc()
+
+    # Bug E (docs/bugs/2026-05-11_discuss_dispatch_bugs.md): for
+    # discussion rounds, the agent sometimes writes a complete
+    # round-N-<agent>.yaml then exits with terminal-escape garbage
+    # that the shell interprets as a non-zero status. If the YAML is
+    # on disk the round IS successful; trust the artifact over the
+    # exit code. Trump card: the reconciler path already does this
+    # on rc==0; we mirror it here for rc!=0 so a trailing
+    # control-sequence death doesn't lose a real submission.
+    if ctx.is_discussion and ctx.launcher_rc != 2:
+        parts = ctx.item_task.split("/")
+        if len(parts) == 2:
+            discuss_id, round_slug = parts
+            submission_path = os.path.join(
+                ctx.exec_project, ".superharness", "discussions",
+                discuss_id, f"{round_slug}-{ctx.item_to}.yaml"
+            )
+            if os.path.isfile(submission_path):
+                new_lock = _MkdirLock(ctx.inbox_file + ".lock.d")
+                if new_lock.acquire_with_retry(50, 0.1):
+                    try:
+                        if (_set_inbox_status(ctx.inbox_file, ctx.item_id, "launched", "done", fail_now, "done_at")
+                                or _set_inbox_status(ctx.inbox_file, ctx.item_id, "running", "done", fail_now, "done_at")):
+                            _sqlite_mirror_dispatch(
+                                ctx.project_dir, ctx.item_id, ctx.item_task,
+                                ctx.item_to, "done", fail_now,
+                            )
+                            print(
+                                f"Inbox item updated: {ctx.item_id} -> done "
+                                f"(launcher rc={ctx.launcher_rc} but submission YAML "
+                                f"present at {submission_path})"
+                            )
+                            return 0
+                    finally:
+                        new_lock.release()
+
     # Exit code 2 == permanent block (lifecycle gate rejected the task). Retrying
     # will fail identically on every attempt, so mark retry_count=max_retries
     # immediately to stop the watcher from burning its retry budget. See
@@ -1220,9 +1256,21 @@ def _classify_launch_failure(exit_code: int, log_tail: str) -> dict:
 
 def _prepare_launch_context(ctx: DispatchContext) -> None:
     """Build launch args, apply discussion-specific timeout and model overrides."""
-    # Bug 4 fix: discussion rounds get a hard timeout when none was set
+    # Bug 4 fix: discussion rounds get a hard timeout when none was set.
+    # Bug H (docs/bugs/2026-05-11_discuss_dispatch_bugs.md): operators
+    # can bump the cap via SUPERHARNESS_DISCUSSION_ROUND_TIMEOUT_SECONDS
+    # without touching the watcher-wide default. Multi-agent web-research
+    # rounds routinely need 15+ minutes; the bundled 900s default cut
+    # opencode off mid-WebFetch in the 2026-05-11 repro.
     if ctx.is_discussion and ctx.effective_timeout == 0:
-        ctx.effective_timeout = DISCUSSION_ROUND_TIMEOUT_SECONDS
+        _override = os.environ.get("SUPERHARNESS_DISCUSSION_ROUND_TIMEOUT_SECONDS", "").strip()
+        if _override:
+            try:
+                ctx.effective_timeout = int(_override)
+            except ValueError:
+                ctx.effective_timeout = DISCUSSION_ROUND_TIMEOUT_SECONDS
+        else:
+            ctx.effective_timeout = DISCUSSION_ROUND_TIMEOUT_SECONDS
 
     _prepare_execution(ctx)
 
