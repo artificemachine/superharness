@@ -16,6 +16,30 @@ from superharness.engine.model_router import (
 )
 
 
+def test_delegate_wires_chatgpt_auth_override_into_resolution_path():
+    """Regression: commands/delegate.py MUST call _apply_chatgpt_auth_override
+    after all model-resolution paths (CLI, task field, auto-classify via
+    adapter_registry, profile, fallback, tier-reroute) so codex-cli on a
+    ChatGPT account gets gpt-5.3-codex → gpt-5-codex remapped before
+    invoking the codex CLI. Without this call site the bundled override
+    map is dead code on the dispatch path (see
+    docs/bugs/2026-05-11_discuss_dispatch_bugs.md Bug C)."""
+    import inspect
+    from superharness.commands import delegate as _delegate_mod
+    src = inspect.getsource(_delegate_mod.delegate)
+    assert "_apply_chatgpt_auth_override" in src, (
+        "delegate() must call _apply_chatgpt_auth_override on the resolved "
+        "model. Removing this re-introduces Bug C."
+    )
+    # Order matters: the override must run AFTER the tier-reroute block so
+    # it covers every path. The tier-reroute imports resolve_tier; the
+    # override must appear later in the function body.
+    assert src.find("_apply_chatgpt_auth_override") > src.find("resolve_tier"), (
+        "_apply_chatgpt_auth_override must run after the tier-reroute block "
+        "so it covers every resolution path."
+    )
+
+
 def test_models_yaml_shipped_as_package_data():
     """Regression: engine/models.yaml MUST be packaged with the wheel.
     Without it, load_yaml_config silently falls back to {} and
