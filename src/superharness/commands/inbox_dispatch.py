@@ -700,6 +700,16 @@ def _do_dispatch(
     # 4. Prepare
     _prepare_launch_context(ctx)
 
+    # 4b. Pre-launch idempotence guard for discussion rounds.
+    # Bug G (docs/bugs/2026-05-11_discuss_dispatch_bugs.md §8): when the
+    # watcher restarts, leftover pending inbox items for a round whose
+    # YAML is already on disk (or whose discussion is closed) get
+    # claimed and dispatched via the normal inbox path — not through
+    # discussion_dispatch — so the discussion_dispatch idempotence
+    # guard never sees them. Skip the launch and mark the item done.
+    if _skip_already_done_discussion_round(ctx):
+        return 0
+
     # 5. Execute
     _execute_agent(ctx)
 
@@ -1069,6 +1079,78 @@ def _handle_failure(ctx: DispatchContext) -> int:
     )
 
     return 1
+
+
+def _skip_already_done_discussion_round(ctx: DispatchContext) -> bool:
+    """Return True (and short-circuit launch) if this inbox item is a
+    discussion-round task whose round-N-<agent>.yaml already exists OR
+    whose discussion has been closed.
+
+    The leftover-pending storm vector from §8 of the discuss-dispatch
+    bug report: the watcher restarts, finds stale pending inbox items
+    for rounds the agents already finished, and dispatches them via
+    the normal claim_next loop (which knows nothing about discussion
+    state). This guard runs after _prepare_launch_context so the item
+    is already transitioned to 'launched'; we flip it back to 'done'
+    and let the caller short-circuit.
+    """
+    if not ctx.is_discussion or ctx.print_only:
+        return False
+    parts = ctx.item_task.split("/")
+    if len(parts) != 2:
+        return False
+    discuss_id, round_slug = parts
+    submission_path = os.path.join(
+        ctx.exec_project, ".superharness", "discussions",
+        discuss_id, f"{round_slug}-{ctx.item_to}.yaml",
+    )
+    yaml_exists = os.path.isfile(submission_path)
+
+    discussion_closed = False
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import discussions_dao
+        conn = get_connection(ctx.project_dir)
+        try:
+            init_db(conn)
+            disc = discussions_dao.get(conn, discuss_id)
+            if disc is not None and disc.status not in ("active",):
+                discussion_closed = True
+        finally:
+            conn.close()
+    except Exception:
+        # If we can't check, fall through — never block legitimate dispatch.
+        pass
+
+    if not (yaml_exists or discussion_closed):
+        return False
+
+    skip_reason = (
+        "submission YAML already present" if yaml_exists
+        else f"discussion not active (status check)"
+    )
+    now = _now_utc()
+    new_lock = _MkdirLock(ctx.inbox_file + ".lock.d")
+    if not new_lock.acquire_with_retry(50, 0.1):
+        return False
+    try:
+        if (_set_inbox_status(ctx.inbox_file, ctx.item_id, "launched", "done", now, "done_at")
+                or _set_inbox_status(ctx.inbox_file, ctx.item_id, "running", "done", now, "done_at")
+                or _set_inbox_status(ctx.inbox_file, ctx.item_id, "pending", "done", now, "done_at")):
+            _set_inbox_field(ctx.inbox_file, ctx.item_id, "failed_reason",
+                             f"skipped: {skip_reason}")
+            _sqlite_mirror_dispatch(
+                ctx.project_dir, ctx.item_id, ctx.item_task,
+                ctx.item_to, "done", now, reason=f"skipped: {skip_reason}",
+            )
+            print(
+                f"Inbox item updated: {ctx.item_id} -> done "
+                f"(skipped launch: {skip_reason})"
+            )
+            return True
+    finally:
+        new_lock.release()
+    return False
 
 
 def _execute_agent(ctx: DispatchContext) -> None:
