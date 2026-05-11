@@ -17,9 +17,8 @@ model_map:
 # rejects with "is not supported when using Codex with a ChatGPT account".
 # Empty by default — populate only when a stable incompatibility is observed.
 #
-# chatgpt_account_overrides:
-#   gpt-5.3-codex: gpt-5-codex      # API-only model → ChatGPT-compatible
-chatgpt_account_overrides: {}
+chatgpt_account_overrides:
+  gpt-5.3-codex: gpt-5-codex        # API-only model → ChatGPT-compatible
 
 pricing:
   claude-opus-4-7:

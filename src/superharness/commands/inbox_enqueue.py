@@ -22,7 +22,7 @@ from superharness.engine.next_action import (
     plan_only_allowed_statuses,
 )
 
-TOKEN_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+TOKEN_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 VALID_TARGETS = {"claude-code", "codex-cli", "gemini-cli"}
 
 
