@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import sys
+import uuid
 from typing import Optional
 
 from superharness.engine.contract_io import read_contract as _read_contract
@@ -56,12 +57,30 @@ def _classify_task(task: dict, project_dir: str) -> tuple[str, str]:
         return "claude-code", "standard"
 
 
+def _read_round_skip_flag(project_dir: str) -> bool:
+    """Return value of profile.yaml round_tasks_skip_plan_approval (default True)."""
+    profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
+    if not os.path.isfile(profile_file):
+        return True
+    try:
+        import yaml
+        with open(profile_file) as f:
+            doc = yaml.safe_load(f) or {}
+        val = doc.get("round_tasks_skip_plan_approval")
+        if val is None:
+            return True
+        return bool(val)
+    except Exception:
+        return True
+
+
 def _enqueue(
     project_dir: str,
     task_id: str,
     agent: str,
     priority: int = 2,
     plan_only: bool = True,
+    workflow: str = "implementation",
 ) -> bool:
     """Enqueue a task directly into SQLite inbox. Returns True on success.
 
@@ -69,9 +88,18 @@ def _enqueue(
     the implementation workflow. Default to `plan_only=True` so the agent
     proposes a plan first; the operator then approves and the task re-enters
     the normal dispatch flow.
+
+    Non-implementation workflows (review, quick, note, discussion, approval)
+    have no planning phase — plan_only would advance status to plan_approved
+    which is outside those workflows' allowed dispatch sets, causing a
+    permanent lifecycle gate block on every subsequent dispatch attempt.
     """
-    # Discussion round tasks should NOT be plan-only — agent must submit immediately
-    if "/round-" in str(task_id) or "round-" in str(task_id):
+    # Only implementation workflow has a planning phase.
+    # All other workflows dispatch directly to execution.
+    if workflow != "implementation":
+        plan_only = False
+    # Discussion round tasks bypass plan-only when the profile flag allows it (default: True)
+    if ("/round-" in str(task_id) or "round-" in str(task_id)) and _read_round_skip_flag(project_dir):
         plan_only = False
     from datetime import datetime, timezone
     try:
@@ -155,13 +183,14 @@ def run_auto_dispatch(
         if agent_override:
             agent = agent_override
 
+        workflow = str(task.get("workflow") or "implementation")
         decompose = _should_decompose(task, effort_gate)
         decompose_note = " [→ orchestrate]" if decompose else ""
 
         print(f"  queue {task_id}  agent={agent}  tier={tier}{decompose_note}")
 
         if not dry_run:
-            ok = _enqueue(project_dir, task_id, agent)
+            ok = _enqueue(project_dir, task_id, agent, workflow=workflow)
             if ok:
                 enqueued += 1
             else:
