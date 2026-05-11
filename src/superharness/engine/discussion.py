@@ -489,11 +489,21 @@ def cmd_list(discussions_dir: str) -> int:
     return 0
 
 
-def cmd_close(discussion_dir: str, outcome: str) -> int:
+def cmd_close(discussion_dir: str, outcome: str, reason: str = "") -> int:
+    """Close a discussion and cancel any pending inbox items for it.
+
+    Bug G follow-up (docs/bugs/2026-05-11_discuss_dispatch_bugs.md §8):
+    operators need a first-class way to terminate an active discussion
+    short of killing the watcher. Setting discussions.status alone is
+    not enough — leftover pending/launched inbox items for the rounds
+    will still be claimed by the next watcher tick. So this command
+    also cancels every matching inbox row in one transaction.
+    """
     project_dir = _get_project_dir(discussion_dir)
     disc_id = _get_disc_id(discussion_dir)
     now = _now_utc()
 
+    cancelled_count = 0
     conn = _connect(project_dir)
     try:
         disc = discussions_dao.get(conn, disc_id)
@@ -507,11 +517,35 @@ def cmd_close(discussion_dir: str, outcome: str) -> int:
                 "UPDATE discussions SET status=?, closed_at=? WHERE id=?",
                 (outcome, now, disc_id),
             )
+
+        # Cancel any pending/launched/paused inbox items for rounds of
+        # this discussion. We mark them 'done' (a terminal status the
+        # rest of the system already understands) with a failed_reason
+        # explaining the supersedence, so the row isn't re-claimed by
+        # claim_next and is visible in audit trails.
+        cancel_reason = f"discussion closed ({outcome})"
+        if reason:
+            cancel_reason = f"{cancel_reason}: {reason}"
+        cur = conn.execute(
+            """
+            UPDATE inbox
+            SET status = 'done',
+                done_at = ?,
+                failed_reason = ?
+            WHERE task_id LIKE ?
+              AND status IN ('pending', 'launched', 'running', 'paused')
+            """,
+            (now, cancel_reason, f"{disc_id}/round-%"),
+        )
+        cancelled_count = cur.rowcount or 0
         conn.commit()
     finally:
         conn.close()
 
-    print(json.dumps({"closed": True, "outcome": outcome}, separators=(", ", ": ")))
+    print(json.dumps(
+        {"closed": True, "outcome": outcome, "cancelled_inbox_items": cancelled_count},
+        separators=(", ", ": "),
+    ))
     return 0
 
 
