@@ -648,6 +648,27 @@ def _auto_fix(project_dir: str, inbox_health: dict, disc_health: dict) -> int:
         except Exception as e:
             print(f"  Warning: failed to close consensus discussions: {e}", file=sys.stderr)
 
+    # Repair launchd state: bootout zombies, remove stale-pattern services
+    # and orphan plists, bootstrap the operator if its plist is on disk but
+    # not loaded. Covers the "watcher: not loaded" + "plist file present"
+    # divergence that otherwise needs manual intervention. No-op on Linux.
+    try:
+        from pathlib import Path
+        import hashlib
+        from superharness.engine.launchd_health import heal as _launchd_heal
+
+        short = hashlib.md5(project_dir.encode()).hexdigest()[:8]
+        operator_label = f"com.superharness.operator.{short}"
+        operator_plist = Path.home() / "Library" / "LaunchAgents" / f"{operator_label}.plist"
+        report = _launchd_heal(
+            operator_plist=operator_plist if operator_plist.is_file() else None,
+        )
+        if report.fixed_count() > 0:
+            print(f"  {report.summary()}")
+            fixed += report.fixed_count()
+    except Exception as e:
+        print(f"  Warning: launchd self-heal failed: {e}", file=sys.stderr)
+
     # Delete stale inbox items
     if inbox_health["stale_items"]:
         n = 0
