@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import subprocess
+from importlib import resources
 from unittest import mock
 
 import pytest
@@ -13,6 +14,21 @@ from superharness.engine.model_router import (
     resolve_model,
     resolve_tier,
 )
+
+
+def test_models_yaml_shipped_as_package_data():
+    """Regression: engine/models.yaml MUST be packaged with the wheel.
+    Without it, load_yaml_config silently falls back to {} and
+    chatgpt_account_overrides becomes empty — ChatGPT-account Codex users
+    then 400 on every dispatch. Bug history: dropped from the wheel for
+    1.56.0 and 1.56.1; restored in 1.56.2 by adding `engine/*.yaml` to
+    [tool.setuptools.package-data] in pyproject.toml."""
+    import yaml as _yaml
+    pkg = resources.files("superharness")
+    text = (pkg / "engine" / "models.yaml").read_text()
+    doc = _yaml.safe_load(text)
+    assert "model_map" in doc
+    assert doc.get("chatgpt_account_overrides", {}).get("gpt-5.3-codex") == "gpt-5-codex"
 
 
 # ---------------------------------------------------------------------------
