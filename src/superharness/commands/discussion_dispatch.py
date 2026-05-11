@@ -38,6 +38,42 @@ def _run_inbox(args: list[str]) -> "subprocess.CompletedProcess[str]":
     )
 
 
+def _retry_exhausted(project_dir: str, agent: str, task_key: str) -> bool:
+    """Return True if a prior inbox item for (agent, task_key) reached
+    its max_retries cap. Used to short-circuit the discussion dispatcher
+    so a permanently-failing agent doesn't keep getting re-enqueued
+    every poll cycle.
+
+    Best-effort: any DB or schema problem returns False so we never
+    block dispatch on a query glitch.
+    """
+    try:
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            cursor = conn.execute(
+                """
+                SELECT retry_count, max_retries, status
+                FROM inbox
+                WHERE target_agent = ? AND task_id = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (agent, task_key),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return False
+            retry_count = int(row["retry_count"] or 0)
+            max_retries = int(row["max_retries"] or 3)
+            return retry_count >= max_retries
+        finally:
+            conn.close()
+    except Exception:
+        return False
+
+
 def _enqueue_for_agent(
     inbox_file: str,
     disc_id: str,
@@ -130,10 +166,26 @@ def dispatch(project_dir: str) -> int:
                 print(f"Discussion {disc_id}: closed (reason={reason}, round={round_closed})")
 
         else:
-            # Round not complete — re-enqueue only agents with no active inbox item
+            # Round not complete — re-enqueue only agents who have no
+            # in-flight inbox item AND no submission file AND who have
+            # not exhausted retries. Without this defense, every poll
+            # cycle that sees agents_pending re-enqueues them, which
+            # turns transient failures into a re-dispatch storm
+            # (Bug G in docs/bugs/2026-05-11_discuss_dispatch_bugs.md).
             agents_pending = check_json.get("agents_pending") or []
             for agent in agents_pending:
                 task_key = f"{disc_id}/round-{current_round}"
+
+                # Belt-and-braces: even if check_round didn't see the
+                # YAML on disk (race window between agent write and
+                # this poll), skip if it exists now. cmd_check_round
+                # already does this; this is a defense-in-depth guard.
+                yaml_path = os.path.join(
+                    discussion_dir, f"round-{current_round}-{agent}.yaml"
+                )
+                if os.path.isfile(yaml_path):
+                    continue
+
                 has_result = _run_inbox([
                     "has_active",
                     "--file", inbox_file,
@@ -141,8 +193,23 @@ def dispatch(project_dir: str) -> int:
                     "--task", task_key,
                 ])
                 already_active = has_result.returncode == 0 and has_result.stdout.strip() == "true"
-                if not already_active:
-                    _enqueue_for_agent(inbox_file, disc_id, current_round, agent, project_dir)
+                if already_active:
+                    continue
+
+                # Honour the per-(discussion, round, agent) retry cap.
+                # If a prior inbox item for this task_key reached its
+                # max_retries threshold, treat the agent as a failed
+                # participant and stop re-enqueuing. Without this, the
+                # dispatcher would re-launch the agent every poll
+                # cycle, costing real money on metered APIs.
+                if _retry_exhausted(project_dir, agent, task_key):
+                    print(
+                        f"  Skipping {agent} for round {current_round}: "
+                        f"retry budget exhausted for {task_key}"
+                    )
+                    continue
+
+                _enqueue_for_agent(inbox_file, disc_id, current_round, agent, project_dir)
 
     return 0
 

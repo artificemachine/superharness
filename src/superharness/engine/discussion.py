@@ -258,8 +258,21 @@ def cmd_check_round(discussion_dir: str, round_: int) -> int:
         rounds = discussions_dao.get_rounds(conn, disc_id)
         done = []
         pending = []
+        # An agent counts as "submitted" if EITHER:
+        #   (a) a row exists in discussion_rounds (state-of-record), OR
+        #   (b) a round-N-<agent>.yaml file exists in the discussion dir
+        #       (the agent wrote its position but never called `shux discuss
+        #       submit` — common when an agent crashes after writing the YAML).
+        # Counting (b) is what unblocks Bug G: without it, the dispatcher
+        # re-enqueues agents who have already done the work.
         for agent in disc.owners:
             submitted = any(r.round_number == round_ and r.agent == agent for r in rounds)
+            if not submitted:
+                yaml_path = os.path.join(
+                    discussion_dir, f"round-{round_}-{agent}.yaml"
+                )
+                if os.path.isfile(yaml_path):
+                    submitted = True
             if submitted:
                 done.append(agent)
             else:
