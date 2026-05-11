@@ -31,7 +31,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --effort)
       # Map superharness effort to codex config override
-      local _eff="$2"
+      _eff="$2"
       if [[ "$_eff" == "max" ]]; then
         _eff="xhigh"
       fi

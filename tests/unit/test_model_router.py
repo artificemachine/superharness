@@ -35,7 +35,15 @@ class TestResolveModel:
         ("max", "gpt-5.4"),
     ])
     def test_codex_cli_tiers(self, tier, expected):
-        assert resolve_model("codex-cli", tier) == expected
+        # Force apikey auth so chatgpt_account_overrides does not rewrite
+        # gpt-5.3-codex → gpt-5-codex (bundled default since the discuss-
+        # dispatch fix).
+        from superharness.engine.model_router import _reset_codex_auth_cache
+        _reset_codex_auth_cache()
+        fake = subprocess.CompletedProcess(args=[], returncode=0,
+                                           stdout="Logged in using API key", stderr="")
+        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake):
+            assert resolve_model("codex-cli", tier) == expected
 
     def test_unknown_target_returns_sonnet(self):
         assert resolve_model("unknown-agent", "standard") == "claude-sonnet-4-6"
@@ -244,14 +252,16 @@ class TestChatgptAuthOverride:
         }))
         return tmp_path
 
-    def test_no_override_when_map_empty(self, tmp_path):
+    def test_no_override_when_model_not_in_map(self, tmp_path):
+        """No override applies when the resolved model is not a key in
+        chatgpt_account_overrides (here: codex-cli max → gpt-5.4)."""
         proj = self._project_with_overrides(tmp_path, {})
         fake = subprocess.CompletedProcess(args=[], returncode=0,
                                            stdout="Logged in using ChatGPT", stderr="")
         with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake):
             from superharness.engine.model_router import resolve_model, _load_model_map
             _load_model_map.__globals__["_cached_project_maps"].clear()
-            assert resolve_model("codex-cli", "standard", str(proj)) == "gpt-5.3-codex"
+            assert resolve_model("codex-cli", "max", str(proj)) == "gpt-5.4"
 
     def test_override_applied_on_chatgpt_auth(self, tmp_path):
         proj = self._project_with_overrides(
@@ -285,3 +295,15 @@ class TestChatgptAuthOverride:
             from superharness.engine.model_router import resolve_model, _load_model_map
             _load_model_map.__globals__["_cached_project_maps"].clear()
             assert resolve_model("claude-code", "standard", str(proj)) == "claude-sonnet-4-6"
+
+    def test_bundled_default_overrides_gpt53codex_on_chatgpt_auth(self, tmp_path):
+        """Regression: bundled models.yaml must ship a default
+        chatgpt_account_overrides mapping for gpt-5.3-codex so users on a
+        ChatGPT-account Codex don't 400 on every `shux discuss` round."""
+        fake = subprocess.CompletedProcess(args=[], returncode=0,
+                                           stdout="Logged in using ChatGPT", stderr="")
+        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake):
+            from superharness.engine.model_router import resolve_model, _load_model_map
+            _load_model_map.__globals__["_cached_project_maps"].clear()
+            # No project override — exercises the bundled models.yaml.
+            assert resolve_model("codex-cli", "standard", str(tmp_path)) == "gpt-5-codex"

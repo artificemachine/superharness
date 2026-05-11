@@ -348,3 +348,26 @@ def test_enqueue_accepts_target_matching_owner(repo_root, tmp_path) -> None:
     r = _run_python(["--project", str(project), "--to", "claude-code", "--task", "feat.owned"])
     assert r.returncode == 0, r.stderr
     assert "reassigning" not in r.stderr.lower()
+
+
+class TestTokenRe:
+    """Regression: TOKEN_RE must accept `/` so discussion-round task IDs
+    (e.g. discuss-XXX/round-1) can be redispatched via shux enqueue.
+    Previously rejected with: 'task id must match ^[A-Za-z0-9._-]+$'."""
+
+    def test_accepts_discussion_round_id(self):
+        from superharness.commands.inbox_enqueue import TOKEN_RE
+        assert TOKEN_RE.match("discuss-20260510T134404Z-54149-456275756/round-1")
+
+    def test_matches_task_py_regex(self):
+        from superharness.commands.inbox_enqueue import TOKEN_RE as ENQ_RE
+        from superharness.commands.task import TOKEN_RE as TASK_RE
+        assert ENQ_RE.pattern == TASK_RE.pattern, (
+            "inbox_enqueue and task validators must agree on the task-id charset"
+        )
+
+    def test_still_rejects_invalid_chars(self):
+        from superharness.commands.inbox_enqueue import TOKEN_RE
+        assert not TOKEN_RE.match("task with spaces")
+        assert not TOKEN_RE.match("task;rm -rf")
+        assert not TOKEN_RE.match("task$injection")
