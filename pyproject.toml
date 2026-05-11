@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "superharness"
-version = "1.56.1"
+version = "1.56.2"
 description = "Multi-agent session handoff framework for Claude Code and Codex CLI"
 readme = "README.md"
 license = "Apache-2.0"
@@ -43,6 +43,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 superharness = [
     "scripts/*",
+    "engine/*.yaml",
     "module_templates/*.yaml",
     "adapter_manifests/*.yaml",
     "adapters/claude-code/*",
