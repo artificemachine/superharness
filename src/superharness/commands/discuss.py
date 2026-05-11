@@ -478,6 +478,18 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--position", required=True, help="Your position statement")
     p.add_argument("--points-file", default=None, help="YAML file with point-by-point responses")
 
+    # close — first-class way to terminate an active discussion AND cancel
+    # any pending inbox items for its rounds. Bug G follow-up
+    # (docs/bugs/2026-05-11_discuss_dispatch_bugs.md §8).
+    p = sub.add_parser("close", add_help=True,
+                       help="Close an active discussion and cancel its pending rounds")
+    p.add_argument("--project", "-p", default=None)
+    p.add_argument("--id", required=True, dest="disc_id")
+    p.add_argument("--outcome", default="closed",
+                   help="Status to set: closed|cancelled|failed|consensus (default: closed)")
+    p.add_argument("--reason", default="",
+                   help="Free-text reason recorded on each cancelled inbox item")
+
     opts = parser.parse_args(argv)
     if not opts.subcmd:
         parser.print_help(sys.stderr)
@@ -545,6 +557,15 @@ def main(argv: list[str] | None = None) -> None:
             verdict=opts.verdict,
             position=opts.position,
             points_file=opts.points_file,
+        )
+
+    elif opts.subcmd == "close":
+        from superharness.engine.discussion import cmd_close
+        disc_dir = os.path.join(discussions_dir, opts.disc_id)
+        rc = cmd_close(
+            discussion_dir=disc_dir,
+            outcome=opts.outcome,
+            reason=opts.reason,
         )
 
     else:
