@@ -886,20 +886,82 @@ def operator_start(project, port, no_open):
 
 @operator.command(name="install")
 @click.option("--project", "-p", default=".", help="Project directory")
-def operator_install(project):
-    """Install the Guardian as a persistent system service."""
-    from pathlib import Path
-    import subprocess
-    
-    project_dir = Path(project).resolve()
-    script_path = Path(__file__).parent / "scripts" / "install-operator-service.sh"
-    
-    if not script_path.exists():
-        # Handle installed environment path
-        script_path = Path(sys.prefix) / "lib" / "python3.11" / "site-packages" / "superharness" / "scripts" / "install-operator-service.sh"
+@click.option("--watchdog/--no-watchdog", default=True,
+              help="Install a 5-min watchdog plist that re-heals the operator on every tick")
+def operator_install(project, watchdog):
+    """Install the Guardian as a persistent system service.
 
+    Aggressively removes any stale `com.superharness.*` services and
+    orphan plists from prior versions before installing, so old layouts
+    can never leak into the new install.
+    """
+    from pathlib import Path
+    import hashlib
+    import subprocess
+
+    project_dir = Path(project).resolve()
+
+    # 1. Clean stale services + orphan plists from prior versions BEFORE
+    # writing the new plist. This is the fix for "old versions leaking"
+    # — any com.superharness.inbox.* / .watcher.* or zombie entries get
+    # bootout'd here.
+    from superharness.engine.launchd_health import heal as _heal
+    pre = _heal(operator_plist=None)
+    if pre.fixed_count():
+        click.echo(pre.summary())
+
+    # 2. Hand off to the install script which writes + loads the plist.
+    script_path = Path(__file__).parent / "scripts" / "install-operator-service.sh"
+    if not script_path.exists():
+        script_path = Path(sys.prefix) / "lib" / "python3.11" / "site-packages" / "superharness" / "scripts" / "install-operator-service.sh"
     click.echo(f"Installing Superharness service for {project_dir}...")
     subprocess.run(["bash", str(script_path), str(project_dir)], check=True)
+
+    # 3. Self-heal: verify the operator plist actually ended up in launchd.
+    # Belt-and-braces in case the install script's `launchctl load` raced
+    # or the user previously bootout'd the same label.
+    short = hashlib.md5(str(project_dir).encode()).hexdigest()[:8]
+    operator_label = f"com.superharness.operator.{short}"
+    operator_plist = Path.home() / "Library" / "LaunchAgents" / f"{operator_label}.plist"
+    post = _heal(operator_plist=operator_plist)
+    if post.fixed_count():
+        click.echo(post.summary())
+
+    # 4. Watchdog: 5-min ticker that catches the pathological case
+    # (operator plist on disk + not loaded → no auto-restart possible).
+    if watchdog:
+        from superharness.engine.launchd_health import (
+            write_watchdog_plist, bootstrap as _bootstrap, watchdog_plist_path,
+        )
+        wp = write_watchdog_plist()
+        if _bootstrap(wp):
+            click.echo(f"Watchdog installed: {wp.name} (heals every 5 min)")
+        else:
+            click.echo(f"Warning: watchdog plist written but did not bootstrap", err=True)
+
+
+@operator.command(name="heal")
+@click.option("--project", "-p", default=".", help="Project directory")
+@click.option("--quiet", is_flag=True, default=False,
+              help="Suppress 'nothing to do' output (for watchdog use)")
+def operator_heal(project, quiet):
+    """Repair launchd state: bootout zombies, remove stale prior-version
+    services and plists, and bootstrap the operator if its plist is on
+    disk but not loaded.
+    """
+    from pathlib import Path
+    import hashlib
+    from superharness.engine.launchd_health import heal as _heal
+
+    project_dir = Path(project).resolve()
+    short = hashlib.md5(str(project_dir).encode()).hexdigest()[:8]
+    operator_label = f"com.superharness.operator.{short}"
+    operator_plist = Path.home() / "Library" / "LaunchAgents" / f"{operator_label}.plist"
+
+    report = _heal(operator_plist=operator_plist if operator_plist.is_file() else None)
+    if report.fixed_count() == 0 and quiet:
+        return
+    click.echo(report.summary())
 
 
 if __name__ == "__main__":
