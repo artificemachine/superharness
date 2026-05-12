@@ -281,6 +281,16 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
         else:
             print("Warning: vault backlog index not found (notes/0_meta/backlog/_backlog_index.md)")
 
+    # Worktree GC — always run during repair to prune stale git worktree refs
+    if repair:
+        try:
+            from superharness.commands.worktree_gc import run_worktree_gc
+            gc = run_worktree_gc(project)
+            if gc["removed"] > 0:
+                _repair_log(ledger_file, f"worktree-gc removed {gc['removed']} orphaned worktree(s)")
+        except Exception as e:
+            print(f"Warning: worktree-gc failed: {e}", file=sys.stderr)
+
     if issues > 0:
         print()
         print(f"Contract hygiene check failed with {issues} issue(s).")

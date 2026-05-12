@@ -207,6 +207,34 @@ def close_task(
     except Exception:
         pass
 
+    # Worktree cleanup — remove the dispatch worktree recorded for this task
+    try:
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(project_dir)
+        init_db(conn)
+        row = conn.execute(
+            "SELECT worktree_path FROM tasks WHERE id=?", (task_id,)
+        ).fetchone()
+        wt_path = row["worktree_path"] if row and row["worktree_path"] else None
+        conn.close()
+        if wt_path:
+            import shutil, subprocess
+            harness_link = os.path.join(wt_path, ".superharness")
+            if os.path.islink(harness_link):
+                os.unlink(harness_link)
+            rr = subprocess.run(
+                ["git", "-C", project_dir, "worktree", "remove", "--force", wt_path],
+                capture_output=True, check=False,
+            )
+            if rr.returncode != 0 and os.path.isdir(wt_path):
+                shutil.rmtree(wt_path, ignore_errors=True)
+            subprocess.run(
+                ["git", "-C", project_dir, "worktree", "prune"],
+                capture_output=True, check=False,
+            )
+    except Exception as e:
+        print(f"Warning: failed to clean up worktree for '{task_id}': {e}", file=sys.stderr)
+
     print(f"Closed task '{task_id}' (actor={actor})")
     return 0
 
