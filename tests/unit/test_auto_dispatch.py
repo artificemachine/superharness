@@ -293,3 +293,189 @@ def test_watcher_tick_calls_auto_enqueue(tmp_path, monkeypatch):
                          launcher_timeout=0)
 
     assert len(calls) == 1, "auto_enqueue_approved should be called once per tick"
+
+
+# ---------------------------------------------------------------------------
+# Test — non-implementation workflows must not use plan_only
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("workflow", ["review", "quick", "note", "approval"])
+def test_enqueue_non_implementation_workflow_plan_only_false(workflow):
+    """Non-implementation workflows must be enqueued with plan_only=False.
+
+    Enqueuing review/quick/note/approval tasks with plan_only=True advances
+    the task to plan_approved, which is outside those workflows' allowed
+    dispatch statuses. Every subsequent dispatch attempt hits the lifecycle
+    gate and fails permanently.
+    """
+    from superharness.commands.auto_dispatch import _enqueue
+    from unittest.mock import MagicMock, patch
+
+    captured = {}
+
+    def fake_enqueue(conn, **kwargs):
+        captured.update(kwargs)
+
+    with patch("superharness.engine.db.get_connection", return_value=MagicMock()), \
+         patch("superharness.engine.db.init_db"), \
+         patch("superharness.engine.inbox_dao.enqueue", side_effect=fake_enqueue), \
+         patch("superharness.commands.auto_dispatch.uuid") as mock_uuid:
+        mock_uuid.uuid4.return_value.hex = "aabbcc"
+        _enqueue(
+            project_dir="/fake/project",
+            task_id="t-test",
+            agent="claude-code",
+            workflow=workflow,
+        )
+
+    assert captured.get("plan_only") is False, (
+        f"workflow='{workflow}' must be enqueued with plan_only=False, "
+        f"got plan_only={captured.get('plan_only')}"
+    )
+
+
+def test_enqueue_implementation_workflow_plan_only_true():
+    """Implementation workflow tasks must be enqueued with plan_only=True (planning phase required)."""
+    from superharness.commands.auto_dispatch import _enqueue
+    from unittest.mock import MagicMock, patch
+
+    captured = {}
+
+    def fake_enqueue(conn, **kwargs):
+        captured.update(kwargs)
+
+    with patch("superharness.engine.db.get_connection", return_value=MagicMock()), \
+         patch("superharness.engine.db.init_db"), \
+         patch("superharness.engine.inbox_dao.enqueue", side_effect=fake_enqueue), \
+         patch("superharness.commands.auto_dispatch.uuid") as mock_uuid:
+        mock_uuid.uuid4.return_value.hex = "aabbcc"
+        _enqueue(
+            project_dir="/fake/project",
+            task_id="t-test",
+            agent="claude-code",
+            workflow="implementation",
+        )
+
+    assert captured.get("plan_only") is True, (
+        f"workflow='implementation' must be enqueued with plan_only=True, "
+        f"got plan_only={captured.get('plan_only')}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tests for _read_round_skip_flag
+# ---------------------------------------------------------------------------
+
+def test_read_round_skip_flag_no_profile(tmp_path):
+    """Returns True (default) when profile.yaml is absent."""
+    from superharness.commands.auto_dispatch import _read_round_skip_flag
+
+    project = tmp_path / "proj"
+    (project / ".superharness").mkdir(parents=True)
+    # No profile.yaml written
+
+    assert _read_round_skip_flag(str(project)) is True
+
+
+def test_read_round_skip_flag_missing_key(tmp_path):
+    """Returns True (default) when key is absent from profile.yaml."""
+    from superharness.commands.auto_dispatch import _read_round_skip_flag
+
+    project = tmp_path / "proj"
+    (project / ".superharness").mkdir(parents=True)
+    (project / ".superharness" / "profile.yaml").write_text(
+        yaml.dump({"default_model": "standard"})
+    )
+
+    assert _read_round_skip_flag(str(project)) is True
+
+
+def test_read_round_skip_flag_explicit_false(tmp_path):
+    """Returns False when profile.yaml sets round_tasks_skip_plan_approval: false."""
+    from superharness.commands.auto_dispatch import _read_round_skip_flag
+
+    project = tmp_path / "proj"
+    (project / ".superharness").mkdir(parents=True)
+    (project / ".superharness" / "profile.yaml").write_text(
+        yaml.dump({"round_tasks_skip_plan_approval": False})
+    )
+
+    assert _read_round_skip_flag(str(project)) is False
+
+
+def test_read_round_skip_flag_explicit_true(tmp_path):
+    """Returns True when profile.yaml sets round_tasks_skip_plan_approval: true."""
+    from superharness.commands.auto_dispatch import _read_round_skip_flag
+
+    project = tmp_path / "proj"
+    (project / ".superharness").mkdir(parents=True)
+    (project / ".superharness" / "profile.yaml").write_text(
+        yaml.dump({"round_tasks_skip_plan_approval": True})
+    )
+
+    assert _read_round_skip_flag(str(project)) is True
+
+
+def test_enqueue_round_task_skips_plan_only_when_flag_true(tmp_path):
+    """Round-* task gets plan_only=False when round_tasks_skip_plan_approval is True."""
+    from superharness.commands.auto_dispatch import _enqueue
+    from unittest.mock import MagicMock, patch
+
+    (tmp_path / ".superharness").mkdir(parents=True)
+    (tmp_path / ".superharness" / "profile.yaml").write_text(
+        yaml.dump({"round_tasks_skip_plan_approval": True})
+    )
+
+    captured = {}
+
+    def fake_enqueue(conn, **kwargs):
+        captured.update(kwargs)
+
+    with patch("superharness.engine.db.get_connection", return_value=MagicMock()), \
+         patch("superharness.engine.db.init_db"), \
+         patch("superharness.engine.inbox_dao.enqueue", side_effect=fake_enqueue), \
+         patch("superharness.commands.auto_dispatch.uuid") as mock_uuid:
+        mock_uuid.uuid4.return_value.hex = "aabbcc"
+        _enqueue(
+            project_dir=str(tmp_path),
+            task_id="discuss-1/round-3",
+            agent="claude-code",
+            workflow="implementation",
+        )
+
+    assert captured.get("plan_only") is False, (
+        "Round task should have plan_only=False when flag is True"
+    )
+
+
+def test_enqueue_round_task_preserves_plan_only_when_flag_false(tmp_path):
+    """Round-* task keeps caller-supplied plan_only when round_tasks_skip_plan_approval is False."""
+    from superharness.commands.auto_dispatch import _enqueue
+    from unittest.mock import MagicMock, patch
+
+    (tmp_path / ".superharness").mkdir(parents=True)
+    (tmp_path / ".superharness" / "profile.yaml").write_text(
+        yaml.dump({"round_tasks_skip_plan_approval": False})
+    )
+
+    captured = {}
+
+    def fake_enqueue(conn, **kwargs):
+        captured.update(kwargs)
+
+    with patch("superharness.engine.db.get_connection", return_value=MagicMock()), \
+         patch("superharness.engine.db.init_db"), \
+         patch("superharness.engine.inbox_dao.enqueue", side_effect=fake_enqueue), \
+         patch("superharness.commands.auto_dispatch.uuid") as mock_uuid:
+        mock_uuid.uuid4.return_value.hex = "aabbcc"
+        _enqueue(
+            project_dir=str(tmp_path),
+            task_id="discuss-1/round-3",
+            agent="claude-code",
+            workflow="implementation",
+            plan_only=True,
+        )
+
+    assert captured.get("plan_only") is True, (
+        "Round task should preserve plan_only=True when flag is False"
+    )
