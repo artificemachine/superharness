@@ -356,3 +356,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-11: feat(auto-dispatch): add _read_round_skip_flag for configurable round-task plan-only bypass; add profile keys section to protocol/spec.md; 6 new tests
 - 2026-05-12: fix(worktree-gc): wire run_worktree_gc into hygiene --repair and close_task; remove dead worktree hook from settings.json
 - 2026-05-12: fix(tests): update test_init_project assertions for session-turn-end.sh rename
+- 2026-05-12: chore(release): bump version to 1.56.7
