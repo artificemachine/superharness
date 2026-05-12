@@ -82,7 +82,7 @@ class TestAutoDispatch:
             with patch("superharness.commands.auto_dispatch._classify_task",
                        return_value=("claude-code", "standard")):
                 rc = run_auto_dispatch(str(project), dry_run=False)
-        mock_enqueue.assert_called_once_with(str(project), "T-3", "claude-code")
+        mock_enqueue.assert_called_once_with(str(project), "T-3", "claude-code", workflow="implementation")
         assert rc == 0
 
     def test_skips_blocked_tasks(self, tmp_path):
@@ -134,7 +134,7 @@ class TestAutoDispatch:
             with patch("superharness.commands.auto_dispatch._classify_task",
                        return_value=("claude-code", "standard")):
                 run_auto_dispatch(str(project), dry_run=False, agent_override="codex-cli")
-        mock_enqueue.assert_called_once_with(str(project), "T-5", "codex-cli")
+        mock_enqueue.assert_called_once_with(str(project), "T-5", "codex-cli", workflow="implementation")
 
     def test_effort_gate_flags_high_effort(self, tmp_path, capsys):
         from superharness.commands.auto_dispatch import run_auto_dispatch
