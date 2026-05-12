@@ -9,6 +9,8 @@ ENTRYPOINT_FILES=(
   "adapters/claude-code/hooks/scope-guard.sh"
   "adapters/claude-code/hooks/session-start.sh"
   "adapters/claude-code/hooks/session-stop.sh"
+  "adapters/claude-code/hooks/session-turn-end.sh"
+  "adapters/claude-code/hooks/session-exit.sh"
   "src/superharness/scripts/check-shell-entrypoints.sh"
   "src/superharness/scripts/check-contract-hygiene.sh"
   "src/superharness/scripts/contract-today.sh"
@@ -43,6 +45,8 @@ ENTRYPOINT_FILES=(
   "src/superharness/adapters/claude-code/hooks/scope-guard.sh"
   "src/superharness/adapters/claude-code/hooks/session-start.sh"
   "src/superharness/adapters/claude-code/hooks/session-stop.sh"
+  "src/superharness/adapters/claude-code/hooks/session-turn-end.sh"
+  "src/superharness/adapters/claude-code/hooks/session-exit.sh"
 )
 
 HOOK_FILES=(

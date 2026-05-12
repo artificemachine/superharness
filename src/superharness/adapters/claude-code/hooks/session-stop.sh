@@ -1,7 +1,11 @@
 #!/bin/bash
-# superharness Stop hook for Claude Code
-# Fires automatically when a session ends. Writes a session-progress.md snapshot
-# so the next session-start.sh can restore context without agent cooperation.
+# DEPRECATED — do not register as a Stop hook.
+#
+# This file is superseded by the session-turn-end.sh + session-exit.sh split.
+#   session-turn-end.sh — snapshot only, safe on every turn (Stop hook)
+#   session-exit.sh     — pkills + task auto-stop, true exit only (NOT a Stop hook)
+#
+# Kept for reference. Will be removed in a future cleanup.
 
 if [ -n "$CLAUDE_PLUGIN_ROOT" ]; then
   SUPERHARNESS_ROOT="$(cd "$CLAUDE_PLUGIN_ROOT/../.." && pwd)"
