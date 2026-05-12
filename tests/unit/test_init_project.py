@@ -211,8 +211,8 @@ def test_refresh_runs_install_hooks(repo_root, tmp_path) -> None:
         for entry in data.get("hooks", {}).get("Stop", [])
         for h in entry.get("hooks", [])
     ]
-    assert any("session-stop.sh" in cmd for cmd in stop_cmds), \
-        f"--refresh must write session-stop.sh hook: {stop_cmds}"
+    assert any("session-turn-end.sh" in cmd for cmd in stop_cmds), \
+        f"--refresh must write session-turn-end.sh hook: {stop_cmds}"
 
 
 def test_init_skip_hooks_flag(repo_root, tmp_path) -> None:
@@ -252,8 +252,8 @@ def test_init_runs_install_hooks(repo_root, tmp_path) -> None:
         for entry in data["hooks"].get("Stop", [])
         for h in entry.get("hooks", [])
     ]
-    assert any("session-stop.sh" in cmd for cmd in stop_cmds), \
-        f"session-stop.sh not found in Stop hooks: {stop_cmds}"
+    assert any("session-turn-end.sh" in cmd for cmd in stop_cmds), \
+        f"session-turn-end.sh not found in Stop hooks: {stop_cmds}"
 
 
 def test_init_install_hooks_does_not_fail_init(repo_root, tmp_path) -> None:
