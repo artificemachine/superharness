@@ -72,8 +72,28 @@ class TestSchema:
         project = _setup(tmp_path)
         d = json.loads(_run(["--project", str(project)]).stdout)
         for key in ("schema_version", "contract_id", "goal", "tasks",
-                    "edges", "ledger", "failures", "decisions", "inbox"):
+                    "edges", "ledger", "failures", "decisions", "inbox", "rules"):
             assert key in d, f"missing top-level key: {key}"
+
+    def test_rules_field_is_list(self, tmp_path):
+        project = _setup(tmp_path)
+        r = _run(["--project", str(project)])
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        assert isinstance(d["rules"], list)
+
+    def test_rules_field_includes_active_rules(self, tmp_path):
+        project = _setup(tmp_path)
+        rules_dir = project / ".superharness" / "rules"
+        rules_dir.mkdir(parents=True, exist_ok=True)
+        (rules_dir / "test-rule.md").write_text(
+            "---\nid: test-rule\ntitle: Test Rule\nstatus: active\nsince: v1.0\n---\n\nDo not do X.\n"
+        )
+        r = _run(["--project", str(project)])
+        assert r.returncode == 0, r.stderr
+        d = json.loads(r.stdout)
+        rule_ids = [r["id"] for r in d["rules"]]
+        assert "test-rule" in rule_ids
 
     def test_contract_id_and_goal(self, tmp_path):
         project = _setup(tmp_path)

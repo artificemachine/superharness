@@ -142,15 +142,17 @@ class TestAdapterPayloadRules:
         payload = build_payload(str(rules_project))
         assert "rules" in payload
         rules = payload["rules"]
-        assert "id: alpha" in rules
-        assert "id: beta" in rules
+        assert isinstance(rules, list)
+        ids = [r["id"] for r in rules]
+        assert "alpha" in ids
+        assert "beta" in ids
 
     def test_build_payload_no_rules_dir(self, tmp_path: Path):
         """Payload still works when no rules directory exists."""
         from superharness.commands.adapter_payload import build_payload
         payload = build_payload(str(tmp_path))
         assert "rules" in payload
-        assert payload["rules"] == ""
+        assert payload["rules"] == []
 
 
 class TestHandoffRules:
