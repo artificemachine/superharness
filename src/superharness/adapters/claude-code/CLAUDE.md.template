@@ -80,7 +80,8 @@ When reviewing, check the `review_lenses` field on the task. Apply only the assi
 <!-- Add project-specific failures here, promoted from .superharness/failures.yaml -->
 
 ## Project Rules
-<!-- Add project-specific rules here -->
+Run `shux rules` to see all active project constraints before starting work.
+<!-- Promoted project-specific rules are listed below. Add entries by running: shux rules add -->
 - Security: never commit secrets, never skip security scan
 - Branches: feature branches, never push to main
 - Tests: run before every handoff
