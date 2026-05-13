@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from tests.helpers import REPO_ROOT
+from tests.helpers import REPO_ROOT, seed_sqlite_from_yaml
 
 
 pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
@@ -314,3 +314,32 @@ class TestVerifyThenClose:
         task = _get_task_sqlite(project, "feat-001")
         assert task["status"] == "done"
         assert task["verified"] is True
+
+
+class TestCloseHandoffIncludesRules:
+    """Verify that close writes rules into the handoff when rules exist."""
+
+    def test_handoff_includes_rules_when_rules_dir_exists(self, tmp_path):
+        project = _setup_project(tmp_path, task_status="report_ready", verified=True)
+
+        # Add a rule to the project
+        rules_dir = project / ".superharness" / "rules"
+        rules_dir.mkdir(parents=True, exist_ok=True)
+        (rules_dir / "no-push-main.md").write_text(
+            "---\nid: no-push-main\ntitle: Never push to main\nstatus: active\nsince: v1.0\n---\n\nNever merge to main directly.\n"
+        )
+
+        r = _run_cmd(
+            "superharness.commands.close", REPO_ROOT,
+            ["--project", str(project), "--id", "feat-001",
+             "--actor", "claude-code", "--summary", "Done with rules"],
+        )
+        assert r.returncode == 0, r.stderr
+
+        # Handoff YAML should contain the rules field
+        import yaml
+        handoff_file = project / ".superharness" / "handoffs" / "feat-001-to-owner.yaml"
+        assert handoff_file.exists(), f"handoff file not found at {handoff_file}"
+        handoff_data = yaml.safe_load(handoff_file.read_text())
+        assert "rules" in handoff_data, f"handoff missing 'rules' field: {list(handoff_data.keys())}"
+        assert "no-push-main" in handoff_data["rules"]
