@@ -50,6 +50,25 @@ def read_field(project_dir: Path, field: str) -> str:
     return str(value)
 
 
+def write_field(project_dir: Path, field: str, value: str) -> None:
+    """Write a single field into .superharness/profile.yaml, preserving other keys."""
+    sh_dir = project_dir / ".superharness"
+    sh_dir.mkdir(parents=True, exist_ok=True)
+    profile_path = sh_dir / "profile.yaml"
+    try:
+        import yaml
+        doc: dict = {}
+        if profile_path.exists():
+            doc = yaml.safe_load(profile_path.read_text()) or {}
+            if not isinstance(doc, dict):
+                doc = {}
+        doc[field] = value
+        profile_path.write_text(yaml.dump(doc, default_flow_style=False))
+    except Exception as e:
+        _log.warning("could not write profile.yaml at %s: %s", profile_path, e)
+        raise
+
+
 def main(argv: list[str] | None = None) -> None:
     import argparse
 

@@ -1362,6 +1362,129 @@ def _escalate_runaway_inbox(conn, row, reason_label: str, now: str) -> None:
     except Exception as exc:
         print(f"auto-recover: escalation failed for {row.id}: {exc}", file=sys.stderr)
 
+
+_VALID_FALLBACK_OWNERS = frozenset({"claude-code", "codex-cli", "gemini-cli"})
+
+
+def _auto_fallback_owner_reassign(project_dir: str) -> None:
+    """Reassign exhausted-retry tasks to the configured auto_fallback_owner.
+
+    When profile.yaml sets `auto_fallback_owner: <agent>` and a failed inbox
+    item has exhausted its retry budget (retry_count >= max_retries):
+      - If the task's current owner is NOT the fallback owner:
+        reassign the task owner, re-route the inbox item to the fallback owner,
+        and reset the retry budget to give the fallback owner a fresh start.
+      - If the task is already owned by the fallback owner (fallback exhausted too):
+        skip — the existing auto_recover escalation handles waiting_input.
+
+    Reads `auto_fallback_max_retries` from profile.yaml (default: 3) to set
+    the retry budget for the fallback owner's attempt.
+
+    This runs before _auto_recover_exhausted_failures_sqlite so the profile-
+    configured fallback takes priority over generic agent re-routing.
+    Never raises.
+    """
+    import yaml as _yaml
+    profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
+    profile: dict = {}
+    if os.path.isfile(profile_file):
+        try:
+            with open(profile_file, encoding="utf-8") as _f:
+                profile = _yaml.safe_load(_f.read()) or {}
+        except Exception:
+            return
+
+    fallback_owner = str(profile.get("auto_fallback_owner") or "").strip()
+    if not fallback_owner:
+        return
+    if fallback_owner not in _VALID_FALLBACK_OWNERS:
+        print(
+            f"auto-fallback-owner: invalid auto_fallback_owner '{fallback_owner}' "
+            f"(valid: {', '.join(sorted(_VALID_FALLBACK_OWNERS))})",
+            file=sys.stderr,
+        )
+        return
+
+    try:
+        max_retries_for_fallback = int(profile.get("auto_fallback_max_retries", 3))
+    except (ValueError, TypeError):
+        max_retries_for_fallback = 3
+
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import inbox_dao, tasks_dao
+        now = _now_utc()
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            failed = inbox_dao.get_all(conn, status="failed")
+            reassigned = 0
+
+            for row in failed:
+                if row.retry_count < row.max_retries:
+                    continue  # still has retries — handled by _auto_retry_failed
+
+                task = tasks_dao.get(conn, row.task_id)
+                if task is None:
+                    continue
+                if task.status in ("done", "stopped", "archived", "waiting_input"):
+                    continue
+
+                current_owner = task.owner or row.target_agent
+                if current_owner == fallback_owner:
+                    # Fallback owner has also exhausted retries — let auto_recover escalate
+                    continue
+
+                conn.execute(
+                    "UPDATE tasks SET owner=? WHERE id=?",
+                    (fallback_owner, row.task_id),
+                )
+                conn.execute(
+                    """UPDATE inbox
+                       SET status='pending', target_agent=?,
+                           retry_count=0, max_retries=?,
+                           failed_reason=?, pid=NULL, failed_at=NULL
+                       WHERE id=?""",
+                    (
+                        fallback_owner,
+                        max_retries_for_fallback,
+                        f"auto-fallback: reassigned from '{current_owner}' to '{fallback_owner}'",
+                        row.id,
+                    ),
+                )
+                print(
+                    f"auto-fallback-owner: reassigned '{row.task_id}' "
+                    f"{current_owner} -> {fallback_owner} "
+                    f"(fresh budget: {max_retries_for_fallback})"
+                )
+                try:
+                    from superharness.engine.ledger_dao import record as _ledger_record
+                    _ledger_record(
+                        conn, task_id=row.task_id, agent="watcher",
+                        action="auto_fallback_owner",
+                        details={
+                            "from_owner": current_owner,
+                            "to_owner": fallback_owner,
+                            "inbox_id": row.id,
+                            "prev_failed_reason": row.failed_reason,
+                        },
+                        now=now,
+                    )
+                except Exception:
+                    pass
+                reassigned += 1
+
+            conn.commit()
+            if reassigned:
+                print(
+                    f"auto-fallback-owner: {reassigned} task(s) reassigned to '{fallback_owner}'"
+                )
+        finally:
+            conn.close()
+    except Exception as exc:
+        print(f"auto-fallback-owner: error: {exc}", file=sys.stderr)
+
+
 def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
     """Recover failed inbox items that have exhausted retries.
 
@@ -2180,6 +2303,13 @@ def _run_scripts(
             _auto_retry_failed(project_dir)
     except Exception as e:
         _log_watcher_error(project_dir, "watcher", str(e))
+
+    # Auto-fallback-owner: reassign exhausted tasks to profile-configured owner
+    try:
+        if _should_run("auto_fallback_owner", cooldown=15):
+            _auto_fallback_owner_reassign(project_dir)
+    except Exception as e:
+        print(f"Warning: auto_fallback_owner_reassign failed: {e}", file=sys.stderr)
 
     # Auto-recover exhausted failures: re-route to a different agent
     try:
