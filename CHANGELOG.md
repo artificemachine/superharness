@@ -370,3 +370,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-13: feat(operator-gateway): wire _poll_operator_commands into watcher cycle; approve/reject CLI commands; onboard config versioning (ONBOARD_CONFIG_VERSION); profile.py write_field; db status index on operator_commands; pythonpath=[src] in pytest config
 - 2026-05-13: chore(release): bump version to 1.58.0 — feat: operator-commands watcher, onboard versioning, approve/reject CLI
 - 2026-05-13: fix(tests): skip test_watcher_env_chmod_600 on Windows — chmod 600 is a no-op on Windows, skip with pytest.mark.skipif
+- 2026-05-13: feat(I8): implement _poll_operator_commands watcher cycle + onboard --section/--quick/--non-interactive guidance/returning-user detection/profile.yaml; 25 acceptance tests green
+- 2026-05-13: fix(install-hooks): add _is_ephemeral() guard to _find_hooks_dir(); add TestEphemeralGuard tests; add scripts/dev-reinstall.sh and test_package_integrity to prevent stale dist-info
