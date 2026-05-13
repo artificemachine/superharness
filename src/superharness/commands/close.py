@@ -187,6 +187,13 @@ def close_task(
     if context:
         handoff_data["context"] = context
     try:
+        from superharness.commands.rules import all_rules_text
+        rules_text = all_rules_text(project_dir)
+        if rules_text:
+            handoff_data["rules"] = rules_text
+    except Exception:
+        pass
+    try:
         from superharness.engine.state_writer import upsert_handoff
         if not upsert_handoff(project_dir, f"{task_id}-to-owner", handoff_data):
             raise OSError("upsert_handoff returned False")

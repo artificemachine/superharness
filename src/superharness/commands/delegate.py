@@ -1171,6 +1171,15 @@ def delegate(
         except Exception:
             pass
 
+        # Inject project rules so the agent knows constraints before starting
+        try:
+            from superharness.commands.rules import all_rules_text
+            rules_text = all_rules_text(project_dir)
+            if rules_text:
+                prompt += f"\n\nProject rules (run `shux rules` to see full list):\n{rules_text}"
+        except Exception:
+            pass
+
         print(f"Project: {project_dir}")
         print(f"Contract: {contract_id}")
         print(f"Task: {task_id}")
