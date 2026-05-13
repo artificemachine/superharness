@@ -16,6 +16,21 @@ import tempfile
 from pathlib import Path
 
 
+def _is_ephemeral(path: Path) -> bool:
+    """Return True if *path* lives under the system temp directory.
+
+    When superharness runs from a git worktree that was created under /tmp
+    (as Claude Code does for isolated task branches), ``__file__`` resolves to
+    that ephemeral path.  Baking it into settings.json is wrong — it becomes a
+    dead path the moment the worktree is deleted.
+    """
+    tmp_prefix = Path(tempfile.gettempdir()).resolve()
+    try:
+        return path.resolve().is_relative_to(tmp_prefix)
+    except (ValueError, AttributeError):
+        return str(path.resolve()).startswith(str(tmp_prefix))
+
+
 def _find_hooks_dir() -> Path:
     """Locate the adapter hooks directory.
 
@@ -24,17 +39,21 @@ def _find_hooks_dir() -> Path:
        <package>/adapters/claude-code/hooks/
     2. Editable install (repo checkout):
        <repo_root>/adapters/claude-code/hooks/
+
+    Paths that resolve into the system temp directory are skipped — they
+    indicate an ephemeral git worktree whose path must not be baked into
+    settings.json.
     """
     # 1. In-package location (regular pip/pipx install)
     # __file__ is at <package>/commands/install_hooks.py
     # adapters live at <package>/adapters/claude-code/hooks/
     in_package = Path(__file__).resolve().parent.parent / "adapters" / "claude-code" / "hooks"
-    if in_package.is_dir():
+    if in_package.is_dir() and not _is_ephemeral(in_package):
         return in_package
 
     # 2. Editable install: repo root is 3 levels up from src/superharness/commands/
     editable = Path(__file__).resolve().parents[3] / "adapters" / "claude-code" / "hooks"
-    if editable.is_dir():
+    if editable.is_dir() and not _is_ephemeral(editable):
         return editable
 
     raise FileNotFoundError(
