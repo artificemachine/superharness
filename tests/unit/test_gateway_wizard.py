@@ -7,6 +7,7 @@ Acceptance criteria:
 from __future__ import annotations
 
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -58,6 +59,7 @@ class TestSetupGatewayEnv:
         doc = yaml.safe_load(env_file.read_text()) or {}
         assert doc["env"]["SUPERHARNESS_TELEGRAM_ALLOWED_SENDERS"] == "111,222,333"
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="chmod 600 is a no-op on Windows")
     def test_watcher_env_chmod_600(self, project_dir: Path) -> None:
         from superharness.ui.sections.gateway import setup_gateway
 
