@@ -1,8 +1,42 @@
 # Handoff — superharness
 
-> Latest: 2026-05-11, branch `docs/claude-mem-integration`, iter 10 (dashboard cards) + iter 11 (token usage + insights) land
-> Previous: 2026-05-11 earlier, iter 9 (claude-code summarizer)
+> Latest: 2026-05-12, branch `feat/i3-section-implementations`, t-c46124 (I6 gateway) closed
+> Previous: 2026-05-11, branch `docs/claude-mem-integration`
 > PyPI latest: v1.55.0
+
+---
+
+## 2026-05-12 session: I6 — Telegram gateway listener (t-c46124)
+
+### What was built
+
+`src/superharness/modules/gateway/telegram_gateway.py` — the gateway listener for I6:
+
+- `GatewayListener(token, allowed_senders, project_dir)` — long-poll Telegram Bot API
+- `parse_command(text) -> ParsedCommand | None` — parses `/approve|reject|close|reset <task_id>`, strips `@botname` suffix, case-insensitive; returns None on unknown command or missing task_id
+- `validate_sender(sender_id, allowed_senders)` — allowlist check; unknown senders rejected before any DB write
+- `handle_update(update)` — full pipeline: sender check → dedup via `idempotency_key` (= Telegram message_id) → parse → DB insert → execute → reply
+- Returns `"unknown_sender"` / `"duplicate"` / `"help"` / `"ok:<command>"` strings (testable without HTTP)
+- `HELP_TEXT` reply sent for malformed/unknown commands and commands missing task_id
+
+`src/superharness/engine/operator_commands_dao.py` — DAO for the `operator_commands` table:
+- `insert()` — INSERT OR UNIQUE constraint; returns `(row, is_new)` for dedup
+- `get_by_key()`, `is_duplicate()`, `update_status()`
+
+`src/superharness/engine/db.py` — v15 migration:
+- `operator_commands` table: `idempotency_key UNIQUE`, `command`, `task_id`, `sender_id`, `status`, `result`, `created_at`, `executed_at`
+
+### Tests
+
+`tests/unit/test_telegram_gateway.py` — 23 tests, all pass:
+- AC-1: unknown sender rejected, no row written
+- AC-2: message_id deduplicates redelivery (single row after two deliveries)
+- AC-3: malformed command returns "help", `_send_reply` called with HELP_TEXT
+- AC-4: `parse_command` covers approve/reject/close/reset + edge cases
+
+### Next task
+
+`t-6af284` — I7: Gateway wizard section + shux approve/reject CLI (status: `plan_proposed`)
 
 ---
 
