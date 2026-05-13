@@ -94,3 +94,46 @@ def main(argv: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def write_field(project_dir: Path, field: str, value: str) -> None:
+    """Write a single field to .superharness/profile.yaml atomically.
+
+    Uses a tmp-file-then-rename strategy so a mid-write crash never
+    leaves a half-written profile.
+    """
+    import os
+    import tempfile
+    import yaml
+
+    profile_dir = project_dir / ".superharness"
+    profile_path = profile_dir / "profile.yaml"
+
+    # Load existing document (or start fresh)
+    if profile_path.exists():
+        try:
+            doc = yaml.safe_load(profile_path.read_text()) or {}
+        except Exception as e:
+            _log.warning("could not parse profile.yaml at %s: %s", profile_path, e)
+            doc = {}
+    else:
+        doc = {}
+
+    if not isinstance(doc, dict):
+        doc = {}
+
+    doc[field] = value
+
+    # Ensure the directory exists (handles the no-.superharness case)
+    profile_dir.mkdir(parents=True, exist_ok=True)
+
+    fd, tmp = tempfile.mkstemp(prefix=".profile-", suffix=".yaml", dir=str(profile_dir))
+    tmp_path = Path(tmp)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            yaml.dump(doc, fh, default_flow_style=False, allow_unicode=True)
+        os.replace(str(tmp_path), str(profile_path))
+        tmp_path = None  # rename succeeded; nothing to clean up
+    finally:
+        if tmp_path is not None and tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)

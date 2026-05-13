@@ -34,6 +34,17 @@ from superharness.engine.tasks_dao import TaskRow
 
 _STEPS = ["detect", "init", "global_claude", "git_track", "doctor", "task", "delegate", "summary"]
 
+# ---------------------------------------------------------------------------
+# Config version — increment when new wizard steps are introduced.
+# _STEPS_BY_VERSION maps version number → steps first introduced in that version.
+# On load, steps from newer versions are reset to "pending" so they re-run.
+# ---------------------------------------------------------------------------
+
+ONBOARD_CONFIG_VERSION = 2
+_STEPS_BY_VERSION: dict[int, list[str]] = {
+    2: ["global_claude"],
+}
+
 _INNER_GITIGNORE_ENTRIES = [
     "watcher-env.yaml",
     "launcher-logs/",
@@ -47,14 +58,35 @@ _INNER_GITIGNORE_ENTRIES = [
 ]
 
 
+def _apply_version_migrations(state: dict) -> None:
+    """Reset steps introduced in newer config versions to 'pending'.
+
+    Reads ``state["config_version"]`` (defaults to 1 when absent) and, for
+    each version between stored+1 and ONBOARD_CONFIG_VERSION (inclusive),
+    resets every step listed in ``_STEPS_BY_VERSION`` back to "pending".
+    Updates ``state["config_version"]`` to the current value so the migration
+    only runs once.
+    """
+    stored = int(state.get("config_version", 1))
+    if stored >= ONBOARD_CONFIG_VERSION:
+        return
+    steps = state.setdefault("steps", {})
+    for v in range(stored + 1, ONBOARD_CONFIG_VERSION + 1):
+        for step_name in _STEPS_BY_VERSION.get(v, []):
+            steps[step_name] = "pending"
+    state["config_version"] = ONBOARD_CONFIG_VERSION
+
+
 def _load_state(sh: Path) -> dict:
     state_file = sh / "onboarding.yaml"
     if state_file.exists():
         doc = yaml.safe_load(state_file.read_text()) or {}
         if isinstance(doc, dict) and "steps" in doc:
+            _apply_version_migrations(doc)
             return doc
     return {
         "version": 1,
+        "config_version": ONBOARD_CONFIG_VERSION,
         "steps": {s: "pending" for s in _STEPS},
     }
 
@@ -412,16 +444,25 @@ def _step_delegate(project: Path, state: dict, enqueue: bool, task_id: Optional[
     _mark(state, "delegate")
 
 
-def _step_summary(project: Path, state: dict) -> None:
-    if _is_completed(state, "summary"):
-        click.echo("[skip] Step 7 (summary): already completed")
-        return
+_STEP_SYMBOLS: dict[str, str] = {
+    "completed": "✓",
+    "skipped":   "–",
+    "pending":   "○",
+}
 
+
+def _step_summary(project: Path, state: dict) -> None:
+    """Print per-step status table then the standard next-steps block."""
     click.echo("")
     click.echo("superharness is set up for this project.")
     click.echo("")
-    click.echo("  → AGENTS.md written — Claude Code and Codex now know to use shux.")
-    click.echo("  → Open Claude Code or Codex in this project and they'll follow the protocol.")
+    click.echo("Setup status:")
+    for step in _STEPS:
+        if step == "summary":
+            continue
+        step_status = state.get("steps", {}).get(step, "pending")
+        symbol = _STEP_SYMBOLS.get(step_status, "○")
+        click.echo(f"  {symbol} {step}")
     click.echo("")
     click.echo("Next steps:")
     click.echo("  shux contract     — view all tasks")
@@ -432,83 +473,249 @@ def _step_summary(project: Path, state: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Profile helpers
+# ---------------------------------------------------------------------------
+
+DEFAULT_PROFILE: dict = {
+    "_config_version": 1,
+    "autonomy": "supervised",
+    "plan_approval_gates": True,
+    "default_agent": "claude-code",
+    "round_tasks_skip_plan_approval": True,
+    "git_mode": "team",
+    "gateway": {
+        "events": [],
+    },
+}
+
+
+def _read_profile(project: Path) -> dict:
+    profile_file = project / ".superharness" / "profile.yaml"
+    if not profile_file.exists():
+        return dict(DEFAULT_PROFILE)
+    try:
+        doc = yaml.safe_load(profile_file.read_text(encoding="utf-8")) or {}
+        return doc if isinstance(doc, dict) else dict(DEFAULT_PROFILE)
+    except Exception:
+        return dict(DEFAULT_PROFILE)
+
+
+def _write_profile(project: Path, config: dict) -> None:
+    (project / ".superharness").mkdir(exist_ok=True)
+    (project / ".superharness" / "profile.yaml").write_text(
+        yaml.dump(config, default_flow_style=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+
+
+def _ensure_config_version(project: Path) -> dict:
+    """Load profile, backfill any missing DEFAULT_PROFILE keys, write back."""
+    config = _read_profile(project)
+    changed = False
+    for k, v in DEFAULT_PROFILE.items():
+        if k not in config:
+            config[k] = v
+            changed = True
+    if changed:
+        _write_profile(project, config)
+    return config
+
+
+# ---------------------------------------------------------------------------
+# Section implementations (I3) — delegate to ui/sections/*
+# ---------------------------------------------------------------------------
+
+def _section_project(project: Path, config: dict, non_interactive: bool) -> None:
+    from superharness.ui.sections.project import run as _run
+    _run(project, non_interactive=non_interactive)
+    # Sync in-memory config from profile.yaml so later steps see updated values
+    from superharness.engine.profile import read_field
+    config["project_name"] = read_field(project, "project_name") or project.name
+    config["stack"] = read_field(project, "stack") or _detect_stack(project)
+    config.setdefault("status", "active")
+
+
+def _section_agent(project: Path, config: dict, non_interactive: bool) -> None:
+    from superharness.ui.sections.agent import run as _run
+    _run(project, non_interactive=non_interactive)
+    from superharness.engine.profile import read_field
+    config["autonomy"] = read_field(project, "autonomy")
+    config["default_agent"] = read_field(project, "primary_agent")
+
+
+def _section_git(project: Path, config: dict, non_interactive: bool) -> None:
+    from superharness.ui.sections.git import run as _run
+    _run(project, non_interactive=non_interactive)
+    from superharness.engine.profile import read_field
+    config["git_mode"] = read_field(project, "git_mode") or config.get("git_mode", "team")
+
+
+def _section_hooks(project: Path, config: dict, non_interactive: bool) -> None:
+    from superharness.ui.sections.hooks import run as _run
+    _run(project, non_interactive=non_interactive)
+
+
+def _section_watcher(project: Path, config: dict, non_interactive: bool) -> None:
+    from superharness.ui.sections.watcher import run as _run
+    _run(project, non_interactive=non_interactive)
+    from superharness.engine.profile import read_field
+    config["watcher_backend"] = read_field(project, "watcher_backend")
+
+
+def _section_gateway(project: Path, config: dict, non_interactive: bool) -> None:
+    from superharness.ui.sections.gateway import run as _run
+    _run(project, non_interactive=non_interactive)
+
+
+def _section_task(project: Path, config: dict, non_interactive: bool) -> None:
+    from superharness.ui.prompts import print_header, print_info
+    print_header("First task")
+    print_info("Add your first task: shux task create --title \"...\"")
+
+
+# ---------------------------------------------------------------------------
+# Section registry
+# ---------------------------------------------------------------------------
+
+ONBOARD_SECTIONS: list[tuple[str, str, object]] = [
+    ("project",  "Project identity",        _section_project),
+    ("agent",    "Agent settings",          _section_agent),
+    ("git",      "Git & tracking",          _section_git),
+    ("hooks",    "Hooks",                   _section_hooks),
+    ("watcher",  "Watcher daemon",          _section_watcher),
+    ("gateway",  "Notifications",           _section_gateway),
+    ("task",     "First task",              _section_task),
+]
+
+_SECTION_KEYS = [k for k, _, _ in ONBOARD_SECTIONS]
+
+
+def _is_returning_user(project: Path) -> bool:
+    return (project / ".superharness" / "state.sqlite3").exists()
+
+
+def _print_noninteractive_guidance(project: Path) -> None:
+    click.echo("")
+    click.echo("superharness -- non-interactive mode")
+    click.echo("  Configure using flags:")
+    click.echo("    shux onboard --non-interactive --git-mode team --autonomy supervised")
+    click.echo("  Or edit .superharness/profile.yaml directly.")
+    click.echo("  Run 'shux onboard' in an interactive terminal for the full wizard.")
+    click.echo("")
+    click.echo("  Available sections:")
+    for key, label, _ in ONBOARD_SECTIONS:
+        click.echo(f"    shux onboard --section {key:<10}  {label}")
+    click.echo("")
+
+
+def _run_onboard_wizard(
+    project_path: Path,
+    non_interactive: bool,
+    git_mode: str,
+    task_title: Optional[str],
+    enqueue: bool,
+    section: Optional[str],
+    quick: bool = False,
+) -> None:
+    sh = project_path / ".superharness"
+    sh.mkdir(exist_ok=True)
+
+    config = _ensure_config_version(project_path)
+    if git_mode:
+        config["git_mode"] = git_mode
+
+    # Section-only mode — validate before headless check so bad sections always error
+    if section is not None:
+        if section not in _SECTION_KEYS:
+            valid = ", ".join(_SECTION_KEYS)
+            click.echo(f"Unknown section: '{section}'. Valid sections: {valid}", err=True)
+            raise SystemExit(1)
+        from superharness.ui.prompts import is_interactive_stdin
+        _is_headless = non_interactive or not is_interactive_stdin()
+        for key, _label, func in ONBOARD_SECTIONS:
+            if key == section:
+                func(project_path, config, _is_headless)
+                _write_profile(project_path, config)
+                click.echo(f"\n[{section}] configuration complete.")
+                return
+
+    # Headless / intro banner — suppressed in quick mode
+    from superharness.ui.prompts import is_interactive_stdin
+    if not quick and (non_interactive or not is_interactive_stdin()):
+        _print_noninteractive_guidance(project_path)
+    elif not quick and _is_returning_user(project_path):
+        click.echo("")
+        click.echo("Existing superharness project detected.")
+        click.echo("  Quick setup / Full setup / Section-only available.")
+        click.echo("  Run 'shux onboard --section <name>' to reconfigure a single section.")
+        click.echo("  Continuing with full setup...")
+
+    # Full run — load state (includes version-migration) then execute each step.
+    # In quick mode, completed steps are silently bypassed (no "[skip]" noise).
+    state = _load_state(sh)
+
+    def _should_run(step: str) -> bool:
+        """Return False only when quick mode is active and the step is already done."""
+        return not (quick and _is_completed(state, step))
+
+    if _should_run("detect"):
+        _step_detect(project_path, state)
+    if _should_run("init"):
+        _step_init(project_path, state)
+    if _should_run("global_claude"):
+        _step_global_claude_md(state)
+    if _should_run("git_track"):
+        _step_git_track(project_path, state, config.get("git_mode", "team"))
+    if _should_run("doctor"):
+        _step_doctor(project_path, state)
+
+    task_id = None
+    if _should_run("task"):
+        task_id = _step_task(project_path, state, task_title)
+    if _should_run("delegate"):
+        _step_delegate(project_path, state, enqueue, task_id)
+
+    # Summary always runs — shows per-step status table.
+    _step_summary(project_path, state)
+    _save_state(sh, state)
+    _write_profile(project_path, config)
+
+
+# ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
 
 @click.command(name="onboard")
 @click.option("--project", default=None, help="Project directory (default: cwd)")
 @click.option("--non-interactive", "non_interactive", is_flag=True, default=False)
+@click.option("--quick", "--quick-setup", "quick", is_flag=True, default=False,
+              help="Skip already-completed steps silently; run only pending ones.")
 @click.option("--git-mode", "git_mode", type=click.Choice(["team", "solo"]), default="team")
 @click.option("--task-title", "task_title", default=None)
 @click.option("--enqueue", is_flag=True, default=False)
+@click.option("--section", default=None,
+              help=f"Run a single section: {', '.join(_SECTION_KEYS)}")
 def cmd_onboard(
     project: Optional[str],
     non_interactive: bool,
+    quick: bool,
     git_mode: str,
     task_title: Optional[str],
     enqueue: bool,
+    section: Optional[str],
 ) -> None:
     """Interactive (or non-interactive) setup wizard for a new project."""
     project_path = Path(project).resolve() if project else Path.cwd()
-    sh = project_path / ".superharness"
+    _run_onboard_wizard(
+        project_path=project_path,
+        non_interactive=non_interactive,
+        git_mode=git_mode,
+        task_title=task_title,
+        enqueue=enqueue,
+        section=section,
+        quick=quick,
+    )
 
-    click.echo("")
-    click.echo("superharness — what is it?")
-    click.echo("==========================")
-    click.echo("")
-    click.echo("  You delegate work to AI agents (Claude Code, Codex CLI, etc.).")
-    click.echo("  They forget context between sessions. Work gets lost or duplicated.")
-    click.echo("")
-    click.echo("  superharness fixes that with three files:")
-    click.echo("    contract.yaml  — single source of truth for every task")
-    click.echo("    handoffs/      — context passed between agents (nothing lost)")
-    click.echo("    inbox.yaml     — tasks queued, dispatched, and tracked")
-    click.echo("")
-    click.echo("  The flow:")
-    click.echo("    task → delegate → agent works → handoff → verify → close")
-    click.echo("")
-    click.echo("  Core commands:")
-    click.echo("    shux contract          view all tasks and their status")
-    click.echo("    shux delegate <id>     hand a task to an agent")
-    click.echo("    shux dashboard         open the browser dashboard")
-    click.echo("    shux close <id>        mark a task done")
-    click.echo("    shux doctor            check environment health")
-    click.echo("")
-    click.echo("  Maintenance:")
-    click.echo("    shux recap             what happened recently")
-    click.echo("    shux inbox-gc          clean stale inbox items")
-    click.echo("    shux worktree-gc       clean orphaned worktrees")
-    click.echo("    shux status            watcher + inbox health")
-    click.echo("")
-    click.echo("Setting up this project now...")
-    click.echo("")
 
-    # Ensure .superharness exists before loading state (init step will scaffold it properly)
-    # We need the dir for state; create it minimally here so state file can be written.
-    sh.mkdir(exist_ok=True)
-
-    state = _load_state(sh)
-
-    _step_detect(project_path, state)
-    _save_state(sh, state)
-
-    _step_init(project_path, state)
-    _save_state(sh, state)
-
-    _step_global_claude_md(state)
-    _save_state(sh, state)
-
-    _step_git_track(project_path, state, git_mode)
-    _save_state(sh, state)
-
-    _step_doctor(project_path, state)
-    _save_state(sh, state)
-
-    task_id = _step_task(project_path, state, task_title)
-    _save_state(sh, state)
-
-    _step_delegate(project_path, state, enqueue, task_id)
-    _save_state(sh, state)
-
-    _step_summary(project_path, state)
-    _save_state(sh, state)
+if __name__ == "__main__":
+    cmd_onboard()

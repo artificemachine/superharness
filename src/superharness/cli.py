@@ -181,6 +181,8 @@ _cmd("handoff-write",   "Author a plan or report handoff YAML (adapter-safe).", 
 _cmd("handoff-generate", "Generate a structured handoff from task state.",           module="superharness.commands.handoff_generate")
 _cmd("handoff",         "Handoff subcommand group (write).",                        module="superharness.commands.handoff_write")
 _cmd("subtask-cancel",  "Mark a subtask cancelled with a mandatory reason.",        module="superharness.commands.subtask_cancel")
+_cmd("approve",         "Approve a task's pending plan (writes operator_command row; idempotent).", module="superharness.commands.approve")
+_cmd("reject",          "Reject a task's pending plan (writes operator_command row; idempotent).",  module="superharness.commands.approve")
 
 # operator-memory and operator-forget run in-process (need argparse, not module passthrough)
 def _register_operator_memory():
