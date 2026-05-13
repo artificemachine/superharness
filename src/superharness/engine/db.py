@@ -12,7 +12,7 @@ from superharness.engine.state_errors import ConnectionError, SchemaError
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 14
+CURRENT_SCHEMA_VERSION = 15
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -492,6 +492,30 @@ def _migration_v14(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_v15(conn: sqlite3.Connection) -> None:
+    """operator_commands table: one row per Telegram message processed by the
+    gateway listener. idempotency_key enforces exactly-once execution."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS operator_commands (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            idempotency_key  TEXT    NOT NULL UNIQUE,
+            command          TEXT    NOT NULL,
+            task_id          TEXT,
+            sender_id        TEXT    NOT NULL,
+            status           TEXT    NOT NULL DEFAULT 'pending',
+            result           TEXT,
+            created_at       TEXT    NOT NULL,
+            executed_at      TEXT
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_operator_commands_task_id "
+        "ON operator_commands(task_id, created_at)"
+    )
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -507,4 +531,5 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v12,
     _migration_v13,
     _migration_v14,
+    _migration_v15,
 ]
