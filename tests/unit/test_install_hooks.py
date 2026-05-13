@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
 
+from superharness.commands.install_hooks import _find_hooks_dir, _is_ephemeral
 from tests.helpers import run_cmd
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="uses bash hooks")
@@ -127,6 +129,53 @@ class TestInstallHooks:
         ]
         assert any("clear-task.sh" in cmd for cmd in stop_cmds), \
             f"Unrelated hook was removed: {stop_cmds}"
+
+
+class TestEphemeralGuard:
+    """_is_ephemeral() and _find_hooks_dir() must reject temp-directory paths.
+
+    When Claude Code runs install-hooks from a git worktree created under /tmp,
+    baking that path into settings.json produces a dead reference the moment
+    the worktree is deleted.  The guard prevents this.
+    """
+
+    def test_is_ephemeral_returns_true_for_tmp(self) -> None:
+        tmp = Path(tempfile.gettempdir())
+        assert _is_ephemeral(tmp / "some-worktree" / "src")
+
+    def test_is_ephemeral_returns_false_for_home(self, repo_root: Path) -> None:
+        assert not _is_ephemeral(repo_root / "adapters" / "claude-code" / "hooks")
+
+    def test_find_hooks_dir_raises_when_module_is_in_tmp(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """_find_hooks_dir() must raise FileNotFoundError if both candidate
+        paths resolve into the system temp directory.
+
+        We simulate a worktree install by monkeypatching __file__ inside the
+        install_hooks module to a path under tmp_path (which itself lives under
+        the system tempdir because pytest uses it).
+        """
+        import superharness.commands.install_hooks as mod
+
+        fake_file = tmp_path / "superharness" / "commands" / "install_hooks.py"
+        fake_file.parent.mkdir(parents=True)
+        fake_file.touch()
+
+        # Plant a fake hooks dir that would match the in-package candidate,
+        # but it is under tmp so the guard must reject it.
+        fake_hooks = tmp_path / "superharness" / "adapters" / "claude-code" / "hooks"
+        fake_hooks.mkdir(parents=True)
+
+        monkeypatch.setattr(mod, "__file__", str(fake_file))
+        with pytest.raises(FileNotFoundError, match="not found"):
+            _find_hooks_dir()
+
+    def test_find_hooks_dir_succeeds_from_real_repo(self, repo_root: Path) -> None:
+        """_find_hooks_dir() must succeed when called from the real (non-ephemeral) repo."""
+        hooks_dir = _find_hooks_dir()
+        assert hooks_dir.is_dir()
+        assert not _is_ephemeral(hooks_dir)
 
 
 class TestNoHardcodedPathsInRepo:

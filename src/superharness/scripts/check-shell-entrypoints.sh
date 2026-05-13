@@ -37,6 +37,7 @@ ENTRYPOINT_FILES=(
   "src/superharness/scripts/demo.sh"
   "src/superharness/scripts/heartbeat.sh"
   "src/superharness/scripts/init-project.sh"
+  "scripts/dev-reinstall.sh"
   "cli/recall.sh"
   "cli/status.sh"
   "src/superharness/adapters/claude-code/install.sh"
