@@ -514,6 +514,10 @@ def _migration_v15(conn: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_operator_commands_task_id "
         "ON operator_commands(task_id, created_at)"
     )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_operator_commands_status "
+        "ON operator_commands(status, created_at)"
+    )
 
 
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [

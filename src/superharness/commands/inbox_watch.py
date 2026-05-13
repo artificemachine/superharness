@@ -190,6 +190,84 @@ def _sqlite_mirror_task_status(
     except Exception:
         pass
 
+def _poll_operator_commands(project_dir: str) -> None:
+    """Drain pending operator_commands rows and apply approve/reject transitions.
+
+    Rows left with status='pending' are gateway-issued commands that could not
+    be applied synchronously at insert time (task missing, DB contention, etc.).
+    The watcher retries them on each cycle until they succeed or exhaust retries.
+    """
+    from superharness.engine.db import get_connection, init_db, transaction
+    from superharness.engine import operator_commands_dao, tasks_dao, ledger_dao
+
+    _COMMAND_MAP = {
+        "approve": "plan_approved",
+        "reject":  "stopped",
+    }
+    _VALID_FROM = {
+        "approve": {"plan_proposed"},
+        "reject":  {"plan_proposed", "plan_approved"},
+    }
+
+    now = _now_utc()
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        pending = operator_commands_dao.poll_pending(conn)
+        if not pending:
+            return
+        for cmd in pending:
+            if cmd.command not in _COMMAND_MAP:
+                with transaction(conn):
+                    operator_commands_dao.update_status(
+                        conn, cmd.id,
+                        status="failed",
+                        result={"message": f"unknown command: {cmd.command!r}"},
+                        now=now,
+                    )
+                continue
+
+            target_status = _COMMAND_MAP[cmd.command]
+            valid_from = _VALID_FROM[cmd.command]
+
+            task = tasks_dao.get(conn, cmd.task_id) if cmd.task_id else None
+            if task is None:
+                # Task not found yet — leave pending for next cycle
+                print(
+                    f"operator_commands: task {cmd.task_id!r} not found — will retry",
+                    file=sys.stderr,
+                )
+                continue
+
+            if task.status not in valid_from:
+                with transaction(conn):
+                    operator_commands_dao.update_status(
+                        conn, cmd.id,
+                        status="skipped",
+                        result={"message": f"task status {task.status!r} not in {valid_from!r}"},
+                        now=now,
+                    )
+                continue
+
+            with transaction(conn):
+                tasks_dao.update(conn, cmd.task_id, task.version, {"status": target_status})
+                ledger_dao.record(
+                    conn, agent="watcher", action="operator_command",
+                    task_id=cmd.task_id,
+                    details={"command": cmd.command, "new_status": target_status},
+                    now=now,
+                )
+                operator_commands_dao.update_status(
+                    conn, cmd.id,
+                    status="executed",
+                    result={"message": f"watcher applied {cmd.command} → {target_status}"},
+                    now=now,
+                )
+            print(f"operator_commands: {cmd.command} → {cmd.task_id!r} transitioned to {target_status}")
+    finally:
+        conn.close()
+
+
 def _log_watcher_error(project_dir, component, error):
     """Write watcher errors to a log file."""
     from datetime import datetime, timezone
@@ -1303,10 +1381,14 @@ def _auto_retry_failed_sqlite(project_dir: str) -> None:
 
 
 _AGENT_FALLBACK: dict[str, list[str]] = {
-    "claude-code": ["gemini-cli", "codex-cli"],
-    "gemini-cli":  ["claude-code", "codex-cli"],
-    "codex-cli":   ["claude-code", "gemini-cli"],
+    "claude-code": ["codex-cli", "gemini-cli", "opencode"],
+    "gemini-cli":  ["claude-code", "codex-cli", "opencode"],
+    "codex-cli":   ["claude-code", "gemini-cli", "opencode"],
+    "opencode":    ["claude-code", "codex-cli", "gemini-cli"],
 }
+
+# Ordered preference for fallback when tried_agents is derived from inbox history
+_FALLBACK_ORDER = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
 
 _RECOVERY_MAX = 2  # max recovery attempts before escalating to operator
 _ABSOLUTE_MAX_RETRIES = 12  # hard cap on inbox.max_retries to prevent runaway loops
@@ -1560,10 +1642,38 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                 if task is None or task.status in ("done", "stopped", "archived"):
                     continue
 
-                # Determine fallback agent
+                # Determine fallback agent — skip owners already tried on this task
                 current_agent = row.target_agent
-                fallback_agents = _AGENT_FALLBACK.get(current_agent, ["claude-code", "gemini-cli"])
-                next_agent = fallback_agents[0]  # try first fallback
+                tried_agents: set[str] = set()
+                try:
+                    tried_rows = conn.execute(
+                        "SELECT DISTINCT target_agent FROM inbox WHERE task_id=? AND status IN ('failed','done','archived')",
+                        (row.task_id,),
+                    ).fetchall()
+                    tried_agents = {r[0] for r in tried_rows if r[0]}
+                except Exception:
+                    pass
+                tried_agents.add(current_agent)
+                fallback_agents = [a for a in _FALLBACK_ORDER if a not in tried_agents]
+                if not fallback_agents:
+                    # All known owners exhausted — escalate with rich context
+                    per_owner_summary = ", ".join(sorted(tried_agents))
+                    _escalate_runaway_inbox(
+                        conn, row,
+                        f"all_owners_exhausted (tried: {per_owner_summary})",
+                        now,
+                    )
+                    # Tag task with escalation_reason for dashboard/status distinction
+                    try:
+                        conn.execute(
+                            "UPDATE tasks SET failed_reason=? WHERE id=? AND status='waiting_input'",
+                            (f"all_owners_exhausted: {per_owner_summary}", row.task_id),
+                        )
+                    except Exception:
+                        pass
+                    escalated += 1
+                    continue
+                next_agent = fallback_agents[0]
 
                 # If already recovered too many times, escalate with root cause analysis
                 if recovery_count >= _RECOVERY_MAX:
@@ -2269,6 +2379,12 @@ def _run_scripts(
 
     # Worker sync
     _sync_worker_copy(project_dir)
+
+    # Operator commands: process pending approve/reject requests (gateway or retry)
+    try:
+        _poll_operator_commands(project_dir)
+    except Exception as e:
+        _log_watcher_error(project_dir, "operator_commands", str(e))
 
     # Deadline check
     deadline_check = os.path.join(script_dir, "inbox-deadline-check.sh")

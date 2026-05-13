@@ -362,3 +362,11 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-13: fix(db): add _migration_v15 for operator_commands table and bump CURRENT_SCHEMA_VERSION to 15; fixes 7 test_telegram_gateway failures
 - 2026-05-13: test(db): add schema invariant regression guards — migration count vs CURRENT_SCHEMA_VERSION, all required tables present after init_db, user_version matches schema version
 - 2026-05-13: chore(release): bump version to 1.57.0
+- 2026-05-12: feat(onboard-sections): implement project/agent/git/hooks/watcher sections in ui/sections/; add pythonpath=[src] to pytest config
+- 2026-05-12: feat(i3-sections): write_field() + five onboard sections (project/agent/git/hooks/watcher) with profile.yaml read-mutate; stale worktree path scanner; launchd/systemd platform dispatch
+- 2026-05-12: feat(onboard-i4): --quick flag, config version bumping with _apply_version_migrations, per-step summary printer
+- 2026-05-12: feat(i6-gateway): Telegram gateway listener process (modules/gateway/telegram_gateway.py) — long-poll loop, sender allowlist validation (unknown sender rejected, no row written), message_id deduplication via idempotency_key, HELP_TEXT reply on malformed command, parse_command handles approve/reject/close/reset. operator_commands table via v15 migration + operator_commands_dao.py. 23/23 tests pass.
+- 2026-05-13: feat(I8): operator_commands_dao.poll_pending; watcher polls pending operator_commands each cycle and transitions plan_proposed→plan_approved or stopped; onboard --quick-setup alias for --quick; 11 new tests in test_operator_commands_integration.py
+- 2026-05-13: feat(operator-gateway): wire _poll_operator_commands into watcher cycle; approve/reject CLI commands; onboard config versioning (ONBOARD_CONFIG_VERSION); profile.py write_field; db status index on operator_commands; pythonpath=[src] in pytest config
+- 2026-05-13: chore(release): bump version to 1.58.0 — feat: operator-commands watcher, onboard versioning, approve/reject CLI
+- 2026-05-13: fix(tests): skip test_watcher_env_chmod_600 on Windows — chmod 600 is a no-op on Windows, skip with pytest.mark.skipif
