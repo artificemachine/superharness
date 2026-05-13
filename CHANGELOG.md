@@ -372,3 +372,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-13: fix(tests): skip test_watcher_env_chmod_600 on Windows — chmod 600 is a no-op on Windows, skip with pytest.mark.skipif
 - 2026-05-13: feat(I8): implement _poll_operator_commands watcher cycle + onboard --section/--quick/--non-interactive guidance/returning-user detection/profile.yaml; 25 acceptance tests green
 - 2026-05-13: fix(install-hooks): add _is_ephemeral() guard to _find_hooks_dir(); add TestEphemeralGuard tests; add scripts/dev-reinstall.sh and test_package_integrity to prevent stale dist-info
+- 2026-05-08: feat(rules): rules auto-injection — shux rules system injected into delegate prompt, handoff, CLAUDE.md template, and adapter payload; add rules.py to worktree and register rules command in cli.py; fix missing seed_sqlite_from_yaml import in test_adapter_payload.py and test_verify_and_close.py; 4 new tests GREEN.
+- 2026-05-13: fix(tests): update TestAdapterPayloadRules to expect list[dict] from _load_rules() instead of all_rules_text() string
