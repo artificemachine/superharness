@@ -57,8 +57,9 @@ def test_transition_to_report_ready_captures_observation(tmp_path):
         rows = observations_dao.list_for_task(conn, "t-1")
         assert len(rows) == 1
         assert rows[0]["phase"] == "report_ready"
+        # summary is LLM-generated — assert non-empty and task-id present, not exact content
+        assert rows[0]["summary"]
         assert "t-1" in rows[0]["summary"]
-        assert "task done" in rows[0]["summary"]
     finally:
         conn.close()
 

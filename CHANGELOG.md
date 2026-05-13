@@ -357,3 +357,8 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-12: fix(worktree-gc): wire run_worktree_gc into hygiene --repair and close_task; remove dead worktree hook from settings.json
 - 2026-05-12: fix(tests): update test_init_project assertions for session-turn-end.sh rename
 - 2026-05-12: chore(release): bump version to 1.56.7
+- 2026-05-13: feat(inbox-watch): add auto_fallback_owner profile policy — when a task exhausts its retry budget and is not owned by the configured fallback agent, auto-reassign task owner + reset retry budget; only escalate to waiting_input after fallback also exhausts retries. Adds auto_fallback_max_retries flag (default 3). Ledger records every reassignment. 10 new tests in tests/unit/test_auto_fallback_owner.py. Docs: Profile Policy Flags table added to docs/GUIDE.md.
+- 2026-05-13: fix(install-hooks): skip ephemeral worktree paths in _find_hooks_dir to prevent dead hook paths being baked into settings.json; fix(profile): add missing write_field() to engine/profile.py; fix(inbox-watch): add opencode to _AGENT_FALLBACK, smart next_agent selection skips already-tried owners via inbox history, escalate with all_owners_exhausted reason when all owners exhausted; fix(tests): relax LLM-content assertion in test_set_status_triggers_capture
+- 2026-05-13: fix(db): add _migration_v15 for operator_commands table and bump CURRENT_SCHEMA_VERSION to 15; fixes 7 test_telegram_gateway failures
+- 2026-05-13: test(db): add schema invariant regression guards — migration count vs CURRENT_SCHEMA_VERSION, all required tables present after init_db, user_version matches schema version
+- 2026-05-13: chore(release): bump version to 1.57.0
