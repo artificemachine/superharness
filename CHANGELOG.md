@@ -388,3 +388,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-14: feat(gateway): route notifications via claw-relay over SSH; store relay credentials in ~/.config/superharness/credentials.env (0600, machine-level) instead of project profile.yaml; fix onboard wizard wiring — ONBOARD_SECTIONS now run in full interactive flow
 - 2026-05-14: feat(gateway): route notifications via claw-relay over SSH; machine-level credentials in ~/.config/superharness/credentials.env; fix onboard wizard ONBOARD_SECTIONS wiring
 - 2026-05-14: feat(gateway): dual backend (relay + direct Telegram bot), both with machine-level credentials; security audit doc docs/gateway-security.md comparing posture to hermes-agent; inbound commands deferred to Phase 2 with five required hardening controls
+- 2026-05-14: chore(release): bump to v1.58.4 — squash merge of feat/gateway-dual-backend (PR #244)
