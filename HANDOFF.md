@@ -1,8 +1,62 @@
 # Handoff — superharness
 
-> Latest: 2026-05-12, branch `feat/i3-section-implementations`, t-c46124 (I6 gateway) closed
-> Previous: 2026-05-11, branch `docs/claude-mem-integration`
-> PyPI latest: v1.55.0
+> Latest: 2026-05-14, gateway Phase 1 + ntfy.sh backend shipped (v1.58.4 → v1.58.5)
+> Previous: 2026-05-12, t-c46124 (I6 gateway listener)
+> PyPI latest: v1.58.5
+
+---
+
+## 2026-05-14 session: gateway notifications Phase 1 + ntfy.sh backend
+
+### What landed
+
+| PR | Version | What |
+|----|---------|------|
+| #242 | v1.58.2 | Gateway relay backend — SSH exec to self-hosted relay, machine-level credentials |
+| #244 | v1.58.4 | Dual backend — relay + direct Telegram bot; security audit doc |
+| #246 | v1.58.5 | ntfy.sh as third direct backend; Phase 3 roadmap |
+
+### Architecture
+
+Outbound-only (Phase 1). GatewayListener exists but is not wired — no inbound commands.
+
+**Dispatch priority:** relay → telegram → ntfy
+
+All credentials at `~/.config/superharness/credentials.env` (0600). Nothing in `.superharness/`.
+
+Credential keys: `SUPERHARNESS_RELAY_SSH_HOST`, `SUPERHARNESS_RELAY_TOKEN`, `SUPERHARNESS_RELAY_DEST`, `SUPERHARNESS_TELEGRAM_BOT_TOKEN`, `SUPERHARNESS_TELEGRAM_CHAT_ID`, `SUPERHARNESS_NTFY_TOPIC`, `SUPERHARNESS_NTFY_SERVER`.
+
+Configure: `shux onboard --section gateway`.
+
+### Security
+
+Full threat model in `docs/gateway-security.md`. Relay is categorically most secure (your infra, SSH transport, no third party). ntfy.sh self-hosted is best relay-free fallback.
+
+Phase 2 (inbound `/approve`) deferred — 5 hardening controls required: forward-origin reject, per-sender rate limit, freshness window, inline-button confirm, DM-only default.
+
+### Phase 3 roadmap (docs/gateway-security.md)
+
+B (next): Slack webhook as additional backend. Phase 2: inbound with hardening. C: pairing-code flow. A: inline-button approvals. D: smart digest.
+
+### Also fixed
+
+- `shux onboard` full wizard now invokes `ONBOARD_SECTIONS` (previously defined but never called)
+- Stop-hook `session-turn-end.sh not found` — `pipx install -e .` (editable) breaks hook paths; fix: `pipx install . --force`
+
+### Files changed
+
+- `src/superharness/engine/relay_client.py` — relay + telegram + ntfy backends, `dispatch_notification`
+- `src/superharness/ui/sections/gateway.py` — 3-backend wizard, `setup_ntfy`, `_configure_ntfy`
+- `src/superharness/commands/notify.py` — uses `dispatch_notification`
+- `src/superharness/commands/onboard.py` — ONBOARD_SECTIONS wired into full wizard
+- `tests/unit/test_gateway_wizard.py` — 35 tests
+- `docs/gateway-security.md` — threat model, hermes comparison, Phase 1/2/3 roadmap
+
+### Next session
+
+1. Phase 2: 5 hardening controls (test names pre-defined in `docs/gateway-security.md`)
+2. Slack webhook direct backend (~20 lines, same pattern as ntfy) if needed
+3. ntfy self-hosted: configure via `shux onboard --section gateway` when server is ready
 
 ---
 
