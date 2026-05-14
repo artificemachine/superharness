@@ -385,3 +385,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-14: refactor(models): collapse opus-4-6 into opus-4-7 everywhere — same token cost, no reason to keep two tiers; xhigh now routes to opus-4-7; swarm reviewer default updated; cli/adapter aliases preserved for backward compat
 - 2026-05-14: fix(ci): update test_adapter_registry pinned-4-6 assertion to expect claude-opus-4-7 after model alias consolidation
 - 2026-05-14: chore(release): bump to v1.58.2 — squash merge of feat/granular-interactive-demo (PR #240)
+- 2026-05-14: feat(gateway): route notifications via claw-relay over SSH; store relay credentials in ~/.config/superharness/credentials.env (0600, machine-level) instead of project profile.yaml; fix onboard wizard wiring — ONBOARD_SECTIONS now run in full interactive flow
