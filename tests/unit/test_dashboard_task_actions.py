@@ -301,7 +301,7 @@ class TestSetOwner:
 
 # ── enqueue_task guards ───────────────────────────────────────────────────────
 
-KNOWN_AGENTS = ["claude-code", "codex-cli", "gemini-cli"]
+KNOWN_AGENTS = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
 
 
 class TestEnqueueTaskGuards:
