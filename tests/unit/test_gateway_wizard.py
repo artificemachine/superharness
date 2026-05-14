@@ -451,3 +451,96 @@ class TestDispatchNotification:
         assert sent is True
         assert backend == "telegram"
         assert called_telegram[0] == 1
+
+
+# ---------------------------------------------------------------------------
+# ntfy.sh backend
+# ---------------------------------------------------------------------------
+
+class TestSetupNtfy:
+    def test_credentials_saved_to_machine_level_file(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
+        from superharness.ui.sections.gateway import setup_ntfy
+        from superharness.engine.relay_client import load_ntfy_credentials
+
+        setup_ntfy(
+            project_dir,
+            ntfy_topic="superharness-alerts",
+            ntfy_server="https://ntfy.myserver.com",
+            events=["plan_proposed"],
+        )
+
+        creds = load_ntfy_credentials()
+        assert creds["ntfy_topic"] == "superharness-alerts"
+        assert creds["ntfy_server"] == "https://ntfy.myserver.com"
+
+    def test_default_server_is_ntfy_sh(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
+        from superharness.ui.sections.gateway import setup_ntfy
+        from superharness.engine.relay_client import load_ntfy_credentials
+
+        setup_ntfy(project_dir, ntfy_topic="my-topic", ntfy_server="https://ntfy.sh", events=[])
+        assert load_ntfy_credentials()["ntfy_server"] == "https://ntfy.sh"
+
+    def test_topic_never_in_project_files(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
+        from superharness.ui.sections.gateway import setup_ntfy
+
+        setup_ntfy(project_dir, ntfy_topic="SECRET-TOPIC", ntfy_server="https://ntfy.sh", events=[])
+
+        for p in (project_dir / ".superharness").rglob("*"):
+            if p.is_file():
+                assert "SECRET-TOPIC" not in p.read_text(), f"topic leaked to {p}"
+
+    def test_backend_field_ntfy(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
+        from superharness.ui.sections.gateway import setup_ntfy
+
+        setup_ntfy(project_dir, ntfy_topic="my-topic", ntfy_server="https://ntfy.sh", events=[])
+        doc = yaml.safe_load((project_dir / ".superharness" / "profile.yaml").read_text()) or {}
+        assert doc["gateway"]["backend"] == "ntfy"
+
+    def test_events_saved_to_profile(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
+        from superharness.ui.sections.gateway import setup_ntfy
+
+        setup_ntfy(
+            project_dir, ntfy_topic="t", ntfy_server="https://ntfy.sh",
+            events=["task_failed", "report_ready"],
+        )
+        doc = yaml.safe_load((project_dir / ".superharness" / "profile.yaml").read_text()) or {}
+        assert doc["gateway"]["events"] == ["task_failed", "report_ready"]
+
+    def test_all_backends_coexist_in_credentials_file(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
+        from superharness.ui.sections.gateway import setup_gateway, setup_telegram_direct, setup_ntfy
+        from superharness.engine.relay_client import load_credentials, load_telegram_credentials, load_ntfy_credentials
+
+        setup_gateway(project_dir, relay_ssh_host="my-relay", relay_token="relay-tok", events=[])
+        setup_telegram_direct(project_dir, bot_token="bot-tok", chat_id="42", events=[])
+        setup_ntfy(project_dir, ntfy_topic="my-topic", ntfy_server="https://ntfy.sh", events=[])
+
+        assert load_credentials()["relay_token"] == "relay-tok"
+        assert load_telegram_credentials()["bot_token"] == "bot-tok"
+        assert load_ntfy_credentials()["ntfy_topic"] == "my-topic"
+
+    def test_ntfy_used_when_relay_and_telegram_not_configured(
+        self, isolated_credentials: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from superharness.engine.relay_client import save_ntfy_credentials, dispatch_notification
+
+        save_ntfy_credentials("my-topic")
+        monkeypatch.setattr(
+            "superharness.engine.relay_client.send_via_ntfy_from_config",
+            lambda text: True,
+        )
+
+        sent, backend = dispatch_notification("hi")
+        assert sent is True
+        assert backend == "ntfy"
