@@ -161,15 +161,12 @@ def main(argv: list[str] | None = None) -> None:
         print(message)
     else:
         print(message)
-        # claw-relay (preferred — no bot token required locally)
+        # Configured backend (relay preferred → direct Telegram bot fallback)
         try:
-            from superharness.engine.relay_client import is_configured, send_notification_from_config
-            if is_configured():
-                sent = send_notification_from_config(message)
-                if sent:
-                    print("notify: sent via claw-relay")
-                else:
-                    print("notify: claw-relay send failed — falling back to other channels")
+            from superharness.engine.relay_client import dispatch_notification
+            sent, backend = dispatch_notification(message)
+            if sent:
+                print(f"notify: sent via {backend}")
         except Exception:
             pass
         # Webhook fallback
