@@ -141,6 +141,33 @@ def telegram_is_configured() -> bool:
     return bool(c["bot_token"] and c["chat_id"])
 
 
+# ----- ntfy.sh backend -----------------------------------------------------
+
+def load_ntfy_credentials() -> dict[str, str]:
+    """Load ntfy.sh credentials (file + env-var fallback)."""
+    env = _read_env_file(credentials_path())
+    return {
+        "ntfy_topic": env.get("SUPERHARNESS_NTFY_TOPIC",
+                              os.environ.get("SUPERHARNESS_NTFY_TOPIC", "")),
+        "ntfy_server": env.get("SUPERHARNESS_NTFY_SERVER",
+                               os.environ.get("SUPERHARNESS_NTFY_SERVER", "https://ntfy.sh")),
+    }
+
+
+def save_ntfy_credentials(ntfy_topic: str, ntfy_server: str = "https://ntfy.sh") -> None:
+    """Persist ntfy.sh credentials (mode 0600)."""
+    _write_env_file_merge(credentials_path(), {
+        "SUPERHARNESS_NTFY_TOPIC": ntfy_topic,
+        "SUPERHARNESS_NTFY_SERVER": ntfy_server,
+    })
+
+
+def ntfy_is_configured() -> bool:
+    """Return True iff ntfy.sh backend has a topic configured."""
+    c = load_ntfy_credentials()
+    return bool(c["ntfy_topic"])
+
+
 # ---------------------------------------------------------------------------
 # Outbound notification
 # ---------------------------------------------------------------------------
@@ -261,26 +288,66 @@ def send_via_telegram_direct_from_config(text: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Unified dispatch — prefer relay, fall back to direct bot
+# ntfy.sh backend — self-hostable, no third-party dependency
+# ---------------------------------------------------------------------------
+
+def send_via_ntfy(
+    text: str,
+    *,
+    ntfy_topic: str = "",
+    ntfy_server: str = "https://ntfy.sh",
+    timeout: int = 10,
+) -> bool:
+    """Send *text* via ntfy.sh (or a self-hosted ntfy server).
+
+    POST /<topic> with plaintext body. No extra dependencies beyond stdlib.
+    """
+    if not ntfy_topic:
+        return False
+    try:
+        import urllib.request
+    except ImportError:
+        return False
+
+    url = f"{ntfy_server.rstrip('/')}/{ntfy_topic}"
+    req = urllib.request.Request(url, data=text.encode("utf-8"), method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return 200 <= resp.status < 300
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("ntfy: send failed: %s", exc)
+        return False
+
+
+def send_via_ntfy_from_config(text: str) -> bool:
+    """Convenience wrapper: loads ntfy credentials and sends."""
+    c = load_ntfy_credentials()
+    return send_via_ntfy(text, ntfy_topic=c["ntfy_topic"], ntfy_server=c["ntfy_server"])
+
+
+# ---------------------------------------------------------------------------
+# Unified dispatch — relay → telegram → ntfy (priority order)
 # ---------------------------------------------------------------------------
 
 def dispatch_notification(text: str) -> tuple[bool, str]:
     """Try every configured backend in priority order, falling through on failure.
 
-    Operator alerts are higher value than dedup — if the relay is configured
-    but the send fails (network down, relay container restarting), still try
-    the direct bot. The cost of a rare double-deliver is much lower than the
-    cost of a silently dropped alert.
+    Operator alerts are higher value than dedup — if a backend is configured
+    but the send fails, still try the next. The cost of a rare double-deliver
+    is much lower than the cost of a silently dropped alert.
 
     Returns (sent, backend_name). backend_name is one of:
-      "relay"        — sent via SSH-exec to a remote relay
-      "telegram"     — sent via direct Telegram Bot API
-      ""             — nothing configured or all backends failed
+      "relay"    — sent via SSH-exec to a remote relay
+      "telegram" — sent via direct Telegram Bot API
+      "ntfy"     — sent via ntfy.sh (self-hosted or public)
+      ""         — nothing configured or all backends failed
     """
     if relay_is_configured() and send_notification_from_config(text):
         return True, "relay"
     if telegram_is_configured() and send_via_telegram_direct_from_config(text):
         return True, "telegram"
+    if ntfy_is_configured() and send_via_ntfy_from_config(text):
+        return True, "ntfy"
     return False, ""
 
 
