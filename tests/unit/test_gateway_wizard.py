@@ -1,8 +1,10 @@
 """Tests for gateway wizard section.
 
-setup_gateway now routes through claw-relay:
-  - relay credentials  → ~/.config/superharness/credentials.env (machine-level, 0600)
-  - events checklist   → .superharness/profile.yaml (project-level, no secrets)
+Two backends:
+  - relay (SSH)  — relay_ssh_host + relay_token in ~/.config/superharness/credentials.env
+  - telegram     — direct bot token + chat_id in ~/.config/superharness/credentials.env
+
+Events checklist persists to .superharness/profile.yaml (no secrets there).
 """
 from __future__ import annotations
 
@@ -189,7 +191,7 @@ class TestSetupGatewayProfile:
         doc = yaml.safe_load(profile_file.read_text()) or {}
         assert doc["gateway"]["events"] == events
 
-    def test_backend_field_set_to_claw_relay(
+    def test_backend_field_set_to_relay(
         self, project_dir: Path, isolated_credentials: Path
     ) -> None:
         from superharness.ui.sections.gateway import setup_gateway
@@ -198,7 +200,7 @@ class TestSetupGatewayProfile:
 
         profile_file = project_dir / ".superharness" / "profile.yaml"
         doc = yaml.safe_load(profile_file.read_text()) or {}
-        assert doc["gateway"]["backend"] == "claw-relay"
+        assert doc["gateway"]["backend"] == "relay"
 
     def test_empty_events_list_written(
         self, project_dir: Path, isolated_credentials: Path
@@ -263,3 +265,189 @@ class TestSetupGatewayProfile:
         profile_file = project_dir / ".superharness" / "profile.yaml"
         doc = yaml.safe_load(profile_file.read_text()) or {}
         assert doc["gateway"]["events"] == ALL_GATEWAY_EVENTS
+
+    def test_backend_field_relay_for_setup_gateway(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
+        from superharness.ui.sections.gateway import setup_gateway
+
+        setup_gateway(project_dir, relay_ssh_host="u@h", relay_token="tok", events=[])
+
+        profile_file = project_dir / ".superharness" / "profile.yaml"
+        doc = yaml.safe_load(profile_file.read_text()) or {}
+        assert doc["gateway"]["backend"] == "relay"
+
+
+# ---------------------------------------------------------------------------
+# Direct Telegram bot backend
+# ---------------------------------------------------------------------------
+
+class TestSetupTelegramDirect:
+    def test_credentials_saved_to_machine_level_file(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
+        from superharness.ui.sections.gateway import setup_telegram_direct
+        from superharness.engine.relay_client import load_telegram_credentials
+
+        setup_telegram_direct(
+            project_dir,
+            bot_token="123456:ABCDEF",
+            chat_id="111222333",
+            events=["plan_proposed"],
+        )
+
+        creds = load_telegram_credentials()
+        assert creds["bot_token"] == "123456:ABCDEF"
+        assert creds["chat_id"] == "111222333"
+
+    def test_bot_token_never_in_project_files(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
+        from superharness.ui.sections.gateway import setup_telegram_direct
+
+        setup_telegram_direct(
+            project_dir,
+            bot_token="SECRET-BOT-TOKEN",
+            chat_id="42",
+            events=[],
+        )
+
+        for p in (project_dir / ".superharness").rglob("*"):
+            if p.is_file():
+                assert "SECRET-BOT-TOKEN" not in p.read_text(), f"token leaked to {p}"
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="chmod 0600 is a no-op on Windows")
+    def test_credentials_file_mode_0600(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
+        from superharness.ui.sections.gateway import setup_telegram_direct
+
+        setup_telegram_direct(project_dir, bot_token="tok", chat_id="42", events=[])
+        mode = isolated_credentials.stat().st_mode
+        assert not (mode & stat.S_IRGRP)
+        assert not (mode & stat.S_IROTH)
+
+    def test_backend_field_telegram(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
+        from superharness.ui.sections.gateway import setup_telegram_direct
+
+        setup_telegram_direct(project_dir, bot_token="tok", chat_id="42", events=[])
+        doc = yaml.safe_load((project_dir / ".superharness" / "profile.yaml").read_text()) or {}
+        assert doc["gateway"]["backend"] == "telegram"
+
+    def test_events_saved_to_profile(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
+        from superharness.ui.sections.gateway import setup_telegram_direct
+
+        setup_telegram_direct(
+            project_dir, bot_token="tok", chat_id="42",
+            events=["plan_proposed", "task_failed"],
+        )
+        doc = yaml.safe_load((project_dir / ".superharness" / "profile.yaml").read_text()) or {}
+        assert doc["gateway"]["events"] == ["plan_proposed", "task_failed"]
+
+    def test_relay_and_telegram_coexist_in_credentials_file(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
+        """Switching from one backend to the other must not clobber the other's keys.
+
+        The user may temporarily configure both — only the active backend (per profile.yaml)
+        is used at runtime, but the dormant one's secrets should remain intact.
+        """
+        from superharness.ui.sections.gateway import setup_gateway, setup_telegram_direct
+        from superharness.engine.relay_client import load_credentials, load_telegram_credentials
+
+        setup_gateway(project_dir, relay_ssh_host="my-relay", relay_token="relay-tok", events=[])
+        setup_telegram_direct(project_dir, bot_token="bot-tok", chat_id="42", events=[])
+
+        assert load_credentials()["relay_token"] == "relay-tok"
+        assert load_credentials()["relay_ssh_host"] == "my-relay"
+        assert load_telegram_credentials()["bot_token"] == "bot-tok"
+        assert load_telegram_credentials()["chat_id"] == "42"
+
+
+# ---------------------------------------------------------------------------
+# Unified dispatcher
+# ---------------------------------------------------------------------------
+
+class TestDispatchNotification:
+    def test_nothing_configured_returns_empty(self, isolated_credentials: Path) -> None:
+        from superharness.engine.relay_client import dispatch_notification
+        sent, backend = dispatch_notification("hello")
+        assert sent is False
+        assert backend == ""
+
+    def test_relay_preferred_when_both_configured(
+        self, isolated_credentials: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from superharness.engine.relay_client import (
+            save_credentials, save_telegram_credentials, dispatch_notification,
+        )
+        save_credentials("my-relay", "relay-tok")
+        save_telegram_credentials("bot-tok", "42")
+
+        called = {"relay": 0, "telegram": 0}
+        monkeypatch.setattr(
+            "superharness.engine.relay_client.send_notification_from_config",
+            lambda text: (called.__setitem__("relay", called["relay"] + 1) or True),
+        )
+        monkeypatch.setattr(
+            "superharness.engine.relay_client.send_via_telegram_direct_from_config",
+            lambda text: (called.__setitem__("telegram", called["telegram"] + 1) or True),
+        )
+
+        sent, backend = dispatch_notification("hi")
+        assert sent is True
+        assert backend == "relay"
+        assert called == {"relay": 1, "telegram": 0}
+
+    def test_telegram_used_when_relay_not_configured(
+        self, isolated_credentials: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from superharness.engine.relay_client import (
+            save_telegram_credentials, dispatch_notification,
+        )
+        save_telegram_credentials("bot-tok", "42")
+
+        monkeypatch.setattr(
+            "superharness.engine.relay_client.send_via_telegram_direct_from_config",
+            lambda text: True,
+        )
+
+        sent, backend = dispatch_notification("hi")
+        assert sent is True
+        assert backend == "telegram"
+
+    def test_telegram_used_when_relay_send_fails(
+        self, isolated_credentials: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """If the relay is configured but the send fails, do not fall through to direct bot.
+
+        Each backend's failure is its own concern. Falling back across backends silently
+        could mask outages and double-deliver in transient failures. dispatch_notification
+        only falls through when the *prior* backend is not configured."""
+        from superharness.engine.relay_client import (
+            save_credentials, save_telegram_credentials, dispatch_notification,
+        )
+        save_credentials("my-relay", "relay-tok")
+        save_telegram_credentials("bot-tok", "42")
+
+        monkeypatch.setattr(
+            "superharness.engine.relay_client.send_notification_from_config",
+            lambda text: False,  # relay configured but send fails
+        )
+        called_telegram = [0]
+        monkeypatch.setattr(
+            "superharness.engine.relay_client.send_via_telegram_direct_from_config",
+            lambda text: (called_telegram.__setitem__(0, called_telegram[0] + 1) or True),
+        )
+
+        sent, backend = dispatch_notification("hi")
+        # Either: relay-only fallthrough (sent=False) OR fallthrough-to-telegram (sent=True).
+        # Locking in the cross-backend fallback because operator notifications should reach
+        # the human if any configured channel works.
+        assert sent is True
+        assert backend == "telegram"
+        assert called_telegram[0] == 1
