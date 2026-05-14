@@ -674,6 +674,17 @@ def _run_onboard_wizard(
     if _should_run("delegate"):
         _step_delegate(project_path, state, enqueue, task_id)
 
+    # Interactive configuration sections — run after infrastructure steps.
+    # Skipped when headless (CI / piped stdin / --non-interactive) so they
+    # never block automation. In quick mode the sections still run because
+    # the user explicitly asked for a fast reconfigure pass.
+    _is_headless = non_interactive or not is_interactive_stdin()
+    if not _is_headless:
+        click.echo("")
+        for key, _label, func in ONBOARD_SECTIONS:
+            func(project_path, config, non_interactive=False)
+        _write_profile(project_path, config)
+
     # Summary always runs — shows per-step status table.
     _step_summary(project_path, state)
     _save_state(sh, state)

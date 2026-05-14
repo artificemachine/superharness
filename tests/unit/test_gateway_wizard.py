@@ -1,11 +1,12 @@
-"""Tests for I7: Gateway wizard section.
+"""Tests for gateway wizard section.
 
-Acceptance criteria:
-  - setup_gateway saves token and allowlist to watcher-env.yaml
-  - setup_gateway saves events checklist to profile.yaml
+setup_gateway now routes through claw-relay:
+  - relay credentials  → ~/.config/superharness/credentials.env (machine-level, 0600)
+  - events checklist   → .superharness/profile.yaml (project-level, no secrets)
 """
 from __future__ import annotations
 
+import os
 import stat
 import sys
 from pathlib import Path
@@ -25,83 +26,144 @@ def project_dir(tmp_path: Path) -> Path:
     return tmp_path
 
 
+@pytest.fixture(autouse=True)
+def isolated_credentials(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Redirect credentials file to a temp path so tests never touch the real one."""
+    creds_file = tmp_path / "credentials.env"
+    monkeypatch.setenv("SUPERHARNESS_CREDENTIALS_FILE", str(creds_file))
+    # Also clear env vars that load_credentials falls back to
+    monkeypatch.delenv("SUPERHARNESS_RELAY_TOKEN", raising=False)
+    monkeypatch.delenv("SUPERHARNESS_RELAY_SSH_HOST", raising=False)
+    monkeypatch.delenv("SUPERHARNESS_RELAY_DEST", raising=False)
+    return creds_file
+
+
 # ---------------------------------------------------------------------------
-# setup_gateway: token + allowlist saved to watcher-env.yaml
+# relay_client: save_credentials / load_credentials
 # ---------------------------------------------------------------------------
 
-class TestSetupGatewayEnv:
-    def test_token_written_to_watcher_env(self, project_dir: Path) -> None:
+class TestSaveLoadCredentials:
+    def test_credentials_written_to_machine_level_file(self, isolated_credentials: Path) -> None:
+        from superharness.engine.relay_client import save_credentials, load_credentials
+
+        save_credentials("user@10.255.86.217", "secret-token")
+        creds = load_credentials()
+
+        assert creds["relay_ssh_host"] == "user@10.255.86.217"
+        assert creds["relay_token"] == "secret-token"
+        assert creds["relay_dest"] == "telegram"
+
+    def test_custom_dest_saved(self, isolated_credentials: Path) -> None:
+        from superharness.engine.relay_client import save_credentials, load_credentials
+
+        save_credentials("user@host", "tok", relay_dest="slack")
+        assert load_credentials()["relay_dest"] == "slack"
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="chmod 0600 is a no-op on Windows")
+    def test_credentials_file_chmod_600(self, isolated_credentials: Path) -> None:
+        from superharness.engine.relay_client import save_credentials
+
+        save_credentials("user@host", "tok")
+        mode = isolated_credentials.stat().st_mode
+        assert not (mode & stat.S_IRGRP), "group read must be cleared"
+        assert not (mode & stat.S_IROTH), "other read must be cleared"
+
+    def test_existing_unmanaged_keys_preserved(self, isolated_credentials: Path) -> None:
+        from superharness.engine.relay_client import save_credentials
+
+        isolated_credentials.write_text("ANTHROPIC_API_KEY=sk-existing\n")
+        save_credentials("user@host", "tok")
+
+        content = isolated_credentials.read_text()
+        assert "ANTHROPIC_API_KEY=sk-existing" in content
+        assert "SUPERHARNESS_RELAY_TOKEN=tok" in content
+
+    def test_managed_keys_overwritten_on_second_call(self, isolated_credentials: Path) -> None:
+        from superharness.engine.relay_client import save_credentials, load_credentials
+
+        save_credentials("user@host-a", "tok-a")
+        save_credentials("user@host-b", "tok-b")
+
+        creds = load_credentials()
+        assert creds["relay_ssh_host"] == "user@host-b"
+        assert creds["relay_token"] == "tok-b"
+
+    def test_is_configured_false_when_no_credentials(self, isolated_credentials: Path) -> None:
+        from superharness.engine.relay_client import is_configured
+        assert not is_configured()
+
+    def test_is_configured_true_after_save(self, isolated_credentials: Path) -> None:
+        from superharness.engine.relay_client import save_credentials, is_configured
+        save_credentials("user@host", "tok")
+        assert is_configured()
+
+
+# ---------------------------------------------------------------------------
+# setup_gateway: relay credentials saved to machine-level credentials file
+# ---------------------------------------------------------------------------
+
+class TestSetupGatewayCredentials:
+    def test_relay_credentials_written_to_machine_level_file(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
         from superharness.ui.sections.gateway import setup_gateway
+        from superharness.engine.relay_client import load_credentials
 
         setup_gateway(
             project_dir,
-            token="1234567890:ABCDefgh",
-            allowed_senders=["111222333"],
+            relay_ssh_host="user@10.255.86.217",
+            relay_token="my-relay-token",
             events=["plan_proposed"],
         )
 
-        env_file = project_dir / ".superharness" / "watcher-env.yaml"
-        assert env_file.exists(), "watcher-env.yaml should be created"
-        doc = yaml.safe_load(env_file.read_text()) or {}
-        assert doc["env"]["SUPERHARNESS_TELEGRAM_BOT_TOKEN"] == "1234567890:ABCDefgh"
+        creds = load_credentials()
+        assert creds["relay_ssh_host"] == "user@10.255.86.217"
+        assert creds["relay_token"] == "my-relay-token"
 
-    def test_allowlist_written_as_csv(self, project_dir: Path) -> None:
+    def test_credentials_not_written_to_project_profile(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
         from superharness.ui.sections.gateway import setup_gateway
 
         setup_gateway(
             project_dir,
-            token="tok",
-            allowed_senders=["111", "222", "333"],
+            relay_ssh_host="user@host",
+            relay_token="secret",
             events=[],
         )
 
-        env_file = project_dir / ".superharness" / "watcher-env.yaml"
-        doc = yaml.safe_load(env_file.read_text()) or {}
-        assert doc["env"]["SUPERHARNESS_TELEGRAM_ALLOWED_SENDERS"] == "111,222,333"
+        profile_file = project_dir / ".superharness" / "profile.yaml"
+        content = profile_file.read_text() if profile_file.exists() else ""
+        assert "secret" not in content
+        assert "user@host" not in content
 
-    @pytest.mark.skipif(sys.platform == "win32", reason="chmod 600 is a no-op on Windows")
-    def test_watcher_env_chmod_600(self, project_dir: Path) -> None:
+    def test_credentials_not_written_to_watcher_env(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
         from superharness.ui.sections.gateway import setup_gateway
 
         setup_gateway(
             project_dir,
-            token="tok",
-            allowed_senders=["42"],
+            relay_ssh_host="user@host",
+            relay_token="secret",
             events=[],
         )
 
         env_file = project_dir / ".superharness" / "watcher-env.yaml"
-        mode = env_file.stat().st_mode
-        # Group and other must not have read permission
-        assert not (mode & stat.S_IRGRP), "group read should be cleared"
-        assert not (mode & stat.S_IROTH), "other read should be cleared"
+        content = env_file.read_text() if env_file.exists() else ""
+        assert "secret" not in content
 
-    def test_existing_env_vars_preserved(self, project_dir: Path) -> None:
-        """setup_gateway merges into existing watcher-env.yaml, not clobbers."""
+    @pytest.mark.skipif(sys.platform == "win32", reason="chmod 0600 is a no-op on Windows")
+    def test_credentials_file_is_mode_600(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
         from superharness.ui.sections.gateway import setup_gateway
 
-        env_file = project_dir / ".superharness" / "watcher-env.yaml"
-        env_file.write_text(yaml.dump({"env": {"ANTHROPIC_API_KEY": "sk-existing"}}))
+        setup_gateway(project_dir, relay_ssh_host="u@h", relay_token="tok", events=[])
 
-        setup_gateway(
-            project_dir,
-            token="tok",
-            allowed_senders=["42"],
-            events=[],
-        )
-
-        doc = yaml.safe_load(env_file.read_text()) or {}
-        assert doc["env"]["ANTHROPIC_API_KEY"] == "sk-existing"
-        assert doc["env"]["SUPERHARNESS_TELEGRAM_BOT_TOKEN"] == "tok"
-
-    def test_empty_allowlist_written(self, project_dir: Path) -> None:
-        from superharness.ui.sections.gateway import setup_gateway
-
-        setup_gateway(project_dir, token="tok", allowed_senders=[], events=[])
-
-        env_file = project_dir / ".superharness" / "watcher-env.yaml"
-        doc = yaml.safe_load(env_file.read_text()) or {}
-        assert doc["env"]["SUPERHARNESS_TELEGRAM_ALLOWED_SENDERS"] == ""
+        mode = isolated_credentials.stat().st_mode
+        assert not (mode & stat.S_IRGRP)
+        assert not (mode & stat.S_IROTH)
 
 
 # ---------------------------------------------------------------------------
@@ -109,32 +171,49 @@ class TestSetupGatewayEnv:
 # ---------------------------------------------------------------------------
 
 class TestSetupGatewayProfile:
-    def test_events_written_to_profile(self, project_dir: Path) -> None:
+    def test_events_written_to_profile(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
         from superharness.ui.sections.gateway import setup_gateway
 
         events = ["plan_proposed", "report_ready", "task_failed"]
         setup_gateway(
             project_dir,
-            token="tok",
-            allowed_senders=["42"],
+            relay_ssh_host="u@h",
+            relay_token="tok",
             events=events,
         )
 
         profile_file = project_dir / ".superharness" / "profile.yaml"
-        assert profile_file.exists(), "profile.yaml should be created"
+        assert profile_file.exists()
         doc = yaml.safe_load(profile_file.read_text()) or {}
         assert doc["gateway"]["events"] == events
 
-    def test_empty_events_list_written(self, project_dir: Path) -> None:
+    def test_backend_field_set_to_claw_relay(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
         from superharness.ui.sections.gateway import setup_gateway
 
-        setup_gateway(project_dir, token="tok", allowed_senders=["42"], events=[])
+        setup_gateway(project_dir, relay_ssh_host="u@h", relay_token="tok", events=[])
+
+        profile_file = project_dir / ".superharness" / "profile.yaml"
+        doc = yaml.safe_load(profile_file.read_text()) or {}
+        assert doc["gateway"]["backend"] == "claw-relay"
+
+    def test_empty_events_list_written(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
+        from superharness.ui.sections.gateway import setup_gateway
+
+        setup_gateway(project_dir, relay_ssh_host="u@h", relay_token="tok", events=[])
 
         profile_file = project_dir / ".superharness" / "profile.yaml"
         doc = yaml.safe_load(profile_file.read_text()) or {}
         assert doc["gateway"]["events"] == []
 
-    def test_existing_profile_keys_preserved(self, project_dir: Path) -> None:
+    def test_existing_profile_keys_preserved(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
         from superharness.ui.sections.gateway import setup_gateway
 
         profile_file = project_dir / ".superharness" / "profile.yaml"
@@ -142,8 +221,8 @@ class TestSetupGatewayProfile:
 
         setup_gateway(
             project_dir,
-            token="tok",
-            allowed_senders=["42"],
+            relay_ssh_host="u@h",
+            relay_token="tok",
             events=["plan_proposed"],
         )
 
@@ -151,15 +230,17 @@ class TestSetupGatewayProfile:
         assert doc["autonomy"] == "supervised"
         assert doc["gateway"]["events"] == ["plan_proposed"]
 
-    def test_events_overwritten_on_second_call(self, project_dir: Path) -> None:
+    def test_events_overwritten_on_second_call(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
         from superharness.ui.sections.gateway import setup_gateway
 
         setup_gateway(
-            project_dir, token="tok", allowed_senders=["1"],
+            project_dir, relay_ssh_host="u@h", relay_token="tok",
             events=["plan_proposed", "report_ready"],
         )
         setup_gateway(
-            project_dir, token="tok", allowed_senders=["1"],
+            project_dir, relay_ssh_host="u@h", relay_token="tok",
             events=["task_closed"],
         )
 
@@ -167,13 +248,15 @@ class TestSetupGatewayProfile:
         doc = yaml.safe_load(profile_file.read_text()) or {}
         assert doc["gateway"]["events"] == ["task_closed"]
 
-    def test_all_known_events_accepted(self, project_dir: Path) -> None:
+    def test_all_known_events_accepted(
+        self, project_dir: Path, isolated_credentials: Path
+    ) -> None:
         from superharness.ui.sections.gateway import setup_gateway, ALL_GATEWAY_EVENTS
 
         setup_gateway(
             project_dir,
-            token="tok",
-            allowed_senders=["42"],
+            relay_ssh_host="u@h",
+            relay_token="tok",
             events=ALL_GATEWAY_EVENTS,
         )
 
