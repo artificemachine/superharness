@@ -1,19 +1,21 @@
-"""Outbound notification via claw-relay.
+"""Outbound notification dispatch — relay backend and direct Telegram bot backend.
 
-Sends notifications through the claw-relay webhook proxy using an SSH exec
-instead of a direct HTTP connection.  The relay bearer token and SSH host live
-in ~/.config/superharness/credentials.env (machine-level, mode 0600) — they
-are never stored in any project's .superharness/ directory.
+All credentials live in ~/.config/superharness/credentials.env (machine-level,
+mode 0600) — never in any project's .superharness/ directory. See
+docs/gateway-security.md for the threat model that motivates this split.
 
-Credential keys expected in credentials.env:
-    SUPERHARNESS_RELAY_TOKEN    — claw-relay bearer token
-    SUPERHARNESS_RELAY_SSH_HOST — SSH config alias, e.g. claw-relay
-    SUPERHARNESS_RELAY_DEST     — relay destination name (default: telegram)
+Credential keys (any subset may be present):
+    SUPERHARNESS_RELAY_SSH_HOST       — SSH config alias (e.g. mybox)
+    SUPERHARNESS_RELAY_TOKEN          — relay bearer token
+    SUPERHARNESS_RELAY_DEST           — relay destination name (default: telegram)
 
-Usage:
-    from superharness.engine.relay_client import send_notification, load_credentials
-    creds = load_credentials()
-    ok = send_notification("task t-abc done", **creds)
+    SUPERHARNESS_TELEGRAM_BOT_TOKEN   — direct Telegram bot token
+    SUPERHARNESS_TELEGRAM_CHAT_ID     — chat / user id to receive notifications
+
+Public API:
+    relay_is_configured() / send_via_relay(text)
+    telegram_is_configured() / send_via_telegram_direct(text)
+    send_notification(text)           — tries relay first, then direct bot
 """
 from __future__ import annotations
 
@@ -43,76 +45,100 @@ def credentials_path() -> Path:
     return _CREDENTIALS_PATH
 
 
-def load_credentials() -> dict[str, str]:
-    """Load relay credentials from the machine-level credentials file.
-
-    Returns a dict with keys: relay_token, relay_ssh_host, relay_dest.
-    Falls back to environment variables if the file is absent.
-    """
-    creds: dict[str, str] = {
-        "relay_token": os.environ.get("SUPERHARNESS_RELAY_TOKEN", ""),
-        "relay_ssh_host": os.environ.get("SUPERHARNESS_RELAY_SSH_HOST", ""),
-        "relay_dest": os.environ.get("SUPERHARNESS_RELAY_DEST", "telegram"),
-    }
-
-    path = credentials_path()
+def _read_env_file(path: Path) -> dict[str, str]:
+    """Parse KEY=VALUE lines from *path* (ignores comments / blanks / malformed)."""
+    out: dict[str, str] = {}
     if not path.exists():
-        return creds
-
+        return out
     try:
         for line in path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
                 continue
-            key, _, value = line.partition("=")
-            key = key.strip()
-            value = value.strip().strip('"').strip("'")
-            if key == "SUPERHARNESS_RELAY_TOKEN":
-                creds["relay_token"] = value
-            elif key == "SUPERHARNESS_RELAY_SSH_HOST":
-                creds["relay_ssh_host"] = value
-            elif key == "SUPERHARNESS_RELAY_DEST":
-                creds["relay_dest"] = value
+            key, _, value = stripped.partition("=")
+            out[key.strip()] = value.strip().strip('"').strip("'")
     except OSError:
         logger.warning("relay_client: could not read credentials file %s", path)
+    return out
 
-    return creds
 
-
-def save_credentials(relay_ssh_host: str, relay_token: str, relay_dest: str = "telegram") -> None:
-    """Write relay credentials to the machine-level credentials file (mode 0600).
-
-    Merges with any existing entries — other keys are preserved.
-    """
-    path = credentials_path()
+def _write_env_file_merge(path: Path, updates: dict[str, str]) -> None:
+    """Merge *updates* into *path* (preserves unrelated keys + comments). Mode 0600."""
     path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Read existing lines, strip keys we are about to rewrite
-    existing: list[str] = []
-    managed_keys = {"SUPERHARNESS_RELAY_TOKEN", "SUPERHARNESS_RELAY_SSH_HOST", "SUPERHARNESS_RELAY_DEST"}
+    preserved: list[str] = []
+    managed = set(updates.keys())
     if path.exists():
         for line in path.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
             if not stripped or stripped.startswith("#"):
-                existing.append(line)
+                preserved.append(line)
                 continue
             key = stripped.split("=", 1)[0].strip()
-            if key not in managed_keys:
-                existing.append(line)
-
-    lines = existing + [
-        f"SUPERHARNESS_RELAY_SSH_HOST={relay_ssh_host}",
-        f"SUPERHARNESS_RELAY_TOKEN={relay_token}",
-        f"SUPERHARNESS_RELAY_DEST={relay_dest}",
-    ]
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            if key not in managed:
+                preserved.append(line)
+    appended = [f"{k}={v}" for k, v in updates.items()]
+    path.write_text("\n".join(preserved + appended) + "\n", encoding="utf-8")
     path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600
 
 
+# ----- Relay backend -------------------------------------------------------
+
+def load_credentials() -> dict[str, str]:
+    """Load relay credentials (file + env-var fallback)."""
+    env = _read_env_file(credentials_path())
+    return {
+        "relay_token": env.get("SUPERHARNESS_RELAY_TOKEN",
+                               os.environ.get("SUPERHARNESS_RELAY_TOKEN", "")),
+        "relay_ssh_host": env.get("SUPERHARNESS_RELAY_SSH_HOST",
+                                  os.environ.get("SUPERHARNESS_RELAY_SSH_HOST", "")),
+        "relay_dest": env.get("SUPERHARNESS_RELAY_DEST",
+                              os.environ.get("SUPERHARNESS_RELAY_DEST", "telegram")),
+    }
+
+
+def save_credentials(relay_ssh_host: str, relay_token: str, relay_dest: str = "telegram") -> None:
+    """Persist relay credentials (mode 0600). Merges with existing file content."""
+    _write_env_file_merge(credentials_path(), {
+        "SUPERHARNESS_RELAY_SSH_HOST": relay_ssh_host,
+        "SUPERHARNESS_RELAY_TOKEN": relay_token,
+        "SUPERHARNESS_RELAY_DEST": relay_dest,
+    })
+
+
 def is_configured() -> bool:
-    """Return True iff relay credentials are available (file or env vars)."""
-    creds = load_credentials()
-    return bool(creds["relay_token"] and creds["relay_ssh_host"])
+    """Return True iff relay backend has both SSH host and token."""
+    c = load_credentials()
+    return bool(c["relay_token"] and c["relay_ssh_host"])
+
+
+relay_is_configured = is_configured  # alias for the dual-backend API
+
+
+# ----- Direct Telegram bot backend -----------------------------------------
+
+def load_telegram_credentials() -> dict[str, str]:
+    """Load direct-bot credentials (file + env-var fallback)."""
+    env = _read_env_file(credentials_path())
+    return {
+        "bot_token": env.get("SUPERHARNESS_TELEGRAM_BOT_TOKEN",
+                             os.environ.get("SUPERHARNESS_TELEGRAM_BOT_TOKEN", "")),
+        "chat_id":   env.get("SUPERHARNESS_TELEGRAM_CHAT_ID",
+                             os.environ.get("SUPERHARNESS_TELEGRAM_CHAT_ID", "")),
+    }
+
+
+def save_telegram_credentials(bot_token: str, chat_id: str) -> None:
+    """Persist direct-bot credentials (mode 0600)."""
+    _write_env_file_merge(credentials_path(), {
+        "SUPERHARNESS_TELEGRAM_BOT_TOKEN": bot_token,
+        "SUPERHARNESS_TELEGRAM_CHAT_ID": chat_id,
+    })
+
+
+def telegram_is_configured() -> bool:
+    """Return True iff direct-bot backend has both bot token and chat id."""
+    c = load_telegram_credentials()
+    return bool(c["bot_token"] and c["chat_id"])
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +153,7 @@ def send_notification(
     relay_dest: str = "telegram",
     timeout: int = 15,
 ) -> bool:
-    """Send *text* to *relay_dest* via the claw-relay outbound endpoint.
+    """Send *text* to *relay_dest* via the relay's outbound endpoint.
 
     Executes: ssh <relay_ssh_host> curl -sf POST http://localhost:7077/outbound/<dest>
     Payload is piped via stdin to avoid any shell quoting issues.
@@ -180,7 +206,7 @@ def send_notification(
 
 
 def send_notification_from_config(text: str) -> bool:
-    """Convenience wrapper: loads credentials automatically then sends."""
+    """Convenience wrapper: loads credentials automatically then sends via relay."""
     creds = load_credentials()
     return send_notification(
         text,
@@ -188,6 +214,74 @@ def send_notification_from_config(text: str) -> bool:
         relay_ssh_host=creds["relay_ssh_host"],
         relay_dest=creds["relay_dest"],
     )
+
+
+# ---------------------------------------------------------------------------
+# Direct Telegram bot — fallback when no relay is configured
+# ---------------------------------------------------------------------------
+
+def send_via_telegram_direct(
+    text: str,
+    *,
+    bot_token: str = "",
+    chat_id: str = "",
+    timeout: int = 10,
+) -> bool:
+    """Send *text* via the Telegram Bot API directly (no relay).
+
+    Used only when the relay backend is not configured. The bot token must
+    live in ~/.config/superharness/credentials.env (machine-level, 0600).
+    """
+    if not bot_token or not chat_id:
+        return False
+    try:
+        import urllib.parse
+        import urllib.request
+    except ImportError:
+        return False
+
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    data = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=data, method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return 200 <= resp.status < 300
+    except Exception as exc:  # noqa: BLE001 — network failure is opaque, log and move on
+        logger.warning("telegram direct: send failed: %s", exc)
+        return False
+
+
+def send_via_telegram_direct_from_config(text: str) -> bool:
+    """Convenience wrapper: loads direct-bot credentials and sends."""
+    c = load_telegram_credentials()
+    return send_via_telegram_direct(text, bot_token=c["bot_token"], chat_id=c["chat_id"])
+
+
+# ---------------------------------------------------------------------------
+# Unified dispatch — prefer relay, fall back to direct bot
+# ---------------------------------------------------------------------------
+
+def dispatch_notification(text: str) -> tuple[bool, str]:
+    """Try every configured backend in priority order, falling through on failure.
+
+    Operator alerts are higher value than dedup — if the relay is configured
+    but the send fails (network down, relay container restarting), still try
+    the direct bot. The cost of a rare double-deliver is much lower than the
+    cost of a silently dropped alert.
+
+    Returns (sent, backend_name). backend_name is one of:
+      "relay"        — sent via SSH-exec to a remote relay
+      "telegram"     — sent via direct Telegram Bot API
+      ""             — nothing configured or all backends failed
+    """
+    if relay_is_configured() and send_notification_from_config(text):
+        return True, "relay"
+    if telegram_is_configured() and send_via_telegram_direct_from_config(text):
+        return True, "telegram"
+    return False, ""
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +295,7 @@ def read_inbox(
     peek: bool = False,
     timeout: int = 10,
 ) -> list[dict]:
-    """Read messages from the claw-relay inbox via SSH exec.
+    """Read messages from the relay's inbox via SSH exec.
 
     Returns a list of message dicts, or [] on error.
     """
