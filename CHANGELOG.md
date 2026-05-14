@@ -390,3 +390,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-14: feat(gateway): dual backend (relay + direct Telegram bot), both with machine-level credentials; security audit doc docs/gateway-security.md comparing posture to hermes-agent; inbound commands deferred to Phase 2 with five required hardening controls
 - 2026-05-14: chore(release): bump to v1.58.4 — squash merge of feat/gateway-dual-backend (PR #244)
 - 2026-05-14: feat(gateway): add ntfy.sh as third direct backend (relay → telegram → ntfy priority order); Phase 3 roadmap in docs/gateway-security.md
+- 2026-05-14: chore(release): bump to v1.58.5 — squash merge of feat/gateway-ntfy-backend (PR #246)
