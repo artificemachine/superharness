@@ -11,8 +11,6 @@ import os
 import sys
 from datetime import datetime, timezone
 
-from superharness.engine.contract_io import write_contract as _write_contract, read_contract as _read_contract
-
 
 _JSON_MODE = False
 _JSON_CTX: dict = {}
@@ -27,21 +25,20 @@ def _abort(msg: str, code: int = 1) -> None:
 
 
 
-
 _CLOSE_ALLOWED_STATUSES = {"report_ready", "review_passed"}
 
 
-def _cancel_open_subtasks(
-    task: dict,
+def _cancel_open_subtasks_in_extras(
+    extras: dict,
+    task_id: str,
     actor: str,
     reason: str,
     now: str,
     ledger_file: str,
 ) -> None:
-    """Cancel every open subtask in-place and write ledger entries."""
+    """Cancel every open subtask in extras dict in-place and write ledger entries."""
     from superharness.engine.subtask import is_subtask_resolved
-    task_id = str(task.get("id", ""))
-    for sub in (task.get("subtasks") or []):
+    for sub in (extras.get("subtasks") or []):
         if not isinstance(sub, dict):
             continue
         if is_subtask_resolved(str(sub.get("status", "pending"))):
@@ -60,7 +57,7 @@ def _cancel_open_subtasks(
 
 
 def close_task(
-    contract_file: str,
+    project_dir: str,
     task_id: str,
     actor: str,
     summary: str,
@@ -70,25 +67,29 @@ def close_task(
     cancel_remaining: bool = False,
     cancel_reason: str = "",
 ) -> int:
-    doc, _ = _read_contract(contract_file)
-    tasks = doc.get("tasks")
-    if not isinstance(tasks, list):
-        _abort("contract tasks must be a sequence")
+    import json
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import tasks_dao
 
-    task = next(
-        (t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == task_id),
-        None,
-    )
-    if task is None:
-        _abort(f"task '{task_id}' not found")
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        task_row = tasks_dao.get(conn, task_id)
+    finally:
+        conn.close()
 
-    owner = str(task.get("owner", ""))
+    if task_row is None:
+        print(f"task '{task_id}' not found", file=sys.stderr)
+        return 1
+
+    owner = str(task_row.owner or "")
     if owner and actor != owner and actor != "owner":
-        _abort(f"forbidden: actor '{actor}' cannot close task '{task_id}' owned by '{owner}'")
+        print(f"forbidden: actor '{actor}' cannot close task '{task_id}' owned by '{owner}'", file=sys.stderr)
+        return 1
 
     # Status lifecycle gate (bypass with --force for emergencies)
     if not force:
-        current_status = str(task.get("status", ""))
+        current_status = str(task_row.status or "")
         if current_status not in _CLOSE_ALLOWED_STATUSES:
             print(
                 f"Cannot close task '{task_id}': status is '{current_status}', "
@@ -99,14 +100,15 @@ def close_task(
             return 1
 
     # Subtask resolution gate
+    extras = json.loads(task_row.extras_json or "{}")
     if not force:
         try:
             from superharness.engine.subtask_gate import (
                 evaluate_subtask_gate_from_disk,
                 format_gate_error,
             )
-            project_dir = os.path.dirname(os.path.dirname(os.path.abspath(contract_file)))
-            gate = evaluate_subtask_gate_from_disk(task, project_dir)
+            task_dict = {"id": task_id, "subtasks": extras.get("subtasks")}
+            gate = evaluate_subtask_gate_from_disk(task_dict, project_dir)
             if gate.enabled and gate.blocking:
                 if cancel_remaining:
                     if not cancel_reason:
@@ -123,7 +125,7 @@ def close_task(
             pass
 
     # Verification gate
-    if not skip_verify and not task.get("verified"):
+    if not skip_verify and not task_row.verified:
         print(
             f"Cannot close task '{task_id}': not verified.\n"
             f"Run: superharness verify --id {task_id} --method '<how you verified>' --result pass",
@@ -132,18 +134,18 @@ def close_task(
         return 1
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ledger_file = os.path.join(project_dir, ".superharness", "ledger.md")
 
     # Bulk-cancel open subtasks when --cancel-remaining was requested
-    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(contract_file)))
-    ledger_file = os.path.join(project_dir, ".superharness", "ledger.md")
     if cancel_remaining and cancel_reason:
-        _cancel_open_subtasks(task, actor, cancel_reason, now, ledger_file)
+        _cancel_open_subtasks_in_extras(extras, task_id, actor, cancel_reason, now, ledger_file)
 
     # Log force-bypass to ledger when used
     if force:
         try:
             from superharness.engine.subtask_gate import evaluate_subtask_gate_from_disk
-            gate = evaluate_subtask_gate_from_disk(task, project_dir)
+            task_dict = {"id": task_id, "subtasks": extras.get("subtasks")}
+            gate = evaluate_subtask_gate_from_disk(task_dict, project_dir)
             if gate.enabled and gate.blocking:
                 sub_ids = ", ".join(str(s.get("id", "?")) for s in gate.blocking)
                 force_line = (
@@ -158,11 +160,24 @@ def close_task(
         except ImportError:
             pass
 
-    task["status"] = "done"
+    # Persist status=done + summary + updated extras
+    changes: dict = {
+        "status": "done",
+        "done_at": now,
+        "updated_at": now,
+    }
     if summary:
-        task["summary"] = summary
+        changes["context"] = (task_row.context or "") + (f"\nSummary: {summary}" if task_row.context else f"Summary: {summary}")
+    if cancel_remaining and cancel_reason:
+        changes["extras_json"] = json.dumps(extras)
 
-    _write_contract(contract_file, doc)
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        tasks_dao.update(conn, task_id, task_row.version, changes)
+        conn.commit()
+    finally:
+        conn.close()
 
     # Append ledger entry
     ledger_line = f"- {now} — {actor} — CLOSE: {task_id} — {summary}\n"
@@ -175,7 +190,6 @@ def close_task(
     # Write handoff YAML
     handoff_dir = os.path.join(project_dir, ".superharness", "handoffs")
     os.makedirs(handoff_dir, exist_ok=True)
-    handoff_file = os.path.join(handoff_dir, f"{task_id}-to-owner.yaml")
     handoff_data = {
         "task": task_id,
         "from": actor,
@@ -210,7 +224,7 @@ def close_task(
     # Vault integration
     try:
         from superharness.commands.task import _vault_write_task_done
-        _vault_write_task_done(contract_file, task_id, task, summary)
+        _vault_write_task_done(project_dir, task_id, {"id": task_id, "status": "done", "summary": summary}, summary)
     except Exception:
         pass
 
@@ -286,7 +300,6 @@ def main(argv: list[str] | None = None) -> None:
     opts = parser.parse_args(argv)
 
     project_dir = os.path.realpath(opts.project or os.getcwd())
-    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
 
     global _JSON_MODE, _JSON_CTX
     if opts.json:
@@ -305,7 +318,7 @@ def main(argv: list[str] | None = None) -> None:
         sys.stderr = _err_buf
         try:
             rc = close_task(
-                contract_file, opts.task_id, opts.actor, opts.summary,
+                project_dir, opts.task_id, opts.actor, opts.summary,
                 skip_verify=opts.skip_verify,
                 context=opts.context,
                 force=opts.force,
@@ -326,7 +339,7 @@ def main(argv: list[str] | None = None) -> None:
         emit_json(payload, ok=(rc == 0), exit_code=rc)
 
     rc = close_task(
-        contract_file, opts.task_id, opts.actor, opts.summary,
+        project_dir, opts.task_id, opts.actor, opts.summary,
         skip_verify=opts.skip_verify,
         context=opts.context,
         force=opts.force,

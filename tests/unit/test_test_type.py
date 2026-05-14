@@ -255,6 +255,7 @@ def test_hygiene_warns_done_task_with_test_types(tmp_path: Path) -> None:
     (harness / "handoffs" / "h.yaml").write_text("task: done-task\nto: claude-code\n")
     (harness / "decisions.yaml").write_text("decisions: []\n")
     (harness / "failures.yaml").write_text("failures: []\n")
+    seed_sqlite_from_yaml(project)
 
     r = subprocess.run(
         [PYTHON, "-m", "superharness.engine.validate", "--project", str(project)],

@@ -307,56 +307,44 @@ def _contract_cmd(args: list[str]) -> subprocess.CompletedProcess:
 # Task effort → timeout calculation
 # ---------------------------------------------------------------------------
 
-def _get_task_effort_timeout(contract_file: str, task_id: str) -> int:
+def _get_task_effort_timeout(project_dir: str, task_id: str) -> int:
     """Calculate launcher timeout based on task effort estimate.
 
-    Returns timeout in seconds. Precedence:
+    Reads from SQLite (state.db). Returns timeout in seconds. Precedence:
     1. estimated_minutes field (if present)
     2. effort field mapped to standard timeouts (low=15min, medium=30min, high=60min)
     3. 0 (no timeout) if neither is set
-
-    Args:
-        contract_file: Path to contract.yaml
-        task_id: Task ID to look up
-
-    Returns:
-        Timeout in seconds, or 0 if no estimate available
     """
     try:
-        import yaml
-        with open(contract_file) as f:
-            doc = yaml.safe_load(f) or {}
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import tasks_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            task = tasks_dao.get(conn, task_id)
+        finally:
+            conn.close()
     except Exception:
         return 0
 
-    tasks = doc.get("tasks") or []
-    for t in tasks:
-        if not isinstance(t, dict):
-            continue
-        if str(t.get("id", "")) != task_id:
-            continue
-
-        # Priority 1: explicit estimated_minutes
-        estimated_minutes = t.get("estimated_minutes")
-        if estimated_minutes is not None:
-            try:
-                return int(estimated_minutes) * 60
-            except (ValueError, TypeError):
-                pass
-
-        # Priority 2: effort mapping
-        effort = t.get("effort")
-        if effort == "low":
-            return TIMEOUT_LOW_EFFORT
-        elif effort == "medium":
-            return TIMEOUT_MEDIUM_EFFORT
-        elif effort == "high":
-            return TIMEOUT_HIGH_EFFORT
-
-        # No estimate found
+    if task is None:
         return 0
 
-    # Task not found
+    # Priority 1: explicit estimated_minutes
+    if task.estimated_minutes is not None:
+        try:
+            return int(task.estimated_minutes) * 60
+        except (ValueError, TypeError):
+            pass
+
+    # Priority 2: effort mapping
+    if task.effort == "low":
+        return TIMEOUT_LOW_EFFORT
+    elif task.effort == "medium":
+        return TIMEOUT_MEDIUM_EFFORT
+    elif task.effort == "high":
+        return TIMEOUT_HIGH_EFFORT
+
     return 0
 
 
@@ -1264,8 +1252,8 @@ def _resolve_execution_context(ctx: DispatchContext) -> int | None:
 
     # Auto-calculate timeout from task effort if not explicitly set
     ctx.effective_timeout = ctx.launcher_timeout
-    if ctx.launcher_timeout == 0 and os.path.exists(ctx.contract_file):
-        ctx.effective_timeout = _get_task_effort_timeout(ctx.contract_file, ctx.item_task)
+    if ctx.launcher_timeout == 0:
+        ctx.effective_timeout = _get_task_effort_timeout(ctx.project_dir, ctx.item_task)
 
     # Worktree isolation: if dirty, dispatch in a temporary worktree.
     ctx.is_discussion = "/round-" in ctx.item_task or ctx.item_task.startswith("discuss-")

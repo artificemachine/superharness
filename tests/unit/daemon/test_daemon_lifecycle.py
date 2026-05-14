@@ -26,17 +26,32 @@ def _shux_path():
     return sys.executable
 
 
+def _script_is_runnable(path: str) -> bool:
+    """Return True only if path exists and its shebang interpreter also exists."""
+    if not os.path.isfile(path):
+        return False
+    try:
+        with open(path, "rb") as f:
+            first = f.readline()
+        if first.startswith(b"#!"):
+            interp = first[2:].strip().split()[0].decode()
+            if not os.path.isfile(interp):
+                return False
+    except Exception:
+        pass
+    return True
+
+
 def _find_shux_bin() -> str:
     """Find the shux binary from the dev venv."""
-    import os
     # Try dev venv first
     dev_shux = os.path.join(os.path.dirname(__file__), "..", "..", "..", ".venv", "bin", "shux")
     dev_shux = os.path.abspath(dev_shux)
-    if os.path.isfile(dev_shux):
+    if _script_is_runnable(dev_shux):
         return dev_shux
-    # Fall back to pipx
+    # Fall back to pipx (verify interpreter is intact before trusting it)
     venv_shux = os.path.expanduser("~/.local/pipx/venvs/superharness/bin/shux")
-    if os.path.isfile(venv_shux):
+    if _script_is_runnable(venv_shux):
         return venv_shux
     import shutil
     shux_bin = shutil.which("shux")

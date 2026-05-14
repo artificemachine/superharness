@@ -281,6 +281,102 @@ def _validate_contract(
         )
 
 
+def _validate_contract_sqlite(
+    project_dir: str,
+    task_id: str,
+    target: str,
+    *,
+    plan_only: bool = False,
+    force_reassign: bool = False,
+) -> None:
+    """Validate task project_path and owner from SQLite (no contract.yaml read).
+
+    Mirrors _validate_contract but reads exclusively from state.db.
+    Missing tasks are silently allowed (task may not exist yet in SQLite).
+    """
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import tasks_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            task = tasks_dao.get(conn, task_id)
+        finally:
+            conn.close()
+    except Exception:
+        return
+
+    if task is None:
+        return
+
+    # project_path check
+    task_path = str(task.project_path or "")
+    if not task_path:
+        _abort(
+            f"Task '{task_id}' is missing project_path in state.sqlite3\n"
+            f"  expected: {project_dir}\n"
+            f"  hint: run 'shux task set {task_id} project_path {project_dir}'"
+        )
+    canonical = os.path.realpath(task_path)
+    if canonical != project_dir:
+        _abort(
+            f"Task '{task_id}' project_path mismatch.\n"
+            f"  db: {canonical}\n"
+            f"  expected: {project_dir}"
+        )
+
+    # Owner check
+    owner = str(task.owner or "").strip()
+    if owner and owner != target:
+        if not force_reassign:
+            _abort(
+                f"blocked: task '{task_id}' is owned by '{owner}', not '{target}'.\n"
+                f"  To dispatch to a different agent, pass --force-reassign."
+            )
+
+    # Status gate — done tasks are never re-enqueueable
+    status = str(task.status or "")
+    if status == "done":
+        _abort(
+            f"blocked: task '{task_id}' status is 'done' — cannot enqueue.\n"
+            f"  done: task is already closed."
+        )
+
+    # plan_proposed is always blocked (plan needs approval first)
+    if status == "plan_proposed":
+        _abort(
+            f"blocked: task '{task_id}' status is 'plan_proposed' — cannot enqueue.\n"
+            f"  plan_proposed: approve the plan first (shux task status --status plan_approved)."
+        )
+
+    # Workflow-aware gate for non-trivial statuses
+    if status and status not in ("failed", "stopped"):
+        from superharness.engine.next_action import (
+            allowed_statuses_for_workflow,
+            plan_only_allowed_statuses,
+            infer_workflow,
+        )
+        workflow = infer_workflow(task_id, {"workflow": task.workflow} if task.workflow else {})
+        if plan_only:
+            allowed = plan_only_allowed_statuses(workflow)
+        else:
+            allowed = allowed_statuses_for_workflow(workflow, for_review=True)
+        passthrough = {"failed", "stopped"}
+        if status not in allowed and status not in passthrough and status != "done":
+            hint = ""
+            if workflow == "implementation" and status == "todo":
+                hint = (
+                    f"\n  hint: use --plan-only to enqueue for planning instead of implementation."
+                )
+            elif status == "plan_proposed":
+                hint = f"\n  plan_proposed: approve the plan first."
+            _abort(
+                f"blocked: task '{task_id}' has status '{status}' which is not dispatchable "
+                f"for workflow '{workflow}'."
+                f"{hint}"
+            )
+
+
 def _check_watcher_health(project_dir: str) -> bool:
     """Check if the watcher launchd job is loaded for this project."""
     if platform.system() != "Darwin":
@@ -338,16 +434,14 @@ def enqueue_cmd(
 
     _validate_token("inbox id", item_id)
 
-    # Validate against contract if it exists
-    if os.path.exists(contract_file):
-        _validate_contract(
-            contract_file,
-            task_id,
-            project_dir,
-            target,
-            plan_only=plan_only,
-            force_reassign=force_reassign,
-        )
+    # Validate against SQLite (primary source of truth)
+    _validate_contract_sqlite(
+        project_dir,
+        task_id,
+        target,
+        plan_only=plan_only,
+        force_reassign=force_reassign,
+    )
 
     # Watcher health check
     if not _check_watcher_health(project_dir):

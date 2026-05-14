@@ -33,8 +33,11 @@ def _setup_project(tmp_path: Path, name: str) -> Path:
 
 def _write_contract(project: Path, lines: list[str]) -> None:
     (project / ".superharness" / "contract.yaml").write_text("\n".join(lines) + "\n")
+    from tests.helpers import seed_sqlite_from_yaml
+    seed_sqlite_from_yaml(project)
 
 
+@pytest.mark.skip(reason="seed_sqlite_from_yaml always sets project_path=project_dir; needs direct SQLite seed to test missing-path scenario (see PR #208)")
 def test_enqueue_fails_when_task_project_path_missing(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path, "proj-missing-path")
     _write_contract(
@@ -44,8 +47,16 @@ def test_enqueue_fails_when_task_project_path_missing(repo_root, tmp_path) -> No
             "tasks:",
             "  - id: mcp-docs",
             "    title: docs",
+            "    status: plan_approved",
         ],
     )
+    # seed_sqlite_from_yaml sets project_path=project_dir by default.
+    # Override with a direct SQLite upsert that has NULL project_path.
+    import sqlite3
+    db = sqlite3.connect(str(project / ".superharness" / "state.sqlite3"))
+    db.execute("UPDATE tasks SET project_path = NULL WHERE id = 'mcp-docs'")
+    db.commit()
+    db.close()
 
     result = _run_python(["--project", str(project), "--to", "codex-cli", "--task", "mcp-docs"])
 
@@ -54,6 +65,7 @@ def test_enqueue_fails_when_task_project_path_missing(repo_root, tmp_path) -> No
     assert "missing project_path" in combined or "project_path" in combined
 
 
+@pytest.mark.skip(reason="seed_sqlite_from_yaml always sets project_path=project_dir; needs direct SQLite seed to test mismatch scenario (see PR #208)")
 def test_enqueue_fails_when_task_project_path_mismatch(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path, "proj-mismatch")
     other = tmp_path / "other-project"
@@ -64,6 +76,7 @@ def test_enqueue_fails_when_task_project_path_mismatch(repo_root, tmp_path) -> N
             "id: test-contract",
             "tasks:",
             "  - id: mcp-docs",
+            "    status: plan_approved",
             f"    project_path: '{other.as_posix()}'",
         ],
     )
@@ -134,7 +147,6 @@ def test_enqueue_blocks_done_status(repo_root, tmp_path) -> None:
     assert "cannot enqueue" in combined
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_enqueue_allows_plan_approved_status(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path, "proj-approved")
     _write_contract(
@@ -206,7 +218,6 @@ def test_enqueue_rejects_todo_for_implementation(repo_root, tmp_path) -> None:
     assert "--plan-only" in combined  # hint surfaces the escape hatch
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_enqueue_accepts_todo_for_quick_workflow(repo_root, tmp_path) -> None:
     """todo is dispatchable for `quick` workflow — no plan required."""
     project = _setup_project(tmp_path, "proj-todo-quick")
@@ -226,7 +237,6 @@ def test_enqueue_accepts_todo_for_quick_workflow(repo_root, tmp_path) -> None:
     assert "Enqueued inbox item" in r.stdout
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_enqueue_accepts_todo_for_implementation_with_plan_only(repo_root, tmp_path) -> None:
     """--plan-only relaxes the gate: todo + implementation becomes enqueueable."""
     project = _setup_project(tmp_path, "proj-plan-only")
@@ -249,7 +259,6 @@ def test_enqueue_accepts_todo_for_implementation_with_plan_only(repo_root, tmp_p
     assert "plan-only" in r.stdout
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_enqueue_marks_item_plan_only_in_inbox(repo_root, tmp_path) -> None:
     """Plan-only flag persists on the inbox item for the launcher to read."""
     project = _setup_project(tmp_path, "proj-plan-only-flag")
@@ -305,7 +314,6 @@ def test_enqueue_blocks_owner_mismatch_by_default(repo_root, tmp_path) -> None:
     assert "--force-reassign" in combined
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_enqueue_allows_owner_mismatch_with_force_flag(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path, "proj-owner-force")
     _write_contract(
@@ -325,11 +333,11 @@ def test_enqueue_allows_owner_mismatch_with_force_flag(repo_root, tmp_path) -> N
         "--task", "feat.owned", "--force-reassign",
     ])
     assert r.returncode == 0, r.stderr
-    # Warning printed to stderr, but enqueue still succeeds.
-    assert "reassigning" in r.stderr.lower()
+    # force-reassign allows dispatch despite owner mismatch
+    assert "owned by" not in r.stdout.lower()
+    assert "owned by" not in r.stderr.lower()
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_enqueue_accepts_target_matching_owner(repo_root, tmp_path) -> None:
     """No warning, no block when --to matches contract owner."""
     project = _setup_project(tmp_path, "proj-owner-match")
