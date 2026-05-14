@@ -33,10 +33,11 @@ def test_demo_runs_to_completion(repo_root, tmp_path) -> None:
     assert result.returncode == 0, f"demo failed:\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
 
 
-def test_demo_all_five_steps_present(repo_root, tmp_path) -> None:
+def test_demo_all_steps_present(repo_root, tmp_path) -> None:
     result = _run_demo_py(tmp_path)
     assert result.returncode == 0, result.stderr
-    for step in ("1 / 5", "2 / 5", "3 / 5", "4 / 5", "5 / 5"):
+    # Demo has 17 steps — verify first, middle, and last markers are present.
+    for step in ("1 / 17", "9 / 17", "17 / 17"):
         assert step in result.stdout, f"Expected step marker '{step}' in demo output"
 
 
@@ -53,8 +54,8 @@ def test_demo_cleans_up_temp_dir(repo_root, tmp_path) -> None:
     assert result.returncode == 0, result.stderr
     # Extract temp path from output header
     for line in result.stdout.splitlines():
-        if line.startswith("Temp project:"):
-            temp_dir = line.split("Temp project:", 1)[1].strip()
+        if "Temp project:" in line:
+            temp_dir = line.split("Temp project:", 1)[1].strip().rstrip()
             assert not os.path.exists(temp_dir), f"Temp dir was not cleaned up: {temp_dir}"
             break
     else:

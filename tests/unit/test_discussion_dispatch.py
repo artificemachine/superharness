@@ -345,7 +345,7 @@ def test_discuss_start_rejects_no_owners(repo_root, tmp_path) -> None:
 
 def test_discuss_start_exclude_owner(repo_root, tmp_path) -> None:
     """discuss start --exclude removes an owner from participants."""
-    project = _setup_project_with_contract(tmp_path, owners=["claude-code", "codex-cli", "gemini-cli"])
+    project = _setup_project_with_contract(tmp_path, owners=["claude-code", "codex-cli", "gemini-cli", "opencode"])
 
     result = _run_discuss_py(
         repo_root,

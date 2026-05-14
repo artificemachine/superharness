@@ -1,14 +1,12 @@
-name: Auto Release
+name: Release
 
-# Triggers when a version-bump commit lands on main (pyproject.toml changed).
-# Reads the version, creates a GitHub Release + tag, which in turn triggers publish.yml.
+# Fires only when a v* tag is pushed explicitly (via /ship-release or git push --tags).
+# Merging PRs to main never triggers a release.
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - pyproject.toml
+    tags:
+      - "v*"
 
 permissions:
   contents: write   # needed to create releases and tags
@@ -23,22 +21,20 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extract version from pyproject.toml
+      - name: Extract version from tag
         id: version
         run: |
-          VERSION=$(python3 -c "
-          import re, pathlib
-          text = pathlib.Path('pyproject.toml').read_text()
-          m = re.search(r'^version\s*=\s*[\"\']([\d.]+)[\"\']', text, re.MULTILINE)
-          print(m.group(1))
-          ")
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Check if tag already exists
+      - name: Check if release already exists
         id: tag_check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+          if gh release view "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"

@@ -2545,7 +2545,7 @@ def _run_scripts(
             from superharness.engine.adapter_registry import list_adapters
             targets = list_adapters()
         except Exception:
-            targets = ["claude-code", "codex-cli", "gemini-cli"]
+            targets = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
     else:
         targets = [target]
 
@@ -3369,7 +3369,7 @@ def _cancel_undispatchable_agents(project_dir: str) -> int:
         for script in _glob.glob(os.path.join(scripts_dir, "delegate-to-*.sh")):
             name = os.path.basename(script).replace("delegate-to-", "").replace(".sh", "")
             known_agents.add(name)
-        known_agents.update(["claude-code", "codex-cli", "gemini-cli"])
+        known_agents.update(["claude-code", "codex-cli", "gemini-cli", "opencode"])
 
     try:
         from superharness.engine.db import get_connection, init_db
@@ -3563,8 +3563,8 @@ def main(argv: list[str] | None = None) -> None:
         except (ValueError, TypeError):
             _abort(f"{name} must be a positive integer", 2)
 
-    if opts.target not in ("both", "claude-code", "codex-cli", "gemini-cli"):
-        _abort("--to must be one of: both, claude-code, codex-cli, gemini-cli", 2)
+    if opts.target not in ("both", "claude-code", "codex-cli", "gemini-cli", "opencode"):
+        _abort("--to must be one of: both, claude-code, codex-cli, gemini-cli, opencode", 2)
 
     if opts.recover_action not in ("stale", "retry"):
         _abort("--recover-action must be one of: stale, retry", 2)

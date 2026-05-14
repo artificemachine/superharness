@@ -24,7 +24,7 @@ _FALLBACK_MODEL = "claude-sonnet-4-6"
 
 _LLM_MODEL_MAP: dict[str, str] = {
     "sonnet-4-6": "claude-sonnet-4-6",
-    "opus-4-6":   "claude-opus-4-6",
+    "opus-4-6":   "claude-opus-4-7",  # alias — same cost as 4.7, route to latest
     "opus-4-7":   "claude-opus-4-7",
     "mini":       "claude-haiku-4-5-20251001",
     "standard":   "claude-sonnet-4-6",
@@ -36,8 +36,7 @@ You are a model router. Decide which model+effort handles this task best.
 
 Models:
 - sonnet-4-6: multi-file coding, refactoring, debugging, tests, features, API integration
-- opus-4-6:   5+ interdependent constraints, cross-domain judgment, subtle concurrency, security review
-- opus-4-7:   architecture design, irreversible decisions, novel system design, compliance
+- opus-4-7:   5+ interdependent constraints, cross-domain judgment, architecture, irreversible decisions, security review, compliance
 
 Effort: low | medium | high | xhigh | max
 (low=bounded; medium=typical; high=complex; xhigh=cross-system; max=highest-stakes)
@@ -74,8 +73,8 @@ def heuristic_classify(
     test_types_set = set(test_types or [])
     title_lower = title.lower()
 
-    # Retry escalation: previous opus-4-6 failure → opus-4-7 max
-    if retry_count > 0 and previous_model == "claude-opus-4-6":
+    # Retry escalation: any opus failure → promote to max
+    if retry_count > 0 and previous_model in ("claude-opus-4-6", "claude-opus-4-7"):
         return ("claude-opus-4-7", "max")
 
     # Hard max triggers
@@ -89,7 +88,7 @@ def heuristic_classify(
     # xhigh trigger: OPUS_KEYWORDS in title
     for keyword in OPUS_KEYWORDS:
         if keyword in title_lower:
-            return ("claude-opus-4-6", "xhigh")
+            return ("claude-opus-4-7", "xhigh")
 
     # Low demote: trivial-title prefixes with few AC
     if any(title_lower.startswith(p) for p in _LOW_TITLE_PREFIXES) and criteria_count <= 2:
