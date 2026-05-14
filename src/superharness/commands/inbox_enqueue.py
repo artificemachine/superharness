@@ -23,7 +23,7 @@ from superharness.engine.next_action import (
 )
 
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
-VALID_TARGETS = {"claude-code", "codex-cli", "gemini-cli"}
+VALID_TARGETS = {"claude-code", "codex-cli", "gemini-cli", "opencode"}
 
 
 _JSON_MODE = False
