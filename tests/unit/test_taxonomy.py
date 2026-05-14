@@ -21,7 +21,7 @@ def test_effort_to_tier_version_low():
 
 
 def test_effort_to_tier_version_xhigh():
-    assert EFFORT_TO_TIER_VERSION["xhigh"] == ("max", "4.6")
+    assert EFFORT_TO_TIER_VERSION["xhigh"] == ("max", "*")
 
 
 def test_effort_to_tier_version_max():
@@ -33,7 +33,7 @@ def test_default_model_low():
 
 
 def test_default_model_xhigh():
-    assert DEFAULT_MODEL_PER_EFFORT["xhigh"] == "claude-opus-4-6"
+    assert DEFAULT_MODEL_PER_EFFORT["xhigh"] == "claude-opus-4-7"
 
 
 def test_default_model_max():

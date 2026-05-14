@@ -387,7 +387,7 @@ class TestOpus47Adapter:
         assert entry["id"] == "claude-opus-4-7"
 
     def test_resolve_tier_version_max_pinned_4_6(self):
-        """resolve_tier_version('max', '4.6') returns claude-opus-4-6."""
+        """resolve_tier_version('max', '4.6') returns claude-opus-4-7 (alias — same cost)."""
         manifest = load_manifest("claude-code")
         entry = manifest.resolve_tier_version("max", "4.6")
-        assert entry["id"] == "claude-opus-4-6"
+        assert entry["id"] == "claude-opus-4-7"

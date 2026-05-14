@@ -25,7 +25,7 @@ MODEL_SHORTCUTS: dict[str, str] = {
     "sonnet":    "claude-sonnet-4-6",
     "haiku":     "claude-haiku-4-5-20251001",
     "opus":      "claude-opus-4-7",
-    "opus-4-6":  "claude-opus-4-6",
+    "opus-4-6":  "claude-opus-4-7",  # alias — same cost as 4.7, route to latest
     "opus-4-7":  "claude-opus-4-7",
 }
 
@@ -606,8 +606,40 @@ def cmd_dashboard_list():
 @main.command(name="dashboard", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def cmd_dashboard(args):
-    """Launch local browser dashboard."""
-    _run_dashboard(args)
+    """Launch local browser dashboard (runs setup wizard on first use)."""
+    args_list = list(args)
+
+    # --wizard / --no-wizard: explicit wizard control
+    force_wizard = "--wizard" in args_list
+    skip_wizard = "--no-wizard" in args_list
+    setup_section = None
+    for i, a in enumerate(args_list):
+        if a == "--setup" and i + 1 < len(args_list):
+            setup_section = args_list[i + 1]
+    # Strip wizard flags before forwarding to _run_dashboard
+    for flag in ("--wizard", "--no-wizard"):
+        while flag in args_list:
+            args_list.remove(flag)
+    if setup_section:
+        for flag in ("--setup", setup_section):
+            while flag in args_list:
+                args_list.remove(flag)
+
+    # Resolve project dir
+    proj = os.getcwd()
+    for i, a in enumerate(args_list):
+        if a in ("--project", "-p") and i + 1 < len(args_list):
+            proj = args_list[i + 1]
+            break
+
+    # Run wizard unless explicitly skipped or already running in background recheck
+    if not skip_wizard and "--help" not in args_list and "-h" not in args_list:
+        from superharness.commands.dashboard_wizard import run_wizard, _is_first_time
+        should_run = force_wizard or setup_section or _is_first_time(proj)
+        if should_run:
+            run_wizard(proj, section=setup_section, force=force_wizard)
+
+    _run_dashboard(tuple(args_list))
 
 
 @main.command(name="dashboard-ui", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
