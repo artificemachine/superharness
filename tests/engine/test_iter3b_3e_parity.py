@@ -34,6 +34,23 @@ def _sqlite_task_status(project: Path, task_id: str) -> str | None:
     return row[0] if row else None
 
 
+def _sqlite_task_extras(project: Path, task_id: str) -> dict:
+    """Return extras_json blob for a task as a dict (empty dict if absent)."""
+    import json as _j
+    db_path = project / ".superharness" / "state.sqlite3"
+    if not db_path.exists():
+        return {}
+    conn = sqlite3.connect(str(db_path))
+    row = conn.execute("SELECT extras_json FROM tasks WHERE id=?", (task_id,)).fetchone()
+    conn.close()
+    if not row or not row[0]:
+        return {}
+    try:
+        return _j.loads(row[0]) or {}
+    except Exception:
+        return {}
+
+
 def _sqlite_inbox_status(project: Path, item_id: str) -> str | None:
     db_path = project / ".superharness" / "state.sqlite3"
     if not db_path.exists():
@@ -104,31 +121,24 @@ def _seed_inbox_sqlite(project: Path, item_id: str, task_id: str, status: str, *
 # ---------------------------------------------------------------------------
 
 def test_lifecycle_contract_timeout_syncs_sqlite(clean_harness: Path) -> None:
-    """reconcile_lifecycle: in_progress task → archived in both YAML and SQLite."""
-    _init_sqlite(clean_harness)
-    _seed_task_sqlite(clean_harness, "feat.stale", "in_progress")
-
+    """reconcile_lifecycle: in_progress task → archived in SQLite (YAML is export-only)."""
+    from tests.helpers import seed_sqlite_from_yaml
     contract = clean_harness / ".superharness" / "contract.yaml"
     contract.write_text(yaml.dump({"tasks": [{
-        "id": "feat.stale",
-        "status": "in_progress",
-        "updated_at": "2026-01-01T00:00:00Z",
-        "owner": "claude-code",
+        "id": "feat.stale", "status": "in_progress",
+        "updated_at": "2026-01-01T00:00:00Z", "owner": "claude-code",
     }]}))
+    seed_sqlite_from_yaml(clean_harness)
 
     from superharness.engine.lifecycle_rules import reconcile_lifecycle
     reconcile_lifecycle(str(clean_harness))
 
-    yaml_tasks = (yaml.safe_load(contract.read_text()) or {}).get("tasks", [])
-    assert next(t for t in yaml_tasks if t["id"] == "feat.stale")["status"] == "archived"
     assert _sqlite_task_status(clean_harness, "feat.stale") == "archived"
 
 
 def test_review_escalation_syncs_sqlite(clean_harness: Path) -> None:
-    """escalate_stale_reviews: chain advances → SQLite task not orphaned/stale."""
-    _init_sqlite(clean_harness)
-    _seed_task_sqlite(clean_harness, "feat.review", "review_requested")
-
+    """escalate_stale_reviews: chain advances → review_chain_index updated in SQLite."""
+    from tests.helpers import seed_sqlite_from_yaml
     contract = clean_harness / ".superharness" / "contract.yaml"
     contract.write_text(yaml.dump({"tasks": [{
         "id": "feat.review",
@@ -138,15 +148,14 @@ def test_review_escalation_syncs_sqlite(clean_harness: Path) -> None:
         "review_chain_index": 0,
         "owner": "claude-code",
     }]}))
+    seed_sqlite_from_yaml(clean_harness)
 
     from superharness.engine.review_escalation import escalate_stale_reviews
     escalate_stale_reviews(str(clean_harness), timeout_minutes=1)
 
-    yaml_tasks = (yaml.safe_load(contract.read_text()) or {}).get("tasks", [])
-    yaml_task = next(t for t in yaml_tasks if t["id"] == "feat.review")
-    assert yaml_task["review_chain_index"] == 1
-
-    # SQLite row must still exist with a consistent status
+    # YAML is export-only — assert against SQLite extras_json
+    extras = _sqlite_task_extras(clean_harness, "feat.review")
+    assert extras.get("review_chain_index") == 1
     assert _sqlite_task_status(clean_harness, "feat.review") is not None
 
 
@@ -155,25 +164,13 @@ def test_review_escalation_syncs_sqlite(clean_harness: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_lifecycle_inbox_timeout_syncs_sqlite(clean_harness: Path) -> None:
-    """reconcile_lifecycle: paused inbox item → failed in both YAML and SQLite."""
+    """reconcile_lifecycle: paused inbox item → failed in SQLite (YAML is export-only)."""
     _init_sqlite(clean_harness)
     _seed_inbox_sqlite(clean_harness, "item-paused", "feat.foo", "paused")
-
-    inbox = clean_harness / ".superharness" / "inbox.yaml"
-    inbox.write_text(yaml.dump([{
-        "id": "item-paused",
-        "task": "feat.foo",
-        "to": "claude-code",
-        "status": "paused",
-        "paused_at": "2026-01-01T00:00:00Z",
-        "created_at": "2026-01-01T00:00:00Z",
-    }]))
 
     from superharness.engine.lifecycle_rules import reconcile_lifecycle
     reconcile_lifecycle(str(clean_harness))
 
-    yaml_items = yaml.safe_load(inbox.read_text()) or []
-    assert next(i for i in yaml_items if i["id"] == "item-paused")["status"] == "failed"
     assert _sqlite_inbox_status(clean_harness, "item-paused") == "failed"
 
 

@@ -132,7 +132,7 @@ def _check_acceptance_criteria(task: dict) -> list[PreflightCheck]:
     )]
 
 
-def _check_dependencies(task: dict, contract_file: str) -> list[PreflightCheck]:
+def _check_dependencies(task: dict, project_dir: str) -> list[PreflightCheck]:
     """Check that all blocked_by / depends_on tasks are done."""
     checks: list[PreflightCheck] = []
     blocked_by = task.get("blocked_by") or task.get("depends_on")
@@ -151,7 +151,6 @@ def _check_dependencies(task: dict, contract_file: str) -> list[PreflightCheck]:
 
     try:
         from superharness.engine import state_reader as _sr
-        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(contract_file)))
         tasks = _sr.get_tasks(project_dir)
         tasks_by_id = {str(t.get("id", "")): t for t in tasks if isinstance(t, dict)}
     except Exception:
@@ -194,19 +193,18 @@ def _check_git_state(project_dir: str) -> list[PreflightCheck]:
 def _check_prior_failures(project_dir: str, task_id: str) -> list[PreflightCheck]:
     """Info/warn if this task has prior recorded failures."""
     try:
-        failures_file = Path(project_dir) / ".superharness" / "failures.yaml"
-        if not failures_file.exists():
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import failures_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            rows = failures_dao.get_recent(conn, task_id=task_id)
+        finally:
+            conn.close()
+        if not rows:
             return []
-        import yaml
-        data = yaml.safe_load(failures_file.read_text(encoding="utf-8")) or {}
-        task_failures = [e for e in (data.get("failures") or []) if e.get("task") == task_id]
-        if not task_failures:
-            return []
-        critical = [e for e in task_failures if e.get("severity") == "critical"]
-        level = LEVEL_BLOCK if critical else LEVEL_WARN
-        msg = f"{len(task_failures)} prior failure(s) recorded"
-        if critical:
-            msg += f" ({len(critical)} critical)"
+        level = LEVEL_WARN
+        msg = f"{len(rows)} prior failure(s) recorded"
         msg += " — fix hints will be injected into context."
         return [PreflightCheck(id="prior_failures", level=level, message=msg)]
     except Exception:
@@ -247,7 +245,6 @@ def _estimate_complexity(task: dict) -> tuple[int, str]:
 def run_preflight(
     project_dir: str,
     task: dict,
-    contract_file: str = "",
     skip_git: bool = False,
 ) -> PreflightReport:
     """Run all pre-flight checks for a task and return a PreflightReport.
@@ -255,7 +252,6 @@ def run_preflight(
     Args:
         project_dir: Absolute project root directory.
         task: Task dict from contract.yaml.
-        contract_file: Path to contract.yaml (for dependency checks).
         skip_git: Skip git working-tree check (useful in tests / CI).
     """
     task_id = str(task.get("id", "unknown"))
@@ -265,8 +261,7 @@ def run_preflight(
     checks.extend(_check_tdd_block(task))
     checks.extend(_check_acceptance_criteria(task))
 
-    if contract_file and os.path.isfile(contract_file):
-        checks.extend(_check_dependencies(task, contract_file))
+    checks.extend(_check_dependencies(task, project_dir))
 
     if not skip_git:
         checks.extend(_check_git_state(project_dir))

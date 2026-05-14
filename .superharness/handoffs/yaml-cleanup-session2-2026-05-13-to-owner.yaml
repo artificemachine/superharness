@@ -1,0 +1,70 @@
+task: yaml-cleanup-phase1
+phase: report
+status: report_ready
+from: claude-code
+to: owner
+date: 2026-05-13T22:00:00Z
+
+summary: |
+  Session 2 of YAML to SQLite cleanup. All 3 chunks from the previous handoff
+  are now resolved. 14 skipped tests -> 25/25 pass, 0 skips. Two production
+  bugs found and fixed. Full codebase YAML audit completed -- ~30 more
+  references identified across 10 files for the next session.
+
+done:
+  - "delegate.py: corrected handoff overstatement (already migrated via phase1 state_reader). 3 cosmetic prompt strings fixed."
+  - "14 skipped tests -> 0: all @pytest.mark.skip decorators removed. 25/25 enqueue tests pass. Assertions updated for SQLite behavior."
+  - "onboard.py: 5 refs fixed (3 cosmetic, 2 functional left as-is -- legacy YAML artifact + write_contract already syncs to SQLite)."
+  - Handoff doc updated to reflect corrected scope.
+
+bugs_found_and_fixed:
+  - "contract_io.py line 96 -- _task_row_from_dict always used project_dir for project_path, ignoring any explicit value from YAML fixtures. Fixed to str(t.get('project_path') or project_dir)."
+  - "inbox_enqueue.py line 314 -- _validate_contract_sqlite silently skipped NULL project_path. Added explicit NULL rejection before the mismatch check."
+
+files_changed_this_session:
+  - src/superharness/commands/delegate.py (3 prompt strings)
+  - src/superharness/commands/onboard.py (4 cosmetic refs)
+  - src/superharness/engine/contract_io.py (project_path bug fix)
+  - src/superharness/commands/inbox_enqueue.py (NULL project_path gate)
+  - tests/unit/test_inbox_enqueue.py (8 skips removed, assertions updated)
+  - tests/unit/test_enqueue_adds_row.py (6 skips removed, seed tasks added)
+  - docs/handoff-yaml-cleanup-session-2026-05-13.md (updated)
+
+test_status:
+  - "tests/unit/test_inbox_enqueue.py: 17/17 pass (was 9 pass + 8 skipped)"
+  - "tests/unit/test_enqueue_adds_row.py: 8/8 pass (was 2 pass + 6 skipped)"
+  - "tests/unit/test_delegate_orchestrator.py: 5/5 pass"
+  - "tests/unit/test_subtask_budget.py, test_preflight.py, test_yaml_cleanup_phase1.py: all pass"
+  - "Full enqueue suite: 25/25 pass, 0 skips"
+
+remaining_yaml_audit: |
+  A full codebase audit was run. ~30 remaining YAML reads across ~10 files
+  that still read contract.yaml or inbox.yaml as primary data source.
+
+  TOP PRIORITY (bucket A -- contract.yaml reads):
+    1. engine/contract.py -- 6 functions (task_exists, task_owner, task_status,
+       task_acceptance_criteria, task_deadline_minutes, contract_id) all read
+       contract.yaml directly. Every shell contract query hits YAML.
+    2. commands/inbox_enqueue.py lines 165-171 -- _validate_task() reads YAML for
+       workflow/project_path fields not in TaskRow.
+    3. cli.py lines 669-675 -- task owner lookup for shux delegate.
+    4. commands/auto_dispatch.py line 149 -- auto-dispatch reads contract.yaml.
+
+  SECOND PRIORITY (bucket B -- inbox.yaml reads):
+    1. engine/inbox.py -- normalize() and CLI read/write inbox.yaml directly.
+    2. commands/recap.py -- inbox activity summary via yaml.safe_load.
+    3. commands/notify.py -- retry threshold alerts from inbox.yaml.
+
+  LEGITIMATE YAML (buckets C-H, ~200 refs -- NO migration needed):
+    - Handoff files (*.yaml in handoffs/) -- inter-agent communication
+    - profile.yaml, watcher.yaml, agent-pulse.yaml, heartbeat.yaml -- config
+    - Export tools (yaml_io.py, archive_yaml.py, pack.py) -- dump only
+    - Discussion round files -- separate domain
+    - Cosmetic/docstring references
+
+approach_for_next_session: |
+  1. Start with engine/contract.py -- migrate all 6 query functions to use
+     state_reader (already SQLite-powered). This is the highest blast radius.
+  2. Then inbox_enqueue.py _validate_task -- read workflow from TaskRow.
+  3. Then engine/inbox.py normalize() -- use inbox_dao instead of yaml.safe_load.
+  4. Sweep remaining minor refs.

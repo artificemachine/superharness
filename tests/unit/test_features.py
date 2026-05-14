@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from tests.helpers import REPO_ROOT
+from tests.helpers import REPO_ROOT, seed_sqlite_from_yaml
 
 
 def _run_init(cwd, args: list[str], env: dict | None = None):
@@ -36,6 +36,7 @@ def _write_harness(project: Path, features: list[dict] | None = None):
     (harness / "failures.yaml").write_text("failures: []\n")
     if features is not None:
         (harness / "features.json").write_text(json.dumps({"features": features}, indent=2) + "\n")
+    seed_sqlite_from_yaml(project)
 
 
 # ---------------------------------------------------------------------------

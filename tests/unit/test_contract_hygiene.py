@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tests.helpers import run_bash
+from tests.helpers import run_bash, seed_sqlite_from_yaml
 import sys
 import pytest
 
@@ -36,6 +36,7 @@ def _write_project(project: Path) -> None:
     (harness / "failures.yaml").write_text("failures: []\n")
     (harness / "ledger.md").write_text("# Ledger\n- 2026-03-08 done-task completed\n")
     (handoffs / "2026-03-08-done-task.yaml").write_text("task: done-task\n")
+    seed_sqlite_from_yaml(project)
 
 
 def test_contract_hygiene_passes_for_done_task_with_evidence(repo_root, tmp_path) -> None:

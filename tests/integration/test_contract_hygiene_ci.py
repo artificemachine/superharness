@@ -1,12 +1,18 @@
 """Test contract hygiene CI enforcement."""
 import subprocess
 import yaml
+from pathlib import Path
 
-from tests.helpers import SCRIPTS_DIR
+from tests.helpers import SCRIPTS_DIR, seed_sqlite_from_yaml
 import sys
 import pytest
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
+
+
+def _setup_harness(harness: Path) -> None:
+    """Init SQLite after writing contract.yaml — validate requires state.sqlite3."""
+    seed_sqlite_from_yaml(harness.parent)
 
 
 def test_hygiene_check_passes_with_valid_contract(tmp_path):
@@ -25,6 +31,7 @@ def test_hygiene_check_passes_with_valid_contract(tmp_path):
         "failures": []
     }
     (harness / "contract.yaml").write_text(yaml.dump(contract))
+    _setup_harness(harness)
 
     # Create ledger with task mention
     (harness / "ledger.md").write_text("# Ledger\n\n2026-03-10 completed task-one\n")
@@ -69,6 +76,7 @@ def test_hygiene_check_fails_without_handoff(tmp_path):
         "failures": []
     }
     (harness / "contract.yaml").write_text(yaml.dump(contract))
+    _setup_harness(harness)
     (harness / "ledger.md").write_text("# Ledger\n\n2026-03-10 completed task-orphan\n")
 
     handoffs = harness / "handoffs"
@@ -103,6 +111,7 @@ def test_hygiene_check_fails_without_ledger_entry(tmp_path):
         "failures": []
     }
     (harness / "contract.yaml").write_text(yaml.dump(contract))
+    _setup_harness(harness)
     (harness / "ledger.md").write_text("# Ledger\n\n")  # Empty ledger
 
     handoffs = harness / "handoffs"
@@ -143,6 +152,7 @@ def test_hygiene_check_skips_non_done_tasks(tmp_path):
         "failures": []
     }
     (harness / "contract.yaml").write_text(yaml.dump(contract))
+    _setup_harness(harness)
     (harness / "ledger.md").write_text("# Ledger\n\n")
 
     handoffs = harness / "handoffs"
