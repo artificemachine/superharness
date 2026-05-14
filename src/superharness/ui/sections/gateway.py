@@ -1,12 +1,13 @@
 """Gateway wizard section — pick a notification backend and event list.
 
-Two outbound backends (mutually exclusive picks during onboarding):
+Three outbound backends (mutually exclusive picks during onboarding):
   - relay (SSH)  — preferred; secrets live on the relay, not on this machine
   - telegram     — direct Telegram bot; bot token on this machine
+  - ntfy         — ntfy.sh push notifications; self-hosted or public server
 
-Both write credentials to ~/.config/superharness/credentials.env (0600,
-machine-level). Project-level profile.yaml only stores the events checklist
-and a non-sensitive `backend` field for display.
+All backends write credentials to ~/.config/superharness/credentials.env
+(0600, machine-level). Project-level profile.yaml only stores the events
+checklist and a non-sensitive `backend` field for display.
 
 Inbound commands (e.g. /approve via chat) are NOT enabled by Phase 1.
 See docs/gateway-security.md for the threat model.
@@ -101,6 +102,18 @@ def setup_telegram_direct(
     _save_events(project_dir, events, backend="telegram")
 
 
+def setup_ntfy(
+    project_dir: Path,
+    ntfy_topic: str,
+    ntfy_server: str,
+    events: list[str],
+) -> None:
+    """Persist ntfy.sh configuration."""
+    from superharness.engine.relay_client import save_ntfy_credentials
+    save_ntfy_credentials(ntfy_topic, ntfy_server)
+    _save_events(project_dir, events, backend="ntfy")
+
+
 # ---------------------------------------------------------------------------
 # Onboard section entry point
 # ---------------------------------------------------------------------------
@@ -108,6 +121,7 @@ def setup_telegram_direct(
 _BACKEND_CHOICES = [
     ("relay",    "Relay (SSH) — secrets stay on the relay, not on this machine"),
     ("telegram", "Telegram bot — direct bot token stored on this machine"),
+    ("ntfy",     "ntfy.sh — push notifications (self-hosted or ntfy.sh public)"),
     ("skip",     "Skip — no notifications"),
 ]
 
@@ -120,9 +134,11 @@ def run(project_dir: Path, non_interactive: bool = False) -> None:
         credentials_path,
         load_credentials,
         load_telegram_credentials,
+        load_ntfy_credentials,
     )
     relay_creds = load_credentials()
     bot_creds = load_telegram_credentials()
+    ntfy_creds = load_ntfy_credentials()
 
     profile = _load_profile(project_dir)
     gateway_cfg = profile.get("gateway", {}) or {}
@@ -132,7 +148,7 @@ def run(project_dir: Path, non_interactive: bool = False) -> None:
     current_backend: str = gateway_cfg.get("backend", "")
 
     if non_interactive:
-        _show_current(current_backend, relay_creds, bot_creds, current_events)
+        _show_current(current_backend, relay_creds, bot_creds, current_events, ntfy_creds)
         return
 
     print_info("Outbound notifications only. Inbound chat commands are disabled in this phase.")
@@ -162,8 +178,12 @@ def run(project_dir: Path, non_interactive: bool = False) -> None:
 
     if backend_key == "relay":
         _configure_relay(project_dir, relay_creds, current_events)
-    else:
+    elif backend_key == "telegram":
         _configure_telegram_direct(project_dir, bot_creds, current_events)
+    else:
+        from superharness.engine.relay_client import load_ntfy_credentials
+        ntfy_creds = load_ntfy_credentials()
+        _configure_ntfy(project_dir, ntfy_creds, current_events)
 
 
 # ---------------------------------------------------------------------------
@@ -286,19 +306,69 @@ def _summary_telegram(bot_token: str, chat_id: str, events: list[str]) -> None:
     print_info(f"  Events:  {', '.join(events) or '(none)'}")
 
 
+# ---------------------------------------------------------------------------
+# ntfy.sh configuration flow
+# ---------------------------------------------------------------------------
+
+def _configure_ntfy(project_dir: Path, current: dict, current_events: list[str]) -> None:
+    from superharness.ui.prompts import prompt, prompt_yes_no
+
+    if current["ntfy_topic"]:
+        print_info(f"Already configured — server: {current['ntfy_server']}  topic: {current['ntfy_topic']}")
+        if not prompt_yes_no("Reconfigure?", default=False):
+            events = _pick_events(current_events)
+            from superharness.engine.relay_client import save_ntfy_credentials
+            save_ntfy_credentials(current["ntfy_topic"], current["ntfy_server"])
+            _save_events(project_dir, events, backend="ntfy")
+            return
+
+    print_info("ntfy.sh sends push notifications to any device with the ntfy app.")
+    print_info("Self-hosted is recommended. Leave server blank to use the public ntfy.sh.")
+    print_info("")
+
+    ntfy_server = prompt(
+        "ntfy server URL (leave blank for https://ntfy.sh)",
+        default=current["ntfy_server"] if current["ntfy_server"] != "https://ntfy.sh" else "",
+    ).strip() or "https://ntfy.sh"
+
+    ntfy_topic = prompt(
+        "ntfy topic (unique string — keep it secret on public servers)",
+        default=current["ntfy_topic"],
+    ).strip()
+    if not ntfy_topic:
+        print_info("No topic entered — gateway section skipped.")
+        return
+
+    events = _pick_events(current_events)
+    setup_ntfy(project_dir, ntfy_topic, ntfy_server, events)
+    _summary_ntfy(ntfy_topic, ntfy_server, events)
+
+
+def _summary_ntfy(ntfy_topic: str, ntfy_server: str, events: list[str]) -> None:
+    print_info("")
+    print_info("Gateway configured (backend: ntfy).")
+    print_info(f"  Server: {ntfy_server}")
+    print_info(f"  Topic:  {ntfy_topic}")
+    print_info(f"  Events: {', '.join(events) or '(none)'}")
+
+
 def _show_current(
-    backend: str, relay: dict, bot: dict, events: list[str]
+    backend: str, relay: dict, bot: dict, events: list[str], ntfy: dict | None = None
 ) -> None:
     if backend == "relay" and relay["relay_token"] and relay["relay_ssh_host"]:
         suffix = relay["relay_token"][-6:] if len(relay["relay_token"]) > 6 else "***"
-        print_info(f"Backend:   relay")
+        print_info("Backend:   relay")
         print_info(f"Host:      {relay['relay_ssh_host']}")
         print_info(f"Token:     configured (...{suffix})")
     elif backend == "telegram" and bot["bot_token"] and bot["chat_id"]:
         suffix = bot["bot_token"][-6:] if len(bot["bot_token"]) > 6 else "***"
-        print_info(f"Backend:   telegram (direct)")
+        print_info("Backend:   telegram (direct)")
         print_info(f"Chat id:   {bot['chat_id']}")
         print_info(f"Token:     configured (...{suffix})")
+    elif backend == "ntfy" and ntfy and ntfy.get("ntfy_topic"):
+        print_info("Backend:   ntfy")
+        print_info(f"Server:    {ntfy['ntfy_server']}")
+        print_info(f"Topic:     {ntfy['ntfy_topic']}")
     else:
         print_info("Gateway not configured.")
         print_info("Run 'shux onboard --section gateway' in an interactive terminal.")

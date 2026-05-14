@@ -96,6 +96,35 @@ Inbound `GatewayListener` enabled only when the five controls land:
 - Inline-button confirm — bot replies with a `callback_query` inline keyboard; operator taps "Confirm approve t-X". Cannot be forwarded.
 - DM-only by default — refuse to operate in groups unless `--allow-group <chat_id>` is set
 
+### Phase 3 — operator UX and multi-channel (builds on Phase 2)
+
+Four tracks, in recommended build order:
+
+#### B: Multi-channel routing (independent — no Phase 2 required)
+
+Add ntfy.sh (self-hosted) and Slack webhooks as direct backends alongside Telegram.
+`dispatch_notification` tries backends in priority order; operator configures which are active at onboard time.
+ntfy.sh self-hosted is the recommended relay-free fallback — no third party sees notification content.
+
+#### C: Pairing-code flow
+
+One-time 8-char codes (32-char unambiguous alphabet, `secrets.choice`) for adding a new operator device.
+1h TTL, 3 pending max, 5 failures → 1h lockout, credentials chmod 0600.
+Replaces the current static chat-ID approach for first-contact operator onboarding.
+Reference: `hermes-agent/gateway/pairing.py`.
+
+#### A: Inline-button approvals
+
+Plan-proposed notification includes `[Approve] [Reject]` Telegram `callback_query` inline buttons.
+Operator acts from phone with one tap — no need to type `/approve t-X`.
+Requires Phase 2 inbound path and the inline-button confirm hardening control.
+
+#### D: Smart digest
+
+Low-priority events (`plan_approved`, `task_closed`) batched into a configurable digest interval.
+High-priority events (`task_failed`, `plan_proposed`) always break through immediately.
+Reduces notification noise without losing signal.
+
 ---
 
 ## What to copy from hermes-agent
