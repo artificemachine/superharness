@@ -384,3 +384,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-14: fix(ci): curses lazy import for Windows compat in dashboard_wizard; update test_demo step markers 5->17; fix Temp project line detection
 - 2026-05-14: refactor(models): collapse opus-4-6 into opus-4-7 everywhere — same token cost, no reason to keep two tiers; xhigh now routes to opus-4-7; swarm reviewer default updated; cli/adapter aliases preserved for backward compat
 - 2026-05-14: fix(ci): update test_adapter_registry pinned-4-6 assertion to expect claude-opus-4-7 after model alias consolidation
+- 2026-05-14: chore(release): bump to v1.58.2 — squash merge of feat/granular-interactive-demo (PR #240)
