@@ -30,6 +30,8 @@ tasks:
     workflow: implementation
 """
     (sh / "contract.yaml").write_text(contract)
+    from tests.helpers import seed_sqlite_from_yaml
+    seed_sqlite_from_yaml(tmp_path)
     return tmp_path
 
 

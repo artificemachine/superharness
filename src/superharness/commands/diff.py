@@ -14,19 +14,23 @@ import sys
 from pathlib import Path
 
 import click
-import yaml
 
 
-def _find_task(contract: Path, task_id: str) -> dict | None:
+def _find_task(project_dir: Path, task_id: str) -> dict | None:
     try:
-        from superharness.engine.contract_io import read_contract
-        doc, _ = read_contract(str(contract))
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import tasks_dao
+        conn = get_connection(str(project_dir))
+        try:
+            init_db(conn)
+            row = tasks_dao.get(conn, task_id)
+        finally:
+            conn.close()
+        if row is None:
+            return None
+        return {"id": row.id, "title": row.title, "owner": row.owner, "status": row.status}
     except Exception:
         return None
-    for t in (doc or {}).get("tasks", []):
-        if t.get("id") == task_id:
-            return t
-    return None
 
 
 def _git_diff(project_dir: Path, base: str | None, stat_only: bool) -> str:
@@ -96,11 +100,10 @@ def cmd_diff(task_id, project_str, stat_only, base_ref):
     shux diff task-001 --base main  # diff against a specific branch
     """
     project_dir = Path(project_str or os.getcwd()).resolve()
-    contract = project_dir / ".superharness" / "contract.yaml"
 
-    task = _find_task(contract, task_id)
-    if task is None and contract.exists():
-        click.echo(f"warning: task '{task_id}' not found in contract — showing uncommitted diff", err=True)
+    task = _find_task(project_dir, task_id)
+    if task is None:
+        click.echo(f"warning: task '{task_id}' not found in SQLite — showing uncommitted diff", err=True)
 
     if task:
         click.echo(f"task:   {task_id}")

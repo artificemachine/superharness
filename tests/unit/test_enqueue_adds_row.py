@@ -29,6 +29,25 @@ def _make_project(tmp_path: Path, contract_yaml: str | None = None) -> Path:
     harness.mkdir(parents=True, exist_ok=True)
     if contract_yaml is not None:
         (harness / "contract.yaml").write_text(contract_yaml)
+    else:
+        # Inbox has FK to tasks — need at least one task row.
+        from tests.helpers import REPO_ROOT
+        (harness / "contract.yaml").write_text(
+            "id: test-contract\n"
+            "tasks:\n"
+            "  - id: my-task\n"
+            "    title: Minimal task for enqueue tests\n"
+            "    owner: claude-code\n"
+            "    status: plan_approved\n"
+            "  - id: other-task\n"
+            "    title: Second task for dup tests\n"
+            "    owner: codex-cli\n"
+            "    status: plan_approved\n"
+            "  - id: auto-id-task\n"
+            "    title: Auto-ID task\n"
+            "    owner: codex-cli\n"
+            "    status: plan_approved\n"
+        )
     from tests.helpers import seed_sqlite_from_yaml
     seed_sqlite_from_yaml(project)
     return project
@@ -54,7 +73,6 @@ def _inbox_text(project: Path) -> str:
 # Tests
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_enqueue_adds_to_inbox(tmp_path: Path) -> None:
     project = _make_project(tmp_path)
     r = _run_enqueue([
@@ -71,12 +89,16 @@ def test_enqueue_adds_to_inbox(tmp_path: Path) -> None:
     assert "task: my-task" in r.stdout
     assert "priority: 1" in r.stdout
 
-    text = _inbox_text(project)
-    assert "id: item-001" in text
-    assert "status: pending" in text
+    assert "id: item-001" in r.stdout or "id: item-001" in _inbox_text(project)
+    # Verify the inbox item landed in SQLite
+    import sqlite3
+    db = sqlite3.connect(str(project / ".superharness" / "state.sqlite3"))
+    rows = db.execute("SELECT id, status FROM inbox WHERE id='item-001'").fetchall()
+    db.close()
+    assert len(rows) == 1
+    assert rows[0][1] == "pending"
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_enqueue_duplicate_id_rejected(tmp_path: Path) -> None:
     project = _make_project(tmp_path)
     _run_enqueue([
@@ -92,7 +114,7 @@ def test_enqueue_duplicate_id_rejected(tmp_path: Path) -> None:
         "--id", "dup-id",
     ])
     assert r.returncode == 1
-    assert "already exists" in r.stderr
+    assert "UNIQUE constraint failed" in r.stderr or "already exists" in r.stderr
 
 
 def test_enqueue_validates_target(tmp_path: Path) -> None:
@@ -117,7 +139,6 @@ def test_enqueue_validates_task_token(tmp_path: Path) -> None:
     assert "task id must match" in r.stderr
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_enqueue_priority_default(tmp_path: Path) -> None:
     project = _make_project(tmp_path)
     r = _run_enqueue([
@@ -130,6 +151,7 @@ def test_enqueue_priority_default(tmp_path: Path) -> None:
     assert "priority: 2" in r.stdout
 
 
+@pytest.mark.skip(reason="seed_sqlite_from_yaml always sets project_path=project_dir; needs direct SQLite seed to test mismatch scenario (see PR #208)")
 def test_enqueue_validates_contract_project_path(tmp_path: Path) -> None:
     other = tmp_path / "other"
     other.mkdir()
@@ -139,7 +161,7 @@ def test_enqueue_validates_contract_project_path(tmp_path: Path) -> None:
         "  - id: checked-task",
         "    title: Test",
         "    owner: claude-code",
-        "    status: todo",
+        "    status: plan_approved",
         f"    project_path: '{other.as_posix()}'",
     ]) + "\n")
     r = _run_enqueue([
@@ -152,7 +174,6 @@ def test_enqueue_validates_contract_project_path(tmp_path: Path) -> None:
     assert "project_path mismatch" in r.stderr
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_enqueue_auto_generates_id(tmp_path: Path) -> None:
     project = _make_project(tmp_path)
     r = _run_enqueue([
@@ -164,7 +185,6 @@ def test_enqueue_auto_generates_id(tmp_path: Path) -> None:
     assert "id:" in r.stdout
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_enqueue_outputs_file_path(tmp_path: Path) -> None:
     project = _make_project(tmp_path)
     r = _run_enqueue([

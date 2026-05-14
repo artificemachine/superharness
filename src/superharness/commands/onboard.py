@@ -6,7 +6,7 @@ Steps:
   2b. global_claude — append superharness section to ~/.claude/CLAUDE.md
   3. git_track     — configure .gitignore for team/solo mode
   4. doctor        — run health checks (non-blocking)
-  5. task          — create a first task in contract.yaml
+   5. task          — create a first task in project state
   6. delegate      — enqueue the task to inbox.yaml
   7. summary       — print next steps
 """
@@ -155,7 +155,7 @@ _AGENTS_MD_TEMPLATE = """\
 ## Before starting work
 - Run `shux contract` to see all tasks and their status.
 - Run `shux recall "<keywords>"` to search prior session context.
-- Read `.superharness/contract.yaml`, `failures.yaml`, and handoffs addressed to you.
+- Read the project state (`shux contract`) and handoffs addressed to you.
 
 ## Task lifecycle
 Every task follows: `todo → plan_proposed → plan_approved → in_progress → report_ready → done`
@@ -219,7 +219,7 @@ def _step_init(project: Path, state: dict) -> None:
             click.echo(f"[init] Warning: could not initialize SQLite database: {e}")
 
         click.echo("[init] Initialized .superharness/")
-        click.echo("  → contract.yaml  tracks every task and its status.")
+        click.echo("  → state.sqlite3  tracks every task and its status (use 'shux contract').")
         click.echo("  → ledger.md      is the session history agents read first.")
 
     # Always write AGENTS.md if missing — this is what tells Claude/Codex to use shux
@@ -361,12 +361,11 @@ def _step_task(project: Path, state: dict, task_title: Optional[str]) -> Optiona
         return None
 
     sh = project / ".superharness"
-    contract_file = sh / "contract.yaml"
     try:
         from superharness.engine import state_reader as _sr
         doc = _sr.get_contract_doc(str(project))
     except Exception:
-        doc = yaml.safe_load(contract_file.read_text()) if contract_file.exists() else {"id": "main", "tasks": []}
+        doc = {"id": "main", "tasks": []}
     doc = doc or {"id": "main", "tasks": []}
     tasks = doc.get("tasks") or []
 
@@ -385,12 +384,12 @@ def _step_task(project: Path, state: dict, task_title: Optional[str]) -> Optiona
     # Write contract through canonical path (syncs YAML + SQLite)
     try:
         from superharness.engine.contract_io import write_contract as _wc
-        _wc(str(contract_file), doc)
+        _wc(str(sh / "contract.yaml"), doc)
     except Exception as e:
         click.echo(f"[task] Warning: could not write contract: {e}")
 
     click.echo(f"[task] Created task '{task_title}' (id: {task_id})")
-    click.echo(f"  → Task lives in contract.yaml. Run 'shux contract' to see it.")
+    click.echo(f"  → Task lives in project state. Run 'shux contract' to see it.")
     click.echo(f"  → Next: approve the plan, then 'shux delegate {task_id}' to dispatch.")
     _mark(state, "task")
     state["task_id"] = task_id

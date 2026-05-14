@@ -1,6 +1,6 @@
 """superharness verify — record verification result for a contract task.
 
-Sets verified/verified_at/verified_by on the task in contract.yaml
+Sets verified/verified_at/verified_by on the task in SQLite
 and appends a VERIFY entry to ledger.md.
 """
 from __future__ import annotations
@@ -8,8 +8,6 @@ from __future__ import annotations
 import os
 import sys
 from datetime import datetime, timezone
-
-from superharness.engine.contract_io import write_contract as _write_contract, read_contract as _read_contract
 
 
 _JSON_MODE = False
@@ -24,10 +22,8 @@ def _abort(msg: str, code: int = 1) -> None:
     sys.exit(code)
 
 
-
-
 def verify(
-    contract_file: str,
+    project_dir: str,
     task_id: str,
     method: str,
     result: str,
@@ -36,33 +32,27 @@ def verify(
     if result not in ("pass", "fail"):
         _abort("--result must be 'pass' or 'fail'", 2)
 
-    doc, _ = _read_contract(contract_file)
-    tasks = doc.get("tasks")
-    if not isinstance(tasks, list):
-        _abort("contract tasks must be a sequence")
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import tasks_dao
 
-    task = next(
-        (t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == task_id),
-        None,
-    )
-    if task is None:
-        _abort(f"task '{task_id}' not found")
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        task_row = tasks_dao.get(conn, task_id)
+        if task_row is None:
+            _abort(f"task '{task_id}' not found")
 
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        tasks_dao.update(conn, task_id, task_row.version, {
+            "verified": result == "pass",
+            "verified_at": now,
+            "verified_by": actor,
+            "updated_at": now,
+        })
+        conn.commit()
+    finally:
+        conn.close()
 
-    if result == "pass":
-        task["verified"] = True
-        task["verified_at"] = now
-        task["verified_by"] = actor
-    else:
-        task["verified"] = False
-        task["verified_at"] = now
-        task["verified_by"] = actor
-
-    _write_contract(contract_file, doc)
-
-    # Append VERIFY entry to ledger
-    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(contract_file)))
     ledger_file = os.path.join(project_dir, ".superharness", "ledger.md")
     verdict = "PASS" if result == "pass" else "FAIL"
     ledger_line = f"- {now} — {actor} — VERIFY {verdict}: {task_id} — {method}\n"
@@ -97,7 +87,6 @@ def main(argv: list[str] | None = None) -> None:
     opts = parser.parse_args(argv)
 
     project_dir = os.path.realpath(opts.project or os.getcwd())
-    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
 
     global _JSON_MODE, _JSON_CTX
     if opts.json:
@@ -109,7 +98,7 @@ def main(argv: list[str] | None = None) -> None:
         _orig_stdout = sys.stdout
         sys.stdout = io.StringIO()
         try:
-            rc = verify(contract_file, opts.task_id, opts.method, opts.result, opts.actor)
+            rc = verify(project_dir, opts.task_id, opts.method, opts.result, opts.actor)
         finally:
             sys.stdout = _orig_stdout
         from superharness.utils.json_output import emit_json
@@ -121,7 +110,7 @@ def main(argv: list[str] | None = None) -> None:
             "verified": (opts.result == "pass"),
         }, ok=(rc == 0), exit_code=rc)
 
-    rc = verify(contract_file, opts.task_id, opts.method, opts.result, opts.actor)
+    rc = verify(project_dir, opts.task_id, opts.method, opts.result, opts.actor)
     sys.exit(rc)
 
 

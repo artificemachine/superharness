@@ -27,6 +27,7 @@ class InboxRow:
     paused_at: str | None
     failed_at: str | None
     done_at: str | None
+    reason: str | None = None
 
 _ACTIVE_STATUSES = ("pending", "launched", "running", "paused")
 
@@ -237,5 +238,6 @@ def _row_to_inbox(row: sqlite3.Row) -> InboxRow:
         last_heartbeat=row["last_heartbeat"],
         paused_at=row["paused_at"],
         failed_at=row["failed_at"],
-        done_at=row["done_at"]
+        done_at=row["done_at"],
+        reason=row["reason"] if "reason" in row.keys() else None,
     )

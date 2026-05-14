@@ -16,6 +16,7 @@ import pytest
 import yaml
 
 from superharness.engine.validate import run_validate
+from tests.helpers import seed_sqlite_from_yaml
 
 
 def _write_contract(tmp_path, tasks: list) -> str:
@@ -29,6 +30,7 @@ def _write_contract(tmp_path, tasks: list) -> str:
     (harness_dir / "handoffs").mkdir(exist_ok=True)
     (harness_dir / "decisions.yaml").write_text("decisions: []\n")
     (harness_dir / "failures.yaml").write_text("failures: []\n")
+    seed_sqlite_from_yaml(tmp_path)
     return str(tmp_path)
 
 

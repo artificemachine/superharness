@@ -64,15 +64,36 @@ def _task_row_from_dict(
     now: str,
 ) -> "TaskRow":
     from superharness.engine.tasks_dao import TaskRow
+    import json as _j
 
     task_id = str(t.get("id", ""))
+    
+    # Identify known columns to separate them from extras
+    known_cols = {
+        "id", "title", "owner", "status", "effort", "project_path",
+        "development_method", "acceptance_criteria", "test_types",
+        "out_of_scope", "definition_of_done", "context", "tdd",
+        "version", "created_at", "updated_at", "plan_proposed_at",
+        "plan_approved_at", "in_progress_at", "report_ready_at",
+        "review_requested_at", "done_at", "cancelled_at",
+        "blocked_by", "dependency", "parent_id", "verified",
+        "verified_at", "verified_by", "deadline_minutes",
+        "failed_at", "stopped_at", "failed_reason", "archived_at",
+        "archived_reason", "model_tier", "pause_reason",
+        "workflow", "autonomy", "require_tdd", "estimated_minutes",
+        "locked_contract", "contract_locked_at",
+    }
+    
+    extras = {k: v for k, v in t.items() if k not in known_cols}
+    extras_json = _j.dumps(extras) if extras else None
+
     return TaskRow(
         id=task_id,
         title=str(t.get("title") or task_id),
         owner=t.get("owner") or None,
         status=str(t.get("status") or "todo"),
         effort=t.get("effort"),
-        project_path=project_dir,
+        project_path=str(t.get("project_path") or project_dir),
         development_method=t.get("development_method"),
         acceptance_criteria=list(t.get("acceptance_criteria") or []),
         test_types=list(t.get("test_types") or []),
@@ -112,6 +133,9 @@ def _task_row_from_dict(
         workflow=t.get("workflow"),
         autonomy=t.get("autonomy"),
         require_tdd=(bool(t["require_tdd"]) if "require_tdd" in t and t["require_tdd"] is not None else None),
+        estimated_minutes=t.get("estimated_minutes"),
+        parent_id=t.get("parent_id"),
+        extras_json=extras_json,
     )
 
 

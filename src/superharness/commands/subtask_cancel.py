@@ -1,6 +1,6 @@
 """shux subtask-cancel — mark a subtask cancelled with a mandatory reason.
 
-Writes the status change into contract.yaml and appends a ledger line:
+Writes the status change into SQLite (extras_json) and appends a ledger line:
     - <ISO> — <actor> — SUBTASK_CANCEL: <sub_id> (parent=<task_id>) — <reason>
 
 Refuses to cancel a subtask that is already `done` (completed work cannot
@@ -9,70 +9,69 @@ or failed.
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 from datetime import datetime, timezone
-
-from superharness.engine.contract_io import write_contract as _write_contract, read_contract as _read_contract
-
 
 
 # Statuses that cannot be cancelled (terminal resolved).
 _NO_CANCEL_STATUSES = {"done"}
 
-# Statuses that can be cancelled.
-_CANCELLABLE_STATUSES = {"pending", "in_progress", "failed"}
-
 
 def cancel_subtask(
-    contract_file: str,
+    project_dir: str,
     task_id: str,
     sub_id: str,
     actor: str,
     reason: str,
 ) -> int:
-    doc, _ = _read_contract(contract_file)
-    tasks = doc.get("tasks")
-    if not isinstance(tasks, list):
-        print("contract tasks must be a sequence", file=sys.stderr)
-        return 1
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import tasks_dao
 
-    parent = next(
-        (t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == task_id),
-        None,
-    )
-    if parent is None:
-        print(f"task '{task_id}' not found", file=sys.stderr)
-        return 1
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        task_row = tasks_dao.get(conn, task_id)
+        if task_row is None:
+            print(f"task '{task_id}' not found", file=sys.stderr)
+            return 1
 
-    subtasks = parent.get("subtasks")
-    if not isinstance(subtasks, list):
-        print(f"task '{task_id}' has no subtasks", file=sys.stderr)
-        return 1
+        extras = json.loads(task_row.extras_json or "{}")
+        subtasks = extras.get("subtasks")
+        if not isinstance(subtasks, list):
+            print(f"task '{task_id}' has no subtasks", file=sys.stderr)
+            return 1
 
-    subtask = next(
-        (s for s in subtasks if isinstance(s, dict) and str(s.get("id", "")) == sub_id),
-        None,
-    )
-    if subtask is None:
-        print(f"subtask '{sub_id}' not found in task '{task_id}'", file=sys.stderr)
-        return 1
-
-    current = str(subtask.get("status", "pending"))
-    if current in _NO_CANCEL_STATUSES:
-        print(
-            f"Cannot cancel subtask '{sub_id}': status is '{current}'. "
-            f"Completed work cannot be retroactively cancelled.",
-            file=sys.stderr,
+        subtask = next(
+            (s for s in subtasks if isinstance(s, dict) and str(s.get("id", "")) == sub_id),
+            None,
         )
-        return 1
+        if subtask is None:
+            print(f"subtask '{sub_id}' not found in task '{task_id}'", file=sys.stderr)
+            return 1
 
-    subtask["status"] = "cancelled"
+        current = str(subtask.get("status", "pending"))
+        if current in _NO_CANCEL_STATUSES:
+            print(
+                f"Cannot cancel subtask '{sub_id}': status is '{current}'. "
+                f"Completed work cannot be retroactively cancelled.",
+                file=sys.stderr,
+            )
+            return 1
 
-    _write_contract(contract_file, doc)
+        subtask["status"] = "cancelled"
+        extras["subtasks"] = subtasks
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        tasks_dao.update(conn, task_id, task_row.version, {
+            "extras_json": json.dumps(extras),
+            "updated_at": now,
+        })
+        conn.commit()
+    finally:
+        conn.close()
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(contract_file)))
     ledger_file = os.path.join(project_dir, ".superharness", "ledger.md")
     ledger_line = (
         f"- {now} — {actor} — SUBTASK_CANCEL: {sub_id} "
@@ -110,14 +109,13 @@ def main(argv: list[str] | None = None) -> None:
     opts = parser.parse_args(argv)
 
     project_dir = os.path.realpath(opts.project or os.getcwd())
-    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
 
     if not os.path.exists(os.path.join(project_dir, ".superharness", "state.sqlite3")):
         print(f"Missing project state: {project_dir}/.superharness/state.sqlite3", file=sys.stderr)
         sys.exit(1)
 
     rc = cancel_subtask(
-        contract_file, opts.task_id, opts.sub_id, opts.actor, opts.reason
+        project_dir, opts.task_id, opts.sub_id, opts.actor, opts.reason
     )
     sys.exit(rc)
 

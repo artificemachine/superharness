@@ -10,7 +10,7 @@ import subprocess
 import sys
 
 
-from tests.helpers import REPO_ROOT
+from tests.helpers import REPO_ROOT, seed_sqlite_from_yaml
 
 
 # ── helpers ────────────────────────────────────────────────────────────────
@@ -33,6 +33,7 @@ def _make_valid_project(path):
     (harness / "handoffs").mkdir()
     (harness / "decisions.yaml").write_text("decisions: []\n")
     (harness / "failures.yaml").write_text("failures: []\n")
+    seed_sqlite_from_yaml(path)
 
 
 # ── hygiene: --project defaults to cwd ────────────────────────────────────

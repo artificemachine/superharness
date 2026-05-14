@@ -423,19 +423,20 @@ class TestLedger:
 
 class TestFailures:
     def test_failures_loaded(self, tmp_path):
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import failures_dao
         project = _setup(tmp_path)
-        (project / ".superharness" / "failures.yaml").write_text(
-            "failures:\n"
-            "  - task: feat.one\n    severity: minor\n"
-            "    error_snippet: 'AssertionError'\n"
-            "    patterns: [unknown]\n    agent: claude-code\n"
-            "    date: '2026-04-09T00:00:00Z'\n"
-        )
+        conn = get_connection(str(project))
+        init_db(conn)
+        failures_dao.record(conn, task_id="feat.one", agent="claude-code",
+                            error_snippet="AssertionError", pattern="unknown",
+                            now="2026-04-09T00:00:00Z")
+        conn.commit()
+        conn.close()
         d = json.loads(_run(["--project", str(project)]).stdout)
         assert len(d["failures"]) == 1
         f = d["failures"][0]
         assert f["task"] == "feat.one"
-        assert f["severity"] == "minor"
 
     def test_empty_failures_returns_list(self, tmp_path):
         project = _setup(tmp_path)
@@ -445,16 +446,19 @@ class TestFailures:
 
 class TestDecisions:
     def test_decisions_loaded(self, tmp_path):
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import decisions_dao
         project = _setup(tmp_path)
-        (project / ".superharness" / "decisions.yaml").write_text(
-            "decisions:\n"
-            "  - id: ADR-001\n    what: Use JWT\n    why: Simple\n"
-            "    alternatives: [sessions]\n    status: accepted\n"
-            "    by: owner\n    date: '2026-04-10'\n"
-        )
+        conn = get_connection(str(project))
+        init_db(conn)
+        decisions_dao.record(conn, agent="owner", task_id="feat.one",
+                             decision="Use JWT", reason="Simple",
+                             alternatives=["sessions"], now="2026-04-10T00:00:00Z")
+        conn.commit()
+        conn.close()
         d = json.loads(_run(["--project", str(project)]).stdout)
         assert len(d["decisions"]) == 1
-        assert d["decisions"][0]["id"] == "ADR-001"
+        assert d["decisions"][0]["what"] == "Use JWT"
 
     def test_empty_decisions_returns_list(self, tmp_path):
         project = _setup(tmp_path)
@@ -464,12 +468,16 @@ class TestDecisions:
 
 class TestInbox:
     def test_active_inbox_items_included(self, tmp_path):
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import inbox_dao
         project = _setup(tmp_path)
-        (project / ".superharness" / "inbox.yaml").write_text(
-            "- id: inbox-001\n  task: feat.one\n  status: pending\n"
-            "  to: claude-code\n  priority: 2\n  retry_count: 0\n"
-            "  max_retries: 3\n  created_at: '2026-04-10T10:00:00Z'\n"
-        )
+        conn = get_connection(str(project))
+        init_db(conn)
+        inbox_dao.enqueue(conn, id="inbox-001", task_id="feat.one",
+                          target_agent="claude-code", priority=2,
+                          now="2026-04-10T10:00:00Z")
+        conn.commit()
+        conn.close()
         d = json.loads(_run(["--project", str(project)]).stdout)
         assert len(d["inbox"]) == 1
         assert d["inbox"][0]["id"] == "inbox-001"
@@ -486,15 +494,33 @@ class TestInbox:
         assert d["inbox"] == []
 
     def test_all_active_statuses_included(self, tmp_path):
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import inbox_dao, tasks_dao
+        from superharness.engine.tasks_dao import TaskRow
         project = _setup(tmp_path)
-        (project / ".superharness" / "inbox.yaml").write_text(
-            "- id: i1\n  task: feat.one\n  status: pending\n  to: claude-code\n"
-            "  priority: 2\n  retry_count: 0\n  max_retries: 3\n  created_at: '2026-04-10T10:00:00Z'\n"
-            "- id: i2\n  task: feat.one\n  status: launched\n  to: claude-code\n"
-            "  priority: 2\n  retry_count: 0\n  max_retries: 3\n  created_at: '2026-04-10T10:00:00Z'\n"
-            "- id: i3\n  task: feat.one\n  status: running\n  to: claude-code\n"
-            "  priority: 2\n  retry_count: 0\n  max_retries: 3\n  created_at: '2026-04-10T10:00:00Z'\n"
-        )
+        conn = get_connection(str(project))
+        init_db(conn)
+        # Seed a second unique task so we can enqueue 3 separate items
+        tasks_dao.upsert(conn, TaskRow(
+            id="feat.two", title="Feature two", owner="claude-code", status="in_progress",
+            effort=None, project_path=str(project), development_method="tdd",
+            acceptance_criteria=[], test_types=[], out_of_scope=[], definition_of_done=[],
+            context=None, tdd=None, version=1, created_at="2026-04-10T00:00:00Z",
+        ))
+        tasks_dao.upsert(conn, TaskRow(
+            id="feat.three", title="Feature three", owner="claude-code", status="in_progress",
+            effort=None, project_path=str(project), development_method="tdd",
+            acceptance_criteria=[], test_types=[], out_of_scope=[], definition_of_done=[],
+            context=None, tdd=None, version=1, created_at="2026-04-10T00:00:00Z",
+        ))
+        now = "2026-04-10T10:00:00Z"
+        inbox_dao.enqueue(conn, id="i1", task_id="feat.one", target_agent="claude-code", now=now)
+        inbox_dao.enqueue(conn, id="i2", task_id="feat.two", target_agent="claude-code", now=now)
+        inbox_dao.enqueue(conn, id="i3", task_id="feat.three", target_agent="claude-code", now=now)
+        inbox_dao.update_status(conn, "i2", from_status="pending", to_status="launched", now=now)
+        inbox_dao.update_status(conn, "i3", from_status="pending", to_status="running", now=now)
+        conn.commit()
+        conn.close()
         d = json.loads(_run(["--project", str(project)]).stdout)
         assert len(d["inbox"]) == 3
 

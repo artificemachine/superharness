@@ -52,16 +52,35 @@ def test_set_task_status_writes_through_to_sqlite(state_writer, clean_harness: P
 
 
 def test_set_inbox_status_writes_through(state_writer, clean_harness: Path) -> None:
-    inbox = clean_harness / ".superharness" / "inbox.yaml"
-    import yaml
-    inbox.write_text(yaml.dump([{
-        "id": "test-1", "task": "feat.foo", "to": "claude-code",
-        "status": "pending", "created_at": "2026-04-27T12:00:00Z",
-    }]))
+    from superharness.engine.db import get_connection, init_db, transaction
+    from superharness.engine import inbox_dao, tasks_dao
+    from superharness.engine.tasks_dao import TaskRow
+
+    conn = get_connection(str(clean_harness))
+    init_db(conn)
+    with transaction(conn):
+        tasks_dao.upsert(conn, TaskRow(
+            id="feat.foo", title="feat.foo", owner="claude-code", status="todo",
+            effort=None, project_path=None, development_method=None,
+            acceptance_criteria=[], test_types=[], out_of_scope=[],
+            definition_of_done=[], context=None, tdd=None,
+            version=1, created_at="2026-04-27T12:00:00Z",
+        ))
+        inbox_dao.enqueue(
+            conn, id="test-1", task_id="feat.foo", target_agent="claude-code",
+            project_path=str(clean_harness), now="2026-04-27T12:00:00Z",
+        )
+    conn.close()
+
     ok = state_writer.set_inbox_status(str(clean_harness), "test-1", "paused")
     assert ok is True
-    items = yaml.safe_load(inbox.read_text()) or []
-    assert items[0]["status"] == "paused"
+
+    # Verify by reading back through the public read path
+    from superharness.engine.state_reader import get_inbox_items
+    items = get_inbox_items(str(clean_harness))
+    item = next((i for i in items if i.get("id") == "test-1"), None)
+    assert item is not None
+    assert item["status"] == "paused"
 
 
 def test_set_task_status_handles_unknown_task_gracefully(state_writer, clean_harness: Path) -> None:

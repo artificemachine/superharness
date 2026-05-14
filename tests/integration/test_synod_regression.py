@@ -43,6 +43,10 @@ def _run(args: list[str], *, project: Path) -> "subprocess.CompletedProcess[str]
 def _make_project(tmp_path: Path, name: str) -> Path:
     project = tmp_path / name
     (project / ".superharness").mkdir(parents=True)
+    from superharness.engine.db import get_connection, init_db
+    conn = get_connection(str(project))
+    init_db(conn)
+    conn.close()
     return project
 
 
@@ -53,6 +57,8 @@ def _write_contract(project: Path, task: dict) -> None:
         "tasks": [task],
     }
     (project / ".superharness" / "contract.yaml").write_text(yaml.dump(contract))
+    from tests.helpers import seed_sqlite_from_yaml
+    seed_sqlite_from_yaml(project)
 
 
 # ── core regression ──────────────────────────────────────────────────────────
