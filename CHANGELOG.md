@@ -391,3 +391,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-14: chore(release): bump to v1.58.4 — squash merge of feat/gateway-dual-backend (PR #244)
 - 2026-05-14: feat(gateway): add ntfy.sh as third direct backend (relay → telegram → ntfy priority order); Phase 3 roadmap in docs/gateway-security.md
 - 2026-05-14: chore(release): bump to v1.58.5 — squash merge of feat/gateway-ntfy-backend (PR #246)
+- 2026-05-14: docs(handoff): update HANDOFF.md for 2026-05-14 gateway session (v1.58.2–v1.58.5)
