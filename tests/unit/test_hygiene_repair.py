@@ -12,7 +12,6 @@ from superharness.engine.validate import (
     HELP_TEXT,
     _repair_append_ledger,
     _repair_create_handoff,
-    _repair_fix_stuck_status,
     run_validate,
 )
 
@@ -322,6 +321,7 @@ def test_repair_stuck_status_logged_in_ledger(tmp_path: Path) -> None:
         "    owner: claude-code\n"
         "decisions: []\nfailures: []\n"
     )
+    seed_sqlite_from_yaml(project)
     (project / ".superharness" / "handoffs" / "h.yaml").write_text("task: nu-task\n")
 
     run_validate(str(project), repair=True)
@@ -342,6 +342,7 @@ def test_no_repair_reports_stuck_status_as_issue(tmp_path: Path) -> None:
         "    owner: claude-code\n"
         "decisions: []\nfailures: []\n"
     )
+    seed_sqlite_from_yaml(project)
     (project / ".superharness" / "handoffs" / "h.yaml").write_text("task: xi-task\n")
 
     rc = run_validate(str(project), repair=False)

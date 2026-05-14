@@ -47,42 +47,10 @@ def _deps_satisfied_from_tasks(tasks: list[dict], task_id: str) -> bool:
 
 
 def _ensure_task_in_sqlite(conn, task_id: str, project_dir: str, now: str) -> None:
-    """Upsert a minimal task row if it is not yet in SQLite. Never raises."""
+    """No-op if the task is already in SQLite; silently returns if not found."""
     try:
         from superharness.engine import tasks_dao
-        if tasks_dao.get(conn, task_id) is not None:
-            return
-        import yaml as _yaml
-        contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
-        if not os.path.exists(contract_file):
-            return
-        with open(contract_file, encoding="utf-8") as _f:
-            doc = _yaml.safe_load(_f) or {}
-        td = next(
-            (t for t in (doc.get("tasks") or []) if isinstance(t, dict) and t.get("id") == task_id),
-            None,
-        )
-        if td is None:
-            return
-        row = tasks_dao.TaskRow(
-            id=task_id,
-            title=str(td.get("title", task_id)),
-            owner=td.get("owner"),
-            status=str(td.get("status", "todo")),
-            effort=td.get("effort"),
-            project_path=td.get("project_path"),
-            development_method=td.get("development_method"),
-            acceptance_criteria=td.get("acceptance_criteria") or [],
-            test_types=td.get("test_types") or [],
-            out_of_scope=td.get("out_of_scope") or [],
-            definition_of_done=td.get("definition_of_done") or [],
-            context=td.get("context"),
-            tdd=td.get("tdd"),
-            version=1,
-            created_at=td.get("created_at") or now,
-            blocked_by=td.get("blocked_by") or [],
-        )
-        tasks_dao.upsert(conn, row)
+        tasks_dao.get(conn, task_id)
     except Exception:
         pass
 
@@ -658,8 +626,6 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
     if not profile.get("auto_dispatch") or autonomy not in ("autonomous", "ai_driven"):
         return 0
 
-    inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
-
     tasks = _load_tasks(project_dir)
     if not tasks:
         return 0
@@ -980,27 +946,12 @@ def _trigger_auto_review(project_dir: str, task_id: str, reviewers: list[str]) -
     if success_count == 0:
         return False
 
-    # 2. Update contract status to review_requested
-    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
+    # 2. Update task status to review_requested via SQLite
     try:
-        with open(contract_file, encoding="utf-8") as f:
-            doc = _yaml.safe_load(f.read()) or {}
-        
-        found = False
-        for t in doc.get("tasks", []):
-            if isinstance(t, dict) and t.get("id") == task_id:
-                t["status"] = "review_requested"
-                t["review_requested_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                found = True
-                break
-        
-        if found:
-            write_contract(contract_file, doc)
-        else:
-            print(f"auto-review: task {task_id} not found in contract during status update", file=sys.stderr)
-            return False
+        from superharness.engine.state_writer import set_task_status
+        set_task_status(project_dir, task_id, "review_requested")
     except Exception as e:
-        print(f"auto-review: failed to update contract for {task_id}: {e}", file=sys.stderr)
+        print(f"auto-review: failed to update status for {task_id}: {e}", file=sys.stderr)
         return False
         
     print(f"auto-review: triggered reviews for {task_id} via {', '.join(enqueued)}")
@@ -2106,7 +2057,6 @@ def auto_enqueue_todo(project_dir: str) -> int:
     if not tasks:
         return 0
 
-    inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
     inbox_items = []
     try:
         inbox_items = state_reader.get_inbox_items(project_dir)
@@ -2220,7 +2170,6 @@ def auto_enqueue_approved(project_dir: str) -> int:
     if not tasks:
         return 0
 
-    inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
     inbox_items = []
     try:
         inbox_items = state_reader.get_inbox_items(project_dir)
@@ -2901,21 +2850,15 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
 
     Returns count of reconciled items.
     """
-    import yaml as _yaml
-
     harness = os.path.join(project_dir, ".superharness")
-    inbox_file = os.path.join(harness, "inbox.yaml")
-    contract_file = os.path.join(harness, "contract.yaml")
 
-    # Read from SQLite via state_reader (post-migration)
+    # Read from SQLite via state_reader
     items = []
     try:
         from superharness.engine.state_reader import get_inbox_items
         items = get_inbox_items(project_dir)
     except Exception:
-        if os.path.exists(inbox_file):
-            with open(inbox_file, encoding="utf-8") as _f:
-                items = _yaml.safe_load(_f.read()) or []
+        pass
     if not isinstance(items, list) or not items:
         return 0
 
@@ -2926,12 +2869,7 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
             if isinstance(t, dict) and t.get("id"):
                 contract_statuses[str(t["id"])] = str(t.get("status", ""))
     except Exception:
-        if os.path.exists(contract_file):
-            with open(contract_file, encoding="utf-8") as _f:
-                doc = _yaml.safe_load(_f.read()) or {}
-            for t in doc.get("tasks") or []:
-                if isinstance(t, dict) and t.get("id"):
-                    contract_statuses[str(t["id"])] = str(t.get("status", ""))
+        pass
 
     now = datetime.now(timezone.utc)
     reconciled = 0

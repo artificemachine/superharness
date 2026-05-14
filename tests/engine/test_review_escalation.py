@@ -13,14 +13,17 @@ import pytest
 import yaml
 
 from tests.conftest import past_iso
+from tests.helpers import seed_sqlite_from_yaml
 
 
 def _write_contract(project: Path, tasks: list[dict]) -> None:
     (project / ".superharness" / "contract.yaml").write_text(yaml.dump({"tasks": tasks}))
+    seed_sqlite_from_yaml(project)
 
 
 def _read_contract(project: Path) -> dict:
-    return yaml.safe_load((project / ".superharness" / "contract.yaml").read_text()) or {}
+    from superharness.engine import state_reader
+    return {"tasks": state_reader.get_tasks(str(project))}
 
 
 def test_review_with_chain_advances_to_next_reviewer_on_timeout(clean_harness: Path) -> None:

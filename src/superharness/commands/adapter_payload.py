@@ -300,22 +300,7 @@ def _load_failures(sh_dir: Path) -> list[dict]:
     except Exception:
         pass
 
-    # Legacy YAML fallback (pre-v1.43 projects).
-    raw = _load_yaml(sh_dir / "failures.yaml")
-    items = (raw.get("failures") or []) if isinstance(raw, dict) else []
-    result = []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        result.append({
-            "task":          item.get("task", ""),
-            "severity":      item.get("severity", "minor"),
-            "error_snippet": item.get("error_snippet", ""),
-            "patterns":      item.get("patterns") or [],
-            "agent":         item.get("agent", ""),
-            "date":          _coerce_date(item.get("date", "")),
-        })
-    return result
+    return []
 
 
 def _load_decisions(sh_dir: Path) -> list[dict]:
@@ -351,23 +336,7 @@ def _load_decisions(sh_dir: Path) -> list[dict]:
     except Exception:
         pass
 
-    # Legacy YAML fallback (pre-v1.43 projects).
-    raw = _load_yaml(sh_dir / "decisions.yaml")
-    items = (raw.get("decisions") or []) if isinstance(raw, dict) else []
-    result = []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        result.append({
-            "id":           item.get("id", ""),
-            "what":         item.get("what", ""),
-            "why":          item.get("why", ""),
-            "alternatives": item.get("alternatives") or [],
-            "status":       item.get("status", "accepted"),
-            "by":           item.get("by", ""),
-            "date":         _coerce_date(item.get("date", "")),
-        })
-    return result
+    return []
 
 
 def _load_inbox(sh_dir: Path) -> list[dict]:
@@ -406,29 +375,9 @@ def _load_inbox(sh_dir: Path) -> list[dict]:
                 "created_at":  _coerce_date(r.created_at or ""),
             } for r in rows]
     except Exception:
-        # Fall through to legacy YAML path on any SQLite reader error.
         pass
 
-    # Legacy YAML fallback (pre-v1.43 projects).
-    path = sh_dir / "inbox.yaml"
-    if not path.exists():
-        return []
-    try:
-        raw = yaml.safe_load(path.read_text(errors="replace"))
-    except Exception:
-        return []
-    if not isinstance(raw, list):
-        return []
-    return [{
-        "id":          item.get("id", ""),
-        "task":        item.get("task", ""),
-        "status":      item.get("status", "pending"),
-        "to":          item.get("to", ""),
-        "priority":    item.get("priority", 2),
-        "retry_count": item.get("retry_count", 0),
-        "max_retries": item.get("max_retries", 3),
-        "created_at":  _coerce_date(item.get("created_at", "")),
-    } for item in raw if isinstance(item, dict) and item.get("status") in active]
+    return []
 
 
 # ---------------------------------------------------------------------------

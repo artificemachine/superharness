@@ -14,7 +14,6 @@ from pathlib import Path
 from superharness.engine.sdk_runner import sdk_available, SDKRunner
 from superharness.engine.orchestrator import Orchestrator, DecompositionResult
 from superharness.engine.taxonomy import VALID_EFFORTS
-from superharness.engine.contract_io import read_contract as _read_contract
 
 
 _JSON_MODE = False
@@ -177,41 +176,36 @@ def _read_profile_field(project_dir: str, field: str, default: str) -> str:
 # Contract helpers (direct YAML reads — avoids subprocess for simple fields)
 # ---------------------------------------------------------------------------
 
-def _get_contract_id(contract_file: str) -> str:
-    doc, _ = _read_contract(contract_file)
-    return str((doc or {}).get("id") or "") or "unknown-contract"
+def _get_contract_id(project_dir: str) -> str:
+    from superharness.engine import state_reader
+    doc = state_reader.get_contract_doc(project_dir)
+    return str(doc.get("id") or "") or "unknown-contract"
 
 
-def _get_task_acceptance_criteria(contract_file: str, task_id: str) -> list[str]:
-    doc, _ = _read_contract(contract_file)
-    tasks = (doc or {}).get("tasks") or []
-    for t in tasks:
-        if isinstance(t, dict) and str(t.get("id", "")) == task_id:
-            ac = t.get("acceptance_criteria")
-            if isinstance(ac, list):
-                return [str(c) for c in ac]
-            return []
+def _get_task_acceptance_criteria(project_dir: str, task_id: str) -> list[str]:
+    from superharness.engine import state_reader
+    task = state_reader.get_task(project_dir, task_id)
+    if task:
+        ac = task.get("acceptance_criteria")
+        if isinstance(ac, list):
+            return [str(c) for c in ac]
     return []
 
 
-def _get_task_title(contract_file: str, task_id: str) -> str:
-    doc, _ = _read_contract(contract_file)
-    tasks = (doc or {}).get("tasks") or []
-    for t in tasks:
-        if isinstance(t, dict) and str(t.get("id", "")) == task_id:
-            return str(t.get("title", ""))
-    return ""
+def _get_task_title(project_dir: str, task_id: str) -> str:
+    from superharness.engine import state_reader
+    task = state_reader.get_task(project_dir, task_id)
+    return str((task or {}).get("title") or "")
 
 
-def _get_task_field(contract_file: str, task_id: str, field: str) -> str | None:
+def _get_task_field(project_dir: str, task_id: str, field: str) -> str | None:
     """Return a string field from a task, or None if absent."""
-    doc, _ = _read_contract(contract_file)
-    tasks = (doc or {}).get("tasks") or []
-    for t in tasks:
-        if isinstance(t, dict) and str(t.get("id", "")) == task_id:
-            val = t.get(field)
-            return str(val) if val is not None else None
-    return None
+    from superharness.engine import state_reader
+    task = state_reader.get_task(project_dir, task_id)
+    if not task:
+        return None
+    val = task.get(field)
+    return str(val) if val is not None else None
 
 
 # Effort → max budget USD (per-task caps to prevent runaway spend)
@@ -223,9 +217,9 @@ EFFORT_BUDGET_MAP = {
 }
 
 
-def _get_task_budget(contract_file: str, task_id: str, effort: str) -> float | None:
+def _get_task_budget(project_dir: str, task_id: str, effort: str) -> float | None:
     """Return task budget: explicit budget_usd from contract, or effort-based default."""
-    explicit = _get_task_field(contract_file, task_id, "budget_usd")
+    explicit = _get_task_field(project_dir, task_id, "budget_usd")
     if explicit:
         try:
             return float(explicit)
@@ -263,8 +257,8 @@ def _save_context_snapshot(project_dir: str, task_id: str, result: dict) -> None
         pass
 
 
-def _get_task_previously_failed(contract_file: str, task_id: str) -> bool:
-    status = _get_task_field(contract_file, task_id, "status")
+def _get_task_previously_failed(project_dir: str, task_id: str) -> bool:
+    status = _get_task_field(project_dir, task_id, "status")
     return status == "failed"
 
 
@@ -316,70 +310,67 @@ EXIT_PERMANENT_BLOCK = 2
 # Orchestrator helpers
 # ---------------------------------------------------------------------------
 
-def _write_subtasks_to_contract(
-    contract_file: str,
+def _record_decomposition(
+    project_dir: str,
     task_id: str,
     decomposition: DecompositionResult,
 ) -> None:
-    """Write orchestrator decomposition subtasks into contract.yaml.
-
-    Normalises each subtask with explicit defaults (status, owner) so YAML
-    matches what SQLite will store — prevents F6 mismatched drift after sync.
+    """Record orchestration event, update parent metadata, and upsert subtasks to SQLite.
+    Never raises.
     """
-    import yaml
-
-    with open(contract_file) as f:
-        doc = yaml.safe_load(f) or {}
-
-    normalised: list[dict] = []
-    for st in decomposition.subtasks:
-        if not isinstance(st, dict):
-            continue
-        st = dict(st)
-        st.setdefault("status", "pending")
-        st.setdefault("owner", "claude-code")
-        normalised.append(st)
-
-    tasks = doc.get("tasks") or []
-    for t in tasks:
-        if isinstance(t, dict) and str(t.get("id", "")) == task_id:
-            t["subtasks"] = normalised
-            t["estimated_cost_usd"] = round(decomposition.total_estimated_cost_usd, 4)
-            t["budget_usd"] = round(decomposition.recommended_budget_usd, 4)
-            break
-
-    with open(contract_file, "w") as f:
-        yaml.safe_dump(doc, f, default_flow_style=False, sort_keys=False)
-
-
-def _sqlite_mirror_orchestrate(
-    project_dir: str,
-    task_id: str,
-    subtasks: list[dict],
-) -> None:
-    """Record orchestration event + upsert subtasks to SQLite. Never raises."""
     try:
         from datetime import datetime, timezone
         from superharness.engine.db import get_connection, init_db, transaction
         from superharness.engine import tasks_dao, ledger_dao
         from superharness.engine.tasks_dao import TaskRow
+        import json as _j
+
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         conn = get_connection(project_dir)
         try:
             init_db(conn)
             with transaction(conn):
+                # 1. Update parent task metadata in extras_json (v11)
+                parent = tasks_dao.get(conn, task_id)
+                if parent:
+                    extras = _j.loads(parent.extras_json) if parent.extras_json else {}
+
+                    # Normalize subtasks for the parent's extras blob (matches legacy YAML shape)
+                    normalised_st = []
+                    for st in decomposition.subtasks:
+                        if not isinstance(st, dict):
+                            continue
+                        st = dict(st)
+                        st.setdefault("status", "pending")
+                        st.setdefault("owner", "claude-code")
+                        normalised_st.append(st)
+
+                    extras["subtasks"] = normalised_st
+                    extras["estimated_cost_usd"] = round(decomposition.total_estimated_cost_usd, 4)
+                    extras["budget_usd"] = round(decomposition.recommended_budget_usd, 4)
+
+                    tasks_dao.update(conn, task_id, parent.version, {
+                        "extras_json": _j.dumps(extras)
+                    })
+
+                # 2. Record ledger event
                 ledger_dao.record(
                     conn, task_id=task_id, agent="orchestrator",
                     action="decompose",
-                    details={"subtask_count": len(subtasks)},
+                    details={"subtask_count": len(decomposition.subtasks)},
                     now=now,
                 )
-                for st in subtasks:
+
+                # 3. Upsert subtasks as separate rows (v2 parent_id)
+                for st in decomposition.subtasks:
+                    if not isinstance(st, dict):
+                        continue
                     st_id = str(st.get("id", ""))
                     if not st_id:
                         continue
-                    # Default status="pending" matches Subtask schema and YAML normalisation
-                    # in _write_subtasks_to_contract — keeps parity hash aligned (F6).
+
+                    # v2: parent_id links subtask to its parent
+                    # v10: stamped defaults
                     row = TaskRow(
                         id=st_id,
                         title=str(st.get("title", st_id)),
@@ -387,6 +378,7 @@ def _sqlite_mirror_orchestrate(
                         status=str(st.get("status") or "pending"),
                         effort=st.get("effort"),
                         project_path=project_dir,
+                        parent_id=task_id,
                         development_method=None,
                         acceptance_criteria=[],
                         test_types=[],
@@ -402,6 +394,7 @@ def _sqlite_mirror_orchestrate(
         finally:
             conn.close()
     except Exception:
+        # Orchestration record is non-critical; don't crash delegation if DB is locked
         pass
 
 
@@ -596,7 +589,6 @@ def delegate(
     project_dir = os.path.realpath(project_dir)
 
     harness_dir = os.path.join(project_dir, ".superharness")
-    contract_file = os.path.join(harness_dir, "contract.yaml")
     handoff_dir = os.path.join(harness_dir, "handoffs")
 
     if not os.path.isfile(os.path.join(harness_dir, "state.sqlite3")):
@@ -604,7 +596,7 @@ def delegate(
     if not os.path.isdir(handoff_dir):
         _abort(f"Missing handoff directory: {handoff_dir}")
 
-    contract_id = _get_contract_id(contract_file)
+    contract_id = _get_contract_id(project_dir)
 
     # Discussion-round detection
     m = _DISC_ROUND_RE.match(task_id)
@@ -627,7 +619,7 @@ def delegate(
     today = _date.today()
 
     # Gate 1: scheduled_after — can't delegate before this date
-    scheduled_after = _get_task_field(contract_file, task_id, "scheduled_after")
+    scheduled_after = _get_task_field(project_dir, task_id, "scheduled_after")
     if scheduled_after:
         try:
             sched_date = datetime.strptime(scheduled_after.strip(), "%Y-%m-%d").date()
@@ -642,58 +634,33 @@ def delegate(
             pass
 
     # Gate 2: due_by — warn if past due date (don't block, just warn)
-    due_by = _get_task_field(contract_file, task_id, "due_by")
+    due_by = _get_task_field(project_dir, task_id, "due_by")
     if due_by:
         try:
             due_date = datetime.strptime(due_by.strip(), "%Y-%m-%d").date()
             if today > due_date:
                 days_overdue = (today - due_date).days
                 print(
-                    f"⚠️  Task '{task_id}' is overdue — due by {due_by} ({days_overdue} day(s) ago).",
+                    f"⚠️ Task '{task_id}' is overdue — due by {due_by} ({days_overdue} day(s) ago).",
                     file=sys.stderr,
                 )
         except ValueError:
             pass
 
     # Gate 3: depends_on / blocked_by — block if dependency tasks are not done
-    doc, _ = _read_contract(contract_file)
-    task_obj = next((t for t in ((doc or {}).get("tasks") or []) if isinstance(t, dict) and str(t.get("id", "")) == task_id), None)
-
-    # Post-migration fallback: tasks created via SQLite-only paths (e.g.
-    # shux discuss start writes round-N subtasks straight to the DB) are not
-    # in contract.yaml. Fall back to the SQLite tasks table so the lifecycle
-    # gate can read the real status and not reject with empty status.
-    if task_obj is None:
-        try:
-            from superharness.engine.db import get_connection
-            from superharness.engine import tasks_dao
-            _conn = get_connection(project_dir)
-            try:
-                _row = tasks_dao.get(_conn, task_id)
-            finally:
-                _conn.close()
-            if _row is not None:
-                from dataclasses import asdict
-                task_obj = asdict(_row)
-        except Exception:
-            pass
+    from superharness.engine import state_reader as _sr
+    task_obj = _sr.get_task(project_dir, task_id)
 
     # Collect blocker IDs from both blocked_by (new) and depends_on (legacy)
-    _blocked_by_val = task_obj.get("blocked_by") if task_obj else None
-    _depends_on_val = task_obj.get("depends_on") if task_obj else None
     _dep_id_set: list[str] = []
-    for _val in (_blocked_by_val, _depends_on_val):
-        if not _val or _val == "none":
-            continue
-        if isinstance(_val, list):
-            _dep_id_set.extend(str(d).strip() for d in _val if d and str(d).strip() != "none")
-        else:
-            _dep_id_set.extend(d.strip() for d in str(_val).strip("[]").split(",") if d.strip() and d.strip() != "none")
+    if task_obj:
+        # state_reader.get_task already normalizes dependencies into 'blocked_by'
+        _dep_id_set = task_obj.get("blocked_by") or []
 
     if _dep_id_set:
         blockers = []
         for dep_id in _dep_id_set:
-            dep_status = _get_task_field(contract_file, dep_id, "status")
+            dep_status = _get_task_field(project_dir, dep_id, "status")
             if dep_status not in ("done", "archived"):
                 blockers.append(f"{dep_id} (status: {dep_status or 'not found'})")
         if blockers:
@@ -779,7 +746,6 @@ def delegate(
             pf = run_preflight(
                 project_dir=project_dir,
                 task=dict(task_obj),
-                contract_file=contract_file,
                 skip_git=non_interactive,  # skip git check in non-interactive mode
             )
             if pf.status != "pass":
@@ -828,12 +794,12 @@ def delegate(
 
     # 2. Task field (if not already set by CLI)
     if not resolved_model:
-        task_model = _get_task_field(contract_file, task_id, "model")
+        task_model = _get_task_field(project_dir, task_id, "model")
         if task_model:
             resolved_model = task_model
             model_source = "task"
     if not resolved_effort:
-        task_effort = _get_task_field(contract_file, task_id, "effort")
+        task_effort = _get_task_field(project_dir, task_id, "effort")
         if task_effort:
             resolved_effort = task_effort
 
@@ -849,9 +815,9 @@ def delegate(
             # Force reload of manifests (prevents stale "sonnet" fallback)
             clear_manifest_cache()
 
-            task_title = _get_task_title(contract_file, task_id)
-            ac_for_classify = _get_task_acceptance_criteria(contract_file, task_id)
-            previously_failed = _get_task_previously_failed(contract_file, task_id)
+            task_title = _get_task_title(project_dir, task_id)
+            ac_for_classify = _get_task_acceptance_criteria(project_dir, task_id)
+            previously_failed = _get_task_previously_failed(project_dir, task_id)
 
             classified_tier, classified_effort = classify_task(
                 title=task_title or task_id,
@@ -923,15 +889,14 @@ def delegate(
         orch = Orchestrator(project_dir=project_dir)
         task_data = {
             "id": task_id,
-            "title": _get_task_title(contract_file, task_id) or task_id,
+            "title": _get_task_title(project_dir, task_id) or task_id,
             "owner": target,
-            "acceptance_criteria": _get_task_acceptance_criteria(contract_file, task_id),
+            "acceptance_criteria": _get_task_acceptance_criteria(project_dir, task_id),
         }
         decomposition = orch.decompose(task_data)
 
-        # Write subtasks to contract + mirror to SQLite
-        _write_subtasks_to_contract(contract_file, task_id, decomposition)
-        _sqlite_mirror_orchestrate(project_dir, task_id, decomposition.subtasks)
+        # Write subtasks and metadata to SQLite
+        _record_decomposition(project_dir, task_id, decomposition)
 
         # Print decomposition summary
         print()
@@ -946,7 +911,7 @@ def delegate(
             return 0
 
     # Acceptance criteria
-    ac_lines = _get_task_acceptance_criteria(contract_file, task_id)
+    ac_lines = _get_task_acceptance_criteria(project_dir, task_id)
     acceptance_criteria = ""
     if ac_lines:
         ac_block = "\n".join(f"- {c}" for c in ac_lines)
@@ -987,7 +952,7 @@ def delegate(
 
     # ship_on_complete: inject directive so the agent runs /ship commit before report_ready
     _ship_on_complete = ship_on_complete or str(
-        _get_task_field(contract_file, task_id, "ship_on_complete") or ""
+        _get_task_field(project_dir, task_id, "ship_on_complete") or ""
     ).lower() in ("true", "1", "yes")
     if _ship_on_complete:
         auto_directive += (
@@ -1038,7 +1003,7 @@ def delegate(
                 f"If you agree with everything, set verdict: agree. "
                 f"Otherwise set verdict: disagree or partial and explain in points.\n"
                 f"Run `shux context {discussion_id}` for the full discussion context.\n"
-                f"Read the handoff referenced in .superharness/contract.yaml for the task details."
+                f"Read the handoff referenced in the project contract for the task details."
                 f"{auto_directive}"
             )
         else:
@@ -1140,7 +1105,7 @@ def delegate(
                     f"continue contract\n"
                     f"Read the latest handoff addressed to codex-cli and execute task {task_id}.\n"
                     f"Use scope, commands, and acceptance criteria from the handoff.\n"
-                    f"Update .superharness/contract.yaml task status, append .superharness/ledger.md, "  # shipguard:ignore PY-007
+                    f"Use `shux contract` to update task status. Append .superharness/ledger.md, "  # shipguard:ignore PY-007
                     f"and refresh the handoff with outcomes.\n"
                     f"Contract id: {contract_id}."
                     f"{acceptance_criteria}{user_instructions}"
@@ -1158,7 +1123,7 @@ def delegate(
                 )
 
         # Enrich prompt with vault context
-        task_title = _get_task_title(contract_file, task_id)
+        task_title = _get_task_title(project_dir, task_id)
         try:
             from superharness.engine.osm import vault_search
             vault_results = vault_search(task_title or task_id)
@@ -1245,7 +1210,7 @@ def delegate(
                 log_file = log_dir / f"{task_id}-{target}-{timestamp}.log"
                 _rotate_launcher_logs(log_dir, task_id, target, keep=5)
 
-            task_budget = _get_task_budget(contract_file, task_id, resolved_effort)
+            task_budget = _get_task_budget(project_dir, task_id, resolved_effort)
             if task_budget:
                 print(f"Budget: ${task_budget:.2f}")
             runner = SDKRunner(
@@ -1300,7 +1265,7 @@ def _build_parser() -> "argparse.ArgumentParser":
     parser.add_argument("--project", "-p", default=None,
                         help="Project directory (default: current directory)")
     parser.add_argument("--task", "-t", default="",
-                        help="Task ID from contract.yaml (default: latest handoff for target)")
+                        help="Task ID from project contract (default: latest handoff for target)")
     parser.add_argument("--print-only", action="store_true", default=False,
                         help="Print the generated prompt without launching the agent")
     parser.add_argument("--non-interactive", action="store_true", default=False,
