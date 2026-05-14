@@ -277,9 +277,32 @@ def upsert_handoff(project_dir: str, handoff_id: str, content: dict) -> bool:
 
 
 
+_KNOWN_TASK_COLS = frozenset({
+    "title", "owner", "effort", "project_path",
+    "development_method", "acceptance_criteria", "test_types",
+    "out_of_scope", "definition_of_done", "context", "tdd",
+    "created_at", "updated_at", "plan_proposed_at",
+    "plan_approved_at", "in_progress_at", "report_ready_at",
+    "review_requested_at", "done_at", "cancelled_at",
+    "blocked_by_raw", "parent_id", "verified",
+    "verified_at", "verified_by", "deadline_minutes",
+    "failed_at", "stopped_at", "failed_reason", "archived_at",
+    "archived_reason", "model_tier", "pause_reason", "worktree_path",
+    "workflow", "autonomy", "require_tdd", "estimated_minutes",
+    "locked_contract", "contract_locked_at",
+})
+# Fields to skip entirely — either handled elsewhere or not real task columns.
+_SKIP_TASK_FIELDS = frozenset({"id", "status", "version", "blocked_by", "depends_on", "extras_json"})
+
+
 def _mirror_task_to_sqlite(project_dir: str, task_id: str, status: str, **fields) -> None:
-    """Best-effort SQLite sync from state_writer."""
+    """Best-effort SQLite sync from state_writer.
+
+    Unknown fields (not real task columns) are merged into extras_json so
+    they survive round-trips through SQLite without silently failing.
+    """
     try:
+        import json as _j
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import tasks_dao
         conn = get_connection(project_dir)
@@ -288,10 +311,29 @@ def _mirror_task_to_sqlite(project_dir: str, task_id: str, status: str, **fields
             row = tasks_dao.get(conn, task_id)
             if row:
                 now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                changes = {"status": status, "updated_at": now}
+                changes: dict = {"status": status, "updated_at": now}
                 ts_map = {"plan_proposed": "plan_proposed_at", "plan_approved": "plan_approved_at", "in_progress": "in_progress_at", "report_ready": "report_ready_at", "done": "done_at", "failed": "failed_at", "stopped": "stopped_at"}
-                if status in ts_map: changes[ts_map[status]] = now
-                changes.update(fields)
+                if status in ts_map:
+                    changes[ts_map[status]] = now
+                # Separate known columns from extras
+                extras: dict = {}
+                for k, v in fields.items():
+                    if k in _SKIP_TASK_FIELDS:
+                        continue
+                    elif k in _KNOWN_TASK_COLS:
+                        changes[k] = v
+                    else:
+                        extras[k] = v
+                # Merge extras into existing extras_json blob
+                if extras:
+                    existing_extras: dict = {}
+                    if row.extras_json:
+                        try:
+                            existing_extras = _j.loads(row.extras_json) or {}
+                        except Exception:
+                            pass
+                    existing_extras.update(extras)
+                    changes["extras_json"] = _j.dumps(existing_extras)
                 tasks_dao.update(conn, task_id, version=row.version, changes=changes)
                 conn.commit()
         finally:

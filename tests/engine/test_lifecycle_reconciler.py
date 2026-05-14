@@ -11,22 +11,66 @@ from pathlib import Path
 import yaml
 
 from tests.conftest import past_iso
+from tests.helpers import seed_sqlite_from_yaml
+
+_NOW = "2026-01-01T00:00:00Z"
 
 
 def _write_inbox(project: Path, items: list[dict]) -> None:
     (project / ".superharness" / "inbox.yaml").write_text(yaml.dump(items))
+    # Seed SQLite directly with FK checks off — task row may not exist in tests.
+    from superharness.engine.db import get_connection, init_db
+    conn = get_connection(str(project))
+    init_db(conn)
+    conn.execute("PRAGMA foreign_keys = OFF")
+    for item in items:
+        conn.execute(
+            """INSERT OR REPLACE INTO inbox
+               (id, task_id, target_agent, status, priority, retry_count,
+                max_retries, recovery_count, pid, project_path, plan_only,
+                failed_reason, created_at, launched_at, last_heartbeat,
+                paused_at, failed_at, done_at, reason)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                str(item.get("id", "")),
+                str(item.get("task", item.get("task_id", ""))),
+                str(item.get("to", item.get("target_agent", ""))),
+                str(item.get("status", "pending")),
+                int(item.get("priority", 2)),
+                int(item.get("retry_count", 0)),
+                int(item.get("max_retries", 3)),
+                int(item.get("recovery_count", 0)),
+                item.get("pid"),
+                str(item.get("project", item.get("project_path", str(project)))),
+                int(bool(item.get("plan_only", False))),
+                item.get("failed_reason"),
+                str(item.get("created_at", _NOW)),
+                item.get("launched_at"),
+                item.get("last_heartbeat"),
+                item.get("paused_at"),
+                item.get("failed_at"),
+                item.get("done_at"),
+                item.get("reason"),
+            ),
+        )
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.commit()
+    conn.close()
 
 
 def _read_inbox(project: Path) -> list[dict]:
-    return yaml.safe_load((project / ".superharness" / "inbox.yaml").read_text()) or []
+    from superharness.engine import state_reader
+    return state_reader.get_inbox_items(str(project))
 
 
 def _write_contract(project: Path, tasks: list[dict]) -> None:
     (project / ".superharness" / "contract.yaml").write_text(yaml.dump({"tasks": tasks}))
+    seed_sqlite_from_yaml(project)
 
 
 def _read_contract(project: Path) -> dict:
-    return yaml.safe_load((project / ".superharness" / "contract.yaml").read_text()) or {}
+    from superharness.engine import state_reader
+    return {"tasks": state_reader.get_tasks(str(project))}
 
 
 def test_paused_item_no_reason_after_30m_becomes_failed(clean_harness: Path) -> None:

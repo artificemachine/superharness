@@ -12,7 +12,7 @@ from superharness.engine.state_errors import ConnectionError, SchemaError
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 15
+CURRENT_SCHEMA_VERSION = 17
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -520,6 +520,15 @@ def _migration_v15(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_v16(conn: sqlite3.Connection) -> None:
+    _add_column_if_missing(conn, "tasks", "estimated_minutes", "TEXT")
+
+
+def _migration_v17(conn: sqlite3.Connection) -> None:
+    """Add reason column to inbox for manually-paused items (skip_if_field support)."""
+    _add_column_if_missing(conn, "inbox", "reason", "TEXT")
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -536,4 +545,6 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v13,
     _migration_v14,
     _migration_v15,
+    _migration_v16,
+    _migration_v17,
 ]

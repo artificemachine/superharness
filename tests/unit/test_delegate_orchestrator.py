@@ -108,63 +108,64 @@ MOCK_DECOMPOSITION = DecompositionResult(
 
 
 # ---------------------------------------------------------------------------
-# write_subtasks_to_contract
+# _record_decomposition
 # ---------------------------------------------------------------------------
 
 
-class TestWriteSubtasksToContract:
-    def test_subtasks_written_to_contract(self, tmp_path):
-        from superharness.commands.delegate import _write_subtasks_to_contract
+class TestRecordDecomposition:
+    def test_subtasks_written_to_sqlite(self, tmp_path):
+        from superharness.commands.delegate import _record_decomposition
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import tasks_dao
+        from tests.helpers import seed_sqlite_from_yaml
 
         project = _setup_project(tmp_path)
-        contract_file = project / ".superharness" / "contract.yaml"
+        seed_sqlite_from_yaml(project)
 
-        _write_subtasks_to_contract(
-            str(contract_file), "T-42", MOCK_DECOMPOSITION
-        )
+        _record_decomposition(str(project), "T-42", MOCK_DECOMPOSITION)
 
-        with open(contract_file) as f:
-            doc = yaml.safe_load(f)
+        conn = get_connection(str(project))
+        try:
+            init_db(conn)
+            # 1. Verify separate rows
+            row1 = tasks_dao.get(conn, "T-42.1")
+            row2 = tasks_dao.get(conn, "T-42.2")
+            assert row1.title == "Write rate limiter middleware"
+            assert row1.parent_id == "T-42"
+            assert row2.title == "Add Redis backend"
+            assert row2.parent_id == "T-42"
 
-        task = next(t for t in doc["tasks"] if t["id"] == "T-42")
-        assert "subtasks" in task
-        assert len(task["subtasks"]) == 2
-        assert task["subtasks"][0]["id"] == "T-42.1"
-        assert task["subtasks"][1]["id"] == "T-42.2"
+            # 2. Verify parent extras_json
+            parent = tasks_dao.get(conn, "T-42")
+            import json
+            extras = json.loads(parent.extras_json)
+            assert "subtasks" in extras
+            assert len(extras["subtasks"]) == 2
+            assert extras["budget_usd"] == pytest.approx(0.45, abs=0.01)
+        finally:
+            conn.close()
 
-    def test_cost_fields_written(self, tmp_path):
-        from superharness.commands.delegate import _write_subtasks_to_contract
-
-        project = _setup_project(tmp_path)
-        contract_file = project / ".superharness" / "contract.yaml"
-
-        _write_subtasks_to_contract(
-            str(contract_file), "T-42", MOCK_DECOMPOSITION
-        )
-
-        with open(contract_file) as f:
-            doc = yaml.safe_load(f)
-
-        task = next(t for t in doc["tasks"] if t["id"] == "T-42")
-        assert task["estimated_cost_usd"] == pytest.approx(0.30, abs=0.01)
-        assert task["budget_usd"] == pytest.approx(0.45, abs=0.01)
-
-    def test_subtask_tiers_preserved(self, tmp_path):
-        from superharness.commands.delegate import _write_subtasks_to_contract
+    def test_cost_fields_persisted(self, tmp_path):
+        from superharness.commands.delegate import _record_decomposition
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import tasks_dao
+        from tests.helpers import seed_sqlite_from_yaml
 
         project = _setup_project(tmp_path)
-        contract_file = project / ".superharness" / "contract.yaml"
+        seed_sqlite_from_yaml(project)
 
-        _write_subtasks_to_contract(
-            str(contract_file), "T-42", MOCK_DECOMPOSITION
-        )
+        _record_decomposition(str(project), "T-42", MOCK_DECOMPOSITION)
 
-        with open(contract_file) as f:
-            doc = yaml.safe_load(f)
-
-        task = next(t for t in doc["tasks"] if t["id"] == "T-42")
-        tiers = [st["model_tier"] for st in task["subtasks"]]
-        assert tiers == ["standard", "mini"]
+        conn = get_connection(str(project))
+        try:
+            init_db(conn)
+            parent = tasks_dao.get(conn, "T-42")
+            import json
+            extras = json.loads(parent.extras_json)
+            assert extras["estimated_cost_usd"] == pytest.approx(0.30, abs=0.01)
+            assert extras["budget_usd"] == pytest.approx(0.45, abs=0.01)
+        finally:
+            conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -173,12 +174,13 @@ class TestWriteSubtasksToContract:
 
 
 class TestOrchestrateMode:
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_orchestrate_flag_triggers_decomposition(self, tmp_path):
         """--orchestrate causes delegate to decompose before dispatch."""
         from superharness.commands.delegate import delegate
+        from tests.helpers import seed_sqlite_from_yaml
 
         project = _setup_project(tmp_path)
+        seed_sqlite_from_yaml(project)
 
         with patch("superharness.commands.delegate.Orchestrator") as MockOrch:
             mock_instance = MockOrch.return_value
@@ -200,12 +202,13 @@ class TestOrchestrateMode:
             mock_instance.decompose.assert_called_once()
             assert rc == 0
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_orchestrate_prints_cost_summary(self, tmp_path, capsys):
         """--orchestrate prints decomposition and cost before dispatch."""
         from superharness.commands.delegate import delegate
+        from tests.helpers import seed_sqlite_from_yaml
 
         project = _setup_project(tmp_path)
+        seed_sqlite_from_yaml(project)
 
         with patch("superharness.commands.delegate.Orchestrator") as MockOrch:
             mock_instance = MockOrch.return_value
@@ -228,12 +231,13 @@ class TestOrchestrateMode:
         assert "T-42.1" in captured.out
         assert "T-42.2" in captured.out
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_orchestrate_works_for_codex_cli(self, tmp_path):
         """--orchestrate now works for codex-cli, not just claude-code."""
         from superharness.commands.delegate import delegate
+        from tests.helpers import seed_sqlite_from_yaml
 
         project = _setup_project(tmp_path)
+        seed_sqlite_from_yaml(project)
 
         with patch("superharness.commands.delegate.Orchestrator") as MockOrch:
             mock_instance = MockOrch.return_value

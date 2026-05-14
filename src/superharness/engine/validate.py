@@ -8,8 +8,6 @@ import re
 import sys
 from datetime import datetime, timezone
 
-import yaml as _yaml
-
 _log = logging.getLogger(__name__)
 
 from superharness.engine.yaml_helpers import safe_load
@@ -68,37 +66,18 @@ def _repair_append_ledger(ledger_file: str, message: str) -> None:
         f.write(line)
 
 
-def _repair_fix_stuck_status(task_id: str, contract_file: str) -> None:
-    """Set task status to done when verified=true but status is not done."""
-    with open(contract_file) as f:
-        text = f.read()
-    data = _yaml.safe_load(text)
-    for task in data.get("tasks") or []:
-        if str(task.get("id", "")) == task_id:
-            task["status"] = "done"
-            break
-    with open(contract_file, "w") as f:
-        _yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
-
 
 def run_validate(project: str, strict: bool = False, repair: bool = False) -> int:
     harness_dir = os.path.join(project, ".superharness")
-    contract_file = os.path.join(harness_dir, "contract.yaml")
+    sqlite_file = os.path.join(harness_dir, "state.sqlite3")
     handoff_dir = os.path.join(harness_dir, "handoffs")
     ledger_file = os.path.join(harness_dir, "ledger.md")
-    decisions_file = os.path.join(harness_dir, "decisions.yaml")
-    failures_file = os.path.join(harness_dir, "failures.yaml")
 
-    for path in (harness_dir, contract_file, handoff_dir, ledger_file):
+    for path in (harness_dir, sqlite_file, handoff_dir, ledger_file):
         if not os.path.exists(path):
             _log.error("validate: missing required path: %s", path)
             print(f"Missing required path: {path}", file=sys.stderr)
             return 1
-
-    if not (os.path.isfile(decisions_file) and os.path.isfile(failures_file)):
-        _log.error("validate: missing decisions/failures store under %s", harness_dir)
-        print(f"Missing decisions/failures store under {harness_dir}", file=sys.stderr)
-        return 1
 
     # .gitignore check: runtime state must be excluded from git tracking (non-fatal warning)
     _REQUIRED_GITIGNORE_PATTERNS = {"state.sqlite3", "circuit-breaker.json"}
@@ -119,19 +98,19 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
                 f"{', '.join(_missing)} — runtime state may be committed accidentally."
             )
 
-    contract = safe_load(contract_file, dict)
-    raw_tasks = contract.get("tasks")
-    if raw_tasks is None:
-        tasks: list = []
-    elif not isinstance(raw_tasks, list):
-        raise ValueError("tasks must be a sequence")
-    else:
-        tasks = raw_tasks
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import tasks_dao
+        conn = get_connection(project)
+        try:
+            init_db(conn)
+            all_tasks = tasks_dao.get_all(conn)
+        finally:
+            conn.close()
+    except Exception:
+        all_tasks = []
 
-    done_tasks = [
-        t for t in tasks
-        if isinstance(t, dict) and str(t.get("status", "")) == "done" and str(t.get("id", "")).strip()
-    ]
+    done_tasks = [t for t in all_tasks if t.status == "done" and t.id.strip()]
 
     ledger_text = ""
     if os.path.exists(ledger_file):
@@ -154,7 +133,7 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
         handoff_map.setdefault(task_id, []).append(hfile)
 
     for task in done_tasks:
-        id_ = str(task.get("id", "")).strip()
+        id_ = task.id.strip()
         if not handoff_map.get(id_):
             if repair:
                 path = _repair_create_handoff(id_, handoff_dir)
@@ -171,47 +150,57 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
             else:
                 print(f"Missing ledger mention for done task: {id_}")
                 issues += 1
-        test_types = task.get("test_types")
+        test_types = task.test_types
         if test_types and isinstance(test_types, list):
             print(f"Warning: task '{id_}' requires test types [{', '.join(str(t) for t in test_types)}] — verify evidence before close")
-        if not task.get("verified"):
+        if not task.verified:
             print(f"Warning: task '{id_}' closed without verification record")
             issues += 1
 
-    # Dangling subtask check: done parent with open subtasks
-    for task in tasks:
-        if not isinstance(task, dict):
+    # Dangling subtask check: done parent with open child tasks
+    done_ids = {t.id for t in done_tasks}
+    open_subtask_map: dict[str, list[str]] = {}
+    # Check flat child tasks (parent_id FK)
+    for task in all_tasks:
+        if task.parent_id and task.parent_id in done_ids:
+            if not is_subtask_resolved(task.status):
+                open_subtask_map.setdefault(task.parent_id, []).append(task.id)
+    # Check nested subtasks stored in extras_json (legacy embedded format)
+    for task in done_tasks:
+        if not task.extras_json:
             continue
-        if str(task.get("status", "")) != "done":
-            continue
-        id_ = str(task.get("id", "")).strip()
-        subtasks = task.get("subtasks") or []
-        if not isinstance(subtasks, list):
-            continue
-        open_subs = [
-            str(s.get("id", "?"))
-            for s in subtasks
-            if isinstance(s, dict) and not is_subtask_resolved(str(s.get("status", "pending")))
-        ]
-        if open_subs:
-            print(
-                f"Warning: done task '{id_}' has {len(open_subs)} open subtask(s): "
-                f"{', '.join(open_subs)}. "
-                f"Run: shux subtask-cancel --task {id_} --sub <id> --reason \"...\" "
-                f"to retire them."
-            )
-            issues += 1
+        try:
+            import json as _json
+            extras = _json.loads(task.extras_json)
+            for sub in (extras.get("subtasks") or []):
+                if not isinstance(sub, dict):
+                    continue
+                sub_id = str(sub.get("id", "")).strip()
+                sub_status = str(sub.get("status", "pending"))
+                if sub_id and not is_subtask_resolved(sub_status):
+                    open_subtask_map.setdefault(task.id, []).append(sub_id)
+        except Exception:
+            pass
+    for parent_id, open_subs in open_subtask_map.items():
+        print(
+            f"Warning: done task '{parent_id}' has {len(open_subs)} open subtask(s): "
+            f"{', '.join(open_subs)}. "
+            f"Run: shux subtask-cancel --task {parent_id} --sub <id> --reason \"...\" "
+            f"to retire them."
+        )
+        issues += 1
 
     # Stuck-status check: verified=true but status != done
-    for task in tasks:
-        if not isinstance(task, dict):
-            continue
-        id_ = str(task.get("id", "")).strip()
-        status = str(task.get("status", ""))
-        verified = task.get("verified")
-        if verified and status not in ("done", ""):
+    for task in all_tasks:
+        id_ = task.id.strip()
+        status = task.status
+        if task.verified and status not in ("done", ""):
             if repair:
-                _repair_fix_stuck_status(id_, contract_file)
+                from superharness.engine import state_writer
+                try:
+                    state_writer.set_task_status(project, id_, "done")
+                except Exception:
+                    pass
                 _repair_append_ledger(ledger_file, f"fixed stuck status for {id_}: {status} → done")
                 print(f"[repair] Fixed stuck status for: {id_} ({status} → done)")
             else:
@@ -219,11 +208,9 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
                 issues += 1
 
     # Effort value validation
-    for task in tasks:
-        if not isinstance(task, dict):
-            continue
-        id_ = str(task.get("id", "")).strip()
-        effort = task.get("effort")
+    for task in all_tasks:
+        id_ = task.id.strip()
+        effort = task.effort
         if effort is not None and str(effort) not in _VALID_EFFORTS:
             print(f"Warning: task '{id_}' has invalid effort='{effort}' (expected: {'/'.join(_VALID_EFFORTS)})")
             issues += 1
@@ -254,20 +241,6 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
             print(f"features.json: invalid JSON: {e}")
             issues += 1
 
-    contract_decision_count = len(contract.get("decisions") or []) if isinstance(contract.get("decisions"), list) else 0
-    contract_failure_count = len(contract.get("failures") or []) if isinstance(contract.get("failures"), list) else 0
-
-    decisions = safe_load(decisions_file, dict)
-    failures = safe_load(failures_file, dict)
-    decision_store_count = len(decisions.get("decisions") or []) if isinstance(decisions.get("decisions"), list) else 0
-    failure_store_count = len(failures.get("failures") or []) if isinstance(failures.get("failures"), list) else 0
-
-    if strict and contract_decision_count > 0 and decision_store_count == 0:
-        print("Contract has decisions but decisions.yaml is empty. Promote reusable decisions.")
-        issues += 1
-    if strict and contract_failure_count > 0 and failure_store_count == 0:
-        print("Contract has failures but failures.yaml is empty. Promote reusable failures.")
-        issues += 1
 
     # Vault backlog index check (optional — skipped if vault not configured)
     vault_base = os.environ.get("SUPERHARNESS_VAULT_BASE", "")

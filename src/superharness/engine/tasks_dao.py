@@ -64,6 +64,8 @@ class TaskRow:
     # v12: contract lock — snapshot of acceptance_criteria + tdd frozen at plan_approved
     locked_contract: str | None = None
     contract_locked_at: str | None = None
+    # v16: explicit timeout override (stored as string of minutes, e.g. "45")
+    estimated_minutes: str | None = None
 
 def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
     """Insert or update a task. Bumps version on update."""
@@ -81,10 +83,13 @@ def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
                 development_method, acceptance_criteria, test_types,
                 out_of_scope, definition_of_done, context, tdd, created_at,
                 updated_at, plan_proposed_at, plan_approved_at, in_progress_at,
-                report_ready_at, done_at, cancelled_at, version, parent_id,
-                verified, verified_at, verified_by, deadline_minutes,
-                workflow, autonomy, require_tdd
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                report_ready_at, review_requested_at, done_at, cancelled_at,
+                version, parent_id, verified, verified_at, verified_by, deadline_minutes,
+                failed_at, stopped_at, failed_reason, archived_at, archived_reason,
+                model_tier, pause_reason, worktree_path, blocked_by_raw,
+                locked_contract, contract_locked_at,
+                workflow, autonomy, require_tdd, estimated_minutes, extras_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 title=excluded.title, owner=excluded.owner, status=excluded.status,
                 effort=excluded.effort, project_path=excluded.project_path,
@@ -98,6 +103,7 @@ def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
                 plan_approved_at=excluded.plan_approved_at,
                 in_progress_at=excluded.in_progress_at,
                 report_ready_at=excluded.report_ready_at,
+                review_requested_at=excluded.review_requested_at,
                 done_at=excluded.done_at,
                 cancelled_at=excluded.cancelled_at,
                 parent_id=excluded.parent_id,
@@ -105,9 +111,22 @@ def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
                 verified_at=excluded.verified_at,
                 verified_by=excluded.verified_by,
                 deadline_minutes=excluded.deadline_minutes,
+                failed_at=excluded.failed_at,
+                stopped_at=excluded.stopped_at,
+                failed_reason=excluded.failed_reason,
+                archived_at=excluded.archived_at,
+                archived_reason=excluded.archived_reason,
+                model_tier=excluded.model_tier,
+                pause_reason=excluded.pause_reason,
+                worktree_path=excluded.worktree_path,
+                blocked_by_raw=excluded.blocked_by_raw,
+                locked_contract=excluded.locked_contract,
+                contract_locked_at=excluded.contract_locked_at,
                 workflow=excluded.workflow,
                 autonomy=excluded.autonomy,
                 require_tdd=excluded.require_tdd,
+                estimated_minutes=excluded.estimated_minutes,
+                extras_json=excluded.extras_json,
                 version=tasks.version + 1
             RETURNING *
         """, (
@@ -115,10 +134,15 @@ def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
             task.development_method, ac, tt, oos, dod, task.context, tdd, task.created_at,
             task.updated_at,
             task.plan_proposed_at, task.plan_approved_at, task.in_progress_at,
-            task.report_ready_at, task.done_at, task.cancelled_at, task.version, task.parent_id,
+            task.report_ready_at, task.review_requested_at, task.done_at, task.cancelled_at,
+            task.version, task.parent_id,
             int(task.verified), task.verified_at, task.verified_by,
             task.deadline_minutes,
-            task.workflow, task.autonomy, require_tdd_val,
+            task.failed_at, task.stopped_at, task.failed_reason,
+            task.archived_at, task.archived_reason,
+            task.model_tier, task.pause_reason, task.worktree_path, task.blocked_by_raw,
+            task.locked_contract, task.contract_locked_at,
+            task.workflow, task.autonomy, require_tdd_val, task.estimated_minutes, task.extras_json,
         ))
         row = cursor.fetchone()
         if not row:
@@ -338,4 +362,5 @@ def _row_to_task(conn: sqlite3.Connection, row: sqlite3.Row, blocked_by: list[st
         extras_json=row["extras_json"] if "extras_json" in keys else None,
         locked_contract=row["locked_contract"] if "locked_contract" in keys else None,
         contract_locked_at=row["contract_locked_at"] if "contract_locked_at" in keys else None,
+        estimated_minutes=row["estimated_minutes"] if "estimated_minutes" in keys else None,
     )

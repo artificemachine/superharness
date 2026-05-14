@@ -169,18 +169,71 @@ def get_task(project_dir: str, task_id: str) -> dict | None:
         _legacy_ingest_then_tasks(project_dir)
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
-    from dataclasses import asdict
 
     conn = get_connection(project_dir)
     try:
         init_db(conn)
         row = tasks_dao.get(conn, task_id)
         if row:
-            return asdict(row)
+            # Re-use the same enrichment logic as bulk reads for consistency
+            return _enrich_task(conn, row)
         return None
     finally:
         conn.close()
 
+
+def _enrich_task(conn: sqlite3.Connection, row: Any) -> dict:
+    """Enrich a TaskRow with dependencies, stamped fields, and extras_json."""
+    from dataclasses import asdict
+    d = asdict(row)
+    
+    # 1. Dependencies (blocked_by)
+    # The dashboard expects `blocked_by` / `depends_on`.
+    deps_strict = []
+    try:
+        for r in conn.execute(
+            "SELECT prerequisite_task_id FROM task_dependencies WHERE dependent_task_id = ?",
+            (row.id,)
+        ):
+            deps_strict.append(r["prerequisite_task_id"])
+    except Exception:
+        pass
+
+    # 2. Soft (informational) blocked_by storage — JSON-encoded list
+    soft = None
+    if hasattr(row, "blocked_by_raw") and row.blocked_by_raw:
+        try:
+            import json as _j
+            val = _j.loads(row.blocked_by_raw)
+            if isinstance(val, list):
+                soft = [str(x) for x in val]
+        except Exception:
+            pass
+            
+    deps = soft if soft is not None else deps_strict
+    d["blocked_by"] = deps
+    d["depends_on"] = deps
+
+    # 3. v10: Stamped fields (workflow/autonomy/require_tdd)
+    if hasattr(row, "workflow") and row.workflow:
+        d["workflow"] = row.workflow
+    if hasattr(row, "autonomy") and row.autonomy:
+        d["autonomy"] = row.autonomy
+    if hasattr(row, "require_tdd") and row.require_tdd is not None:
+        d["require_tdd"] = bool(row.require_tdd)
+
+    # 4. v11: pull subtasks/classifier/decomposer/retry from extras_json
+    extras_json = getattr(row, "extras_json", None)
+    if extras_json:
+        try:
+            import json as _jx
+            extras = _jx.loads(extras_json)
+            if isinstance(extras, dict):
+                d.update(extras)
+        except Exception:
+            pass
+            
+    return d
 
 
 def get_contract_doc(project_dir: str) -> dict:
@@ -209,7 +262,6 @@ def get_top_level_tasks(project_dir: str) -> list[dict]:
 
 
 def _tasks_from_sqlite(project_dir: str, *, top_level_only: bool = False) -> list[dict]:
-    from dataclasses import asdict
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
 
@@ -217,87 +269,17 @@ def _tasks_from_sqlite(project_dir: str, *, top_level_only: bool = False) -> lis
     try:
         init_db(conn)
         rows = tasks_dao.get_all(conn, top_level_only=top_level_only)
-        # Enrich each task with its prerequisites (task_dependencies row).
-        # The dashboard expects `blocked_by` / `depends_on`; without this the
-        # dependency graph is invisible after the YAML→SQLite migration.
-        deps_by_dependent: dict[str, list[str]] = {}
-        for r in conn.execute(
-            "SELECT dependent_task_id, prerequisite_task_id FROM task_dependencies"
-        ):
-            deps_by_dependent.setdefault(r["dependent_task_id"], []).append(
-                r["prerequisite_task_id"]
-            )
-        # Pull the soft (informational) blocked_by list per task —
-        # references that may not exist as task rows themselves but
-        # which adapters / dashboards still want to surface.
-        blocked_by_raw_by_id: dict[str, list[str]] = {}
-        stamped_by_id: dict[str, dict] = {}
-        try:
-            for r in conn.execute(
-                "SELECT id, blocked_by_raw, workflow, autonomy, require_tdd FROM tasks"
-            ):
-                if r["blocked_by_raw"]:
-                    try:
-                        import json as _j
-                        val = _j.loads(r["blocked_by_raw"])
-                        if isinstance(val, list):
-                            blocked_by_raw_by_id[r["id"]] = [str(x) for x in val]
-                    except Exception:
-                        pass
-                stamp = {}
-                if r["workflow"]:
-                    stamp["workflow"] = r["workflow"]
-                if r["autonomy"]:
-                    stamp["autonomy"] = r["autonomy"]
-                if r["require_tdd"] is not None:
-                    stamp["require_tdd"] = bool(r["require_tdd"])
-                if stamp:
-                    stamped_by_id[r["id"]] = stamp
-        except Exception:
-            pass  # column may not exist on older schema
-
-        out: list[dict] = []
-        for r in rows:
-            d = asdict(r)
-            deps_strict = deps_by_dependent.get(r.id, [])
-            # Soft (raw) references win — they include scalar blocked_by
-            # that don't yet exist as task rows. Falls back to the
-            # strict task_dependencies join.
-            soft = blocked_by_raw_by_id.get(r.id)
-            deps = soft if soft is not None else deps_strict
-            d["blocked_by"] = deps
-            d["depends_on"] = deps
-            # Layer the stamped fields (workflow/autonomy/require_tdd)
-            # on top — the v10 schema stores them per-task; older rows
-            # simply have None and the adapter uses defaults.
-            d.update(stamped_by_id.get(r.id, {}))
-            # v11: pull subtasks/classifier/decomposer/retry from extras_json
-            extras_json = getattr(r, "extras_json", None)
-            if extras_json:
-                try:
-                    import json as _jx
-                    extras = _jx.loads(extras_json)
-                    if isinstance(extras, dict):
-                        d.update(extras)
-                except Exception:
-                    pass
-            out.append(d)
-        return out
+        return [_enrich_task(conn, r) for r in rows]
     finally:
         conn.close()
 
 
 def get_handoffs(project_dir: str, task_id: str | None = None) -> list[dict]:
-    """Return handoff rows. Source determined by STATE_BACKEND."""
-    backend = _get_backend(project_dir)
-    if backend == "yaml_only":
-        return _handoffs_from_yaml(project_dir, task_id)
+    """Return handoff rows from SQLite."""
     try:
         return _handoffs_from_sqlite(project_dir, task_id)
     except Exception:
-        if backend == "sqlite_only":
-            raise
-        return _handoffs_from_yaml(project_dir, task_id)
+        return []
 
 
 def _handoffs_from_sqlite(project_dir: str, task_id: str | None) -> list[dict]:
@@ -469,57 +451,3 @@ def _parse_iso_utc(ts: str):
     return datetime.fromisoformat(ts)
 
 
-# ---------------------------------------------------------------------------
-# YAML Fallbacks (Legacy)
-# ---------------------------------------------------------------------------
-
-
-def _inbox_from_yaml(project_dir: str) -> list[dict]:
-    path = os.path.join(project_dir, ".superharness", "inbox.yaml")
-    if not os.path.isfile(path):
-        return []
-    try:
-        import yaml
-        with open(path, encoding="utf-8") as f:
-            return yaml.safe_load(f) or []
-    except Exception:
-        return []
-
-
-def _tasks_from_yaml(project_dir: str) -> list[dict]:
-    path = os.path.join(project_dir, ".superharness", "contract.yaml")
-    doc = _contract_yaml(path)
-    return doc.get("tasks") or []
-
-
-def _contract_yaml(path: str) -> dict:
-    if not os.path.isfile(path):
-        return {}
-    try:
-        import yaml
-        with open(path, encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
-    except Exception:
-        return {}
-
-
-def _handoffs_from_yaml(project_dir: str, task_id: str | None = None) -> list[dict]:
-    from pathlib import Path
-    import yaml
-    h_dir = Path(project_dir) / ".superharness" / "handoffs"
-    if not h_dir.is_dir():
-        return []
-    results = []
-    for f in sorted(h_dir.iterdir()):
-        if f.suffix != ".yaml":
-            continue
-        if task_id and not f.name.startswith(f"{task_id}."):
-            # This is a bit loose but works for legacy naming
-            if task_id not in f.name:
-                continue
-        try:
-            with open(f, encoding="utf-8") as _f:
-                results.append(yaml.safe_load(_f) or {})
-        except Exception:
-            continue
-    return results

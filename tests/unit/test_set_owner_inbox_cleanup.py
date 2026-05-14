@@ -25,19 +25,10 @@ def _make_project(tmp_path: Path) -> Path:
     sh = tmp_path / ".superharness"
     sh.mkdir(parents=True)
     (sh / "profile.yaml").write_text("auto_approve_plans: false\nautonomy: ai_driven\n")
-    (sh / "inbox.yaml").write_text("items: []\n")
-    # Minimal contract.yaml — set_owner reads/writes it
-    import yaml as _yaml
-    (sh / "contract.yaml").write_text(_yaml.safe_dump({
-        "tasks": [{
-            "id": TASK_ID,
-            "title": "test",
-            "owner": "claude-code",
-            "status": "in_progress",
-            "workflow": "implementation",
-            "project_path": str(tmp_path),
-        }],
-    }))
+    from superharness.engine.db import get_connection, init_db
+    conn = get_connection(str(tmp_path))
+    init_db(conn)
+    conn.close()
     return tmp_path
 
 
@@ -120,8 +111,7 @@ class TestSetOwnerInboxCleanup:
         _seed_task_in_db(proj, TASK_ID, owner="claude-code")
         item_id = _seed_inbox_row(proj, TASK_ID, target_agent="claude-code", status="pending")
 
-        contract_file = str(proj / ".superharness" / "contract.yaml")
-        rc = set_owner(contract_file, TASK_ID, "codex-cli")
+        rc = set_owner(str(proj), TASK_ID, "codex-cli")
 
         assert rc == 0
         assert _inbox_status_for(proj, item_id) == "canceled", (
@@ -144,8 +134,7 @@ class TestSetOwnerInboxCleanup:
             item_id="terminal-1",
         )
 
-        contract_file = str(proj / ".superharness" / "contract.yaml")
-        set_owner(contract_file, TASK_ID, "codex-cli")
+        set_owner(str(proj), TASK_ID, "codex-cli")
 
         assert _inbox_status_for(proj, unrelated) == "pending"
         assert _inbox_status_for(proj, terminal) == "done"
@@ -161,8 +150,7 @@ class TestSetOwnerInboxCleanup:
             item_id="new-owner-1",
         )
 
-        contract_file = str(proj / ".superharness" / "contract.yaml")
-        set_owner(contract_file, TASK_ID, "codex-cli")
+        set_owner(str(proj), TASK_ID, "codex-cli")
 
         assert _inbox_status_for(proj, new_owner_row) == "pending"
 
@@ -175,7 +163,6 @@ class TestSetOwnerInboxCleanup:
         proj = _make_project(tmp_path)
         _seed_task_in_db(proj, TASK_ID, owner="claude-code")
 
-        contract_file = str(proj / ".superharness" / "contract.yaml")
         # Should not raise
-        rc = set_owner(contract_file, TASK_ID, "codex-cli")
+        rc = set_owner(str(proj), TASK_ID, "codex-cli")
         assert rc == 0
