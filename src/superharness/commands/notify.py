@@ -161,7 +161,18 @@ def main(argv: list[str] | None = None) -> None:
         print(message)
     else:
         print(message)
-        # Webhook
+        # claw-relay (preferred — no bot token required locally)
+        try:
+            from superharness.engine.relay_client import is_configured, send_notification_from_config
+            if is_configured():
+                sent = send_notification_from_config(message)
+                if sent:
+                    print("notify: sent via claw-relay")
+                else:
+                    print("notify: claw-relay send failed — falling back to other channels")
+        except Exception:
+            pass
+        # Webhook fallback
         if opts.webhook_url and shutil.which("curl"):
             now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             payload = json.dumps({
