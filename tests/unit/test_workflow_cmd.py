@@ -60,12 +60,12 @@ def test_show_prints_current_settings_defaults(tmp_path: Path) -> None:
 def test_show_reflects_written_profile(tmp_path: Path) -> None:
     """--show reflects values written to profile.yaml."""
     project = _make_project(tmp_path, profile={
-        "autonomy": "oversight",
+        "autonomy": "ai_driven",
         "workflow": {"default_preset": "quick", "require_tdd": False},
     })
     r = _run_workflow(project, "--show")
     assert r.returncode == 0, r.stderr
-    assert "oversight" in r.stdout
+    assert "ai_driven" in r.stdout
 
 
 def test_json_output_shape(tmp_path: Path) -> None:
@@ -84,20 +84,11 @@ def test_json_output_shape(tmp_path: Path) -> None:
 # --autonomy flag
 # ---------------------------------------------------------------------------
 
-def test_flag_sets_autonomy_oversight(tmp_path: Path) -> None:
-    """--autonomy oversight writes profile.yaml."""
+def test_flag_rejects_unknown_autonomy(tmp_path: Path) -> None:
+    """--autonomy with an unrecognized value exits non-zero."""
     project = _make_project(tmp_path, profile=None)
     r = _run_workflow(project, "--autonomy", "oversight")
-    assert r.returncode == 0, r.stderr
-    assert _read_profile(project).get("autonomy") == "oversight"
-
-
-def test_flag_sets_autonomy_hands_on(tmp_path: Path) -> None:
-    """--autonomy hands_on writes profile.yaml."""
-    project = _make_project(tmp_path, profile=None)
-    r = _run_workflow(project, "--autonomy", "hands_on")
-    assert r.returncode == 0, r.stderr
-    assert _read_profile(project).get("autonomy") == "hands_on"
+    assert r.returncode != 0
 
 
 def test_flag_sets_autonomy_ai_driven(tmp_path: Path) -> None:
@@ -168,12 +159,12 @@ def test_preserves_existing_fields(tmp_path: Path) -> None:
         "project_name": "myproj",
         "autonomy": "ai_driven",
     })
-    r = _run_workflow(project, "--autonomy", "hands_on")
+    r = _run_workflow(project, "--autonomy", "ai_driven")
     assert r.returncode == 0, r.stderr
     profile = _read_profile(project)
     assert profile.get("primary_agent") == "claude-code"
     assert profile.get("project_name") == "myproj"
-    assert profile.get("autonomy") == "hands_on"
+    assert profile.get("autonomy") == "ai_driven"
 
 
 # ---------------------------------------------------------------------------

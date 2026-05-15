@@ -421,12 +421,10 @@ def _migration_v9(conn: sqlite3.Connection) -> None:
 
 
 def _migration_v10(conn: sqlite3.Connection) -> None:
-    """Stamped per-task workflow/autonomy/require_tdd. These were
-    previously inferred at runtime; storing them on the row lets the
-    adapter payload report what was set when the task was created
-    rather than the project default."""
+    """Stamped per-task workflow/require_tdd. Column kept for backwards compat;
+    autonomy is now profile-only (normalize_autonomy in engine/profile.py)."""
     _add_column_if_missing(conn, "tasks", "workflow", "TEXT")
-    _add_column_if_missing(conn, "tasks", "autonomy", "TEXT")
+    _add_column_if_missing(conn, "tasks", "autonomy", "TEXT")  # deprecated — no longer written
     _add_column_if_missing(conn, "tasks", "require_tdd", "INTEGER")
 
 
