@@ -37,14 +37,14 @@ def test_profile_reads_autonomy(repo_root, tmp_path) -> None:
     _write_profile(tmp_path / ".superharness", autonomy="autonomous")
     result = _run_profile(tmp_path, "--project", str(tmp_path), "autonomy")
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "autonomous"
+    assert result.stdout.strip() == "ai_driven"
 
 
 def test_profile_reads_supervised(repo_root, tmp_path) -> None:
     _write_profile(tmp_path / ".superharness", autonomy="supervised")
     result = _run_profile(tmp_path, "--project", str(tmp_path), "autonomy")
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "supervised"
+    assert result.stdout.strip() == "ai_driven"
 
 
 def test_profile_reads_primary_agent(repo_root, tmp_path) -> None:
@@ -73,7 +73,7 @@ def test_profile_reads_team_size_team(repo_root, tmp_path) -> None:
 def test_profile_default_autonomy_when_no_profile(repo_root, tmp_path) -> None:
     result = _run_profile(tmp_path, "--project", str(tmp_path), "autonomy")
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "approval-gated"
+    assert result.stdout.strip() == "ai_driven"
 
 
 def test_profile_default_primary_agent_when_no_profile(repo_root, tmp_path) -> None:
@@ -94,7 +94,7 @@ def test_profile_default_autonomy_when_field_missing(repo_root, tmp_path) -> Non
     _write_profile(tmp_path / ".superharness", team_size="small")
     result = _run_profile(tmp_path, "--project", str(tmp_path), "autonomy")
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "approval-gated"
+    assert result.stdout.strip() == "ai_driven"
 
 
 def test_profile_default_primary_agent_when_field_missing(repo_root, tmp_path) -> None:

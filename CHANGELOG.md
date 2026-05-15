@@ -392,3 +392,6 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-14: feat(gateway): add ntfy.sh as third direct backend (relay → telegram → ntfy priority order); Phase 3 roadmap in docs/gateway-security.md
 - 2026-05-14: chore(release): bump to v1.58.5 — squash merge of feat/gateway-ntfy-backend (PR #246)
 - 2026-05-14: docs(handoff): update HANDOFF.md for 2026-05-14 gateway session (v1.58.2–v1.58.5)
+- 2026-05-15: refactor(autonomy): collapse all mode aliases to ai_driven; single VALID_AUTONOMY; normalize_autonomy() at profile boundary
+- 2026-05-15: refactor(autonomy): Option B — drop task-level autonomy field; auto-approve driven by profile auto_approve_plans only
+- 2026-05-15: fix(autonomy): remove stale approve_reason variable reference in auto-approve hook

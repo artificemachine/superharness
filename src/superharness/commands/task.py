@@ -21,34 +21,29 @@ from superharness.engine.next_action import ALL_STATUSES
 VALID_OWNERS = {"owner", "claude-code", "codex-cli", "gemini-cli", "opencode"}
 VALID_CREATE_STATUSES = {"todo", "in_progress", "pending_user_approval", "done"}
 VALID_WORKFLOWS = {"implementation", "quick", "discussion", "review", "approval", "note"}
-VALID_AUTONOMY = {"ai_driven", "oversight", "hands_on"}
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 
-def _load_policy_from_profile(project_path: str) -> tuple[str, bool]:
-    """Load (autonomy, require_tdd) defaults from project profile.yaml.
+def _profile_autonomy_is_ai_driven(profile: dict) -> bool:
+    from superharness.engine.profile import normalize_autonomy
+    return normalize_autonomy(profile.get("autonomy")) == "ai_driven"
 
-    Returns the safe defaults (ai_driven, True) when profile.yaml is absent,
-    unreadable, or missing fields. Never raises.
-    """
+
+def _load_require_tdd_from_profile(project_path: str) -> bool:
+    """Load require_tdd default from project profile.yaml. Never raises."""
     profile_path = os.path.join(project_path, ".superharness", "profile.yaml")
     if not os.path.exists(profile_path):
-        return ("ai_driven", True)
+        return True
     try:
         import yaml as _yaml
         with open(profile_path) as _f:
             profile = _yaml.safe_load(_f) or {}
     except Exception:
-        return ("ai_driven", True)
-    autonomy = str(profile.get("autonomy") or "ai_driven")
-    if autonomy not in VALID_AUTONOMY:
-        autonomy = "ai_driven"
+        return True
     wf = profile.get("workflow")
     if isinstance(wf, dict) and "require_tdd" in wf:
-        require_tdd = bool(wf["require_tdd"])
-    else:
-        require_tdd = True
-    return (autonomy, require_tdd)
+        return bool(wf["require_tdd"])
+    return True
 
 
 def _validate_token(name: str, value: str) -> None:
@@ -112,7 +107,6 @@ def create(
     timeout_minutes: Optional[int] = None,
     plan: Optional[dict] = None,
     ship_on_complete: bool = False,
-    autonomy: Optional[str] = None,
     require_tdd: Optional[bool] = None,
 ) -> int:
     _validate_token("task id", task_id)
@@ -131,18 +125,9 @@ def create(
     # development_method accepts any string (no hardcoded enum)
     if effort and effort not in VALID_EFFORTS:
         _abort(f"effort must be one of: {', '.join(sorted(VALID_EFFORTS))}", 2)
-    if autonomy is not None and autonomy not in VALID_AUTONOMY:
-        _abort(
-            f"autonomy must be one of: {', '.join(sorted(VALID_AUTONOMY))}",
-            2,
-        )
 
-    # Stamp policy from profile when not explicitly overridden on CLI
-    profile_autonomy, profile_require_tdd = _load_policy_from_profile(project_path)
-    if autonomy is None:
-        autonomy = profile_autonomy
     if require_tdd is None:
-        require_tdd = profile_require_tdd
+        require_tdd = _load_require_tdd_from_profile(project_path)
 
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
@@ -209,7 +194,6 @@ def create(
             created_at=now,
             deadline_minutes=timeout_minutes,
             workflow=workflow or None,
-            autonomy=autonomy,
             require_tdd=bool(require_tdd),
             extras_json=_json.dumps(extras) if extras else None,
         )
@@ -333,8 +317,7 @@ def _cascade_unblocked_tasks(project_dir: str, finished_task_id: str) -> None:
             if not _deps_satisfied(contract_file, row.id):
                 continue
 
-            autonomy = str(row.autonomy or "ai_driven")
-            if row.status == "todo" and autonomy != "autonomous" and profile.get("autonomy") != "autonomous":
+            if row.status == "todo" and not _profile_autonomy_is_ai_driven(profile):
                 continue
 
             item_id = f"cascade-{uuid.uuid4().hex[:6]}"
@@ -597,7 +580,7 @@ def status_update(
     finally:
         conn.close()
 
-    # Auto-approve hook: plan_proposed → plan_approved when task.autonomy=ai_driven
+    # Auto-approve hook: plan_proposed → plan_approved when auto_approve_plans=true
     if status == "plan_proposed" and not _recursion_guard:
         profile_path = os.path.join(project_dir, ".superharness", "profile.yaml")
         auto_approve = False
@@ -610,13 +593,11 @@ def status_update(
             except Exception:
                 pass
 
-        task_autonomy = str(task_row.autonomy or "ai_driven")
-        if task_autonomy == "ai_driven" or auto_approve:
+        if auto_approve:
             try:
                 from superharness.engine.plan_validator import validate_plan
                 plan_handoff = _load_latest_plan_handoff(project_dir, task_id)
                 if plan_handoff:
-                    # Pass task as dict for the validator
                     task_dict = {"id": task_row.id, "acceptance_criteria": task_row.acceptance_criteria,
                                  "tdd": task_row.tdd, "owner": task_row.owner}
                     result = validate_plan(plan_handoff, task_dict)  # type: ignore[arg-type]
@@ -629,12 +610,11 @@ def status_update(
             except Exception as e:
                 print(f"Warning: plan validation skipped: {e}", file=sys.stderr)
 
-            approve_reason = "auto-approved per task autonomy setting" if task_autonomy == "ai_driven" else "auto-approved per project policy"
-            print(f"Auto-approving task '{task_id}' ({approve_reason})")
+            print(f"Auto-approving task '{task_id}' (auto-approved per project policy)")
             status_update(
                 project_dir, task_id, "plan_approved",
                 actor="ai-autonomy",
-                summary=approve_reason,
+                summary="auto-approved per project policy",
                 _recursion_guard=True,
             )
 
@@ -745,9 +725,6 @@ def main(argv: list[str] | None = None) -> None:
     p_create.add_argument("--ship-on-complete", dest="ship_on_complete",
                           action="store_true", default=False,
                           help="Agent must run /ship commit before report_ready; watcher validates PR URL")
-    p_create.add_argument("--autonomy", default=None,
-                          choices=sorted(VALID_AUTONOMY),
-                          help="Override project autonomy (default: read from profile.yaml or ai_driven)")
     p_create.add_argument("--require-tdd", dest="require_tdd",
                           action="store_true", default=None,
                           help="Force require_tdd=true on this task (default: read from profile)")
@@ -857,7 +834,6 @@ def main(argv: list[str] | None = None) -> None:
             timeout_minutes=opts.timeout_minutes,
             plan=plan,
             ship_on_complete=opts.ship_on_complete,
-            autonomy=opts.autonomy,
             require_tdd=opts.require_tdd,
         )
         sys.exit(rc)

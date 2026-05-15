@@ -6,7 +6,7 @@ from pathlib import Path
 from superharness.ui.prompts import print_header, print_info
 from superharness.ui.sections.base import run_section
 
-_AUTONOMY_CHOICES = ["supervised", "full-auto", "approval-gated"]
+_AUTONOMY_CHOICES = ["ai_driven"]
 _AGENT_CHOICES    = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
 
 
@@ -16,7 +16,7 @@ def run(project_dir: Path, non_interactive: bool = False) -> None:
 
     print_header("Agent settings")
 
-    current_autonomy = read_field(project_dir, "autonomy") or "approval-gated"
+    current_autonomy = read_field(project_dir, "autonomy") or "ai_driven"
     current_agent    = read_field(project_dir, "primary_agent") or "claude-code"
 
     print_info(f"Autonomy:      {current_autonomy}")
