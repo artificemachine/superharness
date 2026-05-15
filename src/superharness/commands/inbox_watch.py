@@ -18,6 +18,11 @@ def _now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _profile_autonomy(profile: dict) -> str:
+    from superharness.engine.profile import normalize_autonomy
+    return normalize_autonomy(profile.get("autonomy", "ai_driven"))
+
+
 
 def _load_tasks(project_dir: str) -> list[dict]:
     """Return all contract tasks via state_reader (SQLite)."""
@@ -621,9 +626,7 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
     except Exception:
         return 0
     
-    # Must be auto_dispatch AND (autonomous OR ai_driven) to start new plans automatically
-    autonomy = profile.get("autonomy", "ai_driven")
-    if not profile.get("auto_dispatch") or autonomy not in ("autonomous", "ai_driven"):
+    if not profile.get("auto_dispatch") or _profile_autonomy(profile) != "ai_driven":
         return 0
 
     tasks = _load_tasks(project_dir)
@@ -749,8 +752,7 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
     # Only run when auto-approve is enabled (now means "use peer review")
     if not profile.get("auto_approve_plans"):
         return 0
-    autonomy = profile.get("autonomy", "ai_driven")
-    if autonomy not in ("autonomous", "ai_driven"):
+    if _profile_autonomy(profile) != "ai_driven":
         return 0
 
     tasks = _load_tasks(project_dir)
@@ -978,7 +980,7 @@ def _auto_close_review_passed(project_dir: str) -> None:
             return
 
     # Same opt-in rule as _auto_close_report_ready
-    auto_close = profile.get("auto_close", profile.get("autonomy") == "autonomous")
+    auto_close = profile.get("auto_close", _profile_autonomy(profile) == "ai_driven")
     if not auto_close:
         return
 
@@ -1112,8 +1114,7 @@ def _auto_close_report_ready(project_dir: str) -> None:
         except Exception:
             return
 
-    # Require explicit opt-in OR autonomy=autonomous
-    auto_close = profile.get("auto_close", profile.get("autonomy") == "autonomous")
+    auto_close = profile.get("auto_close", _profile_autonomy(profile) == "ai_driven")
     if not auto_close:
         return
 
@@ -2048,9 +2049,7 @@ def auto_enqueue_todo(project_dir: str) -> int:
     if not profile.get("auto_dispatch"):
         return 0
 
-    # autonomy: ai_driven or autonomous allowed for planning
-    autonomy = profile.get("autonomy", "ai_driven")
-    if autonomy not in ("autonomous", "ai_driven"):
+    if _profile_autonomy(profile) != "ai_driven":
         return 0
 
     tasks = _load_tasks(project_dir)
@@ -2161,9 +2160,7 @@ def auto_enqueue_approved(project_dir: str) -> int:
     if not profile.get("auto_dispatch"):
         return 0
 
-    # autonomy: ai_driven, oversight, or autonomous allowed for implementation
-    autonomy = profile.get("autonomy", "ai_driven")
-    if autonomy not in ("autonomous", "oversight", "ai_driven"):
+    if _profile_autonomy(profile) != "ai_driven":
         return 0
 
     tasks = _load_tasks(project_dir)

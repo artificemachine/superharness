@@ -109,16 +109,15 @@ def test_auto_enqueue_skipped_when_auto_dispatch_false(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Guard 2: autonomy=supervised and approval-gated block enqueuing
+# Guard 2: legacy autonomy aliases normalize to ai_driven and dispatch
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("autonomy", ["supervised", "approval-gated"])
-def test_auto_enqueue_skipped_for_safe_autonomy_levels(tmp_path, autonomy):
+@pytest.mark.parametrize("autonomy", ["supervised", "approval-gated", "full-auto", "autonomous"])
+def test_legacy_autonomy_aliases_normalize_and_dispatch(tmp_path, autonomy):
     project = _make_project(tmp_path, profile={"auto_dispatch": True, "autonomy": autonomy})
     _add_task(project, "t-test02", "plan_approved")
     count = auto_enqueue_approved(str(project))
-    assert count == 0, f"autonomy={autonomy} must not auto-dispatch"
-    assert _inbox_pending_count(project, "t-test02") == 0
+    assert count == 1, f"autonomy={autonomy} should normalize to ai_driven and dispatch"
 
 
 # ---------------------------------------------------------------------------

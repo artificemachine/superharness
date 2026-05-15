@@ -25,10 +25,26 @@ from pathlib import Path
 _log = logging.getLogger(__name__)
 
 FIELD_DEFAULTS: dict[str, str] = {
-    "autonomy":      "approval-gated",
+    "autonomy":      "ai_driven",
     "primary_agent": "",
     "team_size":     "solo",
 }
+
+# Legacy / UI alias → canonical name.  Add new modes here as they are introduced.
+_AUTONOMY_ALIASES: dict[str, str] = {
+    "full-auto":      "ai_driven",
+    "autonomous":     "ai_driven",
+    "supervised":     "ai_driven",
+    "approval-gated": "ai_driven",
+    "oversight":      "ai_driven",
+    "hands_on":       "ai_driven",
+}
+
+
+def normalize_autonomy(value: str | None) -> str:
+    """Return the canonical autonomy string for *value*, falling back to ai_driven."""
+    v = str(value or "").strip()
+    return _AUTONOMY_ALIASES.get(v, v) or "ai_driven"
 
 
 def read_field(project_dir: Path, field: str) -> str:
@@ -47,7 +63,10 @@ def read_field(project_dir: Path, field: str) -> str:
     value = doc.get(field)
     if value is None:
         return FIELD_DEFAULTS.get(field, "")
-    return str(value)
+    result = str(value)
+    if field == "autonomy":
+        result = normalize_autonomy(result)
+    return result
 
 
 def write_field(project_dir: Path, field: str, value: str) -> None:

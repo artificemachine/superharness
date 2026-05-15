@@ -288,7 +288,7 @@ _KNOWN_TASK_COLS = frozenset({
     "verified_at", "verified_by", "deadline_minutes",
     "failed_at", "stopped_at", "failed_reason", "archived_at",
     "archived_reason", "model_tier", "pause_reason", "worktree_path",
-    "workflow", "autonomy", "require_tdd", "estimated_minutes",
+    "workflow", "require_tdd", "estimated_minutes",
     "locked_contract", "contract_locked_at",
 })
 # Fields to skip entirely — either handled elsewhere or not real task columns.

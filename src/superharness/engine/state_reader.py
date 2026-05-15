@@ -214,11 +214,9 @@ def _enrich_task(conn: sqlite3.Connection, row: Any) -> dict:
     d["blocked_by"] = deps
     d["depends_on"] = deps
 
-    # 3. v10: Stamped fields (workflow/autonomy/require_tdd)
+    # 3. v10: Stamped fields (workflow/require_tdd)
     if hasattr(row, "workflow") and row.workflow:
         d["workflow"] = row.workflow
-    if hasattr(row, "autonomy") and row.autonomy:
-        d["autonomy"] = row.autonomy
     if hasattr(row, "require_tdd") and row.require_tdd is not None:
         d["require_tdd"] = bool(row.require_tdd)
 

@@ -1,7 +1,7 @@
 """shux workflow — read/write project-level workflow policy in profile.yaml.
 
 Non-interactive (flag-based):
-    shux workflow --autonomy oversight
+    shux workflow --autonomy ai_driven
     shux workflow --default-preset quick
     shux workflow --require-tdd / --no-require-tdd
     shux workflow --show
@@ -19,13 +19,11 @@ from pathlib import Path
 
 import yaml
 
-VALID_AUTONOMY = ("ai_driven", "oversight", "hands_on")
+VALID_AUTONOMY = ("ai_driven",)
 VALID_PRESETS = ("implementation", "quick", "discussion", "review", "approval", "note")
 
 _AUTONOMY_LABELS = {
     "ai_driven": "AI does everything (auto-approves plans, dispatches itself). You observe.",
-    "oversight": "AI works, you approve plans and close tasks.",
-    "hands_on":  "AI works, you gate every transition.",
 }
 _PRESET_LABELS = {
     "implementation": "TDD-friendly, full lifecycle",
