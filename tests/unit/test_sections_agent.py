@@ -35,26 +35,24 @@ def test_agent_section_reads_primary_agent_and_autonomy(tmp_path, capsys):
     sh = tmp_path / ".superharness"
     sh.mkdir()
     (sh / "profile.yaml").write_text(yaml.dump({
-        "autonomy": "approval-gated",
+        "autonomy": "ai_driven",
         "primary_agent": "codex-cli",
     }))
 
     _run_agent_section(tmp_path, non_interactive=True)
 
     out = capsys.readouterr().out
-    assert "approval-gated" in out or "codex-cli" in out
+    assert "ai_driven" in out or "codex-cli" in out
 
 
 def test_agent_section_writes_autonomy_on_valid_choice(tmp_path):
     """Choosing a valid autonomy option writes it to profile.yaml."""
     (tmp_path / ".superharness").mkdir()
 
-    # Choice "2" selects second option in the numbered fallback
-    _run_agent_section(tmp_path, answers=["2", ""])  # autonomy choice=2, agent=keep
+    _run_agent_section(tmp_path, answers=["1", ""])  # autonomy choice=1 (ai_driven), agent=keep
 
     doc = _read_profile(tmp_path)
-    # autonomy must be one of the valid values
-    assert doc.get("autonomy") in ("supervised", "full-auto", "approval-gated")
+    assert doc.get("autonomy") == "ai_driven"
 
 
 def test_agent_section_writes_primary_agent(tmp_path):

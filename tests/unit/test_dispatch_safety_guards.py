@@ -166,20 +166,17 @@ def test_repeated_reset_does_not_create_infinite_retry_loop(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Pattern D — autonomy=supervised hard-blocks ALL auto-dispatch
-# (belt-and-braces: even if auto_dispatch=True is set, supervised means
-# the operator must explicitly call shux delegate)
+# Pattern D — legacy autonomy aliases all normalize to ai_driven and dispatch
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("autonomy", ["supervised", "approval-gated"])
-def test_supervised_autonomy_hard_blocks_dispatch_regardless_of_auto_dispatch_flag(
+@pytest.mark.parametrize("autonomy", ["supervised", "approval-gated", "full-auto", "autonomous"])
+def test_legacy_autonomy_aliases_normalize_to_ai_driven_and_dispatch(
     tmp_path, autonomy
 ):
     project = _project(tmp_path, profile_extra={"autonomy": autonomy, "auto_dispatch": True})
     _task(project, "t-sup")
     count = auto_enqueue_approved(str(project))
-    assert count == 0
-    assert _pending(project, "t-sup") == 0
+    assert count == 1, f"autonomy={autonomy} should normalize to ai_driven and dispatch"
 
 
 # ---------------------------------------------------------------------------
@@ -227,9 +224,9 @@ def test_regression_plan_approved_with_ai_driven_dispatches_once(tmp_path):
     count = auto_enqueue_approved(str(project))
     # With ai_driven + auto_dispatch=True + 0 failures → correctly dispatches once
     assert count == 1
-    # Setting autonomy to supervised prevents it
+    # auto_dispatch=False is the real gate now
     (project / ".superharness" / "profile.yaml").write_text(
-        yaml.dump({"auto_dispatch": True, "autonomy": "supervised", "_config_version": 1})
+        yaml.dump({"auto_dispatch": False, "autonomy": "ai_driven", "_config_version": 1})
     )
     count2 = auto_enqueue_approved(str(project))
-    assert count2 == 0, "supervised autonomy must block dispatch even with auto_dispatch=True"
+    assert count2 == 0, "auto_dispatch=False must block dispatch regardless of autonomy"
