@@ -395,3 +395,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-15: refactor(autonomy): collapse all mode aliases to ai_driven; single VALID_AUTONOMY; normalize_autonomy() at profile boundary
 - 2026-05-15: refactor(autonomy): Option B — drop task-level autonomy field; auto-approve driven by profile auto_approve_plans only
 - 2026-05-15: fix(autonomy): remove stale approve_reason variable reference in auto-approve hook
+- 2026-05-15: chore(release): bump to v1.58.6 — refactor(autonomy) collapse to single ai_driven mode (PR #250)
