@@ -232,8 +232,46 @@ def cmd_start(
             )
         if rc == 0:
             print(f"  Enqueued round 1 for {agent}: {item_id}")
+        # Shadow entry in SQLite so the watcher can see discussion items
+        _enqueue_sqlite_shadow(project_dir, item_id, disc_id, agent, created_at)
 
     return 0
+
+
+def _enqueue_sqlite_shadow(
+    project_dir: str,
+    item_id: str,
+    disc_id: str,
+    agent: str,
+    created_at: str,
+) -> None:
+    """Write a shadow inbox row with type='discussion' so the watcher can track it."""
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import inbox_dao as _dao
+
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            # Discussion shadow rows reference a disc_id, not a task id — relax FK
+            conn.execute("PRAGMA foreign_keys=OFF")
+            _dao.enqueue(
+                conn,
+                id=item_id,
+                task_id=f"{disc_id}/round-1",
+                target_agent=agent,
+                priority=1,
+                max_retries=1,
+                project_path=project_dir,
+                plan_only=False,
+                type="discussion",
+                now=created_at,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass
 
 
 def cmd_rounds(discussions_dir: str, disc_id: str) -> int:
