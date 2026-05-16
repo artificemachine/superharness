@@ -537,6 +537,8 @@ def _build_tasks(raw_tasks: list, handoffs_by_task: dict) -> list[dict]:
         entry["autonomy"]           = str(raw_autonomy) if raw_autonomy else "ai_driven"
         raw_rtdd = t.get("require_tdd")
         entry["require_tdd"]        = bool(raw_rtdd) if raw_rtdd is not None else True
+        # Visual context: list of image/screenshot paths attached to this task
+        entry["visual_context"]     = list(t.get("visual_context") or [])
         result.append(entry)
     return result
 
@@ -580,15 +582,56 @@ def build_payload(project_path: str) -> dict:
         # when no metadata file exists.
         "contract_id":      contract_meta.get("id") or contract_doc.get("id") or "",
         "goal":             contract_meta.get("goal") or contract_doc.get("goal") or "",
-        "tasks":          tasks,
-        "edges":          _build_edges(tasks),
-        "ledger":         _parse_ledger(sh_dir),
-        "failures":       _load_failures(sh_dir),
-        "decisions":      _load_decisions(sh_dir),
-        "inbox":          _load_inbox(sh_dir),
-        "agent_pulse":    _load_agent_pulse(sh_dir),
-        "rules":          _load_rules(str(sh_dir.parent)),
+        "tasks":            tasks,
+        "edges":            _build_edges(tasks),
+        "ledger":           _parse_ledger(sh_dir),
+        "failures":         _load_failures(sh_dir),
+        "decisions":        _load_decisions(sh_dir),
+        "inbox":            _load_inbox(sh_dir),
+        "agent_pulse":      _load_agent_pulse(sh_dir),
+        "rules":            _load_rules(str(sh_dir.parent)),
+        "artifacts":        _load_artifacts(project_path),
+        "agent_heartbeats": _load_heartbeats(project_path),
     }
+
+
+def _load_artifacts(project_path: str) -> list[dict]:
+    """Return all task artifacts from SQLite, grouped by task_id."""
+    try:
+        from dataclasses import asdict
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import artifacts_dao
+
+        conn = get_connection(project_path)
+        try:
+            init_db(conn)
+            rows = conn.execute(
+                "SELECT id, task_id, agent, path, type, hash, size_bytes, created_at "
+                "FROM task_artifacts ORDER BY task_id, created_at ASC"
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+    except Exception:
+        return []
+
+
+def _load_heartbeats(project_path: str) -> list[dict]:
+    """Return all agent heartbeat rows from SQLite."""
+    try:
+        from dataclasses import asdict
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import heartbeat_dao
+
+        conn = get_connection(project_path)
+        try:
+            init_db(conn)
+            rows = heartbeat_dao.get_all(conn)
+            return [asdict(r) for r in rows]
+        finally:
+            conn.close()
+    except Exception:
+        return []
 
 
 def _load_rules(project_path: str) -> list[dict]:

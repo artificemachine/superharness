@@ -36,6 +36,10 @@ def main(argv: list[str] | None = None) -> None:
         "--output", "-o", default=None,
         help="Output file path (default: <project>-<timestamp>.superharness.pack.tar.gz)",
     )
+    p_export.add_argument(
+        "--scrub", action="store_true", default=False,
+        help="Redact secrets (API keys, tokens, private keys) from all exported text files.",
+    )
 
     # import
     p_import = sub.add_parser(
@@ -72,8 +76,9 @@ def main(argv: list[str] | None = None) -> None:
     if opts.subcmd == "export":
         project_dir = os.path.realpath(opts.project or os.getcwd())
         try:
-            output = export_pack(project_dir, output_path=opts.output)
-            print(f"Exported pack: {output}")
+            output = export_pack(project_dir, output_path=opts.output, scrub=opts.scrub)
+            label = " (scrubbed)" if opts.scrub else ""
+            print(f"Exported pack{label}: {output}")
             sys.exit(0)
         except FileNotFoundError as e:
             _abort(str(e))
