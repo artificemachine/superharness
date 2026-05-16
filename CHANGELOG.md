@@ -396,3 +396,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-15: refactor(autonomy): Option B — drop task-level autonomy field; auto-approve driven by profile auto_approve_plans only
 - 2026-05-15: fix(autonomy): remove stale approve_reason variable reference in auto-approve hook
 - 2026-05-15: chore(release): bump to v1.58.6 — refactor(autonomy) collapse to single ai_driven mode (PR #250)
+- 2026-05-16: chore(gitignore): cover state.db, models.yaml, discussions/, handoffs/; remove tracked WAL files; add plan doc
