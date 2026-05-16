@@ -1,40 +1,46 @@
-# Security — never commit secrets
-.env
-*.key
-*.pem
-*.p12
-*.pfx
 
+# Runtime control files
 # Runtime state — not version controlled
-ledger.md
-launcher-logs/
+# SQLite database (WAL files included)
+# Security — never commit secrets
 *.flock
 *.heartbeat
+*.key
+*.lock.d/
+*.p12
+*.pem
+*.pfx
+.env
+.launchagents_snapshot
+benchmark.jsonl
+circuit-breaker.json
+contracts/
+daemon-monitor.py
+daemon-state.json
+daemon.pid.json
+events.jsonl
 heartbeat.yaml
-watcher.heartbeat
-watcher.heartbeat.yaml
+inbox.yaml
+launcher-logs/
+ledger.md
+modules/
 monitor-health.log
+onboarding.yaml
+operator-state.json
+review-lenses/
 session-progress.md
 session-summary-*.md
-watcher.yaml
-inbox.yaml
-modules/
-contracts/
-review-lenses/
-benchmark.jsonl
-onboarding.yaml
-daemon.pid.json
-daemon-state.json
-operator-state.json
-trace.jsonl
-*.lock.d/
-
-# SQLite database (WAL files included)
 state.sqlite3
 state.sqlite3-shm
 state.sqlite3-wal
-
-# Runtime control files
-circuit-breaker.json
-.launchagents_snapshot
-daemon-monitor.py
+state.db
+state.db-shm
+state.db-wal
+models.yaml
+discussions/
+handoffs/
+trace.jsonl
+watcher-env.yaml
+watcher.heartbeat
+watcher.heartbeat.yaml
+watcher.yaml
