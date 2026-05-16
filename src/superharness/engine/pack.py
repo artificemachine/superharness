@@ -127,7 +127,12 @@ def scrub_yaml_doc(content: str) -> str:
     return yaml.dump(scrubbed, default_flow_style=False, allow_unicode=True)
 
 
-def _add_file_to_tar(tar: tarfile.TarFile, file_path: Path, arcname: str) -> None:
+def _add_file_to_tar(
+    tar: tarfile.TarFile,
+    file_path: Path,
+    arcname: str,
+    scrub_secrets: bool = False,
+) -> None:
     suffix = file_path.suffix.lower()
     should_scrub = suffix in (".yaml", ".yml", ".md", ".txt", ".json")
     if should_scrub:
@@ -145,6 +150,9 @@ def _add_file_to_tar(tar: tarfile.TarFile, file_path: Path, arcname: str) -> Non
                     scrubbed = scrub_yaml_doc(raw)
             else:
                 scrubbed = _scrub_string(raw)
+            if scrub_secrets:
+                from superharness.guard.redact import redact as _redact_secrets
+                scrubbed = _redact_secrets(scrubbed)
             data = scrubbed.encode("utf-8")
             info = tarfile.TarInfo(name=arcname)
             info.size = len(data)
@@ -158,8 +166,13 @@ def _add_file_to_tar(tar: tarfile.TarFile, file_path: Path, arcname: str) -> Non
 def export_pack(
     project_dir: str | Path,
     output_path: str | Path | None = None,
+    scrub: bool = False,
 ) -> Path:
-    """Export portable .superharness state to a .tar.gz pack file."""
+    """Export portable .superharness state to a .tar.gz pack file.
+
+    When scrub=True, text files are passed through the credential redactor
+    before being bundled so API keys, tokens, and private keys are stripped.
+    """
     project_dir = Path(project_dir).resolve()
     sh_dir = project_dir / ".superharness"
     if not sh_dir.is_dir():
@@ -196,7 +209,7 @@ def export_pack(
             if not entry_path.exists():
                 continue
             if entry_path.is_file():
-                _add_file_to_tar(tar, entry_path, f".superharness/{entry_name}")
+                _add_file_to_tar(tar, entry_path, f".superharness/{entry_name}", scrub_secrets=scrub)
             elif entry_path.is_dir():
                 for root, dirs, files in os.walk(str(entry_path)):
                     dirs[:] = sorted(d for d in dirs if d != "__pycache__")
@@ -204,7 +217,7 @@ def export_pack(
                         fpath = Path(root) / fname
                         rel = str(fpath.relative_to(sh_dir))
                         if not _is_machine_local(rel):
-                            _add_file_to_tar(tar, fpath, f".superharness/{rel}")
+                            _add_file_to_tar(tar, fpath, f".superharness/{rel}", scrub_secrets=scrub)
 
     return output_path
 
