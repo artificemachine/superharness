@@ -1966,17 +1966,20 @@ def _sqlite_singleton_release(project_dir: str) -> None:
 
 
 def _sqlite_tick(project_dir: str, now: str) -> None:
-    """Run SQLite-side per-tick operations: record heartbeat.
+    """Run SQLite-side per-tick operations: record watcher heartbeat and
+    flag stale agent_heartbeats as zombie.
 
     Never raises. Silently skipped if SQLite backend is not initialised yet.
     """
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import watcher_singleton
+        from superharness.engine import heartbeat_dao
         conn = get_connection(project_dir)
         try:
             init_db(conn)
             watcher_singleton.heartbeat(conn, os.getpid(), now)
+            heartbeat_dao.mark_stale(conn, now=now)
             conn.commit()
         finally:
             conn.close()

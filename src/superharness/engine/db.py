@@ -12,7 +12,7 @@ from superharness.engine.state_errors import ConnectionError, SchemaError
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 17
+CURRENT_SCHEMA_VERSION = 20
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -527,6 +527,61 @@ def _migration_v17(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "inbox", "reason", "TEXT")
 
 
+def _migration_v18(conn: sqlite3.Connection) -> None:
+    """agent_heartbeats: per-agent liveness pings. Stale rows (>2 min) are
+    flagged as zombie by the watcher reconciler."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS agent_heartbeats (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent       TEXT    NOT NULL,
+            task_id     TEXT,
+            status      TEXT    NOT NULL DEFAULT 'alive',
+            pid         INTEGER,
+            updated_at  TEXT    NOT NULL,
+            created_at  TEXT    NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_agent_heartbeats_agent "
+        "ON agent_heartbeats(agent, updated_at DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_agent_heartbeats_task "
+        "ON agent_heartbeats(task_id, updated_at DESC)"
+    )
+
+
+def _migration_v19(conn: sqlite3.Connection) -> None:
+    """task_artifacts: files produced by agents, linked to tasks.
+    Each row tracks path, type, hash, and the agent that produced it."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS task_artifacts (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id     TEXT    NOT NULL,
+            agent       TEXT,
+            path        TEXT    NOT NULL,
+            type        TEXT    NOT NULL DEFAULT 'file',
+            hash        TEXT,
+            size_bytes  INTEGER,
+            created_at  TEXT    NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_task_artifacts_task "
+        "ON task_artifacts(task_id, created_at DESC)"
+    )
+
+
+def _migration_v20(conn: sqlite3.Connection) -> None:
+    """Add type column to inbox so discussion shadow entries can be
+    distinguished from regular task dispatch entries."""
+    _add_column_if_missing(conn, "inbox", "type", "TEXT NOT NULL DEFAULT 'task'")
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -545,4 +600,7 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v15,
     _migration_v16,
     _migration_v17,
+    _migration_v18,
+    _migration_v19,
+    _migration_v20,
 ]
