@@ -28,6 +28,7 @@ class InboxRow:
     failed_at: str | None
     done_at: str | None
     reason: str | None = None
+    type: str = "task"
 
 _ACTIVE_STATUSES = ("pending", "launched", "running", "paused")
 
@@ -43,6 +44,7 @@ def enqueue(
     project_path: str | None = None,
     plan_only: bool = False,
     model_override: str = "",
+    type: str = "task",
     now: str,
 ) -> InboxRow:
     """Insert a new inbox row with status='pending'.
@@ -65,11 +67,11 @@ def enqueue(
             """
             INSERT INTO inbox (
                 id, task_id, target_agent, status, priority, max_retries,
-                project_path, plan_only, created_at
-            ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?)
+                project_path, plan_only, type, created_at
+            ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
             RETURNING *
             """,
-            (id, task_id, target_agent, priority, max_retries, project_path, 1 if plan_only else 0, now)
+            (id, task_id, target_agent, priority, max_retries, project_path, 1 if plan_only else 0, type, now)
         )
         row = cursor.fetchone()
         if not row:
@@ -240,4 +242,5 @@ def _row_to_inbox(row: sqlite3.Row) -> InboxRow:
         failed_at=row["failed_at"],
         done_at=row["done_at"],
         reason=row["reason"] if "reason" in row.keys() else None,
+        type=row["type"] if "type" in row.keys() else "task",
     )

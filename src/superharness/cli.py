@@ -163,6 +163,8 @@ _cmd("logs",            "Show or tail the centralized superharness log.", module
 _cmd("watcher-worker",  "Build watcher worker and install watcher.", module="superharness.commands.watcher_worker")
 _cmd("heartbeat",       "Run proactive watcher checks.",             module="superharness.commands.heartbeat")
 _cmd("agent-pulse",     "Write/read agent liveness signal (Phase 2 heartbeat).", module="superharness.commands.agent_pulse")
+_cmd("pulse",           "Register agent liveness in SQLite (agent_heartbeats).", module="superharness.commands.pulse_cmd")
+_cmd("artifact",        "Manage task artifacts (add/list files produced by agents).", module="superharness.commands.artifact_cmd")
 _cmd("auto-dispatch",   "Scan todo tasks, classify, and enqueue to best agent.", module="superharness.commands.auto_dispatch")
 _cmd("schedule",        "Cron-like scheduled task dispatch (add/list/remove/run).", module="superharness.commands.schedule")
 _cmd("demo",            "Zero-config task lifecycle walkthrough.",   module="superharness.commands.demo")
