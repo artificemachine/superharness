@@ -208,8 +208,8 @@ def _task_count(project_dir: str) -> int:
 
 
 def _is_first_time(project_dir: str) -> bool:
-    sh = Path(project_dir) / ".superharness"
-    return not sh.exists() or not (sh / "state.sqlite3").exists() or _task_count(project_dir) == 0
+    from superharness.utils.paths import is_project_initialized
+    return not is_project_initialized(project_dir) or _task_count(project_dir) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +224,8 @@ def setup_project(project_dir: str) -> None:
     print_header("Project Setup")
     sh = Path(project_dir) / ".superharness"
 
-    if sh.exists() and (sh / "state.sqlite3").exists():
+    from superharness.utils.paths import is_project_initialized
+    if is_project_initialized(project_dir):
         print_success(f".superharness/ already initialized at {project_dir}")
         if not prompt_yes_no("Re-run init?", default=False):
             return
@@ -489,7 +490,8 @@ def _run_quick_setup(project_dir: str) -> None:
     profile = _load_profile(project_dir)
     missing: list[tuple[str, str, Callable]] = []
 
-    if not sh.exists() or not (sh / "state.sqlite3").exists():
+    from superharness.utils.paths import is_project_initialized
+    if not is_project_initialized(project_dir):
         missing.append(("project", "Project Setup", setup_project))
     if not profile.get("autonomy"):
         missing.append(("workflow", "Workflow Policy", setup_workflow))

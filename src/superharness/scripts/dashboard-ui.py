@@ -2221,14 +2221,15 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 import yaml as _dy
                 import sqlite3 as _sq
+                from superharness.utils.paths import resolve_active_state_db_path as _rap
                 state_file = disc_dir / "state.yaml"
                 if state_file.exists():
                     _s = _dy.safe_load(state_file.read_text()) or {}
                     _s["status"] = "consensus"
                     state_file.write_text(_dy.dump(_s, default_flow_style=False, sort_keys=False, allow_unicode=True))
-                _db = self.project_dir / ".superharness" / "state.sqlite3"
-                if _db.exists():
-                    _con = _sq.connect(str(_db))
+                _db = _rap(str(self.project_dir))
+                if os.path.isfile(_db):
+                    _con = _sq.connect(_db)
                     _con.execute("UPDATE discussions SET status=? WHERE id=?", ("consensus", disc_id))
                     _con.commit()
                     _con.close()
@@ -2248,15 +2249,16 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 import yaml as _dy
                 import sqlite3 as _sq
+                from superharness.utils.paths import resolve_active_state_db_path as _rap
                 state_file = disc_dir / "state.yaml"
                 if state_file.exists():
                     _s = _dy.safe_load(state_file.read_text()) or {}
                     _s["status"] = "active"
                     _s.pop("closed_at", None)
                     state_file.write_text(_dy.dump(_s, default_flow_style=False, sort_keys=False, allow_unicode=True))
-                _db = self.project_dir / ".superharness" / "state.sqlite3"
-                if _db.exists():
-                    _con = _sq.connect(str(_db))
+                _db = _rap(str(self.project_dir))
+                if os.path.isfile(_db):
+                    _con = _sq.connect(_db)
                     _con.execute("UPDATE discussions SET status=? WHERE id=?", ("active", disc_id))
                     _con.commit()
                     _con.close()

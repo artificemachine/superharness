@@ -266,3 +266,95 @@ def test_init_install_hooks_does_not_fail_init(repo_root, tmp_path) -> None:
 
     result = _run_init_py(project, args=["Demo", "Python", "active"], env={"HOME": str(fake_home)})
     assert result.returncode == 0, f"init must not fail when install-hooks runs: {result.stderr}"
+
+
+# ---------------------------------------------------------------------------
+# XDG seeding — shux init must create state.db at XDG path (Iteration 8)
+# ---------------------------------------------------------------------------
+
+def test_init_creates_state_db_at_xdg_path(repo_root, tmp_path):
+    """shux init should create state.db at the XDG path, not inside .superharness/."""
+    import os
+    from superharness.utils.paths import resolve_xdg_state_db_path
+
+    state_dir = str(tmp_path / "sh_state")
+    project = tmp_path / "myproject"
+    project.mkdir()
+
+    result = _run_init_py(
+        project,
+        args=["Demo", "Python", "active"],
+        env={"SUPERHARNESS_STATE_DIR": state_dir},
+    )
+    assert result.returncode == 0, result.stderr
+
+    # resolve_xdg_state_db_path reads SUPERHARNESS_STATE_DIR at call time;
+    # set it here so the path matches what the subprocess used.
+    old_env = os.environ.get("SUPERHARNESS_STATE_DIR")
+    os.environ["SUPERHARNESS_STATE_DIR"] = state_dir
+    try:
+        xdg_db = resolve_xdg_state_db_path(str(project))
+    finally:
+        if old_env is None:
+            os.environ.pop("SUPERHARNESS_STATE_DIR", None)
+        else:
+            os.environ["SUPERHARNESS_STATE_DIR"] = old_env
+
+    assert os.path.isfile(xdg_db), (
+        f"Expected state.db at XDG path {xdg_db}, "
+        f"but it was not created. "
+        f"Legacy path: {project / '.superharness' / 'state.sqlite3'} "
+        f"exists={os.path.isfile(str(project / '.superharness' / 'state.sqlite3'))}"
+    )
+
+
+def test_init_xdg_db_is_initialized(repo_root, tmp_path):
+    """The XDG state.db created by shux init must have the tasks table."""
+    import sqlite3 as _sql
+    import os
+    from superharness.utils.paths import resolve_xdg_state_db_path
+
+    state_dir = str(tmp_path / "sh_state")
+    project = tmp_path / "myproject"
+    project.mkdir()
+
+    _run_init_py(
+        project,
+        args=["Demo", "Python", "active"],
+        env={"SUPERHARNESS_STATE_DIR": state_dir},
+    )
+
+    old_env = os.environ.get("SUPERHARNESS_STATE_DIR")
+    os.environ["SUPERHARNESS_STATE_DIR"] = state_dir
+    try:
+        xdg_db = resolve_xdg_state_db_path(str(project))
+    finally:
+        if old_env is None:
+            os.environ.pop("SUPERHARNESS_STATE_DIR", None)
+        else:
+            os.environ["SUPERHARNESS_STATE_DIR"] = old_env
+
+    conn = _sql.connect(xdg_db)
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    conn.close()
+    assert "tasks" in tables
+    assert "inbox" in tables
+
+
+def test_init_legacy_state_sqlite3_not_created(repo_root, tmp_path):
+    """shux init must NOT create state.sqlite3 inside .superharness/ anymore."""
+    import os
+    state_dir = str(tmp_path / "sh_state")
+    project = tmp_path / "myproject"
+    project.mkdir()
+
+    _run_init_py(
+        project,
+        args=["Demo", "Python", "active"],
+        env={"SUPERHARNESS_STATE_DIR": state_dir},
+    )
+
+    legacy = project / ".superharness" / "state.sqlite3"
+    assert not os.path.isfile(str(legacy)), (
+        f"Legacy state.sqlite3 should NOT exist after init, but found it at {legacy}"
+    )
