@@ -21,7 +21,8 @@ def is_sqlite_only(project_dir: str | None = None) -> bool:
     if backend == "dual":
         return False
     if project_dir is not None:
-        db_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
+        from superharness.utils.paths import resolve_active_state_db_path
+        db_path = resolve_active_state_db_path(project_dir)
         return os.path.isfile(db_path)
     # Migration is permanent — default to sqlite_only when no explicit override.
     return True

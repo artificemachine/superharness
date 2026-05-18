@@ -68,16 +68,22 @@ def _repair_append_ledger(ledger_file: str, message: str) -> None:
 
 
 def run_validate(project: str, strict: bool = False, repair: bool = False) -> int:
+    from superharness.utils.paths import is_project_initialized
     harness_dir = os.path.join(project, ".superharness")
-    sqlite_file = os.path.join(harness_dir, "state.sqlite3")
     handoff_dir = os.path.join(harness_dir, "handoffs")
     ledger_file = os.path.join(harness_dir, "ledger.md")
 
-    for path in (harness_dir, sqlite_file, handoff_dir, ledger_file):
+    for path in (harness_dir, handoff_dir, ledger_file):
         if not os.path.exists(path):
             _log.error("validate: missing required path: %s", path)
             print(f"Missing required path: {path}", file=sys.stderr)
             return 1
+
+    if not is_project_initialized(project):
+        sqlite_file = os.path.join(harness_dir, "state.sqlite3")
+        _log.error("validate: missing required path: %s", sqlite_file)
+        print(f"Missing required path: {sqlite_file}", file=sys.stderr)
+        return 1
 
     # .gitignore check: runtime state must be excluded from git tracking (non-fatal warning)
     _REQUIRED_GITIGNORE_PATTERNS = {"state.sqlite3", "circuit-breaker.json"}

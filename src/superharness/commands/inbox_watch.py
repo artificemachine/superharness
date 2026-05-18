@@ -1998,7 +1998,8 @@ def _self_diagnosis(project_dir: str) -> list[str]:
         warnings.append("MISSING: pyyaml not installed — dispatch will fail")
 
     # Check SQLite DB exists and is writable
-    db_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
+    from superharness.utils.paths import resolve_active_state_db_path
+    db_path = resolve_active_state_db_path(project_dir)
     if not os.path.isfile(db_path):
         warnings.append(f"MISSING: {db_path} — run shux init or start watcher first")
     elif not os.access(db_path, os.W_OK):
@@ -2190,7 +2191,8 @@ def auto_enqueue_approved(project_dir: str) -> int:
     # Prefer SQLite (authoritative in production); fall back to YAML items.
     failed_counts: dict[str, int] = {}
     _default_max_retries = 3
-    _db_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
+    from superharness.utils.paths import resolve_active_state_db_path as _rap
+    _db_path = _rap(project_dir)
     if os.path.isfile(_db_path):
         try:
             _fc = get_connection(project_dir)
@@ -2629,7 +2631,8 @@ def _check_operator_memory(project_dir: str) -> None:
     If a known pattern matches with high confidence, log the fix hint.
     This runs before auto-retry so the watcher can surface known solutions.
     """
-    db_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
+    from superharness.utils.paths import resolve_active_state_db_path
+    db_path = resolve_active_state_db_path(project_dir)
     if not os.path.isfile(db_path):
         return
 
@@ -2684,7 +2687,8 @@ def _learn_from_recovery(project_dir: str) -> None:
     Scans the failures table for tasks that were previously failed but
     are now done. Records a hit for each pattern, raising confidence.
     """
-    db_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
+    from superharness.utils.paths import resolve_active_state_db_path
+    db_path = resolve_active_state_db_path(project_dir)
     if not os.path.isfile(db_path):
         return
 
@@ -2741,7 +2745,8 @@ def _learn_from_recovery(project_dir: str) -> None:
 
 def _prune_operator_memory(project_dir: str) -> None:
     """Remove low-confidence patterns from operator memory."""
-    db_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
+    from superharness.utils.paths import resolve_active_state_db_path
+    db_path = resolve_active_state_db_path(project_dir)
     if not os.path.isfile(db_path):
         return
 

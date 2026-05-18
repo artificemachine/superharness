@@ -11,7 +11,8 @@ def get_insights(project_dir: str) -> dict:
     Returns:
         dict with keys: tasks, agents, dispatch, failures, summarizer
     """
-    db_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
+    from superharness.utils.paths import resolve_active_state_db_path
+    db_path = resolve_active_state_db_path(project_dir)
     if not os.path.isfile(db_path):
         return {
             "tasks": {}, "agents": {}, "dispatch": {},
