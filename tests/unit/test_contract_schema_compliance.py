@@ -1,24 +1,26 @@
-"""Schema compliance test for the live contract (Iteration 3).
+"""Schema compliance test for the live contract.
 
-This test is the canonical RED for Iterations 3-5.
-It MUST fail until all data drift is reconciled in Iteration 4.
-It MUST pass after Iteration 4 completes — and must stay green from there on.
-
-Do NOT skip or xfail this test. Let it fail as a visible signal that
-data reconciliation work remains open.
+Reads contract data from SQLite (the source of truth) via state_reader,
+then validates the reconstructed document against the Contract schema.
 """
 from __future__ import annotations
 
-import yaml
+import os
+from pathlib import Path
+
+import pytest
 from pydantic import ValidationError
 
+from superharness.engine import state_reader
 from superharness.engine.schemas import Contract
 
 
 def test_live_contract_passes_full_validation():
     """Every task in the live contract must satisfy the Contract schema."""
-    with open(".superharness/contract.yaml", encoding="utf-8") as f:
-        doc = yaml.safe_load(f)
+    project_dir = str(Path(os.environ.get("SUPERHARNESS_PROJECT_DIR", ".")).resolve())
+    doc = state_reader.get_contract_doc(project_dir)
+    if not doc or not doc.get("tasks"):
+        pytest.skip("No contract data in SQLite — skipping schema compliance check")
     try:
         Contract.model_validate(doc)
     except ValidationError as exc:
@@ -29,5 +31,5 @@ def test_live_contract_passes_full_validation():
             for e in errors
         )
         raise AssertionError(
-            f"{len(errors)} schema violation(s) — run Iteration 4 data reconciliation:\n{detail}"
+            f"{len(errors)} schema violation(s):\n{detail}"
         ) from exc

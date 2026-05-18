@@ -67,7 +67,6 @@ def contract_today(
     import yaml
 
     from superharness.utils.paths import is_project_initialized
-    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
     if not is_project_initialized(project_dir):
         print(f"Missing project state at {project_dir}. Run 'shux init' first.", file=sys.stderr)
         return 1

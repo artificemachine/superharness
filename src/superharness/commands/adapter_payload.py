@@ -118,17 +118,6 @@ def _load_yaml(path: Path) -> Any:
         return {}
 
 
-def _load_contract_meta(sh_dir: Path) -> dict:
-    """Read contract.yaml for id/goal metadata (tasks come from state_reader)."""
-    contract_path = sh_dir / "contract.yaml"
-    if not contract_path.exists():
-        return {}
-    raw = _load_yaml(contract_path)
-    if not isinstance(raw, dict):
-        return {}
-    return {"id": raw.get("id", ""), "goal": raw.get("goal") or ""}
-
-
 def _coerce_date(value: Any) -> str:
     """Coerce date / datetime / string to ISO 8601 string."""
     if value is None:
@@ -568,7 +557,6 @@ def build_payload(project_path: str) -> dict:
     # tombstone in sqlite_only mode and drifts from the canonical SQLite state.
     contract_doc = state_reader.get_contract_doc(project_path)
     raw_tasks    = contract_doc.get("tasks") or []
-    contract_meta = _load_contract_meta(sh_dir)
 
     handoffs_by_task  = _load_handoffs(sh_dir)
     tasks             = _build_tasks(raw_tasks, handoffs_by_task)
@@ -577,11 +565,8 @@ def build_payload(project_path: str) -> dict:
     return {
         "schema_version":   SCHEMA_VERSION,
         "project_settings": project_settings,
-        # contract.yaml metadata wins over the hardcoded "contract" default
-        # state_reader returns post-migration. Fall back to contract_doc only
-        # when no metadata file exists.
-        "contract_id":      contract_meta.get("id") or contract_doc.get("id") or "",
-        "goal":             contract_meta.get("goal") or contract_doc.get("goal") or "",
+        "contract_id":      contract_doc.get("id") or "",
+        "goal":             contract_doc.get("goal") or "",
         "tasks":            tasks,
         "edges":            _build_edges(tasks),
         "ledger":           _parse_ledger(sh_dir),

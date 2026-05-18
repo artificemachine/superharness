@@ -699,22 +699,21 @@ def cmd_delegate(args):
                 break
         if project_dir is None:
             project_dir = os.environ.get("SUPERHARNESS_PROJECT") or os.getcwd()
-        # Look up owner from contract
-        contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
+        # Look up owner from SQLite
         target = None
-        if os.path.isfile(contract_file):
+        try:
+            from superharness.engine.db import get_connection, init_db
+            from superharness.engine import tasks_dao
+            _conn = get_connection(project_dir)
             try:
-                import yaml
-                with open(contract_file) as f:
-                    doc = yaml.safe_load(f) or {}
-                for t in doc.get("tasks") or []:
-                    if isinstance(t, dict) and str(t.get("id", "")) == task_id:
-                        owner = str(t.get("owner", ""))
-                        if owner in ("claude-code", "codex-cli"):
-                            target = owner
-                        break
-            except Exception as e:
-                print(f"Warning: could not read contract for task lookup: {e}", file=sys.stderr)
+                init_db(_conn)
+                _row = tasks_dao.get(_conn, task_id)
+                if _row and _row.owner in ("claude-code", "codex-cli"):
+                    target = _row.owner
+            finally:
+                _conn.close()
+        except Exception as e:
+            print(f"Warning: could not read task owner from state.db: {e}", file=sys.stderr)
         if target is None:
             target = "claude-code"
         new_args = ["--to", target, "--task", task_id] + rest

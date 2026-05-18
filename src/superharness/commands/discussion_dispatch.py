@@ -102,7 +102,6 @@ def dispatch(project_dir: str) -> int:
     from superharness.engine import discussions_dao
 
     discussions_dir = os.path.join(project_dir, ".superharness", "discussions")
-    inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
 
     conn = get_connection(project_dir)
     try:
