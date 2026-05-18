@@ -398,3 +398,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-15: chore(release): bump to v1.58.6 — refactor(autonomy) collapse to single ai_driven mode (PR #250)
 - 2026-05-16: chore(gitignore): cover state.db, models.yaml, discussions/, handoffs/; remove tracked WAL files; add plan doc
 - 2026-05-16: feat(paperclip): absorb 5 paperclip features — agent_heartbeats table + shux pulse, task_artifacts table + shux artifact, unified session inbox type column + discussion shadow rows, shux pack --scrub credential redaction, visual_context + artifacts + heartbeats in adapter payload (v1.59.0)
+- 2026-05-18: test(perf): replace absolute time threshold in test_dashboard_optimization_perf with relative SQLite-vs-YAML ratio + best-of-3 sampling — eliminates flaky failure on shared CI runners (macos-latest measured 0.35s, above old 0.3s threshold, even though SQLite was still ~1.7x faster than YAML)
