@@ -245,8 +245,8 @@ def main(argv: list[str] | None = None) -> None:
     # PASS post-migration — SQLite is the sole source of truth — but we
     # still emit a parity: line so consumers and tests that grep for it
     # see the current contract.
-    state_db = os.path.join(harness_dir, "state.sqlite3")
-    if os.path.isfile(state_db):
+    from superharness.utils.paths import is_project_initialized
+    if is_project_initialized(project_dir):
         try:
             from superharness.engine.db import get_connection, init_db
             _conn = get_connection(project_dir)

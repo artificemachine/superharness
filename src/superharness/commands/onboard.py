@@ -188,7 +188,8 @@ def _step_init(project: Path, state: dict) -> None:
     if _is_completed(state, "init"):
         click.echo("[skip] Step 2 (init): already completed")
         return
-    already_existed = sh.exists() and (sh / "state.sqlite3").exists()
+    from superharness.utils.paths import is_project_initialized
+    already_existed = is_project_initialized(str(project))
     if already_existed:
         click.echo("[skip] Step 2 (init): .superharness/ already exists")
     else:
@@ -590,7 +591,8 @@ _SECTION_KEYS = [k for k, _, _ in ONBOARD_SECTIONS]
 
 
 def _is_returning_user(project: Path) -> bool:
-    return (project / ".superharness" / "state.sqlite3").exists()
+    from superharness.utils.paths import is_project_initialized
+    return is_project_initialized(str(project))
 
 
 def _print_noninteractive_guidance(project: Path) -> None:

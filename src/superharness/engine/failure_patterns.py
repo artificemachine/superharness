@@ -332,7 +332,8 @@ def _seed_unknown_signature(project_dir: str, error_snippet: str) -> None:
     watcher learns from repeated identical environmental failures
     (missing dirs, missing CLIs, etc.) that the regex library doesn't
     classify."""
-    db_path = str(Path(project_dir) / ".superharness" / "state.sqlite3")
+    from superharness.utils.paths import resolve_active_state_db_path
+    db_path = resolve_active_state_db_path(project_dir)
     if not Path(db_path).exists():
         return
     from superharness.engine.operator_memory import OperatorMemory
@@ -358,7 +359,8 @@ def _seed_operator_memory(project_dir: str, patterns: list[FailurePattern]) -> N
     If the pattern signature is unknown, create an entry. If it already
     exists, skip (the watcher handles confidence updates via record_match).
     """
-    db_path = str(Path(project_dir) / ".superharness" / "state.sqlite3")
+    from superharness.utils.paths import resolve_active_state_db_path
+    db_path = resolve_active_state_db_path(project_dir)
     if not Path(db_path).exists():
         return
 

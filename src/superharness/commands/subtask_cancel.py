@@ -14,6 +14,8 @@ import os
 import sys
 from datetime import datetime, timezone
 
+from superharness.utils.paths import is_project_initialized
+
 
 # Statuses that cannot be cancelled (terminal resolved).
 _NO_CANCEL_STATUSES = {"done"}
@@ -110,8 +112,8 @@ def main(argv: list[str] | None = None) -> None:
 
     project_dir = os.path.realpath(opts.project or os.getcwd())
 
-    if not os.path.exists(os.path.join(project_dir, ".superharness", "state.sqlite3")):
-        print(f"Missing project state: {project_dir}/.superharness/state.sqlite3", file=sys.stderr)
+    if not is_project_initialized(project_dir):
+        print(f"Missing project state at {project_dir}. Run 'shux init' first.", file=sys.stderr)
         sys.exit(1)
 
     rc = cancel_subtask(

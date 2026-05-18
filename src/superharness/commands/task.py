@@ -13,6 +13,7 @@ from typing import Optional
 
 from superharness.engine.taxonomy import VALID_EFFORTS
 from superharness.engine.next_action import ALL_STATUSES
+from superharness.utils.paths import is_project_initialized
 
 # ---------------------------------------------------------------------------
 # Validation helpers
@@ -416,8 +417,8 @@ def set_owner(project_dir: str, task_id: str, new_owner: str) -> int:
     print(f"Reassigned task '{task_id}': {old_owner} → {new_owner}")
 
     # Cancel active inbox rows that were dispatched to the old owner.
-    harness_dir = os.path.join(project_dir, ".superharness")
-    db_path = os.path.join(harness_dir, "state.sqlite3")
+    from superharness.utils.paths import resolve_active_state_db_path
+    db_path = resolve_active_state_db_path(project_dir)
 
     if not os.path.exists(db_path):
         return 0
@@ -769,8 +770,8 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(2)
 
     project_dir = os.path.realpath(opts.project or os.getcwd())
-    if not os.path.exists(os.path.join(project_dir, ".superharness", "state.sqlite3")):
-        _abort(f"Missing project state: {project_dir}/.superharness/state.sqlite3")
+    if not is_project_initialized(project_dir):
+        _abort(f"Missing project state at {project_dir}. Run 'shux init' first.")
 
     if opts.subcmd == "create":
         owner = opts.owner or ""
