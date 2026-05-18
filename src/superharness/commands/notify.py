@@ -34,11 +34,16 @@ def _watcher_ok_darwin(project_dir: str) -> tuple[bool, str]:
 
 
 def _retry_high_ids(inbox_file: str, threshold: int) -> list[str]:
+    """Return inbox item IDs whose retry_count >= threshold. Reads from SQLite."""
     active_statuses = {"pending", "launched", "running", "stale", "failed", "paused", "stopped"}
     ids: list[str] = []
-    if not os.path.isfile(inbox_file):
+    # Derive project_dir from inbox_file path (.superharness/inbox.yaml → project root)
+    project_dir = os.path.dirname(os.path.dirname(inbox_file))
+    try:
+        from superharness.engine.state_reader import get_inbox_items
+        items = get_inbox_items(project_dir)
+    except Exception:
         return ids
-    items = safe_load(inbox_file, list) or []
     for item in items:
         if not isinstance(item, dict):
             continue

@@ -1,6 +1,0 @@
-closed_at: '2026-03-26T00:41:03Z'
-from: claude-code
-status: done
-summary: Close owner gate fixed + status lifecycle gate + --force escape hatch
-task: bug.close-owner-rejected
-to: owner

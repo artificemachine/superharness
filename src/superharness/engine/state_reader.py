@@ -245,14 +245,32 @@ def get_contract_doc(project_dir: str) -> dict:
     tasks = get_tasks(project_dir)
     decisions = get_decisions(project_dir)
     failures = get_failures(project_dir)
-    # Derive contract ID from project metadata
-    contract_id = "contract"  # default
+    contract_id, goal = _read_project_meta(project_dir)
     return {
         "id": contract_id,
+        "goal": goal,
         "tasks": tasks,
         "decisions": decisions,
         "failures": failures,
     }
+
+
+def _read_project_meta(project_dir: str) -> tuple[str, str]:
+    """Read contract id and goal from the project_meta SQLite table."""
+    try:
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            rows = {
+                r[0]: r[1]
+                for r in conn.execute("SELECT key, value FROM project_meta WHERE key IN ('id', 'goal')")
+            }
+            return rows.get("id", "contract"), rows.get("goal", "")
+        finally:
+            conn.close()
+    except Exception:
+        return "contract", ""
 
 
 def get_top_level_tasks(project_dir: str) -> list[dict]:

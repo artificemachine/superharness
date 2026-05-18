@@ -1,7 +1,0 @@
-closed_at: '2026-04-18T11:53:55Z'
-from: claude-code
-status: done
-summary: 'Shipped v1.24.4: 39 JS string literal \n fixes in dashboard.html. PR #103
-  area.'
-task: fix.dashboard-newline-rendering
-to: owner

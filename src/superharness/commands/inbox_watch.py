@@ -1069,10 +1069,9 @@ def _auto_close_review_passed(project_dir: str) -> None:
             set_task_status(project_dir, task_id, "review_passed")
 
             # 2. Call close_task
-            contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
             try:
                 close_task(
-                    contract_file=contract_file,
+                    project_dir=project_dir,
                     task_id=task_id,
                     actor=reviewer,
                     summary=f"Review passed: detected LGTM in {reviewer} report.",

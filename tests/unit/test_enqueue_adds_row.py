@@ -185,7 +185,7 @@ def test_enqueue_auto_generates_id(tmp_path: Path) -> None:
     assert "id:" in r.stdout
 
 
-def test_enqueue_outputs_file_path(tmp_path: Path) -> None:
+def test_enqueue_outputs_item_details(tmp_path: Path) -> None:
     project = _make_project(tmp_path)
     r = _run_enqueue([
         "--project", str(project),
@@ -194,6 +194,6 @@ def test_enqueue_outputs_file_path(tmp_path: Path) -> None:
         "--id", "file-path-test",
     ])
     assert r.returncode == 0, r.stderr
-    assert "file:" in r.stdout
-    inbox_path = str(project / ".superharness" / "inbox.yaml")
-    assert inbox_path in r.stdout
+    assert "id: file-path-test" in r.stdout
+    assert "to: claude-code" in r.stdout
+    assert "task: my-task" in r.stdout

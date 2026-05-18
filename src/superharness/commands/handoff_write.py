@@ -81,18 +81,13 @@ _TDD_ENFORCED_WORKFLOWS = {"implementation", "review"}
 
 
 def _load_contract_doc(contract_file: Path) -> dict:
-    """Load contract doc from state_reader (SQLite), falling back to YAML."""
+    """Load contract doc from state_reader (SQLite exclusively)."""
     try:
         from superharness.engine import state_reader as _sr
         project_dir = str(contract_file.parent.parent)
         return _sr.get_contract_doc(project_dir)
     except Exception:
-        if not contract_file.is_file() or yaml is None:
-            return {}
-        try:
-            return yaml.safe_load(contract_file.read_text()) or {}
-        except Exception:
-            return {}
+        return {}
 
 
 def _load_task_policy(contract_file: Path, task_id: str) -> tuple[bool, str]:

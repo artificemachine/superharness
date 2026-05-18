@@ -366,23 +366,16 @@ class TestDelegateCommand:
                 assert "task-123" in args
 
     def test_cmd_delegate_with_task_id_and_contract_claude_code(self, runner, tmp_path):
-        """delegate should look up owner from contract and inject --to."""
-        contract_file = tmp_path / "contract.yaml"
-        contract_file.write_text(
-            """
-tasks:
-  - id: task-123
-    owner: claude-code
-  - id: task-456
-    owner: codex-cli
-"""
-        )
+        """delegate should look up owner from SQLite and inject --to."""
+        from unittest.mock import MagicMock
+
+        mock_row = MagicMock()
+        mock_row.owner = "claude-code"
 
         with patch("superharness.cli._run_module") as mock_run_module:
-            with patch("superharness.cli.os.path.isfile", return_value=True):
-                with patch("superharness.cli.os.path.join") as mock_join:
-                    mock_join.return_value = str(contract_file)
-                    with patch("builtins.open", open) as _:
+            with patch("superharness.engine.tasks_dao.get", return_value=mock_row):
+                with patch("superharness.engine.db.get_connection"):
+                    with patch("superharness.engine.db.init_db"):
                         runner.invoke(main, ["delegate", "task-123"])
 
                         mock_run_module.assert_called_once()
@@ -391,26 +384,22 @@ tasks:
                         assert "claude-code" in args
 
     def test_cmd_delegate_with_task_id_codex_owner(self, runner, tmp_path):
-        """delegate should handle codex-cli owner."""
-        contract_file = tmp_path / "contract.yaml"
-        contract_file.write_text(
-            """
-tasks:
-  - id: task-456
-    owner: codex-cli
-"""
-        )
+        """delegate should look up codex-cli owner from SQLite."""
+        from unittest.mock import MagicMock
+
+        mock_row = MagicMock()
+        mock_row.owner = "codex-cli"
 
         with patch("superharness.cli._run_module") as mock_run_module:
-            with patch("superharness.cli.os.path.isfile", return_value=True):
-                with patch("superharness.cli.os.path.join") as mock_join:
-                    mock_join.return_value = str(contract_file)
-                    runner.invoke(main, ["delegate", "task-456"])
+            with patch("superharness.engine.tasks_dao.get", return_value=mock_row):
+                with patch("superharness.engine.db.get_connection"):
+                    with patch("superharness.engine.db.init_db"):
+                        runner.invoke(main, ["delegate", "task-456"])
 
-                    mock_run_module.assert_called_once()
-                    args = mock_run_module.call_args[0][1]
-                    assert "--to" in args
-                    assert "codex-cli" in args
+                        mock_run_module.assert_called_once()
+                        args = mock_run_module.call_args[0][1]
+                        assert "--to" in args
+                        assert "codex-cli" in args
 
     def test_cmd_delegate_without_task_id(self, runner):
         """delegate without task-id should pass through to module."""

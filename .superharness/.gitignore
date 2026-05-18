@@ -44,3 +44,13 @@ watcher-env.yaml
 watcher.heartbeat
 watcher.heartbeat.yaml
 watcher.yaml
+# Dead state files — SQLite is source of truth
+contract.yaml
+inbox.archive.yaml
+export/
+agent-pulse.yaml
+agents/
+test.yaml
+loop_guard_state.json
+# Security — auth tokens must never be committed
+.dashboard_auth_token

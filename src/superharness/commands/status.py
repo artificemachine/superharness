@@ -759,7 +759,6 @@ def main(argv: list[str] | None = None) -> None:
     if not os.path.isdir(harness_dir):
         sys.exit(f"Missing .superharness in project: {project_dir}")
 
-    inbox_file = os.path.join(harness_dir, "inbox.yaml")
     handoff_dir = os.path.join(harness_dir, "handoffs")
 
     # --- Watcher & heartbeat ---

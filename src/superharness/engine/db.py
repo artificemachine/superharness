@@ -13,7 +13,7 @@ from superharness.utils.paths import resolve_xdg_state_db_path
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 20
+CURRENT_SCHEMA_VERSION = 21
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -608,6 +608,18 @@ def _migration_v20(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "inbox", "type", "TEXT NOT NULL DEFAULT 'task'")
 
 
+def _migration_v21(conn: sqlite3.Connection) -> None:
+    """project_meta: key/value store for contract-level metadata (id, goal)."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS project_meta (
+            key    TEXT PRIMARY KEY,
+            value  TEXT
+        )
+        """
+    )
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -629,4 +641,5 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v18,
     _migration_v19,
     _migration_v20,
+    _migration_v21,
 ]
