@@ -10,6 +10,8 @@ import sqlite3
 import threading
 from dataclasses import dataclass
 
+from superharness.utils.paths import resolve_xdg_state_db_path
+
 
 class PolicyError(Exception):
     """Raised when an agent's policy limits are exceeded."""
@@ -32,10 +34,22 @@ class SessionManager:
         self._lock = threading.Lock()
 
     def init_session(self, conn_id: str, project_path: str, agent: str = "unknown") -> str:
-        """Open a new session for *project_path*. Returns *conn_id*."""
-        db_path = os.path.join(project_path, ".superharness", "state.sqlite3")
-        if not os.path.isfile(db_path):
-            raise ValueError(f"No superharness state found at {db_path}. Run 'shux init' first.")
+        """Open a new session for *project_path*. Returns *conn_id*.
+
+        Tries the XDG state path first (new installs), falls back to the
+        legacy .superharness/state.sqlite3 for existing projects.
+        """
+        xdg_path = resolve_xdg_state_db_path(project_path)
+        legacy_path = os.path.join(project_path, ".superharness", "state.sqlite3")
+        if os.path.isfile(xdg_path):
+            db_path = xdg_path
+        elif os.path.isfile(legacy_path):
+            db_path = legacy_path
+        else:
+            raise ValueError(
+                f"No superharness state found. Tried:\n  {xdg_path}\n  {legacy_path}\n"
+                "Run 'shux init' first."
+            )
 
         conn = sqlite3.connect(db_path, timeout=5000, check_same_thread=False)
         conn.row_factory = sqlite3.Row

@@ -9,6 +9,7 @@ sites are not refactored to use them yet. They opt in over time.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 
 
@@ -33,6 +34,90 @@ def resolve_project_dir(default: str) -> str:
 def resolve_state_db_path(project_dir: str) -> str:
     """Return the conventional state DB path under project_dir."""
     return os.path.join(project_dir.rstrip("/\\"), ".superharness", "state.sqlite3")
+
+
+def resolve_state_dir() -> str:
+    """Return the superharness state directory.
+
+    Precedence: SUPERHARNESS_STATE_DIR > XDG_STATE_HOME/superharness >
+    ~/.local/state/superharness.
+    """
+    override = _read_env("SUPERHARNESS_STATE_DIR")
+    if override:
+        return override
+    xdg = _read_env("XDG_STATE_HOME")
+    base = xdg if xdg else os.path.join(os.path.expanduser("~"), ".local", "state")
+    return os.path.join(base, "superharness")
+
+
+def resolve_config_dir() -> str:
+    """Return the superharness config directory.
+
+    Precedence: SUPERHARNESS_CONFIG_DIR > XDG_CONFIG_HOME/superharness >
+    ~/.config/superharness.
+    """
+    override = _read_env("SUPERHARNESS_CONFIG_DIR")
+    if override:
+        return override
+    xdg = _read_env("XDG_CONFIG_HOME")
+    base = xdg if xdg else os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base, "superharness")
+
+
+def project_hash(project_path: str) -> str:
+    """Return a stable 12-char hex digest for a project directory path.
+
+    Different absolute paths produce different hashes, so parallel worktrees
+    get separate state directories without collision.
+    """
+    digest = hashlib.sha256(os.path.abspath(project_path).encode()).hexdigest()
+    return digest[:12]
+
+
+def is_project_initialized(project_path: str) -> bool:
+    """Return True if a state db exists at the XDG path or the legacy path.
+
+    Use this as the guard at command entry points instead of inline
+    os.path.exists(.superharness/state.sqlite3) checks.
+    """
+    return (
+        os.path.isfile(resolve_xdg_state_db_path(project_path))
+        or os.path.isfile(
+            os.path.join(project_path, ".superharness", "state.sqlite3")
+        )
+    )
+
+
+def resolve_xdg_state_db_path(project_path: str) -> str:
+    """Return the XDG-compliant state.db path for a project.
+
+    Combines resolve_state_dir() with project_hash(project_path) so each
+    project gets an isolated directory outside the repo. No filesystem access.
+
+    Example: ~/.local/state/superharness/<12-char-hash>/state.db
+    """
+    return os.path.join(resolve_state_dir(), project_hash(project_path), "state.db")
+
+
+def resolve_active_state_db_path(project_path: str) -> str:
+    """Return the path to the active state db for a project.
+
+    Resolution order mirrors get_connection:
+      1. XDG path if it exists on disk
+      2. Legacy .superharness/state.sqlite3 if it exists on disk
+      3. .superharness/ directory exists → legacy path (backward-compat for
+         projects initialized via shux init before XDG seeding was added)
+      4. XDG path (truly new project with no .superharness/)
+    """
+    xdg = resolve_xdg_state_db_path(project_path)
+    legacy = os.path.join(project_path, ".superharness", "state.sqlite3")
+    if os.path.isfile(xdg):
+        return xdg
+    if os.path.isfile(legacy):
+        return legacy
+    if os.path.isdir(os.path.join(project_path, ".superharness")):
+        return legacy
+    return xdg
 
 
 def resolve_dashboard_port(default: int) -> int:

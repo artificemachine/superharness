@@ -235,19 +235,28 @@ def main(argv: list[str] | None = None) -> None:
         (harness / "review-lenses").mkdir(parents=True, exist_ok=True)
         (harness / "rules").mkdir(parents=True, exist_ok=True)
 
-        # State lives in SQLite (post-YAML removal). Create the DB now so
-        # downstream commands (task create, delegate, close, etc.) which
-        # _abort with "Missing project state" don't fire on a fresh project.
+        # State lives in SQLite (post-YAML removal). Create the DB at the XDG
+        # path so state is never inside the repo and cannot be committed.
+        # Bypass get_connection's resolution order by targeting the XDG path
+        # directly — .superharness/ was just created above, which would otherwise
+        # cause get_connection to fall back to the legacy path.
         try:
-            from superharness.engine.db import get_connection, init_db
-            _conn = get_connection(str(project_dir))
+            import sqlite3 as _sq
+            from superharness.engine.db import init_db
+            from superharness.utils.paths import resolve_xdg_state_db_path
+            _xdg_db = resolve_xdg_state_db_path(str(project_dir))
+            os.makedirs(os.path.dirname(_xdg_db), exist_ok=True)
+            _conn = _sq.connect(_xdg_db, timeout=5000)
+            _conn.row_factory = _sq.Row
+            _conn.execute("PRAGMA journal_mode=WAL")
+            _conn.execute("PRAGMA foreign_keys=ON")
             try:
                 init_db(_conn, str(project_dir))
                 _conn.commit()
             finally:
                 _conn.close()
         except Exception as _e:
-            print(f"warning: failed to initialise state.sqlite3: {_e}", file=sys.stderr)
+            print(f"warning: failed to initialise state db: {_e}", file=sys.stderr)
 
         # .gitignore — runtime state only; contract/handoffs/discussions remain tracked
         gitignore_path = harness / ".gitignore"

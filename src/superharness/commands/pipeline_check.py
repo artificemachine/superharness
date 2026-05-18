@@ -28,7 +28,8 @@ def run_pipeline_check(project_dir: str) -> int:
     print()
 
     # 1. SQLite DB
-    db = os.path.join(project_dir, ".superharness", "state.sqlite3")
+    from superharness.utils.paths import resolve_active_state_db_path
+    db = resolve_active_state_db_path(project_dir)
     _check("SQLite DB exists", os.path.isfile(db), f"missing: {db}")
 
     # 2. Profile config

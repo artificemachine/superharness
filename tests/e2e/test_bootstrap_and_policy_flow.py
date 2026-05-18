@@ -11,31 +11,50 @@ import pytest
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
-def _run_init_py(cwd, args: list[str] | None = None):
+def _run_init_py(cwd, args: list[str] | None = None, extra_env: dict | None = None):
     """Run init_project Python module."""
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    if extra_env:
+        env.update(extra_env)
     cmd = [sys.executable, "-m", "superharness.commands.init_project"] + (args or [])
     return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
 
 
-def _run_discuss_py(cwd, args: list[str] | None = None):
+def _run_discuss_py(cwd, args: list[str] | None = None, extra_env: dict | None = None):
     """Run discuss Python module."""
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    if extra_env:
+        env.update(extra_env)
     cmd = [sys.executable, "-m", "superharness.commands.discuss"] + (args or [])
     return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
 
 
 def test_bootstrap_and_hook_install_flow(repo_root, tmp_path) -> None:
+    from superharness.utils.paths import resolve_xdg_state_db_path
+
     project = tmp_path / "project"
     project.mkdir()
+    state_dir = str(tmp_path / "sh_state")
 
-    init_res = _run_init_py(project, args=["Demo", "Python", "active"])
+    init_res = _run_init_py(project, args=["Demo", "Python", "active"],
+                            extra_env={"SUPERHARNESS_STATE_DIR": state_dir})
     assert init_res.returncode == 0, init_res.stderr
 
-    # Post-migration: state lives in SQLite, not contract.yaml.
-    assert (project / ".superharness/state.sqlite3").exists()
+    # Post-migration: state lives in XDG state db, not inside .superharness/.
+    old_env = os.environ.get("SUPERHARNESS_STATE_DIR")
+    os.environ["SUPERHARNESS_STATE_DIR"] = state_dir
+    try:
+        xdg_db = resolve_xdg_state_db_path(str(project))
+    finally:
+        if old_env is None:
+            os.environ.pop("SUPERHARNESS_STATE_DIR", None)
+        else:
+            os.environ["SUPERHARNESS_STATE_DIR"] = old_env
+    assert os.path.isfile(xdg_db), f"XDG state.db not found at {xdg_db}"
+    assert not (project / ".superharness" / "state.sqlite3").exists(), \
+        "legacy state.sqlite3 must not exist after init"
     assert (project / "CLAUDE.md").exists()
     assert (project / "AGENTS.md").exists()
 
@@ -86,10 +105,15 @@ def test_policy_enforcement_block_and_warn(repo_root, tmp_path) -> None:
 
 
 def test_bootstrap_discuss_start_enqueues_round_one_for_both_agents(repo_root, tmp_path) -> None:
+    import sqlite3 as _sql
+    from superharness.utils.paths import resolve_xdg_state_db_path
+
     project = tmp_path / "project_discuss"
     project.mkdir()
+    state_dir = str(tmp_path / "sh_state_discuss")
 
-    init_res = _run_init_py(project, args=["Demo", "Python", "active"])
+    init_res = _run_init_py(project, args=["Demo", "Python", "active"],
+                            extra_env={"SUPERHARNESS_STATE_DIR": state_dir})
     assert init_res.returncode == 0, init_res.stderr
 
     # Add tasks for both owners (required for discussion start)
@@ -99,7 +123,7 @@ def test_bootstrap_discuss_start_enqueues_round_one_for_both_agents(repo_root, t
             "create", "--project", str(project),
             "--id", f"e2e-{agent}", "--title", f"E2E task for {agent}",
             "--owner", agent, "--status", "todo",
-        ])
+        ], env={"SUPERHARNESS_STATE_DIR": state_dir})
         assert t.returncode == 0, t.stderr
 
     start_res = _run_discuss_py(
@@ -110,16 +134,25 @@ def test_bootstrap_discuss_start_enqueues_round_one_for_both_agents(repo_root, t
             "--topic", "E2E test: dual-agent round enqueue",
             "--max-rounds", "2",
         ],
+        extra_env={"SUPERHARNESS_STATE_DIR": state_dir},
     )
     assert start_res.returncode == 0, start_res.stderr
     assert "Discussion started:" in start_res.stdout
     assert "Enqueued round 1 for claude-code:" in start_res.stdout
     assert "Enqueued round 1 for codex-cli:" in start_res.stdout
 
-    # Inbox is SQLite-backed post-migration; the YAML file (if present) is no
-    # longer the source of truth. Query SQLite directly.
-    import sqlite3 as _sql
-    db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
+    # Inbox is SQLite-backed at the XDG path post-migration.
+    old_env = os.environ.get("SUPERHARNESS_STATE_DIR")
+    os.environ["SUPERHARNESS_STATE_DIR"] = state_dir
+    try:
+        xdg_db = resolve_xdg_state_db_path(str(project))
+    finally:
+        if old_env is None:
+            os.environ.pop("SUPERHARNESS_STATE_DIR", None)
+        else:
+            os.environ["SUPERHARNESS_STATE_DIR"] = old_env
+
+    db = _sql.connect(xdg_db)
     rows = db.execute(
         "SELECT task_id, target_agent, status FROM inbox "
         "WHERE task_id LIKE 'discuss-%/round-1'"

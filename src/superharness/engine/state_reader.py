@@ -19,9 +19,15 @@ import re
 import sys
 from typing import Any
 
+from superharness.utils.paths import resolve_xdg_state_db_path
+
 
 def _has_sqlite_db(project_dir: str) -> bool:
-    return os.path.exists(os.path.join(project_dir, ".superharness", "state.sqlite3"))
+    """Return True if a state db exists at the XDG path or the legacy path."""
+    return (
+        os.path.exists(resolve_xdg_state_db_path(project_dir))
+        or os.path.exists(os.path.join(project_dir, ".superharness", "state.sqlite3"))
+    )
 
 
 def _get_backend(project_dir: str) -> str:
