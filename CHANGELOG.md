@@ -413,3 +413,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-18: fix(test): test_migration_creates_backup — remove .superharness/ mkdir so get_connection uses XDG path as intended (resolution-order fix broke this test)
 - 2026-05-18: feat(state-isolation/iter8): shux init writes state.db at XDG path, not inside .superharness/; bypass resolution order in init_project.py by calling resolve_xdg_state_db_path directly; three new tests confirm XDG creation, db schema, and absence of legacy state.sqlite3
 - 2026-05-18: fix(e2e): update test_bootstrap_and_policy_flow to use XDG state.db path — E2E tests were still asserting legacy .superharness/state.sqlite3 after shux init, breaking CI on PR #256
+- 2026-05-18: chore(release): bump to v1.60.0 (XDG-compliant state.db location — 8 iterations of state isolation, E2E test fixes)
