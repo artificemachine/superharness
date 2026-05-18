@@ -42,17 +42,18 @@ def refresh_context(context: dict[str, Any], settings: dict[str, Any]) -> dict[s
     else:
         logger.debug("No CLAUDE.md found in project directory")
 
-    # 2. Read contract.yaml
-    contract_path = project_dir / ".superharness" / "contract.yaml"
-    if contract_path.exists():
-        try:
-            content = contract_path.read_text(encoding="utf-8")
-            logger.info(f"Refreshed context from contract.yaml ({len(content)} bytes)")
+    # 2. Read contract state from SQLite
+    try:
+        from superharness.engine import state_reader as _sr
+        doc = _sr.get_contract_doc(str(project_dir))
+        if doc is not None:
+            task_count = len(doc.get("tasks") or [])
+            logger.info(f"Refreshed context from state.db ({task_count} tasks)")
             refreshed["contract"] = True
-        except Exception as e:
-            logger.warning(f"Failed to read contract.yaml: {e}")
-    else:
-        logger.debug("No contract.yaml found")
+        else:
+            logger.debug("No contract state found in state.db")
+    except Exception as e:
+        logger.warning(f"Failed to read contract from state.db: {e}")
 
     # 3. Read last handoff (most recent handoff file)
     handoffs_dir = project_dir / ".superharness" / "handoffs"

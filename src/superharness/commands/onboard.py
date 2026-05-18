@@ -409,20 +409,10 @@ def _step_delegate(project: Path, state: dict, enqueue: bool, task_id: Optional[
         return
 
     sh = project / ".superharness"
-    inbox = sh / "inbox.yaml"
-    items = yaml.safe_load(inbox.read_text()) if inbox.exists() else []
-    items = items or []
 
     now = datetime.now(timezone.utc).isoformat()
-    item = {
-        "task_id": task_id,
-        "target": "claude-code",
-        "enqueued_at": now,
-        "project_path": str(project),
-    }
-    items.append(item)
 
-    # Write to SQLite via inbox_dao (canonical path)
+    # Write to SQLite via inbox_dao (canonical path — SQLite is the sole source of truth)
     try:
         conn = get_connection(str(project))
         inbox_dao.enqueue(
@@ -436,9 +426,9 @@ def _step_delegate(project: Path, state: dict, enqueue: bool, task_id: Optional[
         conn.commit()
         conn.close()
     except Exception as e:
-        click.echo(f"[delegate] Warning: could not mirror inbox item to SQLite: {e}")
+        click.echo(f"[delegate] Warning: could not enqueue inbox item to SQLite: {e}")
 
-    click.echo(f"[delegate] Enqueued task {task_id} to inbox.yaml")
+    click.echo(f"[delegate] Enqueued task {task_id} to inbox")
     click.echo("  → The watcher picks this up within 30s and launches the agent.")
     click.echo("  → Run 'shux daemon start' to keep the watcher running in the background.")
     _mark(state, "delegate")

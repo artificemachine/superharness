@@ -298,7 +298,8 @@ def _cascade_unblocked_tasks(project_dir: str, finished_task_id: str) -> None:
     from superharness.engine.state_errors import StateError as _StateError
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
+    # _deps_satisfied accepts project_dir; derive a canonical contract_file path for it
+    _contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
 
     conn = get_connection(project_dir)
     try:
@@ -315,7 +316,7 @@ def _cascade_unblocked_tasks(project_dir: str, finished_task_id: str) -> None:
         for row in dependents:
             if row.status not in ("todo", "plan_approved"):
                 continue
-            if not _deps_satisfied(contract_file, row.id):
+            if not _deps_satisfied(_contract_file, row.id):
                 continue
 
             if row.status == "todo" and not _profile_autonomy_is_ai_driven(profile):

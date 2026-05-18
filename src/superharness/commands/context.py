@@ -142,7 +142,6 @@ def task_context(
     if not sh_dir.is_dir():
         return f"No .superharness/ found at {project_dir}"
 
-    contract_path = sh_dir / "contract.yaml"
     from superharness.engine import state_reader
     tasks = state_reader.get_tasks(str(project_dir))
     contract = {"tasks": tasks}

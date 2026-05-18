@@ -1,7 +1,0 @@
-closed_at: '2026-03-26T00:41:03Z'
-from: claude-code
-status: done
-summary: 'Version strings aligned: README, AGENTS.md, validate.py vault path via env
-  var'
-task: bug.version-mismatch
-to: owner

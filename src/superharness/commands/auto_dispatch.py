@@ -14,7 +14,6 @@ import sys
 import uuid
 from typing import Optional
 
-from superharness.engine.contract_io import read_contract as _read_contract
 from superharness.engine.taxonomy import VALID_EFFORTS, EFFORT_ORDER
 from superharness.utils.paths import is_project_initialized
 
@@ -147,13 +146,12 @@ def run_auto_dispatch(
     effort_gate: str = "high",
     agent_override: Optional[str] = None,
 ) -> int:
-    contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
     if not is_project_initialized(project_dir):
         print(f"auto-dispatch: project state not found at {project_dir}. Run 'shux init' first.", file=sys.stderr)
         return 1
 
-    contract, _ = _read_contract(contract_file)
-    contract = contract or {}
+    from superharness.engine.state_reader import get_contract_doc as _get_contract_doc
+    contract = _get_contract_doc(project_dir) or {}
     tasks = _todo_tasks(contract)
 
     if not tasks:
