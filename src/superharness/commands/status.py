@@ -136,7 +136,7 @@ def _deep_inbox_health(project_dir: str) -> dict:
 
     result: dict = {
         "orphaned": [],          # inbox items whose task is terminal
-        "duplicates": defaultdict(list),  # task_id → list of item_dicts (pending only)
+        "duplicates": defaultdict(list),  # "task_id|agent" → list of item_dicts (pending only)
         "stale_pending": [],     # pending > 1h
         "stale_launched": [],    # launched > 2h, no recent activity
         "dead_pid": [],          # launched/running with dead PID
@@ -147,7 +147,7 @@ def _deep_inbox_health(project_dir: str) -> dict:
         "items": [],
     }
 
-    pending_by_task: dict[str, list[dict]] = defaultdict(list)
+    pending_by_task_agent: dict[tuple[str, str], list[dict]] = defaultdict(list)
 
     for item in inbox:
         if not isinstance(item, dict):
@@ -196,9 +196,14 @@ def _deep_inbox_health(project_dir: str) -> dict:
                     "task_status": ts,
                 })
 
-        # Check: duplicates (same task, multiple pending)
+        # Check: duplicates (same task + same target_agent, multiple pending).
+        # Multi-participant discussions intentionally enqueue one pending item
+        # per participant under the same task_id, so the dedup key must include
+        # the agent — otherwise every N-participant discussion false-positives
+        # and `--fix` silently marks N-1 participants as stale.
         if st == "pending" and tid:
-            pending_by_task[tid].append(item)
+            agent = str(item.get("to", item.get("target_agent", "")))
+            pending_by_task_agent[(tid, agent)].append(item)
 
         # Check: stale pending (pending too long)
         if st == "pending":
@@ -246,11 +251,16 @@ def _deep_inbox_health(project_dir: str) -> dict:
                         "pid": pid,
                     })
 
-    # Compile duplicates
-    for tid, items in pending_by_task.items():
+    # Compile duplicates. Key is "{task_id}|{agent}" so each consumer can
+    # parse it back, and so the same task_id with different agents stays
+    # separated.
+    for (tid, agent), items in pending_by_task_agent.items():
         if len(items) > 1:
-            result["duplicates"][tid] = [
-                {"inbox_id": i.get("id", "?"), "created_at": i.get("created_at", "?")}
+            result["duplicates"][f"{tid}|{agent}"] = [
+                {"inbox_id": i.get("id", "?"),
+                 "created_at": i.get("created_at", "?"),
+                 "task_id": tid,
+                 "agent": agent}
                 for i in items
             ]
 
@@ -415,9 +425,11 @@ def _collect_issues(project_dir: str,
         add(f"{n} orphaned inbox item(s) — task is done/archived but inbox still pending: {ids}",
             "shux inbox gc")
 
-    # Inbox: duplicates
-    for tid, dups in inbox_health["duplicates"].items():
-        add(f"duplicate pending: '{tid}' has {len(dups)} inbox items — auto-enqueue may be stuck",
+    # Inbox: duplicates (per (task, agent) pair)
+    for key, dups in inbox_health["duplicates"].items():
+        tid = dups[0].get("task_id", key)
+        agent = dups[0].get("agent", "?")
+        add(f"duplicate pending: task '{tid}' agent '{agent}' has {len(dups)} inbox items — auto-enqueue may be stuck",
             "shux inbox gc  (or stop auto-dispatch for this task)")
 
     # Inbox: stale pending
@@ -616,7 +628,11 @@ def _auto_fix(project_dir: str, inbox_health: dict, disc_health: dict) -> int:
         except Exception as e:
             print(f"  Warning: failed to clean discussion orphans: {e}", file=sys.stderr)
 
-    # Clean duplicates (keep newest, stale rest)
+    # Clean duplicates (keep newest, stale rest). Each entry in
+    # inbox_health["duplicates"] is already scoped to a single
+    # (task_id, agent) pair, so this only ever drops genuine re-enqueues
+    # of the same agent — never a sibling participant in a multi-agent
+    # discussion.
     if inbox_health["duplicates"]:
         n = 0
         try:
@@ -624,7 +640,7 @@ def _auto_fix(project_dir: str, inbox_health: dict, disc_health: dict) -> int:
             conn = get_connection(project_dir)
             try:
                 init_db(conn)
-                for tid, dups in inbox_health["duplicates"].items():
+                for _key, dups in inbox_health["duplicates"].items():
                     for dup in dups[:-1]:
                         conn.execute("UPDATE inbox SET status='stale' WHERE id=?",
                                      (dup["inbox_id"],))
