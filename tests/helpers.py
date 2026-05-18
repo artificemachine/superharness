@@ -93,6 +93,18 @@ def seed_sqlite_from_yaml(project_path):
     if contract.exists():
         with open(contract) as f:
             doc = yaml.safe_load(f) or {}
+        # Persist contract-level metadata (id, goal) to project_meta table
+        for _key in ("id", "goal"):
+            _val = doc.get(_key)
+            if _val is not None:
+                try:
+                    conn.execute(
+                        "INSERT OR REPLACE INTO project_meta (key, value) VALUES (?, ?)",
+                        (_key, str(_val)),
+                    )
+                except Exception:
+                    pass
+        conn.commit()
         import json as _j
         for t in (doc.get('tasks') or []):
             if not isinstance(t, dict) or not t.get('id'):

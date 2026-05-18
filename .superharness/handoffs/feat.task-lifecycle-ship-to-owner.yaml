@@ -1,7 +1,0 @@
-closed_at: '2026-04-18T18:43:29Z'
-from: claude-code
-status: done
-summary: 'Design doc shipped in PR #111 / v1.24.14. All AC met: risk analysis, pr_open
-  status, ship_on_complete opt-in, 3-phase plan.'
-task: feat.task-lifecycle-ship
-to: owner

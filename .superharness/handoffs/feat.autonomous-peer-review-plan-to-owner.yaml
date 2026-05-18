@@ -1,9 +1,0 @@
-task: feat.autonomous-peer-review
-task_id: feat.autonomous-peer-review
-phase: plan
-status: plan_proposed
-from: claude-code
-to: owner
-date: "2026-04-25 08:00:00+00:00"
-plan: |
-  Autonomous Peer Review: Agents can verify and close tasks.

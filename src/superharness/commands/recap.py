@@ -47,10 +47,10 @@ def run_recap(project_dir: str | Path, hours: int = 4) -> dict:
         summary["ledger_lines"] = len(recent_ledger)
 
     # 2. Inbox activity
-    inbox_file = harness / "inbox.yaml"
     recent_inbox: list[dict] = []
-    if inbox_file.exists():
-        items = yaml.safe_load(inbox_file.read_text()) or []
+    try:
+        from superharness.engine.state_reader import get_inbox_items
+        items = get_inbox_items(str(project_dir))
         for item in items:
             if not isinstance(item, dict):
                 continue
@@ -59,6 +59,8 @@ def run_recap(project_dir: str | Path, hours: int = 4) -> dict:
                 if _within_window(ts, cutoff):
                     recent_inbox.append(item)
                     break
+    except Exception:
+        pass
     if recent_inbox:
         sections.append("## Inbox Activity")
         for item in recent_inbox[-15:]:

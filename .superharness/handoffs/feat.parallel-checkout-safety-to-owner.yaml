@@ -1,7 +1,0 @@
-closed_at: '2026-04-06T17:27:53Z'
-from: owner
-status: done
-summary: 'Verified: 31/31 concurrency tests, 73/73 related tests. Atomic claim(),
-  dep scheduling, stale lock recovery confirmed.'
-task: feat.parallel-checkout-safety
-to: owner

@@ -4,7 +4,6 @@ Enqueue an inbox item, with optional contract validation.
 """
 from __future__ import annotations
 
-import logging
 import os
 import platform
 import re
@@ -12,15 +11,6 @@ import secrets
 import subprocess
 import sys
 from datetime import datetime, timezone
-
-_log = logging.getLogger(__name__)
-
-from superharness.engine.next_action import (
-    TERMINAL_STATUSES,
-    allowed_statuses_for_workflow,
-    infer_workflow,
-    plan_only_allowed_statuses,
-)
 
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 VALID_TARGETS = {"claude-code", "codex-cli", "gemini-cli", "opencode"}
@@ -30,52 +20,7 @@ _JSON_MODE = False
 _JSON_CTX: dict = {}
 
 
-def _ensure_task_in_sqlite(conn, task_id: str, project_dir: str, now: str) -> None:
-    """Upsert a minimal task row if it is not yet in SQLite.
-
-    Reads contract.yaml as a one-shot seed when the SQLite tasks table
-    doesn't yet contain the task — otherwise inbox.enqueue would fail
-    the FK constraint on task_id. This handles legacy projects whose
-    contract.yaml hasn't been migrated, plus pytest fixtures that seed
-    contract.yaml directly. Never raises.
-    """
-    try:
-        from superharness.engine import tasks_dao
-        from superharness.engine.tasks_dao import TaskRow
-        import yaml as _yaml, os as _os, json as _json
-        if tasks_dao.get(conn, task_id) is not None:
-            return
-        contract_path = _os.path.join(project_dir, ".superharness", "contract.yaml")
-        if not _os.path.isfile(contract_path):
-            return
-        with open(contract_path, encoding="utf-8") as _f:
-            doc = _yaml.safe_load(_f.read()) or {}
-        for t in (doc.get("tasks") or []):
-            if not isinstance(t, dict) or t.get("id") != task_id:
-                continue
-            tasks_dao.upsert(conn, TaskRow(
-                id=task_id,
-                title=str(t.get("title", task_id)),
-                owner=str(t.get("owner", "") or "") or None,
-                status=str(t.get("status", "todo")),
-                effort=str(t.get("effort", "") or ""),
-                project_path=str(t.get("project_path", "") or project_dir),
-                development_method=str(t.get("development_method", "tdd")),
-                acceptance_criteria=list(t.get("acceptance_criteria", []) or []),
-                test_types=list(t.get("test_types", []) or []),
-                out_of_scope=list(t.get("out_of_scope", []) or []),
-                definition_of_done=list(t.get("definition_of_done", []) or []),
-                context=t.get("context"),
-                tdd=t.get("tdd"),
-                version=1,
-                created_at=now,
-            ))
-            return
-    except Exception:
-        pass
-
-
-def _sqlite_mirror_enqueue(
+def _sqlite_enqueue(
     *,
     project_dir: str,
     item_id: str,
@@ -85,49 +30,30 @@ def _sqlite_mirror_enqueue(
     plan_only: bool,
     created_at: str,
 ) -> None:
-    """Mirror a YAML enqueue to SQLite. Never raises."""
+    """Write inbox item to SQLite. Raises on failure — caller decides how to handle."""
+    from superharness.engine.db import get_connection, init_db, transaction
+    from superharness.engine import inbox_dao, ledger_dao
+    conn = get_connection(project_dir)
     try:
-        from superharness.engine.db import get_connection, init_db, transaction
-        from superharness.engine import inbox_dao, ledger_dao, yaml_sync
-        conn = get_connection(project_dir)
-        try:
-            init_db(conn)
-            item = {
-                "id": item_id,
-                "task": task_id,
-                "to": target,
-                "status": "pending",
-                "priority": priority,
-                "retry_count": 0,
-                "max_retries": 3,
-                "created_at": created_at,
-                "project": project_dir,
-                "plan_only": plan_only,
-            }
-            with transaction(conn):
-                _ensure_task_in_sqlite(conn, task_id, project_dir, created_at)
-                inbox_dao.enqueue(
-                    conn,
-                    id=item_id,
-                    task_id=task_id,
-                    target_agent=target,
-                    priority=priority,
-                    max_retries=3,
-                    project_path=project_dir,
-                    plan_only=plan_only,
-                    now=created_at,
-                )
-                yaml_sync.enqueue_op(
-                    conn, op_type="enqueue_inbox", payload=item, now=created_at
-                )
-                ledger_dao.record(
-                    conn, agent="inbox_enqueue", action="enqueued",
-                    task_id=task_id, now=created_at,
-                )
-        finally:
-            conn.close()
-    except Exception:
-        pass
+        init_db(conn)
+        with transaction(conn):
+            inbox_dao.enqueue(
+                conn,
+                id=item_id,
+                task_id=task_id,
+                target_agent=target,
+                priority=priority,
+                max_retries=3,
+                project_path=project_dir,
+                plan_only=plan_only,
+                now=created_at,
+            )
+            ledger_dao.record(
+                conn, agent="inbox_enqueue", action="enqueued",
+                task_id=task_id, now=created_at,
+            )
+    finally:
+        conn.close()
 
 
 def _abort(msg: str, code: int = 1) -> None:
@@ -145,140 +71,6 @@ def _validate_token(name: str, value: str) -> None:
         _abort(f"Invalid {name}: contains control characters", 2)
     if not TOKEN_RE.match(value):
         _abort(f"{name} must match ^[A-Za-z0-9._-]+$", 2)
-
-
-def _validate_contract(
-    contract_file: str,
-    task_id: str,
-    project_dir: str,
-    target: str,
-    *,
-    plan_only: bool = False,
-    force_reassign: bool = False,
-) -> None:
-    """Validate task project_path, owner, and lifecycle status.
-
-    The enqueue gate now mirrors the dispatch gate (`delegate._allowed_statuses_for_workflow`)
-    so tasks that dispatch would permanently reject never reach the inbox and
-    waste retry cycles. See `engine.lifecycle` for the canonical rule set.
-    """
-    from superharness.engine.yaml_helpers import safe_load
-
-    # Read tasks from contract.yaml (carries workflow / project_path /
-    # other fields not present in the SQLite tasks table). Then enrich
-    # the matched task's `owner` from SQLite so dashboard-driven owner
-    # changes (which write SQLite only) propagate to the enqueue gate.
-    doc = safe_load(contract_file, dict)
-    tasks = doc.get("tasks") or []
-    task = next((t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == task_id), None)
-    if task is not None:
-        try:
-            from superharness.engine.db import get_connection, init_db
-            from superharness.engine import tasks_dao
-            project_dir = os.path.dirname(os.path.dirname(os.path.abspath(contract_file)))
-            _conn = get_connection(project_dir)
-            try:
-                init_db(_conn)
-                _row = tasks_dao.get(_conn, task_id)
-                if _row and _row.owner:
-                    task["owner"] = _row.owner
-            finally:
-                _conn.close()
-        except Exception:
-            pass
-    if task is None:
-        print(
-            f"Warning: task '{task_id}' not found in contract. Enqueuing anyway.",
-            file=sys.stderr,
-        )
-        return
-
-    # project_path checks come first — they indicate a broken contract that
-    # must be fixed before any dispatch can succeed. Status/workflow gate
-    # comes after so test fixtures that omit status still surface path
-    # mismatches first.
-    task_path = str(task.get("project_path", "") or "")
-    if not task_path:
-        _abort(
-            f"Task '{task_id}' is missing project_path in {contract_file}\n"
-            f'Add: project_path: "{project_dir}"'
-        )
-
-    if "$" in task_path:
-        _abort(
-            f"Task '{task_id}' project_path must be an absolute path, not an environment variable expression.\n"
-            f"  contract: {task_path}\n"
-            f"  expected: {project_dir}"
-        )
-
-    if not os.path.isdir(task_path):
-        _abort(
-            f"Task '{task_id}' project_path does not exist on disk.\n"
-            f"  contract: {task_path}\n"
-            f"  expected: {project_dir}"
-        )
-
-    canonical = os.path.realpath(task_path)
-    if canonical != project_dir:
-        _abort(
-            f"Task '{task_id}' project_path mismatch.\n"
-            f"  contract: {canonical}\n"
-            f"  expected: {project_dir}"
-        )
-
-    # Workflow-aware status gate (parity with delegate.py gate 4).
-    status = str(task.get("status", ""))
-    workflow = infer_workflow(task_id, task)
-
-    # `done` is never re-enqueueable — closed work stays closed. `failed` and
-    # `stopped` are re-dispatchable (reconcile will pick them up after launch).
-    if status == "done":
-        _abort(
-            f"blocked: task '{task_id}' status is 'done' — cannot enqueue.\n"
-            f"  done: task is already closed."
-        )
-
-    if status:
-        if plan_only:
-            allowed = plan_only_allowed_statuses(workflow)
-        else:
-            allowed = allowed_statuses_for_workflow(workflow, for_review=True)
-        passthrough = {"failed", "stopped"}
-        if status not in allowed and status not in passthrough:
-            hint = ""
-            if workflow == "implementation" and status == "todo":
-                hint = (
-                    "\n  hint: implementation tasks need an approved plan before dispatch.\n"
-                    f"  Either author a plan (`shux task status --id {task_id} --status plan_proposed` "
-                    "with a plan handoff) and approve it,\n"
-                    f"  OR re-enqueue with `--plan-only` so the agent proposes the plan first."
-                )
-            elif status == "plan_proposed":
-                hint = (
-                    f"\n  plan_proposed: approve the plan first "
-                    f"(shux task status --id {task_id} --status plan_approved ...)"
-                )
-            _abort(
-                f"blocked: task '{task_id}' status is '{status}' — cannot enqueue "
-                f"for workflow '{workflow}'.\n"
-                f"  allowed at enqueue: {', '.join(sorted(allowed))}" + hint
-            )
-
-    # Owner-mismatch guard. Contract `owner` is the default dispatch target;
-    # when --to disagrees we block unless --force-reassign is set.
-    owner = str(task.get("owner", "") or "").strip()
-    if owner and owner != target:
-        if not force_reassign:
-            _abort(
-                f"blocked: task '{task_id}' is owned by '{owner}', not '{target}'.\n"
-                f"  To dispatch to a different agent, pass --force-reassign "
-                f"or update contract.yaml (owner field)."
-            )
-        print(
-            f"Warning: reassigning '{task_id}' from owner '{owner}' to '{target}' "
-            f"(--force-reassign was set).",
-            file=sys.stderr,
-        )
 
 
 def _validate_contract_sqlite(
@@ -414,9 +206,6 @@ def enqueue_cmd(
     if not os.path.isdir(harness_dir):
         _abort(f"Missing .superharness directory: {harness_dir}")
 
-    inbox_file = os.path.join(harness_dir, "inbox.yaml")
-    contract_file = os.path.join(harness_dir, "contract.yaml")
-
     if target not in VALID_TARGETS:
         _abort(f"--to must be one of: {', '.join(sorted(VALID_TARGETS))}", 2)
 
@@ -454,45 +243,20 @@ def enqueue_cmd(
         else:
             print(msg, file=sys.stderr)
 
-    # Ensure inbox file exists with header
-    from superharness.engine.inbox import HEADER, _inbox_lock, enqueue
-
-    if not os.path.exists(inbox_file):
-        with open(inbox_file, "w") as f:
-            f.write(HEADER)
-
     created_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    with _inbox_lock(inbox_file):
-        rc = enqueue(
-            file=inbox_file,
-            id=item_id,
-            to=target,
-            task=task_id,
-            project=project_dir,
+    try:
+        _sqlite_enqueue(
+            project_dir=project_dir,
+            item_id=item_id,
+            task_id=task_id,
+            target=target,
             priority=priority,
-            created_at=created_at,
             plan_only=plan_only,
-            model_override=model_override,
-            effort_override=effort_override,
+            created_at=created_at,
         )
-
-    if rc == 2:
-        _abort(f"Duplicate rejected (id or pending task already exists): {item_id}")
-
-    if rc != 0:
-        _abort(f"Failed to enqueue inbox item: {inbox_file}")
-
-    # Mirror to SQLite — never blocks the CLI on failure
-    _sqlite_mirror_enqueue(
-        project_dir=project_dir,
-        item_id=item_id,
-        task_id=task_id,
-        target=target,
-        priority=priority,
-        plan_only=plan_only,
-        created_at=created_at,
-    )
+    except Exception as exc:
+        _abort(f"Failed to enqueue inbox item: {exc}")
 
     print("Enqueued inbox item:")
     print(f"  id: {item_id}")
@@ -505,7 +269,6 @@ def enqueue_cmd(
         print(f"  model override: {model_override}")
     if effort_override:
         print(f"  effort override: {effort_override}")
-    print(f"  file: {inbox_file}")
     return 0
 
 
