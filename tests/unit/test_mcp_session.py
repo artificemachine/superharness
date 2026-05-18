@@ -1,11 +1,13 @@
 """Tests for MCP SessionManager — Iteration 1."""
 from __future__ import annotations
 
+import os
 import sqlite3
 import pytest
 from pathlib import Path
 
 from superharness.mcp.session import SessionManager, PolicyError
+from superharness.utils.paths import resolve_xdg_state_db_path
 
 
 def _make_project(tmp_path: Path) -> Path:
@@ -73,3 +75,36 @@ def test_session_stores_agent_name(tmp_path):
     sm.init_session("conn-d", str(proj), agent="gemini-cli")
     session = sm.get_session("conn-d")
     assert session.agent == "gemini-cli"
+
+
+# ---------------------------------------------------------------------------
+# XDG path migration (Iteration 3)
+# ---------------------------------------------------------------------------
+
+def test_init_session_prefers_xdg_over_legacy(tmp_path, monkeypatch):
+    """When state.db exists at the XDG path, it is opened instead of .superharness/."""
+    state_dir = str(tmp_path / "xdg_state")
+    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", state_dir)
+
+    proj = str(tmp_path / "myproject")
+    db_path = resolve_xdg_state_db_path(proj)
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY)")
+    conn.close()
+
+    sm = SessionManager()
+    conn_id = sm.init_session("xdg-1", proj, agent="claude-code")
+    assert conn_id == "xdg-1"
+    assert sm.get_connection("xdg-1") is not None
+
+
+def test_init_session_falls_back_to_legacy_when_xdg_absent(tmp_path, monkeypatch):
+    """When XDG path has no db, the legacy .superharness/state.sqlite3 is opened."""
+    state_dir = str(tmp_path / "xdg_state_empty")
+    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", state_dir)
+
+    proj = _make_project(tmp_path)  # creates only the legacy path
+    sm = SessionManager()
+    conn_id = sm.init_session("legacy-1", str(proj), agent="claude-code")
+    assert conn_id == "legacy-1"

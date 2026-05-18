@@ -77,6 +77,14 @@ def seed_sqlite_from_yaml(project_path):
     inbox = project / '.superharness' / 'inbox.yaml'
     if not contract.exists() and not inbox.exists():
         return 0
+    # Pre-touch the legacy db path so get_connection uses it for test isolation.
+    # Without this, get_connection creates the db at the XDG path, but test
+    # helpers that read the db use the legacy path and find nothing.
+    import sqlite3 as _sq
+    _legacy = project / '.superharness' / 'state.sqlite3'
+    _legacy.parent.mkdir(parents=True, exist_ok=True)
+    if not _legacy.exists():
+        _sq.connect(str(_legacy)).close()
     conn = get_connection(str(project))
     init_db(conn)
     count = 0

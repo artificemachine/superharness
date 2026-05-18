@@ -11,6 +11,8 @@ import os
 import sys
 from datetime import datetime, timezone
 
+from superharness.utils.paths import is_project_initialized
+
 
 _JSON_MODE = False
 _JSON_CTX: dict = {}
@@ -306,8 +308,8 @@ def main(argv: list[str] | None = None) -> None:
         _JSON_MODE = True
         _JSON_CTX = {"task_id": opts.task_id, "actor": opts.actor}
 
-    if not os.path.exists(os.path.join(project_dir, ".superharness", "state.sqlite3")):
-        _abort(f"Missing project state: {project_dir}/.superharness/state.sqlite3")
+    if not is_project_initialized(project_dir):
+        _abort(f"Missing project state at {project_dir}. Run 'shux init' first.")
 
     if _JSON_MODE:
         import io

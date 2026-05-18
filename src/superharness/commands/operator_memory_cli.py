@@ -11,7 +11,8 @@ import sys
 
 
 def _db_path(project_dir: str) -> str:
-    return os.path.join(project_dir, ".superharness", "state.sqlite3")
+    from superharness.utils.paths import resolve_active_state_db_path
+    return resolve_active_state_db_path(project_dir)
 
 
 # ---------------------------------------------------------------------------

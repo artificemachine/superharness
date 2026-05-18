@@ -459,7 +459,8 @@ def cmd_status(discussion_dir: str) -> int:
 
 def cmd_list(discussions_dir: str) -> int:
     project_dir = discussions_dir.replace("/.superharness/discussions", "")
-    if not os.path.exists(os.path.join(project_dir, ".superharness", "state.sqlite3")):
+    from superharness.utils.paths import is_project_initialized
+    if not is_project_initialized(project_dir):
         print("[]")
         return 0
 

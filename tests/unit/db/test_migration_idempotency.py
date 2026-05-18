@@ -8,6 +8,7 @@ from unittest.mock import patch
 from pathlib import Path
 
 from superharness.engine.db import get_connection, init_db
+from superharness.utils.paths import resolve_xdg_state_db_path
 
 def test_init_db_is_idempotent(tmp_path):
     project = tmp_path
@@ -55,23 +56,21 @@ def test_partial_v3_recovers(tmp_path):
     assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
     conn.close()
 
-def test_migration_creates_backup(tmp_path):
-    project = tmp_path
-    sh_dir = project / ".superharness"
-    sh_dir.mkdir(exist_ok=True)
-    
+def test_migration_creates_backup(monkeypatch, tmp_path):
+    state_dir = str(tmp_path / "xdg_state")
+    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", state_dir)
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    # No .superharness/ dir — truly new project, so get_connection uses XDG.
+
     conn = get_connection(str(project))
-    
-    # To test backups, we need to go through multiple versions
-    # and init_db needs to know the project path.
-    # Note: init_db might need to be modified to take project_dir.
-    
-    # Let's try running it.
     init_db(conn, str(project))
-    
-    assert (sh_dir / "state.sqlite3.bak.v1").exists()
-    assert (sh_dir / "state.sqlite3.bak.v2").exists()
     conn.close()
+
+    xdg_db = resolve_xdg_state_db_path(str(project))
+    assert os.path.isfile(f"{xdg_db}.bak.v1")
+    assert os.path.isfile(f"{xdg_db}.bak.v2")
 
 def test_fk_violation_rolls_back(tmp_path):
     project = tmp_path

@@ -1,8 +1,63 @@
 # Handoff — superharness
 
-> Latest: 2026-05-14, gateway Phase 1 + ntfy.sh backend shipped (v1.58.4 → v1.58.5)
-> Previous: 2026-05-12, t-c46124 (I6 gateway listener)
-> PyPI latest: v1.58.5
+> Latest: 2026-05-18, state isolation iterations 1-4 on feat/paths-resolver (not yet PRed)
+> Previous: 2026-05-14, gateway Phase 1 + ntfy.sh backend (v1.58.4 → v1.58.5)
+> PyPI latest: v1.59.0 (dedup fix + flake fix, no release cut yet)
+
+---
+
+## 2026-05-18 session: state isolation — XDG path resolver, Iterations 1-4
+
+### What landed
+
+Four TDD iterations on branch `feat/paths-resolver` (4 commits, not yet pushed or PRed).
+State.db now moves out of the repo dir for new projects. Existing projects keep working unchanged via fallback.
+
+| Iter | What | Files | Tests added |
+|------|------|-------|-------------|
+| 1 | `resolve_state_dir`, `resolve_config_dir`, `project_hash` added to `utils/paths.py` | `utils/paths.py` | 5 |
+| 2 | `resolve_xdg_state_db_path(project_path)` — composed function for full out-of-repo db path | `utils/paths.py` | 3 |
+| 3 | `mcp/session.py init_session` prefers XDG path, falls back to legacy `.superharness/state.sqlite3` | `mcp/session.py` | 2 |
+| 4 | `engine/db.py get_connection` prefers XDG path, creates there for new projects | `engine/db.py` | 3 + `test_db_file_created` updated |
+
+All pure additive changes. Zero regressions. Full unit suite: 2911 passed, 543 skipped, 0 failed (confirmed twice).
+
+### Path resolution contract (now in effect)
+
+```
+XDG default: ~/.local/state/superharness/<12-char-sha256-of-project-path>/state.db
+Env override: SUPERHARNESS_STATE_DIR/<hash>/state.db
+Legacy fallback: <project_dir>/.superharness/state.sqlite3
+```
+
+Decision order (both `init_session` and `get_connection`):
+1. XDG path exists → use it
+2. Legacy path exists → use it (existing projects, zero migration needed)
+3. Neither exists → create at XDG (new projects never write into the repo)
+
+### Config dir (not yet wired into consumers)
+
+`resolve_config_dir()` returns `~/.config/superharness` (XDG_CONFIG_HOME) or `SUPERHARNESS_CONFIG_DIR` override. The credentials path the gateway already uses (`~/.config/superharness/credentials.env`) is consistent with this — no migration needed there.
+
+### What is NOT done yet (next iterations)
+
+- `engine/state_reader.py` — 10+ call sites of `get_connection` pass `project_dir`; they will automatically benefit from iter 4, but callers that hard-build the legacy path directly (grep for `.superharness/state.sqlite3` in state_reader.py) still need updating.
+- `engine/db.py _backup_db()` — still hardcodes legacy path for pre-migration backups; harmless but should migrate to XDG.
+- `shux init` scaffold — currently writes `.superharness/profile.yaml` etc. into the project dir. When state.db is XDG-only, the init flow should not create a `.superharness/` directory for state purposes (though config files like `profile.yaml` may legitimately live there).
+- Migration CLI (`shux migrate-state`) — help existing projects move legacy state.db to XDG voluntarily.
+- `engine/state_reader.py` functions that call `os.path.exists(os.path.join(project_dir, ".superharness", "state.sqlite3"))` for readiness checks need to check both paths.
+
+### Branch state
+
+`feat/paths-resolver`, 4 commits ahead of main. **Not pushed.** No version bump (no release per `NO RELEASE` policy).
+
+Next step: `git push -u origin feat/paths-resolver && gh pr create` then continue with Iteration 5 (state_reader.py readiness check migration) or the migration CLI.
+
+### Context
+
+Design doc (full 13-iteration plan) is on PR #255 (`docs/notify-design-and-instruction-sync`, open, not merged). That branch has `docs/CONCEPT-notifications-and-state-isolation.md`. The plan-iter output from the 2026-05-18 session was inline only — save it as `docs/PLAN-notifications-and-state-isolation.md` if needed for the next session.
+
+PR #255 also contains the instruction-file sync (AGENTS.md / CLAUDE.md / GEMINI.md) with the Strict Installation Decoupling clause. Merge it when ready.
 
 ---
 

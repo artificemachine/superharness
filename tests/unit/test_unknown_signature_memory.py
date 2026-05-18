@@ -20,8 +20,12 @@ from superharness.engine.db import get_connection, init_db
 
 
 def _setup(tmp_path):
+    import sqlite3 as _sq
     project = tmp_path / "proj"
     (project / ".superharness").mkdir(parents=True)
+    # Pre-touch legacy path so get_connection uses it (test isolation).
+    _legacy = project / ".superharness" / "state.sqlite3"
+    _sq.connect(str(_legacy)).close()
     conn = get_connection(str(project))
     init_db(conn, str(project))
     conn.commit()

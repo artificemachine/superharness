@@ -24,9 +24,10 @@ from superharness.engine.summarizer import (
 
 
 @pytest.fixture
-def project_dir(tmp_path):
+def project_dir(tmp_path, monkeypatch):
+    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", str(tmp_path / "sh_state"))
     p = tmp_path / "proj"
-    p.mkdir()
+    (p / ".superharness").mkdir(parents=True)
     c = get_connection(str(p))
     try:
         init_db(c, str(p))
@@ -115,8 +116,10 @@ def test_get_summarizer_without_project_dir_stays_in_memory():
     assert not isinstance(s, _SQLiteRateLimitedSummarizer)
 
 
-def test_sqlite_limiter_dao_failure_does_not_block(project_dir, monkeypatch):
+def test_sqlite_limiter_dao_failure_does_not_block(project_dir, monkeypatch, tmp_path):
     """If the DAO is broken, the limiter must not raise on the budget check."""
+    # Redirect XDG state dir so the bad-path hash doesn't contaminate real FS.
+    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", str(tmp_path / "sh_state_broken"))
     s = _SQLiteRateLimitedSummarizer(
         NoopSummarizer(), max_per_hour=1, project_dir="/nonexistent/path/xyz",
         provider_name="noop",

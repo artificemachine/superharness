@@ -14,6 +14,7 @@ from pathlib import Path
 from superharness.engine.sdk_runner import sdk_available, SDKRunner
 from superharness.engine.orchestrator import Orchestrator, DecompositionResult
 from superharness.engine.taxonomy import VALID_EFFORTS
+from superharness.utils.paths import is_project_initialized
 
 
 _JSON_MODE = False
@@ -591,8 +592,8 @@ def delegate(
     harness_dir = os.path.join(project_dir, ".superharness")
     handoff_dir = os.path.join(harness_dir, "handoffs")
 
-    if not os.path.isfile(os.path.join(harness_dir, "state.sqlite3")):
-        _abort(f"Missing project state: {harness_dir}/state.sqlite3")
+    if not is_project_initialized(project_dir):
+        _abort(f"Missing project state at {project_dir}. Run 'shux init' first.")
     if not os.path.isdir(handoff_dir):
         _abort(f"Missing handoff directory: {handoff_dir}")
 
