@@ -507,6 +507,118 @@ def test_deep_inbox_health_detects_stale_items(clean_harness: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# BUG-10: multi-agent discussion fan-out flagged as duplicate (2026-05-18)
+# ---------------------------------------------------------------------------
+
+def test_multi_agent_discussion_not_duplicate(clean_harness: Path) -> None:
+    """Two pending inbox items with the same task_id but different target_agent
+    are legitimate per-participant dispatch, not duplicates.
+
+    Without this fix, _deep_inbox_health groups by task_id only, false-positives
+    every multi-participant discussion round, and the --fix path silently marks
+    N-1 participants as 'stale' (dropping them from dispatch entirely).
+    """
+    _write_profile(clean_harness)
+    _init_sqlite(clean_harness)
+
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import inbox_dao, tasks_dao
+    from superharness.engine.tasks_dao import TaskRow
+
+    conn = get_connection(str(clean_harness))
+    try:
+        init_db(conn)
+        tasks_dao.upsert(conn, TaskRow(
+            id="discuss-bug10/round-1", title="Bug10 discussion", owner="claude-code",
+            status="in_progress", effort="small",
+            project_path=str(clean_harness), development_method="tdd",
+            acceptance_criteria=[], test_types=[], out_of_scope=[],
+            definition_of_done=[], context=None, tdd=None,
+            version=1, created_at="2026-01-01T00:00:00Z",
+        ))
+        inbox_dao.enqueue(conn, id="r1-codex", task_id="discuss-bug10/round-1",
+            target_agent="codex-cli", priority=1, project_path=str(clean_harness),
+            now="2026-01-01T00:00:00Z")
+        inbox_dao.enqueue(conn, id="r1-opencode", task_id="discuss-bug10/round-1",
+            target_agent="opencode", priority=1, project_path=str(clean_harness),
+            now="2026-01-01T00:00:00Z")
+        conn.commit()
+    finally:
+        conn.close()
+
+    _write_inbox(clean_harness, [
+        {"id": "r1-codex", "task": "discuss-bug10/round-1", "to": "codex-cli",
+         "status": "pending", "created_at": "2026-01-01T00:00:00Z"},
+        {"id": "r1-opencode", "task": "discuss-bug10/round-1", "to": "opencode",
+         "status": "pending", "created_at": "2026-01-01T00:00:00Z"},
+    ])
+
+    from superharness.commands.status import _deep_inbox_health
+    health = _deep_inbox_health(str(clean_harness))
+
+    assert not health["duplicates"], (
+        "BUG-10 REGRESSION: multi-agent fan-out flagged as duplicate. "
+        f"Got: {dict(health['duplicates']) if hasattr(health['duplicates'], 'items') else health['duplicates']}"
+    )
+
+
+def test_same_agent_same_task_still_flagged_as_duplicate(clean_harness: Path) -> None:
+    """Positive control for BUG-10 fix: two pending items with the SAME task_id
+    AND the SAME target_agent must still be detected as a real duplicate
+    (the original intent of the dedup check).
+
+    Note: inbox_dao.enqueue has a DAO-level guard against this exact case
+    (raises StateError on (task_id, target_agent) collision). The status.py
+    dedup is a secondary scan for stale state where dups exist regardless
+    (e.g. via YAML mirror, manual SQL, pre-existing data). To test the scan,
+    we insert via raw SQL bypassing the DAO guard.
+    """
+    _write_profile(clean_harness)
+    _init_sqlite(clean_harness)
+
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import tasks_dao
+    from superharness.engine.tasks_dao import TaskRow
+
+    conn = get_connection(str(clean_harness))
+    try:
+        init_db(conn)
+        tasks_dao.upsert(conn, TaskRow(
+            id="real-dup-task", title="Real duplicate", owner="claude-code",
+            status="in_progress", effort="small",
+            project_path=str(clean_harness), development_method="tdd",
+            acceptance_criteria=[], test_types=[], out_of_scope=[],
+            definition_of_done=[], context=None, tdd=None,
+            version=1, created_at="2026-01-01T00:00:00Z",
+        ))
+        # Bypass DAO guard: insert two pending rows with same (task_id, target_agent)
+        for inbox_id, ts in [("dup-1", "2026-01-01T00:00:00Z"), ("dup-2", "2026-01-01T00:00:01Z")]:
+            conn.execute(
+                "INSERT INTO inbox (id, task_id, target_agent, status, priority, "
+                "max_retries, project_path, plan_only, type, created_at) "
+                "VALUES (?, ?, 'claude-code', 'pending', 1, 3, ?, 0, 'task', ?)",
+                (inbox_id, "real-dup-task", str(clean_harness), ts),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    _write_inbox(clean_harness, [
+        {"id": "dup-1", "task": "real-dup-task", "to": "claude-code",
+         "status": "pending", "created_at": "2026-01-01T00:00:00Z"},
+        {"id": "dup-2", "task": "real-dup-task", "to": "claude-code",
+         "status": "pending", "created_at": "2026-01-01T00:00:01Z"},
+    ])
+
+    from superharness.commands.status import _deep_inbox_health
+    health = _deep_inbox_health(str(clean_harness))
+
+    assert health["duplicates"], (
+        "Real duplicates (same task_id + same agent) must still be detected"
+    )
+
+
+# ---------------------------------------------------------------------------
 # BUG-9b: auto_enqueue must skip expired deadlines (added v1.44.20)
 # ---------------------------------------------------------------------------
 
