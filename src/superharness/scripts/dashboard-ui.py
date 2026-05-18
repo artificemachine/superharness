@@ -1197,36 +1197,19 @@ def contract_id(contract_file: Path) -> str:
         return ""
 
 
-def _tasks_from_yaml(contract_file: Path) -> list[dict]:
-    """Fallback: read tasks directly from contract.yaml (for non-harness paths)."""
-    if not contract_file.exists():
-        return []
-    try:
-        import yaml
-        doc = yaml.safe_load(contract_file.read_text(encoding="utf-8", errors="replace")) or {}
-        return [t for t in (doc.get("tasks") or []) if isinstance(t, dict)]
-    except Exception:
-        return []
-
-
 def contract_tasks(contract_file: Path) -> list[dict]:
     """Return all top-level contract tasks with id, title, status, owner.
 
-    Prefers state_reader (SQLite-aware, top_level_only=True); falls back to YAML.
+    Reads exclusively from state_reader (SQLite). The contract_file path is used
+    only to derive project_dir; the YAML file is never read.
     """
     project_dir = str(contract_file.parent.parent)
     raw_tasks: list[dict] = []
-    # Only use state_reader when contract_file is at the canonical location
-    # (<project>/.superharness/contract.yaml). Flat/test paths get direct YAML only.
-    _in_harness = contract_file.parent.name == ".superharness" and contract_file.parent.exists()
-    if _in_harness:
-        try:
-            from superharness.engine import state_reader as _sr
-            raw_tasks = _sr.get_top_level_tasks(project_dir)
-        except Exception:
-            pass
-    if not raw_tasks:
-        raw_tasks = _tasks_from_yaml(contract_file)
+    try:
+        from superharness.engine import state_reader as _sr
+        raw_tasks = _sr.get_top_level_tasks(project_dir)
+    except Exception:
+        pass
 
     tasks = []
     for t in raw_tasks:
@@ -2364,7 +2347,7 @@ class Handler(BaseHTTPRequestHandler):
             # Detect implementation+todo: agent must propose a plan first.
             tasks = contract_tasks(self.project_dir / ".superharness" / "contract.yaml")
             task_meta = next((t for t in tasks if t.get("id") == task_id), {})
-            from superharness.commands.inbox_enqueue import infer_workflow as _infer_wf
+            from superharness.engine.next_action import infer_workflow as _infer_wf
             _workflow = _infer_wf(task_id, task_meta)
             _plan_only = _workflow == "implementation" and task_meta.get("status") == "todo"
             cmd = [sys.executable, "-m", "superharness.commands.inbox_enqueue",

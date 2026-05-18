@@ -1,6 +1,6 @@
 """shux contract --validate implementation.
 
-Validates .superharness/contract.yaml against the Pydantic Contract schema.
+Validates the contract data from SQLite against the Pydantic Contract schema.
 Exits 0 if clean, non-zero with a structured error report on any violation.
 """
 from __future__ import annotations
@@ -8,7 +8,6 @@ from __future__ import annotations
 import os
 import sys
 
-import yaml
 from pydantic import ValidationError
 
 from superharness.engine.schemas import Contract
@@ -18,32 +17,30 @@ def validate_contract(project_dir: str | None = None) -> int:
     if project_dir is None:
         project_dir = os.getcwd()
 
-    path = os.path.join(project_dir, ".superharness", "contract.yaml")
-
-    if not os.path.exists(path):
-        print(f"[ERROR] contract not found: {path}", file=sys.stderr)
+    harness_dir = os.path.join(project_dir, ".superharness")
+    if not os.path.isdir(harness_dir):
+        print(f"[ERROR] project state not found: {harness_dir}", file=sys.stderr)
         return 1
 
-    with open(path, encoding="utf-8") as f:
-        try:
-            doc = yaml.safe_load(f)
-        except yaml.YAMLError as exc:
-            print(f"[ERROR] YAML parse error in {path}:", file=sys.stderr)
-            print(f"  {exc}", file=sys.stderr)
-            return 1
+    from superharness.engine.state_reader import get_contract_doc
+    try:
+        doc = get_contract_doc(project_dir)
+    except Exception as exc:
+        print(f"[ERROR] failed to read contract: {exc}", file=sys.stderr)
+        return 1
 
     if not isinstance(doc, dict):
-        print(f"[ERROR] contract is not a YAML mapping: {path}", file=sys.stderr)
+        print("[ERROR] contract data is not a valid mapping", file=sys.stderr)
         return 1
 
     try:
         contract = Contract.model_validate(doc)
         task_count = len(contract.tasks)
-        print(f"[OK] {path}: valid ({task_count} task{'s' if task_count != 1 else ''})")
+        print(f"[OK] {project_dir}: valid ({task_count} task{'s' if task_count != 1 else ''})")
         return 0
     except ValidationError as exc:
         errors = exc.errors()
-        print(f"[ERROR] {len(errors)} schema violation(s) in {path}:", file=sys.stderr)
+        print(f"[ERROR] {len(errors)} schema violation(s) in contract data:", file=sys.stderr)
         for err in errors:
             loc = ".".join(str(x) for x in err["loc"])
             print(f"  {loc}: {err['msg']}", file=sys.stderr)
@@ -55,7 +52,7 @@ def main(argv: list[str] | None = None) -> None:
 
     p = argparse.ArgumentParser(
         prog="contract validate",
-        description="Validate .superharness/contract.yaml against the Contract schema.",
+        description="Validate contract data (from SQLite) against the Contract schema.",
     )
     p.add_argument(
         "--project-dir",
@@ -80,22 +77,22 @@ def _main_json(project_dir: str | None) -> None:
 
     if project_dir is None:
         project_dir = os.getcwd()
-    path = os.path.join(project_dir, ".superharness", "contract.yaml")
 
-    result: dict = {"path": path, "valid": False, "errors": []}
+    result: dict = {"project_dir": project_dir, "valid": False, "errors": []}
 
-    if not os.path.exists(path):
-        result["errors"].append({"type": "not_found", "msg": f"contract not found: {path}"})
+    harness_dir = os.path.join(project_dir, ".superharness")
+    if not os.path.isdir(harness_dir):
+        result["errors"].append({"type": "not_found", "msg": f"project state not found: {harness_dir}"})
         print(json.dumps(result))
         sys.exit(1)
 
-    with open(path, encoding="utf-8") as f:
-        try:
-            doc = yaml.safe_load(f)
-        except yaml.YAMLError as exc:
-            result["errors"].append({"type": "yaml_parse", "msg": str(exc)})
-            print(json.dumps(result))
-            sys.exit(1)
+    from superharness.engine.state_reader import get_contract_doc
+    try:
+        doc = get_contract_doc(project_dir)
+    except Exception as exc:
+        result["errors"].append({"type": "read_error", "msg": str(exc)})
+        print(json.dumps(result))
+        sys.exit(1)
 
     try:
         Contract.model_validate(doc)

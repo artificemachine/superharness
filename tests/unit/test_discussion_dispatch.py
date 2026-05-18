@@ -255,8 +255,9 @@ def _setup_project_with_contract(tmp_path: Path, owners: list[str] | None = None
     tasks = []
     for i, owner in enumerate(owners):
         tasks.append(f"  - id: task-{i}\n    owner: {owner}\n    status: todo\n    project_path: \"{project}\"")
-    contract = "id: test\ntasks:\n" + "\n".join(tasks) + "\n"
+    contract = "id: test\ntasks:\n" + ("\n".join(tasks) if tasks else "") + "\n"
     (harness / "contract.yaml").write_text(contract)
+    seed_sqlite_from_yaml(project)
     return project
 
 

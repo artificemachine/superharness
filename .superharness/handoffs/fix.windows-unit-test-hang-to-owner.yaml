@@ -1,7 +1,0 @@
-closed_at: '2026-04-16T13:21:50Z'
-from: claude-code
-status: done
-summary: v1.24.3 shipped. Windows CI hang + 9 pre-existing Windows test failures fixed.
-  All CI green.
-task: fix.windows-unit-test-hang
-to: owner
