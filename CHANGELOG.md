@@ -431,3 +431,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-19: chore(release): bump to v1.61.0 (yaml-gate CI, shux migrate-state, audit-self --yaml-only, release policy cleanup)
 - 2026-05-19: fix(gauntlet): remove stale yaml import from recap.py, fix migrate_state docstring and success message, suppress shipguard false positives in test fixtures, add 17 unit tests for migrate-state, document migrate-state in GUIDE.md
 - 2026-05-19: chore(release): bump to v1.61.1 (gauntlet fixes: recap cleanup, migrate-state tests + docs, shipguard config)
+- 2026-05-19: fix(paths): normalize project_path with os.path.realpath in resolve_active_state_db_path and is_project_initialized to prevent hash mismatches from symlinks or trailing slashes causing legacy state.sqlite3 recreation
+- 2026-05-19: chore(release): bump to v1.61.2 (path normalization fix)
