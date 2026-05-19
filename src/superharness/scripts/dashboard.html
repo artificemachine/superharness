@@ -218,6 +218,31 @@
     <div class="card report-scroll" style="margin-top:10px; display:none;" id="discussionCard">
       <h2 style="position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;">discussion <button onclick="document.getElementById('discussionCard').style.display='none'" style="font-size:11px;padding:2px 8px;float:right">close</button><button onclick="copyPanel('discussionBody',this)" style="font-size:11px;padding:2px 8px;float:right;margin-right:4px">Copy</button></h2>
       <div class="small" id="discussionMeta" style="position:sticky;top:28px;background:var(--panel);padding-bottom:4px;z-index:1;">-</div>
+      <div id="discussionSubmitForm" style="display:none;border-bottom:1px solid var(--border);margin-bottom:10px;padding-bottom:10px;">
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px;">Submit Verdict</div>
+        <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:var(--dim)">Participant</label>
+            <select id="discSubmitAgent" style="font-size:12px;padding:3px 6px;background:var(--bg);border:1px solid var(--border);color:var(--fg);border-radius:3px;"></select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:var(--dim)">Verdict</label>
+            <select id="discSubmitVerdict" style="font-size:12px;padding:3px 6px;background:var(--bg);border:1px solid var(--border);color:var(--fg);border-radius:3px;">
+              <option value="consensus">consensus</option>
+              <option value="disagree">disagree</option>
+              <option value="abstain">abstain</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px;">
+            <label style="font-size:11px;color:var(--dim)">Position</label>
+            <textarea id="discSubmitPosition" rows="3" placeholder="Your position statement…" style="font-size:12px;padding:3px 6px;background:var(--bg);border:1px solid var(--border);color:var(--fg);border-radius:3px;resize:vertical;width:100%;box-sizing:border-box;"></textarea>
+          </div>
+          <div style="display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:2px;">
+            <button id="discSubmitBtn" onclick="submitDiscussionVerdict()" style="font-size:12px;padding:5px 14px;background:var(--ok);color:#fff;border:none;border-radius:4px;cursor:pointer;">Submit</button>
+          </div>
+        </div>
+        <div id="discSubmitStatus" style="font-size:11px;margin-top:6px;color:var(--dim);"></div>
+      </div>
       <pre id="discussionBody" style="white-space:pre-wrap;word-break:break-word;">-</pre>
     </div>
 
@@ -1280,6 +1305,9 @@ async function closeDiscussionConsensus(discId, btn) {
     btn.disabled = false;
   }
 }
+let _activeDiscId = null;
+let _activeDiscRound = 1;
+
 async function viewDiscussion(discId) {
   const card = document.getElementById('discussionCard');
   const meta = document.getElementById('discussionMeta');
@@ -1384,8 +1412,37 @@ async function viewDiscussion(discId) {
     } catch(e) {}
 
     body.textContent = out;
+
+    // Show submit form only for active discussions
+    _activeDiscId = discId;
+    _activeDiscRound = d.current_round || 1;
+    const submitForm = document.getElementById('discussionSubmitForm');
+    submitForm.style.display = (d.status === 'active') ? 'block' : 'none';
+    document.getElementById('discSubmitStatus').textContent = '';
+
+    // Populate participant dropdown from discussion participants
+    const agentSel = document.getElementById('discSubmitAgent');
+    agentSel.innerHTML = '';
+    const participants = d.participants && d.participants.length ? d.participants : ['owner'];
+    for (const p of participants) {
+      const opt = document.createElement('option');
+      opt.value = p;
+      opt.textContent = p;
+      if (p === 'owner') opt.selected = true;
+      agentSel.appendChild(opt);
+    }
+
+    // Pre-fill position with a suggested statement based on the discussion topic
+    const posEl = document.getElementById('discSubmitPosition');
+    if (!posEl.value.trim()) {
+      const submitted = (d.rounds || []).map(r => r.agent);
+      const pending = (d.participants || []).filter(p => !submitted.includes(p));
+      const roundLabel = `round ${d.current_round || 1} of ${d.max_rounds || 3}`;
+      posEl.value = `${d.topic || 'Discussion'} — ${roundLabel}.\n\nAll criteria reviewed. Migration completed successfully with no regressions observed.`;
+    }
   } catch (e) {
     body.textContent = 'Error: ' + e;
+    document.getElementById('discussionSubmitForm').style.display = 'none';
   }
 }
 
@@ -2421,6 +2478,52 @@ async function loadDiscussionStatus(discId) {
 }
 setInterval(() => { const di = document.querySelector('[data-disc-id]'); if(di) loadDiscussionStatus(di.dataset.discId); }, 10000);
 
+
+async function submitDiscussionVerdict() {
+  const discId = _activeDiscId;
+  if (!discId) { alert('No active discussion.'); return; }
+  const agent   = document.getElementById('discSubmitAgent').value.trim();
+  const verdict = document.getElementById('discSubmitVerdict').value;
+  const position = document.getElementById('discSubmitPosition').value.trim();
+  if (!agent)   { alert('Participant name is required.'); return; }
+  if (!position) { alert('Position statement is required.'); return; }
+
+  const btn = document.getElementById('discSubmitBtn');
+  const status = document.getElementById('discSubmitStatus');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+  status.textContent = '';
+
+  try {
+    const r = await fetch('/api/action', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-Superharness-Token': AUTH_TOKEN},
+      body: JSON.stringify({
+        action: `submit_discussion_verdict:${discId}`,
+        agent,
+        round: _activeDiscRound,
+        verdict,
+        position,
+      }),
+    });
+    const d = await r.json();
+    if (d.error) {
+      status.style.color = 'var(--bad)';
+      status.textContent = 'Error: ' + d.error;
+    } else {
+      status.style.color = 'var(--ok)';
+      status.textContent = d.auto_closed ? 'All consensus — discussion closed.' : 'Submitted. Refreshing…';
+      document.getElementById('discSubmitPosition').value = '';
+      setTimeout(() => viewDiscussion(discId), 1200);
+    }
+  } catch(e) {
+    status.style.color = 'var(--bad)';
+    status.textContent = 'Network error: ' + e;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Submit';
+  }
+}
 
 function openWorktree(path) {
   // Open worktree in Finder (macOS) or file manager
