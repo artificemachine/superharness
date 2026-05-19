@@ -2249,6 +2249,65 @@ class Handler(BaseHTTPRequestHandler):
                 return ({"error": str(exc)}, 500)
             return ({"ok": True, "stdout": f"Discussion {disc_id} reopened."}, 200)
 
+        if action.startswith("submit_discussion_verdict:"):
+            disc_id = action.split(":", 1)[1]
+            if not disc_id:
+                return ({"error": "missing discussion id"}, 400)
+            p = payload or {}
+            agent    = str(p.get("agent", "")).strip()
+            verdict  = str(p.get("verdict", "consensus")).strip()
+            position = str(p.get("position", "")).strip()
+            round_num = str(p.get("round", "1"))
+            if not agent:
+                return ({"error": "agent is required"}, 400)
+            if not position:
+                return ({"error": "position is required"}, 400)
+            if verdict not in ("consensus", "disagree", "abstain"):
+                return ({"error": f"invalid verdict: {verdict!r}"}, 400)
+            disc_dir = self.project_dir / ".superharness" / "discussions" / disc_id
+            if not disc_dir.exists():
+                return ({"error": f"discussion {disc_id} not found"}, 404)
+            result = self._run_cmd([
+                sys.executable, "-m", "superharness.commands.discuss",
+                "submit",
+                "--discussion", disc_id,
+                "--agent", agent,
+                "--round", str(round_num),
+                "--verdict", verdict,
+                "--position", position,
+                "--project", str(self.project_dir),
+            ])
+            if result.get("exit_code", 1) != 0:
+                return ({"error": result.get("stderr") or result.get("stdout") or "submit failed"}, 500)
+            result["ok"] = True
+
+            # Auto-close if all participants submitted with consensus
+            try:
+                from superharness.engine import discussions_dao as _ddao
+                _ac = self._db_conn()
+                try:
+                    _drow = _ddao.get(_ac, disc_id)
+                    _rounds = _ddao.get_rounds(_ac, disc_id)
+                finally:
+                    _ac.close()
+                if _drow and _drow.status == "active":
+                    _participants = _drow.owners or []
+                    _submitted_agents = {r.agent for r in _rounds}
+                    _all_submitted = _participants and all(p in _submitted_agents for p in _participants)
+                    _all_consensus = _all_submitted and all(r.verdict == "consensus" for r in _rounds)
+                    if _all_consensus:
+                        self._run_cmd([
+                            sys.executable, "-m", "superharness.commands.discuss",
+                            "close", "--id", disc_id,
+                            "--outcome", "consensus",
+                            "--project", str(self.project_dir),
+                        ])
+                        result["auto_closed"] = True
+            except Exception:
+                pass
+
+            return (result, 200)
+
         if action.startswith("cancel_review:"):
             task_id = action.split(":", 1)[1]
             if not task_id:
@@ -2770,33 +2829,58 @@ class Handler(BaseHTTPRequestHandler):
             if not disc_id:
                 self._json({"error": "id parameter required"}, 400)
                 return
-            disc_dir = self.project_dir / ".superharness" / "discussions" / disc_id
-            if not disc_dir.exists():
-                self._json({"error": f"discussion {disc_id} not found"}, 404)
-                return
             try:
-                result: dict = {"id": disc_id, "rounds": []}
-                state_file = disc_dir / "state.yaml"
-                if state_file.exists():
-                    import yaml as _yaml
-                    st = _yaml.safe_load(state_file.read_text()) or {}
-                    result["topic"] = st.get("topic", "")
-                    result["status"] = st.get("status", "")
-                    result["current_round"] = st.get("current_round", "")
-                    result["max_rounds"] = st.get("max_rounds", "")
-                    result["participants"] = st.get("participants", [])
-                    result["created_at"] = st.get("created_at", "")
-                for sub_file in sorted(disc_dir.glob("round-*.yaml")):
+                from superharness.engine import discussions_dao as _disc_dao
+                _dconn = self._db_conn()
+                try:
+                    _drow = _disc_dao.get(_dconn, disc_id)
+                    _drounds = _disc_dao.get_rounds(_dconn, disc_id) if _drow else []
+                finally:
+                    _dconn.close()
+                if not _drow:
+                    self._json({"error": f"discussion {disc_id} not found"}, 404)
+                    return
+                _submitted = len(_drounds)
+                result: dict = {
+                    "id": disc_id,
+                    "topic": _drow.topic or "",
+                    "status": _drow.status or "",
+                    "current_round": _submitted + 1,
+                    "max_rounds": 3,
+                    "participants": _drow.owners or [],
+                    "created_at": _drow.created_at or "",
+                    "rounds": [
+                        {
+                            "round": r.round_number,
+                            "agent": r.agent,
+                            "verdict": r.verdict or "",
+                            "position": r.content or "",
+                            "submitted_at": r.created_at or "",
+                            "points": [],
+                        }
+                        for r in _drounds
+                    ],
+                }
+                # Also merge any YAML round files not yet in SQLite
+                disc_dir = self.project_dir / ".superharness" / "discussions" / disc_id
+                if disc_dir.exists():
+                    _seen_agents = {r.agent for r in _drounds}
                     try:
-                        sub = _yaml.safe_load(sub_file.read_text()) or {}
-                        result["rounds"].append({
-                            "round": sub.get("round", ""),
-                            "agent": sub.get("agent", ""),
-                            "verdict": sub.get("verdict", ""),
-                            "position": sub.get("position", ""),
-                            "submitted_at": sub.get("submitted_at", ""),
-                            "points": sub.get("points", []),
-                        })
+                        import yaml as _yaml
+                        for sub_file in sorted(disc_dir.glob("round-*.yaml")):
+                            try:
+                                sub = _yaml.safe_load(sub_file.read_text()) or {}
+                                if sub.get("agent") not in _seen_agents:
+                                    result["rounds"].append({
+                                        "round": sub.get("round", ""),
+                                        "agent": sub.get("agent", ""),
+                                        "verdict": sub.get("verdict", ""),
+                                        "position": sub.get("position", ""),
+                                        "submitted_at": sub.get("submitted_at", ""),
+                                        "points": sub.get("points", []),
+                                    })
+                            except Exception:
+                                pass
                     except Exception:
                         pass
                 self._json(result)
