@@ -428,3 +428,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-19: feat(ci): add YAML Read Regression Gate to security.yml using audit_self --yaml-only — fails CI if unauthorized YAML reads of state files are reintroduced
 - 2026-05-19: feat(audit-self): add --yaml-only flag to run only the SQLite YAML-read check without logging compliance or changelog checks; refactor into _check_yaml_reads helper
 - 2026-05-19: chore(claude-md): replace stale Branch Merge Policy / NO RELEASE section with accurate Release Policy — CI auto-tags and publishes on every main push; no-release is advisory only
+- 2026-05-19: chore(release): bump to v1.61.0 (yaml-gate CI, shux migrate-state, audit-self --yaml-only, release policy cleanup)
