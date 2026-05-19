@@ -433,3 +433,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-19: chore(release): bump to v1.61.1 (gauntlet fixes: recap cleanup, migrate-state tests + docs, shipguard config)
 - 2026-05-19: fix(paths): normalize project_path with os.path.realpath in resolve_active_state_db_path and is_project_initialized to prevent hash mismatches from symlinks or trailing slashes causing legacy state.sqlite3 recreation
 - 2026-05-19: chore(release): bump to v1.61.2 (path normalization fix)
+- 2026-05-19: feat(dashboard): submit verdict UI — participant dropdown, position pre-fill, auto-close on consensus, active_discussions fix in status API, /api/discussion reads from SQLite
+- 2026-05-19: chore(release): bump to v1.62.0 (dashboard submit verdict UI)
