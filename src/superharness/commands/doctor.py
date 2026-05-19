@@ -261,7 +261,14 @@ def main(argv: list[str] | None = None) -> None:
             print("WARN parity: state-db check failed; cannot verify")
             warns += 1
     else:
-        print("INFO state-db: state.sqlite3 not found — run shux migrate or start the watcher to initialise")
+        # Check if the project has a legacy state.sqlite3 that hasn't been migrated
+        legacy_db = os.path.join(project_dir, ".superharness", "state.sqlite3")
+        if os.path.isfile(legacy_db):
+            print("WARN state-db: legacy .superharness/state.sqlite3 found — project not yet migrated to XDG path")
+            print(f"  Run: shux migrate-state --project {project_dir}")
+            warns += 1
+        else:
+            print("INFO state-db: state.sqlite3 not found — run 'shux init' to initialise")
         print("INFO parity: skipped (no state.sqlite3)")
 
     print(f"summary: failures={failures} warnings={warns}")

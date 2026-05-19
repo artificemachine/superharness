@@ -78,11 +78,9 @@ If a task has **>3 acceptance criteria** or the plan touches **>4 files**, decom
 
 This is enforced by a scope warning on `plan_approved` transitions.
 
-## Branch Merge Policy
+## Release Policy
 
-Branch fate undecided — may merge into main or become a standalone module. Do not merge PRs without explicit instruction.
-
-**⛔ NO RELEASE** — do not tag a release version, push to PyPI, or run `/ship-release` on this branch without explicit owner instruction.
+CI auto-tags and publishes to PyPI on every push to `main`. To defer a release for a specific PR, use `⛔ NO RELEASE` in that branch's CLAUDE.md or description — it is advisory only (CI does not enforce it automatically). Never use `git push --force` to main.
 
 ## CHANGELOG Policy (Strict)
 - `CHANGELOG.md` is append-only.

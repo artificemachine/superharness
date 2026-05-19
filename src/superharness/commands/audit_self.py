@@ -11,11 +11,6 @@ import argparse
 import os
 import re
 import sys
-from pathlib import Path
-
-from superharness.logging_utils import get_logger
-
-_log = get_logger("audit-self")
 
 # Files allowed to read state YAMLs for ingestion or export purposes
 _ALLOWED_YAML_READERS = {
@@ -28,21 +23,15 @@ _ALLOWED_YAML_READERS = {
 }
 
 
-def run_audit_self(project_dir: str) -> int:
-    """Run codebase static analysis checks."""
-    print(f"Auditing superharness codebase: {project_dir}")
-    issues = 0
-    src_dir = os.path.join(project_dir, "src", "superharness")
-
-    # 1. SQLite-only data access pattern check
-    print("Checking for unauthorized YAML state reads...")
+def _check_yaml_reads(src_dir: str, project_dir: str) -> int:
+    """Return number of unauthorized YAML state read violations."""
     yaml_patterns = [
         r"safe_load\(.*contract\.yaml",
         r"safe_load\(.*inbox\.yaml",
         r"yaml\.safe_load\(.*contract",
         r"yaml\.safe_load\(.*inbox",
     ]
-    
+    issues = 0
     for root, _, files in os.walk(src_dir):
         for file in files:
             if not file.endswith(".py") or file in _ALLOWED_YAML_READERS:
@@ -55,6 +44,35 @@ def run_audit_self(project_dir: str) -> int:
                         rel_path = os.path.relpath(path, project_dir)
                         print(f"  [FAIL] Unauthorized YAML read pattern '{pattern}' in {rel_path}")
                         issues += 1
+    return issues
+
+
+def run_audit_self(project_dir: str, yaml_only: bool = False) -> int:
+    """Run codebase static analysis checks.
+
+    Args:
+        project_dir: repo root to audit.
+        yaml_only: when True, only run the SQLite-only YAML check and skip
+                   logging compliance and changelog checks. Used by CI to gate
+                   specifically on YAML read regressions without failing on
+                   unrelated logging-style issues.
+    """
+    print(f"Auditing superharness codebase: {project_dir}")
+    issues = 0
+    src_dir = os.path.join(project_dir, "src", "superharness")
+
+    # 1. SQLite-only data access pattern check
+    print("Checking for unauthorized YAML state reads...")
+    issues += _check_yaml_reads(src_dir, project_dir)
+    if issues == 0:
+        print("  [PASS] No unauthorized YAML reads detected")
+
+    if yaml_only:
+        if issues > 0:
+            print(f"\nAudit FAILED with {issues} YAML violation(s).")
+            return 1
+        print("\nAudit PASSED (yaml-only mode).")
+        return 0
 
     # 2. Logging compliance check
     print("Checking for logging compliance...")
@@ -65,7 +83,6 @@ def run_audit_self(project_dir: str) -> int:
             path = os.path.join(root, file)
             with open(path, "r", encoding="utf-8") as f:
                 content = f.read()
-                # Fail if 'import logging' is used without 'get_logger' or 'logging_utils'
                 if "import logging" in content and "get_logger" not in content and "logging_utils" not in content:
                     rel_path = os.path.relpath(path, project_dir)
                     print(f"  [FAIL] Direct 'import logging' without centralized get_logger in {rel_path}")
@@ -83,7 +100,7 @@ def run_audit_self(project_dir: str) -> int:
     if issues > 0:
         print(f"\nAudit FAILED with {issues} issue(s).")
         return 1
-    
+
     print("\nAudit PASSED successfully.")
     return 0
 
@@ -91,5 +108,10 @@ def run_audit_self(project_dir: str) -> int:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("project", nargs="?", default=".")
+    parser.add_argument(
+        "--yaml-only",
+        action="store_true",
+        help="Only check for unauthorized YAML state reads (skip logging and changelog checks)",
+    )
     args = parser.parse_args()
-    sys.exit(run_audit_self(os.path.abspath(args.project)))
+    sys.exit(run_audit_self(os.path.abspath(args.project), yaml_only=args.yaml_only))
