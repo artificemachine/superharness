@@ -80,6 +80,7 @@ def is_project_initialized(project_path: str) -> bool:
     Use this as the guard at command entry points instead of inline
     os.path.exists(.superharness/state.sqlite3) checks.
     """
+    project_path = os.path.realpath(project_path)
     return (
         os.path.isfile(resolve_xdg_state_db_path(project_path))
         or os.path.isfile(
@@ -109,6 +110,7 @@ def resolve_active_state_db_path(project_path: str) -> str:
          projects initialized via shux init before XDG seeding was added)
       4. XDG path (truly new project with no .superharness/)
     """
+    project_path = os.path.realpath(project_path)
     xdg = resolve_xdg_state_db_path(project_path)
     legacy = os.path.join(project_path, ".superharness", "state.sqlite3")
     if os.path.isfile(xdg):
