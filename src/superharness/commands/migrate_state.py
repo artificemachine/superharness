@@ -3,7 +3,9 @@
 Detects projects that were initialized before XDG state placement was
 introduced (v1.60.0) and migrates their state.db to the correct location.
 
-Usage:
+Stop the watcher and dashboard before migrating to avoid copying a partially
+checkpointed WAL file:
+    shux operator stop --project .
     shux migrate-state [--project DIR] [--dry-run] [--keep-legacy]
 """
 from __future__ import annotations
@@ -60,7 +62,7 @@ def run_migrate_state(
     try:
         os.makedirs(xdg_dir, exist_ok=True)
         shutil.copy2(legacy_db, xdg_db)
-        print(f"Copied state.db to XDG path.")
+        print(f"Copied state.db → {xdg_db}")
 
         # Verify copy succeeded by checking file size matches
         src_size = os.path.getsize(legacy_db)

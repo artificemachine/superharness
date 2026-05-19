@@ -9,6 +9,11 @@ exclude_paths:
   - ".ruff_cache/**"
   - "htmlcov/**"
   - "archive/**"
+  # These test files intentionally contain fake credential patterns (AWS key
+  # fixtures, PEM blocks) to verify the export-scrub and redact features.
+  # They do not contain real secrets.
+  - "tests/unit/test_paperclip_export_scrub.py"
+  - "tests/unit/test_redact.py"
 
 disable_rules:
   # PY-007: false positive — f.write() in test_changelog_append_only.py triggers

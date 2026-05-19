@@ -429,3 +429,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-19: feat(audit-self): add --yaml-only flag to run only the SQLite YAML-read check without logging compliance or changelog checks; refactor into _check_yaml_reads helper
 - 2026-05-19: chore(claude-md): replace stale Branch Merge Policy / NO RELEASE section with accurate Release Policy — CI auto-tags and publishes on every main push; no-release is advisory only
 - 2026-05-19: chore(release): bump to v1.61.0 (yaml-gate CI, shux migrate-state, audit-self --yaml-only, release policy cleanup)
+- 2026-05-19: fix(gauntlet): remove stale yaml import from recap.py, fix migrate_state docstring and success message, suppress shipguard false positives in test fixtures, add 17 unit tests for migrate-state, document migrate-state in GUIDE.md
+- 2026-05-19: chore(release): bump to v1.61.1 (gauntlet fixes: recap cleanup, migrate-state tests + docs, shipguard config)
