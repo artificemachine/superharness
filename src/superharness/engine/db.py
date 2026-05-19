@@ -66,9 +66,14 @@ def get_connection(project_dir: str) -> sqlite3.Connection:
             f"SQLite version 3.35.0 or higher required (found {sqlite3.sqlite_version})"
         )
 
-    xdg_path = resolve_xdg_state_db_path(project_dir)
-    legacy_path = os.path.join(project_dir, ".superharness", "state.sqlite3")
-    legacy_dir = os.path.join(project_dir, ".superharness")
+    # When dispatching from a git worktree the caller sets SUPERHARNESS_STATE_PROJECT
+    # to the original project path so state reads use the correct XDG hash instead
+    # of hashing the ephemeral worktree path and opening an empty database.
+    state_project = os.environ.get("SUPERHARNESS_STATE_PROJECT", "").strip() or project_dir
+
+    xdg_path = resolve_xdg_state_db_path(state_project)
+    legacy_path = os.path.join(state_project, ".superharness", "state.sqlite3")
+    legacy_dir = os.path.join(state_project, ".superharness")
 
     if os.path.isfile(xdg_path):
         db_path = xdg_path
