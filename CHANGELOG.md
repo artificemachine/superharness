@@ -437,3 +437,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-19: chore(release): bump to v1.62.0 (dashboard submit verdict UI)
 - 2026-05-19: fix(worktree-dispatch): set SUPERHARNESS_STATE_PROJECT env var so delegate reads from the correct XDG database when dispatching from a git worktree
 - 2026-05-19: chore(release): bump to v1.62.1 (worktree dispatch state isolation fix)
+- 2026-05-19: test(worktree-dispatch): add E2E and smoke tests for state isolation fix (v1.62.2)
+- 2026-05-19: chore(release): bump to v1.62.2 (E2E + smoke test coverage for worktree dispatch state isolation)
