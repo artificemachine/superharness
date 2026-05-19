@@ -294,6 +294,24 @@ def _register_workflow():
 _register_workflow()
 
 
+def _register_migrate_state():
+    try:
+        import click as _click
+
+        @_click.command("migrate-state", context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
+        @_click.argument("args", nargs=-1, type=_click.UNPROCESSED)
+        def migrate_state_cmd(args):
+            """Move legacy .superharness/state.sqlite3 to the XDG state path."""
+            from superharness.commands.migrate_state import cmd_migrate_state
+            cmd_migrate_state(list(args))
+
+        main.add_command(migrate_state_cmd)
+    except Exception:
+        pass
+
+_register_migrate_state()
+
+
 def _find_dashboard_processes():
     """Return list of (pid, port, project_dir) for all running dashboard-ui.py processes."""
     import subprocess as _sp

@@ -424,3 +424,7 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-18: chore(git): delete protocol/templates/ reference YAMLs — no code reads them
 - 2026-05-18: chore(git): delete module_templates/examples/ (never loaded by registry) and contract-hygiene.yml CI workflow (gated on contract.yaml which is now deleted — was a permanent no-op)
 - 2026-05-18: fix(tests): restore protocol/templates/heartbeat.yaml + agent-status.yaml (used by init + tests), restore module_templates/examples/ (2 YAML example modules), rewrite test_live_contract_passes_full_validation to use SQLite via state_reader instead of reading deleted contract.yaml
+- 2026-05-19: feat(migrate-state): add shux migrate-state command — detects legacy .superharness/state.sqlite3 and migrates to XDG path; shux doctor warns when legacy db is found and suggests migration
+- 2026-05-19: feat(ci): add YAML Read Regression Gate to security.yml using audit_self --yaml-only — fails CI if unauthorized YAML reads of state files are reintroduced
+- 2026-05-19: feat(audit-self): add --yaml-only flag to run only the SQLite YAML-read check without logging compliance or changelog checks; refactor into _check_yaml_reads helper
+- 2026-05-19: chore(claude-md): replace stale Branch Merge Policy / NO RELEASE section with accurate Release Policy — CI auto-tags and publishes on every main push; no-release is advisory only
