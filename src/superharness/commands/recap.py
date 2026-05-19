@@ -7,8 +7,6 @@ import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-import yaml
-
 
 def _parse_iso(ts: str) -> datetime | None:
     try:

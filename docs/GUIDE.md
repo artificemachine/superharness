@@ -492,7 +492,31 @@ shux benchmark --project . --models   # per-model 7-day cost breakdown table
 superharness doctor --project .
 ```
 
-Checks for: required executables (`bash`, `python3`, `claude`, `codex`), protocol directory structure, YAML syntax validity, file permissions.
+Checks for: required executables (`bash`, `python3`, `claude`, `codex`), protocol directory structure, SQLite state-db health, and legacy state path detection.
+
+### State Migration (v1.60.0+)
+
+Since v1.60.0, superharness stores `state.db` in the XDG state directory (`~/.local/state/superharness/<project-hash>/state.db`) instead of `.superharness/state.sqlite3`. Projects initialized before v1.60.0 need a one-time migration.
+
+`shux doctor` detects the legacy path and prompts you to migrate. Run the migration manually:
+
+```bash
+# Stop the watcher first to avoid copying a partial WAL
+shux operator stop --project .
+
+# Migrate (dry run first)
+shux migrate-state --project . --dry-run
+shux migrate-state --project .
+
+# Verify
+shux doctor --project .
+```
+
+Options:
+- `--dry-run` — show what would happen without making changes
+- `--keep-legacy` — copy to XDG but leave the legacy file in place (useful for rollback testing)
+
+The command aborts if the XDG path already exists to prevent overwriting data. WAL and SHM sidecar files are migrated automatically.
 
 ### Dashboard UI
 
