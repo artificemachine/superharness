@@ -79,12 +79,17 @@ def is_project_initialized(project_path: str) -> bool:
 
     Use this as the guard at command entry points instead of inline
     os.path.exists(.superharness/state.sqlite3) checks.
+
+    Honors SUPERHARNESS_STATE_PROJECT: when set (worktree dispatch), the
+    original project path is used for initialization checks so that a
+    worktree path does not appear uninitialized.
     """
-    project_path = os.path.realpath(project_path)
+    state_project = os.environ.get("SUPERHARNESS_STATE_PROJECT", "").strip()
+    check_path = os.path.realpath(state_project if state_project else project_path)
     return (
-        os.path.isfile(resolve_xdg_state_db_path(project_path))
+        os.path.isfile(resolve_xdg_state_db_path(check_path))
         or os.path.isfile(
-            os.path.join(project_path, ".superharness", "state.sqlite3")
+            os.path.join(check_path, ".superharness", "state.sqlite3")
         )
     )
 
