@@ -33,19 +33,24 @@ def get_dashboard_status_snapshot(conn: sqlite3.Connection, project_dir: str) ->
         from superharness.engine import discussions_dao
         for row in discussions_dao.get_all(conn):
             if row.status in ("active", "consensus"):
+                rounds = discussions_dao.get_rounds(conn, row.id)
+                submitted = len(rounds)
+                participants = row.owners or []
+                total = len(participants)
+                verdicts = [r.verdict for r in rounds]
                 active_discussions.append({
                     "id": row.id,
                     "topic": row.topic or "",
                     "status": row.status,
-                    "current_round": row.current_round or 1,
-                    "max_rounds": row.max_rounds or "?",
-                    "participants": (row.participants or "").split(","),
+                    "current_round": submitted + 1,
+                    "max_rounds": 3,
+                    "participants": participants,
                     "created_at": row.created_at or "",
                     "task_id": row.task_id,
-                    "verdicts": {},
-                    "submitted_count": 0,
-                    "all_submitted": False,
-                    "all_consensus": False,
+                    "verdicts": {r.agent: r.verdict for r in rounds},
+                    "submitted_count": submitted,
+                    "all_submitted": total > 0 and submitted >= total,
+                    "all_consensus": total > 0 and submitted >= total and all(v == "consensus" for v in verdicts),
                     "closed_at": row.closed_at or "",
                 })
     except Exception:
