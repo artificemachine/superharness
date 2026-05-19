@@ -1219,6 +1219,10 @@ def _prepare_execution(ctx: DispatchContext) -> None:
     spawn_env["PYTHONUNBUFFERED"] = "1"
     if ctx.non_interactive:
         spawn_env["SUPERHARNESS_CONFIRM_NON_INTERACTIVE"] = "YES"
+    # When dispatching from a git worktree, preserve the original project path
+    # so delegate reads state from the correct XDG database.
+    if ctx.worktree_dir and ctx.project_dir:
+        spawn_env["SUPERHARNESS_STATE_PROJECT"] = ctx.project_dir
     ctx.spawn_env = spawn_env
 
     # Wrap in `script` to capture PTY output (bash launcher needs a terminal).

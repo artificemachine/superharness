@@ -435,3 +435,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-19: chore(release): bump to v1.61.2 (path normalization fix)
 - 2026-05-19: feat(dashboard): submit verdict UI — participant dropdown, position pre-fill, auto-close on consensus, active_discussions fix in status API, /api/discussion reads from SQLite
 - 2026-05-19: chore(release): bump to v1.62.0 (dashboard submit verdict UI)
+- 2026-05-19: fix(worktree-dispatch): set SUPERHARNESS_STATE_PROJECT env var so delegate reads from the correct XDG database when dispatching from a git worktree
+- 2026-05-19: chore(release): bump to v1.62.1 (worktree dispatch state isolation fix)
