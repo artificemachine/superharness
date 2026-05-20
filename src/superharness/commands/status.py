@@ -726,6 +726,53 @@ def _auto_fix(project_dir: str, inbox_health: dict, disc_health: dict) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Worktree surface — tasks with a live dispatch worktree on disk
+# ---------------------------------------------------------------------------
+
+
+def _active_worktrees(project_dir: str) -> list[dict]:
+    """Return tasks that currently have a live dispatch worktree on disk.
+
+    "Active" means: worktree_path IS NOT NULL and the directory exists.
+    worktree_path is never cleared on cleanup, so the directory existence
+    check is the authoritative signal.
+    Age is computed from created_at.
+    """
+    try:
+        from superharness.engine.state_reader import get_tasks
+        tasks = get_tasks(project_dir)
+    except Exception:
+        return []
+
+    now = datetime.now(timezone.utc)
+    result = []
+    for t in tasks:
+        if not isinstance(t, dict):
+            continue
+        wt_path = t.get("worktree_path") or ""
+        if not wt_path:
+            continue
+        if not os.path.isdir(wt_path):
+            continue
+        age_min = None
+        for ts_field in ("created_at", "in_progress_at"):
+            ts = t.get(ts_field, "")
+            if ts:
+                try:
+                    dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                    age_min = int((now - dt).total_seconds() / 60)
+                except (ValueError, TypeError):
+                    pass
+                break
+        result.append({
+            "task_id": str(t.get("id", "?")),
+            "path": wt_path,
+            "age_min": age_min,
+        })
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -846,6 +893,15 @@ def main(argv: list[str] | None = None) -> None:
           f"in_progress={tc.get('in_progress',0)} plan={tc.get('plan',0)} "
           f"failed={tc.get('failed',0)} blocked={tc.get('blocked',0)} "
           f"waiting_input={tc.get('waiting_input',0)}")
+
+    # Worktrees section — omitted entirely when none are active (zero noise)
+    active_worktrees = _active_worktrees(project_dir)
+    if active_worktrees:
+        print()
+        print("Worktrees:")
+        for wt in active_worktrees:
+            age_str = f"{wt['age_min']}m" if wt["age_min"] is not None else "unknown age"
+            print(f"  {wt['task_id']}  {wt['path']}  (age {age_str})")
 
     # Active tasks detail (default)
     if opts.active and not opts.summary:
