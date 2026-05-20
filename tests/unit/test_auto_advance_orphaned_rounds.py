@@ -225,6 +225,69 @@ class TestAutoAdvanceOrphanedRounds:
         finally:
             conn.close()
 
+    def test_zero_verdict_pending_review_auto_closed_as_failed_participant(self, project_with_db):
+        """A pending-review consensus row with 0/N verdicts must be auto-downgraded
+        to failed_participant by _auto_close_consensus_discussions — no operator
+        action needed when agents never engaged."""
+        project = project_with_db
+        conn = get_connection(str(project))
+        init_db(conn)
+        disc_id = "disc-zero-verdicts-close"
+        discussions_dao.create(conn, id=disc_id, topic="t", owners=["a", "b"], now=now_iso())
+        old = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        conn.execute(
+            "UPDATE discussions SET status='consensus', consensus=?, created_at=? WHERE id=?",
+            (
+                f"{_CONSENSUS_PENDING_REVIEW_PREFIX} round 1 inbox complete "
+                f"(0/2 verdicts) — operator review required",
+                old,
+                disc_id,
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        n = _auto_close_consensus_discussions(str(project))
+        assert n == 1
+
+        conn = get_connection(str(project))
+        try:
+            row = discussions_dao.get(conn, disc_id)
+            assert row.status == "failed_participant"
+        finally:
+            conn.close()
+
+    def test_partial_verdict_pending_review_not_auto_closed(self, project_with_db):
+        """A pending-review consensus row with partial verdicts (1/N) must NOT be
+        auto-closed — operator should review when some agents engaged but not all."""
+        project = project_with_db
+        conn = get_connection(str(project))
+        init_db(conn)
+        disc_id = "disc-partial-verdict-close"
+        discussions_dao.create(conn, id=disc_id, topic="t", owners=["a", "b"], now=now_iso())
+        old = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        conn.execute(
+            "UPDATE discussions SET status='consensus', consensus=?, created_at=? WHERE id=?",
+            (
+                f"{_CONSENSUS_PENDING_REVIEW_PREFIX} round 1 inbox complete "
+                f"(1/2 verdicts) — operator review required",
+                old,
+                disc_id,
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        n = _auto_close_consensus_discussions(str(project))
+        assert n == 0
+
+        conn = get_connection(str(project))
+        try:
+            row = discussions_dao.get(conn, disc_id)
+            assert row.status == "consensus"
+        finally:
+            conn.close()
+
     def test_pending_review_consensus_not_auto_closed(self, project_with_db):
         """A consensus row with the pending-review sentinel must not be auto-closed
         by _auto_close_consensus_discussions — operator must close it explicitly."""

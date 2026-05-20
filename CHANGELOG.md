@@ -444,3 +444,6 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-20: fix(inbox_watch): orphan-advance uses failed_participant (not consensus) when zero verdicts submitted — prevents auto-consensus race on discussion rounds
 - 2026-05-20: test(orphan-advance): add partial-verdicts test; update zero-verdicts test to expect failed_participant
 - 2026-05-20: chore(release): bump to v1.62.3 (auto-approve workflow guard + orphan-advance race fix)
+- 2026-05-20: fix(inbox_watch): _auto_close_consensus_discussions now auto-closes 0-verdict pending-review discussions as failed_participant — partial-verdict ones (1+/N) still require operator review
+- 2026-05-20: test(orphan-advance): add zero-verdict auto-close test and partial-verdict no-close test
+- 2026-05-20: chore(release): bump to v1.62.4 (auto-mode handles zero-verdict discussion orphans without operator intervention)
