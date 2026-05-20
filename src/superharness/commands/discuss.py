@@ -120,18 +120,35 @@ def cmd_start(
         all_owners = norm_owners
 
     exclude_set = set(exclude or [])
-    participants = [o for o in all_owners if o not in exclude_set]
+    candidates = [o for o in all_owners if o not in exclude_set]
+
+    # Only AI agents (those with registered adapters) can participate in a discussion.
+    # Human roles like "owner" are never dispatched via inbox and would permanently
+    # block verdict collection and auto-consensus.
+    from superharness.engine.adapter_registry import list_adapters
+    _ai_agents = set(list_adapters())
+    non_agents = [o for o in candidates if o not in _ai_agents]
+    participants = [o for o in candidates if o in _ai_agents]
+
+    if non_agents:
+        print(
+            f"Note: {', '.join(non_agents)} removed from participants "
+            f"(not a registered AI agent — human roles cannot receive inbox dispatch).",
+            file=sys.stderr,
+        )
 
     if len(participants) < 2:
         print(
-            f"Error: discussions require at least 2 distinct task owners in contract "
-            f"(found: {len(participants)} after exclusions).",
+            f"Error: discussions require at least 2 AI-agent participants "
+            f"(found: {len(participants)} after filtering non-agents and exclusions).",
             file=sys.stderr,
         )
         if exclude_set:
             print(f"Excluded: {' '.join(sorted(exclude_set))}", file=sys.stderr)
+        if non_agents:
+            print(f"Non-agent (removed): {' '.join(non_agents)}", file=sys.stderr)
         if owners:
-            print("Pass at least 2 owners after exclusions.", file=sys.stderr)
+            print("Pass at least 2 agent owners (claude-code, codex-cli, gemini-cli, opencode).", file=sys.stderr)
         else:
             print("Add tasks for both claude-code and codex-cli or pass --owners.", file=sys.stderr)
         return 2

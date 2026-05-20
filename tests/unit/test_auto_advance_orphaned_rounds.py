@@ -24,6 +24,7 @@ from superharness.commands.inbox_watch import (
     _ORPHAN_ROUND_GRACE_MINUTES,
     _CONSENSUS_PENDING_REVIEW_PREFIX,
 )
+from superharness.engine.discussion import _check_all_submitted_and_set_consensus
 
 
 def _iso_minutes_ago(n: int) -> str:
@@ -287,6 +288,108 @@ class TestAutoAdvanceOrphanedRounds:
             assert row.status == "consensus"
         finally:
             conn.close()
+
+    def test_advances_when_only_dispatched_agent_done_owner_excluded(self, project_with_db):
+        """Discussion with ['claude-code', 'owner'] where only claude-code has an
+        inbox item (owner is human and never dispatched). The orphan advance must
+        fire based on the dispatched set, not the full owners list."""
+        project = project_with_db
+        conn = get_connection(str(project))
+        init_db(conn)
+        disc_id = "disc-owner-participant"
+        discussions_dao.create(
+            conn, id=disc_id, topic="t", owners=["claude-code", "owner"], now=now_iso()
+        )
+        # Only claude-code gets an inbox item (owner is human, not dispatched)
+        _seed_inbox_done(
+            conn,
+            task_id=f"{disc_id}/round-1",
+            agent="claude-code",
+            done_minutes_ago=_ORPHAN_ROUND_GRACE_MINUTES + 5,
+        )
+        conn.commit()
+        conn.close()
+
+        n = _auto_advance_orphaned_rounds(str(project))
+        assert n == 1
+
+        conn = get_connection(str(project))
+        try:
+            row = discussions_dao.get(conn, disc_id)
+            # claude-code done + no verdict → failed_participant
+            assert row.status == "failed_participant"
+        finally:
+            conn.close()
+
+    def test_yaml_only_submission_counts_as_verdict(self, project_with_db):
+        """Agent wrote round-1-claude-code.yaml but never called shux discuss submit.
+        The orphan advance must count the YAML as a verdict and skip interference
+        (the normal verdict path should reconcile it)."""
+        project = project_with_db
+        conn = get_connection(str(project))
+        init_db(conn)
+        disc_id = "disc-yaml-only"
+        discussions_dao.create(
+            conn, id=disc_id, topic="t", owners=["claude-code", "owner"], now=now_iso()
+        )
+        _seed_inbox_done(
+            conn,
+            task_id=f"{disc_id}/round-1",
+            agent="claude-code",
+            done_minutes_ago=_ORPHAN_ROUND_GRACE_MINUTES + 5,
+        )
+        conn.commit()
+        conn.close()
+
+        # Write the submission YAML directly (simulating agent writing it without calling submit)
+        disc_dir = project / ".superharness" / "discussions" / disc_id
+        disc_dir.mkdir(parents=True)
+        (disc_dir / "round-1-claude-code.yaml").write_text(
+            "discussion_id: disc-yaml-only\nround: 1\nagent: claude-code\nverdict: agree\n"
+        )
+
+        # YAML-only counts as verdict → dispatched agents all have verdicts → skip (n=0)
+        n = _auto_advance_orphaned_rounds(str(project))
+        assert n == 0
+
+        conn = get_connection(str(project))
+        try:
+            row = discussions_dao.get(conn, disc_id)
+            # Discussion should remain active — the YAML path handles it
+            assert row.status == "active"
+        finally:
+            conn.close()
+
+    def test_auto_consensus_fires_when_only_ai_agent_submits(self, project_with_db):
+        """When discussion owners include a human ('owner') who never submits,
+        auto-consensus must still fire once all AI-agent participants have submitted."""
+        project = project_with_db
+        conn = get_connection(str(project))
+        init_db(conn)
+        disc_id = "disc-owner-consensus"
+        discussions_dao.create(
+            conn, id=disc_id, topic="t", owners=["claude-code", "owner"], now=now_iso()
+        )
+        # claude-code submits a verdict
+        discussions_dao.add_round(
+            conn,
+            discussion_id=disc_id,
+            round_number=1,
+            agent="claude-code",
+            verdict="agree",
+            now=now_iso(),
+        )
+        disc = discussions_dao.get(conn, disc_id)
+        # Trigger auto-consensus check — owner is human and must not block it
+        _check_all_submitted_and_set_consensus(conn, disc, 1)
+        conn.commit()
+        row = discussions_dao.get(conn, disc_id)
+        assert row.status == "consensus", (
+            f"Expected consensus but got {row.status!r}. "
+            "Human 'owner' participant should not block auto-consensus."
+        )
+        conn.close()
+
 
     def test_pending_review_consensus_not_auto_closed(self, project_with_db):
         """A consensus row with the pending-review sentinel must not be auto-closed

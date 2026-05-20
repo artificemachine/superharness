@@ -301,7 +301,7 @@ def test_discuss_start_rejects_single_owner(repo_root, tmp_path) -> None:
         args=["start", "--project", str(project), "--topic", "Should fail"],
     )
     assert result.returncode == 2
-    assert "at least 2 distinct task owners" in result.stderr
+    assert "at least 2" in result.stderr
 
 
 def test_discuss_start_allows_explicit_owners_without_contract_owners(repo_root, tmp_path) -> None:
@@ -341,7 +341,7 @@ def test_discuss_start_rejects_no_owners(repo_root, tmp_path) -> None:
         args=["start", "--project", str(project), "--topic", "Should fail"],
     )
     assert result.returncode == 2
-    assert "at least 2 distinct task owners" in result.stderr
+    assert "at least 2" in result.stderr
 
 
 def test_discuss_start_exclude_owner(repo_root, tmp_path) -> None:
@@ -385,5 +385,57 @@ def test_discuss_start_exclude_too_many_rejects(repo_root, tmp_path) -> None:
         ],
     )
     assert result.returncode == 2
-    assert "at least 2 distinct task owners" in result.stderr
+    assert "at least 2" in result.stderr
     assert "Excluded: codex-cli" in result.stderr
+
+
+def test_discuss_start_filters_owner_from_participants(repo_root, tmp_path) -> None:
+    """discuss start must silently drop 'owner' from participants.
+    'owner' is a human role that is never dispatched via inbox and permanently
+    blocks verdict collection and auto-consensus when included."""
+    project = _setup_project_with_contract(
+        tmp_path, owners=["claude-code", "codex-cli", "owner"]
+    )
+
+    result = _run_discuss_py(
+        repo_root,
+        args=[
+            "start", "--project", str(project),
+            "--topic", "Filter owner test",
+        ],
+    )
+    assert result.returncode == 0, result.stderr
+    # Note about filtering must appear on stderr
+    assert "owner" in result.stderr
+    assert "not a registered AI agent" in result.stderr
+    # Only AI agents in participants
+    assert "Participants: claude-code codex-cli" in result.stdout
+    assert "owner" not in result.stdout.split("Participants:")[1].split("\n")[0]
+
+    import sqlite3 as _sql
+    db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
+    targets = {r[0] for r in db.execute(
+        "SELECT target_agent FROM inbox WHERE task_id LIKE '%/round-1'"
+    ).fetchall()}
+    db.close()
+    assert "claude-code" in targets
+    assert "codex-cli" in targets
+    assert "owner" not in targets
+
+
+def test_discuss_start_explicit_owner_only_rejects(repo_root, tmp_path) -> None:
+    """If --owners passes only 'owner' and one real agent, the filter leaves <2 AI
+    agents and must return an error."""
+    project = _setup_project_with_contract(tmp_path, owners=["claude-code"])
+
+    result = _run_discuss_py(
+        repo_root,
+        args=[
+            "start", "--project", str(project),
+            "--topic", "Should fail",
+            "--owners", "claude-code,owner",
+        ],
+    )
+    assert result.returncode == 2
+    assert "at least 2 AI-agent participants" in result.stderr
+    assert "Non-agent (removed): owner" in result.stderr

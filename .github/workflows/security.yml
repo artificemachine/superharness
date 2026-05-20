@@ -32,6 +32,8 @@ jobs:
       - name: Run pip-audit (superharness runtime deps only)
         # Extract declared runtime deps from pyproject.toml and audit only those.
         # This avoids false positives from the CI toolchain (shipguard, pip-audit itself).
+        # PYSEC-2025-183: disputed CVE in pyjwt (transitive via fastmcp); supplier
+        # disputes it, no fix version exists. Ignored until fastmcp pins a clean release.
         run: |
           python3 -c "
           import tomllib
@@ -39,7 +41,8 @@ jobs:
               d = tomllib.load(f)
           print('\n'.join(d['project']['dependencies']))
           " > /tmp/sh-requirements.txt
-          pip-audit -r /tmp/sh-requirements.txt --format json --output pip-audit.json
+          pip-audit -r /tmp/sh-requirements.txt --format json --output pip-audit.json \
+            --ignore-vuln PYSEC-2025-183
 
       - name: Upload report artifact
         uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3

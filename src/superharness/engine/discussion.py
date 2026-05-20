@@ -163,7 +163,20 @@ def _check_all_submitted_and_set_consensus(conn, disc, round_: int) -> None:
     rounds = discussions_dao.get_rounds(conn, disc.id)
     submitted_agents = {r.agent for r in rounds if r.round_number == round_}
 
-    if len(submitted_agents) < len(disc.owners):
+    # Only AI agents (those with registered adapters) are expected to submit
+    # automatically. Human participants like "owner" are never dispatched via
+    # inbox and must not block auto-consensus.
+    try:
+        from superharness.engine.adapter_registry import list_adapters
+        ai_agents = set(list_adapters())
+    except Exception:
+        ai_agents = set()
+    agent_participants = [o for o in disc.owners if o in ai_agents] if ai_agents else list(disc.owners)
+    required_count = len(agent_participants) if agent_participants else len(disc.owners)
+
+    if len(submitted_agents) < required_count:
+        return
+    if agent_participants and not set(agent_participants).issubset(submitted_agents):
         return
 
     # Explicit disagreement → keep active and let the dispatcher advance

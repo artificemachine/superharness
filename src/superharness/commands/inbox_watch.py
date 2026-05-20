@@ -3206,9 +3206,14 @@ def _auto_advance_orphaned_rounds(project_dir: str) -> int:
             round_n = max(by_round.keys())
             round_items = by_round[round_n]
 
-            # Every owner must have an inbox item for this round, all in 'done'
+            # Only agents who were actually dispatched via inbox need to be done.
+            # Human participants (like "owner") never receive inbox items, so they
+            # must not block orphan detection.
+            dispatched = {r["target_agent"] for r in round_items}
+            if not dispatched:
+                continue
             agents_done = {r["target_agent"] for r in round_items if r["status"] == "done"}
-            if not set(owners).issubset(agents_done):
+            if not dispatched.issubset(agents_done):
                 continue
 
             # Latest done_at across this round must be older than the grace window
@@ -3219,19 +3224,28 @@ def _auto_advance_orphaned_rounds(project_dir: str) -> int:
             if not latest_done or latest_done > cutoff_iso:
                 continue
 
-            # If the verdict path already covered this round for every owner,
+            # If the verdict path already covered all dispatched agents for this round,
             # let the normal flow handle it — don't interfere.
+            # Also count YAML-only submissions (agent wrote the file but never called
+            # shux discuss submit — common when an agent crashes after writing).
             verdict_agents = {
                 rr.agent for rr in discussions_dao.get_rounds(conn, disc.id)
                 if rr.round_number == round_n
             }
-            if set(owners).issubset(verdict_agents):
+            disc_dir = os.path.join(project_dir, ".superharness", "discussions", disc.id)
+            for agent in dispatched:
+                if agent not in verdict_agents:
+                    yaml_path = os.path.join(disc_dir, f"round-{round_n}-{agent}.yaml")
+                    if os.path.isfile(yaml_path):
+                        verdict_agents.add(agent)
+
+            if dispatched.issubset(verdict_agents):
                 continue
 
-            missing = [a for a in owners if a not in verdict_agents]
+            missing = [a for a in dispatched if a not in verdict_agents]
 
-            # Zero verdicts means agents completed their inbox task but never
-            # engaged with the discussion at all. That is a participant failure,
+            # Zero verdicts means dispatched agents completed their inbox task but
+            # never engaged with the discussion at all. That is a participant failure,
             # not an orphaned round — mark failed_participant so it surfaces
             # clearly and does not masquerade as consensus.
             if not verdict_agents:
@@ -3248,10 +3262,11 @@ def _auto_advance_orphaned_rounds(project_dir: str) -> int:
                 )
                 continue
 
-            # Partial: some verdicts present, some missing — surface for review.
+            # Partial: some dispatched agents submitted, others didn't — surface for review.
+            n_dispatched = len(dispatched)
             consensus_msg = (
                 f"{_CONSENSUS_PENDING_REVIEW_PREFIX} round {round_n} inbox complete "
-                f"({len(owners) - len(missing)}/{len(owners)} verdicts) — "
+                f"({n_dispatched - len(missing)}/{n_dispatched} verdicts) — "
                 f"operator review required"
             )
             conn.execute(
