@@ -126,6 +126,21 @@ def get_dashboard_status_snapshot(conn: sqlite3.Connection, project_dir: str) ->
     KNOWN_AGENTS = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
     all_task_owners = list(set(KNOWN_AGENTS) | set(str(t.get("owner", "")) for t in tasks_as_dict if t.get("owner")) | set(str(i.get("to", "")) for i in inbox_as_dict if i.get("to")))
 
+    # Active dispatch worktrees — tasks with a worktree_path where the directory
+    # still exists on disk.  worktree_path is never cleared on cleanup, so the
+    # directory existence check is the authoritative signal.
+    # Empty list means the section is omitted on the consumer side.
+    import os as _os
+    worktrees = [
+        {
+            "path": str(t.get("worktree_path", "")),
+            "task_id": str(t.get("id", "")),
+            "created_at": str(t.get("created_at", "")),
+        }
+        for t in tasks_as_dict
+        if t.get("worktree_path") and _os.path.isdir(str(t.get("worktree_path", "")))
+    ]
+
     snapshot = {
         "contract_id": contract_id,
         "contract_tasks": tasks_as_dict,
@@ -145,6 +160,7 @@ def get_dashboard_status_snapshot(conn: sqlite3.Connection, project_dir: str) ->
         "active_discussions": active_discussions,
         "failures": failures,
         "decisions": decisions,
+        "worktrees": worktrees,
         "ledger_tail": [f"- {l.get('created_at', '')} — {l.get('action', '')} ({l.get('agent', 'system')})"
                         for l in ledger[:50]
                         if l.get('action', '') != 'tick'][:18],
