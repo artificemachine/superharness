@@ -3091,6 +3091,14 @@ _CONSENSUS_GRACE_MINUTES = 60  # auto-close consensus discussions after 1h
 _ORPHAN_ROUND_GRACE_MINUTES = 5  # advance orphaned rounds (inbox done, no verdicts) after 5m
 _CONSENSUS_PENDING_REVIEW_PREFIX = "auto-pending-review:"
 _CIRCUIT_BREAKER_THRESHOLD = 20  # consecutive failures in 5 minutes trips breaker
+
+import re as _re
+_ZERO_VERDICT_RE = _re.compile(r"\b0/\d+\b")
+
+
+def _consensus_has_zero_verdicts(consensus_msg: str) -> bool:
+    """Return True when the pending-review message indicates zero verdicts (0/N)."""
+    return bool(_ZERO_VERDICT_RE.search(consensus_msg))
 _CIRCUIT_BREAKER_WINDOW_MINUTES = 5
 
 # === Auto-action cooldown tracking ===
@@ -3293,9 +3301,25 @@ def _auto_close_consensus_discussions(project_dir: str) -> int:
             disc_id = row.id
 
             # Skip rows flagged for explicit operator review — these were auto-advanced
-            # because the round's inbox completed without verdicts being submitted.
+            # because the round's inbox completed with partial verdicts submitted.
             # Closing them silently would lose the validation step the operator wants.
+            # Exception: zero verdicts (0/N) means agents didn't engage at all —
+            # no human judgment is needed, auto-close as failed_participant instead.
             if (row.consensus or "").startswith(_CONSENSUS_PENDING_REVIEW_PREFIX):
+                if not _consensus_has_zero_verdicts(row.consensus or ""):
+                    continue
+                # Zero-verdict pending-review: downgrade to failed_participant and close.
+                conn.execute(
+                    "UPDATE discussions SET status='failed_participant' WHERE id=?",
+                    (disc_id,),
+                )
+                conn.commit()
+                closed += 1
+                print(
+                    f"auto-close: {disc_id} → failed_participant "
+                    f"(pending-review with 0 verdicts — no engagement)",
+                    file=sys.stderr,
+                )
                 continue
 
             # If closed_at is already stamped but status wasn't updated, close immediately
