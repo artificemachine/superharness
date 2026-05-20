@@ -439,3 +439,8 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-19: chore(release): bump to v1.62.1 (worktree dispatch state isolation fix)
 - 2026-05-19: test(worktree-dispatch): add E2E and smoke tests for state isolation fix (v1.62.2)
 - 2026-05-19: chore(release): bump to v1.62.2 (E2E + smoke test coverage for worktree dispatch state isolation)
+- 2026-05-20: fix(task): auto-approve hook now guards on workflow=implementation — quick/note/review tasks no longer get promoted to plan_approved and permanently blocked
+- 2026-05-20: fix(task): shux task create default workflow changed from quick to implementation
+- 2026-05-20: fix(inbox_watch): orphan-advance uses failed_participant (not consensus) when zero verdicts submitted — prevents auto-consensus race on discussion rounds
+- 2026-05-20: test(orphan-advance): add partial-verdicts test; update zero-verdicts test to expect failed_participant
+- 2026-05-20: chore(release): bump to v1.62.3 (auto-approve workflow guard + orphan-advance race fix)
