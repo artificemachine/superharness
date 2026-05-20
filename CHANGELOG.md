@@ -447,3 +447,13 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-20: fix(inbox_watch): _auto_close_consensus_discussions now auto-closes 0-verdict pending-review discussions as failed_participant — partial-verdict ones (1+/N) still require operator review
 - 2026-05-20: test(orphan-advance): add zero-verdict auto-close test and partial-verdict no-close test
 - 2026-05-20: chore(release): bump to v1.62.4 (auto-mode handles zero-verdict discussion orphans without operator intervention)
+- 2026-05-20: feat(status+dashboard): surface active worktrees in shux status (Worktrees section) and /api/status (worktrees array); uses os.path.isdir as authoritative signal since worktree_path is never cleared on close
+- 2026-05-20: fix(discussion): orphan-advance uses dispatched agent set (not all owners) — human "owner" participant no longer blocks orphan detection
+- 2026-05-20: fix(discussion): YAML-only submissions (agent wrote file but never called shux discuss submit) now counted as verdicts in orphan detector
+- 2026-05-20: fix(discussion): auto-consensus no longer blocked by human "owner" participant — only AI-agent owners (those in adapter_registry) required to submit
+- 2026-05-20: test(discussion): add owner-as-participant, yaml-only-submission, and auto-consensus-with-owner tests
+- 2026-05-20: chore(release): bump to v1.62.5 (discussion orphan fix — owner participant + YAML-only submission)
+- 2026-05-20: fix(discuss): cmd_start filters non-agent participants (e.g. "owner") before creating the discussion — prevents permanent block on verdict collection and auto-consensus
+- 2026-05-20: test(discuss): add owner-filter tests (filters silently with note, rejects when <2 AI agents remain)
+- 2026-05-20: chore(release): bump to v1.62.6 (owner-as-participant guard in discuss start)
+- 2026-05-20: ci(security): ignore PYSEC-2025-183 (disputed pyjwt CVE, no fix version, transitive via fastmcp)
