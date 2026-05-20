@@ -582,8 +582,11 @@ def status_update(
     finally:
         conn.close()
 
-    # Auto-approve hook: plan_proposed → plan_approved when auto_approve_plans=true
-    if status == "plan_proposed" and not _recursion_guard:
+    # Auto-approve hook: plan_proposed → plan_approved when auto_approve_plans=true.
+    # Only fires for the implementation workflow — quick/note/review/discussion tasks
+    # have no plan cycle, and auto-approving them causes a permanent dispatch block
+    # because plan_approved is not in their allowed dispatch status set.
+    if status == "plan_proposed" and not _recursion_guard and task_row.workflow == "implementation":
         profile_path = os.path.join(project_dir, ".superharness", "profile.yaml")
         auto_approve = False
         if os.path.exists(profile_path):
@@ -700,8 +703,8 @@ def main(argv: list[str] | None = None) -> None:
                           help="TDD green phase: minimal code to make tests pass")
     p_create.add_argument("--tdd-refactor", dest="tdd_refactor", default="",
                           help="TDD refactor phase: cleanup after green, no new behaviour")
-    p_create.add_argument("--workflow", default="quick",
-                          help="Optional workflow template: implementation, quick, discussion, review, approval, note (default: quick)")
+    p_create.add_argument("--workflow", default="implementation",
+                          help="Optional workflow template: implementation, quick, discussion, review, approval, note (default: implementation)")
     p_create.add_argument("--development-method", dest="development_method", default="",
                           help="Optional development method: tdd, bdd, sdd, none")
     p_create.add_argument("--criteria", action="append", default=[], metavar="CRITERION",

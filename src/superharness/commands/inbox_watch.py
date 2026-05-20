@@ -3221,6 +3221,26 @@ def _auto_advance_orphaned_rounds(project_dir: str) -> int:
                 continue
 
             missing = [a for a in owners if a not in verdict_agents]
+
+            # Zero verdicts means agents completed their inbox task but never
+            # engaged with the discussion at all. That is a participant failure,
+            # not an orphaned round — mark failed_participant so it surfaces
+            # clearly and does not masquerade as consensus.
+            if not verdict_agents:
+                conn.execute(
+                    "UPDATE discussions SET status='failed_participant' "
+                    "WHERE id=? AND status='active'",
+                    (disc.id,),
+                )
+                advanced += 1
+                print(
+                    f"discussion-orphan-advance: {disc.id} → failed_participant "
+                    f"(round {round_n} inbox complete, 0 verdicts submitted)",
+                    file=sys.stderr,
+                )
+                continue
+
+            # Partial: some verdicts present, some missing — surface for review.
             consensus_msg = (
                 f"{_CONSENSUS_PENDING_REVIEW_PREFIX} round {round_n} inbox complete "
                 f"({len(owners) - len(missing)}/{len(owners)} verdicts) — "
