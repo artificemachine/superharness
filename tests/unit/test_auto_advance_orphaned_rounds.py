@@ -92,9 +92,10 @@ class TestAutoAdvanceOrphanedRounds:
         conn = get_connection(str(project))
         try:
             row = discussions_dao.get(conn, disc_id)
-            assert row.status == "consensus"
-            assert row.consensus.startswith(_CONSENSUS_PENDING_REVIEW_PREFIX)
-            assert "round 1" in row.consensus.lower()
+            # Zero verdicts submitted → failed_participant, not consensus.
+            # Agents completing their inbox task without engaging is a failure,
+            # not an orphaned round that needs operator review.
+            assert row.status == "failed_participant"
         finally:
             conn.close()
 
@@ -183,6 +184,46 @@ class TestAutoAdvanceOrphanedRounds:
 
         n = _auto_advance_orphaned_rounds(str(project))
         assert n == 0
+
+    def test_partial_verdicts_advance_to_consensus_pending_review(self, project_with_db):
+        """When some but not all agents submitted verdicts, the orphan-advance
+        should use consensus (pending review), not failed_participant."""
+        project = project_with_db
+        conn = get_connection(str(project))
+        init_db(conn)
+        owners = ["claude-code", "codex-cli"]
+        disc_id = "disc-partial-verdicts"
+        discussions_dao.create(conn, id=disc_id, topic="t", owners=owners, now=now_iso())
+        for agent in owners:
+            _seed_inbox_done(
+                conn,
+                task_id=f"{disc_id}/round-1",
+                agent=agent,
+                done_minutes_ago=_ORPHAN_ROUND_GRACE_MINUTES + 5,
+            )
+        # Only claude-code submitted a verdict
+        discussions_dao.add_round(
+            conn,
+            discussion_id=disc_id,
+            round_number=1,
+            agent="claude-code",
+            verdict="agree",
+            now=now_iso(),
+        )
+        conn.commit()
+        conn.close()
+
+        n = _auto_advance_orphaned_rounds(str(project))
+        assert n == 1
+
+        conn = get_connection(str(project))
+        try:
+            row = discussions_dao.get(conn, disc_id)
+            assert row.status == "consensus"
+            assert row.consensus.startswith(_CONSENSUS_PENDING_REVIEW_PREFIX)
+            assert "1/2" in row.consensus
+        finally:
+            conn.close()
 
     def test_pending_review_consensus_not_auto_closed(self, project_with_db):
         """A consensus row with the pending-review sentinel must not be auto-closed
