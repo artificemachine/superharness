@@ -1,0 +1,8 @@
+_config_version: 1
+autonomy: supervised
+default_agent: claude-code
+gateway:
+  events: []
+git_mode: team
+plan_approval_gates: true
+round_tasks_skip_plan_approval: true
