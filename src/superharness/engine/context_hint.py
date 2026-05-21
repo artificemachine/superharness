@@ -100,6 +100,22 @@ def build_context_hint(project_dir: str, task: dict) -> str:
     except Exception as e:
         logger.warning("Memory context injection failed: %s", e)
 
+    # 0.5 Behavioral profile (user adaptation — Iteration 4)
+    try:
+        from superharness.engine.behavioral import load_profile, user_profile_path, format_profile_for_context
+        profile = load_profile(os.path.join(user_profile_path(), "task_style.json"))
+        # Merge all profile files
+        for fname in ["task_style.json", "review_style.json", "model_prefs.json", "autonomy_profile.json"]:
+            p = load_profile(os.path.join(user_profile_path(), fname))
+            if p:
+                profile.update({fname.replace(".json", ""): p})
+        if profile:
+            context = format_profile_for_context(profile, tier="standard")
+            if context:
+                lines.append(context)
+    except Exception as e:
+        logger.warning("Behavioral profile injection failed: %s", e)
+
     keywords = _extract_keywords(task)
 
     # 1. Keywords & source files
