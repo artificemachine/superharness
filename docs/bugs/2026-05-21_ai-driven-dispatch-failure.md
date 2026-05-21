@@ -4,7 +4,7 @@
 **Version observed:** superharness 1.62.7 (daemon last ran on the version installed ~May 2)
 **Severity:** high — `ai_driven` projects silently stop dispatching; enqueue crashes fatally
 **Affected:** autonomy daemon (`shux daemon` / `shux operator`), `engine/inbox.py` enqueue path, `shux discuss start`
-**Status:** open
+**Status:** core bugs **FIXED in 1.62.17** (validated 2026-05-21 — see § Validation). One residual non-fatal bug open (shadow-enqueue duplicate).
 **Project investigated:** `/Users/airm2max/DevOpsSec/morpheme` (`autonomy: ai_driven`, `require_tdd: true`)
 **Related:** `bugs/2026-05-11_discuss_dispatch_bugs.md` (Bug G — runaway round-1 re-dispatch), `BUG-set-owner-inbox-cleanup.md` (same class: refactor moved a helper, import site not updated)
 
@@ -158,3 +158,73 @@ tail .superharness/launcher-logs/daemon.{out,err}.log
 grep -rn "_ensure_task_in_sqlite" <site-packages>/superharness
 sed -n '230,250p' <site-packages>/superharness/engine/inbox.py
 ```
+
+---
+
+## Validation against 1.62.17 (2026-05-21)
+
+Upgraded morpheme to **superharness 1.62.17** and validated end-to-end. The core
+bugs are fixed.
+
+### Layer 2 — enqueue crash: ✅ FIXED
+
+`engine/inbox.py` now carries exactly the patch this report proposed:
+
+```python
+# inbox.py:239  — was: from superharness.commands.inbox_enqueue import _ensure_task_in_sqlite
+from superharness.commands.inbox_watch import _ensure_task_in_sqlite
+# inbox.py:242  — was: logger.warning(...)
+_log.warning("inbox.py: FK guard skipped for task %s: %s", task, e)
+```
+
+Empirical: `shux discuss start` now enqueues both rounds successfully
+(`Enqueued round 1 for claude-code / codex-cli`; closing the discussion reports
+`cancelled_inbox_items: 2`, proving real inbox rows existed). In 1.62.7 this
+aborted with `ImportError` → `NameError`.
+
+### Layer 3 / Bug G — runaway re-dispatch: ✅ FIXED
+
+The DAO now rejects duplicate active inbox rows (`engine/inbox_dao.py:61` →
+`StateError: Duplicate rejected`). This guard blocks the per-poll re-enqueue
+runaway. Ran the daemon for 95s (3+ cycles): the tail is clean
+`deadline-check: result=ok exceeded=0` / `auto-close: closed 0 task(s)` —
+no re-dispatch spam (vs the old 74k-line loop).
+
+### deadline-check `JSONDecodeError`: ✅ FIXED
+
+Every cycle now logs `deadline-check: result=ok exceeded=0`. No JSON crash.
+
+### Daemon stability + cleanup: ✅
+
+- Daemon ran 95s with **0 lines written to `daemon.err.log`**.
+- The running daemon also GC'd the 10 stale inbox tombstones that
+  `shux status --fix` and `shux inbox-gc` could not clear.
+
+### NEW residual bug (non-fatal): redundant shadow-enqueue
+
+`commands/discuss.py:236` `_enqueue_sqlite_shadow` still double-writes the inbox
+row that the now-working primary enqueue already created. It trips the new
+duplicate guard and logs a full traceback on every interactive `shux discuss
+start`:
+
+```
+discuss.py unexpected error: Duplicate rejected: active inbox row already exists
+for task '…/round-1' → 'claude-code'
+  File ".../commands/discuss.py", line 258, in _enqueue_sqlite_shadow
+  File ".../engine/inbox_dao.py", line 61, in enqueue
+superharness.engine.state_errors.StateError: Duplicate rejected ...
+```
+
+- **Non-fatal:** caught in `discuss.py`; the discussion still starts and rounds
+  enqueue. The **daemon** dispatch path does not hit it (0 `Duplicate rejected`
+  in daemon logs).
+- **Cause:** the shadow was a workaround for *before* the primary path wrote
+  SQLite; now both write, so the shadow is redundant.
+- **Fix:** drop `_enqueue_sqlite_shadow`, or have it check-existence / swallow
+  the duplicate silently instead of logging a traceback.
+
+### Verdict
+
+`ai_driven` autonomy is unblocked on 1.62.17. Remaining work is the cosmetic
+shadow-enqueue traceback above; everything that previously broke dispatch is
+fixed.
