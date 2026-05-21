@@ -15,6 +15,9 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # State machine mapping
@@ -125,7 +128,8 @@ def run_approve(
     except Exception as exc:
         try:
             conn.close()
-        except Exception:
+        except Exception as e:
+            logger.warning("approve.py unexpected error: %s", e, exc_info=True)
             pass
         print(f"Error: {exc}", file=sys.stderr)
         return 1

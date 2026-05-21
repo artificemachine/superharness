@@ -14,6 +14,9 @@ import os
 import shutil
 import sys
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def run_migrate_state(
     project_dir: str,
@@ -95,7 +98,8 @@ def run_migrate_state(
         if os.path.isfile(xdg_db):
             try:
                 os.remove(xdg_db)
-            except Exception:
+            except Exception as e:
+                logger.warning("migrate_state.py unexpected error: %s", e, exc_info=True)
                 pass
         return 1
 

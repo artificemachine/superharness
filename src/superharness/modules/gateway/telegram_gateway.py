@@ -109,7 +109,8 @@ class GatewayListener:
                     update_id: int = update["update_id"]
                     self._handle_update(update)
                     offset = update_id + 1
-            except Exception:
+            except Exception as e:
+                logger.warning("telegram_gateway.py unexpected error: %s", e, exc_info=True)
                 logger.exception("Error in gateway poll loop; sleeping %ss", sleep_on_error_s)
                 time.sleep(sleep_on_error_s)
 
@@ -159,10 +160,12 @@ class GatewayListener:
                     conn.close()
                     return "duplicate"
                 conn.close()
-            except Exception:
+            except Exception as e:
+                logger.warning("telegram_gateway.py unexpected error: %s", e, exc_info=True)
                 conn.close()
                 raise
-        except Exception:
+        except Exception as e:
+            logger.warning("telegram_gateway.py unexpected error: %s", e, exc_info=True)
             logger.exception("Gateway: DB check failed for message_id=%s", message_id)
             return "error"
 
@@ -193,10 +196,12 @@ class GatewayListener:
                     return "duplicate"
                 row_id = row.id
                 conn.close()
-            except Exception:
+            except Exception as e:
+                logger.warning("telegram_gateway.py unexpected error: %s", e, exc_info=True)
                 conn.close()
                 raise
-        except Exception:
+        except Exception as e:
+            logger.warning("telegram_gateway.py unexpected error: %s", e, exc_info=True)
             logger.exception("Gateway: DB insert failed for message_id=%s", message_id)
             return "error"
 
@@ -213,9 +218,11 @@ class GatewayListener:
                 )
                 conn.commit()
                 conn.close()
-            except Exception:
+            except Exception as e:
+                logger.warning("telegram_gateway.py unexpected error: %s", e, exc_info=True)
                 conn.close()
-        except Exception:
+        except Exception as e:
+            logger.warning("telegram_gateway.py unexpected error: %s", e, exc_info=True)
             logger.exception("Gateway: failed to update command status for message_id=%s", message_id)
 
         # 7. Reply
@@ -256,7 +263,8 @@ class GatewayListener:
                 conn.commit()
                 conn.close()
                 return {"message": f"Task {parsed.task_id} {parsed.command}d."}, "executed"
-            except Exception:
+            except Exception as e:
+                logger.warning("telegram_gateway.py unexpected error: %s", e, exc_info=True)
                 conn.close()
                 raise
         except Exception as exc:
@@ -280,7 +288,8 @@ class GatewayListener:
                 return data.get("result", [])
             logger.warning("getUpdates returned not-ok: %s", data)
             return []
-        except Exception:
+        except Exception as e:
+            logger.warning("telegram_gateway.py unexpected error: %s", e, exc_info=True)
             logger.exception("getUpdates failed")
             return []
 
@@ -298,5 +307,6 @@ class GatewayListener:
                 json={"chat_id": chat_id, "text": text},
                 timeout=10,
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("telegram_gateway.py unexpected error: %s", e, exc_info=True)
             logger.exception("sendMessage failed (chat_id=%s)", chat_id)

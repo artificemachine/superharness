@@ -9,6 +9,9 @@ import getpass
 import sys
 from typing import Optional
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # ANSI helpers
@@ -60,7 +63,8 @@ def print_error(text: str) -> None:
 def is_interactive_stdin() -> bool:
     try:
         return bool(sys.stdin.isatty())
-    except Exception:
+    except Exception as e:
+        logger.warning("prompts.py unexpected error: %s", e, exc_info=True)
         return False
 
 
@@ -126,7 +130,8 @@ def _curses_choice(question: str, choices: list[str], default: int) -> int:
             curses.start_color()
             curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
             bold_green = curses.color_pair(1) | curses.A_BOLD
-        except Exception:
+        except Exception as e:
+            logger.warning("prompts.py unexpected error: %s", e, exc_info=True)
             bold_green = curses.A_BOLD
         current = default
         while True:
@@ -149,7 +154,8 @@ def _curses_choice(question: str, choices: list[str], default: int) -> int:
 
     try:
         return curses.wrapper(_run)
-    except Exception:
+    except Exception as e:
+        logger.warning("prompts.py unexpected error: %s", e, exc_info=True)
         return -1
 
 
@@ -170,7 +176,8 @@ def _curses_checklist(
             curses.start_color()
             curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
             bold_green = curses.color_pair(1) | curses.A_BOLD
-        except Exception:
+        except Exception as e:
+            logger.warning("prompts.py unexpected error: %s", e, exc_info=True)
             bold_green = curses.A_BOLD
         selected = set(pre_selected)
         current = 0
@@ -197,7 +204,8 @@ def _curses_checklist(
 
     try:
         return curses.wrapper(_run)
-    except Exception:
+    except Exception as e:
+        logger.warning("prompts.py unexpected error: %s", e, exc_info=True)
         return None
 
 

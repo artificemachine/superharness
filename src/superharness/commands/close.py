@@ -13,6 +13,9 @@ from datetime import datetime, timezone
 
 from superharness.utils.paths import is_project_initialized
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 _JSON_MODE = False
 _JSON_CTX: dict = {}
@@ -207,7 +210,8 @@ def close_task(
         rules_text = all_rules_text(project_dir)
         if rules_text:
             handoff_data["rules"] = rules_text
-    except Exception:
+    except Exception as e:
+        logger.warning("close.py unexpected error: %s", e, exc_info=True)
         pass
     try:
         from superharness.engine.state_writer import upsert_handoff
@@ -220,16 +224,16 @@ def close_task(
     try:
         from superharness.commands.task import _sync_inbox_after_status
         _sync_inbox_after_status(project_dir, task_id, "done")
-    except Exception:
+    except Exception as e:
+        logger.warning("close.py unexpected error: %s", e, exc_info=True)
         pass
-
     # Vault integration
     try:
         from superharness.commands.task import _vault_write_task_done
         _vault_write_task_done(project_dir, task_id, {"id": task_id, "status": "done", "summary": summary}, summary)
-    except Exception:
+    except Exception as e:
+        logger.warning("close.py unexpected error: %s", e, exc_info=True)
         pass
-
     # Worktree cleanup — remove the dispatch worktree recorded for this task
     try:
         from superharness.engine.db import get_connection, init_db

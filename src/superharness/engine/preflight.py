@@ -15,6 +15,9 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Data model
@@ -153,7 +156,8 @@ def _check_dependencies(task: dict, project_dir: str) -> list[PreflightCheck]:
         from superharness.engine import state_reader as _sr
         tasks = _sr.get_tasks(project_dir)
         tasks_by_id = {str(t.get("id", "")): t for t in tasks if isinstance(t, dict)}
-    except Exception:
+    except Exception as e:
+        logger.warning("preflight.py unexpected error: %s", e, exc_info=True)
         tasks_by_id = {}
 
     for dep_id in dep_ids:
@@ -185,7 +189,8 @@ def _check_git_state(project_dir: str) -> list[PreflightCheck]:
                 message=f"Working tree has {len(dirty_lines)} uncommitted change(s).",
                 detail="The agent may be confused by existing modifications. Consider committing first.",
             )]
-    except Exception:
+    except Exception as e:
+        logger.warning("preflight.py unexpected error: %s", e, exc_info=True)
         pass
     return [PreflightCheck(id="git_clean", level=LEVEL_INFO, message="Working tree is clean.")]
 
@@ -207,7 +212,8 @@ def _check_prior_failures(project_dir: str, task_id: str) -> list[PreflightCheck
         msg = f"{len(rows)} prior failure(s) recorded"
         msg += " — fix hints will be injected into context."
         return [PreflightCheck(id="prior_failures", level=level, message=msg)]
-    except Exception:
+    except Exception as e:
+        logger.warning("preflight.py unexpected error: %s", e, exc_info=True)
         return []
 
 

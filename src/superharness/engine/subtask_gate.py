@@ -17,6 +17,9 @@ import yaml
 
 from superharness.engine.subtask import is_subtask_resolved
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class GateResult:
@@ -32,7 +35,8 @@ def _load_profile(project_dir: str) -> dict:
     try:
         with open(path) as f:
             return yaml.safe_load(f) or {}
-    except Exception:
+    except Exception as e:
+        logger.warning("subtask_gate.py unexpected error: %s", e, exc_info=True)
         return {}
 
 

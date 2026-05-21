@@ -15,6 +15,9 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 class BudgetStatus(str, Enum):
     OK = "ok"
@@ -42,7 +45,8 @@ def _load_budget_config(project_dir: str) -> dict:
         import yaml
         doc = yaml.safe_load(profile.read_text()) or {}
         return doc.get("budget") or {}
-    except Exception:
+    except Exception as e:
+        logger.warning("model_budget.py unexpected error: %s", e, exc_info=True)
         return {}
 
 

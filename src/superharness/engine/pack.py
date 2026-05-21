@@ -42,6 +42,9 @@ from typing import Literal
 
 import yaml
 
+import logging
+logger = logging.getLogger(__name__)
+
 PACK_FORMAT_VERSION = "1"
 
 PORTABLE_ENTRIES = [
@@ -119,7 +122,8 @@ def scrub_yaml_doc(content: str) -> str:
     """Parse YAML, scrub absolute paths, return scrubbed YAML string."""
     try:
         doc = yaml.safe_load(content)
-    except Exception:
+    except Exception as e:
+        logger.warning("pack.py unexpected error: %s", e, exc_info=True)
         return _scrub_string(content)
     if doc is None:
         return content

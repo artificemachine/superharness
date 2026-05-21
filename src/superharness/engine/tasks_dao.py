@@ -307,6 +307,29 @@ def get_unblocked(
 
     return [_row_to_task(conn, row, deps_map[row["id"]]) for row in rows]
 
+def _safe_json_load(raw: str | None, default: Any = None) -> Any:
+    """Parse JSON without crashing on malformed data. Returns default on failure."""
+    if not raw:
+        return default
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError) as e:
+        logger = __import__("logging").getLogger(__name__)
+        logger.warning("Failed to parse JSON field: %s", e)
+        return default
+
+
+def _safe_get(row: sqlite3.Row, key: str, default: Any = None, *, coerce: type | None = None) -> Any:
+    """Get a column value that may not exist on the row (pre-migration DBs)."""
+    keys = row.keys() if hasattr(row, "keys") else []
+    if key not in keys:
+        return default
+    val = row[key]
+    if coerce is bool:
+        return bool(val)
+    return val
+
+
 def _row_to_task(conn: sqlite3.Connection, row: sqlite3.Row, blocked_by: list[str] | None = None) -> TaskRow:
     if blocked_by is None:
         task_id = row["id"]
@@ -325,42 +348,42 @@ def _row_to_task(conn: sqlite3.Connection, row: sqlite3.Row, blocked_by: list[st
         effort=row["effort"],
         project_path=row["project_path"],
         development_method=row["development_method"],
-        acceptance_criteria=json.loads(row["acceptance_criteria"]) if row["acceptance_criteria"] else [],
-        test_types=json.loads(row["test_types"]) if row["test_types"] else [],
-        out_of_scope=json.loads(row["out_of_scope"]) if row["out_of_scope"] else [],
-        definition_of_done=json.loads(row["definition_of_done"]) if row["definition_of_done"] else [],
+        acceptance_criteria=_safe_json_load(row["acceptance_criteria"], []),
+        test_types=_safe_json_load(row["test_types"], []),
+        out_of_scope=_safe_json_load(row["out_of_scope"], []),
+        definition_of_done=_safe_json_load(row["definition_of_done"], []),
         context=row["context"],
-        tdd=json.loads(row["tdd"]) if row["tdd"] else None,
+        tdd=_safe_json_load(row["tdd"]),
         version=row["version"],
         created_at=row["created_at"],
-        updated_at=row["updated_at"] if "updated_at" in keys else None,
+        updated_at=_safe_get(row, "updated_at"),
         plan_proposed_at=row["plan_proposed_at"],
         plan_approved_at=row["plan_approved_at"],
         in_progress_at=row["in_progress_at"],
         report_ready_at=row["report_ready_at"],
-        review_requested_at=row["review_requested_at"] if "review_requested_at" in keys else None,
+        review_requested_at=_safe_get(row, "review_requested_at"),
         done_at=row["done_at"],
         cancelled_at=row["cancelled_at"],
         blocked_by=blocked_by,
-        parent_id=row["parent_id"] if "parent_id" in keys else None,
-        verified=bool(row["verified"]) if "verified" in keys else False,
-        verified_at=row["verified_at"] if "verified_at" in keys else None,
-        verified_by=row["verified_by"] if "verified_by" in keys else None,
-        deadline_minutes=row["deadline_minutes"] if "deadline_minutes" in keys else None,
-        failed_at=row["failed_at"] if "failed_at" in keys else None,
-        stopped_at=row["stopped_at"] if "stopped_at" in keys else None,
-        failed_reason=row["failed_reason"] if "failed_reason" in keys else None,
-        archived_at=row["archived_at"] if "archived_at" in keys else None,
-        archived_reason=row["archived_reason"] if "archived_reason" in keys else None,
-        model_tier=row["model_tier"] if "model_tier" in keys else None,
-        pause_reason=row["pause_reason"] if "pause_reason" in keys else None,
-        worktree_path=row["worktree_path"] if "worktree_path" in keys else None,
-        blocked_by_raw=row["blocked_by_raw"] if "blocked_by_raw" in keys else None,
-        workflow=row["workflow"] if "workflow" in keys else None,
-        autonomy=row["autonomy"] if "autonomy" in keys else None,
-        require_tdd=(bool(row["require_tdd"]) if row["require_tdd"] is not None else None) if "require_tdd" in keys else None,
-        extras_json=row["extras_json"] if "extras_json" in keys else None,
-        locked_contract=row["locked_contract"] if "locked_contract" in keys else None,
-        contract_locked_at=row["contract_locked_at"] if "contract_locked_at" in keys else None,
-        estimated_minutes=row["estimated_minutes"] if "estimated_minutes" in keys else None,
+        parent_id=_safe_get(row, "parent_id"),
+        verified=_safe_get(row, "verified", False, coerce=bool),
+        verified_at=_safe_get(row, "verified_at"),
+        verified_by=_safe_get(row, "verified_by"),
+        deadline_minutes=_safe_get(row, "deadline_minutes"),
+        failed_at=_safe_get(row, "failed_at"),
+        stopped_at=_safe_get(row, "stopped_at"),
+        failed_reason=_safe_get(row, "failed_reason"),
+        archived_at=_safe_get(row, "archived_at"),
+        archived_reason=_safe_get(row, "archived_reason"),
+        model_tier=_safe_get(row, "model_tier"),
+        pause_reason=_safe_get(row, "pause_reason"),
+        worktree_path=_safe_get(row, "worktree_path"),
+        blocked_by_raw=_safe_get(row, "blocked_by_raw"),
+        workflow=_safe_get(row, "workflow"),
+        autonomy=_safe_get(row, "autonomy"),
+        require_tdd=_safe_get(row, "require_tdd", coerce=bool) if _safe_get(row, "require_tdd") is not None else None,
+        extras_json=_safe_get(row, "extras_json"),
+        locked_contract=_safe_get(row, "locked_contract"),
+        contract_locked_at=_safe_get(row, "contract_locked_at"),
+        estimated_minutes=_safe_get(row, "estimated_minutes"),
     )

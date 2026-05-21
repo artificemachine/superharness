@@ -18,6 +18,9 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import logging
+logger = logging.getLogger(__name__)
+
 # --- Stack detection table ---
 STACK_SIGNALS = [
     ("package.json",       "Node"),
@@ -102,7 +105,8 @@ def detect_repo(project_dir: Path) -> str:
         if "bitbucket" in url:
             return "bitbucket"
         return "other"
-    except Exception:
+    except Exception as e:
+        logger.warning("detect.py unexpected error: %s", e, exc_info=True)
         return "none"
 
 
@@ -131,7 +135,8 @@ def detect_team_size(project_dir: Path) -> str:
         if count <= 5:
             return "small"
         return "team"
-    except Exception:
+    except Exception as e:
+        logger.warning("detect.py unexpected error: %s", e, exc_info=True)
         return "solo"
 
 
@@ -165,7 +170,8 @@ def detect_status(project_dir: Path) -> str:
             if "maintenance" in content or "deprecated" in content:
                 return "maintenance"
         return "active"
-    except Exception:
+    except Exception as e:
+        logger.warning("detect.py unexpected error: %s", e, exc_info=True)
         return "greenfield"
 
 

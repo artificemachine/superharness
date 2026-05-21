@@ -20,6 +20,9 @@ from datetime import datetime, timezone
 
 import yaml
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -42,7 +45,8 @@ def _load_profile(project_dir: str) -> dict:
     try:
         with open(path, encoding="utf-8") as f:
             return yaml.safe_load(f.read()) or {}
-    except Exception:
+    except Exception as e:
+        logger.warning("review_escalation.py unexpected error: %s", e, exc_info=True)
         return {}
 
 
@@ -64,7 +68,8 @@ def escalate_stale_reviews(project_dir: str, timeout_minutes: int | None = None)
     from superharness.engine import state_reader
     try:
         tasks = state_reader.get_tasks(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("review_escalation.py unexpected error: %s", e, exc_info=True)
         return 0
 
     changed = 0

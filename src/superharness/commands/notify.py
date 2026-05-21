@@ -13,6 +13,9 @@ from datetime import datetime, timezone
 
 from superharness.engine.yaml_helpers import safe_load
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _watcher_ok_darwin(project_dir: str) -> tuple[bool, str]:
     slug = re.sub(r"[^A-Za-z0-9]+", "-", os.path.basename(project_dir))
@@ -42,7 +45,8 @@ def _retry_high_ids(inbox_file: str, threshold: int) -> list[str]:
     try:
         from superharness.engine.state_reader import get_inbox_items
         items = get_inbox_items(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("notify.py unexpected error: %s", e, exc_info=True)
         return ids
     for item in items:
         if not isinstance(item, dict):
@@ -172,7 +176,8 @@ def main(argv: list[str] | None = None) -> None:
             sent, backend = dispatch_notification(message)
             if sent:
                 print(f"notify: sent via {backend}")
-        except Exception:
+        except Exception as e:
+            logger.warning("notify.py unexpected error: %s", e, exc_info=True)
             pass
         # Webhook fallback
         if opts.webhook_url and shutil.which("curl"):

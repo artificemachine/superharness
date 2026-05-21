@@ -18,6 +18,9 @@ from pathlib import Path
 
 import yaml
 
+import logging
+logger = logging.getLogger(__name__)
+
 from superharness.ui.prompts import (
     print_header,
     print_info,
@@ -48,7 +51,8 @@ def _load_profile(project_dir: Path) -> dict:
     try:
         doc = yaml.safe_load(profile_file.read_text(encoding="utf-8")) or {}
         return doc if isinstance(doc, dict) else {}
-    except Exception:
+    except Exception as e:
+        logger.warning("gateway.py unexpected error: %s", e, exc_info=True)
         return {}
 
 

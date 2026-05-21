@@ -5,6 +5,9 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -22,7 +25,8 @@ def get_contract(conn: sqlite3.Connection) -> list[dict]:
         cursor = conn.execute("SELECT * FROM tasks ORDER BY created_at ASC")
         rows = cursor.fetchall()
         return [_row_to_dict(r) for r in rows]
-    except Exception:
+    except Exception as e:
+        logger.warning("contract.py unexpected error: %s", e, exc_info=True)
         return []
 
 
@@ -32,7 +36,8 @@ def get_task(conn: sqlite3.Connection, task_id: str) -> Optional[dict]:
         cursor = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
         row = cursor.fetchone()
         return _row_to_dict(row) if row else None
-    except Exception:
+    except Exception as e:
+        logger.warning("contract.py unexpected error: %s", e, exc_info=True)
         return None
 
 

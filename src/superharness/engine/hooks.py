@@ -6,6 +6,9 @@ import os
 import yaml
 from dataclasses import dataclass, field
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class HookDef:
@@ -31,9 +34,9 @@ class HookRegistry:
                 continue
             try:
                 self._execute_handler(hook.handler_path, data or {})
-            except Exception:
+            except Exception as e:
+                logger.warning("hooks.py unexpected error: %s", e, exc_info=True)
                 pass
-
     def _execute_handler(self, path: str, data: dict) -> None:
         """Execute a handler script with event data as JSON env var."""
         import json
@@ -84,6 +87,7 @@ def load_hooks_from_dir(project_dir: str) -> int:
             for event in hook.events:
                 registry.register(event, hook)
             count += 1
-        except Exception:
+        except Exception as e:
+            logger.warning("hooks.py unexpected error: %s", e, exc_info=True)
             pass
     return count

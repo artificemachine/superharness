@@ -17,6 +17,9 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Data model
@@ -76,10 +79,9 @@ def record_dispatch(
             os.write(fd, line.encode("utf-8"))
         finally:
             os.close(fd)
-    except Exception:
+    except Exception as e:
+        logger.warning("benchmark.py unexpected error: %s", e, exc_info=True)
         pass
-
-
 def load_records(project_dir: str) -> list[dict]:
     """Load all benchmark records from benchmark.jsonl."""
     path = _benchmark_path(project_dir)
@@ -94,7 +96,8 @@ def load_records(project_dir: str) -> list[dict]:
                     records.append(json.loads(line))
                 except json.JSONDecodeError:
                     pass
-    except Exception:
+    except Exception as e:
+        logger.warning("benchmark.py unexpected error: %s", e, exc_info=True)
         pass
     return records
 

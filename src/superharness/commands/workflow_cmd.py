@@ -19,6 +19,9 @@ from pathlib import Path
 
 import yaml
 
+import logging
+logger = logging.getLogger(__name__)
+
 VALID_AUTONOMY = ("ai_driven",)
 VALID_PRESETS = ("implementation", "quick", "discussion", "review", "approval", "note")
 
@@ -45,7 +48,8 @@ def _load_profile(project: str) -> dict:
         return {}
     try:
         return yaml.safe_load(p.read_text()) or {}
-    except Exception:
+    except Exception as e:
+        logger.warning("workflow_cmd.py unexpected error: %s", e, exc_info=True)
         return {}
 
 

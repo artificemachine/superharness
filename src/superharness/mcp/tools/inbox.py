@@ -6,6 +6,9 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -37,7 +40,8 @@ def get_inbox(
             d.setdefault("to", d.get("target_agent", ""))
             result.append(d)
         return result
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox.py unexpected error: %s", e, exc_info=True)
         return []
 
 

@@ -18,12 +18,16 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _parse_rule(path: Path) -> dict[str, Any] | None:
     """Parse a rule .md file with YAML frontmatter. Returns None on failure."""
     try:
         text = path.read_text(encoding="utf-8")
-    except Exception:
+    except Exception as e:
+        logger.warning("rules.py unexpected error: %s", e, exc_info=True)
         return None
 
     # Extract YAML frontmatter between --- markers

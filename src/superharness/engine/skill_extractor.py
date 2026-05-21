@@ -15,6 +15,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import logging
+logger = logging.getLogger(__name__)
+
 try:
     import yaml
 except ImportError:
@@ -119,7 +122,8 @@ def _get_diff_summary(project_dir: str, base_ref: str = "HEAD~1") -> dict[str, A
             summary["test_files_changed"] = any(
                 "test" in f.lower() or f.startswith("tests/") for f in files
             )
-    except Exception:
+    except Exception as e:
+        logger.warning("skill_extractor.py unexpected error: %s", e, exc_info=True)
         pass
     return summary
 
@@ -207,7 +211,8 @@ def _load_skills(skills_file: str) -> dict:
         if "skills" not in data or not isinstance(data["skills"], list):
             data["skills"] = []
         return data
-    except Exception:
+    except Exception as e:
+        logger.warning("skill_extractor.py unexpected error: %s", e, exc_info=True)
         return {"skills": []}
 
 
@@ -252,9 +257,9 @@ def record_skill(project_dir: str, task: dict) -> ExtractedSkill | None:
 
     try:
         _save_skills(skills_file, data)
-    except Exception:
+    except Exception as e:
+        logger.warning("skill_extractor.py unexpected error: %s", e, exc_info=True)
         pass
-
     return skill
 
 

@@ -8,6 +8,9 @@ import json
 import os
 from datetime import datetime, timezone
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _events_path(project_path: str) -> str:
     return os.path.join(project_path, ".superharness", "events.jsonl")
@@ -38,7 +41,8 @@ class EventStream:
                 except json.JSONDecodeError:
                     pass
             return result
-        except Exception:
+        except Exception as e:
+            logger.warning("events.py unexpected error: %s", e, exc_info=True)
             return []
 
     def append_event(self, project_path: str, payload: dict) -> None:

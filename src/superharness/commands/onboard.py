@@ -27,6 +27,9 @@ from superharness.engine.db import get_connection, init_db
 from superharness.engine import tasks_dao, inbox_dao
 from superharness.engine.tasks_dao import TaskRow
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Step status helpers
@@ -365,7 +368,8 @@ def _step_task(project: Path, state: dict, task_title: Optional[str]) -> Optiona
     try:
         from superharness.engine import state_reader as _sr
         doc = _sr.get_contract_doc(str(project))
-    except Exception:
+    except Exception as e:
+        logger.warning("onboard.py unexpected error: %s", e, exc_info=True)
         doc = {"id": "main", "tasks": []}
     doc = doc or {"id": "main", "tasks": []}
     tasks = doc.get("tasks") or []
@@ -486,7 +490,8 @@ def _read_profile(project: Path) -> dict:
     try:
         doc = yaml.safe_load(profile_file.read_text(encoding="utf-8")) or {}
         return doc if isinstance(doc, dict) else dict(DEFAULT_PROFILE)
-    except Exception:
+    except Exception as e:
+        logger.warning("onboard.py unexpected error: %s", e, exc_info=True)
         return dict(DEFAULT_PROFILE)
 
 

@@ -12,6 +12,9 @@ from datetime import datetime, timezone
 
 from superharness.engine.yaml_helpers import safe_load
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Watcher / heartbeat checks
@@ -87,9 +90,9 @@ def _heartbeat_status(project_dir: str, harness_dir: str) -> tuple[str, str]:
                 if age >= stale_seconds:
                     return "stale", f"last heartbeat {age_min}m ago{suffix}"
                 return "ok", f"last heartbeat {age}s ago{suffix}"
-    except Exception:
+    except Exception as e:
+        logger.warning("status.py unexpected error: %s", e, exc_info=True)
         pass
-
     hb_file = os.path.join(hb_project, ".superharness", "watcher.heartbeat")
     if not os.path.isfile(hb_file):
         return "missing", "no heartbeat file"
@@ -106,7 +109,8 @@ def _heartbeat_status(project_dir: str, harness_dir: str) -> tuple[str, str]:
         if age >= stale_seconds:
             return "stale", f"last heartbeat {age_min}m ago{suffix}"
         return "ok", f"last heartbeat {age}s ago{suffix}"
-    except Exception:
+    except Exception as e:
+        logger.warning("status.py unexpected error: %s", e, exc_info=True)
         return "missing", "invalid heartbeat timestamp"
 
 
@@ -741,7 +745,8 @@ def _active_worktrees(project_dir: str) -> list[dict]:
     try:
         from superharness.engine.state_reader import get_tasks
         tasks = get_tasks(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("status.py unexpected error: %s", e, exc_info=True)
         return []
 
     now = datetime.now(timezone.utc)
@@ -846,7 +851,8 @@ def main(argv: list[str] | None = None) -> None:
                 approved = isinstance(gate, dict) and gate.get("approved_by_user") is True
                 if status == "pending_user_approval" or (required and not approved):
                     approvals_pending += 1
-            except Exception:
+            except Exception as e:
+                logger.warning("status.py unexpected error: %s", e, exc_info=True)
                 continue
 
     # Retry high

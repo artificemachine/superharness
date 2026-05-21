@@ -167,6 +167,8 @@ class LoopGuard:
             self._state[task_id] = count
             self._save()
             if count >= WARN_ESCALATION_COUNT:
+                self._state.pop(task_id, None)
+                self._save()
                 return {"action": "block", "reason": f"warn escalated after {count} cycles"}
             return {"action": "warn", "reason": loop_result.get("reason", "loop warn")}
 

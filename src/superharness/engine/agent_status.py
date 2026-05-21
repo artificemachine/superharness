@@ -25,6 +25,9 @@ from typing import Any
 
 import yaml
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 SCHEMA_VERSION = "1"
 VALID_LIVENESS = frozenset({"active", "idle", "stopping", "dead"})
@@ -124,7 +127,8 @@ def _parse_record(data: dict[str, Any]) -> AgentStatusRecord | None:
             next_wake_at=data.get("next_wake_at") or None,
             budget=data.get("budget") or None,
         )
-    except Exception:
+    except Exception as e:
+        logger.warning("agent_status.py unexpected error: %s", e, exc_info=True)
         return None
 
 
@@ -141,7 +145,8 @@ def read_agent_status(
         if not isinstance(data, dict):
             return None
         return _parse_record(data)
-    except Exception:
+    except Exception as e:
+        logger.warning("agent_status.py unexpected error: %s", e, exc_info=True)
         return None
 
 
@@ -166,7 +171,8 @@ def read_all_agent_statuses(
             record = _parse_record(data)
             if record is not None:
                 result[runtime_name] = record
-        except Exception:
+        except Exception as e:
+            logger.warning("agent_status.py unexpected error: %s", e, exc_info=True)
             continue
     return result
 
@@ -240,7 +246,8 @@ def agent_status_health(
             ts = record.updated_at.replace("Z", "+00:00")
             updated_dt = datetime.fromisoformat(ts)
             age = int((datetime.now(timezone.utc) - updated_dt).total_seconds())
-        except Exception:
+        except Exception as e:
+            logger.warning("agent_status.py unexpected error: %s", e, exc_info=True)
             age = -1
 
         if stale:

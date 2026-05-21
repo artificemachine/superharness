@@ -14,6 +14,9 @@ from typing import Any
 
 import yaml
 
+import logging
+logger = logging.getLogger(__name__)
+
 _OPERATOR_STATE_FILE = ".superharness/operator-state.json"
 
 
@@ -70,9 +73,9 @@ class Operator:
                     if str(self.project_dir).lower() in proc_info:
                         os.kill(pid, signal.SIGKILL)
                         time.sleep(1)
-        except Exception:
+        except Exception as e:
+            logger.warning("operator.py unexpected error: %s", e, exc_info=True)
             pass
-
     def _find_available_port(self, start_port: int) -> int:
         """Find the next available TCP port."""
         port = start_port
@@ -186,12 +189,14 @@ class Operator:
                 data = yaml.safe_load(hb_yaml.read_text())
                 ts_str = data.get("written_at")
                 if ts_str: return self._check_ts_age(ts_str, "watcher (yaml)", stale_threshold_sec)
-            except Exception: pass
+            except Exception as e:
+                logger.warning("operator.py: failed to read watcher yaml heartbeat: %s", e, exc_info=True)
         if hb_txt.exists():
             try:
                 ts_str = hb_txt.read_text().strip()
                 if ts_str: return self._check_ts_age(ts_str, "watcher (txt)", stale_threshold_sec)
-            except Exception: pass
+            except Exception as e:
+                logger.warning("operator.py: failed to read watcher txt heartbeat: %s", e, exc_info=True)
         return HealthStatus(False, "watcher", "Heartbeat missing")
 
     def _check_ts_age(self, ts_str: str, label: str, threshold: int) -> HealthStatus:
@@ -216,7 +221,8 @@ class Operator:
                 pid = int(lock_file.read_text().strip())
                 if not self._is_pid_alive(pid):
                     conflicts.append(HealthStatus(False, "lock", f"Stale lock (PID {pid} dead)"))
-            except Exception:
+            except Exception as e:
+                logger.warning("operator.py unexpected error: %s", e, exc_info=True)
                 conflicts.append(HealthStatus(False, "lock", "Malformed lock"))
         return conflicts
 
