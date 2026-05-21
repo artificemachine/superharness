@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from superharness.cli import _find_dashboard_processes, _is_dashboard_running
+from superharness.commands.dashboard import _find_dashboard_processes, _is_dashboard_running
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

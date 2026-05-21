@@ -17,17 +17,17 @@ from click.testing import CliRunner
 
 from superharness.cli import (
     _cmd,
-    _find_dashboard_processes,
     _is_git_repo,
-    _is_dashboard_running,
     _run_module,
-    _run_dashboard,
     _run_script,
-    cmd_dashboard_kill,
-    cmd_dashboard_list,
     cmd_shux,
     cmd_version,
     main,
+)
+from superharness.commands.dashboard import (
+    _find_dashboard_processes,
+    _is_dashboard_running,
+    run_dashboard as _run_dashboard,
 )
 
 
