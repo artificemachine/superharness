@@ -109,3 +109,20 @@ If a task has **>3 acceptance criteria** or touches **>4 files**, decompose into
 - Some tests need a SQLite DB in `.superharness/` — use test fixtures in `tests/fixtures/`.
 - Dashboard port-detection tests fail when no dashboard is running (pre-existing, safe to ignore).
 - Use `uv` for running Python: `uv run pytest`, `uv run python -m superharness`.
+
+## Self-Improvement Health Check
+
+Every 3-5 sessions or when starting a new task, verify the self-learning systems are alive:
+
+```bash
+shux profile show                          # behavioral profile — should have data
+shux memory-roots list                     # global memory scan roots — should be configured
+shux daemon status                         # watcher/daemon — should be running
+
+# Deep check:
+ls ~/.config/superharness/behavioral/      # profile files — should exist
+ls ~/.config/superharness/memory/          # global memory — should have entries
+cat .superharness/memory/pitfalls.md       # project learnings
+```
+
+If any system is empty or down, report it to the operator with: what's missing, what should be there, and the fix command (e.g. `shux daemon start`).
