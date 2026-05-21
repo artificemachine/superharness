@@ -1,7 +1,7 @@
 # Zero-Touch Adaptive Layer — Behavioral Profile for Superharness
 
-**Date:** 2026-05-21 | **Iteration 4 of Hermes adaptation**
-**Status:** Concept
+**Date:** 2026-05-21 | **Iteration 4 + 5 of Hermes adaptation**
+**Status:** Implemented (Iteration 4) + Improvements in progress (Iteration 5)
 
 ---
 
@@ -279,3 +279,52 @@ Low-confidence patterns never override explicit user settings or locked keys. Th
 | 6 | Verification loop | No feedback on adaptation quality | A/B test every profile change |
 | 7 | User visibility + override | Black-box distrust | `shux profile show/edit` with lock |
 | 8 | Confidence scoring | Sparse data overconfidence | Low/medium/high tiers with language tone |
+
+---
+
+## Iteration 5 — Production Hardening (4 improvements)
+
+### I5.1: Deduplicate Global Memory
+
+**Problem:** Promoted patterns accumulate duplicates. Same pattern "SIGKILL leaves stale lock dirs" appears 4 times in Global Learning because 4 projects promoted it independently. Wastes tokens and reduces signal-to-noise.
+
+**Fix:** In `get_dispatch_memory_context()`, collapse identical lines with a count:
+```
+2026-05-20: SIGKILL leaves stale watcher lock dirs (seen 4 times)
+```
+Implementation in `engine/agent_memory.py:_read_memory_file()` — use Counter, show count for lines appearing >1 time. Single occurrences unchanged.
+
+### I5.2: Wire Profile Extraction into Watcher Cycle
+
+**Problem:** Profile only updates when `context_hint.py` is called (dispatch time). If no tasks dispatch for hours, the profile goes stale. Should refresh periodically like memory promotion does.
+
+**Fix:** Add `_refresh_behavioral_profile()` to `inbox_watch.py` watcher cycle. Runs every N cycles (default 5). Calls `extract_all_profiles()`, saves results to `~/.config/superharness/behavioral/`. Idempotent — only writes if data changed since last extraction.
+
+### I5.3: Auto-Apply Adaptive Rules
+
+**Problem:** `evaluate_rules()` detects `bump_autonomy` but the watcher never acts on it. The rules engine is analytics-only, not action.
+
+**Fix:** After profile refresh, evaluate rules. If triggered:
+- `bump_autonomy` → update `profile.yaml` autonomy field, write ledger entry
+- `lower_autonomy` → downgrade `profile.yaml`, write ledger entry with reason
+- `enable_tdd` → set `require_tdd: true` on new tasks
+- `set_default_model` → update `profile.yaml default_model`
+- `relax_review` → update review gate settings
+
+Each adaptation writes a ledger entry so the user can trace why autonomy changed.
+
+### I5.4: Auto-Record Reviews on Task Close/Verify
+
+**Problem:** `review_style` profile always shows `0 reviews` because nothing populates `review_store`. Every task close should seed review data so the profile learns.
+
+**Fix:** In `state_writer.py:set_task_status()` — when status transitions to `done` or `review_passed`, auto-record a review entry: score=10 for `done` (success), score based on verification for other statuses. Also in `commands/verify.py` and `commands/close.py` — write to `review_store`.
+
+## Implementation Plan (Iteration 5)
+
+| # | Component | Effort | Tests |
+|---|-----------|--------|-------|
+| I5.1 | Deduplicate global memory | 20 min | 2 tests |
+| I5.2 | Watcher profile refresh | 30 min | 2 tests |
+| I5.3 | Auto-apply adaptive rules | 1h | 3 tests |
+| I5.4 | Auto-record reviews | 1h | 2 tests |
+| **Total** | | **~3h** | **9 tests** |

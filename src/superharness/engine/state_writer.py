@@ -158,6 +158,14 @@ def set_task_status(
         if status in _ACTIVE_WORK_STATES:
             _ensure_active_inbox(project_dir, task_id, task_row.owner or "claude-code", now)
 
+        # I5.4: Auto-record review on terminal statuses
+        if status in ("done", "review_passed", "failed", "stopped"):
+            try:
+                from superharness.engine.behavioral import record_review
+                record_review(project_dir, task_id, status)
+            except Exception as e:
+                logger.warning("Failed to auto-record review for %s: %s", task_id, e)
+
         return True
     except Exception as e:
         logger.warning("state_writer unexpected error: %s", e, exc_info=True)
