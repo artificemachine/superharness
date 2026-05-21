@@ -2387,6 +2387,20 @@ def _run_scripts(
         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass  # never block the watcher cycle on memory errors
 
+    # Behavioral profile: refresh + evaluate trials every 10 cycles (I5.2 + I6)
+    if _watcher_cycle_count[0] % 10 == 0:
+        try:
+            from superharness.engine.behavioral import (
+                refresh_behavioral_profile, evaluate_all_open_trials,
+            )
+            if refresh_behavioral_profile(project_dir):
+                completed = evaluate_all_open_trials(project_dir)
+                if completed:
+                    print(f"profile: {completed} trial(s) completed")
+        except Exception as e:
+            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
+            pass
+
     # Auto-retry failed inbox items that still have retries remaining
     try:
         if _should_run("auto_retry", cooldown=10):
