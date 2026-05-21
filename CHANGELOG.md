@@ -484,3 +484,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-21: fix(discussion): partial verdict must not trigger auto-consensus — require all votes to be agree/consensus before closing
 - 2026-05-21: chore(release): bump to v1.62.23 (fix(discussion): partial verdict gate)
 - 2026-05-21: fix(discussion_dispatch): Bug M — _ensure_round_task() upserts round-N task row before inbox enqueue to avoid FK constraint failure; fix logger→_log typo; add warning on enqueue failure; 2 regression tests
+- 2026-05-22: fix(discussions): Fix 1+3 — canonical is_submitted()/register_yaml_submission() in discussions_dao; watcher proactively registers YAML-only submissions into SQLite on each orphan-detect cycle; _reconcile_yaml_submissions delegates to new DAO; cmd_check_round uses is_submitted()
