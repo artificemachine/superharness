@@ -469,6 +469,8 @@ def main(argv: list[str] | None = None) -> None:
 
     # status
     p = sub.add_parser("status", add_help=True)
+    p.add_argument("disc_id", nargs="?", default=None,
+                   help="Optional discussion ID to filter output")
     p.add_argument("--project", "-p", default=None)
     p.add_argument("--task", default=None)
 
@@ -547,7 +549,8 @@ def main(argv: list[str] | None = None) -> None:
         _abort(f"Missing .superharness directory: {harness_dir}")
 
     if opts.subcmd == "status":
-        rc = cmd_status(handoff_dir, task_id=getattr(opts, "task", None))
+        filter_id = getattr(opts, "disc_id", None) or getattr(opts, "task", None)
+        rc = cmd_status(handoff_dir, task_id=filter_id)
 
     elif opts.subcmd == "approve":
         if not os.path.isdir(handoff_dir):
