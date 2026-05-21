@@ -457,3 +457,9 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-20: test(discuss): add owner-filter tests (filters silently with note, rejects when <2 AI agents remain)
 - 2026-05-20: chore(release): bump to v1.62.6 (owner-as-participant guard in discuss start)
 - 2026-05-20: ci(security): ignore PYSEC-2025-183 (disputed pyjwt CVE, no fix version, transitive via fastmcp)
+- 2026-05-20: fix(senior-review): resolve 11 defects from senior code review — duplicate _migration_v5, duplicate "todo" state machine key, 392→0 bare except Exception blocks (all now log), _safe_get/_safe_json_load helpers in tasks_dao, managed_connection context manager, env-overridable model shortcuts, removed redundant cmd_help, backup_db now raises on failure, unified duplicate _ACTIVE_WORK_STATES
+- 2026-05-20: refactor(dashboard): extract dashboard management from cli.py → commands/dashboard.py (C4 decomposition, 1,022→648 lines)
+- 2026-05-20: refactor(delegate): extract context hint builder → engine/context_hint.py (C5 decomposition, 1,460→1,356 lines)
+- 2026-05-20: refactor(dashboard-ui): deduplicate parse_utc_timestamp → engine/state_reader.parse_iso_utc (C6 partial)
+- 2026-05-20: docs(refactor): archive 19 stale/obsolete docs, consolidate 4 overlap groups, add docs/README.md index (80+→61 active docs)
+- 2026-05-20: feat(hermes): adapt 3 self-improvement mechanisms — agent-writable two-tier memory (engine/agent_memory.py), tool-loop guardrails wired into watcher log analyzer, auto-promotion project→global memory after 3 occurrences. 33 new tests. Plan: docs/PLAN-hermes-self-improvement.md. Bump to v1.62.7.

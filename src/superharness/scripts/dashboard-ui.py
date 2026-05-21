@@ -31,9 +31,9 @@ def _ensure_python_with_yaml() -> None:
     try:
         import yaml  # noqa: F401
         return
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         pass
-
     if os.environ.get("SUPERHARNESS_MONITOR_REEXEC") == "1":
         return
 
@@ -80,7 +80,8 @@ def git_context(project_dir: Path) -> dict:
                      capture_output=True, text=True, check=False)
         if r3.returncode == 0:
             result["last_commit"] = r3.stdout.strip()
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         pass
     return result
 
@@ -161,6 +162,9 @@ def activity_feed(project_dir: Path, inbox_file: Path, ledger_file: Path, limit:
 
 from datetime import datetime as _datetime
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def tail_lines(path: Path, n: int) -> list[str]:
     if not path.exists():
@@ -201,7 +205,8 @@ def watcher_runtime(label: str) -> dict:
                     info["run_interval_seconds"] = int(raw)
                 except ValueError:
                     info["run_interval_seconds"] = 0
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         return info
     return info
 
@@ -217,7 +222,8 @@ def _read_source_version(project_dir: Path) -> str:
             re.MULTILINE,
         )
         return match.group(1) if match else "unknown"
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         return "unknown"
 
 
@@ -268,7 +274,8 @@ def inbox_items(inbox_file: Path) -> list[dict]:
     try:
         from superharness.engine import state_reader as _sr
         return _sr.get_inbox_items(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         return []
 
 
@@ -347,7 +354,8 @@ def task_instructions(project_dir: Path, task_id: str) -> str:
                     break
             if plan_section:
                 break
-        except Exception:
+        except Exception as e:
+            logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
             continue
 
     lines = [f"Task: {task_title} ({task_id})", ""]
@@ -470,9 +478,9 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
                         pass
         finally:
             conn2.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         pass
-
     # 1b. Inbox status for this task
 
 
@@ -503,9 +511,9 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
                         result["dispatch_effort"] = line.split(":", 1)[1].strip()
                     elif line.startswith("Via:"):
                         result["dispatch_via"] = line.split(":", 1)[1].strip()
-        except Exception:
+        except Exception as e:
+            logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
             pass
-
     # 2. Handoff YAML + markdown report
     handoff_dir = harness / "handoffs"
     if handoff_dir.exists():
@@ -555,7 +563,8 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
                 elif md_body:
                     result["markdown_report"] = md_body[:8000]
                 break
-            except Exception:
+            except Exception as e:
+                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                 continue
 
     # 3. Discussion submissions (task_id like discuss-XXX/round-N)
@@ -573,9 +582,9 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
                     result["discussion_status"] = st.get("status", "")
                     result["discussion_round"] = st.get("current_round", "")
                     result["discussion_max_rounds"] = st.get("max_rounds", "")
-                except Exception:
+                except Exception as e:
+                    logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                     pass
-
             # Agent submissions for this round — show ALL agent positions
             round_num = round_part.replace("round-", "")
             all_positions = []
@@ -587,7 +596,8 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
                     v = sub.get("verdict", "?")
                     p = sub.get("position", "")
                     all_positions.append(f"[{a}] verdict={v}\n{p}")
-                except Exception:
+                except Exception as e:
+                    logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                     continue
             if all_positions:
                 result["discussion_position"] = "\n\n".join(all_positions)
@@ -597,7 +607,8 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
                         sub = yaml.safe_load(sf.read_text()) or {}
                         result["discussion_agent"] = sub.get("agent", agent)
                         result["discussion_verdict"] = sub.get("verdict", "")
-                    except Exception:
+                    except Exception as e:
+                        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                         pass
                     break
 
@@ -607,7 +618,8 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
                     try:
                         result["markdown_report"] = mf.read_text(errors="replace")[:8000]
                         break
-                    except Exception:
+                    except Exception as e:
+                        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                         continue
                 # Also check per-agent markdown
                 if "markdown_report" not in result and agent:
@@ -615,7 +627,8 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
                         try:
                             result["markdown_report"] = mf.read_text(errors="replace")[:8000]
                             break
-                        except Exception:
+                        except Exception as e:
+                            logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                             continue
 
     return result
@@ -651,9 +664,9 @@ def discussion_agent_status(project_dir: Path, disc_id: str) -> dict:
         if state_path.exists():
             try:
                 state = _yaml.safe_load(state_path.read_text()) or {}
-            except Exception:
+            except Exception as e:
+                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                 pass
-
         # Read round submissions from disk (round-N-agent.yaml)
         submissions = []
         for rf in sorted(disc_dir.glob("round-*.yaml")):
@@ -668,7 +681,8 @@ def discussion_agent_status(project_dir: Path, disc_id: str) -> dict:
                     if md_file.exists():
                         try:
                             content = md_file.read_text()[:5000]
-                        except Exception:
+                        except Exception as e:
+                            logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                             pass
                     submissions.append({
                         "agent": str(data.get("agent", "")),
@@ -679,7 +693,8 @@ def discussion_agent_status(project_dir: Path, disc_id: str) -> dict:
                         "submitted_at": str(data.get("submitted_at", "")),
                         "content": content,
                     })
-            except Exception:
+            except Exception as e:
+                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                 continue
 
         # Sort by round then agent
@@ -734,9 +749,9 @@ def discussion_agent_status(project_dir: Path, disc_id: str) -> dict:
                     pass
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         pass
-
     # Build snapshot of running processes
     running_procs: dict[int, tuple[str, str, str]] = {}
     try:
@@ -755,9 +770,9 @@ def discussion_agent_status(project_dir: Path, disc_id: str) -> dict:
             except ValueError:
                 continue
             running_procs[pid] = (cpu, cmd, elapsed)
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         pass
-
     # Inbox-tracked agents for this discussion
     for pid, info in inbox_agents.items():
         if pid in seen_pids:
@@ -794,9 +809,9 @@ def discussion_agent_status(project_dir: Path, disc_id: str) -> dict:
                 name = str(lf.name)
                 if name.endswith(".log"):
                     result["logs"].append({"name": name, "size_kb": round(size / 1024, 1)})
-            except Exception:
+            except Exception as e:
+                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                 pass
-
     result["total_submissions"] = len(result["submissions"])
     result["total_agents"] = len(result["agents"])
     result["total_logs"] = len(result["logs"])
@@ -930,7 +945,8 @@ def _git_diff_stat(project_dir: Path) -> str:
         )
         if r.returncode == 0 and r.stdout.strip():
             return r.stdout.strip()
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         pass
     return ""
 
@@ -979,7 +995,8 @@ def _detect_sdk_activity(project_dir: Path) -> str:
         if last_tool:
             return f"last tool: {last_tool}"
         return ""
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         return ""
 
 
@@ -990,7 +1007,8 @@ def contract_owners(contract_file: Path) -> list[str]:
     try:
         from superharness.engine import state_reader as _sr
         raw_tasks = _sr.get_tasks(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         pass
     owners = []
     seen: set[str] = set()
@@ -1003,14 +1021,7 @@ def contract_owners(contract_file: Path) -> list[str]:
     return owners
 
 
-def parse_utc_timestamp(raw: str) -> dt.datetime | None:
-    value = raw.strip().strip("'\"")
-    if not value:
-        return None
-    try:
-        return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
+from superharness.engine.state_reader import parse_iso_utc as parse_utc_timestamp
 
 
 def watcher_health(runtime: dict, items: list[dict], now_utc: str, heartbeat: dict | None = None) -> dict:
@@ -1141,7 +1152,8 @@ def _agent_status_health(project_dir: Path, stale_seconds: int = 120) -> dict:
     try:
         from superharness.engine.agent_status import agent_status_health
         return agent_status_health(project_dir, stale_seconds=stale_seconds)
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         return {"agents": {}}
 
 
@@ -1193,7 +1205,8 @@ def contract_id(contract_file: Path) -> str:
         from superharness.engine import state_reader as _sr
         doc = _sr.get_contract_doc(project_dir)
         return str(doc.get("id", "") or "")
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         return ""
 
 
@@ -1208,9 +1221,9 @@ def contract_tasks(contract_file: Path) -> list[dict]:
     try:
         from superharness.engine import state_reader as _sr
         raw_tasks = _sr.get_top_level_tasks(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         pass
-
     tasks = []
     for t in raw_tasks:
         tasks.append({
@@ -1285,9 +1298,9 @@ def plan_proposals(harness_dir: Path) -> list[dict]:
     try:
         from superharness.engine import state_reader as _sr
         all_tasks = _sr.get_tasks(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         pass
-
     if all_tasks is None:
         return rows
 
@@ -1313,7 +1326,8 @@ def plan_proposals(harness_dir: Path) -> list[dict]:
                         if isinstance(handoff_summary, list):
                             handoff_summary = "\n".join(str(x) for x in handoff_summary)
                         break
-                except Exception:
+                except Exception as e:
+                    logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                     continue
         rows.append({
             "task": task_id,
@@ -1351,7 +1365,8 @@ def _contract_task(harness_dir: Path, task_id: str) -> dict | None:
     try:
         from superharness.engine import state_reader
         return state_reader.get_task(project_dir, task_id)
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         return None
 
 
@@ -1383,9 +1398,9 @@ def board_view(contract_file: Path) -> dict:
         try:
             from superharness.engine import state_reader as _sr
             raw_tasks = _sr.get_top_level_tasks(project_dir)
-        except Exception:
+        except Exception as e:
+            logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
             pass
-
     if raw_tasks is None:
         return {"columns": empty, "review_queue": [], "totals": {col: 0 for col in empty}}
 
@@ -1596,9 +1611,9 @@ def board_tasks(contract_file: Path) -> dict[str, list[dict]]:
     try:
         from superharness.engine import state_reader as _sr
         raw_tasks = _sr.get_top_level_tasks(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         pass
-
     if not raw_tasks:
         return columns # Return empty columns instead of {} to avoid KeyError
 
@@ -1638,9 +1653,9 @@ def review_queue(contract_file: Path) -> list[dict]:
     try:
         from superharness.engine import state_reader as _sr
         raw_tasks = _sr.get_top_level_tasks(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         pass
-
     if not raw_tasks:
         return []
 
@@ -1674,7 +1689,8 @@ def budget_signals(project_dir: Path) -> dict:
             if record and record.budget:
                 signals[runtime] = record.budget if isinstance(record.budget, dict) else dict(record.budget)
         return {"agents": signals, "available": True}
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         # Fallback: manually scan agents/*.status.yaml for budget fields
         agents_dir = project_dir / ".superharness" / "agents"
         if not agents_dir.exists():
@@ -1688,9 +1704,11 @@ def budget_signals(project_dir: Path) -> dict:
                     runtime = data.get("runtime", f.stem.replace(".status", ""))
                     if "budget" in data and data["budget"]:
                         signals[runtime] = data["budget"]
-                except Exception:
+                except Exception as e:
+                    logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                     continue
-        except Exception:
+        except Exception as e:
+            logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
             pass
         return {"agents": signals, "available": bool(signals)}
 
@@ -1856,7 +1874,8 @@ class Handler(BaseHTTPRequestHandler):
                             recovered += 1
                     _conn.commit()
                     _conn.close()
-                except Exception:
+                except Exception as e:
+                    logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                     pass
                 # YAML write (dual mode only)
                 if inbox.exists():
@@ -1872,7 +1891,8 @@ class Handler(BaseHTTPRequestHandler):
                             fh.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
                             for item in items:
                                 _yaml.dump([item], fh, default_flow_style=False, allow_unicode=True, sort_keys=True)
-                    except Exception:
+                    except Exception as e:
+                        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                         pass
             return {"ok": True, "recovered": recovered}, 200
         if action == "normalize_stale":
@@ -1911,7 +1931,8 @@ class Handler(BaseHTTPRequestHandler):
                                 break
                     _conn.commit()
                     _conn.close()
-                except Exception:
+                except Exception as e:
+                    logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                     pass
             return {"ok": True, "removed": removed}, 200
         if action.startswith("confirm_plan:"):
@@ -1950,7 +1971,8 @@ class Handler(BaseHTTPRequestHandler):
                         return {"ok": True, "removed": task_id}, 200
                 finally:
                     _conn.close()
-            except Exception:
+            except Exception as e:
+                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                 pass
             return ({"error": f"task '{task_id}' not found"}, 404)
 
@@ -2184,7 +2206,8 @@ class Handler(BaseHTTPRequestHandler):
                     _conn.commit()
                 finally:
                     _conn.close()
-            except Exception:
+            except Exception as e:
+                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                 pass
             return (result, 200 if result.get("ok") or result.get("exit_code") == 0 else 500)
 
@@ -2216,7 +2239,8 @@ class Handler(BaseHTTPRequestHandler):
                     _con.execute("UPDATE discussions SET status=? WHERE id=?", ("consensus", disc_id))
                     _con.commit()
                     _con.close()
-            except Exception:
+            except Exception as e:
+                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                 pass
             result["ok"] = True
             result["stdout"] = result.get("stdout") or f"Discussion {disc_id} closed with consensus."
@@ -2303,9 +2327,9 @@ class Handler(BaseHTTPRequestHandler):
                             "--project", str(self.project_dir),
                         ])
                         result["auto_closed"] = True
-            except Exception:
+            except Exception as e:
+                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                 pass
-
             return (result, 200)
 
         if action.startswith("cancel_review:"):
@@ -2507,7 +2531,8 @@ class Handler(BaseHTTPRequestHandler):
                 _conn.execute("DELETE FROM inbox WHERE id = ?", (item_id,))
                 _conn.commit()
                 _conn.close()
-            except Exception:
+            except Exception as e:
+                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                 pass
             return result, 200
 
@@ -2724,7 +2749,8 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     all_lines = errors_path.read_text(errors="replace").splitlines()
                     content = "\n".join(all_lines[-lines:])
-                except Exception:
+                except Exception as e:
+                    logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                     pass
             self._json({"errors": content, "lines": lines, "path": str(errors_path)})
             return
@@ -2795,7 +2821,8 @@ class Handler(BaseHTTPRequestHandler):
                             self.wfile.flush()
                         except (BrokenPipeError, ConnectionResetError):
                             return
-            except Exception:
+            except Exception as e:
+                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                 return
             return
 
@@ -2879,9 +2906,11 @@ class Handler(BaseHTTPRequestHandler):
                                         "submitted_at": sub.get("submitted_at", ""),
                                         "points": sub.get("points", []),
                                     })
-                            except Exception:
+                            except Exception as e:
+                                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                                 pass
-                    except Exception:
+                    except Exception as e:
+                        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                         pass
                 self._json(result)
             except Exception as exc:
@@ -2970,7 +2999,8 @@ class Handler(BaseHTTPRequestHandler):
                             try:
                                 lines = candidates[0].read_text(encoding="utf-8", errors="replace").splitlines()
                                 log_tail = "\n".join(lines[-20:])
-                            except Exception:
+                            except Exception as e:
+                                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                                 pass
                     failures.append({
                         "id": str(item.get("id", "")),
@@ -3039,7 +3069,8 @@ class Handler(BaseHTTPRequestHandler):
                 body = self.rfile.read(length) if length > 0 else b"{}"
                 payload = json.loads(body.decode("utf-8"))
                 action = str(payload.get("action", ""))
-            except Exception:
+            except Exception as e:
+                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                 self._json({"error": "invalid request body"}, 400)
                 return
 
@@ -3059,7 +3090,8 @@ class Handler(BaseHTTPRequestHandler):
                 payload = json.loads(body.decode("utf-8"))
                 action = str(payload.get("action", ""))
                 owner = str(payload.get("owner", "")).strip()
-            except Exception:
+            except Exception as e:
+                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                 self._json({"error": "invalid request body"}, 400)
                 return
 
@@ -3126,7 +3158,8 @@ def _get_installed_version() -> str:
     try:
         import importlib.metadata
         return importlib.metadata.version("superharness")
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         return "unknown"
 
 
@@ -3136,7 +3169,8 @@ def _append_ledger(project_dir: str, line: str) -> None:
     try:
         with open(ledger_path, "a") as fh:
             fh.write(line)
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         pass  # Ledger writes must never crash the watchdog
 
 
@@ -3147,7 +3181,8 @@ def autohealth_check(port: int, host: str = "127.0.0.1", timeout: float = 2.0) -
         req = urllib.request.Request(f"http://{host}:{port}/api/status")
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status == 200
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         return False
 
 
@@ -3169,7 +3204,8 @@ def autohealth_loop(
         if log_handle is not None:
             try:
                 log_handle.close()
-            except Exception:
+            except Exception as e:
+                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                 pass
         log_handle = open(os.path.join(project_dir, ".superharness", "dashboard-health.log"), "a")
         return subprocess.Popen(
@@ -3186,7 +3222,8 @@ def autohealth_loop(
             current_proc.terminate()
             try:
                 current_proc.wait(timeout=5)
-            except Exception:
+            except Exception as e:
+                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                 pass
         return _start()
 
@@ -3329,9 +3366,9 @@ def main() -> int:
                         with _ur.urlopen(f"http://127.0.0.1:{_existing_port}/api/status", timeout=2) as _r:
                             import json as _json
                             _running_version = _json.loads(_r.read()).get("version", "unknown")
-                    except Exception:
+                    except Exception as e:
+                        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                         pass
-
                 if _running_version != "unknown" and _running_version != _current_version:
                     # Log the mismatch but DON'T restart — let the user decide
                     print(f"dashboard version: running {_running_version} vs installed {_current_version} — run 'pipx upgrade superharness' to update")
@@ -3347,7 +3384,8 @@ def main() -> int:
                         _state_file = project_dir / ".superharness" / "operator-state.json"
                         try:
                             _state_file.unlink(missing_ok=True)
-                        except Exception:
+                        except Exception as e:
+                            logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                             pass
                     continue
 
@@ -3355,7 +3393,8 @@ def main() -> int:
                 raise SystemExit(0)
     except SystemExit:
         raise
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         pass  # Guard failure must never block startup
 
     Handler.project_dir = project_dir
@@ -3368,14 +3407,15 @@ def main() -> int:
     try:
         _stored = _token_file.read_text().strip()
         Handler.auth_token = _stored if len(_stored) >= 16 else secrets.token_urlsafe(24)
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         Handler.auth_token = secrets.token_urlsafe(24)
     try:
         _token_file.write_text(Handler.auth_token)
         _token_file.chmod(0o600)
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         pass
-
     port = args.port
     user_specified_port = "--port" in sys.argv
     if not user_specified_port:

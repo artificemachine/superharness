@@ -115,7 +115,8 @@ def _task_is_dispatch_ready(project_dir: str, task_id: str) -> bool:
             return False
         status = str(task.get("status", ""))
         return status in ("plan_approved", "in_progress", "todo")
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox.py unexpected error: %s", e, exc_info=True)
         return False
 
 
@@ -237,7 +238,8 @@ def enqueue(file: str, id: str, to: str, task: str, project: str, priority: int,
         try:
             from superharness.commands.inbox_enqueue import _ensure_task_in_sqlite
             _ensure_task_in_sqlite(conn, task, project_dir, created_at)
-        except Exception:
+        except Exception as e:
+            logger.warning("inbox.py unexpected error: %s", e, exc_info=True)
             pass
         _dao.enqueue(conn, id=id, task_id=task, target_agent=to,
                      priority=priority, max_retries=max_retries,
@@ -279,9 +281,9 @@ if __name__ == "__main__":
     try:
         from superharness.engine.state_reader import _ensure_ingested
         _ensure_ingested(_project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox.py unexpected error: %s", e, exc_info=True)
         pass
-
     if _args.command == "enqueue":
         _id = _args.id or f"item-{datetime.now().timestamp()}"
         _created = _args.created_at or _args.now or datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")

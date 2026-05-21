@@ -13,6 +13,9 @@ from pathlib import Path
 
 import yaml
 
+import logging
+logger = logging.getLogger(__name__)
+
 ENV_FILENAME = "watcher-env.yaml"
 
 # Keys to always capture if present.
@@ -79,7 +82,8 @@ def load(project_dir: Path) -> dict[str, str]:
     try:
         doc = yaml.safe_load(env_file.read_text(encoding="utf-8")) or {}
         return doc.get("env", {})
-    except Exception:
+    except Exception as e:
+        logger.warning("env_snapshot.py unexpected error: %s", e, exc_info=True)
         return {}
 
 

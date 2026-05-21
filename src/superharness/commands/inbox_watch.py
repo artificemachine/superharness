@@ -29,7 +29,8 @@ def _load_tasks(project_dir: str) -> list[dict]:
     try:
         from superharness.engine.state_reader import get_tasks
         return get_tasks(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         return []
 
 
@@ -56,10 +57,9 @@ def _ensure_task_in_sqlite(conn, task_id: str, project_dir: str, now: str) -> No
     try:
         from superharness.engine import tasks_dao
         tasks_dao.get(conn, task_id)
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
-
-
 def _sqlite_mirror_inbox_enqueue(project_dir: str, items: list[dict], now: str) -> None:
     """Mirror new inbox items to SQLite. Never raises."""
     try:
@@ -95,10 +95,9 @@ def _sqlite_mirror_inbox_enqueue(project_dir: str, items: list[dict], now: str) 
                 )
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
-
-
 def _sqlite_mirror_inbox_retry(project_dir: str, retried_items: list[dict], now: str) -> None:
     """Mirror inbox retry resets to SQLite. Never raises.
 
@@ -127,10 +126,9 @@ def _sqlite_mirror_inbox_retry(project_dir: str, retried_items: list[dict], now:
                 )
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
-
-
 def _sqlite_mirror_task_status(
     project_dir: str, task_id: str, status: str, now: str, extra: dict | None = None
 ) -> None:
@@ -160,9 +158,9 @@ def _sqlite_mirror_task_status(
                 )
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
-
 def _poll_operator_commands(project_dir: str) -> None:
     """Drain pending operator_commands rows and apply approve/reject transitions.
 
@@ -522,10 +520,9 @@ def _run_scripts_heartbeat(project_dir: str) -> None:
         write_heartbeat(project_dir, AgentHeartbeat(
             agent_id="watcher", runtime="native", status="idle", pid=os.getpid(),
         ))
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
-
-
 _STALE_NO_HANDOFF_HOURS = 4  # archive tasks with no handoff after this many hours
 
 def _auto_archive_stale_tasks(project_dir: str) -> int:
@@ -547,7 +544,8 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
             all_tasks = tasks_dao.get_all(conn)
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         return 0
 
     now = datetime.now(timezone.utc)
@@ -623,7 +621,8 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
     try:
         import yaml as _yaml
         profile = _yaml.safe_load(open(profile_file, encoding="utf-8").read()) or {}
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         return 0
     
     if not profile.get("auto_dispatch") or _profile_autonomy(profile) != "ai_driven":
@@ -637,7 +636,8 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
     try:
         from superharness.engine.state_reader import get_inbox_items
         inbox_items = get_inbox_items(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         inbox_items = []
 
     added = 0
@@ -746,7 +746,8 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
     try:
         import yaml as _yaml
         profile = _yaml.safe_load(open(profile_file, encoding="utf-8").read()) or {}
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         return 0
 
     # Only run when auto-approve is enabled (now means "use peer review")
@@ -768,9 +769,9 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
                 task_id = item.get("task", item.get("task_id", ""))
                 if task_id:
                     active_tasks.add(str(task_id))
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
-
     # Circuit breaker: skip tasks where a peer-review row failed in the last
     # _PEER_REVIEW_COOLDOWN_MIN minutes. Without this, each fast-failing row
     # (~14s lifecycle-gate rejection) vanishes from active_tasks and the next
@@ -793,9 +794,9 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
                     recent_peer_failure_tasks.add(str(tid))
         finally:
             _conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
-
     enqueued = 0
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -887,7 +888,8 @@ def _find_pr_url_in_handoff(handoff_dir: str, task_id: str) -> str | None:
                 m = _PR_URL_RE.search(str(item))
                 if m:
                     return m.group(0)
-        except Exception:
+        except Exception as e:
+            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
             continue
     return None
 
@@ -976,7 +978,8 @@ def _auto_close_review_passed(project_dir: str) -> None:
         try:
             with open(profile_file, encoding="utf-8") as _f:
                 profile = _yaml.safe_load(_f.read()) or {}
-        except Exception:
+        except Exception as e:
+            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
             return
 
     # Same opt-in rule as _auto_close_report_ready
@@ -991,7 +994,8 @@ def _auto_close_review_passed(project_dir: str) -> None:
     from superharness.engine import state_reader as _sr
     try:
         inbox_items = _sr.get_inbox_items(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         return
 
     for task in tasks:
@@ -1018,9 +1022,9 @@ def _auto_close_review_passed(project_dir: str) -> None:
                             latest = next((h for h in history if h.get("from_agent") == agent), None)
                             if latest:
                                 outcome_raw = str(latest.get("content") or "")
-                    except Exception:
+                    except Exception as e:
+                        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                         pass
-
                 if not outcome_raw:
                     continue
 
@@ -1037,7 +1041,8 @@ def _auto_close_review_passed(project_dir: str) -> None:
                                 verdict = "lgtm" if v_val == "lgtm" else "rejected"
                                 reviewer = str(item.get("to") or "reviewer")
                                 break
-                    except Exception:
+                    except Exception as e:
+                        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                         # Fallback to regex if YAML load fails (e.g. mixed content)
                         pass
 
@@ -1091,10 +1096,9 @@ def _auto_close_review_passed(project_dir: str) -> None:
                 try:
                     with open(ledger_file, "a", encoding="utf-8") as f:
                         f.write(line)
-                except Exception:
+                except Exception as e:
+                    logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                     pass
-
-
 def _auto_close_report_ready(project_dir: str) -> None:
     """Auto-close report_ready tasks whose latest report handoff has tests_passed: true.
 
@@ -1110,7 +1114,8 @@ def _auto_close_report_ready(project_dir: str) -> None:
         try:
             with open(profile_file, encoding="utf-8") as _f:
                 profile = _yaml.safe_load(_f.read()) or {}
-        except Exception:
+        except Exception as e:
+            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
             return
 
     auto_close = profile.get("auto_close", _profile_autonomy(profile) == "ai_driven")
@@ -1151,7 +1156,8 @@ def _auto_close_report_ready(project_dir: str) -> None:
                 if str(h.get("task", "")) == task_id and h.get("phase") == "report":
                     handoff = h
                     break
-            except Exception:
+            except Exception as e:
+                logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                 continue
 
         if not handoff:
@@ -1174,7 +1180,8 @@ def _auto_close_report_ready(project_dir: str) -> None:
                 try:
                     from superharness.engine.state_writer import mirror_task_dict
                     mirror_task_dict(project_dir, task)
-                except Exception:
+                except Exception as e:
+                    logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                     pass
                 if verification.suggested_action == "fail":
                     print(f"auto-close: task '{task_id}' failed verification: " + "; ".join(verification.failures))
@@ -1212,7 +1219,8 @@ def _auto_close_report_ready(project_dir: str) -> None:
                 try:
                     from superharness.engine.state_writer import mirror_task_dict
                     mirror_task_dict(project_dir, task)
-                except Exception:
+                except Exception as e:
+                    logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                     pass
                 continue  # Task moved to review_requested, skip auto-close
 
@@ -1280,7 +1288,8 @@ def _auto_retry_failed(project_dir: str) -> None:
         try:
             with open(profile_file, encoding="utf-8") as _f:
                 profile = _yaml.safe_load(_f.read()) or {}
-        except Exception:
+        except Exception as e:
+            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
             return
 
     auto_retry = profile.get("auto_retry", False)  # opt-in, not default
@@ -1315,7 +1324,8 @@ def _auto_retry_failed_sqlite(project_dir: str) -> None:
                                        action="auto_retry",
                                        details={"reason": preserved_reason, "attempt": f"{new_count}/{row.max_retries}", "item_id": row.id},
                                        now=_now)
-                    except Exception:
+                    except Exception as e:
+                        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                         pass
                     # Discussion round tasks must not be plan_only
                     if "/round-" in str(row.task_id) or "round-" in str(row.task_id):
@@ -1356,7 +1366,8 @@ def _has_identical_failure_loop(conn, task_id: str) -> bool:
             "ORDER BY created_at DESC LIMIT ?",
             (task_id, _IDENTICAL_FAILURE_THRESHOLD),
         ).fetchall()
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         return False
     if len(rows) < _IDENTICAL_FAILURE_THRESHOLD:
         return False
@@ -1382,7 +1393,8 @@ def _escalate_runaway_inbox(conn, row, reason_label: str, now: str) -> None:
                     (f"auto-recover: {reason_label} ({row.failed_reason or 'unknown'})",
                      row.task_id),
                 )
-            except Exception:
+            except Exception as e:
+                logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                 pass
         conn.execute(
             "UPDATE inbox SET status='failed', failed_reason=?, failed_at=? WHERE id=?",
@@ -1424,7 +1436,8 @@ def _auto_fallback_owner_reassign(project_dir: str) -> None:
         try:
             with open(profile_file, encoding="utf-8") as _f:
                 profile = _yaml.safe_load(_f.read()) or {}
-        except Exception:
+        except Exception as e:
+            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
             return
 
     fallback_owner = str(profile.get("auto_fallback_owner") or "").strip()
@@ -1503,7 +1516,8 @@ def _auto_fallback_owner_reassign(project_dir: str) -> None:
                         },
                         now=now,
                     )
-                except Exception:
+                except Exception as e:
+                    logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                     pass
                 reassigned += 1
 
@@ -1581,10 +1595,12 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                                                action="escalate",
                                                details={"reason": gate_reason, "from_status": "in_progress", "to_status": "waiting_input", "item_id": row.id},
                                                now=now)
-                            except Exception:
+                            except Exception as e:
+                                logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                                 pass
                             recovered += 1
-                        except Exception:
+                        except Exception as e:
+                            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                             pass
                     continue
 
@@ -1602,7 +1618,8 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                         (row.task_id,),
                     ).fetchall()
                     tried_agents = {r[0] for r in tried_rows if r[0]}
-                except Exception:
+                except Exception as e:
+                    logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                     pass
                 tried_agents.add(current_agent)
                 fallback_agents = [a for a in _FALLBACK_ORDER if a not in tried_agents]
@@ -1620,7 +1637,8 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                             "UPDATE tasks SET failed_reason=? WHERE id=? AND status='waiting_input'",
                             (f"all_owners_exhausted: {per_owner_summary}", row.task_id),
                         )
-                    except Exception:
+                    except Exception as e:
+                        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                         pass
                     escalated += 1
                     continue
@@ -1661,7 +1679,8 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                                 details={"task_id": row.task_id, "agents": agents_tried,
                                         "reason": row.failed_reason},
                             )
-                        except Exception:
+                        except Exception as e:
+                            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                             pass
                 # Hard cap absolute retry budget so a runaway loop can't
                 # bump max_retries indefinitely (was the cause of max_retries=65).
@@ -1830,7 +1849,8 @@ def _auto_bootstrap_empty_tasks(project_dir: str) -> int:
                         action="auto_bootstrap",
                         details={"reason": task.failed_reason or "empty content", "item_id": item_id},
                         now=now)
-                except Exception:
+                except Exception as e:
+                    logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                     pass
             conn.commit()
         finally:
@@ -1846,7 +1866,8 @@ def _check_ship_on_complete_tasks(project_dir: str) -> None:
 
     try:
         tasks = state_reader.get_tasks(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         return
 
     for task in tasks:
@@ -1908,7 +1929,8 @@ def _run_gc_if_due(project_dir: str, cycle_count: int) -> bool:
             with open(profile_file) as f:
                 profile = _yaml.safe_load(f) or {}
             gc_interval = int(profile.get("gc_interval_cycles", DEFAULT_GC_INTERVAL_CYCLES))
-        except Exception:
+        except Exception as e:
+            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
             pass
     if gc_interval < 1:
         gc_interval = DEFAULT_GC_INTERVAL_CYCLES
@@ -1924,10 +1946,9 @@ def _fire_hook(event: str, data: dict, project_dir: str | None = None) -> None:
     try:
         from superharness.engine.hooks import get_registry
         get_registry().fire(event, data)
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
-
-
 def _sqlite_singleton_acquire(project_dir: str) -> None:
     """Acquire the SQLite watcher singleton lease. Never raises."""
     try:
@@ -1944,10 +1965,9 @@ def _sqlite_singleton_acquire(project_dir: str) -> None:
             conn.commit()
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
-
-
 def _sqlite_singleton_release(project_dir: str) -> None:
     """Release the SQLite watcher singleton lease. Never raises."""
     try:
@@ -1960,10 +1980,9 @@ def _sqlite_singleton_release(project_dir: str) -> None:
             conn.commit()
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
-
-
 def _sqlite_tick(project_dir: str, now: str) -> None:
     """Run SQLite-side per-tick operations: record watcher heartbeat and
     flag stale agent_heartbeats as zombie.
@@ -1982,10 +2001,9 @@ def _sqlite_tick(project_dir: str, now: str) -> None:
             conn.commit()
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
-
-
 def _self_diagnosis(project_dir: str) -> list[str]:
     """Check environment health before running auto-mode. Returns list of warnings."""
     warnings = []
@@ -2017,7 +2035,8 @@ def _self_diagnosis(project_dir: str) -> list[str]:
             profile = yaml.safe_load(open(profile_file).read()) or {}
             if not profile.get("auto_dispatch"):
                 warnings.append("CONFIG: auto_dispatch not enabled in profile.yaml")
-        except Exception:
+        except Exception as e:
+            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
             warnings.append("CORRUPT: profile.yaml cannot be parsed")
     else:
         warnings.append("MISSING: profile.yaml — auto-mode needs project config")
@@ -2047,7 +2066,8 @@ def auto_enqueue_todo(project_dir: str) -> int:
     try:
         import yaml as _yaml
         profile = _yaml.safe_load(open(profile_file, encoding="utf-8").read()) or {}
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         return 0
     if not profile.get("auto_dispatch"):
         return 0
@@ -2062,9 +2082,9 @@ def auto_enqueue_todo(project_dir: str) -> int:
     inbox_items = []
     try:
         inbox_items = state_reader.get_inbox_items(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
-
     # Track tasks already in inbox (active)
     active_tasks: set[str] = set()
     for item in inbox_items:
@@ -2158,7 +2178,8 @@ def auto_enqueue_approved(project_dir: str) -> int:
     try:
         import yaml as _yaml
         profile = _yaml.safe_load(open(profile_file, encoding="utf-8").read()) or {}
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         return 0
     if not profile.get("auto_dispatch"):
         return 0
@@ -2173,9 +2194,9 @@ def auto_enqueue_approved(project_dir: str) -> int:
     inbox_items = []
     try:
         inbox_items = state_reader.get_inbox_items(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
-
     # Track tasks already in inbox (active)
     active_tasks: set[str] = set()
     for item in inbox_items:
@@ -2203,7 +2224,8 @@ def auto_enqueue_approved(project_dir: str) -> int:
                     failed_counts[str(row[0])] = int(row[1])
             finally:
                 _fc.close()
-        except Exception:
+        except Exception as e:
+            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
             pass
     else:
         for item in inbox_items:
@@ -2303,7 +2325,8 @@ def _rotate_launcher_logs_if_needed(project_dir: str) -> None:
             for lf in logs[:to_remove]:
                 os.remove(lf)
             print(f'disk-guard: removed {to_remove} old launcher log(s) ({len(logs)} -> {_LAUNCHER_LOG_MAX_FILES})')
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
 def _run_scripts(
     project_dir: str,
@@ -2360,7 +2383,8 @@ def _run_scripts(
             _learn_from_recovery(project_dir)
             if _watcher_cycle_count[0] % 20 == 0:
                 _prune_operator_memory(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass  # never block the watcher cycle on memory errors
 
     # Auto-retry failed inbox items that still have retries remaining
@@ -2545,7 +2569,8 @@ def _run_scripts(
         try:
             from superharness.engine.adapter_registry import list_adapters
             targets = list_adapters()
-        except Exception:
+        except Exception as e:
+            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
             targets = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
     else:
         targets = [target]
@@ -2645,7 +2670,8 @@ def _check_operator_memory(project_dir: str) -> None:
     try:
         from superharness.engine.state_reader import get_inbox_items
         items = get_inbox_items(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         return
 
     for item in items:
@@ -2738,10 +2764,9 @@ def _learn_from_recovery(project_dir: str) -> None:
                 print(f"operator-memory: learned from {len(recorded)} recovered task(s)")
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
-
-
 def _prune_operator_memory(project_dir: str) -> None:
     """Remove low-confidence patterns from operator memory."""
     from superharness.utils.paths import resolve_active_state_db_path
@@ -2756,10 +2781,9 @@ def _prune_operator_memory(project_dir: str) -> None:
         removed = om.prune_stale(threshold=0.3)
         if removed:
             print(f"operator-memory: pruned {removed} low-confidence pattern(s)")
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
-
-
 def _analyze_task_logs(project_dir: str) -> None:
     """Check launched task logs for activity. Stale tasks get marked failed."""
     import glob
@@ -2808,10 +2832,61 @@ def _analyze_task_logs(project_dir: str) -> None:
 
             # Check latest log for activity
             latest_log = logs[0]
+
+            # ── Tool-loop guardrail (Hermes adaptation) ──────────────────
+            # Before escalating to failed, check if the agent is stuck in a
+            # tool-call loop. If detected, block the task instead of just
+            # failing the inbox item — prevents infinite retry loops.
+            try:
+                from superharness.engine.loop_detector import detect_loop, LoopGuard
+                loop_result = detect_loop(latest_log)
+                if loop_result.get("loop_detected"):
+                    guard = LoopGuard(
+                        os.path.join(project_dir, ".superharness")
+                    )
+                    action = guard.check(item.task_id, loop_result)
+                    if action["action"] == "block":
+                        # Block the task (not just the inbox item)
+                        from superharness.engine.state_writer import set_task_status
+                        block_reason = action.get("reason", loop_result.get("reason", "tool-loop detected"))
+                        set_task_status(project_dir, item.task_id, "blocked",
+                                       force=True, failed_reason=block_reason)
+                        inbox_dao.update_status(conn, item.id, from_status="launched",
+                                               to_status="failed", now=_now_utc(),
+                                               reason=f"blocked: {block_reason}")
+                        # Record to agent memory so future dispatches learn
+                        try:
+                            from superharness.engine.agent_memory import append
+                            pattern = loop_result.get("pattern", "unknown")
+                            append(project_dir, "pitfalls.md",
+                                   f"Tool loop detected: {pattern} — {block_reason}. "
+                                   "Avoid repeating the same tool call without progress.")
+                        except Exception as e:
+                            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
+                            pass
+                        _ledger_record2(conn, task_id=item.task_id, agent="watcher",
+                                       action="block_loop",
+                                       details={"pattern": loop_result.get("pattern"),
+                                                "reason": block_reason,
+                                                "count": loop_result.get("count")},
+                                       now=_now_utc())
+                        print(f"log-analyzer: '{item.task_id}' → BLOCKED (tool-loop: "
+                              f"{loop_result.get('pattern')} — {block_reason})")
+                        escalated += 1
+                        continue
+                    elif action["action"] == "warn":
+                        print(f"log-analyzer: '{item.task_id}' — tool-loop WARNING "
+                              f"({loop_result.get('pattern')}, cycle {action.get('reason', '')})")
+            except Exception as e:
+                logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
+                pass
+            # ── End tool-loop guardrail ─────────────────────────────────
+
             try:
                 log_mtime = datetime.fromtimestamp(os.path.getmtime(latest_log), tz=timezone.utc)
                 inactive_minutes = (now - log_mtime).total_seconds() / 60
-            except Exception:
+            except Exception as e:
+                logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                 inactive_minutes = 0
 
             # Check for git changes as activity signal
@@ -2825,9 +2900,9 @@ def _analyze_task_logs(project_dir: str) -> None:
                 )
                 if r.stdout.strip():
                     has_activity = True
-            except Exception:
+            except Exception as e:
+                logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                 pass
-
             if has_activity:
                 print(f"log-analyzer: '{item.task_id}' active (files changing, {int(age_minutes)}m elapsed)")
                 continue
@@ -2861,7 +2936,8 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
     try:
         from superharness.engine.state_reader import get_inbox_items
         items = get_inbox_items(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
     if not isinstance(items, list) or not items:
         return 0
@@ -2872,9 +2948,9 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
         for t in get_tasks(project_dir):
             if isinstance(t, dict) and t.get("id"):
                 contract_statuses[str(t["id"])] = str(t.get("status", ""))
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
-
     now = datetime.now(timezone.utc)
     reconciled = 0
     changed = False
@@ -2926,7 +3002,8 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
                     if age > _PLAN_ONLY_TIMEOUT:
                         try:
                             os.kill(pid_int, signal.SIGTERM)
-                        except Exception:
+                        except Exception as e:
+                            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                             pass
                         item["status"] = "failed"
                         item["failed_at"] = _now_utc()
@@ -2946,7 +3023,8 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
                     if age > _MAX_LAUNCH_AGE_SECONDS:
                         try:
                             os.kill(pid_int, signal.SIGTERM)
-                        except Exception:
+                        except Exception as e:
+                            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                             pass
                         item["status"] = "failed"
                         item["failed_at"] = _now_utc()
@@ -2994,7 +3072,8 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
                                     to_status=new_status,
                                     now=_now_utc()
                                 )
-                        except Exception:
+                        except Exception as e:
+                            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                             # Fallback: direct SQL update
                             conn.execute(
                                 "UPDATE inbox SET status=? WHERE id=?",
@@ -3034,7 +3113,8 @@ def _reconcile_discussion_contract(project_dir: str) -> int:
             terminal,
         ).fetchall()
         terminal_disc_ids = {r["id"] for r in rows}
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         return 0
     finally:
         conn.close()
@@ -3044,7 +3124,8 @@ def _reconcile_discussion_contract(project_dir: str) -> int:
 
     try:
         tasks = state_reader.get_tasks(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         return 0
 
     updated = 0
@@ -3093,6 +3174,9 @@ _CONSENSUS_PENDING_REVIEW_PREFIX = "auto-pending-review:"
 _CIRCUIT_BREAKER_THRESHOLD = 20  # consecutive failures in 5 minutes trips breaker
 
 import re as _re
+
+import logging
+logger = logging.getLogger(__name__)
 _ZERO_VERDICT_RE = _re.compile(r"\b0/\d+\b")
 
 
@@ -3140,7 +3224,8 @@ def _circuit_breaker_tripped(project_dir: str) -> bool:
             return False
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         return False
 
 
@@ -3424,7 +3509,8 @@ def _cancel_undispatchable_agents(project_dir: str) -> int:
     try:
         from superharness.engine.adapter_registry import list_adapters
         known_agents.update(list_adapters())
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
     if not known_agents:
         import glob as _glob

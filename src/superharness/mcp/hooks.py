@@ -42,7 +42,8 @@ class HookRegistry:
         for handler in handlers:
             try:
                 handler(payload)
-            except Exception:
+            except Exception as e:
+                logger.warning("hooks.py unexpected error: %s", e, exc_info=True)
                 logger.exception("Hook handler raised for event '%s' on project '%s'", event, project_path)
 
     def load_hooks_dir(self, project_path: str) -> None:
@@ -64,7 +65,8 @@ class HookRegistry:
                 spec.loader.exec_module(mod)  # type: ignore[union-attr]
                 if hasattr(mod, "handler"):
                     self.register(event, mod.handler, project_path=project_path)
-            except Exception:
+            except Exception as e:
+                logger.warning("hooks.py unexpected error: %s", e, exc_info=True)
                 logger.exception("Failed to load hook file: %s", fname)
 
 

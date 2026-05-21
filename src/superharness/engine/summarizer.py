@@ -34,6 +34,9 @@ from typing import Any, Protocol, runtime_checkable
 
 from superharness.utils.privacy import strip_private_tags
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 _ENV_NAME = "SUPERHARNESS_SUMMARIZER"
 _ENV_RATE_LIMIT = "SUPERHARNESS_SUMMARIZER_MAX_PER_HOUR"
@@ -183,7 +186,8 @@ class _SQLiteRateLimitedSummarizer:
                 )
         except RateLimitExceeded:
             raise
-        except Exception:
+        except Exception as e:
+            logger.warning("summarizer.py unexpected error: %s", e, exc_info=True)
             return
 
     def _log(
@@ -210,14 +214,16 @@ class _SQLiteRateLimitedSummarizer:
                 )
             finally:
                 conn.close()
-        except Exception:
+        except Exception as e:
+            logger.warning("summarizer.py unexpected error: %s", e, exc_info=True)
             return
 
     def summarize(self, context: dict[str, Any]) -> str:
         self._check_budget()
         try:
             text = self._inner.summarize(context)
-        except Exception:
+        except Exception as e:
+            logger.warning("summarizer.py unexpected error: %s", e, exc_info=True)
             self._log(success=False)
             raise
         usage = getattr(self._inner, "last_usage", None) or {}

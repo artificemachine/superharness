@@ -44,7 +44,7 @@ def _backup_db(project_dir: str, version: int):
             shutil.copy2(src, dst)
             logger.info(f"Created pre-migration backup: {dst}")
         except Exception as e:
-            logger.warning(f"Failed to create backup {dst}: {e}")
+            raise SchemaError(f"Pre-migration backup failed for v{version} at {dst}: {e}") from e
 
 
 def get_connection(project_dir: str) -> sqlite3.Connection:
@@ -113,6 +113,25 @@ def transaction(conn: sqlite3.Connection) -> Iterator[None]:
         # Wrap database errors if needed, but conn context manager handles rollback
         raise
 
+@contextmanager
+def managed_connection(project_dir: str) -> Iterator[sqlite3.Connection]:
+    """Context manager: open connection, init DB, commit on success, close always.
+    
+    Usage:
+        with managed_connection(project_dir) as conn:
+            tasks_dao.upsert(conn, row)
+    """
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
 def init_db(conn: sqlite3.Connection, project_dir: str | None = None) -> None:
     """Initialize schema and run migrations."""
     # Ensure migration table exists
@@ -152,7 +171,8 @@ def _run_single_migration(conn: sqlite3.Connection, v: int, project_dir: str | N
             conn.execute(f"PRAGMA user_version = {v}")
             conn.execute(f"RELEASE SAVEPOINT migrate_v{v}")
             logger.info(f"Applied schema migration v{v}")
-        except Exception:
+        except Exception as e:
+            logger.error("Migration v%d failed: %s — rolling back", v, e)
             conn.execute(f"ROLLBACK TO SAVEPOINT migrate_v{v}")
             raise
 
@@ -394,11 +414,6 @@ def _migration_v4(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "tasks", "archived_at", "TEXT")
     _add_column_if_missing(conn, "tasks", "archived_reason", "TEXT")
     _add_column_if_missing(conn, "tasks", "model_tier", "TEXT")
-
-
-def _migration_v5(conn: sqlite3.Connection) -> None:
-    """Add deadline_minutes column to tasks table."""
-    _add_column_if_missing(conn, "tasks", "deadline_minutes", "INTEGER")
 
 
 def _migration_v5(conn: sqlite3.Connection) -> None:

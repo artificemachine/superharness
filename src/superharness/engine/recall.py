@@ -16,6 +16,9 @@ import sys
 from datetime import date, timedelta
 from pathlib import Path
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _try_date(val: object) -> date | None:
     if val is None:
@@ -75,7 +78,8 @@ def search(project_dir: Path, terms: list[str], since_days: int | None = None) -
                 try:
                     import yaml
                     data = yaml.safe_load(raw)
-                except Exception:
+                except Exception as e:
+                    logger.warning("recall.py unexpected error: %s", e, exc_info=True)
                     data = None
             fdate = _file_date(path, data)
             if since_date and fdate and fdate < since_date:
@@ -105,7 +109,8 @@ def search(project_dir: Path, terms: list[str], since_days: int | None = None) -
     try:
         from superharness.engine import state_reader as _sr
         tasks = _sr.get_tasks(str(project_dir))
-    except Exception:
+    except Exception as e:
+        logger.warning("recall.py unexpected error: %s", e, exc_info=True)
         tasks = []
     for t in tasks:
         if not isinstance(t, dict):

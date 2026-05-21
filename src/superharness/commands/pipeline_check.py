@@ -10,6 +10,9 @@ import sys
 import time
 from datetime import datetime, timezone
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def run_pipeline_check(project_dir: str) -> int:
     """Run a health probe through the auto-mode pipeline.
@@ -62,7 +65,8 @@ def run_pipeline_check(project_dir: str) -> int:
             hb_dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
             age = (datetime.now(timezone.utc) - hb_dt).total_seconds()
             _check("Watcher heartbeat fresh", age < 120, f"last heartbeat {int(age)}s ago")
-        except Exception:
+        except Exception as e:
+            logger.warning("pipeline_check.py unexpected error: %s", e, exc_info=True)
             _check("Watcher heartbeat valid", False, "invalid timestamp")
     else:
         _check("Watcher heartbeat exists", False, "watcher not running")

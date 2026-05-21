@@ -11,6 +11,9 @@ from datetime import datetime, timezone
 
 from superharness.commands.task import VALID_OWNERS
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _abort(msg: str, code: int = 1) -> None:
     print(msg, file=sys.stderr)
@@ -75,7 +78,8 @@ def _read_contract_owners(contract_file: str) -> list[str]:
                     seen[owner] = None
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("discuss.py unexpected error: %s", e, exc_info=True)
         pass
     return list(seen.keys())
 
@@ -266,10 +270,9 @@ def _enqueue_sqlite_shadow(
             conn.commit()
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("discuss.py unexpected error: %s", e, exc_info=True)
         pass
-
-
 def cmd_rounds(discussions_dir: str, disc_id: str) -> int:
     disc_dir = os.path.join(discussions_dir, disc_id)
     if not os.path.isdir(disc_dir):

@@ -8,6 +8,9 @@ import shutil
 import subprocess
 import sys
 
+import logging
+logger = logging.getLogger(__name__)
+
 _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 
 
@@ -52,9 +55,9 @@ def get_doctor_summary(project_dir: str) -> str:
         if r.stdout.strip():
             count = len(r.stdout.strip().splitlines())
             lines.insert(0, f"WARN git:working tree is dirty ({count} modified files)")
-    except Exception:
+    except Exception as e:
+        logger.warning("doctor.py unexpected error: %s", e, exc_info=True)
         pass
-
     if not lines:
         return "System health: ok"
         
@@ -212,9 +215,9 @@ def main(argv: list[str] | None = None) -> None:
                 print("INFO mcp:memory server configured (optional enhancement)")
             else:
                 print("INFO mcp:no memory server detected (optional — see docs/MCP-MEMORY.md)")
-        except Exception:
+        except Exception as e:
+            logger.warning("doctor.py unexpected error: %s", e, exc_info=True)
             pass
-
     # Module health check
     try:
         from superharness.modules.registry import enabled_modules
@@ -233,14 +236,15 @@ def main(argv: list[str] | None = None) -> None:
                         if env_var and not os.environ.get(env_var):
                             print(f"WARN module:{mod_name} — {env_var} not set")
                             warns += 1
-                    except Exception:
+                    except Exception as e:
+                        logger.warning("doctor.py unexpected error: %s", e, exc_info=True)
                         pass
             print(f"PASS modules: {len(enabled)} enabled ({', '.join(sorted(enabled))})")
         else:
             print("INFO modules: none enabled — run 'shux enhance' to add integrations")
-    except Exception:
+    except Exception as e:
+        logger.warning("doctor.py unexpected error: %s", e, exc_info=True)
         pass
-
     # SQLite state DB health. Parity (YAML↔SQLite drift) is trivially
     # PASS post-migration — SQLite is the sole source of truth — but we
     # still emit a parity: line so consumers and tests that grep for it
