@@ -139,7 +139,16 @@
         <div class="actions">
           <button onclick="act('watcher_start')">Start watcher</button>
           <button onclick="act('watcher_restart')">Restart watcher</button>
-        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="togglePanel('profileBody',this)">
+        <h2 style="margin:0">🧠 behavioral profile</h2><span style="color:var(--muted);font-size:11px">▾</span>
+      </div>
+      <div id="profileBody" style="margin-top:8px;font-size:12px;line-height:1.6">
+        <div id="profileContent" style="color:var(--muted)">loading profile...</div>
+        <div id="profileTrials" style="margin-top:6px;font-size:11px"></div>
       </div>
     </div>
 
@@ -716,8 +725,50 @@ async function refresh() {
       await loadInboxDetail('active');
     }
 
+    // Load behavioral profile
+    loadProfile();
+
   } catch (e) {
     document.getElementById('meta').textContent = 'error: ' + e;
+  }
+}
+
+async function loadProfile() {
+  try {
+    const p = await api('/api/profile');
+    if (!p || !p.has_data) {
+      document.getElementById('profileContent').textContent = 'No profile yet. Builds as you create/review tasks.';
+      return;
+    }
+    let html = '';
+    const ts = p.profiles.task_style;
+    if (ts) {
+      html += 'Task style: ' + escapeHtml(String(ts.default_effort || 'medium')) + ' effort, TDD ' + (ts.tdd_required ? 'required' : 'optional') + ' (' + (ts.sample_count||0) + ' tasks)<br>';
+    }
+    const ap = p.profiles.autonomy_profile;
+    if (ap && ap.sample_count > 0) {
+      html += 'Success rate: ' + Math.round((ap.success_rate||0)*100) + '% (' + (ap.total_tasks||0) + ' tasks)<br>';
+    }
+    const mp = p.profiles.model_prefs;
+    if (mp && mp.sample_count > 0) {
+      html += 'Model: ' + escapeHtml(String(mp.preferred_model || 'standard')) + ' (' + (mp.sample_count||0) + ' tasks)<br>';
+    }
+    document.getElementById('profileContent').innerHTML = html;
+    // Trials
+    const trials = p.trials || [];
+    if (trials.length > 0) {
+      let th = '<b>Recent trials:</b><br>';
+      for (const t of trials.slice(0, 5)) {
+        const icon = t.outcome === 'improved' ? '✅' : t.outcome === 'degraded' ? '❌' : '⏳';
+        const key = escapeHtml(String(t.profile_key));
+        th += icon + ' ' + key + ': ' + escapeHtml(String(t.old_value)) + ' → ' + escapeHtml(String(t.new_value));
+        if (t.outcome) th += ' (' + t.outcome + ')';
+        th += '<br>';
+      }
+      document.getElementById('profileTrials').innerHTML = th;
+    }
+  } catch(e) {
+    document.getElementById('profileContent').textContent = 'profile unavailable';
   }
 }
 
