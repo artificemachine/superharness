@@ -4,7 +4,7 @@
 **Version observed:** superharness 1.62.7 (daemon last ran on the version installed ~May 2)
 **Severity:** high — `ai_driven` projects silently stop dispatching; enqueue crashes fatally
 **Affected:** autonomy daemon (`shux daemon` / `shux operator`), `engine/inbox.py` enqueue path, `shux discuss start`
-**Status:** core bugs **FIXED in 1.62.17** (validated 2026-05-21 — see § Validation). One residual non-fatal bug open (shadow-enqueue duplicate).
+**Status:** fully resolved in 1.62.19 (2026-05-21). See § Resolution History below.
 **Project investigated:** `/Users/airm2max/DevOpsSec/morpheme` (`autonomy: ai_driven`, `require_tdd: true`)
 **Related:** `bugs/2026-05-11_discuss_dispatch_bugs.md` (Bug G — runaway round-1 re-dispatch), `BUG-set-owner-inbox-cleanup.md` (same class: refactor moved a helper, import site not updated)
 
@@ -228,3 +228,20 @@ superharness.engine.state_errors.StateError: Duplicate rejected ...
 `ai_driven` autonomy is unblocked on 1.62.17. Remaining work is the cosmetic
 shadow-enqueue traceback above; everything that previously broke dispatch is
 fixed.
+
+---
+
+## Resolution History
+
+### v1.62.8 (2026-05-21)
+- Fixed inbox.py enqueue crash: wrong import (`inbox_enqueue` → `inbox_watch`) + undefined `logger` → `_log` at line 242.
+- Restored `ai_driven` dispatch capability.
+
+### v1.62.18 (2026-05-21)
+- Discovered 2 more undefined `logger` landmines in `inbox.py` at lines 119 and 284. Both would `NameError` when their except paths executed (task-readiness check and enqueue setup).
+
+### v1.62.19 (2026-05-21)
+- **All 3 inbox.py logger landmines fixed** (`logger` → `_log` at lines 119, 242, 284).
+- **Shadow-enqueue traceback eliminated** — `_enqueue_sqlite_shadow` now catches `StateError` silently when the primary path already enqueued the row. Idempotent, no traceback.
+
+**Status: fully resolved.** No known `ai_driven` dispatch issues remain.
