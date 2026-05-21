@@ -468,3 +468,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-21: feat(behavioral): Iteration 5 production hardening — deduplicate global memory, watcher profile refresh, auto-apply adaptive rules, auto-record reviews. 8 new tests. Bump to v1.62.10.
 - 2026-05-21: feat(behavioral): Iteration 6 verification feedback loop — A/B test every profile change (profile_trials table, start/evaluate/complete trial). 5 new tests. Bump to v1.62.11.
 - 2026-05-21: feat(behavioral): Iteration 7 dashboard profile visibility (API endpoint + profile card). Bump to v1.62.12.
+- 2026-05-21: feat: dashboard profile card + C5 delegate gate extraction. Bump to v1.62.13.
