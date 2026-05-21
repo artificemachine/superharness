@@ -343,3 +343,129 @@ def format_profile_for_context(profile: dict, tier: str = "standard") -> str:
                         f"({ap.get('total_tasks', 0)} tasks).")
 
     return "\n".join(parts)
+
+
+# ── I5.2: Watcher profile refresh ────────────────────────────────────────────
+
+def refresh_behavioral_profile(project_dir: str) -> bool:
+    """Extract and save all behavioral profiles. Returns True if any data changed."""
+    profiles = extract_all_profiles(project_dir)
+    upath = user_profile_path()
+    changed = False
+
+    for name, data in profiles.items():
+        fpath = os.path.join(upath, f"{name}.json")
+        existing = load_profile(fpath)
+        # Compare ignoring updated_at
+        existing_clean = {k: v for k, v in existing.items() if k != "updated_at"}
+        new_clean = {k: v for k, v in data.items() if k != "updated_at"}
+        if existing_clean != new_clean:
+            save_profile(fpath, data)
+            changed = True
+
+    return changed
+
+
+# ── I5.3: Auto-apply adaptive rules ──────────────────────────────────────────
+
+def apply_rule(project_dir: str, rule: dict) -> bool:
+    """Apply an adaptive rule to the project. Returns True if applied.
+
+    Low-confidence rules are skipped (safety gate).
+    Writes ledger entry for traceability.
+    """
+    if rule.get("confidence") == "low":
+        logger.debug("Skipping low-confidence rule: %s", rule.get("action"))
+        return False
+
+    action = rule.get("action")
+    reason = rule.get("reason", "")
+
+    if action == "bump_autonomy":
+        _update_profile_field(project_dir, "autonomy", "autonomous")
+    elif action == "lower_autonomy":
+        _update_profile_field(project_dir, "autonomy", "approval-gated")
+    elif action == "enable_tdd":
+        _update_profile_field(project_dir, "require_tdd", True)
+    elif action == "set_default_model":
+        model = rule.get("preferred_model", "")
+        if model:
+            _update_profile_field(project_dir, "default_model", model)
+    elif action == "relax_review":
+        _update_profile_field(project_dir, "review_gate", "relaxed")
+    else:
+        return False
+
+    # Record to ledger
+    try:
+        from superharness.engine.db import get_connection, init_db, now_iso
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            conn.execute(
+                "INSERT INTO ledger (task_id, agent, action, details, created_at) VALUES (?, ?, ?, ?, ?)",
+                ("system", "watcher", f"adapt_{action}",
+                 json.dumps({"reason": reason, "rule": rule}),
+                 now_iso()),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("Failed to write adaptation ledger entry: %s", e)
+
+    logger.info("Applied adaptive rule: %s — %s", action, reason)
+    return True
+
+
+def _update_profile_field(project_dir: str, key: str, value: Any) -> None:
+    """Update a field in .superharness/profile.yaml."""
+    import yaml as _yaml
+    profile_path = os.path.join(project_dir, ".superharness", "profile.yaml")
+    profile = {}
+    if os.path.isfile(profile_path):
+        try:
+            with open(profile_path) as f:
+                profile = _yaml.safe_load(f) or {}
+        except Exception:
+            pass
+    profile[key] = value
+    with open(profile_path, "w") as f:
+        _yaml.dump(profile, f, default_flow_style=False)
+
+
+# ── I5.4: Auto-record reviews ────────────────────────────────────────────────
+
+def record_review(project_dir: str, task_id: str, outcome: str, owner: str = "user",
+                  score: float | None = None, duration_s: float = 0) -> bool:
+    """Record a review in review_store. Returns True on success.
+
+    Called automatically by state_writer on task done/review_passed.
+    Score defaults: done=10, review_passed=8, failed=3, verify_pass=9, verify_fail=2.
+    """
+    if score is None:
+        score_map = {"done": 10.0, "review_passed": 8.0, "failed": 3.0,
+                     "verify_pass": 9.0, "verify_fail": 2.0}
+        score = score_map.get(outcome, 5.0)
+
+    failed = 1 if score < 5.0 else 0
+    task_type = "implementation"
+
+    try:
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            conn.execute(
+                "INSERT INTO review_store (owner, task_type, duration_s, score, failed, recorded_at) "
+                "VALUES (?, ?, ?, ?, ?, datetime('now'))",
+                (owner, task_type, duration_s, score, failed),
+            )
+            conn.commit()
+            logger.info("Auto-recorded review: %s score=%.1f", task_id, score)
+            return True
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("Failed to record review for %s: %s", task_id, e)
+        return False
