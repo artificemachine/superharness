@@ -190,6 +190,7 @@ _cmd("subtask-cancel",  "Mark a subtask cancelled with a mandatory reason.",    
 _cmd("approve",         "Approve a task's pending plan (writes operator_command row; idempotent).", module="superharness.commands.approve")
 _cmd("reject",          "Reject a task's pending plan (writes operator_command row; idempotent).",  module="superharness.commands.approve")
 _cmd("memory-roots",    "Manage project root directories for cross-project memory scanning.",  module="superharness.commands.memory_cmd")
+_cmd("profile",         "View and manage your learned behavioral profile (show/edit/reset/lock).", module="superharness.commands.profile_cmd")
 
 # operator-memory and operator-forget run in-process (need argparse, not module passthrough)
 def _register_operator_memory():
