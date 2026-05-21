@@ -465,3 +465,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-20: feat(hermes): adapt 3 self-improvement mechanisms — agent-writable two-tier memory (engine/agent_memory.py), tool-loop guardrails wired into watcher log analyzer, auto-promotion project→global memory after 3 occurrences. 33 new tests. Plan: docs/PLAN-hermes-self-improvement.md. Bump to v1.62.7.
 - 2026-05-21: feat(behavioral): zero-touch adaptive profile engine (Iteration 4) + bugfix(inbox): enqueue crash for ai_driven projects (ImportError + undefined logger). 24 new tests. Bump to v1.62.8.
 - 2026-05-21: fix(cli): register profile and memory-roots as in-process commands (passthrough doesn't work for interactive output). Bump to v1.62.9.
+- 2026-05-21: feat(behavioral): Iteration 5 production hardening — deduplicate global memory, watcher profile refresh, auto-apply adaptive rules, auto-record reviews. 8 new tests. Bump to v1.62.10.
