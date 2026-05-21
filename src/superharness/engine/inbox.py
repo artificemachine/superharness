@@ -116,7 +116,7 @@ def _task_is_dispatch_ready(project_dir: str, task_id: str) -> bool:
         status = str(task.get("status", ""))
         return status in ("plan_approved", "in_progress", "todo")
     except Exception as e:
-        logger.warning("inbox.py unexpected error: %s", e, exc_info=True)
+        _log.warning("inbox.py unexpected error: %s", e, exc_info=True)
         return False
 
 
@@ -281,7 +281,7 @@ if __name__ == "__main__":
         from superharness.engine.state_reader import _ensure_ingested
         _ensure_ingested(_project_dir)
     except Exception as e:
-        logger.warning("inbox.py unexpected error: %s", e, exc_info=True)
+        _log.warning("inbox.py unexpected error: %s", e, exc_info=True)
         pass
     if _args.command == "enqueue":
         _id = _args.id or f"item-{datetime.now().timestamp()}"
