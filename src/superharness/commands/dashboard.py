@@ -224,11 +224,11 @@ def _launch_dashboard_background(script_path: str, args_list: list[str]) -> Opti
     return proc.pid
 
 
-def run_dashboard(args: tuple, scripts_dir: str) -> None:
-    """Launch the dashboard (foreground or background).
-
-    Extracted from cli.py _run_dashboard.
-    """
+def run_dashboard(args: tuple, scripts_dir: str | None = None) -> None:
+    """Launch the dashboard (foreground or background)."""
+    if scripts_dir is None:
+        import importlib.resources as _res
+        scripts_dir = str(_res.files("superharness").joinpath("scripts"))
     script_path = os.path.join(scripts_dir, "dashboard-ui.py")
     args_list = list(args)
 
