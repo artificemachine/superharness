@@ -193,6 +193,66 @@ def _get_latest_handoff_task(handoff_dir: str, to: str) -> tuple[str, str]:
 
 # Thin re-exports so existing call sites in this module and any external
 # imports keep working. Canonical implementations live in engine.next_action.
+
+
+def _check_dispatch_gates(project_dir: str, task_id: str, target: str) -> int | None:
+    """Check scheduling and dependency gates before dispatch.
+
+    Returns:
+        None if all gates pass (continue dispatch).
+        1 if a gate blocks (caller should abort dispatch).
+    """
+    from datetime import datetime, date as _date
+    today = _date.today()
+
+    # Gate 1: scheduled_after
+    scheduled_after = _get_task_field(project_dir, task_id, "scheduled_after")
+    if scheduled_after:
+        try:
+            sched_date = datetime.strptime(scheduled_after.strip(), "%Y-%m-%d").date()
+            if today < sched_date:
+                days_left = (sched_date - today).days
+                print(f"⛔ Task '{task_id}' is not ready — scheduled after {scheduled_after} ({days_left} day(s) from now).", file=sys.stderr)
+                return 1
+        except ValueError:
+            pass
+
+    # Gate 2: due_by (warn only, never block)
+    due_by = _get_task_field(project_dir, task_id, "due_by")
+    if due_by:
+        try:
+            due_date = datetime.strptime(due_by.strip(), "%Y-%m-%d").date()
+            if today > due_date:
+                days_overdue = (today - due_date).days
+                print(f"⚠️ Task '{task_id}' is overdue — due by {due_by} ({days_overdue} day(s) ago).", file=sys.stderr)
+        except ValueError:
+            pass
+
+    # Gate 3: depends_on / blocked_by
+    from superharness.engine import state_reader as _sr
+    task_obj = _sr.get_task(project_dir, task_id)
+    _dep_id_set: list[str] = []
+    if task_obj:
+        _dep_id_set = task_obj.get("blocked_by") or []
+    if _dep_id_set:
+        blockers = []
+        for dep_id in _dep_id_set:
+            dep_status = _get_task_field(project_dir, dep_id, "status")
+            if dep_status not in ("done", "archived"):
+                blockers.append(f"{dep_id} (status: {dep_status or 'not found'})")
+        if blockers:
+            print(f"blocked: task '{task_id}' depends on unfinished tasks:", file=sys.stderr)
+            for b in blockers:
+                print(f"   - {b}", file=sys.stderr)
+            try:
+                from superharness.engine.ledger_dao import decision_log
+                decision_log(project_dir, "gate_block", task_id=task_id, agent=target,
+                             reason=f"unfinished dependencies: {', '.join(blockers)}")
+            except Exception as e:
+                logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
+            return 1
+
+    return None  # all gates pass
 from superharness.engine.next_action import (  # noqa: E402
     _DISC_ROUND_RE,
     infer_workflow as _infer_workflow,
@@ -517,69 +577,10 @@ def delegate(
             )
             return 1
 
-    from datetime import datetime, date as _date
-    today = _date.today()
-
-    # Gate 1: scheduled_after — can't delegate before this date
-    scheduled_after = _get_task_field(project_dir, task_id, "scheduled_after")
-    if scheduled_after:
-        try:
-            sched_date = datetime.strptime(scheduled_after.strip(), "%Y-%m-%d").date()
-            if today < sched_date:
-                days_left = (sched_date - today).days
-                print(
-                    f"⛔ Task '{task_id}' is not ready — scheduled after {scheduled_after} ({days_left} day(s) from now).",
-                    file=sys.stderr,
-                )
-                return 1
-        except ValueError:
-            pass
-
-    # Gate 2: due_by — warn if past due date (don't block, just warn)
-    due_by = _get_task_field(project_dir, task_id, "due_by")
-    if due_by:
-        try:
-            due_date = datetime.strptime(due_by.strip(), "%Y-%m-%d").date()
-            if today > due_date:
-                days_overdue = (today - due_date).days
-                print(
-                    f"⚠️ Task '{task_id}' is overdue — due by {due_by} ({days_overdue} day(s) ago).",
-                    file=sys.stderr,
-                )
-        except ValueError:
-            pass
-
-    # Gate 3: depends_on / blocked_by — block if dependency tasks are not done
-    from superharness.engine import state_reader as _sr
-    task_obj = _sr.get_task(project_dir, task_id)
-
-    # Collect blocker IDs from both blocked_by (new) and depends_on (legacy)
-    _dep_id_set: list[str] = []
-    if task_obj:
-        # state_reader.get_task already normalizes dependencies into 'blocked_by'
-        _dep_id_set = task_obj.get("blocked_by") or []
-
-    if _dep_id_set:
-        blockers = []
-        for dep_id in _dep_id_set:
-            dep_status = _get_task_field(project_dir, dep_id, "status")
-            if dep_status not in ("done", "archived"):
-                blockers.append(f"{dep_id} (status: {dep_status or 'not found'})")
-        if blockers:
-            print(
-                f"blocked: task '{task_id}' depends on unfinished tasks:",
-                file=sys.stderr,
-            )
-            for b in blockers:
-                print(f"   - {b}", file=sys.stderr)
-            try:
-                from superharness.engine.ledger_dao import decision_log
-                decision_log(project_dir, "gate_block", task_id=task_id, agent=target,
-                             reason=f"unfinished dependencies: {', '.join(blockers)}")
-            except Exception as e:
-                logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
-                pass
-            return 1
+    # ── Scheduling + dependency gates ──────────────────────────────────
+    gate_result = _check_dispatch_gates(project_dir, task_id, target)
+    if gate_result is not None:
+        return gate_result
 
     # Gate 4: minimum content — plan-only dispatch requires acceptance criteria
     # or definition of done. Empty tasks produce empty plans, wasting an agent cycle.
