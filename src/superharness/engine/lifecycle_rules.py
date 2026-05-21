@@ -24,6 +24,9 @@ from typing import Literal
 
 import yaml
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class LifecycleRule:
@@ -144,7 +147,8 @@ def _load_profile(project_dir: str) -> dict:
     try:
         with open(path, encoding="utf-8") as f:
             return yaml.safe_load(f.read()) or {}
-    except Exception:
+    except Exception as e:
+        logger.warning("lifecycle_rules.py unexpected error: %s", e, exc_info=True)
         return {}
 
 
@@ -198,7 +202,8 @@ def _scan_inbox(project_dir: str, rules: list[LifecycleRule], profile: dict) -> 
     
     try:
         items = state_reader.get_inbox_items(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("lifecycle_rules.py unexpected error: %s", e, exc_info=True)
         return 0
 
     changed = 0
@@ -244,7 +249,8 @@ def _scan_contract(project_dir: str, rules: list[LifecycleRule], profile: dict) 
 
     try:
         tasks = state_reader.get_tasks(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("lifecycle_rules.py unexpected error: %s", e, exc_info=True)
         return 0
 
     changed = 0
@@ -312,7 +318,8 @@ def _check_deadlines(project_dir: str, profile: dict) -> int:
 
     try:
         tasks = state_reader.get_tasks(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("lifecycle_rules.py unexpected error: %s", e, exc_info=True)
         return 0
 
     changed = 0

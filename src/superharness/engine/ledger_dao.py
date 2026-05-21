@@ -7,6 +7,9 @@ from typing import Any, cast
 
 from superharness.engine.state_errors import StateError
 
+import logging
+logger = logging.getLogger(__name__)
+
 @dataclass(frozen=True)
 class LedgerRow:
     id: int
@@ -117,10 +120,9 @@ def decision_log(
             conn.commit()
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("ledger_dao.py unexpected error: %s", e, exc_info=True)
         pass
-
-
 def _now_utc() -> str:
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).isoformat()

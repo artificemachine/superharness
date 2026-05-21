@@ -15,6 +15,9 @@ from pathlib import Path
 
 import click
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _find_task(project_dir: Path, task_id: str) -> dict | None:
     try:
@@ -29,7 +32,8 @@ def _find_task(project_dir: Path, task_id: str) -> dict | None:
         if row is None:
             return None
         return {"id": row.id, "title": row.title, "owner": row.owner, "status": row.status}
-    except Exception:
+    except Exception as e:
+        logger.warning("diff.py unexpected error: %s", e, exc_info=True)
         return None
 
 

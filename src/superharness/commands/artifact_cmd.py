@@ -13,6 +13,9 @@ import os
 import sys
 from datetime import datetime, timezone
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -32,7 +35,8 @@ def _hash_file(path: str) -> tuple[str | None, int | None]:
                 h.update(chunk)
                 total += len(chunk)
         return h.hexdigest(), total
-    except Exception:
+    except Exception as e:
+        logger.warning("artifact_cmd.py unexpected error: %s", e, exc_info=True)
         return None, None
 
 

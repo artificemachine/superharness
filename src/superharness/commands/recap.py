@@ -7,6 +7,9 @@ import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _parse_iso(ts: str) -> datetime | None:
     try:
@@ -57,7 +60,8 @@ def run_recap(project_dir: str | Path, hours: int = 4) -> dict:
                 if _within_window(ts, cutoff):
                     recent_inbox.append(item)
                     break
-    except Exception:
+    except Exception as e:
+        logger.warning("recap.py unexpected error: %s", e, exc_info=True)
         pass
     if recent_inbox:
         sections.append("## Inbox Activity")
@@ -94,7 +98,8 @@ def run_recap(project_dir: str | Path, hours: int = 4) -> dict:
     try:
         from superharness.engine import state_reader as _sr
         tasks = _sr.get_tasks(str(project_dir))
-    except Exception:
+    except Exception as e:
+        logger.warning("recap.py unexpected error: %s", e, exc_info=True)
         tasks = []
     for task in tasks:
             if not isinstance(task, dict):

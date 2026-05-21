@@ -8,6 +8,9 @@ from __future__ import annotations
 import os
 import sys
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def main(argv: list[str] | None = None) -> None:
     import argparse
@@ -88,9 +91,8 @@ def _print_model_breakdown(project_dir: str, records: list) -> None:
         if weekly:
             pct = total_cost / float(weekly) * 100
             print(f"Budget: ${weekly:.2f}/week — {pct:.0f}% used")
-    except Exception:
+    except Exception as e:
+        logger.warning("benchmark.py unexpected error: %s", e, exc_info=True)
         pass
-
-
 if __name__ == "__main__":
     main()

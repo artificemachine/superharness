@@ -36,6 +36,9 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # ── Column definitions ───────────────────────────────────────────────────────
 
@@ -166,7 +169,8 @@ def _init_colors(curses) -> None:
         try:
             curses.init_pair(num, fg, bg)
             _COLOR_PAIR[name] = num
-        except Exception:
+        except Exception as e:
+            logger.warning("tui.py unexpected error: %s", e, exc_info=True)
             _COLOR_PAIR[name] = 0
 
 
@@ -202,14 +206,15 @@ def _load_agent_health(project_dir: str) -> dict:
         from superharness.engine.agent_status import get_all_agent_statuses
         for name, status in get_all_agent_statuses(project_dir).items():
             health[name] = status
-    except Exception:
+    except Exception as e:
+        logger.warning("tui.py unexpected error: %s", e, exc_info=True)
         pass
-
     # watcher check via watcher_singleton
     try:
         from superharness.engine import watcher_singleton
         health["watcher"] = "running" if watcher_singleton.is_running(project_dir) else "stopped"
-    except Exception:
+    except Exception as e:
+        logger.warning("tui.py unexpected error: %s", e, exc_info=True)
         health["watcher"] = "unknown"
 
     return health

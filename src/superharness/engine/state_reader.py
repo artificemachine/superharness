@@ -14,12 +14,15 @@ in their profile.yaml to opt in to strict mode.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import sys
 from typing import Any
 
 from superharness.utils.paths import resolve_xdg_state_db_path
+
+logger = logging.getLogger(__name__)
 
 
 def _has_sqlite_db(project_dir: str) -> bool:
@@ -47,8 +50,8 @@ def _get_backend(project_dir: str) -> str:
             prof_backend = profile.get("state_backend")
             if prof_backend in ("yaml_only", "dual", "sqlite_only"):
                 return prof_backend
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to read profile.yaml for state_backend: %s", e)
 
     # 3. Default to sqlite_only — SQLite is the canonical source of truth
     return "sqlite_only"
@@ -75,8 +78,8 @@ def _ensure_ingested(project_dir: str) -> None:
         count = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
         if count == 0:
             migrate_all_to_sqlite(conn, project_dir)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("YAML → SQLite ingest failed for %s: %s", project_dir, e)
     finally:
         conn.close()
 
@@ -141,7 +144,8 @@ def _legacy_ingest_then_tasks(project_dir: str) -> list[dict]:
     _ensure_ingested(project_dir)
     try:
         return _tasks_from_sqlite(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to read tasks from SQLite for %s: %s", project_dir, e)
         return []
 
 
@@ -149,7 +153,8 @@ def _legacy_ingest_then_inbox(project_dir: str) -> list[dict]:
     _ensure_ingested(project_dir)
     try:
         return _inbox_from_sqlite(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to read inbox from SQLite for %s: %s", project_dir, e)
         return []
 
 
@@ -202,8 +207,8 @@ def _enrich_task(conn: sqlite3.Connection, row: Any) -> dict:
             (row.id,)
         ):
             deps_strict.append(r["prerequisite_task_id"])
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to read task dependencies for task %s: %s", row.id, e)
 
     # 2. Soft (informational) blocked_by storage — JSON-encoded list
     soft = None
@@ -213,8 +218,8 @@ def _enrich_task(conn: sqlite3.Connection, row: Any) -> dict:
             val = _j.loads(row.blocked_by_raw)
             if isinstance(val, list):
                 soft = [str(x) for x in val]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to parse blocked_by_raw for task %s: %s", row.id, e)
             
     deps = soft if soft is not None else deps_strict
     d["blocked_by"] = deps
@@ -234,8 +239,8 @@ def _enrich_task(conn: sqlite3.Connection, row: Any) -> dict:
             extras = _jx.loads(extras_json)
             if isinstance(extras, dict):
                 d.update(extras)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to parse extras_json for task %s: %s", row.id, e)
             
     return d
 
@@ -269,7 +274,8 @@ def _read_project_meta(project_dir: str) -> tuple[str, str]:
             return rows.get("id", "contract"), rows.get("goal", "")
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to read project meta for %s: %s", project_dir, e)
         return "contract", ""
 
 
@@ -279,7 +285,8 @@ def get_top_level_tasks(project_dir: str) -> list[dict]:
         _legacy_ingest_then_tasks(project_dir)  # hydrate legacy fixtures
     try:
         return _tasks_from_sqlite(project_dir, top_level_only=True)
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to read top-level tasks from SQLite for %s: %s", project_dir, e)
         return []
 
 
@@ -300,11 +307,9 @@ def get_handoffs(project_dir: str, task_id: str | None = None) -> list[dict]:
     """Return handoff rows from SQLite."""
     try:
         return _handoffs_from_sqlite(project_dir, task_id)
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to read handoffs from SQLite for %s: %s", project_dir, e)
         return []
-
-
-def _handoffs_from_sqlite(project_dir: str, task_id: str | None) -> list[dict]:
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import handoffs_dao
 
@@ -405,9 +410,10 @@ def get_ledger_entries(project_dir: str, *, hours: int | None = None, limit: int
             return combined[:limit]
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
         if backend == "sqlite_only":
             raise
+        logger.warning("Failed to read ledger from SQLite for %s, falling back to markdown: %s", project_dir, e)
         return md_entries
 
 
@@ -455,21 +461,30 @@ def _ledger_from_markdown(project_dir: str, hours: int | None = None, limit: int
                         "action": clean_line or "operational event",
                         "details": {},
                     })
-    except Exception:
-        pass
-    
+    except Exception as e:
+        logger.warning("Failed to parse ledger.md for %s: %s", project_dir, e)
     results.sort(key=lambda x: str(x.get("created_at", "")), reverse=True)
     return results[:limit]
 
 
-def _parse_iso_utc(ts: str):
+def parse_iso_utc(raw: str):
     """Parse an ISO-8601 timestamp string to a timezone-aware datetime.
 
-    Handles the 'Z' suffix by replacing it with '+00:00'.
+    Handles the 'Z' suffix, surrounding quotes, and returns None on failure.
     """
     from datetime import datetime, timezone
-    if ts.endswith("Z"):
-        ts = ts[:-1] + "+00:00"
-    return datetime.fromisoformat(ts)
+    value = raw.strip().strip("'\"")
+    if not value:
+        return None
+    if value.endswith("Z"):
+        value = value[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+# Legacy alias kept for internal compatibility
+_parse_iso_utc = parse_iso_utc
 
 

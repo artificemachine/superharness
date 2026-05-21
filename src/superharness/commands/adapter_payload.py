@@ -23,6 +23,9 @@ from superharness.engine.next_action import next_action as _next_action
 from superharness.engine.normalization import normalize_blocked_by
 from superharness.engine import state_reader
 
+import logging
+logger = logging.getLogger(__name__)
+
 SCHEMA_VERSION = "1.4"
 
 # ---------------------------------------------------------------------------
@@ -47,7 +50,8 @@ def _load_project_settings(sh_dir: Path) -> dict:
     try:
         import yaml as _yaml
         profile = _yaml.safe_load(profile_path.read_text()) or {}
-    except Exception:
+    except Exception as e:
+        logger.warning("adapter_payload.py unexpected error: %s", e, exc_info=True)
         return _default_project_settings()
     defaults = _default_project_settings()
     wf_raw = profile.get("workflow") or {}
@@ -114,7 +118,8 @@ def _load_yaml(path: Path) -> Any:
     """Load a YAML file, returning {} on any error or missing file."""
     try:
         return yaml.safe_load(path.read_text(errors="replace")) or {}
-    except Exception:
+    except Exception as e:
+        logger.warning("adapter_payload.py unexpected error: %s", e, exc_info=True)
         return {}
 
 
@@ -286,9 +291,9 @@ def _load_failures(sh_dir: Path) -> list[dict]:
                 "agent":         r.agent or "",
                 "date":          _coerce_date(r.created_at or ""),
             } for r in rows]
-    except Exception:
+    except Exception as e:
+        logger.warning("adapter_payload.py unexpected error: %s", e, exc_info=True)
         pass
-
     return []
 
 
@@ -322,9 +327,9 @@ def _load_decisions(sh_dir: Path) -> list[dict]:
                 "by":           r.agent or "",
                 "date":         _coerce_date(r.created_at or ""),
             } for r in rows]
-    except Exception:
+    except Exception as e:
+        logger.warning("adapter_payload.py unexpected error: %s", e, exc_info=True)
         pass
-
     return []
 
 
@@ -363,9 +368,9 @@ def _load_inbox(sh_dir: Path) -> list[dict]:
                 "max_retries": getattr(r, "max_retries", 3),
                 "created_at":  _coerce_date(r.created_at or ""),
             } for r in rows]
-    except Exception:
+    except Exception as e:
+        logger.warning("adapter_payload.py unexpected error: %s", e, exc_info=True)
         pass
-
     return []
 
 
@@ -380,7 +385,8 @@ def _load_agent_pulse(sh_dir: Path) -> dict | None:
         return None
     try:
         raw = yaml.safe_load(path.read_text(errors="replace"))
-    except Exception:
+    except Exception as e:
+        logger.warning("adapter_payload.py unexpected error: %s", e, exc_info=True)
         return None
     if not isinstance(raw, dict):
         return None
@@ -597,7 +603,8 @@ def _load_artifacts(project_path: str) -> list[dict]:
             return [dict(r) for r in rows]
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("adapter_payload.py unexpected error: %s", e, exc_info=True)
         return []
 
 
@@ -615,7 +622,8 @@ def _load_heartbeats(project_path: str) -> list[dict]:
             return [asdict(r) for r in rows]
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("adapter_payload.py unexpected error: %s", e, exc_info=True)
         return []
 
 
@@ -624,7 +632,8 @@ def _load_rules(project_path: str) -> list[dict]:
     try:
         from superharness.commands.rules import list_rules
         return list_rules(project_path)
-    except Exception:
+    except Exception as e:
+        logger.warning("adapter_payload.py unexpected error: %s", e, exc_info=True)
         return []
 
 

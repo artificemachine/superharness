@@ -7,6 +7,9 @@ import time
 from pathlib import Path
 from typing import Any
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def trace_event(project_dir: str | Path, event_type: str, data: dict[str, Any]):
     """Append a structured diagnostic event to the trace ledger."""
@@ -23,5 +26,6 @@ def trace_event(project_dir: str | Path, event_type: str, data: dict[str, Any]):
         os.makedirs(trace_file.parent, exist_ok=True)
         with open(trace_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(event) + "\n")
-    except Exception:
+    except Exception as e:
+        logger.warning("trace.py unexpected error: %s", e, exc_info=True)
         pass # Never block the engine for a log write

@@ -11,6 +11,9 @@ import yaml
 
 from superharness.engine.yaml_helpers import safe_load
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _atomic_write(path: str, content: str) -> None:
     dir_ = os.path.dirname(os.path.abspath(path))
@@ -252,9 +255,9 @@ def cmd_approve(
                     _conn.commit()
             finally:
                 _conn.close()
-        except Exception:
+        except Exception as e:
+            logger.warning("discuss.py unexpected error: %s", e, exc_info=True)
             pass
-
         if not changed and task_owner and task_status_val in ("todo", "in_progress"):
             try:
                 _conn2 = _gci(project_dir)
@@ -268,9 +271,9 @@ def cmd_approve(
                     _conn2.commit()
                 finally:
                     _conn2.close()
-            except Exception:
+            except Exception as e:
+                logger.warning("discuss.py unexpected error: %s", e, exc_info=True)
                 pass
-
     # Acquire locks in order
     def _with_locks(paths: list[str], fn) -> None:  # type: ignore[type-arg]
         if not paths:

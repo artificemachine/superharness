@@ -5,6 +5,9 @@ import os
 import yaml
 from typing import Any
 
+import logging
+logger = logging.getLogger(__name__)
+
 def load_yaml_config(
     bundled_pkg: str,
     bundled_filename: str,
@@ -43,7 +46,8 @@ def load_yaml_config(
             
         return config
 
-    except Exception:
+    except Exception as e:
+        logger.warning("config_loader.py unexpected error: %s", e, exc_info=True)
         return fallback
 
 def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:

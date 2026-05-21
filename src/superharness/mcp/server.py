@@ -26,6 +26,9 @@ from superharness.mcp.approval import ApprovalGate, ApprovalPending, ApprovalRej
 from superharness.mcp.events import EventStream
 from superharness.mcp import tools
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _make_app(project_path: str, port: int = 7474):
     """Build and return the FastMCP app for a given project."""
@@ -190,7 +193,8 @@ def run_server(project_path: str, port: int = 7474, transport: str = "streamable
     def _cleanup(*_):
         try:
             os.unlink(state_path)
-        except Exception:
+        except Exception as e:
+            logger.warning("server.py unexpected error: %s", e, exc_info=True)
             pass
         sys.exit(0)
 

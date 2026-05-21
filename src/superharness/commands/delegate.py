@@ -15,6 +15,8 @@ from superharness.engine.sdk_runner import sdk_available, SDKRunner
 from superharness.engine.orchestrator import Orchestrator, DecompositionResult
 from superharness.engine.taxonomy import VALID_EFFORTS
 from superharness.utils.paths import is_project_initialized
+import logging
+logger = logging.getLogger(__name__)
 
 
 _JSON_MODE = False
@@ -29,110 +31,7 @@ def _abort(msg: str, code: int = 1) -> None:
     sys.exit(code)
 
 
-def _build_context_hint(project_dir: str, task: dict) -> str:
-    """Build a compact context block from task metadata to reduce agent cold-start.
-
-    Scans acceptance criteria and TDD block for keywords, finds matching source
-    files, and returns a pre-built context string the agent can use immediately.
-    """
-    lines: list[str] = []
-
-    # Extract keywords from acceptance criteria + TDD
-    keywords: list[str] = []
-    for ac in task.get("acceptance_criteria") or []:
-        # Pull nouns/identifiers from criteria
-        for word in re.findall(r'[a-z_]{4,}', str(ac).lower()):
-            if word not in ("that", "this", "with", "from", "have", "been", "should", "must", "when", "each", "into"):
-                keywords.append(word)
-    tdd = task.get("tdd") or {}
-    for phase in ("red", "green", "refactor"):
-        for word in re.findall(r'[a-z_]{4,}', str(tdd.get(phase, "")).lower()):
-            if word not in ("that", "this", "with", "from", "have", "been", "should", "must", "when", "each", "into", "test", "tests", "code", "make", "pass"):
-                keywords.append(word)
-
-    # Deduplicate, take top 10
-    seen_kw = set()
-    unique_kw = []
-    for kw in keywords:
-        if kw not in seen_kw:
-            seen_kw.add(kw)
-            unique_kw.append(kw)
-    top_keywords = unique_kw[:10]
-
-    # 1. Keywords & Source Files
-    if top_keywords:
-        src_dir = os.path.join(project_dir, "src")
-        if not os.path.isdir(src_dir):
-            src_dir = project_dir
-
-        relevant_files: set[str] = set()
-        for kw in top_keywords[:5]:  # limit to 5 greps
-            try:
-                r = subprocess.run(
-                    ["grep", "-rl", "--include=*.py", "-m", "3", kw, src_dir],
-                    capture_output=True, text=True, check=False, timeout=5,
-                )
-                for f in r.stdout.strip().splitlines()[:3]:
-                    if f:
-                        relevant_files.add(os.path.relpath(f, project_dir))
-            except Exception:
-                pass
-
-        if relevant_files:
-            lines.append("\nRelevant source files (start here, don't explore from scratch):")
-            for f in sorted(relevant_files)[:10]:
-                lines.append(f"  - {f}")
-
-    # 2. Recent git changes
-    try:
-        r = subprocess.run(
-            ["git", "diff", "--name-only", "HEAD~3"],
-            capture_output=True, text=True, check=False, timeout=5,
-            cwd=project_dir,
-        )
-        recent = [f for f in r.stdout.strip().splitlines() if f.endswith(".py")][:5]
-        if recent:
-            lines.append("\nRecently changed files:")
-            for f in recent:
-                lines.append(f"  - {f}")
-    except Exception:
-        pass
-
-    # 3. Past skill hints
-    try:
-        from superharness.engine.skill_extractor import get_skill_hints
-        skill_hints = get_skill_hints(project_dir, task)
-        if skill_hints:
-            lines.append("\nRelated past skills (reuse proven approaches):")
-            for h in skill_hints:
-                lines.append(f"  - {h}")
-    except Exception:
-        pass
-
-    # 4. Failure pattern hints & System health (Self-healing)
-    task_id = str(task.get("id", ""))
-    if task_id:
-        try:
-            from superharness.engine.failure_patterns import get_failure_hints
-            hints = get_failure_hints(project_dir, task_id)
-            if hints:
-                lines.append("\nPrior failure hints (avoid repeating these mistakes):")
-                for h in hints:
-                    lines.append(f"  - {h}")
-                
-                # Injection of system health context
-                try:
-                    from superharness.commands.doctor import get_doctor_summary
-                    health = get_doctor_summary(project_dir)
-                    if health:
-                        lines.append("\nCurrent system health (check for environmental blockers):")
-                        lines.append(health)
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-    return "\n".join(lines) if lines else ""
+from superharness.engine.context_hint import build_context_hint
 
 
 def _rotate_launcher_logs(log_dir: Path, task_id: str, agent: str, keep: int = 5) -> None:
@@ -169,7 +68,8 @@ def _read_profile_field(project_dir: str, field: str, default: str) -> str:
             doc = yaml.safe_load(f) or {}
         val = doc.get(field)
         return str(val) if val is not None else default
-    except Exception:
+    except Exception as e:
+        logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
         return default
 
 
@@ -248,16 +148,16 @@ def _save_context_snapshot(project_dir: str, task_id: str, result: dict) -> None
             cwd=project_dir,
         )
         snapshot["files_touched"] = [f for f in r.stdout.strip().splitlines() if f]
-    except Exception:
+    except Exception as e:
+        logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
         snapshot["files_touched"] = []
     try:
         from superharness.engine.yaml_helpers import safe_dump
         with open(os.path.join(snapshot_dir, f"{task_id}.yaml"), "w") as f:
             safe_dump(snapshot, f)
-    except Exception:
+    except Exception as e:
+        logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
         pass
-
-
 def _get_task_previously_failed(project_dir: str, task_id: str) -> bool:
     status = _get_task_field(project_dir, task_id, "status")
     return status == "failed"
@@ -394,7 +294,8 @@ def _record_decomposition(
                     tasks_dao.upsert(conn, row)
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
         # Orchestration record is non-critical; don't crash delegation if DB is locked
         pass
 
@@ -675,7 +576,8 @@ def delegate(
                 from superharness.engine.ledger_dao import decision_log
                 decision_log(project_dir, "gate_block", task_id=task_id, agent=target,
                              reason=f"unfinished dependencies: {', '.join(blockers)}")
-            except Exception:
+            except Exception as e:
+                logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
                 pass
             return 1
 
@@ -696,7 +598,8 @@ def delegate(
                 from superharness.engine.ledger_dao import decision_log
                 decision_log(project_dir, "gate_block", task_id=task_id, agent=target,
                              reason="empty task: no AC, DoD, or context for plan-only dispatch")
-            except Exception:
+            except Exception as e:
+                logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
                 pass
             return EXIT_PERMANENT_BLOCK  # Gate 4: minimum content
 
@@ -733,7 +636,8 @@ def delegate(
             _allowed = ", ".join(sorted(_DISPATCH_ALLOWED_STATUSES))
             decision_log(project_dir, "gate_block", task_id=task_id, agent=target,
                          reason=f"status '{_task_status}' not allowed for workflow '{_workflow}' (allowed: {_allowed})")
-        except Exception:
+        except Exception as e:
+            logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
             pass
         return EXIT_PERMANENT_BLOCK
 
@@ -756,7 +660,8 @@ def delegate(
                     from superharness.engine.ledger_dao import decision_log
                     decision_log(project_dir, "gate_block", task_id=task_id, agent=target,
                                  reason=f"preflight: {pf.format_summary(verbose=False)}")
-                except Exception:
+                except Exception as e:
+                    logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
                     pass
                 return 1
             # Surface fanout hint if complexity suggests parallel
@@ -765,7 +670,8 @@ def delegate(
                     f"  Hint: consider `--fanout {pf.suggested_fanout_n}` or swarm mode for this task.",
                     file=sys.stderr,
                 )
-        except Exception:
+        except Exception as e:
+            logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
             pass  # Preflight is advisory — never block on its own errors
 
     # -----------------------------------------------------------------------
@@ -783,9 +689,9 @@ def delegate(
             _router = ModelRouter.from_project(project_dir)
             resolved_model = _router.model_for(role)
             model_source = f"role:{role}"
-        except Exception:
+        except Exception as e:
+            logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
             pass
-
     # 1. CLI flag (overrides role routing)
     if model_override:
         resolved_model = model_override
@@ -831,7 +737,8 @@ def delegate(
                 model_source = "auto-classified"
             if not resolved_effort:
                 resolved_effort = classified_effort
-        except Exception:
+        except Exception as e:
+            logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
             pass  # classification failure is non-fatal
 
     # 4. Profile defaults
@@ -845,7 +752,8 @@ def delegate(
                     resolved_model = _resolve_model(target, tier)
                 else:
                     resolved_model = profile_model
-            except Exception:
+            except Exception as e:
+                logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
                 resolved_model = profile_model
             model_source = "profile"
     if not resolved_effort:
@@ -858,7 +766,8 @@ def delegate(
         try:
             from superharness.engine.model_router import resolve_model as _resolve_model
             resolved_model = _resolve_model(target, "standard")
-        except Exception:
+        except Exception as e:
+            logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
             resolved_model = "sonnet"
         model_source = "fallback"
     if not resolved_effort:
@@ -870,9 +779,9 @@ def delegate(
         tier = resolve_tier(resolved_model)
         if tier:
             resolved_model = _resolve_model(target, tier)
-    except Exception:
+    except Exception as e:
+        logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
         pass
-
     # Apply ChatGPT-account overrides last so every resolution path
     # (CLI, task field, auto-classify via adapter_registry, profile,
     # fallback, tier-reroute) gets remapped when codex is signed in via
@@ -880,9 +789,9 @@ def delegate(
     try:
         from superharness.engine.model_router import _apply_chatgpt_auth_override
         resolved_model = _apply_chatgpt_auth_override(target, resolved_model, project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
         pass
-
     # -----------------------------------------------------------------------
     # Orchestrator mode: decompose task into subtasks before dispatch
     # -----------------------------------------------------------------------
@@ -1052,7 +961,7 @@ def delegate(
                 user_instructions = f"\n\nUser instructions for this task:\n{user_instructions}"
 
         # Build context hint to reduce cold-start exploration time
-        context_hint = _build_context_hint(project_dir, task_obj or {})
+        context_hint = build_context_hint(project_dir, task_obj or {})
 
         if target == "claude-code":
             if latest_handoff:
@@ -1134,18 +1043,18 @@ def delegate(
                     preview = r.get("preview", "")[:120].replace("\n", " ")
                     vault_block += f"  - {r['path']} (similarity: {r['similarity']})\n    {preview}\n"
                 prompt += vault_block
-        except Exception:
+        except Exception as e:
+            logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
             pass
-
         # Inject project rules so the agent knows constraints before starting
         try:
             from superharness.commands.rules import all_rules_text
             rules_text = all_rules_text(project_dir)
             if rules_text:
                 prompt += f"\n\nProject rules (run `shux rules` to see full list):\n{rules_text}"
-        except Exception:
+        except Exception as e:
+            logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
             pass
-
         print(f"Project: {project_dir}")
         print(f"Contract: {contract_id}")
         print(f"Task: {task_id}")
@@ -1190,7 +1099,8 @@ def delegate(
             print("  Use --force to override.", file=sys.stderr)
             if not force:
                 return 1
-    except Exception:
+    except Exception as e:
+        logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
         pass  # budget check is best-effort — never block dispatch on error
 
     # SDK dispatch path

@@ -10,6 +10,9 @@ import sys
 
 from superharness.engine.next_action import infer_workflow as _infer_workflow_na
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _status_label(s: str) -> str:
     mapping = {
@@ -43,7 +46,8 @@ def _read_team_size(project_dir: str) -> str:
         with open(profile_file) as f:
             doc = yaml.safe_load(f) or {}
         return str(doc.get("team_size") or "team")
-    except Exception:
+    except Exception as e:
+        logger.warning("contract_today.py unexpected error: %s", e, exc_info=True)
         return "team"
 
 
@@ -163,7 +167,8 @@ def contract_today(
             try:
                 with open(fpath) as f:
                     hdoc = yaml.safe_load(f) or {}
-            except Exception:
+            except Exception as e:
+                logger.warning("contract_today.py unexpected error: %s", e, exc_info=True)
                 continue
             if not isinstance(hdoc, dict):
                 continue

@@ -75,7 +75,8 @@ def cmd_mcp_stop(project_path: str | None) -> None:
             click.echo(f"Sent SIGTERM to pid {pid}")
             try:
                 os.unlink(state_path)
-            except Exception:
+            except Exception as e:
+                logger.warning("cli.py unexpected error: %s", e, exc_info=True)
                 pass
         else:
             click.echo("No PID in state file — cannot stop")

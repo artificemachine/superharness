@@ -113,7 +113,8 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
             all_tasks = tasks_dao.get_all(conn)
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("validate.py unexpected error: %s", e, exc_info=True)
         all_tasks = []
 
     done_tasks = [t for t in all_tasks if t.status == "done" and t.id.strip()]
@@ -185,7 +186,8 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
                 sub_status = str(sub.get("status", "pending"))
                 if sub_id and not is_subtask_resolved(sub_status):
                     open_subtask_map.setdefault(task.id, []).append(sub_id)
-        except Exception:
+        except Exception as e:
+            logger.warning("validate.py unexpected error: %s", e, exc_info=True)
             pass
     for parent_id, open_subs in open_subtask_map.items():
         print(
@@ -205,7 +207,8 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
                 from superharness.engine import state_writer
                 try:
                     state_writer.set_task_status(project, id_, "done")
-                except Exception:
+                except Exception as e:
+                    logger.warning("validate.py unexpected error: %s", e, exc_info=True)
                     pass
                 _repair_append_ledger(ledger_file, f"fixed stuck status for {id_}: {status} → done")
                 print(f"[repair] Fixed stuck status for: {id_} ({status} → done)")

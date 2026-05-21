@@ -6,6 +6,9 @@ import os
 import re
 import threading
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # Low-risk patterns: read-only or non-destructive commands
 _LOW_RISK_PATTERNS = [
@@ -73,13 +76,14 @@ class ApprovalState:
             os.makedirs(os.path.dirname(self._config_path), exist_ok=True)
             with open(self._config_path, "w") as f:
                 json.dump({"permanent": sorted(self._permanent)}, f)
-        except Exception:
+        except Exception as e:
+            logger.warning("state.py unexpected error: %s", e, exc_info=True)
             pass
-
     def _load(self) -> None:
         try:
             with open(self._config_path) as f:
                 data = json.load(f)
             self._permanent = set(data.get("permanent", []))
-        except Exception:
+        except Exception as e:
+            logger.warning("state.py unexpected error: %s", e, exc_info=True)
             pass

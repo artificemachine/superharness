@@ -11,6 +11,9 @@ from datetime import datetime, timezone
 from superharness.engine.db import get_connection, init_db
 from superharness.engine import discussions_dao
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -131,9 +134,9 @@ def cmd_submit_round(
                 raw = safe_load(points_file, list)
                 if isinstance(raw, list):
                     points = raw
-            except Exception:
+            except Exception as e:
+                logger.warning("discussion.py unexpected error: %s", e, exc_info=True)
                 pass
-
         discussions_dao.add_round(
             conn,
             discussion_id=disc_id,
@@ -169,7 +172,8 @@ def _check_all_submitted_and_set_consensus(conn, disc, round_: int) -> None:
     try:
         from superharness.engine.adapter_registry import list_adapters
         ai_agents = set(list_adapters())
-    except Exception:
+    except Exception as e:
+        logger.warning("discussion.py unexpected error: %s", e, exc_info=True)
         ai_agents = set()
     agent_participants = [o for o in disc.owners if o in ai_agents] if ai_agents else list(disc.owners)
     required_count = len(agent_participants) if agent_participants else len(disc.owners)
@@ -241,9 +245,9 @@ def _create_consensus_task(conn, disc, round_: int, submitted_agents: set[str]) 
             db_path = conn.execute("PRAGMA database_list").fetchone()
             if db_path:
                 project_dir = os.path.dirname(os.path.dirname(db_path["file"]))
-        except Exception:
+        except Exception as e:
+            logger.warning("discussion.py unexpected error: %s", e, exc_info=True)
             pass
-
         tasks_dao.upsert(conn, TaskRow(
             id=task_id, title=f"Implement: {topic}", owner=owner,
             status="todo", effort="medium", project_path=project_dir,
@@ -388,7 +392,8 @@ def cmd_advance(discussion_dir: str) -> int:
             ).fetchone()
             if meta:
                 max_rounds = int(meta["value"])
-        except Exception:
+        except Exception as e:
+            logger.warning("discussion.py unexpected error: %s", e, exc_info=True)
             max_rounds = 3
 
         if consensus:
@@ -411,7 +416,8 @@ def cmd_advance(discussion_dir: str) -> int:
                     "INSERT OR REPLACE INTO discussion_rounds (discussion_id, round_number, agent, created_at) VALUES (?, -2, '_advance', ?)",
                     (disc_id, now),
                 )
-            except Exception:
+            except Exception as e:
+                logger.warning("discussion.py unexpected error: %s", e, exc_info=True)
                 pass
             result = {"action": "advanced", "next_round": next_round}
 

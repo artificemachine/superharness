@@ -18,6 +18,9 @@ from typing import Callable
 
 import yaml
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Print primitives
@@ -137,7 +140,8 @@ def _curses_menu(question: str, choices: list[str], default: int) -> int:
 
     try:
         _curses.wrapper(_inner)
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard_wizard.py unexpected error: %s", e, exc_info=True)
         return -1
     return result[0]
 
@@ -185,7 +189,8 @@ def _load_profile(project_dir: str) -> dict:
         return {}
     try:
         return yaml.safe_load(p.read_text()) or {}
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard_wizard.py unexpected error: %s", e, exc_info=True)
         return {}
 
 
@@ -203,7 +208,8 @@ def _task_count(project_dir: str) -> int:
         row = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()
         conn.close()
         return row[0] if row else 0
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard_wizard.py unexpected error: %s", e, exc_info=True)
         return 0
 
 

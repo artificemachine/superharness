@@ -20,6 +20,9 @@ from typing import Any
 from superharness.engine import handoffs_dao, observations_dao, tasks_dao
 from superharness.engine.summarizer import Summarizer, get_summarizer
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _build_context(conn: sqlite3.Connection, task_id: str, phase: str) -> dict[str, Any] | None:
     task = tasks_dao.get(conn, task_id)
@@ -69,5 +72,6 @@ def capture_observation(
             return None
 
         return observations_dao.insert(conn, task_id, phase, summary)
-    except Exception:
+    except Exception as e:
+        logger.warning("observation_capture.py unexpected error: %s", e, exc_info=True)
         return None

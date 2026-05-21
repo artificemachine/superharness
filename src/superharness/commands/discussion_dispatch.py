@@ -70,7 +70,8 @@ def _retry_exhausted(project_dir: str, agent: str, task_key: str) -> bool:
             return retry_count >= max_retries
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("discussion_dispatch.py unexpected error: %s", e, exc_info=True)
         return False
 
 

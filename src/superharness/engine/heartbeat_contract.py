@@ -26,6 +26,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
+import logging
+logger = logging.getLogger(__name__)
+
 SCHEMA_VERSION = "1"
 STALE_SECONDS_DEFAULT = 120
 
@@ -117,7 +120,8 @@ def read_heartbeat(path: str) -> Optional[AgentHeartbeat]:
             written_at=str(data.get("written_at", "")),
             budget=budget,
         )
-    except Exception:
+    except Exception as e:
+        logger.warning("heartbeat_contract.py unexpected error: %s", e, exc_info=True)
         return None
 
 
@@ -126,7 +130,8 @@ def is_stale(heartbeat: AgentHeartbeat, stale_seconds: int = STALE_SECONDS_DEFAU
     try:
         hb_dt = datetime.fromisoformat(heartbeat.written_at.replace("Z", "+00:00"))
         return (datetime.now(timezone.utc) - hb_dt).total_seconds() >= stale_seconds
-    except Exception:
+    except Exception as e:
+        logger.warning("heartbeat_contract.py unexpected error: %s", e, exc_info=True)
         return True
 
 
@@ -135,7 +140,8 @@ def age_seconds(heartbeat: AgentHeartbeat) -> int:
     try:
         hb_dt = datetime.fromisoformat(heartbeat.written_at.replace("Z", "+00:00"))
         return int((datetime.now(timezone.utc) - hb_dt).total_seconds())
-    except Exception:
+    except Exception as e:
+        logger.warning("heartbeat_contract.py unexpected error: %s", e, exc_info=True)
         return -1
 
 
