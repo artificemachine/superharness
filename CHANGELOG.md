@@ -483,3 +483,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-21: chore(release): bump to v1.62.22 (fix(delegate): task_obj NameError + regression tests)
 - 2026-05-21: fix(discussion): partial verdict must not trigger auto-consensus — require all votes to be agree/consensus before closing
 - 2026-05-21: chore(release): bump to v1.62.23 (fix(discussion): partial verdict gate)
+- 2026-05-21: fix(discussion_dispatch): Bug M — _ensure_round_task() upserts round-N task row before inbox enqueue to avoid FK constraint failure; fix logger→_log typo; add warning on enqueue failure; 2 regression tests

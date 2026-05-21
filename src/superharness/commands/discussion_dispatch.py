@@ -71,8 +71,33 @@ def _retry_exhausted(project_dir: str, agent: str, task_key: str) -> bool:
         finally:
             conn.close()
     except Exception as e:
-        logger.warning("discussion_dispatch.py unexpected error: %s", e, exc_info=True)
+        _log.warning("discussion_dispatch.py unexpected error: %s", e, exc_info=True)
         return False
+
+
+def _ensure_round_task(project_dir: str, disc_id: str, round_: int, title: str) -> None:
+    """Create the round task row in tasks if it doesn't already exist.
+
+    inbox.task_id is a FK reference to tasks.id — enqueue fails with
+    IntegrityError if the task row is absent. This happens on every
+    round advance because only round-1 is seeded at discussion-start time.
+    """
+    from superharness.engine.db import get_connection, init_db
+    task_id = f"{disc_id}/round-{round_}"
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO tasks
+                (id, title, owner, status, project_path, created_at, updated_at, workflow)
+            VALUES (?, ?, 'claude-code', 'in_progress', ?, ?, ?, 'discussion')
+            """,
+            (task_id, title, project_dir, _now_utc(), _now_utc()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _enqueue_for_agent(
@@ -81,7 +106,9 @@ def _enqueue_for_agent(
     round_: int,
     agent: str,
     project_dir: str,
+    round_title: str = "",
 ) -> None:
+    _ensure_round_task(project_dir, disc_id, round_, round_title or f"Discussion round {round_}: {disc_id}")
     item_id = f"{_now_id_ts()}-{disc_id}-r{round_}-{agent}-{os.getpid()}-{secrets.token_hex(3)}"
     rc = _run_inbox([
         "enqueue",
@@ -95,6 +122,8 @@ def _enqueue_for_agent(
     ])
     if rc.returncode == 0:
         print(f"  Enqueued round {round_} for {agent}: {item_id}")
+    else:
+        _log.warning("Failed to enqueue %s round %d for %s: %s", disc_id, round_, agent, rc.stderr)
 
 
 def dispatch(project_dir: str) -> int:
@@ -103,6 +132,7 @@ def dispatch(project_dir: str) -> int:
     from superharness.engine import discussions_dao
 
     discussions_dir = os.path.join(project_dir, ".superharness", "discussions")
+    inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
 
     conn = get_connection(project_dir)
     try:
@@ -129,6 +159,7 @@ def dispatch(project_dir: str) -> int:
 
         current_round = int(status_json.get("current_round", 1))
         participants = status_json.get("participants") or []
+        topic = status_json.get("topic") or disc_id
 
         # Check if current round is complete
         check_result = _run_engine([
@@ -157,8 +188,9 @@ def dispatch(project_dir: str) -> int:
             if action == "advanced":
                 next_round = int(advance_json.get("next_round", current_round + 1))
                 print(f"Discussion {disc_id}: advanced to round {next_round}")
+                round_title = f"Discussion round {next_round}: {topic}"
                 for agent in participants:
-                    _enqueue_for_agent(inbox_file, disc_id, next_round, agent, project_dir)
+                    _enqueue_for_agent(inbox_file, disc_id, next_round, agent, project_dir, round_title)
 
             elif action == "closed":
                 reason = advance_json.get("reason", "unknown")
@@ -209,7 +241,8 @@ def dispatch(project_dir: str) -> int:
                     )
                     continue
 
-                _enqueue_for_agent(inbox_file, disc_id, current_round, agent, project_dir)
+                _enqueue_for_agent(inbox_file, disc_id, current_round, agent, project_dir,
+                                   f"Discussion round {current_round}: {topic}")
 
     return 0
 

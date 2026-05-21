@@ -1,12 +1,16 @@
 """Regression tests for 2026-05-21 discuss CLI / delegate bugs.
 
-Covers four bugs found and fixed in this session:
+Covers five bugs found and fixed in this session:
 
 - Bug I:  `shux discussion` (alias) not recognised → NameError in CLI
 - Bug J:  `shux discuss status <disc_id>` rejected positional arg
 - Bug K:  type="discussion" inbox items raised false retry-alert in shux status
 - Bug L:  `task_obj` NameError in delegate() — variable defined inside
           _check_dispatch_gates() but referenced in the caller
+- Bug M:  `_enqueue_for_agent` in discussion_dispatch failed with FK constraint
+          because the round-N task row didn't exist yet (only round-1 is seeded
+          at discussion-start). Fix: _ensure_round_task() upserts the row before
+          calling inbox enqueue.
 """
 from __future__ import annotations
 
@@ -282,3 +286,58 @@ class TestBugL_TaskObjScopeError:
             f"task_obj referenced before assignment at lines {early_refs} "
             f"(first assignment at line {first_assign_line})"
         )
+
+
+# ---------------------------------------------------------------------------
+# Bug M — _enqueue_for_agent FK constraint on round-N tasks
+# ---------------------------------------------------------------------------
+
+class TestBugM_EnqueueRoundTaskFKConstraint:
+    def test_ensure_round_task_creates_missing_task(self, tmp_path: Path):
+        """_ensure_round_task() must upsert the task row so inbox FK constraint passes."""
+        from superharness.engine.db import get_connection, init_db
+        from superharness.commands.discussion_dispatch import _ensure_round_task
+
+        project = tmp_path / "proj"
+        (project / ".superharness").mkdir(parents=True)
+
+        conn = get_connection(str(project))
+        init_db(conn)
+        conn.close()
+
+        disc_id = "discuss-20260521T000000Z-test-bugm"
+        _ensure_round_task(str(project), disc_id, 2, "Discussion round 2: test-bug-m")
+
+        conn = get_connection(str(project))
+        cursor = conn.execute("SELECT id, status, workflow FROM tasks WHERE id = ?",
+                              (f"{disc_id}/round-2",))
+        row = cursor.fetchone()
+        conn.close()
+
+        assert row is not None, "_ensure_round_task must insert the task row"
+        assert row["status"] == "in_progress"
+        assert row["workflow"] == "discussion"
+
+    def test_ensure_round_task_is_idempotent(self, tmp_path: Path):
+        """Calling _ensure_round_task twice must not raise or duplicate the row."""
+        from superharness.engine.db import get_connection, init_db
+        from superharness.commands.discussion_dispatch import _ensure_round_task
+
+        project = tmp_path / "proj"
+        (project / ".superharness").mkdir(parents=True)
+
+        conn = get_connection(str(project))
+        init_db(conn)
+        conn.close()
+
+        disc_id = "discuss-20260521T000000Z-test-bugm-idem"
+        _ensure_round_task(str(project), disc_id, 3, "Discussion round 3: idempotent")
+        _ensure_round_task(str(project), disc_id, 3, "Discussion round 3: idempotent")
+
+        conn = get_connection(str(project))
+        cursor = conn.execute("SELECT COUNT(*) FROM tasks WHERE id = ?",
+                              (f"{disc_id}/round-3",))
+        count = cursor.fetchone()[0]
+        conn.close()
+
+        assert count == 1, "Duplicate task rows must not be created"
