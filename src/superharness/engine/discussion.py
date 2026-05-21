@@ -271,25 +271,10 @@ def cmd_check_round(discussion_dir: str, round_: int) -> int:
         if not disc:
             sys.exit(f"Discussion not found: {disc_id}")
 
-        rounds = discussions_dao.get_rounds(conn, disc_id)
         done = []
         pending = []
-        # An agent counts as "submitted" if EITHER:
-        #   (a) a row exists in discussion_rounds (state-of-record), OR
-        #   (b) a round-N-<agent>.yaml file exists in the discussion dir
-        #       (the agent wrote its position but never called `shux discuss
-        #       submit` — common when an agent crashes after writing the YAML).
-        # Counting (b) is what unblocks Bug G: without it, the dispatcher
-        # re-enqueues agents who have already done the work.
         for agent in disc.owners:
-            submitted = any(r.round_number == round_ and r.agent == agent for r in rounds)
-            if not submitted:
-                yaml_path = os.path.join(
-                    discussion_dir, f"round-{round_}-{agent}.yaml"
-                )
-                if os.path.isfile(yaml_path):
-                    submitted = True
-            if submitted:
+            if discussions_dao.is_submitted(conn, disc_id, round_, agent, discussion_dir):
                 done.append(agent)
             else:
                 pending.append(agent)
@@ -349,6 +334,27 @@ def cmd_check_consensus(discussion_dir: str) -> int:
     return 0
 
 
+def _reconcile_yaml_submissions(
+    conn, disc, discussion_dir: str, round_: int
+) -> list[str]:
+    """Register on-disk YAML submissions that are absent from SQLite.
+
+    Safety net called by cmd_advance before the completion check. The watcher's
+    _auto_advance_orphaned_rounds() proactively registers YAML submissions on
+    every poll cycle; this is a last-resort fallback for the window between an
+    agent writing its YAML and the watcher running.
+
+    Returns the list of agents whose submissions were recovered.
+    """
+    now = _now_utc()
+    return [
+        agent for agent in disc.owners
+        if discussions_dao.register_yaml_submission(
+            conn, disc.id, round_, agent, discussion_dir, now
+        )
+    ]
+
+
 def cmd_advance(discussion_dir: str) -> int:
     project_dir = _get_project_dir(discussion_dir)
     disc_id = _get_disc_id(discussion_dir)
@@ -365,6 +371,15 @@ def cmd_advance(discussion_dir: str) -> int:
         rounds = discussions_dao.get_rounds(conn, disc_id)
         round_nums = sorted({r.round_number for r in rounds})
         current_round = round_nums[-1] if round_nums else 1
+
+        # Reconcile any YAML-only submissions into SQLite before checking
+        # completion. Without this, check_round returns complete=true (it
+        # accepts YAML files as proof) but advance would exit "not complete"
+        # (SQLite-only check), permanently sticking the discussion.
+        _reconcile_yaml_submissions(conn, disc, discussion_dir, current_round)
+        # Reload rounds after reconciliation so the completion check and
+        # verdict gathering both see the newly-inserted rows.
+        rounds = discussions_dao.get_rounds(conn, disc_id)
 
         # Check if all participants submitted current round
         submitted = {r.agent for r in rounds if r.round_number == current_round}
