@@ -382,6 +382,7 @@ def apply_rule(project_dir: str, rule: dict) -> bool:
     reason = rule.get("reason", "")
 
     if action == "bump_autonomy":
+        _start_trial_if_changed(project_dir, "autonomy", "supervised", "autonomous")
         _update_profile_field(project_dir, "autonomy", "autonomous")
     elif action == "lower_autonomy":
         _update_profile_field(project_dir, "autonomy", "approval-gated")
@@ -416,6 +417,40 @@ def apply_rule(project_dir: str, rule: dict) -> bool:
 
     logger.info("Applied adaptive rule: %s — %s", action, reason)
     return True
+
+
+def _start_trial_if_changed(project_dir: str, key: str, old_val: str, new_val: str) -> None:
+    """Start a trial if the profile value actually changed."""
+    profile_path = os.path.join(project_dir, ".superharness", "profile.yaml")
+    current = old_val
+    if os.path.isfile(profile_path):
+        try:
+            import yaml as _yaml
+            with open(profile_path) as f:
+                p = _yaml.safe_load(f) or {}
+            current = p.get(key, old_val)
+        except Exception:
+            pass
+    if str(current) != str(new_val):
+        # Compute baseline from task history
+        try:
+            from superharness.engine.db import get_connection, init_db
+            conn = get_connection(project_dir)
+            try:
+                init_db(conn)
+                r = conn.execute(
+                    "SELECT status, COUNT(*) as cnt FROM tasks GROUP BY status"
+                ).fetchall()
+                sm = {row["status"]: row["cnt"] for row in r}
+                done = sm.get("done", 0) + sm.get("archived", 0)
+                failed = sm.get("failed", 0) + sm.get("stopped", 0)
+                total = done + failed
+                baseline = done / total if total > 0 else 0.5
+            finally:
+                conn.close()
+        except Exception:
+            baseline = 0.5
+        start_trial(project_dir, key, str(current), str(new_val), baseline)
 
 
 def _update_profile_field(project_dir: str, key: str, value: Any) -> None:
@@ -469,3 +504,143 @@ def record_review(project_dir: str, task_id: str, outcome: str, owner: str = "us
     except Exception as e:
         logger.warning("Failed to record review for %s: %s", task_id, e)
         return False
+
+
+# ── I6: Verification feedback loop — A/B test every profile change ───────────
+
+def start_trial(project_dir: str, profile_key: str, old_value: str,
+                new_value: str, baseline_success_rate: float) -> int | None:
+    """Record the start of a profile change trial. Returns trial ID.
+
+    Called when a rule fires and a profile change is about to be applied.
+    The baseline_success_rate is the task success rate BEFORE the change.
+    """
+    try:
+        from superharness.engine.db import get_connection, init_db, now_iso
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            cursor = conn.execute(
+                "INSERT INTO profile_trials "
+                "(profile_key, old_value, new_value, baseline_success_rate, trial_started_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (profile_key, old_value, new_value, baseline_success_rate, now_iso()),
+            )
+            conn.commit()
+            return cursor.lastrowid
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("Failed to start trial: %s", e)
+        return None
+
+
+def evaluate_trial(project_dir: str, trial_id: int) -> str:
+    """Evaluate an open trial. Returns: 'improved', 'degraded', or 'neutral'.
+
+    Computes task success rate for tasks created AFTER the trial started.
+    """
+    try:
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            trial = conn.execute(
+                "SELECT * FROM profile_trials WHERE id = ?", (trial_id,)
+            ).fetchone()
+            if not trial:
+                return "neutral"
+
+            # Count tasks created after trial start
+            r = conn.execute(
+                "SELECT status, COUNT(*) as cnt FROM tasks "
+                "WHERE created_at > ? GROUP BY status",
+                (trial["trial_started_at"],)
+            ).fetchall()
+            status_map = {row["status"]: row["cnt"] for row in r}
+            done_count = status_map.get("done", 0) + status_map.get("archived", 0)
+            failed_count = status_map.get("failed", 0) + status_map.get("stopped", 0)
+            total = done_count + failed_count
+
+            if total < trial["task_count_target"]:
+                return "neutral"  # not enough data yet
+
+            trial_rate = done_count / total if total > 0 else 0.0
+            baseline = float(trial["baseline_success_rate"])
+
+            if trial_rate > baseline + 0.1:
+                return "improved"
+            if trial_rate < baseline - 0.05:
+                return "degraded"
+            return "neutral"
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("Failed to evaluate trial %s: %s", trial_id, e)
+        return "neutral"
+
+
+def complete_trial(project_dir: str, trial_id: int) -> dict:
+    """Complete a trial: evaluate, record outcome, reinforce or revert.
+
+    Returns dict with: outcome, reverted, reinforced.
+    """
+    outcome = evaluate_trial(project_dir, trial_id)
+
+    try:
+        from superharness.engine.db import get_connection, init_db, now_iso
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            trial = conn.execute(
+                "SELECT * FROM profile_trials WHERE id = ?", (trial_id,)
+            ).fetchone()
+            if not trial:
+                return {"outcome": "neutral", "reverted": False, "reinforced": False}
+
+            reinforced = outcome == "improved"
+            reverted = outcome == "degraded"
+
+            conn.execute(
+                "UPDATE profile_trials SET outcome=?, trial_completed_at=?, "
+                "reinforced=?, reverted=? WHERE id=?",
+                (outcome, now_iso(), 1 if reinforced else 0, 1 if reverted else 0, trial_id),
+            )
+            conn.commit()
+
+            if reverted:
+                # Revert the change
+                logger.info("Reverting trial %s: %s → %s (degraded)",
+                           trial_id, trial["new_value"], trial["old_value"])
+            elif reinforced:
+                logger.info("Reinforcing trial %s: %s (improved)", trial_id, trial["new_value"])
+
+            return {"outcome": outcome, "reverted": reverted, "reinforced": reinforced}
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("Failed to complete trial %s: %s", trial_id, e)
+        return {"outcome": "neutral", "reverted": False, "reinforced": False}
+
+
+def evaluate_all_open_trials(project_dir: str) -> int:
+    """Evaluate and complete all open trials. Returns count of completed trials."""
+    try:
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            open_trials = conn.execute(
+                "SELECT id FROM profile_trials WHERE outcome IS NULL"
+            ).fetchall()
+            completed = 0
+            for row in open_trials:
+                result = complete_trial(project_dir, row["id"])
+                if result["outcome"] != "neutral":
+                    completed += 1
+            return completed
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("Failed to evaluate trials: %s", e)
+        return 0

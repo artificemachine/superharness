@@ -328,3 +328,40 @@ Each adaptation writes a ledger entry so the user can trace why autonomy changed
 | I5.3 | Auto-apply adaptive rules | 1h | 3 tests |
 | I5.4 | Auto-record reviews | 1h | 2 tests |
 | **Total** | | **~3h** | **9 tests** |
+
+---
+
+## Iteration 6 — Verification Feedback Loop
+
+### Problem
+
+The system adapts profiles but never checks whether the adaptation improved agent performance. It bumps autonomy after 10 successes, but those successes might have happened regardless. Without feedback, the system *hopes* it's helping — it doesn't *know*.
+
+### Architecture
+
+```
+profile_trials table (SQLite migration v22):
+  id, profile_key, old_value, new_value,
+  baseline_success_rate, trial_started_at,
+  task_count_target (default 5),
+  trial_completed_at, outcome (improved/degraded/neutral)
+
+Flow:
+  1. Rule fires → record trial start (baseline = last 10 tasks success rate)
+  2. Next 5 tasks complete → compute trial success rate
+  3. Compare:
+     - trial > baseline + 10% → outcome=improved → reinforce (keep, weight×2)
+     - trial < baseline → outcome=degraded → revert (discard, decay×2)
+     - neutral → keep, re-evaluate after 5 more
+```
+
+### Implementation
+
+| Component | What | Tests |
+|-----------|------|-------|
+| `_migration_v22` (db.py) | `profile_trials` table | — |
+| `start_trial()` (behavioral.py) | Record baseline before rule applied | 1 test |
+| `evaluate_trial()` (behavioral.py) | Compare trial outcome vs baseline | 1 test |
+| Wire into watcher cycle | Evaluate open trials after task completions | — |
+| `complete_trial()` (behavioral.py) | Reinforce or revert based on outcome | 1 test |
+| **Total** | **~1h** | **3 tests** |
