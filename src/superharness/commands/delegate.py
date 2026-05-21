@@ -582,6 +582,9 @@ def delegate(
     if gate_result is not None:
         return gate_result
 
+    from superharness.engine import state_reader as _sr
+    task_obj = _sr.get_task(project_dir, task_id)
+
     # Gate 4: minimum content — plan-only dispatch requires acceptance criteria
     # or definition of done. Empty tasks produce empty plans, wasting an agent cycle.
     if plan_only and task_obj:
