@@ -30,7 +30,7 @@ def _proc(pid=1234, port=8787, proj="/tmp/myproject"):
 class TestDashboardListColumns:
     def test_header_has_pid_port_project_url(self):
         runner = CliRunner()
-        with patch("superharness.cli._find_dashboard_processes", return_value=[_proc()]):
+        with patch("superharness.commands.dashboard._find_dashboard_processes", return_value=[_proc()]):
             result = runner.invoke(main, ["dashboard-list"])
         assert result.exit_code == 0
         assert "PID" in result.output
@@ -41,7 +41,7 @@ class TestDashboardListColumns:
     def test_row_shows_pid_port_basename_url(self):
         runner = CliRunner()
         proc = _proc(pid=5678, port=9000, proj="/tmp/myproject")
-        with patch("superharness.cli._find_dashboard_processes", return_value=[proc]):
+        with patch("superharness.commands.dashboard._find_dashboard_processes", return_value=[proc]):
             result = runner.invoke(main, ["dashboard-list"])
         assert "5678" in result.output
         assert "9000" in result.output
@@ -51,7 +51,7 @@ class TestDashboardListColumns:
     def test_unknown_port_shows_question_mark(self):
         runner = CliRunner()
         proc = _proc(pid=111, port=None, proj="/tmp/x")
-        with patch("superharness.cli._find_dashboard_processes", return_value=[proc]):
+        with patch("superharness.commands.dashboard._find_dashboard_processes", return_value=[proc]):
             result = runner.invoke(main, ["dashboard-list"])
         assert "?" in result.output
         assert "(port unknown)" in result.output
@@ -59,7 +59,7 @@ class TestDashboardListColumns:
     def test_unknown_project_shows_question_mark(self):
         runner = CliRunner()
         proc = _proc(pid=222, port=8787, proj=None)
-        with patch("superharness.cli._find_dashboard_processes", return_value=[proc]):
+        with patch("superharness.commands.dashboard._find_dashboard_processes", return_value=[proc]):
             result = runner.invoke(main, ["dashboard-list"])
         assert "?" in result.output
 
@@ -69,21 +69,21 @@ class TestDashboardListColumns:
 class TestDashboardListHints:
     def test_kill_all_hint_always_shown(self):
         runner = CliRunner()
-        with patch("superharness.cli._find_dashboard_processes", return_value=[_proc()]):
+        with patch("superharness.commands.dashboard._find_dashboard_processes", return_value=[_proc()]):
             result = runner.invoke(main, ["dashboard-list"])
         assert "shux dashboard-kill" in result.output
 
     def test_kill_by_port_hint_shown_when_single_process(self):
         runner = CliRunner()
         proc = _proc(pid=1234, port=8787, proj="/tmp/proj")
-        with patch("superharness.cli._find_dashboard_processes", return_value=[proc]):
+        with patch("superharness.commands.dashboard._find_dashboard_processes", return_value=[proc]):
             result = runner.invoke(main, ["dashboard-list"])
         assert "dashboard-kill --port 8787" in result.output
 
     def test_kill_by_project_hint_shown_when_single_process(self):
         runner = CliRunner()
         proc = _proc(pid=1234, port=8787, proj="/tmp/proj")
-        with patch("superharness.cli._find_dashboard_processes", return_value=[proc]):
+        with patch("superharness.commands.dashboard._find_dashboard_processes", return_value=[proc]):
             result = runner.invoke(main, ["dashboard-list"])
         assert "dashboard-kill --project" in result.output
         assert "/tmp/proj" in result.output
@@ -91,7 +91,7 @@ class TestDashboardListHints:
     def test_port_and_project_hints_not_shown_for_multiple_processes(self):
         runner = CliRunner()
         procs = [_proc(1111, 8787, "/tmp/a"), _proc(2222, 8788, "/tmp/b")]
-        with patch("superharness.cli._find_dashboard_processes", return_value=procs):
+        with patch("superharness.commands.dashboard._find_dashboard_processes", return_value=procs):
             result = runner.invoke(main, ["dashboard-list"])
         # "kill all" hint is shown but NOT the specific --port or --project hint
         assert "shux dashboard-kill" in result.output
@@ -105,7 +105,7 @@ class TestDashboardKillAll:
     def test_kills_all_processes_and_prints_count(self):
         runner = CliRunner()
         procs = [_proc(1111, 8787, "/tmp/a"), _proc(2222, 8788, "/tmp/b")]
-        with patch("superharness.cli._find_dashboard_processes", return_value=procs), \
+        with patch("superharness.commands.dashboard._find_dashboard_processes", return_value=procs), \
              patch("os.kill") as mock_kill:
             result = runner.invoke(main, ["dashboard-kill"])
         assert result.exit_code == 0
@@ -114,14 +114,14 @@ class TestDashboardKillAll:
 
     def test_no_processes_prints_not_found(self):
         runner = CliRunner()
-        with patch("superharness.cli._find_dashboard_processes", return_value=[]):
+        with patch("superharness.commands.dashboard._find_dashboard_processes", return_value=[]):
             result = runner.invoke(main, ["dashboard-kill"])
         assert result.exit_code == 0
         assert "No dashboard processes found" in result.output
 
     def test_single_process_killed_count_is_one(self):
         runner = CliRunner()
-        with patch("superharness.cli._find_dashboard_processes", return_value=[_proc()]), \
+        with patch("superharness.commands.dashboard._find_dashboard_processes", return_value=[_proc()]), \
              patch("os.kill"):
             result = runner.invoke(main, ["dashboard-kill"])
         assert "1 dashboard process(es) stopped" in result.output
@@ -138,7 +138,7 @@ class TestDashboardKillByPort:
         def fake_kill(pid, sig):
             killed_pids.append(pid)
 
-        with patch("superharness.cli._find_dashboard_processes", return_value=procs), \
+        with patch("superharness.commands.dashboard._find_dashboard_processes", return_value=procs), \
              patch("os.kill", side_effect=fake_kill):
             result = runner.invoke(main, ["dashboard-kill", "--port", "8787"])
         assert result.exit_code == 0
@@ -148,7 +148,7 @@ class TestDashboardKillByPort:
     def test_port_not_found_exits_nonzero(self):
         runner = CliRunner()
         procs = [_proc(1111, 8787, "/tmp/a")]
-        with patch("superharness.cli._find_dashboard_processes", return_value=procs), \
+        with patch("superharness.commands.dashboard._find_dashboard_processes", return_value=procs), \
              patch("os.kill"):
             result = runner.invoke(main, ["dashboard-kill", "--port", "9999"])
         assert result.exit_code != 0
@@ -157,7 +157,7 @@ class TestDashboardKillByPort:
     def test_port_not_found_shows_running_ports(self):
         runner = CliRunner()
         procs = [_proc(1111, 8787, "/tmp/a")]
-        with patch("superharness.cli._find_dashboard_processes", return_value=procs), \
+        with patch("superharness.commands.dashboard._find_dashboard_processes", return_value=procs), \
              patch("os.kill"):
             result = runner.invoke(main, ["dashboard-kill", "--port", "9999"])
         assert "8787" in result.output
@@ -168,14 +168,14 @@ class TestDashboardKillByPort:
 class TestDashboardKillHints:
     def test_hint_to_list_remaining_after_kill(self):
         runner = CliRunner()
-        with patch("superharness.cli._find_dashboard_processes", return_value=[_proc()]), \
+        with patch("superharness.commands.dashboard._find_dashboard_processes", return_value=[_proc()]), \
              patch("os.kill"):
             result = runner.invoke(main, ["dashboard-kill"])
         assert "shux dashboard-list" in result.output
 
     def test_no_hint_when_nothing_killed(self):
         runner = CliRunner()
-        with patch("superharness.cli._find_dashboard_processes", return_value=[_proc()]), \
+        with patch("superharness.commands.dashboard._find_dashboard_processes", return_value=[_proc()]), \
              patch("os.kill", side_effect=ProcessLookupError):
             result = runner.invoke(main, ["dashboard-kill"])
         # killed == 0 so no "list remaining" hint
@@ -183,7 +183,7 @@ class TestDashboardKillHints:
 
     def test_not_found_no_processes_shows_list_hint(self):
         runner = CliRunner()
-        with patch("superharness.cli._find_dashboard_processes", return_value=[]):
+        with patch("superharness.commands.dashboard._find_dashboard_processes", return_value=[]):
             result = runner.invoke(main, ["dashboard-kill"])
         assert "shux dashboard-list" in result.output
 
@@ -193,14 +193,14 @@ class TestDashboardKillHints:
 class TestDashboardListEmpty:
     def test_empty_list_prints_no_processes_message(self):
         runner = CliRunner()
-        with patch("superharness.cli._find_dashboard_processes", return_value=[]):
+        with patch("superharness.commands.dashboard._find_dashboard_processes", return_value=[]):
             result = runner.invoke(main, ["dashboard-list"])
         assert result.exit_code == 0
         assert "No dashboard processes running" in result.output
 
     def test_empty_list_no_table_header(self):
         runner = CliRunner()
-        with patch("superharness.cli._find_dashboard_processes", return_value=[]):
+        with patch("superharness.commands.dashboard._find_dashboard_processes", return_value=[]):
             result = runner.invoke(main, ["dashboard-list"])
         # No table header when empty
         assert "-----" not in result.output
