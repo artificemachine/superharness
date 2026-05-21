@@ -13,7 +13,7 @@ from superharness.utils.paths import resolve_xdg_state_db_path
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 21
+CURRENT_SCHEMA_VERSION = 22
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -640,6 +640,32 @@ def _migration_v21(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_v22(conn: sqlite3.Connection) -> None:
+    """profile_trials: A/B test table for behavioral profile changes (Iteration 6)."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS profile_trials (
+            id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile_key            TEXT    NOT NULL,
+            old_value              TEXT,
+            new_value              TEXT,
+            baseline_success_rate  REAL    NOT NULL,
+            trial_started_at       TEXT    NOT NULL,
+            task_count_target      INTEGER NOT NULL DEFAULT 5,
+            trial_completed_at     TEXT,
+            trial_success_rate     REAL,
+            outcome                TEXT,
+            reverted               INTEGER NOT NULL DEFAULT 0,
+            reinforced             INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_profile_trials_outcome "
+        "ON profile_trials(outcome, trial_started_at)"
+    )
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -662,4 +688,5 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v19,
     _migration_v20,
     _migration_v21,
+    _migration_v22,
 ]
