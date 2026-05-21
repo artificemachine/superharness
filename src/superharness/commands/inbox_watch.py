@@ -3334,20 +3334,28 @@ def _auto_advance_orphaned_rounds(project_dir: str) -> int:
             if not latest_done or latest_done > cutoff_iso:
                 continue
 
-            # If the verdict path already covered all dispatched agents for this round,
-            # let the normal flow handle it — don't interfere.
-            # Also count YAML-only submissions (agent wrote the file but never called
-            # shux discuss submit — common when an agent crashes after writing).
+            # Register any YAML-only submissions into SQLite before checking
+            # verdict coverage. Agents write their YAML file as their primary
+            # output; getting it into SQLite is the harness's responsibility.
+            # Without this, discussions whose agents wrote YAMLs but whose
+            # DB rows are absent stay stuck forever (cmd_advance checks SQLite
+            # only and exits "Round N is not complete").
+            disc_dir = os.path.join(project_dir, ".superharness", "discussions", disc.id)
+            _now_ts = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+            registered_any = False
+            for agent in dispatched:
+                if discussions_dao.register_yaml_submission(
+                    conn, disc.id, round_n, agent, disc_dir, _now_ts
+                ):
+                    registered_any = True
+
+            # Re-read verdict_agents from SQLite (now includes just-registered rows).
             verdict_agents = {
                 rr.agent for rr in discussions_dao.get_rounds(conn, disc.id)
                 if rr.round_number == round_n
             }
-            disc_dir = os.path.join(project_dir, ".superharness", "discussions", disc.id)
-            for agent in dispatched:
-                if agent not in verdict_agents:
-                    yaml_path = os.path.join(disc_dir, f"round-{round_n}-{agent}.yaml")
-                    if os.path.isfile(yaml_path):
-                        verdict_agents.add(agent)
+            if registered_any:
+                conn.commit()
 
             if dispatched.issubset(verdict_agents):
                 continue

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 import sqlite3
 from dataclasses import dataclass
 
 from superharness.engine.state_errors import StateError
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -133,6 +137,86 @@ def get_rounds(conn: sqlite3.Connection, discussion_id: str) -> list[DiscussionR
         (discussion_id,),
     ).fetchall()
     return [_row_to_round(r) for r in rows]
+
+
+def is_submitted(
+    conn: sqlite3.Connection,
+    disc_id: str,
+    round_: int,
+    agent: str,
+    discussion_dir: str | None = None,
+) -> bool:
+    """Return True if agent has submitted for this round.
+
+    A submission is proven by EITHER a discussion_rounds DB row (authoritative)
+    OR a round-N-agent.yaml file on disk (evidence-of-work fallback, used when
+    the agent wrote its position but the DB write never completed).
+
+    Pass discussion_dir to enable the YAML fallback. Omit it for a DB-only check.
+    """
+    rows = get_rounds(conn, disc_id)
+    if any(r.round_number == round_ and r.agent == agent for r in rows):
+        return True
+    if discussion_dir is not None:
+        yaml_path = os.path.join(discussion_dir, f"round-{round_}-{agent}.yaml")
+        return os.path.isfile(yaml_path)
+    return False
+
+
+def register_yaml_submission(
+    conn: sqlite3.Connection,
+    disc_id: str,
+    round_: int,
+    agent: str,
+    discussion_dir: str,
+    now: str,
+) -> bool:
+    """Parse round-N-agent.yaml and insert a discussion_rounds row if absent.
+
+    This is the harness-side half of the two-phase submission: agents write
+    the YAML, the harness is responsible for getting it into SQLite. Callers
+    should commit after this returns True.
+
+    Returns True if a new row was inserted, False if the row already existed
+    or no YAML file was found. Silently skips on corrupt YAML.
+    """
+    rows = get_rounds(conn, disc_id)
+    if any(r.round_number == round_ and r.agent == agent for r in rows):
+        return False
+
+    yaml_path = os.path.join(discussion_dir, f"round-{round_}-{agent}.yaml")
+    if not os.path.isfile(yaml_path):
+        return False
+
+    try:
+        try:
+            from superharness.engine.yaml_helpers import safe_load
+            data = safe_load(yaml_path)
+        except Exception:
+            import yaml as _yaml
+            with open(yaml_path) as _f:
+                data = _yaml.safe_load(_f)
+        if not isinstance(data, dict):
+            return False
+        verdict = str(data.get("verdict") or "").lower()
+        position = str(data.get("position") or "")
+        add_round(
+            conn,
+            discussion_id=disc_id,
+            round_number=round_,
+            agent=agent,
+            content=position,
+            verdict=verdict,
+            now=now,
+        )
+        _log.info(
+            "Registered YAML submission: disc=%s round=%d agent=%s verdict=%s",
+            disc_id, round_, agent, verdict,
+        )
+        return True
+    except Exception as e:
+        _log.warning("Failed to register YAML submission %s: %s", yaml_path, e)
+        return False
 
 
 def _row_to_discussion(row: sqlite3.Row) -> DiscussionRow:
