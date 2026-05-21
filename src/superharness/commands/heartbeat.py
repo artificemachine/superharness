@@ -8,6 +8,9 @@ from pathlib import Path
 
 import yaml
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _read_state(state_file: str) -> dict:
     p = Path(state_file)
@@ -63,7 +66,8 @@ def main(argv: list[str] | None = None) -> None:
 
     try:
         cfg = yaml.safe_load(hb_config.read_text(encoding="utf-8")) or {}
-    except Exception:
+    except Exception as e:
+        logger.warning("heartbeat.py unexpected error: %s", e, exc_info=True)
         cfg = {}
 
     checks = cfg.get("checks") or []

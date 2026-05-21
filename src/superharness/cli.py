@@ -14,6 +14,9 @@ import click
 from superharness import __version__
 from superharness.logging_utils import get_logger as _bootstrap_logger
 
+import logging
+_logger = logging.getLogger(__name__)
+
 # Bootstrap the central logger once so every `logging.getLogger("superharness.*")`
 # call in any module propagates to the rotating file handler. Modules don't
 # need to know the logger exists — stdlib hierarchy does the routing.
@@ -21,12 +24,13 @@ _bootstrap_logger("superharness").debug("cli bootstrap")
 
 # Model shorthand → full model ID used by `shux run --model <shorthand>`.
 # "opus" resolves to the current-generation max-tier model.
+# Override via env vars: SUPERHARNESS_MODEL_SONNET, _HAIKU, _OPUS.
 MODEL_SHORTCUTS: dict[str, str] = {
-    "sonnet":    "claude-sonnet-4-6",
-    "haiku":     "claude-haiku-4-5-20251001",
-    "opus":      "claude-opus-4-7",
-    "opus-4-6":  "claude-opus-4-7",  # alias — same cost as 4.7, route to latest
-    "opus-4-7":  "claude-opus-4-7",
+    "sonnet":    os.environ.get("SUPERHARNESS_MODEL_SONNET", "claude-sonnet-4-6"),
+    "haiku":     os.environ.get("SUPERHARNESS_MODEL_HAIKU", "claude-haiku-4-5-20251001"),
+    "opus":      os.environ.get("SUPERHARNESS_MODEL_OPUS", "claude-opus-4-7"),
+    "opus-4-6":  os.environ.get("SUPERHARNESS_MODEL_OPUS", "claude-opus-4-7"),
+    "opus-4-7":  os.environ.get("SUPERHARNESS_MODEL_OPUS", "claude-opus-4-7"),
 }
 
 _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -185,6 +189,7 @@ _cmd("handoff",         "Handoff subcommand group (write).",                    
 _cmd("subtask-cancel",  "Mark a subtask cancelled with a mandatory reason.",        module="superharness.commands.subtask_cancel")
 _cmd("approve",         "Approve a task's pending plan (writes operator_command row; idempotent).", module="superharness.commands.approve")
 _cmd("reject",          "Reject a task's pending plan (writes operator_command row; idempotent).",  module="superharness.commands.approve")
+_cmd("memory-roots",    "Manage project root directories for cross-project memory scanning.",  module="superharness.commands.memory_cmd")
 
 # operator-memory and operator-forget run in-process (need argparse, not module passthrough)
 def _register_operator_memory():
@@ -206,8 +211,8 @@ def _register_operator_memory():
 
         main.add_command(_om_cmd)
         main.add_command(_of_cmd)
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.warning("Failed to register operator-memory commands: %s", e)
 
 _register_operator_memory()
 
@@ -218,8 +223,8 @@ def _register_explain():
         main.add_command(cmd_explain, name="explain")
         main.add_command(cmd_explain, name="why")
         main.add_command(cmd_explain, name="wtf")
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.warning("Failed to register explain commands: %s", e)
 
 _register_explain()
 
@@ -228,8 +233,8 @@ def _register_daemon():
     try:
         from superharness.commands.daemon import cmd_daemon
         main.add_command(cmd_daemon)
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.warning("Failed to register daemon commands: %s", e)
 
 _register_daemon()
 
@@ -239,8 +244,8 @@ def _register_mcp():
     try:
         from superharness.mcp.cli import cmd_mcp
         main.add_command(cmd_mcp)
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.warning("Failed to register MCP commands: %s", e)
 
 _register_mcp()
 
@@ -250,8 +255,8 @@ def _register_onboard():
     try:
         from superharness.commands.onboard import cmd_onboard
         main.add_command(cmd_onboard)
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.warning("Failed to register onboard command: %s", e)
 
 _register_onboard()
 
@@ -260,8 +265,8 @@ def _register_config():
     try:
         from superharness.commands.config import cmd_config
         main.add_command(cmd_config)
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.warning("Failed to register config command: %s", e)
 
 _register_config()
 
@@ -270,8 +275,8 @@ def _register_observation():
     try:
         from superharness.commands.observation import cmd_observation_group
         main.add_command(cmd_observation_group)
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.warning("Failed to register observation commands: %s", e)
 
 _register_observation()
 
@@ -288,8 +293,8 @@ def _register_workflow():
             cmd_workflow(list(args))
 
         main.add_command(workflow_cmd)
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.warning("Failed to register workflow command: %s", e)
 
 _register_workflow()
 
@@ -306,398 +311,29 @@ def _register_migrate_state():
             cmd_migrate_state(list(args))
 
         main.add_command(migrate_state_cmd)
-    except Exception:
-        pass
+    except Exception as e:
+        _logger.warning("Failed to register migrate-state command: %s", e)
 
 _register_migrate_state()
 
 
-def _find_dashboard_processes():
-    """Return list of (pid, port, project_dir) for all running dashboard-ui.py processes."""
-    import subprocess as _sp
-    try:
-        ps_out = _sp.run(
-            ["ps", "ax", "-o", "pid=,args="], capture_output=True, text=True
-        ).stdout
-    except Exception:
-        return []
-
-    results = []
-    for line in ps_out.splitlines():
-        line = line.strip()
-        if not any(pat in line for pat in (
-            "dashboard-ui.py", "monitor-ui.py",
-            "superharness.scripts.dashboard-ui",
-            "superharness.scripts.monitor-ui",
-        )):
-            continue
-        parts = line.split()
-        try:
-            pid = int(parts[0])
-        except (ValueError, IndexError):
-            continue
-
-        # Extract --project arg from cmdline
-        proj = None
-        for i, p in enumerate(parts):
-            if p == "--project" and i + 1 < len(parts):
-                proj = os.path.realpath(parts[i + 1])
-                break
-
-        # Find listening port via lsof
-        lsof_out = _sp.run(
-            ["lsof", "-a", "-i", "TCP", "-sTCP:LISTEN", "-n", "-P", "-p", str(pid)],
-            capture_output=True, text=True,
-        ).stdout
-        port = None
-        for lline in lsof_out.splitlines():
-            lparts = lline.split()
-            if len(lparts) >= 9:
-                addr = lparts[8]
-                try:
-                    port = int(addr.split(":")[-1])
-                except ValueError:
-                    pass
-
-        results.append((pid, port, proj))
-    return results
-
-
-def _is_dashboard_running(project_dir: str = None) -> tuple:
-    """Return (running: bool, port: int|None) for the dashboard serving project_dir.
-
-    Returns False when the running dashboard's version doesn't match the
-    installed version so the caller starts a fresh one.
-    If project_dir is None, falls back to checking any dashboard on port 8787.
-    """
-    import urllib.request
-    import json
-    try:
-        import importlib.metadata as _meta
-        _installed_ver = _meta.version("superharness")
-    except Exception:
-        _installed_ver = None
-
-    def _version_ok(port: int) -> bool:
-        """Return True only if the running dashboard version matches installed."""
-        if _installed_ver is None:
-            return True
-        try:
-            req = urllib.request.Request(f"http://127.0.0.1:{port}/api/status")
-            with urllib.request.urlopen(req, timeout=2) as resp:
-                running_ver = json.loads(resp.read()).get("version", "unknown")
-            if running_ver != _installed_ver:
-                print(f"dashboard version mismatch: running={running_ver} installed={_installed_ver} — will restart")
-                return False
-            return True
-        except Exception:
-            return False
-
-    if project_dir is not None:
-        real_proj = os.path.realpath(project_dir)
-
-        # Priority 1: Check operator-state.json for the actual port this project is using
-        daemon_file = os.path.join(real_proj, ".superharness", "operator-state.json")
-        if os.path.exists(daemon_file):
-            try:
-                with open(daemon_file, "r") as f:
-                    info = json.load(f)
-                    port = info.get("dashboard_port")
-                    if port:
-                        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/status")
-                        with urllib.request.urlopen(req, timeout=1) as resp:
-                            if resp.status == 200 and _version_ok(port):
-                                return True, port
-            except Exception:
-                pass
-
-        # Priority 2: Fallback to process scanning
-        for pid, port, proj in _find_dashboard_processes():
-            if proj and os.path.realpath(proj) == real_proj and port:
-                try:
-                    req = urllib.request.Request(f"http://127.0.0.1:{port}/api/status")
-                    with urllib.request.urlopen(req, timeout=1) as resp:
-                        if resp.status == 200 and _version_ok(port):
-                            return True, port
-                except Exception:
-                    pass
-        return False, None
-    # Fallback: check default port 8787
-    try:
-        req = urllib.request.Request("http://127.0.0.1:8787/api/status")
-        with urllib.request.urlopen(req, timeout=1) as resp:
-            if resp.status == 200 and _version_ok(8787):
-                return True, 8787
-        return False, None
-    except Exception:
-        return False, None
-
-
-def _run_dashboard(args):
-    path = os.path.join(_SCRIPTS, "dashboard-ui.py")
-    args_list = list(args)
-    if "--help" in args_list or "-h" in args_list:
-        result = subprocess.run([sys.executable, path] + args_list)
-        sys.exit(result.returncode)
-        return
-    if "--project" not in args_list and "-p" not in args_list:
-        args_list = ["--project", os.getcwd()] + args_list
-    foreground = "--foreground" in args_list
-
-    # Resolve the project dir being requested
-    proj = os.getcwd()
-    for i, a in enumerate(args_list):
-        if a == "--project" and i + 1 < len(args_list):
-            proj = args_list[i + 1]
-            break
-
-    # Check if a dashboard for THIS project is already running at the correct version
-    if not foreground:
-        running, port = _is_dashboard_running(proj)
-        if running:
-            print(f"dashboard: http://127.0.0.1:{port}  (already running)")
-            print(f"project: {proj}")
-            return
-        # Version mismatch: kill any stale process on the target port before starting fresh
-        _stale_port = port or 8787
-        for _pid, _p, _proj in _find_dashboard_processes():
-            if _proj and os.path.realpath(_proj) == os.path.realpath(proj) and _p == _stale_port:
-                try:
-                    import signal as _sig
-                    os.kill(_pid, _sig.SIGTERM)
-                    import time as _t
-                    _t.sleep(1)
-                except Exception:
-                    pass
-                break
-
-    if foreground:
-        args_list.remove("--foreground")
-        result = subprocess.run([sys.executable, path] + args_list)
-        sys.exit(result.returncode)
-    # Default: background — detach from terminal, return immediately
-    import tempfile
-    import time as _time
-    fd, url_file = tempfile.mkstemp(suffix=".dashboard-url")
-    os.close(fd)  # Close fd; dashboard-ui.py will write to this path
-    env = os.environ.copy()
-    env["PYTHONUNBUFFERED"] = "1"
-    env["SUPERHARNESS_DASHBOARD_URL_FILE"] = url_file
-    proc = subprocess.Popen(
-        [sys.executable, "-u", path] + args_list,
-        start_new_session=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        env=env,
-    )
-    # Wait briefly for the server to write its URL to the temp file
-    deadline = _time.monotonic() + 5.0
-    url_written = False
-    while _time.monotonic() < deadline:
-        # Check if process crashed before writing anything
-        if proc.poll() is not None:
-            if os.path.exists(url_file):
-                os.unlink(url_file)
-            print(f"dashboard failed to start (exit code {proc.returncode})")
-            print("tip: run 'superharness dashboard --foreground' to see the error")
-            return
-        if os.path.exists(url_file) and os.path.getsize(url_file) > 0:
-            with open(url_file) as f:
-                for line in f:
-                    print(line.rstrip())
-            os.unlink(url_file)
-            url_written = True
-            break
-        _time.sleep(0.1)
-    if not url_written:
-        if os.path.exists(url_file):
-            os.unlink(url_file)
-        print("dashboard starting in background...")
-    print(f"pid: {proc.pid}  (stop with: kill {proc.pid})")
-
-    # Write operator-state.json so _is_dashboard_running() Priority 1 check works
-    # reliably on next invocation, even when the operator was never used.
-    try:
-        import re as _re, json as _json, time as _time2
-        port_match = _re.search(r":(\d+)$", url) if url_written else None
-        _port = int(port_match.group(1)) if port_match else None
-        if not _port:
-            for a in args_list:
-                if a.isdigit():
-                    _port = int(a)
-                    break
-        if _port:
-            _op_file = os.path.join(proj, ".superharness", "operator-state.json")
-            if os.path.isdir(os.path.dirname(_op_file)):
-                with open(_op_file, "w") as _f:
-                    _json.dump({
-                        "operator_pid": proc.pid,
-                        "dashboard_port": _port,
-                        "started_at": _time2.time(),
-                        "project": proj,
-                    }, _f, indent=2)
-    except Exception:
-        pass
-
-
-@main.command(name="dashboard-kill")
-@click.option("--port", "-p", type=int, default=None, help="Kill only the dashboard on this port.")
-@click.option("--project", "proj", default=None, help="Kill only the dashboard serving this project directory.")
-@click.option("--all", "kill_all", is_flag=True, default=False, help="Kill all dashboard processes (default when no filter given).")
-def cmd_dashboard_kill(port, proj, kill_all):
-    """Kill running dashboard process(es).
-
-    \b
-    shux dashboard-kill                        # kill all dashboard processes
-    shux dashboard-kill --port 8787            # kill by port
-    shux dashboard-kill --project /path/to/p  # kill dashboard for a specific project
-    """
-    import signal as _signal
-
-    candidates = _find_dashboard_processes()
-
-    if not candidates:
-        print("No dashboard processes found.")
-        print("  list:   shux dashboard-list")
-        print("  start:  shux dashboard")
-        return
-
-    # Filter
-    targets = candidates
-    if port is not None:
-        targets = [(pid, p, pj) for pid, p, pj in candidates if p == port]
-        if not targets:
-            ports_found = [str(p) for _, p, _ in candidates if p]
-            print(f"No dashboard found on port {port}. Running on: {', '.join(ports_found) or 'unknown'}")
-            sys.exit(1)
-    elif proj is not None:
-        real_proj = os.path.realpath(proj)
-        targets = [(pid, p, pj) for pid, p, pj in candidates if pj and os.path.realpath(pj) == real_proj]
-        if not targets:
-            print(f"No dashboard found for project: {proj}")
-            print("  list running:  shux dashboard-list")
-            sys.exit(1)
-
-    killed = 0
-    for pid, p, pj in targets:
-        port_str = f":{p}" if p else ""
-        proj_str = f"  project={pj}" if pj else ""
-        try:
-            os.kill(pid, _signal.SIGTERM)
-            print(f"Killed dashboard  pid={pid}  port{port_str}{proj_str}")
-            killed += 1
-        except ProcessLookupError:
-            print(f"Process {pid} already gone.")
-        except PermissionError:
-            print(f"Permission denied killing pid {pid}.", file=sys.stderr)
-
-    print(f"{killed} dashboard process(es) stopped.")
-    if killed:
-        print("  list remaining:  shux dashboard-list")
-        print("  restart:         shux dashboard")
-
-
-@main.command(name="dashboard-list")
-def cmd_dashboard_list():
-    """List all running dashboard processes with their ports and projects."""
-    found = _find_dashboard_processes()
-
-    if not found:
-        print("No dashboard processes running.")
-        print("  start:  shux dashboard")
-        return
-
-    print(f"{'PID':<8} {'PORT':<8} {'PROJECT':<40} URL")
-    print("-" * 80)
-    for pid, port, proj in found:
-        url = f"http://127.0.0.1:{port}" if port else "(port unknown)"
-        proj_label = os.path.basename(proj) if proj else "?"
-        print(f"{pid:<8} {port or '?':<8} {proj_label:<40} {url}")
-    print()
-    print("  kill all:              shux dashboard-kill")
-    if len(found) == 1:
-        pid, port, proj = found[0]
-        if port:
-            print(f"  kill this one:         shux dashboard-kill --port {port}")
-        if proj:
-            print(f"  kill by project:       shux dashboard-kill --project {proj}")
-
-
-@main.command(name="dashboard", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def cmd_dashboard(args):
-    """Launch local browser dashboard (runs setup wizard on first use)."""
-    args_list = list(args)
-
-    # --wizard / --no-wizard: explicit wizard control
-    force_wizard = "--wizard" in args_list
-    skip_wizard = "--no-wizard" in args_list
-    setup_section = None
-    for i, a in enumerate(args_list):
-        if a == "--setup" and i + 1 < len(args_list):
-            setup_section = args_list[i + 1]
-    # Strip wizard flags before forwarding to _run_dashboard
-    for flag in ("--wizard", "--no-wizard"):
-        while flag in args_list:
-            args_list.remove(flag)
-    if setup_section:
-        for flag in ("--setup", setup_section):
-            while flag in args_list:
-                args_list.remove(flag)
-
-    # Resolve project dir
-    proj = os.getcwd()
-    for i, a in enumerate(args_list):
-        if a in ("--project", "-p") and i + 1 < len(args_list):
-            proj = args_list[i + 1]
-            break
-
-    # Run wizard unless explicitly skipped or already running in background recheck
-    if not skip_wizard and "--help" not in args_list and "-h" not in args_list:
-        from superharness.commands.dashboard_wizard import run_wizard, _is_first_time
-        should_run = force_wizard or setup_section or _is_first_time(proj)
-        if should_run:
-            run_wizard(proj, section=setup_section, force=force_wizard)
-
-    _run_dashboard(tuple(args_list))
-
-
-@main.command(name="dashboard-ui", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def cmd_dashboard_ui(args):
-    """Launch local browser dashboard."""
-    _run_dashboard(args)
-
+# Dashboard commands — extracted to commands/dashboard.py (C4 decomposition)
+from superharness.commands.dashboard import register_dashboard_commands, run_dashboard
+register_dashboard_commands(main, _SCRIPTS)
 
 # Hidden backwards-compat aliases
 @main.command(name="monitor", hidden=True, context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def cmd_monitor_compat(args):
     """Backwards-compat alias for 'dashboard'."""
-    _run_dashboard(args)
-
-
-@main.command(name="monitor-kill", hidden=True)
-@click.option("--port", "-p", type=int, default=None)
-@click.option("--project", "proj", default=None)
-@click.option("--all", "kill_all", is_flag=True, default=False)
-def cmd_monitor_kill_compat(port, proj, kill_all):
-    """Backwards-compat alias for 'dashboard-kill'."""
-    cmd_dashboard_kill.invoke(click.Context(cmd_dashboard_kill, info_name="dashboard-kill",
-                              params={"port": port, "proj": proj, "kill_all": kill_all}))
-
-
-@main.command(name="monitor-list", hidden=True)
-def cmd_monitor_list_compat():
-    """Backwards-compat alias for 'dashboard-list'."""
-    cmd_dashboard_list.invoke(click.Context(cmd_dashboard_list, info_name="dashboard-list"))
+    run_dashboard(args, _SCRIPTS)
 
 
 @main.command(name="monitor-ui", hidden=True, context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def cmd_monitor_ui_compat(args):
     """Backwards-compat alias for 'dashboard-ui'."""
-    _run_dashboard(args)
+    run_dashboard(args, _SCRIPTS)
 
 
 @main.command(name="delegate", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
@@ -804,7 +440,6 @@ def cmd_shux():
   shux uninstall           ← remove watcher and system artifacts
   shux update              ← git pull + re-run init to refresh templates
   shux discuss <sub>       ← manage discussions and approval gates
-  shux help                ← show this message
 
 Full session flow:
   shux init → shux doctor → shux contract → shux continue → shux close <id>""")
@@ -889,13 +524,6 @@ def cmd_run(args):
 def cmd_version():
     """Show version."""
     click.echo(f"superharness {__version__}")
-
-
-@main.command(name="help")
-@click.pass_context
-def cmd_help(ctx):
-    """Show help message."""
-    click.echo(ctx.parent.get_help())
 
 
 @main.group()

@@ -69,11 +69,6 @@ _MAPPING: dict[str, tuple[Optional[str], list[str], str]] = {
         ["report_ready", "pending_user_approval", "stopped", "failed", "waiting_input"],
         "agent is working; wait for report_ready or pending_user_approval",
     ),
-    "todo": (
-        "plan_proposed",
-        ["plan_proposed", "waiting_input"],
-        "author a plan handoff before dispatch",
-    ),
     "pending_user_approval": (
         "in_progress",
         ["in_progress", "stopped"],

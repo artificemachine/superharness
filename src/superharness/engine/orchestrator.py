@@ -94,9 +94,9 @@ def _log_orchestrator_error(error: str) -> None:
     try:
         import logging
         logger.warning("Orchestrator error: %s", error)
-    except Exception:
+    except Exception as e:
+        logger.warning("orchestrator.py unexpected error: %s", e, exc_info=True)
         pass
-
 _ORCHESTRATOR_MODEL = DECOMPOSER_MODEL
 _DEFAULT_ESTIMATED_TOKENS = 30000
 _FALLBACK_ESTIMATED_TOKENS = 50000

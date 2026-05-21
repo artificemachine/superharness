@@ -15,6 +15,9 @@ from superharness.engine.taxonomy import VALID_EFFORTS
 from superharness.engine.next_action import ALL_STATUSES
 from superharness.utils.paths import is_project_initialized
 
+import logging
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
 # Validation helpers
 # ---------------------------------------------------------------------------
@@ -39,7 +42,8 @@ def _load_require_tdd_from_profile(project_path: str) -> bool:
         import yaml as _yaml
         with open(profile_path) as _f:
             profile = _yaml.safe_load(_f) or {}
-    except Exception:
+    except Exception as e:
+        logger.warning("task.py unexpected error: %s", e, exc_info=True)
         return True
     wf = profile.get("workflow")
     if isinstance(wf, dict) and "require_tdd" in wf:
@@ -289,7 +293,8 @@ def _cascade_unblocked_tasks(project_dir: str, finished_task_id: str) -> None:
             profile = _yaml.safe_load(_f) or {}
         if not profile.get("auto_dispatch"):
             return
-    except Exception:
+    except Exception as e:
+        logger.warning("task.py unexpected error: %s", e, exc_info=True)
         return
 
     from superharness.engine.db import get_connection, init_db
@@ -360,7 +365,8 @@ def _load_latest_plan_handoff(project_dir: str, task_id: str) -> dict | None:
                 h = _yaml.safe_load(f.read()) or {}
             if str(h.get("task", "")) == task_id and h.get("phase") == "plan":
                 return h
-        except Exception:
+        except Exception as e:
+            logger.warning("task.py unexpected error: %s", e, exc_info=True)
             continue
     return None
 
@@ -595,9 +601,9 @@ def status_update(
                 with open(profile_path) as _f:
                     profile = _yaml.safe_load(_f) or {}
                     auto_approve = bool(profile.get("auto_approve_plans", False))
-            except Exception:
+            except Exception as e:
+                logger.warning("task.py unexpected error: %s", e, exc_info=True)
                 pass
-
         if auto_approve:
             try:
                 from superharness.engine.plan_validator import validate_plan
@@ -662,9 +668,9 @@ def status_update(
             skill = record_skill(project_dir, task_dict)
             if skill:
                 print(f"Skill recorded: [{skill.category}] {skill.title}")
-        except Exception:
+        except Exception as e:
+            logger.warning("task.py unexpected error: %s", e, exc_info=True)
             pass
-
     print(f"Updated task '{task_id}' status={status} by actor={actor}")
     return 0
 
@@ -788,7 +794,8 @@ def main(argv: list[str] | None = None) -> None:
                     with open(profile_file) as _f:
                         _profile = _yaml.safe_load(_f) or {}
                     owner = str(_profile.get("primary_agent") or "")
-                except Exception:
+                except Exception as e:
+                    logger.warning("task.py unexpected error: %s", e, exc_info=True)
                     pass
         if not owner:
             # Prompt via stdin
@@ -873,9 +880,9 @@ def main(argv: list[str] | None = None) -> None:
                     _conn.close()
             except SystemExit:
                 raise
-            except Exception:
+            except Exception as e:
+                logger.warning("task.py unexpected error: %s", e, exc_info=True)
                 pass
-
         # Pre-validate before calling status_update so shell exit codes match
         if opts.status in ("failed", "stopped") and not opts.reason:
             _abort(f"error: --reason is required when status={opts.status}", 2)

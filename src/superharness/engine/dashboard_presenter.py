@@ -9,6 +9,9 @@ from pathlib import Path
 
 from superharness.engine import tasks_dao, inbox_dao, failures_dao, decisions_dao, ledger_dao, state_reader
 
+import logging
+logger = logging.getLogger(__name__)
+
 def get_dashboard_status_snapshot(conn: sqlite3.Connection, project_dir: str) -> dict[str, Any]:
     """Return a comprehensive snapshot of the project state for the dashboard.
     
@@ -21,9 +24,9 @@ def get_dashboard_status_snapshot(conn: sqlite3.Connection, project_dir: str) ->
     try:
         doc = state_reader.get_contract_doc(project_dir)
         contract_id = str(doc.get("id", "initial-setup"))
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard_presenter.py unexpected error: %s", e, exc_info=True)
         pass
-
     # 2. Inbox
     inbox_as_dict = state_reader.get_inbox_items(project_dir)
     
@@ -53,9 +56,9 @@ def get_dashboard_status_snapshot(conn: sqlite3.Connection, project_dir: str) ->
                     "all_consensus": total > 0 and submitted >= total and all(v == "consensus" for v in verdicts),
                     "closed_at": row.closed_at or "",
                 })
-    except Exception:
+    except Exception as e:
+        logger.warning("dashboard_presenter.py unexpected error: %s", e, exc_info=True)
         pass
-
     # 4. Failures & Decisions
     failures = [asdict(f) for f in failures_dao.get_recent(conn, limit=50)]
     decisions = [asdict(d) for d in decisions_dao.get_recent(conn, limit=50)]
@@ -183,7 +186,8 @@ def _attach_log_tails(snapshot: dict, project_dir: str) -> None:
                 with open(path, "r", errors="replace") as f:
                     lines = f.readlines()[-50:]  # last 50 lines
                 snapshot[key] = [l.rstrip("\n") for l in lines]
-            except Exception:
+            except Exception as e:
+                logger.warning("dashboard_presenter.py unexpected error: %s", e, exc_info=True)
                 snapshot[key] = []
         else:
             snapshot[key] = []

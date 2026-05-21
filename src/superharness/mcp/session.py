@@ -12,6 +12,9 @@ from dataclasses import dataclass
 
 from superharness.utils.paths import resolve_xdg_state_db_path
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 class PolicyError(Exception):
     """Raised when an agent's policy limits are exceeded."""
@@ -89,9 +92,9 @@ class SessionManager:
         if session:
             try:
                 session.conn.close()
-            except Exception:
+            except Exception as e:
+                logger.warning("session.py unexpected error: %s", e, exc_info=True)
                 pass
-
     def active_sessions(self) -> list[str]:
         with self._lock:
             return list(self._sessions.keys())
@@ -107,7 +110,8 @@ class SessionManager:
             text = manifest_path.read_text()
             data = yaml.safe_load(text) or {}
             return data.get("policy", {})
-        except Exception:
+        except Exception as e:
+            logger.warning("session.py unexpected error: %s", e, exc_info=True)
             return {}
 
 

@@ -9,6 +9,9 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import logging
+logger = logging.getLogger(__name__)
+
 # Inbox statuses eligible for GC (terminal-but-stale)
 GC_ELIGIBLE = {"stopped", "failed", "stale", "paused"}
 TASK_PAST_DISPATCH = {"done", "report_ready", "review_requested", "review_passed", "review_failed"}
@@ -67,16 +70,17 @@ def run_gc(project_dir: str | Path, dry_run: bool = False) -> dict:
                                 details={"item_id": item_id, "from": status, "to": "done"},
                                 now=now,
                             )
-                        except Exception:
+                        except Exception as e:
+                            logger.warning("inbox_gc.py unexpected error: %s", e, exc_info=True)
                             pass
                         conn.commit()
                         reconciled += 1
                         details.append({"id": item_id, "task": task_id, "from": status, "to": "done"})
                     finally:
                         conn.close()
-                except Exception:
+                except Exception as e:
+                    logger.warning("inbox_gc.py unexpected error: %s", e, exc_info=True)
                     pass
-
     if reconciled > 0:
         print(f"Inbox GC: {reconciled} reconciled, {would_reconcile} would reconcile")
     return {"reconciled": reconciled, "would_reconcile": would_reconcile, "items": details}

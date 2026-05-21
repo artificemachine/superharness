@@ -5,6 +5,9 @@ Cherry-picked from hermes-agent/agent/skill_commands.py.
 import os
 import yaml
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def load_skill(project_dir: str, name: str) -> dict | None:
     """Load a skill YAML from .superharness/skills/<name>.yaml."""
@@ -14,7 +17,8 @@ def load_skill(project_dir: str, name: str) -> dict | None:
     try:
         with open(path, encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
-    except Exception:
+    except Exception as e:
+        logger.warning("loader.py unexpected error: %s", e, exc_info=True)
         return None
 
 
@@ -27,7 +31,8 @@ def save_skill(project_dir: str, name: str, skill: dict) -> bool:
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(skill, f, default_flow_style=False, sort_keys=False)
         return True
-    except Exception:
+    except Exception as e:
+        logger.warning("loader.py unexpected error: %s", e, exc_info=True)
         return False
 
 

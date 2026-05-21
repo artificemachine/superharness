@@ -8,6 +8,9 @@ import json
 import os
 from datetime import datetime, timezone
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _stream_path(project_dir: str) -> str:
     return os.path.join(project_dir, ".superharness", "events.jsonl")
@@ -29,7 +32,8 @@ def write_event(
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "a") as f:
             f.write(json.dumps(event, default=str) + "\n")
-    except Exception:
+    except Exception as e:
+        logger.warning("event_stream.py unexpected error: %s", e, exc_info=True)
         pass  # best-effort — don't crash on event write failure
 
 
@@ -50,5 +54,6 @@ def read_events(project_dir: str, limit: int = 100) -> list[dict]:
                 except json.JSONDecodeError:
                     pass
         return events
-    except Exception:
+    except Exception as e:
+        logger.warning("event_stream.py unexpected error: %s", e, exc_info=True)
         return []

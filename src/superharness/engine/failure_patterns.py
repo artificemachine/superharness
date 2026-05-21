@@ -12,6 +12,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import logging
+logger = logging.getLogger(__name__)
+
 try:
     import yaml
 except ImportError:
@@ -258,7 +261,8 @@ def _load_failures(failures_file: str) -> dict:
         if "failures" not in data or not isinstance(data["failures"], list):
             data["failures"] = []
         return data
-    except Exception:
+    except Exception as e:
+        logger.warning("failure_patterns.py unexpected error: %s", e, exc_info=True)
         return {"failures": []}
 
 
@@ -301,9 +305,9 @@ def record_failure(
             conn.commit()
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("failure_patterns.py unexpected error: %s", e, exc_info=True)
         pass
-
     # Seed operator memory. For matched patterns use the pattern id; for
     # unknown failures derive a stable signature from the error_snippet
     # so repeated identical unknown failures still cluster and the
@@ -313,7 +317,8 @@ def record_failure(
             _seed_operator_memory(project_dir, matched)
         elif error_snippet:
             _seed_unknown_signature(project_dir, error_snippet)
-    except Exception:
+    except Exception as e:
+        logger.warning("failure_patterns.py unexpected error: %s", e, exc_info=True)
         pass  # never let operator memory break failure recording
 
     return matched
@@ -401,9 +406,9 @@ def get_failure_hints(project_dir: str, task_id: str) -> list[str]:
                         seen_pattern_ids.add(pid.strip())
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("failure_patterns.py unexpected error: %s", e, exc_info=True)
         pass
-
     hints = []
     if "unknown" in seen_pattern_ids and not seen_pattern_ids.difference({"unknown"}):
         hints.append("[unknown] An unclassified error occurred. Check the error_snippet in failures.yaml for details.")

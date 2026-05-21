@@ -13,8 +13,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import logging
+logger = logging.getLogger(__name__)
+
 from superharness.engine.worktree_ops import (
-    WorktreeSlot,
     copy_superharness_state,
     create_worktree,
     remove_worktree,
@@ -74,9 +76,9 @@ def _run_sdk_in_worktree(
         try:
             from superharness.engine.failure_patterns import record_failure
             record_failure(slot.project_dir, f"parallel-slot-{slot.index}", slot.error)
-        except Exception:
+        except Exception as e:
+            logger.warning("parallel_dispatch.py unexpected error: %s", e, exc_info=True)
             pass
-
     # Record benchmark entry for this slot
     if slot.project_dir:
         try:
@@ -90,10 +92,9 @@ def _run_sdk_in_worktree(
                 cost_usd=slot.cost_usd,
                 slot_index=slot.index,
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("parallel_dispatch.py unexpected error: %s", e, exc_info=True)
             pass
-
-
 def _collect_diffs(project_dir: str, slots: list[WorktreeSlot]) -> list[dict]:
     """Collect git diffs from each completed worktree slot."""
     diffs = []

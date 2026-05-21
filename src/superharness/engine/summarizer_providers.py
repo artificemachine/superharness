@@ -47,6 +47,9 @@ from superharness.engine.summarizer import (
 )
 from superharness.utils.privacy import strip_private_tags
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 _DEFAULT_TIMEOUT_S = 30
 _DEFAULT_MAX_TOKENS = 256
@@ -95,7 +98,8 @@ def _http_post_json(
         detail = ""
         try:
             detail = e.read().decode("utf-8", errors="replace")[:200]
-        except Exception:
+        except Exception as e:
+            logger.warning("summarizer_providers.py unexpected error: %s", e, exc_info=True)
             pass
         raise SummarizerError(f"HTTP {e.code} from {url}: {detail}") from e
     except urllib.error.URLError as e:

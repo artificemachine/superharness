@@ -14,6 +14,9 @@ from __future__ import annotations
 import os
 from typing import Any
 
+import logging
+logger = logging.getLogger(__name__)
+
 _DEFAULT_ROUTING: dict[str, str] = {
     "orchestrator": "claude-opus-4-6",
     "worker": "claude-sonnet-4-6",
@@ -38,7 +41,8 @@ class ModelRouter:
                 profile: dict[str, Any] = yaml.safe_load(f) or {}
             overrides = profile.get("model_routing") or {}
             return cls(overrides=overrides)
-        except Exception:
+        except Exception as e:
+            logger.warning("model_router_roles.py unexpected error: %s", e, exc_info=True)
             return cls()
 
     def model_for(self, role: str) -> str:
