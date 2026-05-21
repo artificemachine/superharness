@@ -236,11 +236,10 @@ def enqueue(file: str, id: str, to: str, task: str, project: str, priority: int,
         # seed contract.yaml only) would otherwise fail with FOREIGN KEY
         # constraint failed.
         try:
-            from superharness.commands.inbox_enqueue import _ensure_task_in_sqlite
+            from superharness.commands.inbox_watch import _ensure_task_in_sqlite
             _ensure_task_in_sqlite(conn, task, project_dir, created_at)
         except Exception as e:
-            logger.warning("inbox.py unexpected error: %s", e, exc_info=True)
-            pass
+            _log.warning("inbox.py: FK guard skipped for task %s: %s", task, e)
         _dao.enqueue(conn, id=id, task_id=task, target_agent=to,
                      priority=priority, max_retries=max_retries,
                      project_path=project, plan_only=plan_only, now=created_at)
