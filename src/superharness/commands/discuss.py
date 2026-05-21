@@ -249,6 +249,7 @@ def _enqueue_sqlite_shadow(
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao as _dao
+        from superharness.engine.state_errors import StateError
 
         conn = get_connection(project_dir)
         try:
@@ -268,6 +269,9 @@ def _enqueue_sqlite_shadow(
                 now=created_at,
             )
             conn.commit()
+        except StateError:
+            # Already enqueued by primary path — idempotent, skip silently
+            pass
         finally:
             conn.close()
     except Exception as e:
