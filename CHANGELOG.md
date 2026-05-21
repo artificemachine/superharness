@@ -475,3 +475,6 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-21: docs: add self-improvement health check to AGENTS/GEMINI/CLAUDE. Bump to v1.62.17.
 - 2026-05-21: chore(release): merge PR #271 (docs-only). Bump to v1.62.18.
 - 2026-05-21: fix(inbox,discuss): 2 undefined logger landmines + shadow-enqueue idempotent catch. Bump to v1.62.19.
+- 2026-05-21: fix(status): heartbeat false-positive — when watcher.yaml points to a worker dir but the operator writes heartbeats to the source project, fall back to source project heartbeat so shux status reports ok instead of permanent stale.
+
+- 2026-05-21: chore(release): bump to v1.62.20 (fix: status heartbeat worker-project false-positive)
