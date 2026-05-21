@@ -66,11 +66,13 @@ def _watcher_project(project_dir: str) -> str:
     return project_dir
 
 
-def _heartbeat_status(project_dir: str, harness_dir: str) -> tuple[str, str]:
-    watcher_project = _watcher_project(project_dir)
-    hb_project = watcher_project if watcher_project != project_dir else project_dir
-    via_worker = hb_project != project_dir
-    stale_seconds = 120
+def _read_project_heartbeat(check_dir: str, via_worker: bool, stale_seconds: int) -> tuple[str, str]:
+    """Read the watcher heartbeat from check_dir and return (status, detail).
+
+    Checks the structured YAML heartbeat first, then falls back to the legacy
+    plain-text file. This is the single source of truth for one directory.
+    """
+    suffix = " (worker project)" if via_worker else ""
 
     try:
         from superharness.engine.heartbeat_contract import (
@@ -78,7 +80,7 @@ def _heartbeat_status(project_dir: str, harness_dir: str) -> tuple[str, str]:
             read_heartbeat,
             age_seconds as hb_age_seconds,
         )
-        structured_path = heartbeat_path(hb_project, "watcher")
+        structured_path = heartbeat_path(check_dir, "watcher")
         if os.path.isfile(structured_path):
             hb = read_heartbeat(structured_path)
             if hb is not None:
@@ -86,14 +88,13 @@ def _heartbeat_status(project_dir: str, harness_dir: str) -> tuple[str, str]:
                 if age < 0:
                     return "missing", "invalid heartbeat timestamp"
                 age_min = age // 60
-                suffix = " (worker project)" if via_worker else ""
                 if age >= stale_seconds:
                     return "stale", f"last heartbeat {age_min}m ago{suffix}"
                 return "ok", f"last heartbeat {age}s ago{suffix}"
     except Exception as e:
         logger.warning("status.py unexpected error: %s", e, exc_info=True)
-        pass
-    hb_file = os.path.join(hb_project, ".superharness", "watcher.heartbeat")
+
+    hb_file = os.path.join(check_dir, ".superharness", "watcher.heartbeat")
     if not os.path.isfile(hb_file):
         return "missing", "no heartbeat file"
     with open(hb_file) as f:
@@ -105,13 +106,31 @@ def _heartbeat_status(project_dir: str, harness_dir: str) -> tuple[str, str]:
         now_dt = datetime.now(timezone.utc)
         age = int((now_dt - hb_dt).total_seconds())
         age_min = age // 60
-        suffix = " (worker project)" if via_worker else ""
         if age >= stale_seconds:
             return "stale", f"last heartbeat {age_min}m ago{suffix}"
         return "ok", f"last heartbeat {age}s ago{suffix}"
     except Exception as e:
         logger.warning("status.py unexpected error: %s", e, exc_info=True)
         return "missing", "invalid heartbeat timestamp"
+
+
+def _heartbeat_status(project_dir: str, harness_dir: str) -> tuple[str, str]:
+    watcher_project = _watcher_project(project_dir)
+    hb_project = watcher_project if watcher_project != project_dir else project_dir
+    via_worker = hb_project != project_dir
+    stale_seconds = 120
+
+    result = _read_project_heartbeat(hb_project, via_worker, stale_seconds)
+
+    # shux operator start writes heartbeats to project_dir, not the worker directory.
+    # When the worker-project heartbeat is stale or missing, fall back to project_dir
+    # so that an operator-spawned watcher is not permanently reported as down.
+    if via_worker and result[0] in ("stale", "missing"):
+        src = _read_project_heartbeat(project_dir, False, stale_seconds)
+        if src[0] == "ok":
+            return src
+
+    return result
 
 
 # ---------------------------------------------------------------------------

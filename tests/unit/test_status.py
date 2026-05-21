@@ -204,3 +204,35 @@ def test_status_reads_worker_project_heartbeat(repo_root, tmp_path) -> None:
     assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
     assert "heartbeat: ok" in result.stdout.lower()
     assert "worker project" in result.stdout.lower()
+
+
+def test_status_worker_stale_falls_back_to_source_heartbeat(repo_root, tmp_path) -> None:
+    """When watcher.yaml points to a worker dir whose heartbeat is stale,
+    status must fall back to the source project heartbeat written by the operator.
+    Regression: shux operator start writes to project_dir, not the worker dir."""
+    from datetime import datetime, timezone
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    sh_dir = _write_harness(project)
+    worker = tmp_path / "worker"
+    (worker / ".superharness").mkdir(parents=True)
+    (sh_dir / "watcher.yaml").write_text(
+        f'watcher_project: "{worker.as_posix()}"\ninterval_seconds: 30\n',
+        encoding="utf-8",
+    )
+    # Worker heartbeat is stale (weeks old, as seen in the real morpheme case)
+    (worker / ".superharness" / "watcher.heartbeat").write_text("2026-01-01T00:00:00Z\n", encoding="utf-8")
+    # Operator wrote a fresh heartbeat to the source project
+    fresh = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    (sh_dir / "watcher.heartbeat").write_text(fresh + "\n", encoding="utf-8")
+
+    result = _run_python(["--project", str(project)])
+    assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
+    assert "heartbeat: ok" in result.stdout.lower(), (
+        f"Expected ok heartbeat via source fallback:\n{result.stdout}"
+    )
+    # Source fallback should not label itself as "(worker project)"
+    assert "worker project" not in result.stdout.lower(), (
+        f"Source-project fallback should not carry worker-project label:\n{result.stdout}"
+    )
