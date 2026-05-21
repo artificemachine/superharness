@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "superharness"
-version = "1.62.18"
+version = "1.62.19"
 description = "Multi-agent session handoff framework for Claude Code and Codex CLI"
 readme = "README.md"
 license = "Apache-2.0"
