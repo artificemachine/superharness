@@ -1729,6 +1729,56 @@ class Handler(BaseHTTPRequestHandler):
     scripts_dir: Path
     auth_token: str
 
+
+# ── Behavioral profile data (Iteration 7) ────────────────────────────────────
+
+def _profile_data(project_dir: Path) -> dict:
+    """Return behavioral profile + recent trials for the dashboard card."""
+    import json as _json
+    upath = os.path.join(os.path.expanduser("~"), ".config", "superharness", "behavioral")
+    profiles = {}
+    if os.path.isdir(upath):
+        for fname in os.listdir(upath):
+            if fname.endswith(".json") and not fname.startswith("_"):
+                try:
+                    with open(os.path.join(upath, fname)) as f:
+                        profiles[fname.replace(".json", "")] = _json.load(f)
+                except Exception:
+                    pass
+
+    trials = []
+    try:
+        conn = sqlite3.connect(os.path.join(str(project_dir), ".superharness", "state.sqlite3"))
+        conn.row_factory = sqlite3.Row
+        try:
+            for row in conn.execute(
+                "SELECT * FROM profile_trials ORDER BY trial_started_at DESC LIMIT 10"
+            ).fetchall():
+                trials.append({
+                    "id": row["id"],
+                    "profile_key": row["profile_key"],
+                    "old_value": row["old_value"],
+                    "new_value": row["new_value"],
+                    "outcome": row["outcome"],
+                    "reverted": bool(row["reverted"]),
+                    "reinforced": bool(row["reinforced"]),
+                    "started_at": row["trial_started_at"],
+                })
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+    return {
+        "profiles": {k: {kk: vv for kk, vv in v.items() if kk != "updated_at"}
+                     for k, v in profiles.items()},
+        "trials": trials,
+        "has_data": len(profiles) > 0,
+    }
+
+
+class Handler(BaseHTTPRequestHandler):
+
     def _db_conn(self) -> sqlite3.Connection:
         """Get a thread-local database connection."""
         conn = db.get_connection(str(self.project_dir))
@@ -2600,6 +2650,11 @@ class Handler(BaseHTTPRequestHandler):
             finally:
                 conn.close()
             self._json(payload, status)
+            return
+
+        # ── Behavioral profile endpoint (Iteration 7) ──────────────────
+        if p == "/api/profile":
+            self._json(_profile_data(self.project_dir))
             return
 
         if p == "/api/status":

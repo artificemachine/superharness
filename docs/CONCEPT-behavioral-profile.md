@@ -365,3 +365,44 @@ Flow:
 | Wire into watcher cycle | Evaluate open trials after task completions | — |
 | `complete_trial()` (behavioral.py) | Reinforce or revert based on outcome | 1 test |
 | **Total** | **~1h** | **3 tests** |
+
+---
+
+## Iteration 7 — Dashboard Visibility
+
+### Problem
+
+The behavioral profile exists but is invisible. Users must remember `shux profile show` to check what the system learned. Adaptations happen silently — autonomy bumps, models change, but there's no visible trace outside the ledger. The dashboard shows tasks, inbox, health — but not the user's learned patterns.
+
+### Fix
+
+Add a **profile card** to the dashboard showing:
+
+```
+🧠 System has learned:
+  • You prefer medium tasks with TDD (15 tasks)
+  • 86% success rate (12 done, 2 failed)
+
+Recent trials:
+  ✅ bump_autonomy → improved (86% → 100%)
+  ⏳ relax_review → evaluating (3/5 tasks)
+```
+
+### Implementation
+
+| Component | What | Lines |
+|-----------|------|-------|
+| `dashboard-ui.py` | New API endpoint `/api/profile` reading `~/.config/superharness/behavioral/` + `profile_trials` | ~60 |
+| `dashboard-ui.py` | Profile card HTML in board view | ~30 |
+| Tests | profile endpoint returns valid JSON, trials are filtered correctly | 2 tests |
+| **Total** | **~45 min** | **~90 lines** |
+
+### Data flow
+
+```
+~/.config/superharness/behavioral/*.json  ← extracted profiles (I5.2)
+profile_trials (SQLite)                    ← A/B test results (I6)
+        │
+        ▼
+/api/profile  →  JSON  →  dashboard card
+```
