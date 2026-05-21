@@ -2401,6 +2401,17 @@ def _run_scripts(
             logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
             pass
 
+    # Agent memory: promote project→global every 20 cycles (Hermes adaptation)
+    if _watcher_cycle_count[0] % 20 == 0:
+        try:
+            from superharness.engine.agent_memory import promote_all_project_memory
+            promoted = promote_all_project_memory(project_dir)
+            if promoted:
+                print(f"memory: promoted {promoted} file(s) to global")
+        except Exception as e:
+            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
+            pass
+
     # Auto-retry failed inbox items that still have retries remaining
     try:
         if _should_run("auto_retry", cooldown=10):

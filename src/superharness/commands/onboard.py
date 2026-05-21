@@ -687,6 +687,46 @@ def _run_onboard_wizard(
     _save_state(sh, state)
     _write_profile(project_path, config)
 
+    # Step 8: Behavioral profile bootstrap (Iteration 4)
+    _bootstrap_behavioral_profile(project_path, non_interactive)
+
+
+# ---------------------------------------------------------------------------
+# Step 8: behavioral profile bootstrap
+# ---------------------------------------------------------------------------
+
+def _bootstrap_behavioral_profile(project_path: str, non_interactive: bool) -> None:
+    """Seed the behavioral profile with onboarding answers (cold-start fix)."""
+    import json as _json
+    upath = os.path.join(os.path.expanduser("~"), ".config", "superharness", "behavioral")
+    os.makedirs(upath, exist_ok=True)
+
+    bootstrap = {
+        "task_style": {"default_effort": "medium", "tdd_required": True, "confidence": "seed", "sample_count": 0},
+    }
+
+    if not non_interactive:
+        click.echo("")
+        click.secho("Behavioral Profile (optional)", fg="cyan", bold=True)
+        click.echo("The system learns your patterns automatically. Seed it with 2 quick answers:")
+        click.echo("")
+
+        ans = click.prompt("  1. Review style? (strict/balanced/lenient)", default="balanced", show_default=True)
+        bootstrap["review_style"] = {"strictness": {"strict": 0.8, "balanced": 0.5, "lenient": 0.3}.get(ans, 0.5), "confidence": "seed", "sample_count": 0}
+
+        ans2 = click.prompt("  2. Communication style? (direct/detailed/concise)", default="direct", show_default=True)
+        bootstrap["communication"] = {"style": ans2, "confidence": "seed", "sample_count": 0}
+
+    bootstrap_path = os.path.join(upath, "_bootstrap.json")
+    with open(bootstrap_path, "w") as f:
+        _json.dump(bootstrap, f, indent=2)
+
+    # Also save task_style seed for immediate use
+    task_path = os.path.join(upath, "task_style.json")
+    if not os.path.exists(task_path):
+        with open(task_path, "w") as f:
+            _json.dump(bootstrap["task_style"], f, indent=2)
+
 
 # ---------------------------------------------------------------------------
 # CLI entry point
