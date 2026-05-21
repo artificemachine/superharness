@@ -880,6 +880,8 @@ def main(argv: list[str] | None = None) -> None:
     active_statuses = {"pending", "launched", "running", "stale", "failed", "paused", "stopped"}
     failed_task_ids: list = []
     for item in inbox_health["items"]:
+        if item.get("type") == "discussion":
+            continue  # discussion shadow rows have their own health signal; exclude from retry-alert
         st = str(item.get("status", ""))
         tid = item.get("task", item.get("task_id", ""))
         if st == "failed" and tid:

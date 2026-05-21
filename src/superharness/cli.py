@@ -136,6 +136,7 @@ _cmd("task",            "Create/delete contract tasks.",              module="su
 _cmd("dispatch",        "Dispatch next inbox item.",                  module="superharness.commands.inbox_dispatch")
 _cmd("watch",           "Run one watch cycle or foreground loop.",    module="superharness.commands.inbox_watch")
 _cmd("discuss",         "Approval-gated consensus helpers.",         module="superharness.commands.discuss")
+_cmd("discussion",      "Alias for 'discuss'.",                      module="superharness.commands.discuss")
 _cmd("enqueue",         "Add inbox item.",                           module="superharness.commands.inbox_enqueue")
 _cmd("normalize",       "Normalize/archive inbox rows.",             module="superharness.commands.inbox_normalize")
 _cmd("inbox-gc",        "Reconcile stale inbox items against contract.", module="superharness.commands.inbox_gc")
