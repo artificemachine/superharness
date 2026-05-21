@@ -470,3 +470,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-21: feat(behavioral): Iteration 7 dashboard profile visibility (API endpoint + profile card). Bump to v1.62.12.
 - 2026-05-21: feat: dashboard profile card + C5 delegate gate extraction. Bump to v1.62.13.
 - 2026-05-21: feat(behavioral): wire profile refresh + trial evaluation into watcher cycle (zero-touch). Bump to v1.62.14.
+- 2026-05-21: fix(tests): fix 3 pre-existing collection errors from C4 dashboard extraction. Memory auto-promotion in watcher. Onboarding behavioral bootstrap. Bump to v1.62.15.
