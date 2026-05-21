@@ -298,3 +298,43 @@ def test_status_uses_structured_heartbeat_when_present(tmp_path: Path) -> None:
 
     level, detail = _heartbeat_status(str(project), str(project / ".superharness"))
     assert level == "ok", f"Expected ok with fresh structured heartbeat, got {level}: {detail}"
+
+
+# ---------------------------------------------------------------------------
+# 16. _heartbeat_status falls back to source project when worker heartbeat stale
+# ---------------------------------------------------------------------------
+
+def test_status_worker_stale_falls_back_to_source(tmp_path: Path) -> None:
+    """When watcher.yaml points to a worker dir whose heartbeat is stale,
+    _heartbeat_status must fall back to the source project heartbeat.
+
+    Regression: shux operator start writes heartbeats to project_dir, not the
+    worker directory, causing permanent false-positive stale reports for projects
+    that were previously managed via the launchd watcher_worker path."""
+    import sys
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    from superharness.commands.status import _heartbeat_status
+
+    project = _setup_project(tmp_path)
+    worker = tmp_path / "worker"
+    (worker / ".superharness").mkdir(parents=True)
+
+    (project / ".superharness" / "watcher.yaml").write_text(
+        f'watcher_project: "{worker.as_posix()}"\ninterval_seconds: 30\n',
+        encoding="utf-8",
+    )
+    # Worker heartbeat is weeks old (simulates abandoned launchd worker)
+    (worker / ".superharness" / "watcher.heartbeat").write_text(
+        "2026-01-01T00:00:00Z\n", encoding="utf-8"
+    )
+    # Operator wrote a fresh heartbeat to the source project
+    fresh = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    (project / ".superharness" / "watcher.heartbeat").write_text(fresh + "\n", encoding="utf-8")
+
+    level, detail = _heartbeat_status(str(project), str(project / ".superharness"))
+    assert level == "ok", (
+        f"Expected ok via source-project fallback, got {level}: {detail}"
+    )
+    assert "worker project" not in detail, (
+        f"Source-project fallback must not carry worker-project label: {detail}"
+    )
