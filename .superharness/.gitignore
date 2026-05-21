@@ -1,0 +1,9 @@
+daemon-state.json
+events.jsonl
+launcher-logs/
+onboarding.yaml
+operator-state.json
+state.sqlite3
+state.sqlite3-shm
+state.sqlite3-wal
+watcher-env.yaml
