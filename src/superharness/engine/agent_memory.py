@@ -27,6 +27,34 @@ PROJECT_ROOTS_FILE = os.path.join(
 
 GLOBAL_MEMORY_FILES = ("patterns.md", "pitfalls.md", "conventions.md")
 PROJECT_MEMORY_FILES = ("conventions.md", "decisions.md")
+MEMORY_FILE_MAX_CHARS = 5_000  # FIFO prune oldest lines when exceeded
+
+
+def _prune_if_over_limit(filepath: str) -> None:
+    """FIFO prune: drop oldest content lines when file exceeds MEMORY_FILE_MAX_CHARS."""
+    if not os.path.isfile(filepath):
+        return
+    try:
+        content = Path(filepath).read_text()
+    except Exception:
+        return
+    if len(content) <= MEMORY_FILE_MAX_CHARS:
+        return
+
+    lines = content.splitlines()
+    # Keep header lines (starting with #)
+    header = [l for l in lines if l.startswith("#")]
+    body = [l for l in lines if not l.startswith("#") and l.strip()]
+
+    # Trim from the beginning (oldest first) until under limit
+    while body and len("\n".join(header + body)) + len(header) > MEMORY_FILE_MAX_CHARS:
+        body.pop(0)
+
+    result = "\n".join(header + [""] + body) + "\n"
+    Path(filepath).write_text(result)
+    if len(body) < len([l for l in lines if not l.startswith("#") and l.strip()]):
+        logger.info("Pruned memory file %s: %d → %d chars",
+                     os.path.basename(filepath), len(content), len(result))
 
 
 def global_memory_dir() -> str:
@@ -83,6 +111,7 @@ def append(project_dir: str, filename: str, content: str) -> None:
     entry = _prepend_timestamp(content.strip()) + "\n"
     with open(fpath, "a") as f:
         f.write(entry)
+    _prune_if_over_limit(fpath)
     logger.info("Agent memory appended to %s/%s", os.path.basename(project_dir), filename)
 
 
@@ -95,6 +124,7 @@ def append_global_override(override_dir: str, filename: str, content: str) -> No
     entry = _prepend_timestamp(content.strip()) + "\n"
     with open(fpath, "a") as f:
         f.write(entry)
+    _prune_if_over_limit(fpath)
 
 
 def _read_memory_file(filepath: str) -> str:
@@ -321,6 +351,7 @@ def promote_to_global(
         # Promote
         with open(gpath, "a") as f:
             f.write(pattern + "\n")
+        _prune_if_over_limit(gpath)
         logger.info("Promoted pattern to global memory (count=%d across %d): %s",
                     effective_count, cross_count, pattern[:80])
         promoted_any = True
