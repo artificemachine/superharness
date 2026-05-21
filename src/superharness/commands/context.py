@@ -17,12 +17,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _load_yaml_safe(path: Path) -> object:
     try:
         import yaml
         return yaml.safe_load(path.read_text(errors="replace")) or {}
-    except Exception:
+    except Exception as e:
+        logger.warning("context.py unexpected error: %s", e, exc_info=True)
         return {}
 
 
@@ -220,7 +224,8 @@ def task_context(
                                      "decision": row.decision or "", "reason": row.reason or ""})
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("context.py unexpected error: %s", e, exc_info=True)
         decisions = []
     if decisions:
         lines.append("")
@@ -253,7 +258,8 @@ def task_context(
                 })
         finally:
             conn2.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("context.py unexpected error: %s", e, exc_info=True)
         failures = []
 
     # Build set of relevant task IDs (self + blockers)

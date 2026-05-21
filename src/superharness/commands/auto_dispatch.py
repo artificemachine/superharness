@@ -17,6 +17,9 @@ from typing import Optional
 from superharness.engine.taxonomy import VALID_EFFORTS, EFFORT_ORDER
 from superharness.utils.paths import is_project_initialized
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _get_valid_agents() -> tuple[str, ...]:
     """Return all registered adapter names from the manifest directory."""
@@ -24,7 +27,8 @@ def _get_valid_agents() -> tuple[str, ...]:
         from superharness.engine.adapter_registry import list_adapters
         adapters = list_adapters()
         return tuple(adapters) if adapters else ("claude-code", "codex-cli")
-    except Exception:
+    except Exception as e:
+        logger.warning("auto_dispatch.py unexpected error: %s", e, exc_info=True)
         return ("claude-code", "codex-cli")
 
 
@@ -53,7 +57,8 @@ def _classify_task(task: dict, project_dir: str) -> tuple[str, str]:
         # Heuristic default: mini tasks go to codex-cli, heavier tasks to claude-code.
         agent = "codex-cli" if tier == "mini" else "claude-code"
         return agent, tier
-    except Exception:
+    except Exception as e:
+        logger.warning("auto_dispatch.py unexpected error: %s", e, exc_info=True)
         return "claude-code", "standard"
 
 
@@ -70,7 +75,8 @@ def _read_round_skip_flag(project_dir: str) -> bool:
         if val is None:
             return True
         return bool(val)
-    except Exception:
+    except Exception as e:
+        logger.warning("auto_dispatch.py unexpected error: %s", e, exc_info=True)
         return True
 
 

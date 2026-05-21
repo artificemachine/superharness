@@ -40,7 +40,8 @@ def check_scheduled_tasks(context: dict[str, Any], settings: dict[str, Any]) -> 
     try:
         from superharness.engine import state_reader as _sr
         tasks = _sr.get_tasks(str(project_dir))
-    except Exception:
+    except Exception as e:
+        logger.warning("auto_schedule.py unexpected error: %s", e, exc_info=True)
         logger.warning("Could not load tasks from state_reader")
         return {"success": False, "error": "Could not load tasks"}
 
@@ -51,7 +52,8 @@ def check_scheduled_tasks(context: dict[str, Any], settings: dict[str, Any]) -> 
     # Load active inbox items from state_reader (SQLite)
     try:
         inbox = _sr.get_inbox_items(str(project_dir))
-    except Exception:
+    except Exception as e:
+        logger.warning("auto_schedule.py unexpected error: %s", e, exc_info=True)
         inbox = []
 
     # Build set of task IDs already in inbox

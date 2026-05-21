@@ -251,8 +251,8 @@ def read_contract(path: str) -> tuple[dict, list]:
                     for k, v in legacy.items():
                         if k != "tasks":
                             doc.setdefault(k, v)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to read legacy YAML metadata from %s: %s", path, e)
         errors: list = []
         return doc, errors
 

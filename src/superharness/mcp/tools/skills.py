@@ -4,6 +4,9 @@ from __future__ import annotations
 import os
 from typing import Any
 
+import logging
+logger = logging.getLogger(__name__)
+
 try:
     import yaml
 except ImportError:
@@ -22,7 +25,8 @@ def get_skills(
         try:
             import importlib.resources as _res
             manifests_dir = str(_res.files("superharness").joinpath("adapter_manifests"))
-        except Exception:
+        except Exception as e:
+            logger.warning("skills.py unexpected error: %s", e, exc_info=True)
             return []
 
     if not os.path.isdir(manifests_dir):
@@ -39,7 +43,8 @@ def get_skills(
                     data = yaml.safe_load(f) or {}
                 else:
                     data = {}
-        except Exception:
+        except Exception as e:
+            logger.warning("skills.py unexpected error: %s", e, exc_info=True)
             continue
 
         if tag:

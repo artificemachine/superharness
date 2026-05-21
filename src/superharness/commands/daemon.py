@@ -49,7 +49,8 @@ def _read_state(project_dir: Path) -> dict:
         return {}
     try:
         return json.loads(sf.read_text())
-    except Exception:
+    except Exception as e:
+        logger.warning("daemon.py unexpected error: %s", e, exc_info=True)
         return {}
 
 
@@ -65,6 +66,9 @@ def _write_monitor_script(project_dir: Path, interval: int,
     script = project_dir / ".superharness" / "daemon-monitor.py"
     script.write_text(f'''"""Auto-generated daemon monitor — do not edit."""
 import os, sys, time, json, subprocess, signal
+
+import logging
+logger = logging.getLogger(__name__)
 project_dir = sys.argv[1]
 interval = int(sys.argv[2])
 out_log = sys.argv[3]
@@ -108,7 +112,8 @@ while True:
     try:
         with open(log_path, "a") as lf:
             lf.write(f"[{{ts}}] daemon: {{msg}}\\n")
-    except Exception:
+    except Exception as e:
+        logger.warning("daemon.py unexpected error: %s", e, exc_info=True)
         pass
     time.sleep(5)
     proc = spawn()
@@ -121,10 +126,9 @@ def _cleanup_monitor_script(script: Path) -> None:
     """Remove the auto-generated monitor script on exit."""
     try:
         script.unlink(missing_ok=True)
-    except Exception:
+    except Exception as e:
+        logger.warning("daemon.py unexpected error: %s", e, exc_info=True)
         pass
-
-
 def _is_pid_alive(pid: int) -> bool:
     if sys.platform == "win32":
         import ctypes
@@ -162,7 +166,8 @@ def _find_watch_script() -> Path | None:
         )
         if result.returncode in (0, 2):
             return None  # Use module invocation
-    except Exception:
+    except Exception as e:
+        logger.warning("daemon.py unexpected error: %s", e, exc_info=True)
         pass
     return None
 
@@ -377,5 +382,6 @@ def _check_version_and_upgrade(project_dir):
                 os.execv(sys.executable, [sys.executable] + sys.argv)
             state['version'] = current
             json.dump(state, open(state_file, 'w'))
-    except Exception:
+    except Exception as e:
+        logger.warning("daemon.py unexpected error: %s", e, exc_info=True)
         pass

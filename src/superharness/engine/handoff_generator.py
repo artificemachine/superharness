@@ -8,6 +8,9 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 _NEXT_STEPS_BY_STATUS: dict[str, list[str]] = {
     "todo": ["Create a plan and set status to plan_proposed", "Wait for plan approval"],
@@ -86,7 +89,8 @@ def _load_rules(project_dir: str) -> str:
     try:
         from superharness.commands.rules import all_rules_text
         return all_rules_text(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("handoff_generator.py unexpected error: %s", e, exc_info=True)
         return ""
 
 def generate_handoff(project_dir: str, task_id: str) -> dict:

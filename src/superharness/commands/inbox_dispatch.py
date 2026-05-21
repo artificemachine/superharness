@@ -324,7 +324,8 @@ def _get_task_effort_timeout(project_dir: str, task_id: str) -> int:
             task = tasks_dao.get(conn, task_id)
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         return 0
 
     if task is None:
@@ -486,10 +487,9 @@ def _sqlite_record_review(
             conn.commit()
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         pass
-
-
 def _sqlite_mirror_dispatch(
     project_dir: str,
     item_id: str,
@@ -526,10 +526,9 @@ def _sqlite_mirror_dispatch(
                 )
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         pass
-
-
 # ---------------------------------------------------------------------------
 # Cost extraction helper
 # ---------------------------------------------------------------------------
@@ -544,7 +543,8 @@ def _read_context_cache_cost(project_dir: str, task_id: str) -> float:
         with open(cache_path, encoding="utf-8") as fh:
             data = yaml.safe_load(fh) or {}
         return float(data.get("cost_usd", 0.0))
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         return 0.0
 
 
@@ -581,7 +581,8 @@ def _sqlite_claim_next(project_dir: str, target_agent: str, now: str) -> dict | 
             }
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         return None
 
 
@@ -608,9 +609,9 @@ def dispatch(
             # for state.sqlite3 — without it, returns False and dispatch
             # silently takes the broken YAML path.
             _sqlite_primary = is_sqlite_only(project_dir=project_dir)
-        except Exception:
+        except Exception as e:
+            logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
             pass
-
     if not _sqlite_primary and not os.path.exists(inbox_file):
         print(f"Inbox file not found: {inbox_file}", file=sys.stderr)
         return 1
@@ -867,7 +868,8 @@ def _reconcile_state(ctx: DispatchContext) -> int:
             try:
                 from superharness.commands.notify_desktop import notify_task_event
                 notify_task_event(ctx.item_task, "waiting_input", ctx.item_to)
-            except Exception:
+            except Exception as e:
+                logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
                 pass
             return 0
         if reconciled == 1:
@@ -878,13 +880,15 @@ def _reconcile_state(ctx: DispatchContext) -> int:
                 try:
                     from superharness.commands.notify_desktop import notify_task_event
                     notify_task_event(ctx.item_task, "done", ctx.item_to)
-                except Exception:
+                except Exception as e:
+                    logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
                     pass
                 try:
                     from superharness.engine.benchmark import record_dispatch
                     _cost = _read_context_cache_cost(ctx.exec_project, ctx.item_task)
                     record_dispatch(ctx.exec_project, ctx.item_task, ctx.item_to, "done", _elapsed, cost_usd=_cost)
-                except Exception:
+                except Exception as e:
+                    logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
                     pass
                 _sqlite_record_review(
                     ctx.project_dir, owner=ctx.item_to, task_type="dispatch",
@@ -896,7 +900,8 @@ def _reconcile_state(ctx: DispatchContext) -> int:
                 from superharness.engine.benchmark import record_dispatch
                 _cost = _read_context_cache_cost(ctx.exec_project, ctx.item_task)
                 record_dispatch(ctx.exec_project, ctx.item_task, ctx.item_to, "failed", _elapsed, cost_usd=_cost)
-            except Exception:
+            except Exception as e:
+                logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
                 pass
             _sqlite_record_review(
                 ctx.project_dir, owner=ctx.item_to, task_type="dispatch",
@@ -958,7 +963,8 @@ def _handle_failure(ctx: DispatchContext) -> int:
             from pathlib import Path as _P
             _lines = _P(ctx.task_log).read_text(encoding="utf-8", errors="replace").splitlines()
             log_tail_text = "\n".join(_lines[-50:])
-        except Exception:
+        except Exception as e:
+            logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
             log_tail_text = ""
 
     # Classify the failure
@@ -969,7 +975,8 @@ def _handle_failure(ctx: DispatchContext) -> int:
         )
         failure_class = _classification.category
         failure_explain = _classification.explain
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         failure_class = "unknown"
         failure_explain = f"launcher exited with code {ctx.launcher_rc}"
 
@@ -1000,7 +1007,8 @@ def _handle_failure(ctx: DispatchContext) -> int:
                      reason=fail_reason,
                      details={"exit_code": ctx.launcher_rc, "item_id": ctx.item_id,
                               "classification": failure_class})
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         pass
     _mark_item_failed(ctx.inbox_file, ctx.item_id, fail_now, new_lock, reason=fail_reason)
     # Stamp structured failure metadata for auto_retry and dashboard surface
@@ -1013,7 +1021,8 @@ def _handle_failure(ctx: DispatchContext) -> int:
             "set_field", "--file", ctx.inbox_file, "--id", ctx.item_id,
             "--key", "failure_explain", "--value", failure_explain,
         ])
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         pass
     _sqlite_mirror_dispatch(ctx.project_dir, ctx.item_id, ctx.item_task, ctx.item_to, "failed", fail_now, reason=fail_reason)
 
@@ -1030,15 +1039,15 @@ def _handle_failure(ctx: DispatchContext) -> int:
                 "set_field", "--file", ctx.inbox_file, "--id", ctx.item_id,
                 "--key", "retry_count", "--value", str(item_max_retries),
             ])
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         pass
-
     try:
         from superharness.commands.notify_desktop import notify_task_event
         notify_task_event(ctx.item_task, "failed", ctx.item_to)
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         pass
-
     # Record failure pattern for next dispatch
     try:
         from superharness.engine.failure_patterns import record_failure
@@ -1047,9 +1056,9 @@ def _handle_failure(ctx: DispatchContext) -> int:
             error_snippet = f"timed out\n{error_snippet}"
         if error_snippet:
             record_failure(ctx.exec_project, ctx.item_task, error_snippet, agent=ctx.item_to)
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         pass
-
     import time as _time
     _elapsed = _time.time() - ctx.launch_start
 
@@ -1058,9 +1067,9 @@ def _handle_failure(ctx: DispatchContext) -> int:
         from superharness.engine.benchmark import record_dispatch
         outcome = "timeout" if ctx.launcher_rc == 124 else "failed"
         record_dispatch(ctx.exec_project, ctx.item_task, ctx.item_to, outcome, _elapsed)
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         pass
-
     _sqlite_record_review(
         ctx.project_dir, owner=ctx.item_to, task_type="dispatch",
         duration_s=_elapsed, score=0.0, failed=True, now=fail_now,
@@ -1106,7 +1115,8 @@ def _skip_already_done_discussion_round(ctx: DispatchContext) -> bool:
                 discussion_closed = True
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         # If we can't check, fall through — never block legitimate dispatch.
         pass
 
@@ -1277,7 +1287,8 @@ def _resolve_execution_context(ctx: DispatchContext) -> int | None:
                 )
                 conn.commit()
                 conn.close()
-            except Exception:
+            except Exception as e:
+                logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
                 pass
         else:
             # Worktree creation failed — fall back to pause
@@ -1296,10 +1307,9 @@ def _log_dispatch_error(project_dir: str, error: str) -> None:
         log_path = os.path.join(project_dir, ".superharness", "watcher-errors.log")
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(f"[{ts}] dispatch: {error}\n")
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         pass
-
-
 # ---------------------------------------------------------------------------
 # Discussion dispatch helpers
 # ---------------------------------------------------------------------------

@@ -8,6 +8,9 @@ from pathlib import Path
 
 from superharness.ui.prompts import print_header, print_info, print_warning
 
+import logging
+logger = logging.getLogger(__name__)
+
 # Worktree temp prefix — must match commands/worktree_gc.py:WORKTREE_BASE
 _WORKTREE_BASE = os.path.join(tempfile.gettempdir(), "superharness-worktrees")
 
@@ -38,7 +41,8 @@ def scan_stale_worktree_paths(settings_json_path: Path) -> list[str]:
 
     try:
         data = json.loads(settings_json_path.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as e:
+        logger.warning("hooks.py unexpected error: %s", e, exc_info=True)
         return []
 
     if not isinstance(data, dict):

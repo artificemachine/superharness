@@ -12,6 +12,9 @@ from typing import Optional
 import click
 import yaml
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _profile_path(project: str) -> Path:
     return Path(project) / ".superharness" / "profile.yaml"
@@ -23,7 +26,8 @@ def _load_profile(project: str) -> dict:
         return {}
     try:
         return yaml.safe_load(p.read_text()) or {}
-    except Exception:
+    except Exception as e:
+        logger.warning("config.py unexpected error: %s", e, exc_info=True)
         return {}
 
 

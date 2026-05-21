@@ -34,6 +34,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import logging
+logger = logging.getLogger(__name__)
+
 try:
     import yaml
 except ImportError:
@@ -86,7 +89,8 @@ def _load_contract_doc(contract_file: Path) -> dict:
         from superharness.engine import state_reader as _sr
         project_dir = str(contract_file.parent.parent)
         return _sr.get_contract_doc(project_dir)
-    except Exception:
+    except Exception as e:
+        logger.warning("handoff_write.py unexpected error: %s", e, exc_info=True)
         return {}
 
 
@@ -99,7 +103,8 @@ def _load_task_policy(contract_file: Path, task_id: str) -> tuple[bool, str]:
     try:
         from superharness.engine.subtask import find_task_or_subtask
         task, _ = find_task_or_subtask(doc, task_id)
-    except Exception:
+    except Exception as e:
+        logger.warning("handoff_write.py unexpected error: %s", e, exc_info=True)
         for t in (doc.get("tasks") or []):
             if isinstance(t, dict) and str(t.get("id", "")) == task_id:
                 task = t
@@ -124,7 +129,8 @@ def _task_exists(contract_file: Path, task_id: str) -> bool:
         from superharness.engine.subtask import find_task_or_subtask
         task, _ = find_task_or_subtask(doc, task_id)
         return task is not None
-    except Exception:
+    except Exception as e:
+        logger.warning("handoff_write.py unexpected error: %s", e, exc_info=True)
         for t in (doc.get("tasks") or []):
             if isinstance(t, dict) and str(t.get("id", "")) == task_id:
                 return True

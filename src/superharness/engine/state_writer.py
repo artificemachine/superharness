@@ -18,6 +18,9 @@ from datetime import datetime, timezone
 
 import yaml
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _is_running_tests() -> bool:
     """Return True if running inside a pytest session."""
@@ -57,10 +60,8 @@ def _ensure_active_inbox(project_dir: str, task_id: str, owner: str, now: str) -
                 conn.commit()
         finally:
             conn.close()
-    except Exception:
-        pass
-
-
+    except Exception as e:
+        logger.warning("state_writer unexpected error: %s", e, exc_info=True)
 def set_task_status(
     project_dir: str,
     task_id: str,
@@ -93,8 +94,8 @@ def set_task_status(
                 from superharness.engine.state_reader import _ensure_ingested
                 _ensure_ingested(project_dir)
                 task_row = tasks_dao.get(conn, task_id)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("state_writer unexpected error: %s", e, exc_info=True)
         if not task_row:
             return False
 
@@ -140,9 +141,8 @@ def set_task_status(
             from superharness.engine.event_stream import write_event
             write_event(project_dir, "status_change", task_id=task_id,
                         from_status=task_row.status, to_status=status)
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.warning("state_writer unexpected error: %s", e, exc_info=True)
         # Auto-capture observation snapshot on report_ready transition.
         # Defensive: capture_observation never raises, but the import
         # could fail in unusual environments. project_dir is threaded
@@ -152,16 +152,15 @@ def set_task_status(
             try:
                 from superharness.engine.observation_capture import capture_observation
                 capture_observation(conn, task_id, "report_ready", project_dir=project_dir)
-            except Exception:
-                pass
-
+            except Exception as e:
+                logger.warning("state_writer unexpected error: %s", e, exc_info=True)
         # Guard: active states must have matching inbox item
-        _ACTIVE_WORK = frozenset({"in_progress", "launched", "running", "waiting_input", "pending_user_approval"})
-        if status in _ACTIVE_WORK:
+        if status in _ACTIVE_WORK_STATES:
             _ensure_active_inbox(project_dir, task_id, task_row.owner or "claude-code", now)
 
         return True
-    except Exception:
+    except Exception as e:
+        logger.warning("state_writer unexpected error: %s", e, exc_info=True)
         return False
     finally:
         conn.close()
@@ -216,7 +215,8 @@ def set_inbox_status(
         if not is_sqlite_only():
             _export_inbox_yaml(project_dir)
         return True
-    except Exception:
+    except Exception as e:
+        logger.warning("state_writer unexpected error: %s", e, exc_info=True)
         return False
     finally:
         conn.close()
@@ -234,10 +234,8 @@ def _export_contract_yaml(project_dir: str) -> None:
         doc = state_reader.get_contract_doc(project_dir)
         contract_path = os.path.join(project_dir, ".superharness", "contract.yaml")
         contract_io.write_contract(contract_path, doc)
-    except Exception:
-        pass
-
-
+    except Exception as e:
+        logger.warning("state_writer unexpected error: %s", e, exc_info=True)
 def _export_inbox_yaml(project_dir: str) -> None:
     """Regenerate inbox.yaml from the current SQLite state (export only).
 
@@ -254,10 +252,8 @@ def _export_inbox_yaml(project_dir: str) -> None:
         with open(inbox_path, "w", encoding="utf-8") as f:
             f.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
             yaml.dump(items, f, default_flow_style=False, sort_keys=True)
-    except Exception:
-        pass
-
-
+    except Exception as e:
+        logger.warning("state_writer unexpected error: %s", e, exc_info=True)
 def upsert_handoff(project_dir: str, handoff_id: str, content: dict) -> bool:
     """Write or overwrite a handoff yaml. Returns True on success."""
     from superharness.engine.sqlite_only import is_sqlite_only
@@ -271,7 +267,8 @@ def upsert_handoff(project_dir: str, handoff_id: str, content: dict) -> bool:
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(content, f, default_flow_style=False, allow_unicode=True)
         return True
-    except Exception:
+    except Exception as e:
+        logger.warning("state_writer unexpected error: %s", e, exc_info=True)
         return False
 
 
@@ -330,18 +327,16 @@ def _mirror_task_to_sqlite(project_dir: str, task_id: str, status: str, **fields
                     if row.extras_json:
                         try:
                             existing_extras = _j.loads(row.extras_json) or {}
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.warning("state_writer unexpected error: %s", e, exc_info=True)
                     existing_extras.update(extras)
                     changes["extras_json"] = _j.dumps(existing_extras)
                 tasks_dao.update(conn, task_id, version=row.version, changes=changes)
                 conn.commit()
         finally:
             conn.close()
-    except Exception:
-        pass
-
-
+    except Exception as e:
+        logger.warning("state_writer unexpected error: %s", e, exc_info=True)
 def _mirror_inbox_to_sqlite(project_dir: str, item_id: str, status: str, **fields) -> None:
     """Best-effort SQLite sync for inbox items from state_writer.
 
@@ -393,8 +388,8 @@ def _mirror_inbox_to_sqlite(project_dir: str, item_id: str, status: str, **field
                 conn.commit()
         finally:
             conn.close()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("state_writer unexpected error: %s", e, exc_info=True)
 def mirror_task_dict(project_dir: str, task: dict) -> None:
     """Public API to mirror a task dictionary to SQLite."""
     if not isinstance(task, dict):

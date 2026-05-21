@@ -13,6 +13,9 @@ from __future__ import annotations
 
 import sqlite3
 
+import logging
+logger = logging.getLogger(__name__)
+
 BURST_THRESHOLD = 5       # failed rows in the window before suppression
 BURST_WINDOW_MINUTES = 10
 
@@ -43,5 +46,6 @@ def task_burst_suppressed(
             )
             return True
         return False
-    except Exception:
+    except Exception as e:
+        logger.warning("burst_guard.py unexpected error: %s", e, exc_info=True)
         return False

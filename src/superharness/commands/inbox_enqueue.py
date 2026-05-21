@@ -12,6 +12,9 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
+import logging
+logger = logging.getLogger(__name__)
+
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 VALID_TARGETS = {"claude-code", "codex-cli", "gemini-cli", "opencode"}
 
@@ -95,7 +98,8 @@ def _validate_contract_sqlite(
             task = tasks_dao.get(conn, task_id)
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("inbox_enqueue.py unexpected error: %s", e, exc_info=True)
         return
 
     if task is None:

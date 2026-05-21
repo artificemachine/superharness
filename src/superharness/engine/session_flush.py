@@ -5,6 +5,9 @@ Cherry-picked from hermes-agent/gateway/run.py:1033-1069.
 import os
 from datetime import datetime, timezone
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def check_expiring(project_dir: str, warning_minutes: int = 15) -> list[str]:
     """Find tasks nearing their lifecycle timeout. Returns list of task IDs."""
@@ -37,7 +40,8 @@ def check_expiring(project_dir: str, warning_minutes: int = 15) -> list[str]:
                     expiring.append(str(task.get("id", "")))
                     break
         return expiring
-    except Exception:
+    except Exception as e:
+        logger.warning("session_flush.py unexpected error: %s", e, exc_info=True)
         return []
 
 
@@ -74,5 +78,6 @@ def flush_task(project_dir: str, task_id: str) -> bool:
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(doc, f, default_flow_style=False, sort_keys=False)
         return True
-    except Exception:
+    except Exception as e:
+        logger.warning("session_flush.py unexpected error: %s", e, exc_info=True)
         return False

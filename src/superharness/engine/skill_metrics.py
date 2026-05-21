@@ -7,6 +7,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 def record_skill_usage(
     project_dir: str,
@@ -39,7 +42,8 @@ def record_skill_usage(
             conn.commit()
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("skill_metrics.py unexpected error: %s", e, exc_info=True)
         pass  # best-effort — don't crash on metrics failure
 
 
@@ -70,5 +74,6 @@ def get_skill_insights(project_dir: str) -> list[dict]:
             ]
         finally:
             conn.close()
-    except Exception:
+    except Exception as e:
+        logger.warning("skill_metrics.py unexpected error: %s", e, exc_info=True)
         return []
