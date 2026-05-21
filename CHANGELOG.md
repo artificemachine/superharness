@@ -477,4 +477,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-21: fix(inbox,discuss): 2 undefined logger landmines + shadow-enqueue idempotent catch. Bump to v1.62.19.
 - 2026-05-21: fix(status): heartbeat false-positive — when watcher.yaml points to a worker dir but the operator writes heartbeats to the source project, fall back to source project heartbeat so shux status reports ok instead of permanent stale.
 
-- 2026-05-21: chore(release): bump to v1.62.20 (fix: status heartbeat worker-project false-positive)
+- 2026-05-21: chore(release): bump to v1.62.20 (fix: status heartbeat worker-project false-positive)- 2026-05-21: fix(discuss): add 'discussion' alias (Bug I), accept positional disc_id in 'status' subcommand (Bug J), exclude type=discussion inbox items from retry-alert in shux status (Bug K)
+- 2026-05-21: chore(release): bump to v1.62.21 (fix(discuss): discussion alias, positional disc_id in status, exclude discussion shadow items from retry-alert)
