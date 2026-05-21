@@ -183,12 +183,11 @@ def _check_all_submitted_and_set_consensus(conn, disc, round_: int) -> None:
     if agent_participants and not set(agent_participants).issubset(submitted_agents):
         return
 
-    # Explicit disagreement → keep active and let the dispatcher advance
-    # to the next round (or close as no_consensus when max_rounds is
-    # reached). Verdicts of "agree" / "consensus" / "partial" / "" all
-    # signal alignment; only "disagree" blocks the auto-transition.
-    verdicts = {(r.verdict or "").lower() for r in rounds if r.round_number == round_}
-    if "disagree" in verdicts:
+    # Auto-consensus requires every participant to explicitly agree.
+    # "partial" means "not fully convinced yet" — it must advance to the
+    # next round just like "disagree". Only all-agree/all-consensus closes.
+    verdicts = [(r.verdict or "").lower() for r in rounds if r.round_number == round_]
+    if not all(v in {"agree", "consensus"} for v in verdicts):
         return
 
     now = _now_utc()
