@@ -138,7 +138,7 @@ class TestRunDashboardWritesOperatorState:
         }))
 
         with patch("urllib.request.urlopen") as mock_open, \
-             patch("superharness.cli._find_dashboard_processes") as mock_ps:
+             patch("superharness.commands.dashboard._find_dashboard_processes") as mock_ps:
             mock_resp = MagicMock()
             mock_resp.status = 200
             mock_resp.__enter__ = lambda s: s
@@ -193,7 +193,7 @@ class TestIsDashboardRunning:
         }))
 
         with patch("urllib.request.urlopen", side_effect=Exception("refused")), \
-             patch("superharness.cli._find_dashboard_processes", return_value=[]):
+             patch("superharness.commands.dashboard._find_dashboard_processes", return_value=[]):
             running, port = _is_dashboard_running(str(tmp_path))
 
         assert running is False
@@ -204,7 +204,7 @@ class TestIsDashboardRunning:
         from superharness.cli import main
 
         runner = CliRunner()
-        with patch("superharness.cli._is_dashboard_running", return_value=(True, 8787)):
+        with patch("superharness.commands.dashboard._is_dashboard_running", return_value=(True, 8787)):
             with patch("subprocess.Popen") as mock_popen:
                 result = runner.invoke(main, ["dashboard", "--project", str(tmp_path)])
 
