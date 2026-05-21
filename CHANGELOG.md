@@ -474,3 +474,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-21: feat(memory): FIFO pruning at 5000 chars per memory file (Hermes adaptation). Bump to v1.62.16.
 - 2026-05-21: docs: add self-improvement health check to AGENTS/GEMINI/CLAUDE. Bump to v1.62.17.
 - 2026-05-21: chore(release): merge PR #271 (docs-only). Bump to v1.62.18.
+- 2026-05-21: fix(inbox,discuss): 2 undefined logger landmines + shadow-enqueue idempotent catch. Bump to v1.62.19.
