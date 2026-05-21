@@ -479,3 +479,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 
 - 2026-05-21: chore(release): bump to v1.62.20 (fix: status heartbeat worker-project false-positive)- 2026-05-21: fix(discuss): add 'discussion' alias (Bug I), accept positional disc_id in 'status' subcommand (Bug J), exclude type=discussion inbox items from retry-alert in shux status (Bug K)
 - 2026-05-21: chore(release): bump to v1.62.21 (fix(discuss): discussion alias, positional disc_id in status, exclude discussion shadow items from retry-alert)
+- 2026-05-21: fix(delegate): task_obj NameError in delegate() — variable was scoped inside _check_dispatch_gates() but used in caller; add regression tests for all 4 discuss CLI bugs (Bugs I–L)
+- 2026-05-21: chore(release): bump to v1.62.22 (fix(delegate): task_obj NameError + regression tests)
