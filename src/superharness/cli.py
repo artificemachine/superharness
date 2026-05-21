@@ -189,8 +189,38 @@ _cmd("handoff",         "Handoff subcommand group (write).",                    
 _cmd("subtask-cancel",  "Mark a subtask cancelled with a mandatory reason.",        module="superharness.commands.subtask_cancel")
 _cmd("approve",         "Approve a task's pending plan (writes operator_command row; idempotent).", module="superharness.commands.approve")
 _cmd("reject",          "Reject a task's pending plan (writes operator_command row; idempotent).",  module="superharness.commands.approve")
-_cmd("memory-roots",    "Manage project root directories for cross-project memory scanning.",  module="superharness.commands.memory_cmd")
-_cmd("profile",         "View and manage your learned behavioral profile (show/edit/reset/lock).", module="superharness.commands.profile_cmd")
+
+# profile runs in-process (no subprocess) so output is captured correctly
+def _register_profile():
+    try:
+        import click as _click
+        @_click.command("profile", context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
+        @_click.argument("args", nargs=-1, type=_click.UNPROCESSED)
+        def profile_cmd(args):
+            """View and manage your learned behavioral profile."""
+            from superharness.commands.profile_cmd import cmd_profile
+            cmd_profile(list(args))
+        main.add_command(profile_cmd)
+    except Exception as e:
+        _logger.warning("Failed to register profile command: %s", e)
+
+_register_profile()
+
+# memory-roots runs in-process (same reason as profile)
+def _register_memory_roots():
+    try:
+        import click as _click
+        @_click.command("memory-roots", context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
+        @_click.argument("args", nargs=-1, type=_click.UNPROCESSED)
+        def memory_roots_cmd(args):
+            """Manage project root directories for cross-project memory scanning."""
+            from superharness.commands.memory_cmd import cmd_memory_roots
+            cmd_memory_roots(list(args))
+        main.add_command(memory_roots_cmd)
+    except Exception as e:
+        _logger.warning("Failed to register memory-roots command: %s", e)
+
+_register_memory_roots()
 
 # operator-memory and operator-forget run in-process (need argparse, not module passthrough)
 def _register_operator_memory():
