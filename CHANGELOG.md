@@ -466,3 +466,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-21: feat(behavioral): zero-touch adaptive profile engine (Iteration 4) + bugfix(inbox): enqueue crash for ai_driven projects (ImportError + undefined logger). 24 new tests. Bump to v1.62.8.
 - 2026-05-21: fix(cli): register profile and memory-roots as in-process commands (passthrough doesn't work for interactive output). Bump to v1.62.9.
 - 2026-05-21: feat(behavioral): Iteration 5 production hardening — deduplicate global memory, watcher profile refresh, auto-apply adaptive rules, auto-record reviews. 8 new tests. Bump to v1.62.10.
+- 2026-05-21: feat(behavioral): Iteration 6 verification feedback loop — A/B test every profile change (profile_trials table, start/evaluate/complete trial). 5 new tests. Bump to v1.62.11.
