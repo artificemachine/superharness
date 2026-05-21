@@ -110,6 +110,27 @@ def _read_memory_file(filepath: str) -> str:
     return "\n".join(content_lines)
 
 
+def _deduplicate_content(content: str) -> str:
+    """Collapse identical lines into one with a count. Single occurrences unchanged.
+
+    "avoid X\navoid X\navoid X\nuse Y\n" → "avoid X (seen 3 times)\nuse Y\n"
+    """
+    if not content:
+        return ""
+    lines = [l.strip() for l in content.splitlines() if l.strip()]
+    if not lines:
+        return ""
+    from collections import Counter
+    counts = Counter(lines)
+    result = []
+    for line, count in counts.most_common():
+        if count > 1:
+            result.append(f"{line} (seen {count} times)")
+        else:
+            result.append(line)
+    return "\n".join(result)
+
+
 def get_dispatch_memory_context(project_dir: str) -> str:
     """Return memory content for injection into agent dispatch context.
 
@@ -125,7 +146,7 @@ def get_dispatch_memory_context(project_dir: str) -> str:
     for fname in GLOBAL_MEMORY_FILES:
         content = _read_memory_file(os.path.join(GLOBAL_MEMORY_DIR, fname))
         if content:
-            global_content.append(content)
+            global_content.append(_deduplicate_content(content))
 
     if global_content:
         parts.append("## Global Learning (from all projects on this machine)")
