@@ -17,6 +17,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from superharness.engine.worktree_ops import (
+    WorktreeSlot,
     copy_superharness_state,
     create_worktree,
     remove_worktree,

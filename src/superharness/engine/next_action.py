@@ -51,7 +51,7 @@ _DISC_ROUND_RE = re.compile(r"^(discuss-[^/]+)/round-(\d+)$")
 _MAPPING: dict[str, tuple[Optional[str], list[str], str]] = {
     "todo": (
         "plan_proposed",
-        ["plan_proposed"],
+        ["plan_proposed", "waiting_input"],
         "author a plan handoff before dispatch",
     ),
     "plan_proposed": (
