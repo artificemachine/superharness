@@ -485,3 +485,6 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-21: chore(release): bump to v1.62.23 (fix(discussion): partial verdict gate)
 - 2026-05-21: fix(discussion_dispatch): Bug M — _ensure_round_task() upserts round-N task row before inbox enqueue to avoid FK constraint failure; fix logger→_log typo; add warning on enqueue failure; 2 regression tests
 - 2026-05-22: fix(discussions): Fix 1+3 — canonical is_submitted()/register_yaml_submission() in discussions_dao; watcher proactively registers YAML-only submissions into SQLite on each orphan-detect cycle; _reconcile_yaml_submissions delegates to new DAO; cmd_check_round uses is_submitted()
+- 2026-05-22: chore(discuss): gemini-cli round 1 submission for discuss-20260522T084340Z-13934-583584528
+- 2026-05-22: fix(discussion): Bug O — cmd_advance stored advance marker at fixed sentinel round_number=-2; status could not detect current_round after advance, causing dispatcher to advance round-1 repeatedly and re-enqueue agents on every poll cycle; fix stores marker at round_number=next_round, adds idempotency check, fixes cmd_status/cmd_list current_round detection to use positive advance markers
+- 2026-05-22: chore(release): bump to v1.62.26 (fix(discussion): Bug O — advance marker idempotency + current_round detection; 3 regression tests)

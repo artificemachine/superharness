@@ -1,0 +1,20 @@
+discussion_id: discuss-20260522T084340Z-13934-583584528
+round: 1
+agent: gemini-cli
+verdict: partial
+position: |
+  The implementation of `is_submitted` and `register_yaml_submission` in `discussions_dao.py` has a critical deadlock edge case regarding file existence vs. validity, and completeness issues regarding dropped data. While the functions provide a reasonable two-phase submission mechanism, the lack of validation in the 'check' phase can leave agents stuck.
+points:
+  - id: 1
+    verdict: disagree
+    rationale: "Deadlock on invalid YAML. `is_submitted` returns True if the file exists, even if it's empty or corrupt. However, `register_yaml_submission` silently skips and returns False for corrupt/empty files. This leaves the system in a deadlock where the harness thinks the agent submitted (and thus stops waiting or prompts for retry), but the submission is never registered in the DB."
+  - id: 2
+    verdict: disagree
+    rationale: "Data loss for `points`. Agents are instructed to provide a list of `points` in their YAML submission (as seen in this round's requirements), but `register_yaml_submission` only extracts `verdict` and `position` (mapped to `content`). The `points` data is entirely ignored and dropped during SQLite insertion."
+  - id: 3
+    verdict: partial
+    rationale: "Safe defaults on missing fields. `register_yaml_submission` defaults missing `verdict` and `position` to empty strings instead of rejecting the submission. While this prevents crashes, a missing or invalid verdict (e.g., not agree/disagree/partial) might break downstream consensus logic if it expects specific enum values."
+  - id: 4
+    verdict: agree
+    rationale: "Duplicate submission prevention. Both functions correctly check `get_rounds` first to ensure authoritative DB state prevents duplicate insertions."
+submitted_at: 2026-05-22T08:45:00Z
