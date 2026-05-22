@@ -452,6 +452,7 @@ def _launch_agent(
     model: str = "",
     effort: str = "",
     print_only: bool = False,
+    yolo: bool = False,
 ) -> None:
     from superharness.engine.platform_runtime import launch_agent, expand_agent_path
     from superharness.logging_utils import get_logger, get_audit_logger, redact
@@ -483,6 +484,8 @@ def _launch_agent(
     launch_args = ["bash", launcher, "--project", project_dir, "--prompt", prompt]
     if non_interactive:
         launch_args.append("--non-interactive")
+    if yolo:
+        launch_args.append("--yolo")
     if codex_bypass:
         launch_args.append("--codex-bypass")
     if model:
@@ -547,6 +550,7 @@ def delegate(
     plan_only: bool = False,
     ship_on_complete: bool = False,
     role: str = "worker",
+    yolo: bool = False,
 ) -> int:
     project_dir = os.path.realpath(project_dir)
 
@@ -1088,7 +1092,7 @@ def delegate(
         _launch_agent(
             target, prompt, project_dir, non_interactive, codex_bypass,
             label=label, model=resolved_model, effort=resolved_effort,
-            print_only=True
+            print_only=True, yolo=yolo,
         )
         return 0
 
@@ -1154,6 +1158,7 @@ def delegate(
     _launch_agent(
         target, prompt, project_dir, non_interactive, codex_bypass,
         label=label, model=resolved_model, effort=resolved_effort,
+        yolo=yolo,
     )
     return 0  # unreachable after exec, but satisfies type checker
 
@@ -1315,6 +1320,7 @@ def main(argv: list[str] | None = None) -> None:
                 plan_only=opts.plan_only,
                 ship_on_complete=opts.ship_on_complete,
                 role=getattr(opts, "role", "worker") or "worker",
+                yolo=opts.yolo,
             )
             captured = sys.stdout.getvalue()
         finally:
@@ -1352,6 +1358,7 @@ def main(argv: list[str] | None = None) -> None:
         plan_only=opts.plan_only,
         ship_on_complete=opts.ship_on_complete,
         role=getattr(opts, "role", "worker") or "worker",
+        yolo=opts.yolo,
     )
     sys.exit(rc)
 

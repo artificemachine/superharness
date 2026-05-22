@@ -503,3 +503,6 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-22: fix(cli): add 'help' subcommand aliasing --help so shux help exits 0 (test_cli_passthrough expected exit 0 for 'help' subcommand)
 - 2026-05-22: fix(dashboard): add /api/heartbeats route returning per-agent heartbeat levels (green/yellow/red/gray) from agent_heartbeats table; known agents always present; unknown agents in DB also included
 - 2026-05-22: chore(release): bump to v1.62.31 (fix: 4 pre-existing CI failures — Windows YAML paths, all-abstain consensus, help subcommand, /api/heartbeats route)
+- 2026-05-22: fix(delegate): Bug Q — --yolo flag was parsed but never forwarded to _launch_agent(); threaded yolo param through _launch_agent(), delegate(), and both CLI call sites so delegate-to-gemini.sh receives -y --skip-trust for discussion-round dispatches
+- 2026-05-22: test(delegate): 7 regression tests for Bug Q yolo forwarding (structural + behavioural checks across _launch_agent, delegate(), and CLI entry points)
+- 2026-05-22: chore(release): bump to v1.62.32 (fix: Bug Q — gemini write_file permanently unauthorized due to missing --yolo forwarding in delegate.py)
