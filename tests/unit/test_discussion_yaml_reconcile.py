@@ -26,6 +26,7 @@ from superharness.engine.discussion import (
     _reconcile_yaml_submissions,
     cmd_advance,
     cmd_check_round,
+    cmd_status,
 )
 
 
@@ -282,3 +283,104 @@ class TestCmdAdvanceReconciles:
             "cmd_advance must not exit non-zero when check_round says complete. "
             "This was the stuck-discussion bug."
         )
+
+
+# ---------------------------------------------------------------------------
+# Bug O regression tests: advance marker idempotency + current_round detection
+# ---------------------------------------------------------------------------
+
+class TestBugO_AdvanceMarkerIdempotency:
+    """Bug O: cmd_advance stored advance marker at fixed round_number=-2.
+
+    cmd_status could not detect the current round after an advance (it saw
+    the -2 marker but still returned current_round=1), causing the dispatcher
+    to loop: advance round-1 again → re-enqueue round-2 agents on every poll.
+
+    Fix: marker stored at round_number=next_round (positive); idempotency
+    check prevents duplicate markers; cmd_status uses positive advance markers.
+    """
+
+    def _setup(self, project: Path, disc_id: str, agents: list[str]) -> str:
+        conn = _make_db(project)
+        _create_discussion(conn, project, disc_id, agents)
+        for agent in agents:
+            # Use "partial" so the round advances rather than closing with consensus
+            _register_in_db(conn, disc_id, 1, agent, "partial")
+        conn.close()
+        d = _disc_dir(project, disc_id)
+        d.mkdir(parents=True, exist_ok=True)
+        return str(d)
+
+    def test_status_shows_round_2_after_advance(self, project: Path):
+        """cmd_status must return current_round=2 after advancing from round 1."""
+        import io, contextlib
+        disc_id = "disc-bug-o-status"
+        disc_dir = self._setup(project, disc_id, ["agent-a", "agent-b"])
+
+        # Advance
+        adv_out = io.StringIO()
+        with contextlib.redirect_stdout(adv_out):
+            rc = cmd_advance(disc_dir)
+        assert rc == 0
+        adv = json.loads(adv_out.getvalue())
+        assert adv["action"] == "advanced"
+        assert adv["next_round"] == 2
+
+        # Status must reflect round 2
+        st_out = io.StringIO()
+        with contextlib.redirect_stdout(st_out):
+            cmd_status(disc_dir)
+        status = json.loads(st_out.getvalue())
+        assert status["current_round"] == 2, (
+            f"After advance, current_round must be 2, got {status['current_round']}. "
+            "This was Bug O."
+        )
+
+    def test_advance_is_idempotent(self, project: Path):
+        """Calling cmd_advance twice must not insert duplicate advance markers
+        and must return next_round=2 both times without error."""
+        import io, contextlib
+        disc_id = "disc-bug-o-idempotent"
+        disc_dir = self._setup(project, disc_id, ["agent-a"])
+
+        out1 = io.StringIO()
+        with contextlib.redirect_stdout(out1):
+            rc1 = cmd_advance(disc_dir)
+        assert rc1 == 0
+        r1 = json.loads(out1.getvalue())
+
+        out2 = io.StringIO()
+        with contextlib.redirect_stdout(out2):
+            rc2 = cmd_advance(disc_dir)
+        assert rc2 == 0
+        r2 = json.loads(out2.getvalue())
+
+        assert r1["next_round"] == r2["next_round"] == 2
+
+        # Only one advance marker row must exist in the DB
+        conn = _make_db(project)  # reuses existing DB via same project path
+        from superharness.engine.db import get_connection
+        conn2 = get_connection(str(project))
+        markers = conn2.execute(
+            "SELECT COUNT(*) FROM discussion_rounds WHERE discussion_id=? AND agent='_advance'",
+            (disc_id,),
+        ).fetchone()[0]
+        conn2.close()
+        assert markers == 1, f"Expected 1 advance marker, got {markers} (Bug O idempotency)"
+
+    def test_status_round_2_still_correct_after_double_advance(self, project: Path):
+        """Status must show current_round=2 even when advance was called twice."""
+        import io, contextlib
+        disc_id = "disc-bug-o-double"
+        disc_dir = self._setup(project, disc_id, ["agent-a", "agent-b"])
+
+        for _ in range(2):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                cmd_advance(disc_dir)
+
+        st_out = io.StringIO()
+        with contextlib.redirect_stdout(st_out):
+            cmd_status(disc_dir)
+        status = json.loads(st_out.getvalue())
+        assert status["current_round"] == 2
