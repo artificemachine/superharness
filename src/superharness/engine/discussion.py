@@ -183,11 +183,11 @@ def _check_all_submitted_and_set_consensus(conn, disc, round_: int) -> None:
     if agent_participants and not set(agent_participants).issubset(submitted_agents):
         return
 
-    # Auto-consensus requires every participant to explicitly agree.
-    # "partial" means "not fully convinced yet" — it must advance to the
-    # next round just like "disagree". Only all-agree/all-consensus closes.
+    # Auto-consensus requires every participant to not disagree.
+    # "partial" still means "not fully convinced" — advance to next round.
+    # "abstain" means "no objection" and closes the round via consensus.
     verdicts = [(r.verdict or "").lower() for r in rounds if r.round_number == round_]
-    if not all(v in {"agree", "consensus"} for v in verdicts):
+    if not all(v in {"agree", "consensus", "abstain"} for v in verdicts):
         return
 
     now = _now_utc()
@@ -369,12 +369,18 @@ def cmd_advance(discussion_dir: str) -> int:
             sys.exit(f"Discussion is not active (status={disc.status})")
 
         rounds = discussions_dao.get_rounds(conn, disc_id)
-        # Exclude _advance markers — only count real submission rows
-        submission_round_nums = sorted({r.round_number for r in rounds if r.agent != "_advance" and r.round_number > 0})
-        current_round = submission_round_nums[-1] if submission_round_nums else 1
-        # Advance markers store the next_round as a positive round_number so
-        # status can detect the current round without re-inspecting submissions.
+        # Advance markers store next_round as a positive round_number (Bug O fix).
+        # Use them as the authoritative current_round so cmd_advance agrees with
+        # cmd_status when an advance has already happened (e.g. round 1→2 marker
+        # exists but round-2 submissions are YAML-only and not yet in SQLite).
         advance_markers = {r.round_number for r in rounds if r.agent == "_advance" and r.round_number > 0}
+        submission_round_nums = sorted({r.round_number for r in rounds if r.agent != "_advance" and r.round_number > 0})
+        if advance_markers:
+            current_round = max(advance_markers)
+        elif submission_round_nums:
+            current_round = submission_round_nums[-1]
+        else:
+            current_round = 1
 
         # Reconcile any YAML-only submissions into SQLite before checking
         # completion. Without this, check_round returns complete=true (it
@@ -386,41 +392,48 @@ def cmd_advance(discussion_dir: str) -> int:
         rounds = discussions_dao.get_rounds(conn, disc_id)
 
         # Check if all participants submitted current round
-        submitted = {r.agent for r in rounds if r.round_number == current_round}
+        submitted = {r.agent for r in rounds if r.round_number == current_round and r.agent != "_advance"}
         all_done = all(a in submitted for a in disc.owners)
+
         if not all_done:
-            sys.exit(f"Round {current_round} is not complete yet")
-
-        # Gather verdicts
-        verdicts: dict[str, str] = {}
-        for r in rounds:
-            if r.round_number == current_round:
-                verdicts[r.agent] = str(r.verdict or "").lower()
-        consensus = all(v == "agree" for v in verdicts.values())
-
-        max_rounds = 3
-
-        if consensus:
-            conn.execute(
-                "UPDATE discussions SET status='consensus', closed_at=?, consensus=? WHERE id=?",
-                (now, f"consensus — all participants agreed round {current_round}", disc_id),
-            )
-            result = {"action": "closed", "reason": "consensus", "round": current_round}
-        elif current_round >= max_rounds:
-            conn.execute(
-                "UPDATE discussions SET status='no_consensus', closed_at=? WHERE id=?",
-                (now, disc_id),
-            )
-            result = {"action": "closed", "reason": "max_rounds_reached", "round": current_round}
+            # If the advance marker already points to current_round but agents
+            # haven't submitted yet, the previous advance already happened and
+            # we're just waiting for new submissions — return idempotently.
+            if current_round in advance_markers:
+                result = {"action": "advanced", "next_round": current_round}
+            else:
+                sys.exit(f"Round {current_round} is not complete yet")
         else:
-            next_round = current_round + 1
-            # Idempotent: only insert the advance marker if not already present
-            if next_round not in advance_markers:
+            # Gather verdicts
+            verdicts: dict[str, str] = {}
+            for r in rounds:
+                if r.round_number == current_round and r.agent != "_advance":
+                    verdicts[r.agent] = str(r.verdict or "").lower()
+            consensus = all(v == "agree" for v in verdicts.values())
+
+            max_rounds = 3
+
+            if consensus:
                 conn.execute(
-                    "INSERT INTO discussion_rounds (discussion_id, round_number, agent, content, verdict, created_at) VALUES (?, ?, '_advance', NULL, NULL, ?)",
-                    (disc_id, next_round, now),
+                    "UPDATE discussions SET status='consensus', closed_at=?, consensus=? WHERE id=?",
+                    (now, f"consensus — all participants agreed round {current_round}", disc_id),
                 )
-            result = {"action": "advanced", "next_round": next_round}
+                result = {"action": "closed", "reason": "consensus", "round": current_round}
+            elif current_round >= max_rounds:
+                conn.execute(
+                    "UPDATE discussions SET status='no_consensus', closed_at=? WHERE id=?",
+                    (now, disc_id),
+                )
+                result = {"action": "closed", "reason": "max_rounds_reached", "round": current_round}
+            else:
+                next_round = current_round + 1
+                # Idempotent: only insert the advance marker if not already present
+                if next_round not in advance_markers:
+                    conn.execute(
+                        "INSERT INTO discussion_rounds (discussion_id, round_number, agent, content, verdict, created_at) VALUES (?, ?, '_advance', NULL, NULL, ?)",
+                        (disc_id, next_round, now),
+                    )
+                result = {"action": "advanced", "next_round": next_round}
 
         conn.commit()
     finally:
