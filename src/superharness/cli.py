@@ -558,6 +558,13 @@ def cmd_version():
     click.echo(f"superharness {__version__}")
 
 
+@main.command(name="help", hidden=True)
+@click.pass_context
+def cmd_help(ctx):
+    """Show help text (alias for --help)."""
+    click.echo(ctx.parent.get_help())
+
+
 @main.group()
 def operator():
     """Manage the Superharness stack (Watcher, Dashboard, and Health)."""

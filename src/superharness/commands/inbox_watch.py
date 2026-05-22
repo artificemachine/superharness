@@ -2660,11 +2660,12 @@ def _run_scripts(
             launcher_timeout=launcher_timeout,
         )
 
-    # Discussion dispatch
-    disc_dispatch = os.path.join(script_dir, "discussion-dispatch.sh")
-    if os.path.isfile(disc_dispatch) and os.access(disc_dispatch, os.X_OK):
-        subprocess.run(["bash", disc_dispatch, "--project", project_dir],
-                       check=False, capture_output=False)
+    # Discussion dispatch — call Python module directly (shell script no longer used)
+    try:
+        from superharness.commands import discussion_dispatch as _dd
+        _dd.dispatch(project_dir)
+    except Exception:
+        pass
 
 
 _TASK_LOG_STALE_MINUTES = 15  # mark as failed if no activity for this long

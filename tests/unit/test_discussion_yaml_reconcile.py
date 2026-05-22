@@ -384,3 +384,40 @@ class TestBugO_AdvanceMarkerIdempotency:
             cmd_status(disc_dir)
         status = json.loads(st_out.getvalue())
         assert status["current_round"] == 2
+
+    def test_advance_processes_yaml_only_round_after_prior_advance(self, project: Path):
+        """When advance marker exists for round N but round-N submissions are YAML-only,
+        advance must reconcile them and advance to round N+1 (the stuck-discussion
+        cascade scenario: round 1 advanced via DB, round-2 YAMLs written but no DB rows)."""
+        import io, contextlib
+
+        conn = _make_db(project)
+        disc_id = "disc-bug-o-cascade"
+        _create_discussion(conn, project, disc_id, ["agent-a", "agent-b"])
+        # Round 1 fully in DB
+        _register_in_db(conn, disc_id, 1, "agent-a", "partial")
+        _register_in_db(conn, disc_id, 1, "agent-b", "partial")
+        # Advance marker at round 2 (round 1 was already advanced)
+        from superharness.engine.db import now_iso
+        conn.execute(
+            "INSERT INTO discussion_rounds (discussion_id, round_number, agent, content, verdict, created_at)"
+            " VALUES (?, 2, '_advance', NULL, NULL, ?)",
+            (disc_id, now_iso()),
+        )
+        conn.commit()
+        conn.close()
+
+        disc_dir = str(_disc_dir(project, disc_id))
+        _disc_dir(project, disc_id).mkdir(parents=True, exist_ok=True)
+        # Round-2 submissions exist only as YAML files (the cascade/stuck scenario)
+        _write_yaml(project, disc_id, 2, "agent-a", verdict="partial")
+        _write_yaml(project, disc_id, 2, "agent-b", verdict="partial")
+
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = cmd_advance(disc_dir)
+
+        assert rc == 0, f"cmd_advance failed: {out.getvalue()}"
+        result = json.loads(out.getvalue())
+        assert result["action"] == "advanced", result
+        assert result["next_round"] == 3, f"Expected next_round=3, got {result}"
