@@ -369,8 +369,12 @@ def cmd_advance(discussion_dir: str) -> int:
             sys.exit(f"Discussion is not active (status={disc.status})")
 
         rounds = discussions_dao.get_rounds(conn, disc_id)
-        round_nums = sorted({r.round_number for r in rounds})
-        current_round = round_nums[-1] if round_nums else 1
+        # Exclude _advance markers — only count real submission rows
+        submission_round_nums = sorted({r.round_number for r in rounds if r.agent != "_advance" and r.round_number > 0})
+        current_round = submission_round_nums[-1] if submission_round_nums else 1
+        # Advance markers store the next_round as a positive round_number so
+        # status can detect the current round without re-inspecting submissions.
+        advance_markers = {r.round_number for r in rounds if r.agent == "_advance" and r.round_number > 0}
 
         # Reconcile any YAML-only submissions into SQLite before checking
         # completion. Without this, check_round returns complete=true (it
@@ -394,21 +398,7 @@ def cmd_advance(discussion_dir: str) -> int:
                 verdicts[r.agent] = str(r.verdict or "").lower()
         consensus = all(v == "agree" for v in verdicts.values())
 
-        max_rounds = 3  # default; not stored in discussions table currently
-        # Check if discussion_rounds has max_rounds — we can infer from existing design
-        # For now, use a reasonable default. In YAML version it was state.get("max_rounds", 3).
-        # We don't store max_rounds in SQLite. Using default of 3, but add a fallback
-        # by checking if there's a discussion_rounds row with max info.
-        try:
-            meta = conn.execute(
-                "SELECT value FROM discussion_rounds WHERE discussion_id=? AND round_number=-1 AND agent='_meta'",
-                (disc_id,),
-            ).fetchone()
-            if meta:
-                max_rounds = int(meta["value"])
-        except Exception as e:
-            logger.warning("discussion.py unexpected error: %s", e, exc_info=True)
-            max_rounds = 3
+        max_rounds = 3
 
         if consensus:
             conn.execute(
@@ -423,16 +413,13 @@ def cmd_advance(discussion_dir: str) -> int:
             )
             result = {"action": "closed", "reason": "max_rounds_reached", "round": current_round}
         else:
-            # Advance to next round — store as a meta marker
             next_round = current_round + 1
-            try:
+            # Idempotent: only insert the advance marker if not already present
+            if next_round not in advance_markers:
                 conn.execute(
-                    "INSERT OR REPLACE INTO discussion_rounds (discussion_id, round_number, agent, created_at) VALUES (?, -2, '_advance', ?)",
-                    (disc_id, now),
+                    "INSERT INTO discussion_rounds (discussion_id, round_number, agent, content, verdict, created_at) VALUES (?, ?, '_advance', NULL, NULL, ?)",
+                    (disc_id, next_round, now),
                 )
-            except Exception as e:
-                logger.warning("discussion.py unexpected error: %s", e, exc_info=True)
-                pass
             result = {"action": "advanced", "next_round": next_round}
 
         conn.commit()
@@ -455,11 +442,12 @@ def cmd_status(discussion_dir: str) -> int:
             sys.exit(f"Discussion not found: {disc_id}")
 
         rounds = discussions_dao.get_rounds(conn, disc_id)
-        max_round = max((r.round_number for r in rounds if r.round_number > 0), default=1)
+        max_round = max((r.round_number for r in rounds if r.round_number > 0 and r.agent != "_advance"), default=1)
 
-        # Detect current round from advance markers
-        advances = [r.round_number for r in rounds if r.agent == "_advance"]
-        current_round = max_round if advances else 1
+        # Advance markers store next_round as a positive round_number (Bug O fix).
+        # Negative sentinel (-2) markers from older code are ignored here.
+        positive_advance_markers = [r.round_number for r in rounds if r.agent == "_advance" and r.round_number > 0]
+        current_round = max(positive_advance_markers) if positive_advance_markers else max_round
 
         rounds_info = []
         for rn in range(1, current_round + 1):
@@ -504,8 +492,9 @@ def cmd_list(discussions_dir: str) -> int:
         for row in rows:
             # Infer current_round from discussion_rounds
             rounds = discussions_dao.get_rounds(conn, row.id)
-            round_nums = [r.round_number for r in rounds if r.round_number > 0]
-            current_round = max(round_nums) if round_nums else 1
+            adv = [r.round_number for r in rounds if r.agent == "_advance" and r.round_number > 0]
+            sub = [r.round_number for r in rounds if r.agent != "_advance" and r.round_number > 0]
+            current_round = max(adv) if adv else (max(sub) if sub else 1)
 
             discussions.append({
                 "id": row.id,
