@@ -49,12 +49,14 @@ def _setup_project(tmp_path: Path) -> Path:
     (harness / "discussions").mkdir(parents=True, exist_ok=True)
     (harness / "handoffs").mkdir(parents=True, exist_ok=True)
     (harness / "inbox.yaml").write_text("# Delegation inbox\n")
+    # Use forward slashes so Windows paths are valid YAML single-quoted scalars.
+    proj_fwd = str(project).replace("\\", "/")
     (harness / "contract.yaml").write_text(
         "id: test\ntasks:\n"
         "  - id: task-a\n    owner: claude-code\n    status: todo\n"
-        f"    project_path: \"{project}\"\n"
+        f"    project_path: '{proj_fwd}'\n"
         "  - id: task-b\n    owner: gemini-cli\n    status: todo\n"
-        f"    project_path: \"{project}\"\n"
+        f"    project_path: '{proj_fwd}'\n"
     )
     seed_sqlite_from_yaml(project)
     return project

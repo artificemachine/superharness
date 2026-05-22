@@ -2652,6 +2652,51 @@ class Handler(BaseHTTPRequestHandler):
             self._json(payload, status)
             return
 
+        # ── Per-agent heartbeat status endpoint ───────────────────────
+        if p == "/api/heartbeats":
+            now_utc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            now_ts = time.time()
+            _KNOWN_AGENTS = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
+            agents: dict = {a: {"level": "gray", "age_seconds": -1, "status": None,
+                                "task_id": None, "updated_at": None}
+                            for a in _KNOWN_AGENTS}
+            try:
+                from superharness.engine import heartbeat_dao as _hb_dao
+                conn = self._db_conn()
+                try:
+                    rows = _hb_dao.get_all(conn)
+                finally:
+                    conn.close()
+                for row in rows:
+                    try:
+                        import calendar as _cal
+                        import time as _time
+                        updated = _cal.timegm(_time.strptime(row.updated_at, "%Y-%m-%dT%H:%M:%SZ"))
+                        age = int(now_ts - updated)
+                    except Exception:
+                        age = -1
+                    if row.status == "zombie":
+                        level = "red"
+                    elif age < 0:
+                        level = "gray"
+                    elif age < 60:
+                        level = "green"
+                    elif age < 300:
+                        level = "yellow"
+                    else:
+                        level = "red"
+                    agents[row.agent] = {
+                        "level": level,
+                        "age_seconds": age,
+                        "status": row.status,
+                        "task_id": row.task_id,
+                        "updated_at": row.updated_at,
+                    }
+            except Exception:
+                pass
+            self._json({"agents": agents, "now_utc": now_utc})
+            return
+
         # ── Behavioral profile endpoint (Iteration 7) ──────────────────
         if p == "/api/profile":
             self._json(_profile_data(self.project_dir))
