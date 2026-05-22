@@ -1,0 +1,91 @@
+discussion_id: discuss-20260522T084340Z-13934-583584528
+round: 1
+agent: claude-code
+verdict: agree
+position: |
+  v1.62.25 correctly solves the stuck-discussion root cause. The three-layer
+  design (DAO canonical functions, discussion engine wrapper, proactive watcher
+  registration) is clean and well-separated. All 9 regression tests pass.
+
+  is_submitted(): Correct canonical function. The discussion_dir=None default
+  enabling a DB-only check is a useful dual-mode API. Internally it calls
+  get_rounds() which loads all rounds for the discussion and does a linear
+  search — acceptable for the expected discussion size.
+
+  register_yaml_submission(): Correctly idempotent (DB-first check before any
+  insert). The double-try import pattern (yaml_helpers -> raw yaml fallback) is
+  resilient and appropriate for a safety-net function. Commit control is left
+  to the caller, which is the right DAO pattern. The outer try-except swallows
+  even StateError from add_round and logs a warning — intentional for a
+  best-effort reconciliation path.
+
+  _reconcile_yaml_submissions() in discussion.py: Clean delegation, removes
+  ~40 lines of duplicated YAML-parsing logic. No commit inside the function —
+  cmd_advance owns the connection lifetime. Importantly, uncommitted writes
+  from this function ARE visible to the immediate get_rounds() reload on the
+  same SQLite connection (default isolation), so the reload-without-commit
+  pattern works correctly, though it is subtle.
+
+  _auto_advance_orphaned_rounds(): The registered_any boolean gate on commit is
+  correct and avoids unnecessary commits. The behavioral shift from augmenting
+  an in-memory verdict_agents set to actually writing DB rows is the correct
+  direction — agents write YAML, harness writes DB.
+
+  One structural note on idempotency: discussion_rounds has no UNIQUE constraint
+  on (discussion_id, round_number, agent), so a theoretical TOCTOU race between
+  two concurrent register_yaml_submission callers could produce duplicate rows.
+  In practice this is not a real concern because the watcher is single-threaded,
+  but a UNIQUE index would make the invariant schema-enforced rather than
+  logic-enforced. Not a blocker given the single-threaded context.
+
+  The points field in submitted YAMLs is not extracted by register_yaml_submission
+  (only verdict and position are stored in the DB). This is consistent with the
+  existing discussion_rounds schema which has no points column. The on-disk YAML
+  remains the source of truth for structured point breakdowns. By design, not a
+  bug.
+
+  Overall: correctness is solid, the stuck-discussion invariant is properly
+  closed, and the test coverage matches the stated regression scenarios.
+points:
+  - id: p1
+    verdict: agree
+    rationale: >
+      is_submitted() is a correct canonical implementation. DB-first, YAML
+      fallback, dual-mode API with discussion_dir=None for DB-only check.
+      No duplication risk since all callers now use this single function.
+  - id: p2
+    verdict: agree
+    rationale: >
+      register_yaml_submission() is correctly idempotent. The read-before-insert
+      pattern is safe in the single-threaded watcher context. Commit left to
+      caller is the right DAO design. Corrupt YAML silently skipped with log
+      warning is appropriate for a safety-net path.
+  - id: p3
+    verdict: agree
+    rationale: >
+      _reconcile_yaml_submissions() in discussion.py correctly delegates to the
+      DAO, eliminating ~40 lines of duplication. The no-commit-inside behavior
+      works correctly with SQLite's same-connection visibility for uncommitted
+      writes, though this is a subtle invariant maintainers should be aware of.
+  - id: p4
+    verdict: agree
+    rationale: >
+      Proactive watcher registration in _auto_advance_orphaned_rounds() is the
+      right architectural move: harness owns DB writes, agents own YAML writes.
+      The registered_any commit gate is correct. Behavioral shift is intentional
+      and correct.
+  - id: p5
+    verdict: agree
+    rationale: >
+      9 regression tests cover all key scenarios: insertion, verdict preservation,
+      idempotency, YAML-absent no-op, corrupt YAML tolerance, stuck-discussion
+      all-YAML-only, mixed DB+YAML, genuinely incomplete, and the
+      check_round/advance invariant. All pass. The test for incomplete correctly
+      uses pytest.raises(SystemExit) matching cmd_advance's sys.exit() call path.
+  - id: p6
+    verdict: agree
+    rationale: >
+      points field not stored in DB is by design — discussion_rounds has no
+      points column and the YAML file on disk is the source of truth for
+      structured breakdown. No regression introduced.
+submitted_at: "2026-05-22T07:00:00Z"
