@@ -258,6 +258,15 @@ def write_handoff(
     except OSError as e:
         _abort(f"failed to write handoff: {e}", 1)
 
+    # Source of truth: also persist to SQLite (best-effort; YAML stays for
+    # readers not yet migrated). See docs/PLAN-sqlite-source-of-truth-refactor.md.
+    try:
+        from superharness.engine.state_writer import write_handoff_to_db
+        write_handoff_to_db(str(project_dir), payload,
+                            task_id=args.task_id, phase=args.phase)
+    except Exception:
+        pass
+
     return 0, {"path": str(target), **payload}
 
 

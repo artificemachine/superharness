@@ -9,8 +9,6 @@ from typing import Iterator
 
 import yaml
 
-from superharness.engine.yaml_helpers import safe_load
-
 import logging
 logger = logging.getLogger(__name__)
 
@@ -62,61 +60,79 @@ def _file_lock(path: str, timeout: float = 5.0) -> Iterator[None]:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
-def _find_pending_handoff(handoff_dir: str, task_id: str) -> tuple[str, dict] | None:
-    pattern = os.path.join(handoff_dir, "*.yaml")
-    import glob
-    candidates = sorted(glob.glob(pattern))
-    for file in candidates:
-        doc = safe_load(file, dict)
-        if not doc:
-            continue
-        if str(doc.get("task", "")) != task_id:
-            continue
-        gate = doc.get("approval_gate")
-        pending = (
-            str(doc.get("status", "")) == "pending_user_approval"
-            or (isinstance(gate, dict) and gate.get("required") and not gate.get("approved_by_user"))
-        )
-        if not pending:
-            continue
-        return file, doc
-    return None
+def _find_pending_handoff(handoff_dir: str, task_id: str, project_dir: str | None = None) -> tuple[str, dict] | None:
+    """Find a pending approval handoff for task_id by querying SQLite."""
+    pd = project_dir or os.path.dirname(os.path.dirname(os.path.abspath(handoff_dir)))
+    try:
+        from superharness.engine.db import managed_connection
+        from superharness.engine import handoffs_dao
+        with managed_connection(pd) as conn:
+            rows = handoffs_dao.get_all(conn)
+        for row in rows:
+            if str(row.task_id) != str(task_id):
+                continue
+            meta = row.metadata or {}
+            status = str(row.status or "")
+            gate = meta.get("approval_gate")
+            pending = (
+                status == "pending_user_approval"
+                or (isinstance(gate, dict) and gate.get("required") and not gate.get("approved_by_user"))
+            )
+            if not pending:
+                continue
+            doc = dict(meta)
+            doc.setdefault("task", row.task_id)
+            doc.setdefault("phase", row.phase)
+            doc.setdefault("status", row.status)
+            fpath = os.path.join(handoff_dir, f"{task_id}-{row.phase}.yaml")
+            return fpath, doc
+        return None
+    except Exception as e:
+        logger.warning("_find_pending_handoff: SQLite error: %s", e, exc_info=True)
+        return None
 
 
-def cmd_status(handoff_dir: str, task_filter: str | None = None) -> int:
-    import glob
+def cmd_status(handoff_dir: str, task_filter: str | None = None) -> list[dict]:
+    """Return pending approval handoffs read from SQLite (source of truth)."""
+    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(handoff_dir)))
+    try:
+        from superharness.engine import state_reader
+        all_handoffs = state_reader.get_handoffs(project_dir)
+    except Exception as e:
+        logger.warning("cmd_status: SQLite error: %s", e)
+        all_handoffs = []
 
     rows = []
-    for file in sorted(glob.glob(os.path.join(handoff_dir, "*.yaml"))):
-        doc = safe_load(file, dict)
-        if not doc:
-            continue
-        status = str(doc.get("status", ""))
-        gate = doc.get("approval_gate")
+    for h in all_handoffs:
+        meta = h.get("metadata") or {}
+        if not isinstance(meta, dict):
+            meta = {}
+        status = str(h.get("status") or meta.get("status") or "")
+        gate = meta.get("approval_gate")
         pending = (
             status == "pending_user_approval"
             or (isinstance(gate, dict) and gate.get("required") and not gate.get("approved_by_user"))
         )
         if not pending:
             continue
-        task = str(doc.get("task", ""))
+        task = str(h.get("task_id") or meta.get("task") or "")
         if task_filter and task != task_filter:
             continue
         rows.append(
             {
                 "task": task,
+                "task_id": task,
                 "status": status,
                 "required": gate.get("required") if isinstance(gate, dict) else True,
                 "approved_by_user": gate.get("approved_by_user") if isinstance(gate, dict) else False,
                 "approved_at": gate.get("approved_at") if isinstance(gate, dict) else None,
-                "markdown_report": str(doc.get("markdown_report", "") or ""),
-                "file": file,
+                "markdown_report": str(meta.get("markdown_report", "") or ""),
             }
         )
 
     if not rows:
         print("No pending user approvals.")
-        return 0
+        return rows
 
     print("Pending user approvals:")
     for r in rows:
@@ -128,20 +144,26 @@ def cmd_status(handoff_dir: str, task_filter: str | None = None) -> int:
             f"  Approve: superharness discuss approve --task {r['task']}"
             f" --by owner --note \"Approved\""
         )
-    return 0
+    return rows
 
 
 def cmd_approve(
     handoff_dir: str,
-    contract_file: str,
-    inbox_file: str,
-    task_id: str,
-    project_dir: str,
-    actor: str,
-    note: str,
+    contract_file: str = "",
+    inbox_file: str = "",
+    task_id: str = "",
+    project_dir: str = "",
+    actor: str = "owner",
+    note: str = "",
 ) -> int:
     from datetime import datetime, timezone
     import random
+
+    if not task_id:
+        print("task_id is required", file=sys.stderr)
+        return 1
+    if not project_dir:
+        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(handoff_dir)))
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     resumed_count = 0
@@ -150,7 +172,7 @@ def cmd_approve(
     task_status_val = ""
     task_project = project_dir
 
-    result = _find_pending_handoff(handoff_dir, task_id)
+    result = _find_pending_handoff(handoff_dir, task_id, project_dir=project_dir)
     if result is None:
         print(f"No pending approval handoff found for task: {task_id}", file=sys.stderr)
         return 1
@@ -168,17 +190,20 @@ def cmd_approve(
         )
         return 1
 
-    lock_files = [handoff_file]
-    if os.path.exists(contract_file):
+    lock_files = []
+    if handoff_file and os.path.exists(handoff_file):
+        lock_files.append(handoff_file)
+    if contract_file and os.path.exists(contract_file):
         lock_files.append(contract_file)
-    lock_files.append(inbox_file)
+    if inbox_file:
+        lock_files.append(inbox_file)
 
     def _do_approve() -> None:
         nonlocal handoff_doc, task_owner, task_status_val, task_project, resumed_count, enqueued_id
 
-        handoff_doc = safe_load(handoff_file, dict)
+        # Use the pre-loaded doc (authoritative from SQLite); verify task still matches.
         if not handoff_doc or str(handoff_doc.get("task", "")) != task_id:
-            print("Handoff file changed during lock acquisition", file=sys.stderr)
+            print("Handoff doc mismatch during approval", file=sys.stderr)
             sys.exit(1)
 
         handoff_doc.setdefault("approval_gate", {})
@@ -189,9 +214,20 @@ def cmd_approve(
         if note.strip():
             handoff_doc["approval_gate"]["note"] = str(note)
         handoff_doc["status"] = "approved"
-        _atomic_write(handoff_file, yaml.dump(handoff_doc))
 
-        if os.path.exists(contract_file):
+        # Write to SQLite (source of truth).
+        try:
+            from superharness.engine.state_writer import write_handoff_to_db
+            write_handoff_to_db(project_dir, handoff_doc)
+        except Exception as _e:
+            logger.warning("_do_approve: failed to sync approval_gate to SQLite: %s", _e)
+
+        # Update YAML export only if the file already exists on disk.
+        if handoff_file and os.path.exists(handoff_file):
+            _atomic_write(handoff_file, yaml.dump(handoff_doc))
+
+        if contract_file and os.path.exists(contract_file):
+            from superharness.engine.yaml_helpers import safe_load
             contract_doc = safe_load(contract_file, dict)
             if isinstance(contract_doc, dict) and isinstance(contract_doc.get("tasks"), list):
                 for t in contract_doc["tasks"]:
@@ -219,13 +255,13 @@ def cmd_approve(
                 from superharness.engine.contract_io import write_contract as _write_contract
                 _write_contract(contract_file, contract_doc)
 
-        inbox_doc: list = []
         changed = False
 
         # Check for paused items in SQLite inbox and resume them
         try:
             from superharness.engine.db import get_connection as _gci, init_db as _idbi
             from superharness.engine import inbox_dao as _idao
+
             _conn = _gci(project_dir)
             try:
                 _idbi(_conn)
@@ -255,11 +291,8 @@ def cmd_approve(
                     _conn.commit()
             finally:
                 _conn.close()
-        except Exception as e:
-            logger.warning("discuss.py unexpected error: %s", e, exc_info=True)
-            pass
-        if not changed and task_owner and task_status_val in ("todo", "in_progress"):
-            try:
+
+            if not changed and task_owner and task_status_val in ("todo", "in_progress"):
                 _conn2 = _gci(project_dir)
                 try:
                     _idbi(_conn2)
@@ -271,9 +304,9 @@ def cmd_approve(
                     _conn2.commit()
                 finally:
                     _conn2.close()
-            except Exception as e:
-                logger.warning("discuss.py unexpected error: %s", e, exc_info=True)
-                pass
+        except Exception as e:
+            logger.warning("discuss.py unexpected error: %s", e, exc_info=True)
+
     # Acquire locks in order
     def _with_locks(paths: list[str], fn) -> None:  # type: ignore[type-arg]
         if not paths:
@@ -316,32 +349,33 @@ def main(argv: list[str] | None = None) -> None:
         if not opts.handoff_dir:
             print("--handoff-dir is required", file=sys.stderr)
             sys.exit(1)
-        sys.exit(cmd_status(opts.handoff_dir, task_filter=opts.task))
+        cmd_status(opts.handoff_dir, task_filter=opts.task)
+        sys.exit(0)
 
     elif cmd == "approve":
         parser = argparse.ArgumentParser(add_help=False)
         parser.add_argument("--handoff-dir", dest="handoff_dir")
-        parser.add_argument("--contract-file", dest="contract_file")
-        parser.add_argument("--inbox-file", dest="inbox_file")
+        parser.add_argument("--contract-file", dest="contract_file", default="")
+        parser.add_argument("--inbox-file", dest="inbox_file", default="")
         parser.add_argument("--task")
         parser.add_argument("--project-dir", dest="project_dir")
         parser.add_argument("--by", default="owner")
         parser.add_argument("--note", default="")
         opts = parser.parse_args(rest)
-        missing = [k for k in ("handoff_dir", "contract_file", "inbox_file", "task", "project_dir") if not getattr(opts, k, None)]
+        missing = [k for k in ("handoff_dir", "task", "project_dir") if not getattr(opts, k, None)]
         if missing:
             flags = ", ".join(f"--{k.replace('_', '-')}" for k in missing)
             print(f"Missing required flags: {flags}", file=sys.stderr)
             sys.exit(1)
         sys.exit(
             cmd_approve(
-                opts.handoff_dir,
-                opts.contract_file,
-                opts.inbox_file,
-                opts.task,
-                opts.project_dir,
-                opts.by,
-                opts.note,
+                handoff_dir=opts.handoff_dir,
+                contract_file=opts.contract_file or "",
+                inbox_file=opts.inbox_file or "",
+                task_id=opts.task,
+                project_dir=opts.project_dir,
+                actor=opts.by,
+                note=opts.note,
             )
         )
 

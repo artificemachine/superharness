@@ -568,28 +568,27 @@ def test_monitor_watcher_health_branches(repo_root) -> None:
     assert aging_pending["oldest_pending_age_seconds"] > 300
 
 
-@pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_monitor_config_and_pending_approvals(repo_root, tmp_path, monkeypatch) -> None:
+    from tests.helpers import seed_sqlite_handoff
     module = _load_monitor_module(repo_root)
     project = _setup_project(tmp_path)
     handoff_dir = project / ".superharness" / "handoffs"
-    md = project / ".superharness" / "handoffs" / "report.md"
-    md.write_text("# Report\n")
-    (handoff_dir / "one.yaml").write_text(
-        "\n".join(
-            [
-                "task: t1",
-                "status: pending_user_approval",
-                "markdown_report: .superharness/handoffs/report.md",
-                "approval_gate:",
-                "  required: true",
-                "  approved_by_user: false",
-            ]
-        )
-        + "\n"
+    handoff_dir.mkdir(parents=True, exist_ok=True)
+
+    seed_sqlite_handoff(
+        project,
+        task_id="t1",
+        phase="report",
+        status="pending_user_approval",
+        content={
+            "task": "t1",
+            "status": "pending_user_approval",
+            "markdown_report": ".superharness/handoffs/report.md",
+            "approval_gate": {"required": True, "approved_by_user": False},
+        },
     )
 
-    approvals = module.pending_approvals(handoff_dir)
+    approvals = module.pending_approvals(handoff_dir, project_dir=project)
     assert len(approvals) == 1
     assert approvals[0]["task"] == "t1"
     assert approvals[0]["required"] is True
@@ -1141,13 +1140,20 @@ def test_task_report_handoff_and_markdown(repo_root, tmp_path) -> None:
     harness = project / ".superharness"
     (harness / "handoffs").mkdir(parents=True)
     (harness / "contract.yaml").write_text("id: c1\ntasks: []\n")
-    (harness / "handoffs" / "2026-03-12-my-task.yaml").write_text(
-        "task: my-task\nto: codex-cli\nstatus: done\n"
-        "summary: Did the thing.\n"
-        "markdown_report: .superharness/handoffs/2026-03-12-my-task.md\n"
-    )
     (harness / "handoffs" / "2026-03-12-my-task.md").write_text(
         "# My Task Report\n\nCompleted successfully.\n"
+    )
+    from tests.helpers import seed_sqlite_handoff, seed_sqlite_from_yaml
+    seed_sqlite_from_yaml(project)
+    seed_sqlite_handoff(
+        project, "my-task", phase="report", status="done",
+        from_agent="codex-cli",
+        content=(
+            "task: my-task\nto: codex-cli\nstatus: done\n"
+            "summary: Did the thing.\n"
+            "markdown_report: .superharness/handoffs/2026-03-12-my-task.md\n"
+        ),
+        now="2026-03-12T00:00:00Z",
     )
 
     result = module.task_report(project, "my-task", "codex-cli")
@@ -1173,6 +1179,23 @@ def test_task_report_discussion_submission(repo_root, tmp_path) -> None:
         "discussion_id: discuss-test-123\nround: 1\nagent: claude-code\n"
         "verdict: partial\nposition: Need more testing.\n"
     )
+    # Seed SQLite — task_report reads discussions from SQLite, not YAML files
+    import sqlite3 as _sq
+    from superharness.engine.db import get_connection as _gc, init_db as _idb
+    from superharness.engine import discussions_dao as _ddao
+    _legacy = project / ".superharness" / "state.sqlite3"
+    _legacy.parent.mkdir(parents=True, exist_ok=True)
+    if not _legacy.exists():
+        _sq.connect(str(_legacy)).close()
+    _conn = _gc(str(project))
+    _idb(_conn)
+    _ddao.create(_conn, id="discuss-test-123", topic="Review approach",
+                 owners=["claude-code", "codex-cli"], now="2026-01-01T00:00:00Z")
+    _ddao.add_round(_conn, discussion_id="discuss-test-123", round_number=1,
+                    agent="claude-code", content="Need more testing.",
+                    verdict="partial", now="2026-01-01T01:00:00Z")
+    _conn.commit()
+    _conn.close()
 
     result = module.task_report(project, "discuss-test-123/round-1", "claude-code")
     assert result["discussion_topic"] == "Review approach"
@@ -1200,6 +1223,26 @@ def test_task_report_discussion_all_agents(repo_root, tmp_path) -> None:
     (disc_dir / "round-1-codex-cli.yaml").write_text(
         "agent: codex-cli\nverdict: disagree\nposition: Needs rework.\n"
     )
+    # Seed SQLite — task_report reads discussions from SQLite, not YAML files
+    import sqlite3 as _sq
+    from superharness.engine.db import get_connection as _gc, init_db as _idb
+    from superharness.engine import discussions_dao as _ddao
+    _legacy = project / ".superharness" / "state.sqlite3"
+    _legacy.parent.mkdir(parents=True, exist_ok=True)
+    if not _legacy.exists():
+        _sq.connect(str(_legacy)).close()
+    _conn = _gc(str(project))
+    _idb(_conn)
+    _ddao.create(_conn, id="discuss-all-456", topic="Multi agent",
+                 owners=["claude-code", "codex-cli"], now="2026-01-01T00:00:00Z")
+    _ddao.add_round(_conn, discussion_id="discuss-all-456", round_number=1,
+                    agent="claude-code", content="Looks good.",
+                    verdict="agree", now="2026-01-01T01:00:00Z")
+    _ddao.add_round(_conn, discussion_id="discuss-all-456", round_number=1,
+                    agent="codex-cli", content="Needs rework.",
+                    verdict="disagree", now="2026-01-01T02:00:00Z")
+    _conn.commit()
+    _conn.close()
 
     result = module.task_report(project, "discuss-all-456/round-1", "gemini-cli")
     assert "claude-code" in result.get("discussion_position", "")
@@ -2114,7 +2157,7 @@ def test_task_report_reads_markdown_handoff_with_frontmatter(repo_root, tmp_path
     harness = project / ".superharness"
     (harness / "handoffs").mkdir(parents=True)
     (harness / "contract.yaml").write_text("id: c1\ntasks:\n- id: mod.1-runner\n  status: done\n  title: Runner\n  owner: claude-code\n")
-    (harness / "handoffs" / "mod.1-runner-2026-03-20-claude-code.md").write_text(
+    md_content = (
         "---\n"
         "task_id: mod.1-runner\n"
         "from: claude-code\n"
@@ -2125,6 +2168,17 @@ def test_task_report_reads_markdown_handoff_with_frontmatter(repo_root, tmp_path
         "# Task: mod.1-runner\n\n"
         "## What Was Done\n\n"
         "Built the module runner with 7 tests.\n"
+    )
+    (harness / "handoffs" / "mod.1-runner-2026-03-20-claude-code.md").write_text(md_content)
+
+    # Seed SQLite — task_report reads handoffs from SQLite, not YAML/MD files
+    from tests.helpers import seed_sqlite_from_yaml, seed_sqlite_handoff
+    seed_sqlite_from_yaml(project)
+    seed_sqlite_handoff(
+        project, "mod.1-runner", phase="report", status="done",
+        from_agent="claude-code",
+        content="task_id: mod.1-runner\nfrom: claude-code\nto: next-agent\nstatus: done\ntimestamp: 2026-03-20T12:00:00Z\nsummary: Built the module runner with 7 tests.\n",
+        now="2026-03-20T12:00:00Z",
     )
 
     result = module.task_report(project, "mod.1-runner", "claude-code")

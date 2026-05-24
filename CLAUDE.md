@@ -80,7 +80,7 @@ This is enforced by a scope warning on `plan_approved` transitions.
 
 ## Release Policy
 
-CI auto-tags and publishes to PyPI on every push to `main`. To defer a release for a specific PR, use `⛔ NO RELEASE` in that branch's CLAUDE.md or description — it is advisory only (CI does not enforce it automatically). Never use `git push --force` to main.
+Releases are triggered by pushing a `v*` tag (via `/ship-release` or `git push --tags`), not by merging to `main`. A PR merge alone does not tag or publish. `publish.yml` fires on `release: published`; `release.yml` fires on `v*` tag push. Never use `git push --force` to main.
 
 ## CHANGELOG Policy (Strict)
 - `CHANGELOG.md` is append-only.

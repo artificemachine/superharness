@@ -1,7 +1,9 @@
 """SQLite-only mode — permanent.
 
-The YAML→SQLite migration is complete. All state lives in SQLite.
-YAML files are no longer read or written for operational purposes.
+Migration complete as of 2026-05-24. All operational state reads are routed
+through DAOs / state_reader. The ratchet guard BASELINE is empty.
+
+YAML files are export-only artifacts; they are never read as authoritative input.
 Use `shux export-yaml` to generate human-readable YAML snapshots.
 """
 from __future__ import annotations
