@@ -51,9 +51,8 @@ def test_write_and_read_heartbeat(tmp_path: Path) -> None:
     hc = _import_contract()
     hb = hc.AgentHeartbeat(agent_id="watcher", runtime="native", status="idle")
     hc.write_heartbeat(str(project), hb)
-    path = hc.heartbeat_path(str(project), "watcher")
-    assert os.path.isfile(path), f"Heartbeat file not written at {path}"
-    read_back = hc.read_heartbeat(path)
+    # SQLite is SoT — read via the SQLite-first API
+    read_back = hc.read_heartbeat_db(str(project), "watcher")
     assert read_back is not None
     assert read_back.agent_id == "watcher"
     assert read_back.runtime == "native"
@@ -69,8 +68,7 @@ def test_heartbeat_required_fields(tmp_path: Path) -> None:
     hc = _import_contract()
     hb = hc.AgentHeartbeat(agent_id="watcher", runtime="native")
     hc.write_heartbeat(str(project), hb)
-    path = hc.heartbeat_path(str(project), "watcher")
-    read_back = hc.read_heartbeat(path)
+    read_back = hc.read_heartbeat_db(str(project), "watcher")
     assert read_back is not None
     assert read_back.schema_version == "1"
     assert read_back.agent_id == "watcher"
@@ -97,8 +95,7 @@ def test_heartbeat_optional_fields_roundtrip(tmp_path: Path) -> None:
         budget=budget,
     )
     hc.write_heartbeat(str(project), hb)
-    path = hc.heartbeat_path(str(project), "claude-code")
-    read_back = hc.read_heartbeat(path)
+    read_back = hc.read_heartbeat_db(str(project), "claude-code")
     assert read_back is not None
     assert read_back.pid == 99999
     assert read_back.active_task == "feat.heartbeat-contract-v1"
@@ -251,18 +248,21 @@ def test_stale_recovery_consistent_across_runtimes() -> None:
 # ---------------------------------------------------------------------------
 
 def test_inbox_watch_writes_structured_heartbeat(tmp_path: Path) -> None:
-    """After _run_scripts, both watcher.heartbeat (legacy) and watcher.heartbeat.yaml exist."""
+    """After _run_scripts, legacy timestamp file exists and SQLite has watcher heartbeat row."""
     import sys
     sys.path.insert(0, str(REPO_ROOT / "src"))
     from superharness.commands.inbox_watch import _run_scripts_heartbeat
+    from superharness.engine.heartbeat_contract import read_heartbeat_db
 
     project = _setup_project(tmp_path)
     _run_scripts_heartbeat(str(project))
 
     legacy = project / ".superharness" / "watcher.heartbeat"
-    structured = project / ".superharness" / "watcher.heartbeat.yaml"
     assert legacy.exists(), "Legacy timestamp heartbeat not written"
-    assert structured.exists(), "Structured heartbeat.yaml not written"
+    # SQLite is SoT — watcher heartbeat must be in SQLite, not YAML
+    hb = read_heartbeat_db(str(project), "watcher")
+    assert hb is not None, "Watcher heartbeat not in SQLite"
+    assert hb.agent_id == "watcher"
 
 
 # ---------------------------------------------------------------------------

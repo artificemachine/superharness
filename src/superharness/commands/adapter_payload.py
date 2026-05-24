@@ -114,15 +114,6 @@ def _owner_label(raw_owner: str) -> str:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _load_yaml(path: Path) -> Any:
-    """Load a YAML file, returning {} on any error or missing file."""
-    try:
-        return yaml.safe_load(path.read_text(errors="replace")) or {}
-    except Exception as e:
-        logger.warning("adapter_payload.py unexpected error: %s", e, exc_info=True)
-        return {}
-
-
 def _coerce_date(value: Any) -> str:
     """Coerce date / datetime / string to ISO 8601 string."""
     if value is None:
@@ -394,12 +385,36 @@ def _load_inbox(sh_dir: Path) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def _load_agent_pulse(sh_dir: Path) -> dict | None:
-    """Load .superharness/agent-pulse.yaml, returning None when absent or corrupt."""
+    """Load agent pulse: SQLite primary, YAML fallback."""
+    # SQLite primary — source of truth
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import agent_pulse_dao
+        project_dir = str(sh_dir.parent)
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            row = agent_pulse_dao.get_latest(conn)
+        finally:
+            conn.close()
+        if row is not None:
+            return {
+                "task_id":   row.task_id,
+                "agent":     row.agent,
+                "status":    row.status,
+                "last_seen": _coerce_date(row.last_seen),
+                "message":   row.message,
+                "pid":       row.pid,
+            }
+    except Exception as e:
+        logger.debug("adapter_payload: pulse SQLite read failed, falling back to YAML: %s", e)
+
+    # YAML fallback (legacy)
     path = sh_dir / "agent-pulse.yaml"
     if not path.exists():
         return None
     try:
-        raw = yaml.safe_load(path.read_text(errors="replace"))
+        raw = yaml.safe_load(path.read_text(errors="replace"))  # noqa: state-read — YAML fallback when SQLite empty (legacy projects)
     except Exception as e:
         logger.warning("adapter_payload.py unexpected error: %s", e, exc_info=True)
         return None
