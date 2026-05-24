@@ -59,7 +59,7 @@ def test_get_handoffs_filters_by_phase(tmp_path):
     write_handoff(str(tmp_path), task_id="t1", phase="plan", content={"summary": "plan"})
     write_handoff(str(tmp_path), task_id="t2", phase="report", content={"summary": "report"})
     items = get_handoffs(str(tmp_path), phase="report")
-    assert all("report" in h["filename"] for h in items)
+    assert all(h.get("phase") == "report" for h in items)
     assert len(items) == 1
 
 
@@ -69,4 +69,4 @@ def test_write_handoff_creates_file(tmp_path):
     write_handoff(str(tmp_path), task_id="new-task", phase="plan", content={"note": "hello"})
     items = get_handoffs(str(tmp_path))
     assert len(items) == 1
-    assert "new-task" in items[0]["filename"]
+    assert items[0].get("task_id") == "new-task"

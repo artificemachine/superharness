@@ -156,35 +156,34 @@ def contract_today(
     if archived_count:
         print(f"({archived_count} archived task(s) hidden — pass --include-archived to show)")
 
-    # Pending user approvals
-    handoff_dir = os.path.join(project_dir, ".superharness", "handoffs")
+    # Pending user approvals (from SQLite)
     pending_approvals: list[tuple[str, str]] = []
-    if os.path.isdir(handoff_dir):
-        for fname in sorted(os.listdir(handoff_dir)):
-            if not fname.endswith(".yaml"):
+    try:
+        from superharness.engine import state_reader as _sr
+        handoff_rows = _sr.get_handoffs(project_dir)
+        for row in handoff_rows:
+            if not isinstance(row, dict):
                 continue
-            fpath = os.path.join(handoff_dir, fname)
-            try:
-                with open(fpath) as f:
-                    hdoc = yaml.safe_load(f) or {}
-            except Exception as e:
-                logger.warning("contract_today.py unexpected error: %s", e, exc_info=True)
-                continue
-            if not isinstance(hdoc, dict):
-                continue
-            gate = hdoc.get("approval_gate")
+            status = str(row.get("status") or "")
+            # Try to parse content for approval_gate field
+            gate = None
+            content_text = row.get("content") or ""
+            if content_text:
+                try:
+                    parsed = yaml.safe_load(content_text)
+                    if isinstance(parsed, dict):
+                        gate = parsed.get("approval_gate")
+                except Exception:
+                    pass
             is_pending = (
-                str(hdoc.get("status", "")) == "pending_user_approval"
-                or (
-                    isinstance(gate, dict)
-                    and gate.get("required")
-                    and not gate.get("approved_by_user")
-                )
+                status == "pending_user_approval"
+                or (isinstance(gate, dict) and gate.get("required") and not gate.get("approved_by_user"))
             )
             if is_pending:
-                pending_approvals.append(
-                    (str(hdoc.get("task") or ""), str(hdoc.get("markdown_report") or ""))
-                )
+                task_id = str(row.get("task_id") or "")
+                pending_approvals.append((task_id, ""))
+    except Exception as e:
+        logger.warning("contract_today.py pending approvals failed: %s", e, exc_info=True)
 
     if pending_approvals:
         print()

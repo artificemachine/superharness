@@ -232,6 +232,10 @@ def test_repair_no_duplicate_handoff_if_exists(tmp_path: Path) -> None:
     )
     handoff_dir = project / ".superharness" / "handoffs"
     (handoff_dir / "existing.yaml").write_text("task: iota-task\n")
+    from tests.helpers import seed_sqlite_handoff, seed_sqlite_ledger
+    seed_sqlite_handoff(project, "iota-task", phase="report", status="done",
+                        content="task: iota-task\n")
+    seed_sqlite_ledger(project, action="iota-task done", task_id="iota-task")
 
     run_validate(str(project), repair=True)
 
@@ -247,6 +251,10 @@ def test_repair_no_duplicate_ledger_entry_if_exists(tmp_path: Path) -> None:
         ledger="# Ledger\nkappa-task done\n",
     )
     (project / ".superharness" / "handoffs" / "h.yaml").write_text("task: kappa-task\n")
+    from tests.helpers import seed_sqlite_handoff, seed_sqlite_ledger
+    seed_sqlite_handoff(project, "kappa-task", phase="report", status="done",
+                        content="task: kappa-task\n")
+    seed_sqlite_ledger(project, action="kappa-task done", task_id="kappa-task")
 
     before = (project / ".superharness" / "ledger.md").read_text()
     run_validate(str(project), repair=True)
@@ -267,6 +275,10 @@ def test_repair_noop_on_clean_project(tmp_path: Path) -> None:
         ledger="# Ledger\nlambda-task done\n",
     )
     (project / ".superharness" / "handoffs" / "h.yaml").write_text("task: lambda-task\n")
+    from tests.helpers import seed_sqlite_handoff, seed_sqlite_ledger
+    seed_sqlite_handoff(project, "lambda-task", phase="report", status="done",
+                        content="task: lambda-task\n")
+    seed_sqlite_ledger(project, action="lambda-task done", task_id="lambda-task")
 
     ledger_before = (project / ".superharness" / "ledger.md").read_text()
     rc = run_validate(str(project), repair=True)

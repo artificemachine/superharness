@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers import REPO_ROOT, run_bash, seed_sqlite_from_yaml
+from tests.helpers import REPO_ROOT, run_bash, seed_sqlite_from_yaml, seed_sqlite_handoff
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
@@ -80,6 +80,23 @@ def _setup_project(tmp_path: Path) -> Path:
         + "\n"
     )
     seed_sqlite_from_yaml(project)
+    from tests.helpers import seed_sqlite_handoff
+    seed_sqlite_handoff(
+        project, "approval-task", phase="plan", status="pending_user_approval",
+        from_agent="codex-cli",
+        content="\n".join([
+            "task: approval-task",
+            "to: codex-cli",
+            "date: 2026-03-11",
+            "status: pending_user_approval",
+            "approval_gate:",
+            "  required: true",
+            "  approved_by_user: false",
+            "  approved_at: null",
+            "markdown_report: .superharness/handoffs/2026-03-11-approval-task.md",
+        ]) + "\n",
+        now="2026-03-11T00:00:00Z",
+    )
     return project
 
 
@@ -127,6 +144,22 @@ def _setup_project_without_paused_item(tmp_path: Path) -> Path:
         )
         + "\n"
     )
+    seed_sqlite_from_yaml(project)
+    seed_sqlite_handoff(
+        project, "approval-task", phase="report", status="pending_user_approval",
+        content="\n".join([
+            "task: approval-task",
+            "to: codex-cli",
+            "date: 2026-03-11",
+            "status: pending_user_approval",
+            "approval_gate:",
+            "  required: true",
+            "  approved_by_user: false",
+            "  approved_at: null",
+            "markdown_report: .superharness/handoffs/2026-03-11-approval-task.md",
+        ]) + "\n",
+        now="2026-03-11T00:00:00Z",
+    )
     return project
 
 
@@ -157,9 +190,14 @@ def test_discuss_approve_updates_handoff_contract_and_inbox(repo_root, tmp_path)
     assert result.returncode == 0, result.stderr
     assert "Approved consensus for task 'approval-task'" in result.stdout
 
-    handoff_text = (project / ".superharness" / "handoffs" / "2026-03-11-approval-task.yaml").read_text()
-    assert "status: approved" in handoff_text
-    assert "approved_by_user: true" in handoff_text
+    # Approval gate is reflected in SQLite (source of truth — YAML is export-only).
+    import sqlite3 as _sql2
+    db2 = _sql2.connect(str(project / ".superharness" / "state.sqlite3"))
+    approved_row = db2.execute(
+        "SELECT metadata FROM handoffs WHERE task_id='approval-task' AND status='approved' LIMIT 1"
+    ).fetchone()
+    db2.close()
+    assert approved_row is not None, "No approved handoff found in SQLite after cmd_approve"
 
     # Post-migration: contract + inbox state in SQLite, not YAML.
     import sqlite3 as _sql

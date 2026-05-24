@@ -33,14 +33,19 @@ def run_recap(project_dir: str | Path, hours: int = 4) -> dict:
     sections: list[str] = []
     summary = {"hours": hours, "tasks_changed": 0, "inbox_events": 0, "ledger_lines": 0, "handoffs": 0}
 
-    # 1. Ledger entries
-    ledger_file = harness / "ledger.md"
+    # 1. Ledger entries (from SQLite)
     recent_ledger: list[str] = []
-    if ledger_file.exists():
-        for line in ledger_file.read_text().splitlines():
-            match = re.search(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z?)", line)
-            if match and _within_window(match.group(1), cutoff):
-                recent_ledger.append(line.strip())
+    try:
+        from superharness.engine.state_reader import get_ledger_entries
+        ledger_entries = get_ledger_entries(str(project_dir), hours=hours, limit=200)
+        for entry in ledger_entries:
+            ts = str(entry.get("created_at", ""))
+            if _within_window(ts, cutoff):
+                agent = entry.get("agent") or "system"
+                action = entry.get("action") or ""
+                recent_ledger.append(f"{ts} — {agent} — {action}")
+    except Exception as e:
+        logger.warning("recap.py ledger scan failed: %s", e, exc_info=True)
     if recent_ledger:
         sections.append("## Ledger")
         for line in recent_ledger[-20:]:
@@ -74,19 +79,19 @@ def run_recap(project_dir: str | Path, hours: int = 4) -> dict:
             sections.append(f"  {status:10s} {task} → {to}{reason_str}")
         summary["inbox_events"] = len(recent_inbox)
 
-    # 3. Recent handoffs
-    handoff_dir = harness / "handoffs"
+    # 3. Recent handoffs (from SQLite)
     recent_handoffs: list[tuple[str, str]] = []
-    if handoff_dir.is_dir():
-        for f in sorted(handoff_dir.iterdir()):
-            if not f.suffix in (".yaml", ".md"):
-                continue
-            try:
-                mtime = datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc)
-                if mtime >= cutoff:
-                    recent_handoffs.append((f.name, mtime.strftime("%H:%M")))
-            except OSError:
-                continue
+    try:
+        from superharness.engine.state_reader import get_handoffs
+        handoff_rows = get_handoffs(str(project_dir))
+        for row in handoff_rows:
+            ts = str(row.get("created_at", ""))
+            if _within_window(ts, cutoff):
+                label = f"{row.get('task_id', '?')}-{row.get('phase', '?')}"
+                time_str = ts[11:16] if len(ts) >= 16 else ts
+                recent_handoffs.append((label, time_str))
+    except Exception as e:
+        logger.warning("recap.py handoffs scan failed: %s", e, exc_info=True)
     if recent_handoffs:
         sections.append("## Handoffs")
         for name, time_str in recent_handoffs[-10:]:

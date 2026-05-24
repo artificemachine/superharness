@@ -16,18 +16,15 @@ def _handoffs_dir(project_path: str) -> str:
 
 
 def get_handoffs(project_path: str, phase: str | None = None) -> list[dict]:
-    """List handoff YAML files, optionally filtered by phase (plan|report|done)."""
-    d = _handoffs_dir(project_path)
-    if not os.path.isdir(d):
+    """Return handoffs from SQLite, optionally filtered by phase (plan|report|done)."""
+    try:
+        from superharness.engine import state_reader as _sr
+        rows = _sr.get_handoffs(project_path)
+        if phase:
+            rows = [r for r in rows if str(r.get("phase", "")) == phase]
+        return rows
+    except Exception:
         return []
-    results = []
-    for fname in sorted(os.listdir(d)):
-        if not fname.endswith(".yaml") and not fname.endswith(".yml"):
-            continue
-        if phase and f"-{phase}-" not in fname:
-            continue
-        results.append({"filename": fname, "path": os.path.join(d, fname)})
-    return results
 
 
 def write_handoff(
@@ -49,4 +46,13 @@ def write_handoff(
         else:
             import json
             f.write(json.dumps(content, indent=2))
+
+    # Source of truth: also persist to SQLite (best-effort; YAML stays for
+    # readers not yet migrated). See docs/PLAN-sqlite-source-of-truth-refactor.md.
+    try:
+        from superharness.engine.state_writer import write_handoff_to_db
+        write_handoff_to_db(project_path, content, task_id=task_id, phase=phase)
+    except Exception:
+        pass
+
     return path

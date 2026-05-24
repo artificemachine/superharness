@@ -503,7 +503,7 @@ def _sqlite_mirror_dispatch(
     """Mirror inbox dispatch status change to SQLite. Never raises."""
     try:
         from superharness.engine.db import get_connection, init_db, transaction
-        from superharness.engine import inbox_dao, ledger_dao, yaml_sync
+        from superharness.engine import inbox_dao, ledger_dao
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -519,11 +519,6 @@ def _sqlite_mirror_dispatch(
                         now=now, reason=reason or None,
                     ):
                         break
-                yaml_sync.enqueue_op(
-                    conn, op_type="update_inbox",
-                    payload={"id": item_id, "status": to_status},
-                    now=now,
-                )
         finally:
             conn.close()
     except Exception as e:
@@ -719,7 +714,13 @@ def _do_dispatch(
 def _claim_next_item(ctx: DispatchContext) -> int | None:
     now_claim = _now_utc()
 
-    if ctx.sqlite_primary and ctx.target_filter:
+    if ctx.sqlite_primary:
+        if not ctx.target_filter:
+            print(
+                "sqlite_only mode requires --to <agent>; no YAML fallback available.",
+                file=sys.stderr,
+            )
+            return 1
         # SQLite-native path: atomically claim next pending item via inbox_dao
         item = _sqlite_claim_next(ctx.project_dir, ctx.target_filter, now_claim)
         if item is None:

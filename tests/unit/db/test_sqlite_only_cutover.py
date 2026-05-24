@@ -1,9 +1,8 @@
 """Tests validating sqlite_only mode correctness.
 
 Covers the 22 missing tests identified in the Gate 3 e2e audit:
-  - schema migration v2 (parent_id, discussions, yaml_sync_queue unique index)
+  - schema migration v2 (parent_id, discussions)
   - state_reader in sqlite_only mode
-  - yaml_sync drain no-op in sqlite_only mode
   - discussions DAO
   - tasks_dao top_level_only filter
   - full sqlite_only project lifecycle (no YAML files)
@@ -18,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from superharness.engine.db import get_connection, init_db
-from superharness.engine import tasks_dao, inbox_dao, discussions_dao, yaml_sync
+from superharness.engine import tasks_dao, inbox_dao, discussions_dao
 from superharness.engine.db import now_iso
 
 
@@ -66,10 +65,6 @@ class TestMigrationV2:
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         assert "discussions" in tables
         assert "discussion_rounds" in tables
-
-    def test_yaml_sync_unique_index_exists(self, conn: sqlite3.Connection):
-        indexes = {r[1] for r in conn.execute("SELECT * FROM sqlite_master WHERE type='index'").fetchall()}
-        assert "idx_yaml_sync_pending_dedup" in indexes
 
     @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
     def test_schema_version_is_2(self, conn: sqlite3.Connection):
@@ -140,111 +135,6 @@ class TestTasksDAOParentId:
         all_ = tasks_dao.get_all(conn)
         assert len(top) == 3
         assert len(all_) == 8
-
-
-# ---------------------------------------------------------------------------
-# 3. yaml_sync F8 — unique index dedup
-# ---------------------------------------------------------------------------
-
-class TestYamlSyncDedup:
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-    def test_enqueue_op_insert_or_ignore(self, conn: sqlite3.Connection):
-        now = now_iso()
-        payload = {"id": "task-1", "status": "todo"}
-        id1 = yaml_sync.enqueue_op(conn, op_type="upsert_task", payload=payload, now=now)
-        id2 = yaml_sync.enqueue_op(conn, op_type="upsert_task", payload=payload, now=now)
-        conn.commit()
-        assert id1 is not None
-        assert id2 is None  # duplicate ignored
-
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-    def test_different_op_types_not_deduped(self, conn: sqlite3.Connection):
-        now = now_iso()
-        payload = {"id": "task-1"}
-        id1 = yaml_sync.enqueue_op(conn, op_type="upsert_task", payload=payload, now=now)
-        id2 = yaml_sync.enqueue_op(conn, op_type="update_task_status", payload=payload, now=now)
-        conn.commit()
-        assert id1 is not None
-        assert id2 is not None
-
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-    def test_applied_op_allows_new_pending(self, conn: sqlite3.Connection):
-        now = now_iso()
-        payload = {"id": "task-1", "status": "todo"}
-        yaml_sync.enqueue_op(conn, op_type="upsert_task", payload=payload, now=now)
-        conn.execute("UPDATE yaml_sync_queue SET status='applied' WHERE status='pending'")
-        conn.commit()
-        id2 = yaml_sync.enqueue_op(conn, op_type="upsert_task", payload=payload, now=now)
-        conn.commit()
-        assert id2 is not None  # new pending allowed after previous applied
-
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-    def test_null_id_ops_not_deduped(self, conn: sqlite3.Connection):
-        now = now_iso()
-        # Failures/decisions have no 'id' field
-        payload = {"agent": "claude-code", "pattern": "timeout"}
-        id1 = yaml_sync.enqueue_op(conn, op_type="record_failure", payload=payload, now=now)
-        id2 = yaml_sync.enqueue_op(conn, op_type="record_failure", payload=payload, now=now)
-        conn.commit()
-        assert id1 is not None
-        assert id2 is not None  # NULL ids are always distinct
-
-
-# ---------------------------------------------------------------------------
-# 4. yaml_sync drain — sqlite_only no-op
-# ---------------------------------------------------------------------------
-
-class TestYamlSyncDrainSqliteOnly:
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-    def test_drain_marks_applied_without_yaml_write(self, conn: sqlite3.Connection, proj: Path, monkeypatch):
-        monkeypatch.setenv("STATE_BACKEND", "sqlite_only")
-        now = now_iso()
-        for i in range(5):
-            yaml_sync.enqueue_op(conn, op_type="upsert_task", payload={"id": f"t{i}"}, now=now)
-        conn.commit()
-
-        report = yaml_sync.drain(conn, str(proj))
-        conn.commit()
-
-        assert report.applied == 5
-        assert report.failed == 0
-        assert report.pending_remaining == 0
-        # No YAML file should have been created
-        assert not (proj / ".superharness" / "contract.yaml").exists()
-
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-    def test_drain_dual_mode_writes_yaml(self, conn: sqlite3.Connection, proj: Path, monkeypatch):
-        monkeypatch.setenv("STATE_BACKEND", "dual")
-        # Create a task in SQLite first (FK constraint satisfied)
-        _make_task(conn, "t1")
-        conn.commit()
-        # Enqueue an inbox op (no FK check in YAML side)
-        now = now_iso()
-        yaml_sync.enqueue_op(conn, op_type="upsert_task", payload={"id": "t1", "title": "T1", "status": "todo"}, now=now)
-        conn.commit()
-
-        report = yaml_sync.drain(conn, str(proj))
-        conn.commit()
-
-        assert report.applied == 1
-        assert (proj / ".superharness" / "contract.yaml").exists()
-
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-    def test_yaml_writes_enabled_default_is_true(self, proj: Path, monkeypatch):
-        monkeypatch.delenv("STATE_BACKEND", raising=False)
-        assert yaml_sync._yaml_writes_enabled(str(proj)) is True
-
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-    def test_yaml_writes_enabled_false_in_sqlite_only(self, proj: Path, monkeypatch):
-        monkeypatch.setenv("STATE_BACKEND", "sqlite_only")
-        assert yaml_sync._yaml_writes_enabled(str(proj)) is False
-
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-    def test_yaml_writes_enabled_reads_profile(self, proj: Path, monkeypatch):
-        monkeypatch.delenv("STATE_BACKEND", raising=False)
-        profile = proj / ".superharness" / "profile.yaml"
-        profile.write_text("state_backend: sqlite_only\n")
-        assert yaml_sync._yaml_writes_enabled(str(proj)) is False
 
 
 # ---------------------------------------------------------------------------
@@ -398,10 +288,7 @@ class TestSqliteOnlyLifecycle:
         )
         conn.commit()
 
-        # 3. Drain — should be no-op (sqlite_only), zero YAML files
-        report = yaml_sync.drain(conn, str(proj))
-        conn.commit()
-        assert report.applied >= 0
+        # 3. yaml_sync.drain is gone (module deleted); assert YAML state files never written
         assert not (proj / ".superharness" / "contract.yaml").exists()
         assert not (proj / ".superharness" / "inbox.yaml").exists()
 

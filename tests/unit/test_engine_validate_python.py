@@ -74,7 +74,7 @@ def test_validate_fails_missing_handoff_for_done_task(tmp_path: Path) -> None:
     )
     r = _run_validate(["--project", str(project)])
     assert r.returncode == 1
-    assert "Missing handoff file for done task: finished-task" in r.stdout
+    assert "Missing handoff for done task: finished-task" in r.stdout
 
 
 def test_validate_fails_missing_ledger_for_done_task(tmp_path: Path) -> None:
@@ -93,8 +93,10 @@ def test_validate_passes_done_task_with_handoff_and_ledger(tmp_path: Path) -> No
         tmp_path,
         tasks="  - id: complete-task\n    status: done\n    owner: claude-code\n    verified: true\n",
     )
-    (project / ".superharness" / "handoffs" / "h.yaml").write_text("task: complete-task\nto: claude-code\n")
-    (project / ".superharness" / "ledger.md").write_text("# Ledger\ncomplete-task done\n")
+    from tests.helpers import seed_sqlite_handoff, seed_sqlite_ledger
+    seed_sqlite_handoff(project, "complete-task", phase="report", status="done",
+                        content="task: complete-task\nto: claude-code\n")
+    seed_sqlite_ledger(project, action="complete-task done", task_id="complete-task")
     r = _run_validate(["--project", str(project)])
     assert r.returncode == 0
     assert "passed" in r.stdout.lower()
