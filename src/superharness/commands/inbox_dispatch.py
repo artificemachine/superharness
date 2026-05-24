@@ -5,7 +5,6 @@ Dispatches the next pending inbox item to its target launcher.
 from __future__ import annotations
 
 import importlib.resources as _importlib_resources
-import json
 import logging
 import os
 import signal
@@ -728,25 +727,12 @@ def _claim_next_item(ctx: DispatchContext) -> int | None:
         # Log the claim (inbox.yaml transition skipped in sqlite_only)
         print(f"Inbox item claimed from SQLite: {item['id']} → {item['task']} (sqlite_only mode)")
     else:
-        # YAML path: read next pending item from inbox.yaml
-        r = subprocess.run(
-            [_get_python(), "-m", "superharness.engine.inbox", "next_pending",
-             "--file", ctx.inbox_file] + (["--to", ctx.target_filter] if ctx.target_filter else []),
-            capture_output=True, text=True, check=False,
+        print(
+            "inbox_dispatch: SQLite required but not active. "
+            "Run 'shux init' to initialise state.sqlite3, or set STATE_BACKEND=sqlite_only.",
+            file=sys.stderr,
         )
-        if r.returncode != 0:
-            print(f"Failed to read pending inbox item from {ctx.inbox_file}: {r.stderr.strip()}", file=sys.stderr)
-            return 1
-
-        item_json = r.stdout.strip()
-        if not item_json:
-            return 0
-
-        try:
-            item = json.loads(item_json)
-        except json.JSONDecodeError as e:
-            print(f"Failed to parse pending inbox item from {ctx.inbox_file}: {e}", file=sys.stderr)
-            return 1
+        return 1
 
     ctx.item = item
     ctx.item_id = str(item.get("id", ""))

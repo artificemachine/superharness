@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
-import json
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 from superharness.engine.state_errors import StateError
 
@@ -220,6 +219,144 @@ def set_retry(
         """,
         (retry_count, failed_reason, id)
     )
+
+def mark_stale(
+    conn: sqlite3.Connection,
+    id: str,
+    *,
+    reason: str | None = None,
+) -> None:
+    """Unconditionally mark an inbox item as stale (cleanup / orphan removal)."""
+    conn.execute(
+        "UPDATE inbox SET status='stale', failed_reason=? WHERE id=?",
+        (reason, id),
+    )
+
+
+def mark_done(
+    conn: sqlite3.Connection,
+    id: str,
+    *,
+    now: str,
+) -> None:
+    """Unconditionally mark an inbox item as done (lifecycle transition)."""
+    conn.execute(
+        "UPDATE inbox SET status='done', done_at=? WHERE id=?",
+        (now, id),
+    )
+
+
+def set_plan_only(
+    conn: sqlite3.Connection,
+    id: str,
+    value: int,
+) -> None:
+    """Set the plan_only flag for an inbox item."""
+    conn.execute("UPDATE inbox SET plan_only=? WHERE id=?", (value, id))
+
+
+def mark_failed(
+    conn: sqlite3.Connection,
+    id: str,
+    *,
+    reason: str,
+    now: str,
+) -> None:
+    """Mark an inbox item as failed with a reason and timestamp."""
+    conn.execute(
+        "UPDATE inbox SET status='failed', failed_reason=?, failed_at=? WHERE id=?",
+        (reason, now, id),
+    )
+
+
+def reassign(
+    conn: sqlite3.Connection,
+    id: str,
+    *,
+    target_agent: str,
+    max_retries: int,
+    reason: str,
+) -> None:
+    """Re-queue an inbox item under a different target agent (fallback rotation)."""
+    conn.execute(
+        """
+        UPDATE inbox
+           SET status='pending', target_agent=?,
+               retry_count=0, max_retries=?,
+               failed_reason=?, pid=NULL, failed_at=NULL
+         WHERE id=?
+        """,
+        (target_agent, max_retries, reason, id),
+    )
+
+
+def mark_recovered(
+    conn: sqlite3.Connection,
+    id: str,
+    *,
+    target_agent: str,
+    recovery_count: int,
+    reason: str,
+) -> None:
+    """Re-queue an inbox item after recovery rotation (max_retries += 1)."""
+    conn.execute(
+        """
+        UPDATE inbox
+           SET status='pending', retry_count=0,
+               max_retries=max_retries+1,
+               recovery_count=?, target_agent=?, failed_reason=?,
+               pid=NULL, failed_at=NULL
+         WHERE id=?
+        """,
+        (recovery_count, target_agent, reason, id),
+    )
+
+
+def purge_stale(conn: sqlite3.Connection) -> int:
+    """Delete all inbox rows with status='stale'. Returns count deleted."""
+    cursor = conn.execute("DELETE FROM inbox WHERE status='stale'")
+    return cursor.rowcount
+
+
+def remove(conn: sqlite3.Connection, id: str) -> bool:
+    """Delete an inbox row by id. Returns True if a row was removed."""
+    cursor = conn.execute("DELETE FROM inbox WHERE id = ?", (id,))
+    return cursor.rowcount > 0
+
+
+_VALID_FIELD_KEYS = frozenset({
+    "task_id", "target_agent", "status", "priority", "retry_count",
+    "max_retries", "recovery_count", "pid", "project_path", "plan_only",
+    "failed_reason", "launched_at", "last_heartbeat", "paused_at",
+    "failed_at", "done_at", "reason", "type",
+})
+
+
+def set_field(
+    conn: sqlite3.Connection,
+    id: str,
+    key: str,
+    value: object,
+) -> None:
+    """Update one arbitrary inbox column. Raises StateError if key is not whitelisted."""
+    if key not in _VALID_FIELD_KEYS:
+        raise StateError(f"set_field: column '{key}' not in whitelist")
+    conn.execute(f"UPDATE inbox SET {key} = ? WHERE id = ?", (value, id))
+
+
+def set_fields(
+    conn: sqlite3.Connection,
+    id: str,
+    **fields: object,
+) -> None:
+    """Update multiple inbox columns. Silently ignores keys not in whitelist."""
+    safe = {k: v for k, v in fields.items() if k in _VALID_FIELD_KEYS}
+    if not safe:
+        return
+    placeholders = ", ".join(f"{k}=?" for k in safe.keys())
+    values = list(safe.values()) + [id]
+    conn.execute(f"UPDATE inbox SET {placeholders} WHERE id=?", values)
+
 
 def _row_to_inbox(row: sqlite3.Row) -> InboxRow:
     return InboxRow(

@@ -64,7 +64,45 @@ def heartbeat_path(project_dir: str, agent_id: str = "watcher") -> str:
 
 
 def write_heartbeat(project_dir: str, heartbeat: AgentHeartbeat) -> None:
-    """Write an AgentHeartbeat to its canonical path."""
+    """Write an AgentHeartbeat: SQLite is primary, YAML mirror for export."""
+    # SQLite primary write — source of truth
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import watcher_heartbeat_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            tokens_used = heartbeat.budget.tokens_used if heartbeat.budget else None
+            tokens_limit = heartbeat.budget.tokens_limit if heartbeat.budget else None
+            cost_usd = heartbeat.budget.cost_usd if heartbeat.budget else None
+            watcher_heartbeat_dao.upsert(
+                conn,
+                agent_id=heartbeat.agent_id,
+                schema_version=heartbeat.schema_version,
+                runtime=heartbeat.runtime,
+                pid=heartbeat.pid,
+                status=heartbeat.status,
+                active_task=heartbeat.active_task,
+                next_wake_at=heartbeat.next_wake_at,
+                written_at=heartbeat.written_at,
+                tokens_used=tokens_used,
+                tokens_limit=tokens_limit,
+                cost_usd=cost_usd,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("heartbeat_contract: SQLite write failed (continuing with YAML): %s", e)
+
+    # YAML mirror — skipped in sqlite_only mode (SQLite is SoT, YAML on-demand only)
+    try:
+        from superharness.engine.sqlite_only import is_sqlite_only
+        if is_sqlite_only(project_dir=project_dir):
+            return
+    except Exception as e:
+        logger.debug("heartbeat_contract: is_sqlite_only check failed, writing YAML mirror: %s", e)
+
     import yaml  # type: ignore
 
     path = heartbeat_path(project_dir, heartbeat.agent_id)
@@ -92,12 +130,48 @@ def write_heartbeat(project_dir: str, heartbeat: AgentHeartbeat) -> None:
         yaml.safe_dump(data, f, default_flow_style=False)
 
 
+def read_heartbeat_db(project_dir: str, agent_id: str = "watcher") -> Optional[AgentHeartbeat]:
+    """Read AgentHeartbeat from SQLite (source of truth). Returns None if absent."""
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import watcher_heartbeat_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            row = watcher_heartbeat_dao.get(conn, agent_id)
+        finally:
+            conn.close()
+        if row is None:
+            return None
+        budget: Optional[AgentBudget] = None
+        if row.tokens_used is not None or row.tokens_limit is not None or row.cost_usd is not None:
+            budget = AgentBudget(
+                tokens_used=int(row.tokens_used or 0),
+                tokens_limit=row.tokens_limit,
+                cost_usd=float(row.cost_usd or 0.0),
+            )
+        return AgentHeartbeat(
+            schema_version=row.schema_version,
+            agent_id=row.agent_id,
+            runtime=row.runtime,
+            pid=row.pid,
+            status=row.status,
+            active_task=row.active_task,
+            next_wake_at=row.next_wake_at,
+            written_at=row.written_at,
+            budget=budget,
+        )
+    except Exception as e:
+        logger.warning("heartbeat_contract.read_heartbeat_db error: %s", e)
+        return None
+
+
 def read_heartbeat(path: str) -> Optional[AgentHeartbeat]:
     """Read an AgentHeartbeat from a YAML file. Returns None if unreadable/invalid."""
     import yaml  # type: ignore
 
     try:
-        with open(path) as f:
+        with open(path) as f:  # noqa: state-read — YAML fallback when SQLite empty (legacy projects)
             data = yaml.safe_load(f)
         if not isinstance(data, dict):
             return None
@@ -146,8 +220,50 @@ def age_seconds(heartbeat: AgentHeartbeat) -> int:
 
 
 def list_agent_heartbeats(project_dir: str) -> list[AgentHeartbeat]:
-    """Return all valid heartbeats in a project: watcher first, then per-agent."""
-    results: list[AgentHeartbeat] = []
+    """Return all valid heartbeats in a project, SQLite first, YAML fallback."""
+    # SQLite primary
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import watcher_heartbeat_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            rows = watcher_heartbeat_dao.get_all(conn)
+        finally:
+            conn.close()
+        if rows:
+            results: list[AgentHeartbeat] = []
+            # Watcher first, then others sorted
+            watcher_rows = [r for r in rows if r.agent_id == "watcher"]
+            other_rows = sorted(
+                [r for r in rows if r.agent_id != "watcher"],
+                key=lambda r: r.agent_id,
+            )
+            for row in watcher_rows + other_rows:
+                budget: Optional[AgentBudget] = None
+                if row.tokens_used is not None or row.tokens_limit is not None or row.cost_usd is not None:
+                    budget = AgentBudget(
+                        tokens_used=int(row.tokens_used or 0),
+                        tokens_limit=row.tokens_limit,
+                        cost_usd=float(row.cost_usd or 0.0),
+                    )
+                results.append(AgentHeartbeat(
+                    schema_version=row.schema_version,
+                    agent_id=row.agent_id,
+                    runtime=row.runtime,
+                    pid=row.pid,
+                    status=row.status,
+                    active_task=row.active_task,
+                    next_wake_at=row.next_wake_at,
+                    written_at=row.written_at,
+                    budget=budget,
+                ))
+            return results
+    except Exception as e:
+        logger.debug("heartbeat_contract.list_agent_heartbeats SQLite read failed, falling back to YAML: %s", e)
+
+    # YAML fallback (legacy projects without SQLite-populated heartbeats)
+    results = []
     watcher_hb = read_heartbeat(heartbeat_path(project_dir, "watcher"))
     if watcher_hb is not None:
         results.append(watcher_hb)

@@ -83,18 +83,52 @@ def write_agent_status(
     budget: dict[str, Any] | None = None,
     updated_at: str | None = None,
 ) -> None:
-    """Write (or overwrite) an agent status file for the given runtime.
+    """Write an agent status record: SQLite primary, YAML mirror.
 
     Creates .superharness/agents/ if it does not exist.
     """
+    project_dir_str = str(project_dir)
     project_dir = Path(project_dir)
+    when = updated_at or _now_utc()
+
+    # SQLite primary — source of truth
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import agent_runtime_status_dao
+        conn = get_connection(project_dir_str)
+        try:
+            init_db(conn)
+            agent_runtime_status_dao.upsert(
+                conn,
+                runtime=runtime,
+                schema_version=SCHEMA_VERSION,
+                liveness=liveness,
+                active_task=active_task,
+                next_wake_at=next_wake_at,
+                budget=budget,
+                updated_at=when,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("agent_status: SQLite write failed (continuing with YAML): %s", e)
+
+    # YAML mirror — skipped in sqlite_only mode (SQLite is SoT)
+    try:
+        from superharness.engine.sqlite_only import is_sqlite_only
+        if is_sqlite_only(project_dir=project_dir_str):
+            return
+    except Exception as e:
+        logger.debug("agent_status: is_sqlite_only check failed, writing YAML mirror: %s", e)
+
     agents_dir = _agents_dir(project_dir)
     agents_dir.mkdir(parents=True, exist_ok=True)
 
     record = {
         "schema_version": SCHEMA_VERSION,
         "runtime": runtime,
-        "updated_at": updated_at or _now_utc(),
+        "updated_at": when,
         "liveness": liveness,
         "active_task": active_task,
         "next_wake_at": next_wake_at,
@@ -132,16 +166,44 @@ def _parse_record(data: dict[str, Any]) -> AgentStatusRecord | None:
         return None
 
 
+def _dao_row_to_record(row) -> AgentStatusRecord:
+    return AgentStatusRecord(
+        runtime=row.runtime,
+        updated_at=row.updated_at,
+        schema_version=row.schema_version,
+        liveness=row.liveness,
+        active_task=row.active_task,
+        next_wake_at=row.next_wake_at,
+        budget=row.budget,
+    )
+
+
 def read_agent_status(
     project_dir: Path | str,
     runtime: str,
 ) -> AgentStatusRecord | None:
-    """Read the status file for one runtime.  Returns None if absent or corrupt."""
+    """Read one runtime's status: SQLite primary, YAML fallback."""
+    # SQLite primary
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import agent_runtime_status_dao
+        conn = get_connection(str(project_dir))
+        try:
+            init_db(conn)
+            row = agent_runtime_status_dao.get(conn, runtime)
+        finally:
+            conn.close()
+        if row is not None:
+            return _dao_row_to_record(row)
+    except Exception as e:
+        logger.debug("agent_status: SQLite read failed, falling back to YAML: %s", e)
+
+    # YAML fallback (legacy)
     path = _status_path(Path(project_dir), runtime)
     if not path.exists():
         return None
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}  # noqa: state-read — YAML fallback when SQLite empty (legacy projects)
         if not isinstance(data, dict):
             return None
         return _parse_record(data)
@@ -153,19 +215,35 @@ def read_agent_status(
 def read_all_agent_statuses(
     project_dir: Path | str,
 ) -> dict[str, AgentStatusRecord]:
-    """Read all agent status files.  Discovers runtimes dynamically.
+    """Read all agent statuses: SQLite primary, YAML fallback.
 
-    Skips files that are corrupt or missing required fields — never raises.
+    Skips records that are corrupt or missing required fields — never raises.
     """
+    # SQLite primary
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import agent_runtime_status_dao
+        conn = get_connection(str(project_dir))
+        try:
+            init_db(conn)
+            rows = agent_runtime_status_dao.get_all(conn)
+        finally:
+            conn.close()
+        if rows:
+            return {r.runtime: _dao_row_to_record(r) for r in rows}
+    except Exception as e:
+        logger.debug("agent_status: SQLite get_all failed, falling back to YAML: %s", e)
+
+    # YAML fallback (legacy)
     agents_dir = _agents_dir(Path(project_dir))
     if not agents_dir.exists():
         return {}
 
     result: dict[str, AgentStatusRecord] = {}
-    for path in sorted(agents_dir.glob("*.status.yaml")):
+    for path in sorted(agents_dir.glob("*.status.yaml")):  # noqa: state-read — YAML fallback scan when SQLite empty (legacy projects)
         runtime_name = path.name.removesuffix(".status.yaml")
         try:
-            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}  # noqa: state-read — YAML fallback when SQLite empty (legacy projects)
             if not isinstance(data, dict):
                 continue
             record = _parse_record(data)
