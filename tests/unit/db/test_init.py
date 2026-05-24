@@ -38,7 +38,6 @@ def test_init_db_creates_tables(db_conn: sqlite3.Connection):
         "ledger",
         "review_store",
         "watcher_instance",
-        "yaml_sync_queue"
     }
     for table in expected_tables:
         assert table in tables, f"Table {table} missing"

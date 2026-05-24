@@ -21,14 +21,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def _load_yaml_safe(path: Path) -> object:
-    try:
-        import yaml
-        return yaml.safe_load(path.read_text(errors="replace")) or {}
-    except Exception as e:
-        logger.warning("context.py unexpected error: %s", e, exc_info=True)
-        return {}
-
 
 def _find_task(contract: dict, task_id: str) -> dict | None:
     """Return a task dict by id. Also resolves subtask ids (e.g. "parent.1").

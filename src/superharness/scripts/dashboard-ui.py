@@ -1570,9 +1570,9 @@ def budget_signals(project_dir: Path) -> dict:
         signals = {}
         try:
             import yaml  # noqa: F811
-            for f in agents_dir.glob("*.status.yaml"):
+            for f in agents_dir.glob("*.status.yaml"):  # noqa: state-read — legacy budget signal scan; budgets in SQLite when migration v25 has populated rows
                 try:
-                    data = yaml.safe_load(f.read_text(encoding="utf-8", errors="replace")) or {}
+                    data = yaml.safe_load(f.read_text(encoding="utf-8", errors="replace")) or {}  # noqa: state-read — legacy budget signal scan
                     runtime = data.get("runtime", f.stem.replace(".status", ""))
                     if "budget" in data and data["budget"]:
                         signals[runtime] = data["budget"]
@@ -2445,9 +2445,10 @@ class Handler(BaseHTTPRequestHandler):
             # Also purge from SQLite — items written by dual-mode may exist only in DB
             try:
                 from superharness.engine.db import get_connection, init_db
+                from superharness.engine import inbox_dao
                 _conn = get_connection(str(self.project_dir))
                 init_db(_conn)
-                _conn.execute("DELETE FROM inbox WHERE id = ?", (item_id,))
+                inbox_dao.remove(_conn, item_id)
                 _conn.commit()
                 _conn.close()
             except Exception as e:

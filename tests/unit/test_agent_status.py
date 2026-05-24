@@ -155,58 +155,69 @@ def test_agent_status_record_valid_liveness_values() -> None:
 # 3. write_agent_status — creates .superharness/agents/<runtime>.status.yaml
 # ---------------------------------------------------------------------------
 
-def test_write_agent_status_creates_file(tmp_path: Path) -> None:
+def test_write_agent_status_creates_sqlite_row(tmp_path: Path) -> None:
+    """SQLite is SoT — write_agent_status creates SQLite row, not YAML file."""
     project = _setup_project(tmp_path)
-    from superharness.engine.agent_status import write_agent_status
+    from superharness.engine.agent_status import write_agent_status, read_agent_status
     write_agent_status(project, runtime="claude-code")
-    status_file = project / ".superharness" / "agents" / "claude-code.status.yaml"
-    assert status_file.exists(), f"Expected {status_file} to be created"
+    record = read_agent_status(project, runtime="claude-code")
+    assert record is not None, "Expected SQLite row for claude-code"
+    assert record.runtime == "claude-code"
 
 
 def test_write_agent_status_creates_agents_dir(tmp_path: Path) -> None:
-    """write_agent_status creates .superharness/agents/ if it doesn't exist."""
+    """write_agent_status writes to SQLite — agents/ dir creation is incidental in dual mode."""
+    import os as _os
     project = _setup_project(tmp_path)
-    agents_dir = project / ".superharness" / "agents"
-    assert not agents_dir.exists()
-    from superharness.engine.agent_status import write_agent_status
-    write_agent_status(project, runtime="claude-code")
-    assert agents_dir.exists()
+    monkey_env = _os.environ.get("STATE_BACKEND")
+    _os.environ["STATE_BACKEND"] = "dual"
+    try:
+        from superharness.engine.agent_status import write_agent_status
+        write_agent_status(project, runtime="claude-code")
+        agents_dir = project / ".superharness" / "agents"
+        assert agents_dir.exists()
+    finally:
+        if monkey_env is None:
+            _os.environ.pop("STATE_BACKEND", None)
+        else:
+            _os.environ["STATE_BACKEND"] = monkey_env
 
 
-def test_write_agent_status_file_has_required_keys(tmp_path: Path) -> None:
+def test_write_agent_status_required_keys_sqlite(tmp_path: Path) -> None:
+    """SQLite row has schema_version, runtime, updated_at, liveness, active_task."""
     project = _setup_project(tmp_path)
-    from superharness.engine.agent_status import write_agent_status
+    from superharness.engine.agent_status import write_agent_status, read_agent_status
     write_agent_status(project, runtime="claude-code", active_task="feat.test")
-    status_file = project / ".superharness" / "agents" / "claude-code.status.yaml"
-    data = yaml.safe_load(status_file.read_text(encoding="utf-8"))
-    assert data.get("schema_version") == "1"
-    assert data.get("runtime") == "claude-code"
-    assert "updated_at" in data
-    assert data.get("liveness") == "active"
-    assert data.get("active_task") == "feat.test"
+    record = read_agent_status(project, runtime="claude-code")
+    assert record is not None
+    assert record.schema_version == "1"
+    assert record.runtime == "claude-code"
+    assert record.updated_at
+    assert record.liveness == "active"
+    assert record.active_task == "feat.test"
 
 
 def test_write_agent_status_external_runtime(tmp_path: Path) -> None:
-    """External/non-native runtimes use the same write path."""
+    """External/non-native runtimes use the same write path (SQLite)."""
     project = _setup_project(tmp_path)
-    from superharness.engine.agent_status import write_agent_status
+    from superharness.engine.agent_status import write_agent_status, read_agent_status
     write_agent_status(project, runtime="my-custom-bot")
-    status_file = project / ".superharness" / "agents" / "my-custom-bot.status.yaml"
-    assert status_file.exists()
-    data = yaml.safe_load(status_file.read_text(encoding="utf-8"))
-    assert data.get("runtime") == "my-custom-bot"
+    record = read_agent_status(project, runtime="my-custom-bot")
+    assert record is not None
+    assert record.runtime == "my-custom-bot"
 
 
 def test_write_agent_status_with_budget(tmp_path: Path) -> None:
     project = _setup_project(tmp_path)
-    from superharness.engine.agent_status import write_agent_status
+    from superharness.engine.agent_status import write_agent_status, read_agent_status
     budget = {"model": "claude-sonnet-4-6", "input_tokens": 1000, "output_tokens": 500,
                "cost_usd": 0.01, "max_budget_usd": 5.0}
     write_agent_status(project, runtime="claude-code", budget=budget)
-    status_file = project / ".superharness" / "agents" / "claude-code.status.yaml"
-    data = yaml.safe_load(status_file.read_text(encoding="utf-8"))
-    assert data.get("budget", {}).get("model") == "claude-sonnet-4-6"
-    assert data.get("budget", {}).get("cost_usd") == 0.01
+    record = read_agent_status(project, runtime="claude-code")
+    assert record is not None
+    assert record.budget is not None
+    assert record.budget.get("model") == "claude-sonnet-4-6"
+    assert record.budget.get("cost_usd") == 0.01
 
 
 # ---------------------------------------------------------------------------

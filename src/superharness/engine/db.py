@@ -13,7 +13,7 @@ from superharness.utils.paths import resolve_xdg_state_db_path
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 23
+CURRENT_SCHEMA_VERSION = 25
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -676,6 +676,65 @@ def _migration_v23(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS handoffs_fts")
 
 
+def _migration_v24(conn: sqlite3.Connection) -> None:
+    """Drop the inert yaml_sync_queue table and its indexes.
+
+    The table was created for a YAML→SQLite sync queue that was never
+    implemented. It has been empty and unqueried since creation. Removing it
+    cleans up dead schema from all project databases.
+    """
+    conn.execute("DROP TABLE IF EXISTS yaml_sync_queue")
+
+
+def _migration_v25(conn: sqlite3.Connection) -> None:
+    """SQLite SoT for agent liveness: heartbeat_contract, agent_status, agent_pulse.
+
+    Three previously-YAML-only state systems now have SQLite as source of truth.
+    YAML files become export mirrors for backwards compat and external tooling.
+
+    - agent_heartbeats: extended with richer heartbeat_contract.AgentHeartbeat fields
+      (runtime, active_task, next_wake_at, written_at, tokens_used/limit, cost_usd).
+      Same table previously used by `shux heartbeat`; now also holds watcher's heartbeat
+      and per-agent heartbeats written via heartbeat_contract.write_heartbeat.
+    - agent_runtime_status: covers .superharness/agents/<runtime>.status.yaml.
+    - agent_pulses: covers .superharness/agent-pulse.yaml.
+    """
+    # Extend agent_heartbeats with heartbeat_contract fields
+    _add_column_if_missing(conn, "agent_heartbeats", "runtime", "TEXT")
+    _add_column_if_missing(conn, "agent_heartbeats", "active_task", "TEXT")
+    _add_column_if_missing(conn, "agent_heartbeats", "next_wake_at", "TEXT")
+    _add_column_if_missing(conn, "agent_heartbeats", "written_at", "TEXT")
+    _add_column_if_missing(conn, "agent_heartbeats", "tokens_used", "INTEGER")
+    _add_column_if_missing(conn, "agent_heartbeats", "tokens_limit", "INTEGER")
+    _add_column_if_missing(conn, "agent_heartbeats", "cost_usd", "REAL")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS agent_runtime_status (
+            runtime         TEXT    PRIMARY KEY,
+            schema_version  TEXT    NOT NULL DEFAULT '1',
+            liveness        TEXT    NOT NULL DEFAULT 'active',
+            active_task     TEXT,
+            next_wake_at    TEXT,
+            budget_json     TEXT,
+            updated_at      TEXT    NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS agent_pulses (
+            agent       TEXT    PRIMARY KEY,
+            task_id     TEXT    NOT NULL,
+            status      TEXT    NOT NULL DEFAULT 'running',
+            pid         INTEGER,
+            message     TEXT,
+            last_seen   TEXT    NOT NULL
+        )
+        """
+    )
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -700,4 +759,6 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v21,
     _migration_v22,
     _migration_v23,
+    _migration_v24,
+    _migration_v25,
 ]

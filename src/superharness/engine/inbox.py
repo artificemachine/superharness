@@ -372,9 +372,7 @@ if __name__ == "__main__":
             conn = get_connection(_project_dir)
             try:
                 init_db(conn)
-                # inbox_dao doesn't have remove, we can use a direct DELETE or add it to DAO
-                conn.execute("DELETE FROM inbox WHERE id = ?", (_args.id,))
-                removed = conn.total_changes > 0
+                removed = inbox_dao.remove(conn, _args.id)
                 if removed:
                     conn.commit()
                     print(f"result=removed id={_args.id}")
@@ -390,11 +388,15 @@ if __name__ == "__main__":
     if _args.command == "set_field":
         try:
             from superharness.engine.db import get_connection, init_db
+            from superharness.engine import inbox_dao
             conn = get_connection(_project_dir)
             try:
                 init_db(conn)
-                # set_field is not in DAO, use direct UPDATE
-                conn.execute(f"UPDATE inbox SET {_args.key} = ? WHERE id = ?", (_args.value, _args.id))
+                try:
+                    inbox_dao.set_field(conn, _args.id, _args.key, _args.value)
+                except Exception as _e:
+                    print(f"set_field error: {_e}", file=sys.stderr)
+                    sys.exit(1)
                 updated = conn.total_changes > 0
                 if updated:
                     conn.commit()

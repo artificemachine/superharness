@@ -95,11 +95,11 @@ def test_do_dispatch_has_no_orphaned_return_none():
 # ---------------------------------------------------------------------------
 
 def test_claim_next_item_returns_zero_on_empty_inbox(tmp_path):
-    """_claim_next_item must return 0 (not None) when inbox has nothing pending."""
-    ctx = _make_ctx(tmp_path)
+    """_claim_next_item must return 0 (not None) when SQLite is active and inbox has nothing pending."""
+    ctx = _make_ctx(tmp_path, sqlite_primary=True, target_filter="claude-code")
     with patch(
-        "superharness.commands.inbox_dispatch.subprocess.run",
-        return_value=MagicMock(returncode=0, stdout="", stderr=""),
+        "superharness.commands.inbox_dispatch._sqlite_claim_next",
+        return_value=None,
     ):
         rc = _claim_next_item(ctx)
     assert rc == 0
