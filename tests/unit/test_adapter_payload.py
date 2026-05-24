@@ -309,11 +309,14 @@ class TestEdges:
 class TestHandoffs:
     def test_handoff_attached_to_correct_task(self, tmp_path):
         project = _setup(tmp_path)
-        hf = project / ".superharness" / "handoffs" / "report-feat.one.yaml"
-        hf.write_text(
-            "task: feat.one\nphase: report\nstatus: report_ready\n"
-            "from: claude-code\nto: owner\ndate: 2026-04-10T10:00:00Z\n"
-            "outcome: Done.\nverified: false\n"
+        from tests.helpers import seed_sqlite_handoff
+        seed_sqlite_handoff(
+            project, "feat.one", phase="report", status="report_ready",
+            from_agent="claude-code",
+            content="task: feat.one\nphase: report\nstatus: report_ready\n"
+                    "from: claude-code\nto: owner\ndate: 2026-04-10T10:00:00Z\n"
+                    "outcome: Done.\nverified: false\n",
+            now="2026-04-10T10:00:00Z",
         )
         d = json.loads(_run(["--project", str(project)]).stdout)
         task = d["tasks"][0]
@@ -326,11 +329,14 @@ class TestHandoffs:
     def test_handoff_files_touched_alias(self, tmp_path):
         """`files_touched` in YAML must appear as `files_changed` in payload."""
         project = _setup(tmp_path)
-        hf = project / ".superharness" / "handoffs" / "report.yaml"
-        hf.write_text(
-            "task: feat.one\nphase: report\nstatus: report_ready\n"
-            "from: claude-code\nto: owner\ndate: 2026-04-10T10:00:00Z\n"
-            "files_touched:\n  - src/foo.py\n"
+        from tests.helpers import seed_sqlite_handoff
+        seed_sqlite_handoff(
+            project, "feat.one", phase="report", status="report_ready",
+            from_agent="claude-code",
+            content="task: feat.one\nphase: report\nstatus: report_ready\n"
+                    "from: claude-code\nto: owner\ndate: 2026-04-10T10:00:00Z\n"
+                    "files_touched:\n  - src/foo.py\n",
+            now="2026-04-10T10:00:00Z",
         )
         d = json.loads(_run(["--project", str(project)]).stdout)
         h = d["tasks"][0]["handoffs"][0]
@@ -340,27 +346,33 @@ class TestHandoffs:
     def test_handoff_without_task_field_ignored(self, tmp_path):
         """YAML file with no `task:` key must not appear in any task's handoffs."""
         project = _setup(tmp_path)
-        hf = project / ".superharness" / "handoffs" / "orphan.yaml"
-        hf.write_text("phase: report\nstatus: done\nfrom: owner\nto: owner\n")
+        # No SQLite handoff seeded — should produce zero handoffs
         d = json.loads(_run(["--project", str(project)]).stdout)
         total = sum(len(t["handoffs"]) for t in d["tasks"])
         assert total == 0
 
     def test_handoffs_sorted_oldest_first(self, tmp_path):
         project = _setup(tmp_path)
-        sh = project / ".superharness" / "handoffs"
-        (sh / "b_report.yaml").write_text(
-            "task: feat.one\nphase: report\nstatus: report_ready\n"
-            "from: claude-code\nto: owner\ndate: 2026-04-12T10:00:00Z\n"
+        from tests.helpers import seed_sqlite_handoff
+        # Seed plan first (older), then report (newer) — adapter must sort oldest first
+        seed_sqlite_handoff(
+            project, "feat.one", phase="plan", status="plan_approved",
+            from_agent="owner",
+            content="task: feat.one\nphase: plan\nstatus: plan_approved\n"
+                    "from: owner\nto: claude-code\ndate: 2026-04-11T08:00:00Z\n",
+            now="2026-04-11T08:00:00Z",
         )
-        (sh / "a_plan.yaml").write_text(
-            "task: feat.one\nphase: plan\nstatus: plan_approved\n"
-            "from: owner\nto: claude-code\ndate: 2026-04-11T08:00:00Z\n"
+        seed_sqlite_handoff(
+            project, "feat.one", phase="report", status="report_ready",
+            from_agent="claude-code",
+            content="task: feat.one\nphase: report\nstatus: report_ready\n"
+                    "from: claude-code\nto: owner\ndate: 2026-04-12T10:00:00Z\n",
+            now="2026-04-12T10:00:00Z",
         )
         d = json.loads(_run(["--project", str(project)]).stdout)
         hs = d["tasks"][0]["handoffs"]
         assert len(hs) == 2
-        assert hs[0]["phase"] == "plan"   # older file (a_) comes first
+        assert hs[0]["phase"] == "plan"   # older comes first
         assert hs[1]["phase"] == "report"
 
 
@@ -371,30 +383,29 @@ class TestHandoffs:
 class TestLedger:
     def test_ledger_entries_parsed(self, tmp_path):
         project = _setup(tmp_path)
-        (project / ".superharness" / "ledger.md").write_text(
-            "# Ledger\n\n"
-            "- 2026-04-10T08:00:00Z — claude-code — modified: foo.py\n"
-            "2026-04-11T09:00:00Z session-stop: snapshot written\n"
-        )
+        from tests.helpers import seed_sqlite_ledger
+        seed_sqlite_ledger(project, action="modified: foo.py", agent="claude-code",
+                           now="2026-04-10T08:00:00Z")
+        seed_sqlite_ledger(project, action="session-stop: snapshot written", agent="claude-code",
+                           now="2026-04-11T09:00:00Z")
         d = json.loads(_run(["--project", str(project)]).stdout)
         assert len(d["ledger"]) == 2
 
     def test_ledger_newest_first(self, tmp_path):
         project = _setup(tmp_path)
-        (project / ".superharness" / "ledger.md").write_text(
-            "# Ledger\n\n"
-            "- 2026-04-10T08:00:00Z — claude-code — modified: foo.py\n"
-            "- 2026-04-11T09:00:00Z — claude-code — modified: bar.py\n"
-        )
+        from tests.helpers import seed_sqlite_ledger
+        seed_sqlite_ledger(project, action="modified: foo.py", agent="claude-code",
+                           now="2026-04-10T08:00:00Z")
+        seed_sqlite_ledger(project, action="modified: bar.py", agent="claude-code",
+                           now="2026-04-11T09:00:00Z")
         d = json.loads(_run(["--project", str(project)]).stdout)
         assert d["ledger"][0]["timestamp"] > d["ledger"][1]["timestamp"]
 
     def test_ledger_entry_fields(self, tmp_path):
         project = _setup(tmp_path)
-        (project / ".superharness" / "ledger.md").write_text(
-            "# Ledger\n\n"
-            "- 2026-04-10T08:00:00Z — claude-code — modified: foo.py\n"
-        )
+        from tests.helpers import seed_sqlite_ledger
+        seed_sqlite_ledger(project, action="modified: foo.py", agent="claude-code",
+                           now="2026-04-10T08:00:00Z")
         d = json.loads(_run(["--project", str(project)]).stdout)
         e = d["ledger"][0]
         assert "timestamp" in e
@@ -403,10 +414,9 @@ class TestLedger:
 
     def test_ledger_session_type(self, tmp_path):
         project = _setup(tmp_path)
-        (project / ".superharness" / "ledger.md").write_text(
-            "# Ledger\n\n"
-            "2026-04-10T08:00:00Z session-stop: branch main\n"
-        )
+        from tests.helpers import seed_sqlite_ledger
+        seed_sqlite_ledger(project, action="session-stop: branch main", agent="claude-code",
+                           now="2026-04-10T08:00:00Z")
         d = json.loads(_run(["--project", str(project)]).stdout)
         assert d["ledger"][0]["type"] == "session"
 

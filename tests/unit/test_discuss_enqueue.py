@@ -7,7 +7,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
-from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
+from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite, seed_sqlite_handoff
 
 import pytest
 
@@ -120,6 +120,17 @@ def test_discuss_approve_approves_handoff(tmp_path: Path) -> None:
         "  approved_by_user: false\n"
         "  approved_at: null\n"
     )
+    # Seed SQLite (source of truth) with task + inbox + handoff state
+    seed_sqlite_from_yaml(project)
+    seed_sqlite_handoff(
+        project, "approval-task", phase="report", status="pending_user_approval",
+        content=(
+            "task: approval-task\nto: codex-cli\ndate: 2026-03-11\n"
+            "status: pending_user_approval\n"
+            "approval_gate:\n  required: true\n  approved_by_user: false\n  approved_at: null\n"
+        ),
+        now="2026-03-11T00:00:00Z",
+    )
     r = _run_discuss([
         "approve",
         "--project", str(project),
@@ -129,5 +140,11 @@ def test_discuss_approve_approves_handoff(tmp_path: Path) -> None:
     ])
     assert r.returncode == 0, r.stderr
     assert "Approved" in r.stdout or "approved" in r.stdout.lower()
-    handoff_text = (harness / "handoffs" / "2026-test-approval.yaml").read_text()
-    assert "approved_by_user: true" in handoff_text
+    # Approval gate is in SQLite (source of truth); YAML is export-only.
+    import sqlite3 as _sql
+    db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
+    approved_row = db.execute(
+        "SELECT metadata FROM handoffs WHERE task_id='approval-task' AND status='approved' LIMIT 1"
+    ).fetchone()
+    db.close()
+    assert approved_row is not None, "No approved handoff found in SQLite after cmd_approve"

@@ -51,21 +51,7 @@ def archive_yaml(project_dir: str, *, dry_run: bool = False) -> int:
     archived: list[str] = []
     errors: list[str] = []
 
-    # Drain the yaml_sync_queue before archiving
-    if not dry_run:
-        try:
-            from superharness.engine.db import get_connection, init_db
-            from superharness.engine import yaml_sync
-            conn = get_connection(project_dir)
-            try:
-                init_db(conn)
-                report = yaml_sync.drain(conn, project_dir, max_ops=500)
-                print(f"archive-yaml: drained sync queue — applied={report.applied} failed={report.failed}")
-                conn.commit()
-            finally:
-                conn.close()
-        except Exception as exc:
-            print(f"archive-yaml: warning: could not drain sync queue: {exc}", file=sys.stderr)
+    # yaml_sync queue removed — no-op stub deleted in Phase 4
 
     # Archive named state files
     for rel in _YAML_STATE_FILES:

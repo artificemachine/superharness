@@ -139,21 +139,45 @@ def _coerce_date(value: Any) -> str:
 # ---------------------------------------------------------------------------
 
 def _load_handoffs(sh_dir: Path) -> dict[str, list[dict]]:
-    """Load all handoff YAML files, grouped by task ID, oldest first."""
-    handoffs_dir = sh_dir / "handoffs"
-    if not handoffs_dir.is_dir():
+    """Load all handoffs from SQLite, grouped by task ID, oldest first."""
+    project_dir = sh_dir.parent
+    try:
+        rows = state_reader.get_handoffs(str(project_dir))
+    except Exception as e:
+        logger.warning("adapter_payload._load_handoffs SQLite failed: %s", e, exc_info=True)
         return {}
 
     by_task: dict[str, list[dict]] = {}
-    for p in sorted(handoffs_dir.glob("*.yaml")):
-        raw = _load_yaml(p)
-        if not isinstance(raw, dict):
+    for row in rows:
+        if not isinstance(row, dict):
             continue
-        task_id = raw.get("task")
+        task_id = row.get("task_id")
         if not task_id:
             continue
+        # Reconstruct raw dict from stored YAML content for _normalize_handoff
+        content_text = row.get("content") or ""
+        raw: dict = {}
+        if content_text:
+            try:
+                parsed = yaml.safe_load(content_text)
+                if isinstance(parsed, dict):
+                    raw = parsed
+            except Exception:
+                pass
+        if not raw:
+            raw = {
+                "task": task_id,
+                "phase": row.get("phase", "report"),
+                "status": row.get("status", ""),
+                "from": row.get("from_agent", ""),
+                "to": row.get("to_agent", ""),
+                "date": row.get("created_at", ""),
+            }
         by_task.setdefault(task_id, []).append(_normalize_handoff(raw))
 
+    # sort oldest first per task
+    for lst in by_task.values():
+        lst.sort(key=lambda h: str(h.get("date") or ""))
     return by_task
 
 
@@ -219,41 +243,32 @@ def _classify_ledger(desc: str) -> tuple[str, str | None]:
 
 
 def _parse_ledger(sh_dir: Path, limit: int = 200) -> list[dict]:
-    """Parse ledger.md → typed LedgerEntry list, newest first."""
-    ledger_path = sh_dir / "ledger.md"
-    if not ledger_path.exists():
+    """Return ledger entries from SQLite, formatted for the adapter payload."""
+    project_dir = sh_dir.parent
+    try:
+        entries_raw = state_reader.get_ledger_entries(str(project_dir), limit=limit)
+    except Exception as e:
+        logger.warning("adapter_payload._parse_ledger SQLite failed: %s", e, exc_info=True)
         return []
 
     entries: list[dict] = []
-    for line in ledger_path.read_text(errors="replace").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
+    for e in entries_raw:
+        if not isinstance(e, dict):
             continue
-
-        m = _RE_DASH.match(line)
-        if m:
-            agent = m.group("agent").strip()
-            desc  = m.group("desc").strip()
-            kind, task_id = _classify_ledger(desc)
-            entry: dict = {"timestamp": m.group("ts"), "type": kind, "description": desc}
-            if agent and agent not in ("[gc]",):
-                entry["agent"] = agent
-            if task_id:
-                entry["task"] = task_id
-            entries.append(entry)
-            continue
-
-        m = _RE_BARE.match(line)
-        if m:
-            desc = m.group("desc").strip()
-            kind, task_id = _classify_ledger(desc)
-            entry = {"timestamp": m.group("ts"), "type": kind, "description": desc}
-            if task_id:
-                entry["task"] = task_id
-            entries.append(entry)
-
-    entries.reverse()  # newest first
-    return entries[:limit]
+        action = str(e.get("action") or "")
+        kind, task_id = _classify_ledger(action)
+        entry: dict = {
+            "timestamp":   str(e.get("created_at") or ""),
+            "type":        kind,
+            "description": action,
+        }
+        agent = str(e.get("agent") or "")
+        if agent and agent not in ("[gc]",):
+            entry["agent"] = agent
+        if task_id:
+            entry["task"] = task_id
+        entries.append(entry)
+    return entries
 
 
 # ---------------------------------------------------------------------------

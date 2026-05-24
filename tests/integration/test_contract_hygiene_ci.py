@@ -50,6 +50,13 @@ def test_hygiene_check_passes_with_valid_contract(tmp_path):
     (harness / "decisions.yaml").write_text("decisions: []\n")
     (harness / "failures.yaml").write_text("failures: []\n")
 
+    # Seed SQLite for handoff and ledger (production code reads from SQLite)
+    from tests.helpers import seed_sqlite_handoff, seed_sqlite_ledger
+    seed_sqlite_handoff(tmp_path, "task-one", phase="report", status="done",
+                        content="task: task-one\nstatus: done\n", now="2026-03-10T00:00:00Z")
+    seed_sqlite_ledger(tmp_path, action="completed task-one", task_id="task-one",
+                       now="2026-03-10T00:00:00Z")
+
     # Run check
     result = subprocess.run(
         [str(SCRIPTS_DIR / "check-contract-hygiene.sh"), "--project", str(tmp_path)],
@@ -93,7 +100,7 @@ def test_hygiene_check_fails_without_handoff(tmp_path):
     )
 
     assert result.returncode == 1
-    assert "Missing handoff file for done task: task-orphan" in result.stdout
+    assert "Missing handoff for done task: task-orphan" in result.stdout
 
 
 def test_hygiene_check_fails_without_ledger_entry(tmp_path):

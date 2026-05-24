@@ -65,45 +65,41 @@ def search(project_dir: Path, terms: list[str], since_days: int | None = None) -
 
     results: list[dict] = []
 
-    # --- Scan handoff files ---
-    handoffs_dir = sh_dir / "handoffs"
-    if handoffs_dir.is_dir():
-        for path in sorted(handoffs_dir.glob("*.yaml")) + sorted(handoffs_dir.glob("*.yml")) + sorted(handoffs_dir.glob("*.md")):
-            try:
-                raw = path.read_text(errors="replace")
-            except OSError:
-                continue
-            data = None
-            if path.suffix in (".yaml", ".yml"):
-                try:
-                    import yaml
-                    data = yaml.safe_load(raw)
-                except Exception as e:
-                    logger.warning("recall.py unexpected error: %s", e, exc_info=True)
-                    data = None
-            fdate = _file_date(path, data)
-            if since_date and fdate and fdate < since_date:
-                continue
-            agent, task_id = _file_meta(path, data)
-            lines = raw.splitlines()
-            snippets: list[str] = []
-            count = 0
-            for term in terms:
-                for i, line in enumerate(lines):
-                    if term in line.lower():
-                        count += 1
-                        s = _ctx(lines, i)
-                        if s and s not in snippets:
-                            snippets.append(s)
-            if count == 0:
-                continue
-            results.append({
-                "date": fdate,
-                "agent": agent,
-                "task_id": task_id,
-                "count": count,
-                "snippets": snippets[:3],
-            })
+    # --- Scan handoffs from SQLite ---
+    try:
+        from superharness.engine import state_reader as _sr_h
+        handoff_rows = _sr_h.get_handoffs(str(project_dir))
+    except Exception as e:
+        logger.warning("recall.py handoffs SQLite scan failed: %s", e, exc_info=True)
+        handoff_rows = []
+    for row in handoff_rows:
+        if not isinstance(row, dict):
+            continue
+        raw = str(row.get("content") or row.get("metadata") or row)
+        fdate = _try_date(str(row.get("created_at", ""))[:10])
+        if since_date and fdate and fdate < since_date:
+            continue
+        agent = str(row.get("from_agent") or row.get("agent") or "unknown")
+        task_id = str(row.get("task_id") or "unknown")
+        lines = raw.splitlines()
+        snippets: list[str] = []
+        count = 0
+        for term in terms:
+            for i, line in enumerate(lines):
+                if term in line.lower():
+                    count += 1
+                    s = _ctx(lines, i)
+                    if s and s not in snippets:
+                        snippets.append(s)
+        if count == 0:
+            continue
+        results.append({
+            "date": fdate,
+            "agent": agent,
+            "task_id": task_id,
+            "count": count,
+            "snippets": snippets[:3],
+        })
 
     # --- Scan tasks from SQLite (titles + subtasks) ---
     try:
@@ -139,29 +135,31 @@ def search(project_dir: Path, terms: list[str], since_days: int | None = None) -
                 "snippets": [snippet[:160]],
             })
 
-    # --- Scan ledger.md ---
-    ledger = sh_dir / "ledger.md"
-    if ledger.exists():
-        for line in ledger.read_text(errors="replace").splitlines():
-            line = line.rstrip()
-            if not line.strip() or line.strip().startswith("#"):
-                continue
-            m = re.search(r"(\d{4}-\d{2}-\d{2})", line)
-            ldate = _try_date(m.group(1)) if m else None
-            if since_date and ldate and ldate < since_date:
-                continue
-            m2 = re.search(r"— ([\w\-]+) —", line)
-            agent = m2.group(1) if m2 else "unknown"
-            count = sum(1 for t in terms if t in line.lower())
-            if count == 0:
-                continue
-            results.append({
-                "date": ldate,
-                "agent": agent,
-                "task_id": "ledger",
-                "count": count,
-                "snippets": [line.strip()[:120]],
-            })
+    # --- Scan ledger from SQLite ---
+    try:
+        from superharness.engine import state_reader as _sr_l
+        ledger_entries = _sr_l.get_ledger_entries(str(project_dir), limit=500)
+    except Exception as e:
+        logger.warning("recall.py ledger SQLite scan failed: %s", e, exc_info=True)
+        ledger_entries = []
+    for entry in ledger_entries:
+        if not isinstance(entry, dict):
+            continue
+        line = f"{entry.get('created_at', '')} {entry.get('agent', '')} {entry.get('action', '')}"
+        ldate = _try_date(str(entry.get("created_at", ""))[:10])
+        if since_date and ldate and ldate < since_date:
+            continue
+        agent = str(entry.get("agent") or "unknown")
+        count = sum(1 for t in terms if t in line.lower())
+        if count == 0:
+            continue
+        results.append({
+            "date": ldate,
+            "agent": agent,
+            "task_id": "ledger",
+            "count": count,
+            "snippets": [line.strip()[:120]],
+        })
 
     # Sort: newest first, then by match count descending
     results.sort(key=lambda r: (

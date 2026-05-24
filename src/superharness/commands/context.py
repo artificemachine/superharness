@@ -63,15 +63,29 @@ def _find_active_task_id(contract: dict) -> str | None:
 
 
 def _find_latest_handoff(handoffs_dir: Path, task_id: str) -> dict | None:
-    """Return parsed YAML of the most recent handoff file for this task."""
-    if not handoffs_dir.is_dir():
+    """Return the most recent handoff for this task from SQLite."""
+    try:
+        from superharness.engine import state_reader as _sr
+        project_dir = str(handoffs_dir.parent.parent)
+        rows = _sr.get_handoffs(project_dir, task_id=task_id)
+        if not rows:
+            return None
+        # get_handoffs with task_id returns history (chronological); take last
+        row = rows[-1]
+        # Try to reconstruct dict from content field (stored as YAML text)
+        content_text = row.get("content") or ""
+        if content_text:
+            try:
+                import yaml
+                parsed = yaml.safe_load(content_text)
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                pass
+        return dict(row)
+    except Exception as e:
+        logger.warning("context.py _find_latest_handoff failed: %s", e, exc_info=True)
         return None
-    candidates = [f for f in handoffs_dir.glob("*.yaml") if task_id in f.name]
-    if not candidates:
-        return None
-    latest = max(candidates, key=lambda p: p.stat().st_mtime)
-    data = _load_yaml_safe(latest)
-    return data if isinstance(data, dict) else None
 
 
 def _filter_entries(items: list, task_id: str) -> list[dict]:
@@ -83,14 +97,20 @@ def _filter_entries(items: list, task_id: str) -> list[dict]:
 
 
 def _ledger_lines_for_task(ledger_path: Path, task_id: str, n: int = 5) -> list[str]:
-    if not ledger_path.exists():
+    """Return recent ledger entries mentioning task_id, from SQLite."""
+    try:
+        from superharness.engine import state_reader as _sr
+        project_dir = str(ledger_path.parent.parent)
+        entries = _sr.get_ledger_entries(project_dir, limit=200)
+        matching = [
+            f"{e.get('created_at', '')} — {e.get('agent', '')} — {e.get('action', '')}"
+            for e in entries
+            if task_id in str(e.get("action", "")) or task_id in str(e.get("details", ""))
+        ]
+        return matching[-n:]
+    except Exception as e:
+        logger.warning("context.py _ledger_lines_for_task failed: %s", e, exc_info=True)
         return []
-    lines = ledger_path.read_text(errors="replace").splitlines()
-    matching = [
-        ln for ln in lines
-        if task_id in ln and ln.strip() and not ln.strip().startswith("#")
-    ]
-    return matching[-n:]
 
 
 def _git_changed_files(project_dir: Path) -> list[str] | None:
@@ -188,8 +208,8 @@ def task_context(
     # (subtasks don't have their own handoffs; they inherit the parent's).
     lookup_id = parent_id if is_subtask else task_id
 
-    # Last handoff
-    handoffs_dir = sh_dir / "handoffs"
+    # Last handoff (SQLite via _find_latest_handoff)
+    handoffs_dir = sh_dir / "handoffs"  # kept for _find_latest_handoff signature compat
     handoff = _find_latest_handoff(handoffs_dir, lookup_id)
     if handoff:
         date_raw = str(handoff.get("date", ""))[:10].strip()

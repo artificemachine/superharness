@@ -858,21 +858,31 @@ def main(argv: list[str] | None = None) -> None:
     task_health = _deep_task_health(project_dir)
 
     # --- Legacy stats for backward compat ---
-    # Approvals pending
+    # Approvals pending (from SQLite)
     approvals_pending = 0
-    if os.path.isdir(handoff_dir):
-        for path in sorted(glob.glob(os.path.join(handoff_dir, "*.yaml"))):
-            try:
-                y = safe_load(path, dict)
-                status = str(y.get("status", ""))
-                gate = y.get("approval_gate")
-                required = isinstance(gate, dict) and gate.get("required") is True
-                approved = isinstance(gate, dict) and gate.get("approved_by_user") is True
-                if status == "pending_user_approval" or (required and not approved):
-                    approvals_pending += 1
-            except Exception as e:
-                logger.warning("status.py unexpected error: %s", e, exc_info=True)
+    try:
+        from superharness.engine import state_reader as _sr_s
+        import yaml as _yaml_s
+        handoff_rows = _sr_s.get_handoffs(project_dir)
+        for row in handoff_rows:
+            if not isinstance(row, dict):
                 continue
+            _status = str(row.get("status") or "")
+            gate = None
+            content_text = row.get("content") or ""
+            if content_text:
+                try:
+                    parsed = _yaml_s.safe_load(content_text)
+                    if isinstance(parsed, dict):
+                        gate = parsed.get("approval_gate")
+                except Exception:
+                    pass
+            required = isinstance(gate, dict) and gate.get("required") is True
+            approved = isinstance(gate, dict) and gate.get("approved_by_user") is True
+            if _status == "pending_user_approval" or (required and not approved):
+                approvals_pending += 1
+    except Exception as e:
+        logger.warning("status.py approvals_pending failed: %s", e, exc_info=True)
 
     # Retry high
     retry_high = 0

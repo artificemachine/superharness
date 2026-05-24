@@ -1027,29 +1027,6 @@ def test_sqlite_only_backend_returns_sqlite_data(clean_harness: Path) -> None:
     )
 
 
-def test_yaml_sync_is_no_op() -> None:
-    """yaml_sync.drain_queue must always return DrainResult with 0 applied/failed."""
-    from superharness.engine.yaml_sync import drain_queue, DrainResult
-    result = drain_queue("/tmp/nonexistent")
-    assert isinstance(result, DrainResult)
-    assert result.applied == 0, "drain_queue must be a no-op"
-    assert result.failed == 0, "drain_queue must be a no-op"
-
-
-def test_yaml_sync_module_is_minimal() -> None:
-    """yaml_sync.py must not contain any active sync/writeback logic beyond the docstring."""
-    src = open("src/superharness/engine/yaml_sync.py").read()
-    # Remove docstring before checking
-    if src.startswith('"""'):
-        end = src.index('"""', 3)
-        src = src[end + 3:]
-    forbidden = ["_export", "_sync_tasks", "contract.yaml", "inbox.yaml"]
-    found = [w for w in forbidden if w in src]
-    assert not found, (
-        f"yaml_sync.py must be stripped of active sync logic, found: {found}"
-    )
-
-
 def test_state_reader_no_yaml_ingestion_call() -> None:
     """Production read paths must not call any function with 'ingest' in its name."""
     import inspect
@@ -1094,6 +1071,26 @@ def test_discussion_view_shows_all_submissions() -> None:
                 "points": [{"id": "p1", "verdict": "agree", "rationale": "OK"}],
                 "submitted_at": "2026-01-01T01:00:00Z",
             }))
+
+        # Seed SQLite — production code reads from discussions_dao, not YAML files
+        import sqlite3 as _sq
+        from superharness.engine.db import get_connection as _gc, init_db as _idb
+        from superharness.engine import discussions_dao as _ddao
+        _legacy = d / ".superharness" / "state.sqlite3"
+        _legacy.parent.mkdir(parents=True, exist_ok=True)
+        if not _legacy.exists():
+            _sq.connect(str(_legacy)).close()
+        _conn = _gc(str(d))
+        _idb(_conn)
+        _ddao.create(_conn, id="test-view-all", topic="Test all submissions",
+                     owners=["claude-code", "codex-cli", "opencode"],
+                     now="2026-01-01T00:00:00Z")
+        for agent in ["claude-code", "codex-cli", "opencode"]:
+            _ddao.add_round(_conn, discussion_id="test-view-all", round_number=1,
+                            agent=agent, content=f"Position from {agent}",
+                            verdict="consensus", now="2026-01-01T01:00:00Z")
+        _conn.commit()
+        _conn.close()
 
         import sys; sys.path.insert(0, "src")
         import importlib
@@ -1278,12 +1275,19 @@ def test_fts_recall_finds_handoff_by_keyword(clean_harness: Path) -> None:
     _write_profile(clean_harness)
     _init_sqlite(clean_harness)
 
-    # Write a handoff file
+    # Write a handoff file and seed SQLite (production code reads from SQLite)
     handoffs = clean_harness / ".superharness" / "handoffs"
     handoffs.mkdir(parents=True, exist_ok=True)
     (handoffs / "test-handoff.yaml").write_text(
         "id: h1\ntask: task-a\nfrom: claude-code\nto: owner\nstatus: done\n"
         "summary: Fixed the SQLite regression bug\n"
+    )
+    from tests.helpers import seed_sqlite_handoff
+    seed_sqlite_handoff(
+        clean_harness, "task-a", phase="report", status="done",
+        from_agent="claude-code",
+        content="id: h1\ntask: task-a\nfrom: claude-code\nto: owner\nstatus: done\n"
+                "summary: Fixed the SQLite regression bug\n",
     )
 
     from superharness.engine.recall import search
@@ -1492,8 +1496,12 @@ def test_loop_detector_integration_with_watcher() -> None:
     assert "loop" in gate["reason"].lower()
 
 
-def test_fts_migration_v6_creates_table(clean_harness: Path) -> None:
-    """Migration v6 must create the handoffs_fts virtual table."""
+def test_handoffs_fts_removed_by_migration_v23(clean_harness: Path) -> None:
+    """Migration v23 drops the orphaned, misconfigured handoffs_fts table.
+
+    It was created by v6 but never populated or queried, and declared columns
+    that don't exist in the handoffs table. See docs/ANALYSIS-sqlite-doctrine-drift.md.
+    """
     from tests.e2e.test_lifecycle_fixes_regression import _write_profile, _init_sqlite
     _write_profile(clean_harness)
     _init_sqlite(clean_harness)
@@ -1503,7 +1511,7 @@ def test_fts_migration_v6_creates_table(clean_harness: Path) -> None:
     tables = [r[0] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%fts%'"
     ).fetchall()]
-    assert "handoffs_fts" in tables, f"Migration v6 must create handoffs_fts, got: {tables}"
+    assert "handoffs_fts" not in tables, f"handoffs_fts must be dropped by v23, got: {tables}"
     conn.close()
 
 

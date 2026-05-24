@@ -37,6 +37,11 @@ def _write_project(project: Path) -> None:
     (harness / "ledger.md").write_text("# Ledger\n- 2026-03-08 done-task completed\n")
     (handoffs / "2026-03-08-done-task.yaml").write_text("task: done-task\n")
     seed_sqlite_from_yaml(project)
+    from tests.helpers import seed_sqlite_handoff, seed_sqlite_ledger
+    seed_sqlite_handoff(project, "done-task", phase="report", status="done",
+                        content="task: done-task\n", now="2026-03-08T00:00:00Z")
+    seed_sqlite_ledger(project, action="done-task completed", task_id="done-task",
+                       now="2026-03-08T00:00:00Z")
 
 
 def test_contract_hygiene_passes_for_done_task_with_evidence(repo_root, tmp_path) -> None:

@@ -61,6 +61,44 @@ def get_history(
     )
     return [_row_to_handoff(row) for row in cursor.fetchall()]
 
+def get_all(
+    conn: sqlite3.Connection,
+    *,
+    limit: int | None = None,
+) -> list[HandoffRow]:
+    """Return all handoffs, newest first. Optional row limit."""
+    sql = "SELECT * FROM handoffs ORDER BY created_at DESC, id DESC"
+    params: tuple[Any, ...] = ()
+    if limit is not None:
+        sql += " LIMIT ?"
+        params = (int(limit),)
+    cursor = conn.execute(sql, params)
+    return [_row_to_handoff(row) for row in cursor.fetchall()]
+
+def get_for_agent(
+    conn: sqlite3.Connection,
+    to_agent: str,
+) -> list[HandoffRow]:
+    """Return handoffs addressed to a given agent, newest first."""
+    cursor = conn.execute(
+        "SELECT * FROM handoffs WHERE to_agent = ? ORDER BY created_at DESC, id DESC",
+        (to_agent,)
+    )
+    return [_row_to_handoff(row) for row in cursor.fetchall()]
+
+def search(
+    conn: sqlite3.Connection,
+    term: str,
+) -> list[HandoffRow]:
+    """Substring search over handoff content and metadata, newest first."""
+    like = f"%{term}%"
+    cursor = conn.execute(
+        "SELECT * FROM handoffs WHERE content LIKE ? OR metadata LIKE ? "
+        "ORDER BY created_at DESC, id DESC",
+        (like, like)
+    )
+    return [_row_to_handoff(row) for row in cursor.fetchall()]
+
 def get_latest(
     conn: sqlite3.Connection,
     task_id: str,
