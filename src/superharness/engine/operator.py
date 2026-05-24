@@ -181,12 +181,22 @@ class Operator:
 
     def check_watcher_health(self, stale_threshold_sec: int = 120) -> HealthStatus:
         """Check if the background watcher is alive."""
+        # SQLite primary — source of truth
+        try:
+            from superharness.engine.heartbeat_contract import read_heartbeat_db
+            hb = read_heartbeat_db(str(self.project_dir), "watcher")
+            if hb is not None and hb.written_at:
+                return self._check_ts_age(hb.written_at, "watcher (sqlite)", stale_threshold_sec)
+        except Exception as e:
+            logger.warning("operator.py: failed to read watcher heartbeat from SQLite: %s", e, exc_info=True)
+
+        # YAML fallback (legacy projects)
         hb_yaml = self.harness_dir / "watcher.heartbeat.yaml"
         hb_txt = self.harness_dir / "watcher.heartbeat"
         if hb_yaml.exists():
             try:
                 import yaml
-                data = yaml.safe_load(hb_yaml.read_text())
+                data = yaml.safe_load(hb_yaml.read_text())  # noqa: state-read — YAML fallback when SQLite empty (legacy projects)
                 ts_str = data.get("written_at")
                 if ts_str: return self._check_ts_age(ts_str, "watcher (yaml)", stale_threshold_sec)
             except Exception as e:

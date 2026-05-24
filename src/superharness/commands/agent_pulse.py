@@ -43,31 +43,90 @@ def _write_pulse(project_dir: str, task_id: str, agent: str,
         sys.exit(1)
 
     pid = os.getpid()
-    data: dict = {
-        "task_id": task_id,
-        "agent": agent,
-        "status": status,
-        "last_seen": _now_iso(),
-        "pid": pid,
-    }
-    if message:
-        data["message"] = message
+    last_seen = _now_iso()
 
-    pulse_path.write_text(yaml.dump(data, default_flow_style=False), encoding="utf-8")
+    # SQLite primary — source of truth
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import agent_pulse_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            agent_pulse_dao.upsert(
+                conn,
+                agent=agent,
+                task_id=task_id,
+                status=status,
+                pid=pid,
+                message=message,
+                last_seen=last_seen,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"agent-pulse: SQLite write failed (continuing with YAML): {e}", file=sys.stderr)
+
+    # YAML mirror — skipped in sqlite_only mode (SQLite is SoT)
+    skip_yaml = False
+    try:
+        from superharness.engine.sqlite_only import is_sqlite_only
+        skip_yaml = is_sqlite_only(project_dir=project_dir)
+    except Exception as e:
+        print(f"agent-pulse: is_sqlite_only check failed, writing YAML mirror: {e}", file=sys.stderr)
+
+    if not skip_yaml:
+        data: dict = {
+            "task_id": task_id,
+            "agent": agent,
+            "status": status,
+            "last_seen": last_seen,
+            "pid": pid,
+        }
+        if message:
+            data["message"] = message
+
+        pulse_path.write_text(yaml.dump(data, default_flow_style=False), encoding="utf-8")
     print(f"agent-pulse: wrote pulse for task={task_id} status={status} pid={pid}")
 
 
 def _read_pulse(project_dir: str, stale_minutes: int = 10) -> int:
-    pulse_path = _pulse_path(project_dir)
-    if not pulse_path.exists():
-        print("agent-pulse: no pulse file found — no agent currently running")
-        return 0
-
+    # SQLite primary — source of truth
+    data: dict = {}
+    found_in_sqlite = False
     try:
-        data = yaml.safe_load(pulse_path.read_text(encoding="utf-8")) or {}
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import agent_pulse_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            row = agent_pulse_dao.get_latest(conn)
+        finally:
+            conn.close()
+        if row is not None:
+            data = {
+                "task_id": row.task_id,
+                "agent": row.agent,
+                "status": row.status,
+                "last_seen": row.last_seen,
+                "pid": row.pid,
+                "message": row.message,
+            }
+            found_in_sqlite = True
     except Exception as e:
-        print(f"agent-pulse: could not read pulse file: {e}", file=sys.stderr)
-        return 1
+        print(f"agent-pulse: SQLite read failed, falling back to YAML: {e}", file=sys.stderr)
+
+    # YAML fallback (legacy)
+    if not found_in_sqlite:
+        pulse_path = _pulse_path(project_dir)
+        if not pulse_path.exists():
+            print("agent-pulse: no pulse file found — no agent currently running")
+            return 0
+        try:
+            data = yaml.safe_load(pulse_path.read_text(encoding="utf-8")) or {}  # noqa: state-read — YAML fallback when SQLite empty (legacy projects)
+        except Exception as e:
+            print(f"agent-pulse: could not read pulse file: {e}", file=sys.stderr)
+            return 1
 
     task_id = data.get("task_id", "unknown")
     agent = data.get("agent", "unknown")
@@ -97,12 +156,29 @@ def _read_pulse(project_dir: str, stale_minutes: int = 10) -> int:
 
 
 def _clear_pulse(project_dir: str) -> None:
+    # SQLite primary — clear all rows (single-active model)
+    cleared = False
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import agent_pulse_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            n = agent_pulse_dao.delete_all(conn)
+            conn.commit()
+            cleared = n > 0
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"agent-pulse: SQLite clear failed: {e}", file=sys.stderr)
+
+    # YAML mirror
     pulse_path = _pulse_path(project_dir)
     if pulse_path.exists():
         pulse_path.unlink()
-        print("agent-pulse: cleared")
-    else:
-        print("agent-pulse: nothing to clear")
+        cleared = True
+
+    print("agent-pulse: cleared" if cleared else "agent-pulse: nothing to clear")
 
 
 def main(argv: list[str] | None = None) -> None:

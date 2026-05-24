@@ -214,9 +214,7 @@ def set_inbox_status(
             if col in _VALID_COLUMNS and col not in ("status", "failed_reason", "failed_at", "done_at", "paused_at", "launched_at"):
                 db_fields[col] = v
         if db_fields:
-            placeholders = ", ".join(f"{k}=?" for k in db_fields.keys())
-            values = list(db_fields.values()) + [item_id]
-            conn.execute(f"UPDATE inbox SET {placeholders} WHERE id=?", values)
+            inbox_dao.set_fields(conn, item_id, **db_fields)
 
         conn.commit()
         from superharness.engine.sqlite_only import is_sqlite_only
@@ -569,9 +567,7 @@ def _mirror_inbox_to_sqlite(project_dir: str, item_id: str, status: str, **field
                     if col in _VALID_COLUMNS and col not in ("status", "failed_reason", "failed_at", "done_at", "paused_at", "launched_at"):
                         db_fields[col] = v
                 if db_fields:
-                    placeholders = ", ".join(f"{k}=?" for k in db_fields.keys())
-                    values = list(db_fields.values()) + [item_id]
-                    conn.execute(f"UPDATE inbox SET {placeholders} WHERE id=?", values)
+                    inbox_dao.set_fields(conn, item_id, **db_fields)
                 conn.commit()
         finally:
             conn.close()

@@ -78,19 +78,24 @@ def _read_project_heartbeat(check_dir: str, via_worker: bool, stale_seconds: int
         from superharness.engine.heartbeat_contract import (
             heartbeat_path,
             read_heartbeat,
+            read_heartbeat_db,
             age_seconds as hb_age_seconds,
         )
-        structured_path = heartbeat_path(check_dir, "watcher")
-        if os.path.isfile(structured_path):
-            hb = read_heartbeat(structured_path)
-            if hb is not None:
-                age = hb_age_seconds(hb)
-                if age < 0:
-                    return "missing", "invalid heartbeat timestamp"
-                age_min = age // 60
-                if age >= stale_seconds:
-                    return "stale", f"last heartbeat {age_min}m ago{suffix}"
-                return "ok", f"last heartbeat {age}s ago{suffix}"
+        # SQLite primary — source of truth
+        hb = read_heartbeat_db(check_dir, "watcher")
+        if hb is None:
+            # YAML fallback (legacy)
+            structured_path = heartbeat_path(check_dir, "watcher")
+            if os.path.isfile(structured_path):
+                hb = read_heartbeat(structured_path)
+        if hb is not None:
+            age = hb_age_seconds(hb)
+            if age < 0:
+                return "missing", "invalid heartbeat timestamp"
+            age_min = age // 60
+            if age >= stale_seconds:
+                return "stale", f"last heartbeat {age_min}m ago{suffix}"
+            return "ok", f"last heartbeat {age}s ago{suffix}"
     except Exception as e:
         logger.warning("status.py unexpected error: %s", e, exc_info=True)
 
@@ -617,12 +622,12 @@ def _auto_fix(project_dir: str, inbox_health: dict, disc_health: dict) -> int:
     if inbox_health["orphaned"]:
         try:
             from superharness.engine.db import get_connection, init_db
+            from superharness.engine import inbox_dao
             conn = get_connection(project_dir)
             try:
                 init_db(conn)
                 for o in inbox_health["orphaned"]:
-                    conn.execute("UPDATE inbox SET status='stale' WHERE id=?",
-                                 (o["inbox_id"],))
+                    inbox_dao.mark_stale(conn, o["inbox_id"])
                     fixed += 1
                 conn.commit()
                 print(f"  Cleaned {fixed} orphaned inbox item(s)")
@@ -636,12 +641,12 @@ def _auto_fix(project_dir: str, inbox_health: dict, disc_health: dict) -> int:
         n = 0
         try:
             from superharness.engine.db import get_connection, init_db
+            from superharness.engine import inbox_dao
             conn = get_connection(project_dir)
             try:
                 init_db(conn)
                 for d in inbox_health["discussion_orphans"]:
-                    conn.execute("UPDATE inbox SET status='stale' WHERE id=?",
-                                 (d["inbox_id"],))
+                    inbox_dao.mark_stale(conn, d["inbox_id"])
                     n += 1
                 conn.commit()
                 print(f"  Cleaned {n} discussion orphan inbox item(s)")
@@ -660,13 +665,13 @@ def _auto_fix(project_dir: str, inbox_health: dict, disc_health: dict) -> int:
         n = 0
         try:
             from superharness.engine.db import get_connection, init_db
+            from superharness.engine import inbox_dao
             conn = get_connection(project_dir)
             try:
                 init_db(conn)
                 for _key, dups in inbox_health["duplicates"].items():
                     for dup in dups[:-1]:
-                        conn.execute("UPDATE inbox SET status='stale' WHERE id=?",
-                                     (dup["inbox_id"],))
+                        inbox_dao.mark_stale(conn, dup["inbox_id"])
                         n += 1
                 conn.commit()
                 if n > 0:
@@ -713,11 +718,11 @@ def _auto_fix(project_dir: str, inbox_health: dict, disc_health: dict) -> int:
         n = 0
         try:
             from superharness.engine.db import get_connection, init_db
+            from superharness.engine import inbox_dao
             conn = get_connection(project_dir)
             try:
                 init_db(conn)
-                conn.execute("DELETE FROM inbox WHERE status='stale'")
-                n = conn.execute("SELECT changes()").fetchone()[0]
+                n = inbox_dao.purge_stale(conn)
                 conn.commit()
                 print(f"  Deleted {n} stale inbox item(s)")
                 fixed += n
@@ -731,11 +736,12 @@ def _auto_fix(project_dir: str, inbox_health: dict, disc_health: dict) -> int:
         n = 0
         try:
             from superharness.engine.db import get_connection, init_db
+            from superharness.engine import inbox_dao
             conn = get_connection(project_dir)
             try:
                 init_db(conn)
                 for sp in inbox_health["stale_pending"]:
-                    conn.execute("UPDATE inbox SET status='stale' WHERE id=?", (sp["inbox_id"],))
+                    inbox_dao.mark_stale(conn, sp["inbox_id"])
                     n += 1
                 conn.commit()
                 print(f"  Canceled {n} stale pending item(s) (undispatched > 1h)")

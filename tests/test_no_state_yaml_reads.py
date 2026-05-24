@@ -35,11 +35,18 @@ _SRC = Path(__file__).resolve().parent.parent / "src" / "superharness"
 _SCAN_DIRS = ("commands", "engine", "mcp", "scripts")
 
 # --- shared state vocabulary -------------------------------------------------
-# State artifacts backed by SQLite. NOT config: profile/watcher/heartbeat/
-# scheduled.yaml and agents/*.status.yaml are config and excluded by omission.
+# State artifacts backed by SQLite. Any read of these as authoritative YAML is
+# a SoT violation. Heartbeats, agent runtime status, and agent pulse were
+# previously excluded as "config" — that was a definitional sleight-of-hand.
+# They are operational state (mutated every loop, drive runtime decisions).
+# Migration v25 moved them to SQLite; YAML files are export mirrors only.
 # "handoff" (singular) taints function parameters named handoff_dir/handoff_file.
+# Config files (workflow.yaml, schedule.yaml, profile.yaml) remain excluded —
+# they are static input read at startup, not runtime state.
 _STATE_TOKENS = ("handoffs", "handoff", "ledger.md", "discussions", "contract.yaml",
-                 "inbox.yaml", "state.yaml")
+                 "inbox.yaml", "state.yaml",
+                 "watcher.heartbeat.yaml", ".heartbeat.yaml",
+                 ".status.yaml", "agent-pulse.yaml")
 
 # Per-line opt-out for false positives (instruction strings, not real reads).
 _IGNORE = re.compile(r"shipguard:ignore|export only|noqa: state-read")
