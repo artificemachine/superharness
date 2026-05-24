@@ -87,30 +87,55 @@ class TestTaskStatusPhase2:
 
 
 class TestWritePulse:
-    def test_creates_pulse_file(self, tmp_path):
+    def test_creates_pulse_in_sqlite(self, tmp_path):
+        """SQLite is SoT — write_pulse creates a SQLite row."""
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import agent_pulse_dao
         project = _make_project(tmp_path)
         _write_pulse(str(project), "T-10", "claude-code")
-        pulse = _pulse_path(str(project))
-        assert pulse.exists()
+        conn = get_connection(str(project))
+        try:
+            init_db(conn)
+            row = agent_pulse_dao.get(conn, "claude-code")
+        finally:
+            conn.close()
+        assert row is not None, "Expected SQLite row for claude-code"
+        assert row.task_id == "T-10"
 
-    def test_pulse_content(self, tmp_path):
+    def test_pulse_content_in_sqlite(self, tmp_path):
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import agent_pulse_dao
         project = _make_project(tmp_path)
         _write_pulse(str(project), "T-20", "codex-cli", status="waiting_input",
                      message="waiting on review")
-        data = yaml.safe_load(_pulse_path(str(project)).read_text())
-        assert data["task_id"] == "T-20"
-        assert data["agent"] == "codex-cli"
-        assert data["status"] == "waiting_input"
-        assert data["message"] == "waiting on review"
-        assert "last_seen" in data
-        assert "pid" in data
+        conn = get_connection(str(project))
+        try:
+            init_db(conn)
+            row = agent_pulse_dao.get(conn, "codex-cli")
+        finally:
+            conn.close()
+        assert row is not None
+        assert row.task_id == "T-20"
+        assert row.agent == "codex-cli"
+        assert row.status == "waiting_input"
+        assert row.message == "waiting on review"
+        assert row.last_seen
+        assert row.pid is not None
 
     def test_overwrites_existing_pulse(self, tmp_path):
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import agent_pulse_dao
         project = _make_project(tmp_path)
         _write_pulse(str(project), "T-30", "claude-code")
         _write_pulse(str(project), "T-31", "claude-code")
-        data = yaml.safe_load(_pulse_path(str(project)).read_text())
-        assert data["task_id"] == "T-31"
+        conn = get_connection(str(project))
+        try:
+            init_db(conn)
+            row = agent_pulse_dao.get(conn, "claude-code")
+        finally:
+            conn.close()
+        assert row is not None
+        assert row.task_id == "T-31"
 
 
 class TestReadPulse:
@@ -146,12 +171,24 @@ class TestReadPulse:
 
 
 class TestClearPulse:
-    def test_removes_pulse_file(self, tmp_path):
+    def test_clear_removes_sqlite_row(self, tmp_path):
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import agent_pulse_dao
         project = _make_project(tmp_path)
         _write_pulse(str(project), "T-60", "claude-code")
-        assert _pulse_path(str(project)).exists()
+        conn = get_connection(str(project))
+        try:
+            init_db(conn)
+            assert agent_pulse_dao.get(conn, "claude-code") is not None
+        finally:
+            conn.close()
         _clear_pulse(str(project))
-        assert not _pulse_path(str(project)).exists()
+        conn = get_connection(str(project))
+        try:
+            init_db(conn)
+            assert agent_pulse_dao.get(conn, "claude-code") is None
+        finally:
+            conn.close()
 
     def test_clear_no_op_when_absent(self, tmp_path):
         project = _make_project(tmp_path)

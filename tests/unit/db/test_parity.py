@@ -206,15 +206,11 @@ def test_heal_parity_is_idempotent(db_conn, tmp_path):
     (sh_dir / "contract.yaml").write_text(yaml.dump({"tasks": [{"id": "t1", "title": "T", "status": "todo"}]}))
 
     report = parity.check_parity(db_conn, project_dir)
-    first = parity.heal_parity(db_conn, project_dir, report)
+    parity.heal_parity(db_conn, project_dir, report)
     second = parity.heal_parity(db_conn, project_dir, report)
 
-    queue_count = db_conn.execute(
-        "SELECT COUNT(*) FROM yaml_sync_queue WHERE status='pending'"
-    ).fetchone()[0]
-    # Second call should have enqueued 0 new ops
+    # yaml_sync_queue table removed in migration v24 — no queue to check
     assert second == 0
-    assert queue_count == first
 
 
 # B4: heal_parity closes only_in_yaml gap by upserting YAML tasks to SQLite

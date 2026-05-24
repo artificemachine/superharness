@@ -1310,7 +1310,7 @@ def _auto_retry_failed_sqlite(project_dir: str) -> None:
                         pass
                     # Discussion round tasks must not be plan_only
                     if "/round-" in str(row.task_id) or "round-" in str(row.task_id):
-                        conn.execute("UPDATE inbox SET plan_only=0 WHERE id=?", (row.id,))
+                        inbox_dao.set_plan_only(conn, row.id, 0)
                     print(
                         f"auto-retry (sqlite): re-queued '{row.task_id}' "
                         f"(attempt {new_count}/{row.max_retries})"
@@ -1377,10 +1377,8 @@ def _escalate_runaway_inbox(conn, row, reason_label: str, now: str) -> None:
             except Exception as e:
                 logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                 pass
-        conn.execute(
-            "UPDATE inbox SET status='failed', failed_reason=?, failed_at=? WHERE id=?",
-            (f"escalated: {reason_label}", now, row.id),
-        )
+        from superharness.engine import inbox_dao as _inbox_dao_esc
+        _inbox_dao_esc.mark_failed(conn, row.id, reason=f"escalated: {reason_label}", now=now)
         print(
             f"auto-recover: ESCALATED '{row.task_id}' → waiting_input "
             f"(reason: {reason_label})"
@@ -1466,18 +1464,12 @@ def _auto_fallback_owner_reassign(project_dir: str) -> None:
                     "UPDATE tasks SET owner=? WHERE id=?",
                     (fallback_owner, row.task_id),
                 )
-                conn.execute(
-                    """UPDATE inbox
-                       SET status='pending', target_agent=?,
-                           retry_count=0, max_retries=?,
-                           failed_reason=?, pid=NULL, failed_at=NULL
-                       WHERE id=?""",
-                    (
-                        fallback_owner,
-                        max_retries_for_fallback,
-                        f"auto-fallback: reassigned from '{current_owner}' to '{fallback_owner}'",
-                        row.id,
-                    ),
+                inbox_dao.reassign(
+                    conn,
+                    row.id,
+                    target_agent=fallback_owner,
+                    max_retries=max_retries_for_fallback,
+                    reason=f"auto-fallback: reassigned from '{current_owner}' to '{fallback_owner}'",
                 )
                 print(
                     f"auto-fallback-owner: reassigned '{row.task_id}' "
@@ -1565,7 +1557,7 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                                 (gate_reason, row.task_id),
                             )
                             # Mark inbox as done so it doesn't block re-dispatch
-                            conn.execute("UPDATE inbox SET status='done' WHERE id=?", (row.id,))
+                            inbox_dao.mark_done(conn, row.id, now=now)
                             print(
                                 f"auto-recover: permanent block escalated '{row.task_id}' "
                                 f"in_progress → waiting_input (lifecycle gate)"
@@ -1683,15 +1675,12 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                 # by overwriting failed_reason.
                 new_recovery = recovery_count + 1
                 new_reason = f"recovery_{new_recovery}:{current_agent}_to_{next_agent}"
-                conn.execute(
-                    """UPDATE inbox
-                       SET status = 'pending', retry_count = 0,
-                           max_retries = max_retries + 1,
-                           recovery_count = ?,
-                           target_agent = ?, failed_reason = ?,
-                           pid = NULL, failed_at = NULL
-                       WHERE id = ?""",
-                    (new_recovery, next_agent, new_reason, row.id)
+                inbox_dao.mark_recovered(
+                    conn,
+                    row.id,
+                    target_agent=next_agent,
+                    recovery_count=new_recovery,
+                    reason=new_reason,
                 )
                 print(
                     f"auto-recover: re-routed '{row.task_id}' "
@@ -1744,7 +1733,7 @@ def _reconcile_permanent_blocks(project_dir: str) -> int:
                     "failed_reason=? WHERE id=?",
                     (row.failed_reason or "lifecycle gate rejected", row.task_id),
                 )
-                conn.execute("UPDATE inbox SET status='done' WHERE id=?", (row.id,))
+                inbox_dao.mark_done(conn, row.id, now=_now_utc())
                 count += 1
                 print(
                     f"reconcile-permanent-block: escalated '{row.task_id}' "
@@ -3081,11 +3070,8 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
                                 )
                         except Exception as e:
                             logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
-                            # Fallback: direct SQL update
-                            conn.execute(
-                                "UPDATE inbox SET status=? WHERE id=?",
-                                (new_status, item_id)
-                            )
+                            # Fallback: direct DAO single-field update
+                            inbox_dao.set_field(conn, item_id, "status", new_status)
             conn.commit()
         finally:
             conn.close()
@@ -3537,6 +3523,7 @@ def _cancel_undispatchable_agents(project_dir: str) -> int:
 
     try:
         from superharness.engine.db import get_connection, init_db
+        from superharness.engine import inbox_dao
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -3547,8 +3534,7 @@ def _cancel_undispatchable_agents(project_dir: str) -> int:
             ).fetchall()
             canceled = 0
             for row in rows:
-                conn.execute("UPDATE inbox SET status='stale', failed_reason=? WHERE id=?",
-                             (f"agent '{row[1]}' has no dispatch adapter", row[0]))
+                inbox_dao.mark_stale(conn, row[0], reason=f"agent '{row[1]}' has no dispatch adapter")
                 canceled += 1
             if canceled > 0:
                 conn.commit()
