@@ -342,33 +342,27 @@ def _cascade_unblocked_tasks(project_dir: str, finished_task_id: str) -> None:
 
 
 def _load_latest_plan_handoff(project_dir: str, task_id: str) -> dict | None:
-    """Return the latest phase=plan handoff for a task, or None if none found.
-
-    Used by iter 5 plan quality gate before auto-approval.
-    """
-    import glob
-
-    import yaml as _yaml
-
-    handoffs_dir = os.path.join(project_dir, ".superharness", "handoffs")
-    if not os.path.isdir(handoffs_dir):
+    """Return the latest phase=plan handoff for a task from SQLite."""
+    try:
+        from superharness.engine import state_reader as _sr_t
+        import yaml as _yaml_t
+        rows = _sr_t.get_handoffs(project_dir, task_id=task_id)
+        plan_rows = [r for r in rows if str(r.get("phase", "")) == "plan"]
+        if not plan_rows:
+            return None
+        row = plan_rows[-1]
+        content_text = row.get("content") or ""
+        if content_text:
+            try:
+                parsed = _yaml_t.safe_load(content_text)
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                pass
+        return dict(row)
+    except Exception as e:
+        logger.warning("task.py _load_latest_plan_handoff failed: %s", e, exc_info=True)
         return None
-
-    candidates = sorted(glob.glob(os.path.join(handoffs_dir, f"*{task_id}*plan*")), reverse=True)
-    candidates += [
-        p for p in sorted(glob.glob(os.path.join(handoffs_dir, f"*{task_id}*.yaml")), reverse=True)
-        if p not in candidates
-    ]
-    for path in candidates:
-        try:
-            with open(path, encoding="utf-8") as f:
-                h = _yaml.safe_load(f.read()) or {}
-            if str(h.get("task", "")) == task_id and h.get("phase") == "plan":
-                return h
-        except Exception as e:
-            logger.warning("task.py unexpected error: %s", e, exc_info=True)
-            continue
-    return None
 
 
 def _enqueue_for_implementation(project_dir: str, task_id: str) -> None:

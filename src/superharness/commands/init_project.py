@@ -516,12 +516,12 @@ def main(argv: list[str] | None = None) -> None:
         shutil.copy2(opts.from_profile, str(harness / "profile.yaml"))
         print(f"Created: .superharness/profile.yaml (from {opts.from_profile})")
 
-    # Patch contract goal for interactive mode
+    # Patch contract goal for interactive mode — reads bootstrap scaffold, not live state
     if interactive_goal:
         import re
         contract_path = harness / "contract.yaml"
         if contract_path.is_file():
-            text = contract_path.read_text(encoding="utf-8")
+            text = contract_path.read_text(encoding="utf-8")  # noqa: state-read (bootstrap-only)
             text = re.sub(r'^goal:.*$', f'goal: "{interactive_goal}"', text, flags=re.MULTILINE)
             contract_path.write_text(text, encoding="utf-8")
 

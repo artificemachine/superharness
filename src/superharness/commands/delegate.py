@@ -164,27 +164,23 @@ def _get_task_previously_failed(project_dir: str, task_id: str) -> bool:
 
 
 def _get_latest_handoff_task(handoff_dir: str, to: str) -> tuple[str, str]:
-    """Returns (task_id, handoff_file) or ("", "")."""
-    import glob as _glob
-    import yaml
-
-    files = sorted(
-        _glob.glob(os.path.join(handoff_dir, "*.yaml")),
-        key=os.path.getmtime,
-        reverse=True,
-    )
-    for fpath in files:
-        try:
-            with open(fpath) as f:
-                data = yaml.safe_load(f) or {}
-        except Exception as e:
-            _abort(f"Failed to parse handoff {fpath}: {e}")
-        if str(data.get("to", "")) != str(to):
-            continue
-        task_val = str(data.get("task", ""))
-        if task_val:
-            return task_val, fpath
-    return "", ""
+    """Returns (task_id, handoff_file) or ("", "") — reads from SQLite (source of truth)."""
+    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(handoff_dir)))
+    try:
+        from superharness.engine.db import managed_connection
+        from superharness.engine import handoffs_dao
+        with managed_connection(project_dir) as conn:
+            rows = handoffs_dao.get_for_agent(conn, to_agent=to)
+        for row in rows:
+            task_val = str(row.task_id or "")
+            if task_val:
+                fpath = os.path.join(handoff_dir, f"{task_val}-{row.phase}.yaml")
+                return task_val, fpath
+        return "", ""
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("_get_latest_handoff_task SQLite error: %s", e)
+        return "", ""
 
 
 # ---------------------------------------------------------------------------
@@ -960,11 +956,11 @@ def delegate(
         print(f"Topic: {disc_topic}")
 
     else:
-        # Check for user-provided instructions file
+        # Check for user-provided instructions file (not a state artifact — noqa: state-read)
         instructions_file = os.path.join(handoff_dir, f"{task_id}-instructions.md")
         user_instructions = ""
         if os.path.isfile(instructions_file):
-            user_instructions = Path(instructions_file).read_text(encoding="utf-8").strip()
+            user_instructions = Path(instructions_file).read_text(encoding="utf-8").strip()  # noqa: state-read
             if user_instructions:
                 user_instructions = f"\n\nUser instructions for this task:\n{user_instructions}"
 

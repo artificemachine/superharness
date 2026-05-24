@@ -239,20 +239,6 @@ def read_contract(path: str) -> tuple[dict, list]:
         # path is .../.superharness/contract.yaml; project_dir is two levels up.
         project_dir = os.path.dirname(os.path.dirname(os.path.abspath(path)))
         doc = state_reader.get_contract_doc(project_dir)
-        # Preserve YAML-side metadata that SQLite does not currently mirror
-        # (id, goal, created, created_by, status). state_reader returns only
-        # `tasks`; merge with the YAML so callers that read top-level keys
-        # still see them when the YAML exists alongside SQLite.
-        if os.path.exists(path):
-            try:
-                with open(path, encoding="utf-8") as f:
-                    legacy = yaml.safe_load(f) or {}
-                if isinstance(legacy, dict):
-                    for k, v in legacy.items():
-                        if k != "tasks":
-                            doc.setdefault(k, v)
-            except Exception as e:
-                logger.debug("Failed to read legacy YAML metadata from %s: %s", path, e)
         errors: list = []
         return doc, errors
 

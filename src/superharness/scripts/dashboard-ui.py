@@ -86,80 +86,6 @@ def git_context(project_dir: Path) -> dict:
     return result
 
 
-def activity_feed(project_dir: Path, inbox_file: Path, ledger_file: Path, limit: int = 30) -> list[dict]:
-    """Build a combined activity feed from inbox events + ledger entries, sorted by time."""
-    import re as _re
-    events: list[dict] = []
-    cutoff_hours = 4
-
-    now = time.time()
-    cutoff = now - (cutoff_hours * 3600)
-
-    # Inbox events
-    for item in inbox_items(inbox_file):
-        ts_map = {
-            "created_at": "enqueued",
-            "launched_at": "launched",
-            "done_at": "done",
-            "failed_at": "failed",
-            "paused_at": "paused",
-            "stale_at": "stale",
-            "stopped_at": "stopped",
-        }
-        for ts_key, event_type in ts_map.items():
-            ts = str(item.get(ts_key, "")).strip().strip("'")
-            if not ts:
-                continue
-            try:
-                dt = _datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                if dt.timestamp() < cutoff:
-                    continue
-            except (ValueError, TypeError):
-                continue
-            task = item.get("task", "?")
-            to = item.get("to", "?")
-            reason = item.get("pause_reason") or item.get("failed_reason") or ""
-            reason_str = f" — {reason.replace('_', ' ')}" if reason else ""
-            events.append({
-                "time": ts,
-                "type": event_type,
-                "message": f"{task} → {to}{reason_str}",
-            })
-
-    # Ledger entries
-    if ledger_file.exists():
-        try:
-            for line in ledger_file.read_text(encoding="utf-8", errors="replace").splitlines():
-                m = _re.search(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z?)", line)
-                if not m:
-                    continue
-                ts = m.group(1)
-                try:
-                    dt = _datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                    if dt.timestamp() < cutoff:
-                        continue
-                except (ValueError, TypeError):
-                    continue
-                # Determine type from content
-                line_lower = line.lower()
-                if "[gc]" in line_lower:
-                    etype = "gc"
-                elif "dispatch" in line_lower:
-                    etype = "dispatch"
-                elif "review" in line_lower:
-                    etype = "Reviewing..."
-                else:
-                    etype = "ledger"
-                # Clean up the message
-                msg = _re.sub(r"^-\s*\d{4}-\d{2}-\d{2}T\S+\s*—?\s*", "", line).strip()
-                events.append({"time": ts, "type": etype, "message": msg})
-        except OSError:
-            pass
-
-    events.sort(key=lambda e: e.get("time", ""), reverse=True)
-    return events[:limit]
-
-
 from datetime import datetime as _datetime
 
 import logging
@@ -514,122 +440,76 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
         except Exception as e:
             logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
             pass
-    # 2. Handoff YAML + markdown report
-    handoff_dir = harness / "handoffs"
-    if handoff_dir.exists():
-        # Search both .yaml and .md files (md files use YAML frontmatter)
-        handoff_files = sorted(handoff_dir.glob("*.yaml"), reverse=True) + sorted(handoff_dir.glob("*.md"), reverse=True)
-        for f in handoff_files:
-            try:
-                content = f.read_text(errors="replace")
-                # Match by task/task_id fields in content, or by filename (skip instructions files)
-                is_instructions = f.name.endswith("-instructions.md")
-                has_task = (f"task: {task_id}" in content or f"task: '{task_id}'" in content
-                            or f"task_id: {task_id}" in content or f"task_id: '{task_id}'" in content
-                            or (not is_instructions and (f.name.startswith(f"{task_id}-") or f.name.startswith(f"{task_id}."))))
-                if not has_task:
-                    continue
-                import yaml
-                # For .md files, extract YAML frontmatter between --- delimiters
-                if f.suffix == ".md":
-                    stripped = content.strip()
-                    if stripped.startswith("---"):
-                        parts = stripped.split("---", 2)
-                        if len(parts) >= 3:
-                            hd = yaml.safe_load(parts[1]) or {}
-                            md_body = parts[2].strip()
-                        else:
-                            hd = {}
-                            md_body = stripped
-                    else:
-                        # No frontmatter — use entire content as report body
-                        hd = {}
-                        md_body = stripped
-                else:
-                    hd = yaml.safe_load(content) or {}
-                    md_body = ""
-                if agent and hd.get("to") and hd["to"] != agent and hd.get("from") != agent:
-                    continue
-                result["handoff_status"] = hd.get("status", "")
-                result["handoff_summary"] = hd.get("summary", "")
-                result["handoff_outcome"] = hd.get("outcome", "")
-                result["handoff_context"] = hd.get("context", "")
-                result["handoff_date"] = str(hd.get("date", hd.get("timestamp", "")))
-                md_path = hd.get("markdown_report", "")
-                if md_path:
-                    md_file = project_dir / md_path if not Path(md_path).is_absolute() else Path(md_path)
-                    if md_file.exists():
-                        result["markdown_report"] = md_file.read_text(errors="replace")[:8000]
-                elif md_body:
-                    result["markdown_report"] = md_body[:8000]
-                break
-            except Exception as e:
-                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
+    # 2. Handoff — read from SQLite (source of truth)
+    handoff_dir = harness / "handoffs"  # kept for discussion markdown fallback below
+    try:
+        import yaml as _yaml_h
+        from superharness.engine import state_reader as _sr_h
+        task_handoffs = _sr_h.get_handoffs(str(project_dir), task_id=task_id)
+        for row in reversed(task_handoffs):
+            if agent and str(row.get("to_agent", "")) != agent and str(row.get("from_agent", "")) != agent:
                 continue
+            content_text = row.get("content") or ""
+            hd: dict = {}
+            if content_text:
+                try:
+                    parsed = _yaml_h.safe_load(content_text)
+                    if isinstance(parsed, dict):
+                        hd = parsed
+                except Exception:
+                    pass
+            result["handoff_status"] = hd.get("status") or str(row.get("status", ""))
+            result["handoff_summary"] = hd.get("summary", "")
+            result["handoff_outcome"] = hd.get("outcome", "")
+            result["handoff_context"] = hd.get("context", "")
+            result["handoff_date"] = str(hd.get("date") or row.get("created_at", ""))
+            md_path = hd.get("markdown_report", "")
+            if md_path:
+                md_file = project_dir / md_path if not Path(md_path).is_absolute() else Path(md_path)
+                if md_file.exists():
+                    result["markdown_report"] = md_file.read_text(errors="replace")[:8000]
+            break
+    except Exception as e:
+        logger.warning("dashboard-ui handoff SQLite read failed: %s", e, exc_info=True)
 
-    # 3. Discussion submissions (task_id like discuss-XXX/round-N)
+    # 3. Discussion submissions (task_id like discuss-XXX/round-N) — SQLite
     if "/" in task_id:
         disc_id, round_part = task_id.rsplit("/", 1)
-        disc_dir = harness / "discussions" / disc_id
-        if disc_dir.exists():
-            # Discussion state
-            state_file = disc_dir / "state.yaml"
-            if state_file.exists():
-                try:
-                    import yaml
-                    st = yaml.safe_load(state_file.read_text()) or {}
-                    result["discussion_topic"] = st.get("topic", "")
-                    result["discussion_status"] = st.get("status", "")
-                    result["discussion_round"] = st.get("current_round", "")
-                    result["discussion_max_rounds"] = st.get("max_rounds", "")
-                except Exception as e:
-                    logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
-                    pass
-            # Agent submissions for this round — show ALL agent positions
-            round_num = round_part.replace("round-", "")
+        try:
+            from superharness.engine.db import get_connection as _gc_d, init_db as _idb_d
+            from superharness.engine import discussions_dao as _ddao
+            _conn_d = _gc_d(str(project_dir))
+            try:
+                _idb_d(_conn_d)
+                disc_row = _ddao.get(_conn_d, disc_id)
+                if disc_row:
+                    result["discussion_topic"] = disc_row.topic
+                    result["discussion_status"] = disc_row.status
+                rounds = _ddao.get_rounds(_conn_d, disc_id)
+            finally:
+                _conn_d.close()
+
+            round_num_str = round_part.replace("round-", "")
+            try:
+                round_num_int = int(round_num_str)
+            except ValueError:
+                round_num_int = None
+
             all_positions = []
-            for sf in sorted(disc_dir.glob(f"round-{round_num}-*.yaml")):
-                try:
-                    import yaml
-                    sub = yaml.safe_load(sf.read_text()) or {}
-                    a = sub.get("agent", sf.stem.split("-")[-1])
-                    v = sub.get("verdict", "?")
-                    p = sub.get("position", "")
-                    all_positions.append(f"[{a}] verdict={v}\n{p}")
-                except Exception as e:
-                    logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
+            for r in rounds:
+                if round_num_int is not None and r.round_number != round_num_int:
                     continue
+                a = r.agent
+                v = r.verdict or "?"
+                p = r.content or ""
+                all_positions.append(f"[{a}] verdict={v}\n{p}")
+                if agent and r.agent == agent:
+                    result["discussion_agent"] = a
+                    result["discussion_verdict"] = v or ""
             if all_positions:
                 result["discussion_position"] = "\n\n".join(all_positions)
-                # Use the specific agent's submission for single-agent view
-                for sf in sorted(disc_dir.glob(f"round-{round_num}-{agent}.yaml")):
-                    try:
-                        sub = yaml.safe_load(sf.read_text()) or {}
-                        result["discussion_agent"] = sub.get("agent", agent)
-                        result["discussion_verdict"] = sub.get("verdict", "")
-                    except Exception as e:
-                        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
-                        pass
-                    break
-
-            # Outcome handoff markdown
-            if "markdown_report" not in result:
-                for mf in sorted(handoff_dir.glob(f"*{disc_id}*outcome*.md"), reverse=True) if handoff_dir.exists() else []:
-                    try:
-                        result["markdown_report"] = mf.read_text(errors="replace")[:8000]
-                        break
-                    except Exception as e:
-                        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
-                        continue
-                # Also check per-agent markdown
-                if "markdown_report" not in result and agent:
-                    for mf in sorted(handoff_dir.glob(f"*{disc_id}*{agent}*.md"), reverse=True) if handoff_dir.exists() else []:
-                        try:
-                            result["markdown_report"] = mf.read_text(errors="replace")[:8000]
-                            break
-                        except Exception as e:
-                            logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
-                            continue
+        except Exception as e:
+            logger.warning("dashboard-ui discussion SQLite read failed: %s", e, exc_info=True)
 
     return result
 
@@ -657,72 +537,61 @@ def discussion_agent_status(project_dir: Path, disc_id: str) -> dict:
         "timeline": [],
     }
 
-    # --- 1. Read discussion state and round submissions ---
+    # --- 1. Read discussion state and round submissions from SQLite ---
     state: dict = {}
-    if disc_dir.exists():
-        state_path = disc_dir / "state.yaml"
-        if state_path.exists():
-            try:
-                state = _yaml.safe_load(state_path.read_text()) or {}
-            except Exception as e:
-                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
-                pass
-        # Read round submissions from disk (round-N-agent.yaml)
-        submissions = []
-        for rf in sorted(disc_dir.glob("round-*.yaml")):
-            try:
-                data = _yaml.safe_load(rf.read_text()) or {}
-                if isinstance(data, dict) and data.get("agent"):
-                    content = ""
-                    # Try to read corresponding markdown report
-                    md_file = disc_dir / f"report-{data['agent']}-r{data.get('round','?')}.md"
-                    if not md_file.exists():
-                        md_file = disc_dir / f"{rf.stem}.md"
-                    if md_file.exists():
-                        try:
-                            content = md_file.read_text()[:5000]
-                        except Exception as e:
-                            logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
-                            pass
-                    submissions.append({
-                        "agent": str(data.get("agent", "")),
-                        "round": data.get("round", 1),
-                        "verdict": str(data.get("verdict", "")),
-                        "position": str(data.get("position", ""))[:500],
-                        "points": data.get("points", []),
-                        "submitted_at": str(data.get("submitted_at", "")),
-                        "content": content,
-                    })
-            except Exception as e:
-                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
-                continue
+    submissions: list[dict] = []
+    try:
+        from superharness.engine.db import get_connection as _gc_das, init_db as _idb_das
+        from superharness.engine import discussions_dao as _ddao_das
+        _conn_das = _gc_das(str(project_dir))
+        try:
+            _idb_das(_conn_das)
+            disc_row = _ddao_das.get(_conn_das, disc_id)
+            if disc_row:
+                state = {
+                    "created_at": disc_row.created_at,
+                    "closed_at": disc_row.closed_at,
+                    "consensus_verdict": disc_row.consensus,
+                    "consensus_at": disc_row.closed_at if disc_row.consensus else None,
+                }
+            round_rows = _ddao_das.get_rounds(_conn_das, disc_id)
+        finally:
+            _conn_das.close()
 
-        # Sort by round then agent
+        for r in round_rows:
+            submissions.append({
+                "agent": r.agent,
+                "round": r.round_number,
+                "verdict": str(r.verdict or ""),
+                "position": str(r.content or "")[:500],
+                "points": [],
+                "submitted_at": r.created_at,
+                "content": str(r.content or "")[:5000],
+            })
         submissions.sort(key=lambda s: (s["round"], s["agent"]))
         result["submissions"] = submissions
+    except Exception as e:
+        logger.warning("dashboard-ui discussion SQLite read failed: %s", e, exc_info=True)
 
-        # Build timeline
-        created = state.get("created_at", "")
-        if created:
-            result["timeline"].append({"event": "created", "at": str(created)})
-
-        for s in submissions:
-            result["timeline"].append({
-                "event": "submitted",
-                "agent": s["agent"],
-                "round": s["round"],
-                "verdict": s["verdict"],
-                "at": s["submitted_at"],
-            })
-
-        consensus_at = state.get("consensus_at", "")
-        if consensus_at:
-            result["timeline"].append({"event": "consensus", "at": str(consensus_at),
-                                       "verdict": str(state.get("consensus_verdict", ""))})
-
-        closed_at = state.get("closed_at", "")
-        if closed_at:
-            result["timeline"].append({"event": "closed", "at": str(closed_at)})
+    # Build timeline from state + submissions
+    created = state.get("created_at", "")
+    if created:
+        result["timeline"].append({"event": "created", "at": str(created)})
+    for s in submissions:
+        result["timeline"].append({
+            "event": "submitted",
+            "agent": s["agent"],
+            "round": s["round"],
+            "verdict": s["verdict"],
+            "at": s["submitted_at"],
+        })
+    consensus_at = state.get("consensus_at", "")
+    if consensus_at:
+        result["timeline"].append({"event": "consensus", "at": str(consensus_at),
+                                   "verdict": str(state.get("consensus_verdict", ""))})
+    closed_at = state.get("closed_at", "")
+    if closed_at:
+        result["timeline"].append({"event": "closed", "at": str(closed_at)})
 
     # --- 2. Live agent activity (discussion-specific) ---
 
@@ -1242,45 +1111,30 @@ def contract_tasks(contract_file: Path) -> list[dict]:
     return tasks
 
 
-def pending_approvals(handoff_dir: Path) -> list[dict]:
+def pending_approvals(handoff_dir: Path, project_dir: Path | None = None) -> list[dict]:
+    """Return handoffs awaiting user approval, reading from SQLite."""
     rows: list[dict] = []
-    if not handoff_dir.exists():
-        return rows
-    for file in sorted(handoff_dir.glob("*.yaml")):
-        task = ""
-        status = ""
-        markdown_report = ""
-        required = False
-        approved = False
-        in_gate = False
-        for raw in file.read_text(encoding="utf-8", errors="replace").splitlines():
-            line = raw.rstrip()
-            stripped = line.strip()
-            if stripped.startswith("task:"):
-                task = stripped.split(":", 1)[1].strip().strip("'\"")
-            elif stripped.startswith("status:"):
-                status = stripped.split(":", 1)[1].strip().strip("'\"")
-            elif stripped.startswith("markdown_report:"):
-                markdown_report = stripped.split(":", 1)[1].strip().strip("'\"")
-            elif stripped == "approval_gate:":
-                in_gate = True
-            elif in_gate and not line.startswith("  "):
-                in_gate = False
-            elif in_gate and stripped.startswith("required:"):
-                required = stripped.split(":", 1)[1].strip().lower() == "true"
-            elif in_gate and stripped.startswith("approved_by_user:"):
-                approved = stripped.split(":", 1)[1].strip().lower() == "true"
-        pending = status == "pending_user_approval" or (required and not approved)
-        if pending:
-            rows.append(
-                {
-                    "task": task,
+    _project_dir = project_dir if project_dir is not None else handoff_dir.parent.parent
+    try:
+        from superharness.engine import state_reader as _sr
+        handoffs = _sr.get_handoffs(str(_project_dir))
+        for h in handoffs:
+            status = str(h.get("status", ""))
+            meta = h.get("metadata") or {}
+            gate = meta.get("approval_gate") or {}
+            required = bool(gate.get("required", False))
+            approved = bool(gate.get("approved_by_user", False))
+            pending = status == "pending_user_approval" or (required and not approved)
+            if pending:
+                rows.append({
+                    "task": str(h.get("task_id", "")),
                     "status": status,
                     "required": required,
                     "approved_by_user": approved,
-                    "markdown_report": markdown_report,
-                }
-            )
+                    "markdown_report": str(meta.get("markdown_report", "")),
+                })
+    except Exception:
+        pass
     return rows
 
 
@@ -1313,22 +1167,30 @@ def plan_proposals(harness_dir: Path) -> list[dict]:
         task_id = t.get("id", "")
         owner = t.get("owner", "")
         title = t.get("title", task_id)
-        # Find matching handoff for the plan content
+        # Find matching handoff for the plan content — from SQLite
         summary = t.get("summary", "")
         handoff_summary = ""
-        if handoff_dir.exists():
-            for hf in sorted(handoff_dir.glob("*.yaml"), reverse=True):
-                try:
-                    raw = hf.read_text(encoding="utf-8", errors="replace")
-                    hdata = yaml.safe_load(raw) or {}
-                    if hdata.get("task") == task_id and hdata.get("status") == "plan_proposed":
-                        handoff_summary = hdata.get("summary", "") or hdata.get("scope", "")
-                        if isinstance(handoff_summary, list):
-                            handoff_summary = "\n".join(str(x) for x in handoff_summary)
-                        break
-                except Exception as e:
-                    logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
-                    continue
+        try:
+            import yaml as _yaml_pp
+            from superharness.engine import state_reader as _sr_pp
+            task_handoffs = _sr_pp.get_handoffs(project_dir, task_id=task_id)
+            for row in reversed(task_handoffs):
+                if str(row.get("status", "")) == "plan_proposed":
+                    content_text = row.get("content") or ""
+                    hdata: dict = {}
+                    if content_text:
+                        try:
+                            parsed = _yaml_pp.safe_load(content_text)
+                            if isinstance(parsed, dict):
+                                hdata = parsed
+                        except Exception:
+                            pass
+                    handoff_summary = hdata.get("summary", "") or hdata.get("scope", "")
+                    if isinstance(handoff_summary, list):
+                        handoff_summary = "\n".join(str(x) for x in handoff_summary)
+                    break
+        except Exception as e:
+            logger.warning("dashboard-ui plan_proposals handoff read failed: %s", e, exc_info=True)
         rows.append({
             "task": task_id,
             "title": title,
@@ -1511,23 +1373,33 @@ def _confirm_plan(harness_dir: Path, task_id: str) -> dict:
     except Exception as e:
         errors.append(f"state_writer error: {e}")
 
-    # Update matching handoff: add plan_gate confirmation
-    if handoff_dir.exists():
-        for hf in sorted(handoff_dir.glob("*.yaml"), reverse=True):
-            try:
-                raw = hf.read_text(encoding="utf-8", errors="replace")
-                hdata = yaml.safe_load(raw) or {}
-                if hdata.get("task") == task_id and hdata.get("status") == "plan_proposed":
-                    hdata["status"] = "plan_confirmed"
-                    gate = hdata.get("plan_gate", {}) or {}
-                    gate["confirmed_by_user"] = True
-                    gate["confirmed_at"] = now
-                    gate["confirmed_by"] = "owner"
-                    hdata["plan_gate"] = gate
-                    hf.write_text(yaml.dump(hdata, default_flow_style=False, allow_unicode=True))
-                    break
-            except Exception as e:
-                errors.append(f"handoff update error: {e}")
+    # Update matching handoff status via SQLite — YAML file update is export-only
+    try:
+        from superharness.engine import state_reader as _sr_cp
+        task_handoffs_cp = _sr_cp.get_handoffs(str(harness_dir.parent), task_id=task_id)
+        plan_row = next(
+            (r for r in reversed(task_handoffs_cp) if str(r.get("status", "")) == "plan_proposed"),
+            None,
+        )
+        if plan_row:
+            import yaml as _yaml_cp
+            from superharness.engine import state_writer as _sw_cp
+            content_text_cp = plan_row.get("content") or ""
+            hdata: dict = {}
+            if content_text_cp:
+                try:
+                    parsed_cp = _yaml_cp.safe_load(content_text_cp)
+                    if isinstance(parsed_cp, dict):
+                        hdata = parsed_cp
+                except Exception:
+                    pass
+            hdata["status"] = "plan_confirmed"
+            gate = hdata.get("plan_gate", {}) or {}
+            gate.update({"confirmed_by_user": True, "confirmed_at": now, "confirmed_by": "owner"})
+            hdata["plan_gate"] = gate
+            _sw_cp.write_handoff_to_db(str(harness_dir.parent), hdata, task_id=task_id, phase="plan")
+    except Exception as e:
+        errors.append(f"handoff update error: {e}")
 
     result = {"ok": not errors, "task": task_id, "confirmed_at": now}
     if errors:
@@ -2231,12 +2103,21 @@ class Handler(BaseHTTPRequestHandler):
             # The contract task ID is either stored in state.yaml task_id or matches the
             # discussion ID pattern (<disc_id>/round-N).
             try:
-                import yaml as _disc_yaml
-                state_file = disc_dir / "state.yaml"
+                # Read task_id from SQLite (source of truth)
                 _task_id = ""
-                if state_file.exists():
-                    _state = _disc_yaml.safe_load(state_file.read_text()) or {}
-                    _task_id = _state.get("task_id") or ""
+                try:
+                    from superharness.engine.db import get_connection as _gc_cdisc, init_db as _idb_cdisc
+                    from superharness.engine import discussions_dao as _ddao_cdisc
+                    _cconn = _gc_cdisc(str(self.project_dir))
+                    try:
+                        _idb_cdisc(_cconn)
+                        _disc_row = _ddao_cdisc.get(_cconn, disc_id)
+                        if _disc_row and _disc_row.task_id:
+                            _task_id = _disc_row.task_id
+                    finally:
+                        _cconn.close()
+                except Exception:
+                    pass
 
                 # Use SQLite to find and update in_progress tasks linked to this discussion
                 from superharness.engine.db import get_connection, init_db
@@ -2273,16 +2154,10 @@ class Handler(BaseHTTPRequestHandler):
                 "--discussion-dir", str(disc_dir),
                 "--outcome", "consensus",
             ])
-            # Always sync state.yaml + SQLite regardless of exit code
+            # Sync SQLite (source of truth) — YAML export skips read-then-write
             try:
-                import yaml as _dy
                 import sqlite3 as _sq
                 from superharness.utils.paths import resolve_active_state_db_path as _rap
-                state_file = disc_dir / "state.yaml"
-                if state_file.exists():
-                    _s = _dy.safe_load(state_file.read_text()) or {}
-                    _s["status"] = "consensus"
-                    state_file.write_text(_dy.dump(_s, default_flow_style=False, sort_keys=False, allow_unicode=True))
                 _db = _rap(str(self.project_dir))
                 if os.path.isfile(_db):
                     _con = _sq.connect(_db)
@@ -2303,20 +2178,14 @@ class Handler(BaseHTTPRequestHandler):
             disc_dir = self.project_dir / ".superharness" / "discussions" / disc_id
             if not disc_dir.exists():
                 return ({"error": f"discussion {disc_id} not found"}, 404)
+            # Sync SQLite (source of truth) — YAML export skips read-then-write
             try:
-                import yaml as _dy
                 import sqlite3 as _sq
                 from superharness.utils.paths import resolve_active_state_db_path as _rap
-                state_file = disc_dir / "state.yaml"
-                if state_file.exists():
-                    _s = _dy.safe_load(state_file.read_text()) or {}
-                    _s["status"] = "active"
-                    _s.pop("closed_at", None)
-                    state_file.write_text(_dy.dump(_s, default_flow_style=False, sort_keys=False, allow_unicode=True))
                 _db = _rap(str(self.project_dir))
                 if os.path.isfile(_db):
                     _con = _sq.connect(_db)
-                    _con.execute("UPDATE discussions SET status=? WHERE id=?", ("active", disc_id))
+                    _con.execute("UPDATE discussions SET status=?, closed_at=NULL WHERE id=?", ("active", disc_id))
                     _con.commit()
                     _con.close()
             except Exception as exc:
@@ -2988,30 +2857,7 @@ class Handler(BaseHTTPRequestHandler):
                         for r in _drounds
                     ],
                 }
-                # Also merge any YAML round files not yet in SQLite
-                disc_dir = self.project_dir / ".superharness" / "discussions" / disc_id
-                if disc_dir.exists():
-                    _seen_agents = {r.agent for r in _drounds}
-                    try:
-                        import yaml as _yaml
-                        for sub_file in sorted(disc_dir.glob("round-*.yaml")):
-                            try:
-                                sub = _yaml.safe_load(sub_file.read_text()) or {}
-                                if sub.get("agent") not in _seen_agents:
-                                    result["rounds"].append({
-                                        "round": sub.get("round", ""),
-                                        "agent": sub.get("agent", ""),
-                                        "verdict": sub.get("verdict", ""),
-                                        "position": sub.get("position", ""),
-                                        "submitted_at": sub.get("submitted_at", ""),
-                                        "points": sub.get("points", []),
-                                    })
-                            except Exception as e:
-                                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
-                                pass
-                    except Exception as e:
-                        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
-                        pass
+                # SQLite is source of truth — no YAML fallback needed
                 self._json(result)
             except Exception as exc:
                 self._json({"error": f"discussion fetch failed: {exc}"}, 500)

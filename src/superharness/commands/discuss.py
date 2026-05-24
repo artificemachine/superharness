@@ -34,7 +34,8 @@ def cmd_status(handoff_dir: str, task_id: str | None = None) -> int:
         return 0
 
     from superharness.engine.discuss import cmd_status as engine_status
-    return engine_status(handoff_dir, task_filter=task_id or None)
+    engine_status(handoff_dir, task_filter=task_id or None)
+    return 0
 
 
 def cmd_approve(

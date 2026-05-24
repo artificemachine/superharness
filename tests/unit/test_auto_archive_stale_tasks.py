@@ -105,6 +105,9 @@ def test_report_handoff_blocks_archive(tmp_path):
     project = _setup_project(tmp_path)
     _insert_task(project, "done-task", "in_progress", hours_ago=5.0)
     _write_handoff(project, "done-task-report-2026-05-06-agent.yaml")
+    from tests.helpers import seed_sqlite_handoff
+    seed_sqlite_handoff(project, "done-task", phase="report", status="report_ready",
+                        content="task: done-task\nphase: report\n")
 
     archived = _auto_archive_stale_tasks(str(project))
 
@@ -145,6 +148,9 @@ def test_done_handoff_filename_blocks_archive(tmp_path):
     project = _setup_project(tmp_path)
     _insert_task(project, "closed-task", "in_progress", hours_ago=5.0)
     _write_handoff(project, "closed-task-done-2026-05-06-agent.yaml")
+    from tests.helpers import seed_sqlite_handoff
+    seed_sqlite_handoff(project, "closed-task", phase="done", status="done",
+                        content="task: closed-task\nphase: done\n")
 
     archived = _auto_archive_stale_tasks(str(project))
 

@@ -295,3 +295,85 @@ def get_task_from_sqlite(project_path, task_id):
     task = tasks_dao.get(conn, task_id)
     conn.close()
     return asdict(task) if task else None
+
+
+def _ensure_task_stub(conn, task_id: str, project_path: str, now: str = "2026-01-01T00:00:00Z") -> None:
+    """Create a minimal stub task row if none exists (satisfies handoffs FK)."""
+    if not conn.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,)).fetchone():
+        conn.execute(
+            "INSERT OR IGNORE INTO tasks (id, title, status, project_path, created_at, version)"
+            " VALUES (?, ?, 'todo', ?, ?, 1)",
+            (task_id, task_id, project_path, now),
+        )
+
+
+def seed_sqlite_handoff(
+    project_path,
+    task_id: str,
+    *,
+    phase: str = "report",
+    status: str = "done",
+    content: "str | dict | None" = None,
+    from_agent: str | None = "claude-code",
+    to_agent: str | None = None,
+    now: str = "2026-01-01T00:00:00Z",
+) -> None:
+    """Insert a handoff record into SQLite. Creates a stub task if needed.
+
+    `content` may be a YAML string, a dict (serialized to YAML + stored as metadata), or None.
+    """
+    import sqlite3 as _sq
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import handoffs_dao
+    project = Path(str(project_path))
+    _legacy = project / ".superharness" / "state.sqlite3"
+    _legacy.parent.mkdir(parents=True, exist_ok=True)
+    if not _legacy.exists():
+        _sq.connect(str(_legacy)).close()
+    conn = get_connection(str(project))
+    init_db(conn)
+    _ensure_task_stub(conn, task_id, str(project), now)
+    metadata: dict | None = None
+    if isinstance(content, dict):
+        import yaml as _yaml
+        body = _yaml.dump(content, default_flow_style=False, allow_unicode=True)
+        metadata = content
+    else:
+        body = content or f"task: {task_id}\nphase: {phase}\nstatus: {status}\n"
+    handoffs_dao.append(
+        conn,
+        task_id=task_id,
+        phase=phase,
+        status=status,
+        from_agent=from_agent,
+        to_agent=to_agent,
+        content=body,
+        metadata=metadata,
+        now=now,
+    )
+    conn.commit()
+    conn.close()
+
+
+def seed_sqlite_ledger(
+    project_path,
+    *,
+    action: str,
+    task_id: str | None = None,
+    agent: str | None = "claude-code",
+    now: str = "2026-01-01T00:00:00Z",
+) -> None:
+    """Insert a ledger entry into SQLite."""
+    import sqlite3 as _sq
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import ledger_dao
+    project = Path(str(project_path))
+    _legacy = project / ".superharness" / "state.sqlite3"
+    _legacy.parent.mkdir(parents=True, exist_ok=True)
+    if not _legacy.exists():
+        _sq.connect(str(_legacy)).close()
+    conn = get_connection(str(project))
+    init_db(conn)
+    ledger_dao.record(conn, task_id=task_id, agent=agent, action=action, now=now)
+    conn.commit()
+    conn.close()

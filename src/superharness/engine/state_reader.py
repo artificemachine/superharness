@@ -310,14 +310,26 @@ def get_handoffs(project_dir: str, task_id: str | None = None) -> list[dict]:
     except Exception as e:
         logger.warning("Failed to read handoffs from SQLite for %s: %s", project_dir, e)
         return []
+
+
+def _handoffs_from_sqlite(project_dir: str, task_id: str | None) -> list[dict]:
+    """Read handoffs from the SQLite handoffs table.
+
+    With a task_id, returns that task's history (chronological); without one,
+    returns all handoffs newest-first.
+    """
+    from dataclasses import asdict
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import handoffs_dao
 
     conn = get_connection(project_dir)
     try:
         init_db(conn)
-        rows = handoffs_dao.get_history(conn, task_id=task_id)
-        return [dict(r) for r in rows]
+        if task_id:
+            rows = handoffs_dao.get_history(conn, task_id)
+        else:
+            rows = handoffs_dao.get_all(conn)
+        return [asdict(r) for r in rows]
     finally:
         conn.close()
 
@@ -368,18 +380,13 @@ def get_decisions(project_dir: str) -> list[dict]:
 
 
 def get_ledger_entries(project_dir: str, *, hours: int | None = None, limit: int = 100) -> list[dict]:
-    """Return ledger entries from SQLite (primary) and ledger.md (fallback)."""
-    backend = _get_backend(project_dir)
-    if backend == "yaml_only":
-        return _ledger_from_markdown(project_dir, hours=hours, limit=limit)
+    """Return ledger entries from SQLite (source of truth).
 
-    # Load from Markdown first (older entries)
-    md_entries = _ledger_from_markdown(project_dir, hours=hours, limit=limit)
-    
+    YAML ledger.md is an export-only artifact — do not read it here.
+    Use state_writer.backfill_ledger_from_yaml() for one-time import.
+    """
     if not _has_sqlite_db(project_dir):
-        if backend == "sqlite_only":
-            raise RuntimeError(f"sqlite_only mode but no DB at {project_dir!r}")
-        return md_entries
+        return []
 
     try:
         from dataclasses import asdict
@@ -390,81 +397,20 @@ def get_ledger_entries(project_dir: str, *, hours: int | None = None, limit: int
         try:
             init_db(conn)
             rows = ledger_dao.get_recent(conn, limit=limit)
-            sqlite_entries = [asdict(r) for r in rows]
-            
+            entries = [asdict(r) for r in rows]
             if hours is not None:
                 from datetime import datetime, timedelta, timezone
                 cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
-                sqlite_entries = [
-                    e for e in sqlite_entries
+                entries = [
+                    e for e in entries
                     if _parse_iso_utc(str(e.get("created_at", ""))) >= cutoff
                 ]
-            
-            if backend == "sqlite_only":
-                return sqlite_entries
-            
-            # Dual mode: Combine and sort by timestamp desc
-            # Since ledger is append-only and usually ordered, this is mostly fine
-            combined = sqlite_entries + md_entries
-            combined.sort(key=lambda x: str(x.get("created_at", "")), reverse=True)
-            return combined[:limit]
+            return entries
         finally:
             conn.close()
     except Exception as e:
-        if backend == "sqlite_only":
-            raise
-        logger.warning("Failed to read ledger from SQLite for %s, falling back to markdown: %s", project_dir, e)
-        return md_entries
-
-
-def _ledger_from_markdown(project_dir: str, hours: int | None = None, limit: int = 100) -> list[dict]:
-    """Parse .superharness/ledger.md into dicts."""
-    path = os.path.join(project_dir, ".superharness", "ledger.md")
-    if not os.path.isfile(path):
+        logger.warning("get_ledger_entries failed for %s: %s", project_dir, e)
         return []
-    
-    from datetime import datetime, timedelta, timezone
-    cutoff = None
-    if hours is not None:
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
-
-    results = []
-    try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            for line in f:
-                # Format: - 2026-03-27T22:35:55Z — claude-code — action (details)
-                # Or: - 2026-03-27T22:35:55Z — monitor test
-                match = re.search(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z?)", line)
-                if not match:
-                    continue
-                
-                ts = match.group(1)
-                if cutoff and _parse_iso_utc(ts) < cutoff:
-                    continue
-                
-                # Try splitting by ' — ' (any dash)
-                # We strip the leading '- ' and the timestamp if it's at the start
-                clean_line = line.strip().lstrip("- ").replace(ts, "").strip(" —–-")
-                parts = re.split(r"\s+[—–-]\s+", clean_line)
-                
-                if len(parts) >= 2:
-                    results.append({
-                        "created_at": ts,
-                        "agent": parts[0].strip(),
-                        "action": parts[1].strip(),
-                        "details": {},
-                    })
-                else:
-                    results.append({
-                        "created_at": ts,
-                        "agent": "system", # Fallback
-                        "action": clean_line or "operational event",
-                        "details": {},
-                    })
-    except Exception as e:
-        logger.warning("Failed to parse ledger.md for %s: %s", project_dir, e)
-    results.sort(key=lambda x: str(x.get("created_at", "")), reverse=True)
-    return results[:limit]
 
 
 def parse_iso_utc(raw: str):

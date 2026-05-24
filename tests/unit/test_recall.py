@@ -79,6 +79,13 @@ def test_recall_matches_handoff_yaml(repo_root, tmp_path) -> None:
             """),
         }
     ])
+    from tests.helpers import seed_sqlite_handoff
+    seed_sqlite_handoff(
+        project, "auth-fix", phase="report", status="done",
+        from_agent="claude-code",
+        content="task: auth-fix\nagent: claude-code\ndate: \"2026-03-10\"\nstatus: done\nsummary: |\n  Fixed authentication token refresh bug\n",
+        now="2026-03-10T00:00:00Z",
+    )
     result = _run_recall(tmp_path, "--project", str(project), "authentication")
     assert result.returncode == 0, result.stderr
     assert "authentication" in result.stdout.lower()
@@ -131,6 +138,19 @@ def test_recall_multiple_keywords_or_logic(repo_root, tmp_path) -> None:
             """),
         },
     ])
+    from tests.helpers import seed_sqlite_handoff
+    seed_sqlite_handoff(
+        project, "deploy-gate", phase="report", status="done",
+        from_agent="claude-code",
+        content="task: deploy-gate\nagent: claude-code\ndate: \"2026-03-10\"\nstatus: done\nsummary: Added deployment gate check\n",
+        now="2026-03-10T00:00:00Z",
+    )
+    seed_sqlite_handoff(
+        project, "auth-module", phase="report", status="done",
+        from_agent="codex-cli",
+        content="task: auth-module\nagent: codex-cli\ndate: \"2026-03-10\"\nstatus: done\nsummary: Implemented auth module\n",
+        now="2026-03-10T01:00:00Z",
+    )
     result = _run_recall(tmp_path, "--project", str(project), "deploy", "auth")
     assert result.returncode == 0, result.stderr
     assert "deploy" in result.stdout.lower() or "auth" in result.stdout.lower()
@@ -169,6 +189,19 @@ def test_recall_since_excludes_old_files(repo_root, tmp_path) -> None:
             """),
         },
     ])
+    from tests.helpers import seed_sqlite_handoff
+    seed_sqlite_handoff(
+        project, "new-feature", phase="report", status="done",
+        from_agent="claude-code",
+        content=f"task: new-feature\nagent: claude-code\ndate: \"{recent_date}\"\nstatus: done\nsummary: Added caching layer\n",
+        now=f"{recent_date}T00:00:00Z",
+    )
+    seed_sqlite_handoff(
+        project, "old-feature", phase="report", status="done",
+        from_agent="codex-cli",
+        content=f"task: old-feature\nagent: codex-cli\ndate: \"{old_date}\"\nstatus: done\nsummary: Added caching layer\n",
+        now=f"{old_date}T00:00:00Z",
+    )
     result = _run_recall(tmp_path, "--project", str(project), "--since", "7d", "caching")
     assert result.returncode == 0, result.stderr
     assert "new-feature" in result.stdout
@@ -234,6 +267,25 @@ def test_recall_sorted_by_recency(repo_root, tmp_path) -> None:
             """),
         },
     ])
+    from tests.helpers import seed_sqlite_handoff
+    seed_sqlite_handoff(
+        project, "old-task", phase="report", status="done",
+        from_agent="claude-code",
+        content="task: old-task\nagent: claude-code\ndate: \"2026-01-01\"\nstatus: done\nsummary: deploy old version\n",
+        now="2026-01-01T00:00:00Z",
+    )
+    seed_sqlite_handoff(
+        project, "new-task", phase="report", status="done",
+        from_agent="codex-cli",
+        content="task: new-task\nagent: codex-cli\ndate: \"2026-03-10\"\nstatus: done\nsummary: deploy new version\n",
+        now="2026-03-10T00:00:00Z",
+    )
+    seed_sqlite_handoff(
+        project, "mid-task", phase="report", status="done",
+        from_agent="claude-code",
+        content="task: mid-task\nagent: claude-code\ndate: \"2026-02-15\"\nstatus: done\nsummary: deploy mid version\n",
+        now="2026-02-15T00:00:00Z",
+    )
     result = _run_recall(tmp_path, "--project", str(project), "deploy")
     assert result.returncode == 0, result.stderr
     stdout = result.stdout

@@ -58,6 +58,9 @@ def _handoff_for(tmp_path, task_id: str) -> None:
     hdir.mkdir(parents=True, exist_ok=True)
     hfile = hdir / f"{task_id}-to-owner.yaml"
     hfile.write_text(yaml.dump({"task": task_id, "status": "done"}))
+    from tests.helpers import seed_sqlite_handoff
+    seed_sqlite_handoff(tmp_path, task_id, phase="report", status="done",
+                        content=f"task: {task_id}\nstatus: done\n")
 
 
 def _ledger_mention(tmp_path, task_id: str) -> None:
@@ -65,6 +68,8 @@ def _ledger_mention(tmp_path, task_id: str) -> None:
     harness_dir.mkdir(parents=True, exist_ok=True)
     ledger = harness_dir / "ledger.md"
     ledger.write_text(f"- 2026-01-01 — actor — CLOSE: {task_id} — done\n")
+    from tests.helpers import seed_sqlite_ledger
+    seed_sqlite_ledger(tmp_path, action=f"CLOSE: {task_id} done", task_id=task_id)
 
 
 class TestHygieneDanglingSubtasks:
