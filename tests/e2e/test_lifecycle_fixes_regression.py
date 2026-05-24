@@ -772,40 +772,42 @@ def test_reconcile_lifecycle_counts_all_rules(clean_harness: Path) -> None:
 
 def test_discussion_agent_status_returns_submissions(clean_harness: Path) -> None:
     """discussion_agent_status must return submissions with positions and points."""
-    import yaml
+    import sys; sys.path.insert(0, "src")  # noqa: E702
     disc_id = "test-disc-submissions"
-    disc_dir = clean_harness / ".superharness" / "discussions" / disc_id
-    disc_dir.mkdir(parents=True)
 
-    # Write state.yaml
-    (disc_dir / "state.yaml").write_text(yaml.dump({
-        "status": "active",
-        "topic": "Test submissions display",
-        "participants": ["claude-code", "codex-cli"],
-        "current_round": 1,
-        "max_rounds": 1,
-        "created_at": "2026-01-01T00:00:00Z",
-    }))
+    # Populate SQLite (source of truth) — YAML files are no longer read.
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import discussions_dao as _ddao
+    conn = get_connection(str(clean_harness))
+    init_db(conn)
+    _ddao.create(
+        conn,
+        id=disc_id,
+        topic="Test submissions display",
+        owners=["claude-code", "codex-cli"],
+        now="2026-01-01T00:00:00Z",
+    )
+    _ddao.add_round(
+        conn,
+        discussion_id=disc_id,
+        round_number=1,
+        agent="claude-code",
+        content="Test position from claude-code",
+        verdict="consensus",
+        now="2026-01-01T01:00:00Z",
+    )
+    _ddao.add_round(
+        conn,
+        discussion_id=disc_id,
+        round_number=1,
+        agent="codex-cli",
+        content="Test position from codex-cli",
+        verdict="consensus",
+        now="2026-01-01T01:05:00Z",
+    )
+    conn.commit()
+    conn.close()
 
-    # Write round submissions
-    (disc_dir / "round-1-claude-code.yaml").write_text(yaml.dump({
-        "agent": "claude-code",
-        "round": 1,
-        "verdict": "consensus",
-        "position": "Test position from claude-code",
-        "points": [{"id": "point-1", "verdict": "agree", "rationale": "Good"}],
-        "submitted_at": "2026-01-01T01:00:00Z",
-    }))
-    (disc_dir / "round-1-codex-cli.yaml").write_text(yaml.dump({
-        "agent": "codex-cli",
-        "round": 1,
-        "verdict": "consensus",
-        "position": "Test position from codex-cli",
-        "points": [{"id": "point-1", "verdict": "agree", "rationale": "Agreed"}],
-        "submitted_at": "2026-01-01T01:05:00Z",
-    }))
-
-    import sys; sys.path.insert(0, "src")
     import importlib
     mod = importlib.import_module("superharness.scripts.dashboard-ui")
     result = mod.discussion_agent_status(clean_harness, disc_id)

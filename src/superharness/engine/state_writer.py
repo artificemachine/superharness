@@ -262,14 +262,193 @@ def _export_inbox_yaml(project_dir: str) -> None:
             yaml.dump(items, f, default_flow_style=False, sort_keys=True)
     except Exception as e:
         logger.warning("state_writer unexpected error: %s", e, exc_info=True)
-def upsert_handoff(project_dir: str, handoff_id: str, content: dict) -> bool:
-    """Write or overwrite a handoff yaml. Returns True on success."""
-    from superharness.engine.sqlite_only import is_sqlite_only
+def write_handoff_to_db(
+    project_dir: str,
+    content: dict,
+    *,
+    task_id: str | None = None,
+    phase: str | None = None,
+) -> bool:
+    """Persist a handoff to the SQLite handoffs table (source of truth).
 
+    Maps a handoff content dict to the handoffs table columns. The full
+    document is stored both as readable text (content) and structured json
+    (metadata) so recall can search it and readers can reconstruct it.
+
+    Best-effort: never raises — a DB failure must not break the YAML write
+    path that un-migrated readers still depend on during the transition.
+    """
+    try:
+        from superharness.engine.db import managed_connection, now_iso
+        from superharness.engine import handoffs_dao
+
+        tid = task_id or content.get("task") or content.get("task_id") or ""
+        ph = phase or content.get("phase") or "report"
+        status = content.get("status") or "report_ready"
+        frm = content.get("from") or content.get("from_agent")
+        to = content.get("to") or content.get("to_agent")
+        created = (content.get("date") or content.get("closed_at")
+                   or content.get("created_at") or now_iso())
+        try:
+            body = yaml.dump(content, default_flow_style=False,
+                             allow_unicode=True, sort_keys=False)
+        except Exception:
+            body = str(content)
+
+        with managed_connection(project_dir) as conn:
+            # Stub the task row if it doesn't exist (FK guard).
+            if str(tid) and not conn.execute(
+                "SELECT 1 FROM tasks WHERE id = ?", (str(tid),)
+            ).fetchone():
+                conn.execute(
+                    "INSERT OR IGNORE INTO tasks (id, title, status, project_path, created_at, version)"
+                    " VALUES (?, ?, 'todo', ?, ?, 1)",
+                    (str(tid), str(tid), str(project_dir), str(created)),
+                )
+            handoffs_dao.append(
+                conn, task_id=str(tid), phase=str(ph), status=str(status),
+                from_agent=frm, to_agent=to, content=body,
+                metadata=content, now=str(created),
+            )
+        return True
+    except Exception as e:
+        logger.warning("write_handoff_to_db failed (non-fatal): %s", e, exc_info=True)
+        return False
+
+
+def backfill_handoffs_from_yaml(project_dir: str) -> dict[str, int]:
+    """One-time import of existing handoff YAML files into the SQLite table.
+
+    Idempotent: skips handoffs already present (matched on task/phase/created_at)
+    and skips orphans whose task no longer exists (the FK would reject them).
+    Returns counts: {added, skipped_dup, skipped_orphan, errors}.
+    """
+    import glob as _glob
+    from superharness.engine.db import managed_connection, now_iso
+    from superharness.engine import handoffs_dao
+
+    counts = {"added": 0, "skipped_dup": 0, "skipped_orphan": 0, "errors": 0}
+    handoffs_dir = os.path.join(project_dir, ".superharness", "handoffs")
+    files = sorted(_glob.glob(os.path.join(handoffs_dir, "*.yaml"))
+                   + _glob.glob(os.path.join(handoffs_dir, "*.yml")))
+    if not files:
+        return counts
+
+    with managed_connection(project_dir) as conn:
+        known_tasks = {r["id"] for r in conn.execute("SELECT id FROM tasks")}
+        for fpath in files:
+            try:
+                with open(fpath, encoding="utf-8") as f:
+                    content = yaml.safe_load(f) or {}
+                if not isinstance(content, dict):
+                    continue
+                tid = str(content.get("task") or content.get("task_id") or "")
+                phase = str(content.get("phase") or "report")
+                created = str(content.get("date") or content.get("closed_at")
+                              or content.get("created_at") or now_iso())
+                if tid not in known_tasks:
+                    counts["skipped_orphan"] += 1
+                    continue
+                dup = conn.execute(
+                    "SELECT 1 FROM handoffs WHERE task_id=? AND phase=? AND created_at=? LIMIT 1",
+                    (tid, phase, created),
+                ).fetchone()
+                if dup:
+                    counts["skipped_dup"] += 1
+                    continue
+                try:
+                    body = yaml.dump(content, default_flow_style=False,
+                                     allow_unicode=True, sort_keys=False)
+                except Exception:
+                    body = str(content)
+                handoffs_dao.append(
+                    conn, task_id=tid, phase=phase,
+                    status=str(content.get("status") or "report_ready"),
+                    from_agent=content.get("from") or content.get("from_agent"),
+                    to_agent=content.get("to") or content.get("to_agent"),
+                    content=body, metadata=content, now=created,
+                )
+                counts["added"] += 1
+            except Exception as e:
+                logger.warning("backfill_handoffs: %s failed: %s", fpath, e)
+                counts["errors"] += 1
+    return counts
+
+
+def backfill_ledger_from_yaml(project_dir: str) -> dict[str, int]:
+    """One-time import of ledger.md lines into the SQLite ledger table.
+
+    Idempotent: skips entries already present (matched on created_at + action).
+    Returns counts: {added, skipped_dup, errors}.
+    """
+    import re as _re
+    from superharness.engine.db import managed_connection, now_iso
+    from superharness.engine import ledger_dao
+
+    counts = {"added": 0, "skipped_dup": 0, "errors": 0}
+    ledger_path = os.path.join(project_dir, ".superharness", "ledger.md")
+    if not os.path.isfile(ledger_path):
+        return counts
+
+    lines = []
+    try:
+        with open(ledger_path, encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+    except Exception as e:
+        logger.warning("backfill_ledger_from_yaml: cannot read ledger.md: %s", e)
+        return counts
+
+    _TS_RE = _re.compile(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z?)")
+    _SEP_RE = _re.compile(r"\s+[—\-–]\s+")
+
+    with managed_connection(project_dir) as conn:
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            m = _TS_RE.search(line)
+            if not m:
+                continue
+            ts = m.group(1)
+            clean = line.lstrip("- ").replace(ts, "").strip(" —–-")
+            parts = _SEP_RE.split(clean, maxsplit=2)
+            if len(parts) >= 2:
+                agent = parts[0].strip()
+                action = parts[1].strip()
+            else:
+                agent = "system"
+                action = clean or "operational event"
+
+            try:
+                dup = conn.execute(
+                    "SELECT 1 FROM ledger WHERE created_at=? AND action=? LIMIT 1",
+                    (ts, action),
+                ).fetchone()
+                if dup:
+                    counts["skipped_dup"] += 1
+                    continue
+                ledger_dao.record(conn, agent=agent, action=action,
+                                  details=None, now=ts)
+                counts["added"] += 1
+            except Exception as e:
+                logger.warning("backfill_ledger_from_yaml: line failed: %s", e)
+                counts["errors"] += 1
+
+    return counts
+
+
+def upsert_handoff(project_dir: str, handoff_id: str, content: dict) -> bool:
+    """Write a handoff to SQLite (source of truth) and YAML (export).
+
+    SQLite is authoritative. The YAML file is a compat export — all readers
+    now query SQLite via handoffs_dao.
+    """
     handoffs = os.path.join(project_dir, ".superharness", "handoffs")
     os.makedirs(handoffs, exist_ok=True)
     safe_id = handoff_id.replace("/", "-")
     path = os.path.join(handoffs, f"{safe_id}.yaml")
+
+    write_handoff_to_db(project_dir, content)
 
     try:
         with open(path, "w", encoding="utf-8") as f:

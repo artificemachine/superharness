@@ -64,7 +64,7 @@ def _sqlite_mirror_inbox_enqueue(project_dir: str, items: list[dict], now: str) 
     """Mirror new inbox items to SQLite. Never raises."""
     try:
         from superharness.engine.db import get_connection, init_db, transaction
-        from superharness.engine import inbox_dao, ledger_dao, yaml_sync
+        from superharness.engine import inbox_dao, ledger_dao
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -83,12 +83,6 @@ def _sqlite_mirror_inbox_enqueue(project_dir: str, items: list[dict], now: str) 
                         plan_only=bool(item.get("plan_only", False)),
                         now=item.get("created_at", now),
                     )
-                    yaml_sync.enqueue_op(
-                        conn,
-                        op_type="enqueue_inbox",
-                        payload=item,
-                        now=now,
-                    )
                 ledger_dao.record(
                     conn, agent="watcher", action="auto_enqueue",
                     details={"count": len(items)}, now=now,
@@ -105,7 +99,7 @@ def _sqlite_mirror_inbox_retry(project_dir: str, retried_items: list[dict], now:
     """
     try:
         from superharness.engine.db import get_connection, init_db, transaction
-        from superharness.engine import inbox_dao, ledger_dao, yaml_sync
+        from superharness.engine import inbox_dao, ledger_dao
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -114,12 +108,6 @@ def _sqlite_mirror_inbox_retry(project_dir: str, retried_items: list[dict], now:
                     item_id = str(item["id"])
                     retry_count = int(item.get("retry_count", 0))
                     inbox_dao.set_retry(conn, item_id, retry_count, None, now)
-                    yaml_sync.enqueue_op(
-                        conn,
-                        op_type="update_inbox",
-                        payload={"id": item_id, "status": "pending"},
-                        now=now,
-                    )
                 ledger_dao.record(
                     conn, agent="watcher", action="auto_retry",
                     details={"ids": [i["id"] for i in retried_items]}, now=now,
@@ -135,7 +123,7 @@ def _sqlite_mirror_task_status(
     """Mirror a task status change to SQLite. Never raises."""
     try:
         from superharness.engine.db import get_connection, init_db, transaction
-        from superharness.engine import tasks_dao, ledger_dao, yaml_sync
+        from superharness.engine import tasks_dao, ledger_dao
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -144,14 +132,7 @@ def _sqlite_mirror_task_status(
                 if task is None:
                     return
                 changes: dict = {"status": status, **(extra or {})}
-                payload: dict = {"id": task_id, **changes}
                 tasks_dao.update(conn, task_id, task.version, changes=changes)
-                yaml_sync.enqueue_op(
-                    conn,
-                    op_type="update_task_status",
-                    payload=payload,
-                    now=now,
-                )
                 ledger_dao.record(
                     conn, agent="watcher", action="task_status_change",
                     task_id=task_id, details={"status": status}, now=now,
@@ -569,10 +550,13 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
             continue
 
         # Check if a report/completion handoff exists (plan-phase handoffs don't count)
-        pattern = os.path.join(handoff_dir, f"{task.id}*.yaml")
-        handoffs = glob.glob(pattern)
-        report_handoffs = [h for h in handoffs if "-report-" in os.path.basename(h)
-                           or "-done-" in os.path.basename(h)]
+        try:
+            from superharness.engine import state_reader as _sr_iw
+            task_handoffs = _sr_iw.get_handoffs(project_dir, task_id=task.id)
+            report_handoffs = [h for h in task_handoffs
+                               if str(h.get("phase", "")) in ("report", "done")]
+        except Exception:
+            report_handoffs = []
         if report_handoffs:
             continue  # Has a completion handoff — agent produced output
 
@@ -876,22 +860,27 @@ _PR_URL_RE = __import__("re").compile(r"https://github\.com/[^/]+/[^/]+/pull/\d+
 
 
 def _find_pr_url_in_handoff(handoff_dir: str, task_id: str) -> str | None:
-    """Return the first GitHub PR URL found in any handoff outcome for task_id."""
-    import glob as _glob
-    import yaml as _yaml
-
-    pattern = os.path.join(handoff_dir, f"*{task_id}*")
-    for path in sorted(_glob.glob(pattern)):
-        try:
-            doc = _yaml.safe_load(open(path, encoding="utf-8").read()) or {}
-            for item in doc.get("outcomes") or []:
+    """Return the first GitHub PR URL found in any handoff for task_id — reads from SQLite."""
+    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(handoff_dir)))
+    try:
+        from superharness.engine.db import managed_connection
+        from superharness.engine import handoffs_dao
+        with managed_connection(project_dir) as conn:
+            rows = handoffs_dao.search(conn, task_id)
+        for row in rows:
+            if str(row.task_id) != task_id:
+                continue
+            m = _PR_URL_RE.search(str(row.content or ""))
+            if m:
+                return m.group(0)
+            for item in (row.metadata or {}).get("outcomes") or []:
                 m = _PR_URL_RE.search(str(item))
                 if m:
                     return m.group(0)
-        except Exception as e:
-            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
-            continue
-    return None
+        return None
+    except Exception as e:
+        logger.warning("_find_pr_url_in_handoff SQLite error: %s", e, exc_info=True)
+        return None
 
 
 def _select_reviewers(task: dict, candidates: list[str], profile: dict) -> list[str]:
@@ -1105,7 +1094,6 @@ def _auto_close_report_ready(project_dir: str) -> None:
     Only runs when auto_close: true in profile.yaml (defaults to autonomy=autonomous).
     Calls close_task(skip_verify=True) with actor='watcher'.
     """
-    import glob
     import yaml as _yaml
 
     profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
@@ -1127,7 +1115,6 @@ def _auto_close_report_ready(project_dir: str) -> None:
     if not tasks:
         return
 
-    handoffs_dir = os.path.join(project_dir, ".superharness", "handoffs")
     close_count = 0
 
     for task in tasks:
@@ -1139,26 +1126,20 @@ def _auto_close_report_ready(project_dir: str) -> None:
         if not task_id:
             continue
 
-        # Find the latest report handoff for this task
-        pattern = os.path.join(handoffs_dir, f"*{task_id}*report*")
-        candidates = sorted(glob.glob(pattern), reverse=True)
-        # Also check phase=report handoffs not named with "report"
-        pattern2 = os.path.join(handoffs_dir, f"*{task_id}*.yaml")
-        for path in sorted(glob.glob(pattern2), reverse=True):
-            if path not in candidates:
-                candidates.append(path)
-
+        # Find the latest report handoff for this task via SQLite.
         handoff: dict = {}
-        for path in candidates:
-            try:
-                with open(path, encoding="utf-8") as _f:
-                    h = _yaml.safe_load(_f.read()) or {}
-                if str(h.get("task", "")) == task_id and h.get("phase") == "report":
-                    handoff = h
-                    break
-            except Exception as e:
-                logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
-                continue
+        try:
+            from superharness.engine.db import managed_connection
+            from superharness.engine import handoffs_dao
+            from dataclasses import asdict
+            with managed_connection(project_dir) as _conn:
+                row = handoffs_dao.get_latest(_conn, task_id, "report")
+                if row:
+                    handoff = asdict(row)
+                    # Flatten metadata into handoff dict for downstream consumers.
+                    handoff.update(handoff.pop("metadata", {}) or {})
+        except Exception as e:
+            logger.warning("inbox_watch handoffs_dao.get_latest failed: %s", e, exc_info=True)
 
         if not handoff:
             continue

@@ -13,7 +13,7 @@ from superharness.utils.paths import resolve_xdg_state_db_path
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 22
+CURRENT_SCHEMA_VERSION = 23
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -666,6 +666,16 @@ def _migration_v22(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_v23(conn: sqlite3.Connection) -> None:
+    """Drop the orphaned, misconfigured handoffs_fts table (created in v6).
+
+    It was an external-content FTS5 table declaring columns (agent, summary)
+    that do not exist in the handoffs table, was never populated or queried,
+    and is dead code. See docs/ANALYSIS-sqlite-doctrine-drift.md.
+    """
+    conn.execute("DROP TABLE IF EXISTS handoffs_fts")
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -689,4 +699,5 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v20,
     _migration_v21,
     _migration_v22,
+    _migration_v23,
 ]

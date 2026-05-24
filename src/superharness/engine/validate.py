@@ -119,26 +119,44 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
 
     done_tasks = [t for t in all_tasks if t.status == "done" and t.id.strip()]
 
-    ledger_text = ""
-    if os.path.exists(ledger_file):
-        with open(ledger_file) as f:
-            ledger_text = f.read()
-
-    handoff_files = glob.glob(os.path.join(handoff_dir, "*.yaml"))
-    issues = 0
+    # Build handoff map from SQLite (source of truth)
     handoff_map: dict[str, list[str]] = {}
-    for hfile in handoff_files:
+    try:
+        from superharness.engine import state_reader as _sr_v, handoffs_dao as _hd
+        from superharness.engine.db import get_connection as _gc, init_db as _idb
+        _conn = _gc(project)
         try:
-            data = safe_load(hfile, dict)
-        except Exception as e:
-            print(f"Warning: corrupt handoff file {hfile}: {e}")
-            issues += 1
-            continue
-        task_id = str(data.get("task", "")).strip()
-        if not task_id:
-            continue
-        handoff_map.setdefault(task_id, []).append(hfile)
+            _idb(_conn)
+            for _row in _hd.get_all(_conn):
+                handoff_map.setdefault(_row.task_id, []).append(str(_row.id))
+        finally:
+            _conn.close()
+    except Exception as e:
+        _log.warning("validate: handoff SQLite scan failed: %s", e)
 
+    # Build ledger set of mentioned task IDs from SQLite
+    ledger_task_ids: set[str] = set()
+    try:
+        from superharness.engine import ledger_dao as _ld
+        from superharness.engine.db import get_connection as _gc2, init_db as _idb2
+        _conn2 = _gc2(project)
+        try:
+            _idb2(_conn2)
+            for _le in _ld.get_recent(_conn2, limit=5000):
+                if _le.task_id:
+                    ledger_task_ids.add(_le.task_id)
+                # Also extract task IDs from action strings
+                if _le.action:
+                    for tok in _le.action.split():
+                        tok = tok.rstrip(":,.")
+                        if re.match(r"^[\w][\w.\-]+$", tok):
+                            ledger_task_ids.add(tok)
+        finally:
+            _conn2.close()
+    except Exception as e:
+        _log.warning("validate: ledger SQLite scan failed: %s", e)
+
+    issues = 0
     for task in done_tasks:
         id_ = task.id.strip()
         if not handoff_map.get(id_):
@@ -147,12 +165,12 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
                 _repair_append_ledger(ledger_file, f"created skeleton handoff for {id_}: {os.path.basename(path)}")
                 print(f"[repair] Created handoff for done task: {id_}")
             else:
-                print(f"Missing handoff file for done task: {id_}")
+                print(f"Missing handoff for done task: {id_}")
                 issues += 1
-        if not re.search(r"\b" + re.escape(id_) + r"\b", ledger_text):
+        if id_ not in ledger_task_ids:
             if repair:
                 _repair_append_ledger(ledger_file, f"backfilled ledger entry for done task: {id_}")
-                ledger_text += f"\n{id_} done\n"
+                ledger_task_ids.add(id_)
                 print(f"[repair] Appended ledger entry for: {id_}")
             else:
                 print(f"Missing ledger mention for done task: {id_}")

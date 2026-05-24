@@ -52,12 +52,16 @@ class TestContextCommand:
     def test_context_shows_last_handoff(self, tmp_path):
         """Context output must include outcome and context fields from the last handoff."""
         project = _setup_project(tmp_path)
-        handoff = project / ".superharness" / "handoffs" / "2026-03-14-feat-001-report.yaml"
-        handoff.write_text(
-            "task: feat-001\nphase: report\nstatus: report_ready\n"
-            "from: claude-code\nto: owner\ndate: 2026-03-14T10:00:00Z\n"
-            "outcome: Fixed race condition in inbox dispatch\n"
-            "context: |\n  Next session must know - lock directory approach was chosen.\n"
+        from tests.helpers import seed_sqlite_handoff
+        seed_sqlite_handoff(
+            project, "feat-001", phase="report", status="report_ready",
+            content=(
+                "task: feat-001\nphase: report\nstatus: report_ready\n"
+                "from: claude-code\nto: owner\ndate: 2026-03-14T10:00:00Z\n"
+                "outcome: Fixed race condition in inbox dispatch\n"
+                "context: |\n  Next session must know - lock directory approach was chosen.\n"
+            ),
+            now="2026-03-14T10:00:00Z",
         )
         result = _run_cmd(["--project", str(project), "feat-001"])
         assert result.returncode == 0, result.stderr
@@ -135,11 +139,11 @@ class TestContextCommand:
     def test_context_shows_ledger_entries(self, tmp_path):
         """Context output must include recent ledger lines mentioning the task."""
         project = _setup_project(tmp_path)
-        (project / ".superharness" / "ledger.md").write_text(
-            "# Ledger\n\n"
-            "- 2026-03-14T09:12Z — claude-code — IN_PROGRESS: feat-001\n"
-            "- 2026-03-14T11:44Z — claude-code — REPORT: feat-001\n"
-        )
+        from tests.helpers import seed_sqlite_ledger
+        seed_sqlite_ledger(project, action="IN_PROGRESS: feat-001", task_id="feat-001",
+                           now="2026-03-14T09:12:00Z")
+        seed_sqlite_ledger(project, action="REPORT: feat-001", task_id="feat-001",
+                           now="2026-03-14T11:44:00Z")
         result = _run_cmd(["--project", str(project), "feat-001"])
         assert result.returncode == 0, result.stderr
         assert "IN_PROGRESS" in result.stdout or "REPORT" in result.stdout
