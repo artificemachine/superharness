@@ -112,6 +112,26 @@ def cmd_start(
 
     os.makedirs(discussions_dir, exist_ok=True)
 
+    # Pre-condition: check if the watcher is alive before starting a discussion.
+    # Without the watcher, discussion rounds will sit undispatched forever.
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import heartbeat_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            watcher = heartbeat_dao.get(conn, "watcher")
+            if watcher is None or watcher.status == "zombie":
+                print(
+                    "⚠️  Watcher is not running. Discussion rounds will NOT be dispatched. "
+                    "Start the watcher first: shux operator start",
+                    file=sys.stderr,
+                )
+        finally:
+            conn.close()
+    except Exception:
+        pass  # best-effort check, don't block on it
+
     from superharness.engine.inbox import HEADER, _inbox_lock, enqueue
 
     # Derive participants from explicit owners or the contract, applying exclusions.

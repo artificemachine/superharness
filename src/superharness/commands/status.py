@@ -930,6 +930,8 @@ def main(argv: list[str] | None = None) -> None:
           f"stale={c('stale')} stopped={c('stopped')}")
     print(f"retry-alert: threshold={opts.retry_threshold} high={retry_high} "
           f"ids={','.join(retry_high_ids[:5]) or 'none'}")
+
+    # Per-agent health scores
     print(f"approvals: pending={approvals_pending}")
     print(f"discussions: active={dc.get('active', 0)} consensus={dc.get('consensus', 0)} "
           f"failed_participant={dc.get('failed_participant', 0)} "
