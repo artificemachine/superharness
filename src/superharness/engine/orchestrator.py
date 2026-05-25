@@ -34,10 +34,11 @@ DECOMPOSER_FALLBACK = "claude-opus-4-6"  # kept as single-model fallback within 
 # Tries the best model from each agent. Randomly shuffled per call so
 # different models get a chance — quality scores accumulate over time.
 _ORCHESTRATOR_CHAIN: list[tuple[str, str, str]] = [
-    ("claude", "claude-opus-4-7",   "Claude Opus 4.7 (max)"),
-    ("claude", "claude-opus-4-6",   "Claude Opus 4.6 (fallback)"),
-    ("codex",  "gpt-5.4",           "Codex GPT-5.4 (max)"),
-    ("gemini", "gemini-ultra",      "Gemini Ultra (max)"),
+    ("claude", "claude-opus-4-7",          "Claude Opus 4.7 (max)"),
+    ("claude", "claude-opus-4-6",          "Claude Opus 4.6 (fallback)"),
+    ("codex",  "gpt-5.5",                 "Codex GPT-5.5 (max)"),
+    ("gemini", "gemini-3.1-pro-preview",   "Gemini 3.1 Pro (max)"),
+    ("opencode", "deepseek/deepseek-v4-pro", "DeepSeek V4 Pro (max)"),
 ]
 
 # Quality scores per model: {model_id: {successes: int, failures: int, last_used: iso}}
@@ -121,41 +122,57 @@ _MODEL_TO_TIER: dict[str, str] = {
 
 _DECOMPOSE_PROMPT = """\
 You are an orchestrator for a multi-agent coding system.
-Your job is to decompose a task into subtasks and assign each to the right model and effort level.
+Your job: for any task, decide WHO executes it, at WHAT tier, with WHAT effort, and whether to SPLIT into subtasks.
 
-Available executors across agents (pick ONE model per subtask):
-  MINI tier (quick, cheap — simple edits, typo fixes, single-file changes):
-    - haiku-4-5        ($0.25/$1.25 per MTok) — claude-code
-    - gemini-2.0-flash ($0.10/$0.40 per MTok) — gemini-cli
-    - gpt-5.1-codex-mini                     — codex-cli
+Available executors:
+  claude-code:
+    max:      opus-4-7       ($5/$25 per MTok)  — best reasoning, architecture, safety-critical
+    standard: sonnet-4-6     ($3/$15 per MTok)  — solid code gen, balanced
+    mini:     haiku-4-5      ($1/$5 per MTok)   — simple edits, typo fixes
+    effort:   low | medium | high               (reasoning depth — Opus uses adaptive thinking)
 
-  STANDARD tier (default for ~80% of subtasks — typical features, CRUD, tests):
-    - sonnet-4-6       ($3/$15 per MTok)     — claude-code
-    - gemini-2.0-pro   ($1.25/$5 per MTok)   — gemini-cli
-    - gpt-5.3-codex                           — codex-cli
+  codex-cli:
+    max:      gpt-5.5                          — strongest code generation
+    standard: gpt-5.3-codex                    — balanced code work
+    mini:     gpt-5.1-codex-mini               — quick fixes
+    effort:   low | medium | high | xhigh      (model_reasoning_effort — xhigh for hardest)
 
-  MAX tier (complex logic, security, architecture, cross-cutting concerns):
-    - opus-4-7         ($15/$75 per MTok)    — claude-code
-    - gemini-ultra     ($15/$75 per MTok)    — gemini-cli
-    - gpt-5.4                                — codex-cli
+  gemini-cli:
+    max:      gemini-3.1-pro                   — fast, large context, latest
+    standard: gemini-2.5-pro                   — solid general purpose
+    mini:     gemini-2.5-flash                 — fast turnaround
+    effort:   unsupported (gemini CLI has no effort/thinking flags)
 
-Effort levels: low | medium | high | xhigh | max
-(low=bounded; medium=typical; high=complex; xhigh=cross-system; max=highest-stakes)
+  opencode:
+    max:      deepseek-v4-pro                  — budget-friendly deep reasoning
+    standard: deepseek-v4-flash                — fast, budget option
+    mini:     deepseek-chat                    — cheapest
+    effort:   unsupported (opencode CLI has no effort flag)
 
-Rules:
-1. Split decision:
-   - effort=xhigh: evaluate split; typically 2-4 subtasks
-   - effort=max: evaluate split; typically 3-6 subtasks
-   - If AC <= 3 AND files <= 3: do NOT split (return 1 subtask = original, should_split=false)
-2. Subtask IDs: <parent_id>.<N>
-3. If development_method is set, shape subtasks around its phases (tdd: red/green/refactor etc.)
-4. Respect out_of_scope — no subtask may violate it
-5. Assign model + effort + timeout per subtask using the table above
-6. Use blocked_by for sequential ordering; leave independent subtasks unblocked
-7. Subtask model tier MUST be <= parent model tier (never escalate silently)
-8. Subtask effort MUST be <= parent effort (never escalate silently)
-9. Prefer MINI or STANDARD models unless the subtask explicitly requires MAX-tier judgment
-10. Route to the cheapest model at the assigned tier unless complexity demands a specific agent
+Owner selection rules:
+  - Architecture, system design, safety, security   → claude-code
+  - Heavy implementation, code generation           → codex-cli
+  - Fast turnaround, large-context processing       → gemini-cli
+  - Budget-constrained, non-critical                → opencode
+  - Cross-cutting concerns                          → claude-code (orchestrates), codex-cli (builds)
+
+Tier selection rules:
+  - Security audit, data migration, auth, payouts   → max
+  - New feature, refactor, test suite               → standard (escalate to max if >6 criteria)
+  - Typo fix, doc update, simple chore              → mini
+  - Discussion topic (design/architecture)          → max (needs deep reasoning)
+  - Previously failed task                          → escalate one tier up
+
+Effort selection rules (only for claude-code and codex-cli):
+  - Safety, security, complex architecture          → high
+  - Feature implementation, test writing            → medium
+  - Chore, refactor, doc update                     → low
+
+Split decision rules:
+  - AC <= 3 AND files <= 3 → do NOT split (decompose: false)
+  - AC > 3 OR files > 3    → split into 2-4 subtasks
+  - Cross-cutting (multiple modules) → split into 3-6 subtasks
+  - Discussion → do NOT split (multi-agent rounds, not subtasks)
 
 Task:
   ID:                  {task_id}
@@ -171,21 +188,25 @@ Task:
 
 Reply with JSON only (no markdown fences):
 {{
-  "should_split": true,
-  "rationale": "...",
+  "owner": "claude-code | codex-cli | gemini-cli | opencode",
+  "tier": "mini | standard | max",
+  "effort": "low | medium | high | xhigh",
+  "decompose": true,
+  "rationale": "one sentence why",
   "subtasks": [
     {{
-      "id": "<parent_id>.<N>",
+      "id": "<parent_id>.st<N>",
       "title": "...",
-      "model": "sonnet-4-6 | opus-4-7 | haiku-4-5 | gemini-2.0-flash | gemini-2.0-pro | gemini-ultra | gpt-5.1-codex-mini | gpt-5.3-codex | gpt-5.4",
-      "effort": "low | medium | high | xhigh | max",
-      "timeout_minutes": <int>,
-      "blocked_by": "<parent_id>.<N-1>" | null,
-      "plan": {{}},
+      "owner": "claude-code | codex-cli | gemini-cli | opencode",
+      "tier": "mini | standard | max",
+      "effort": "low | medium | high | xhigh",
+      "blocked_by": "<parent_id>.st<N-1>" | null,
       "estimated_tokens": <int>
     }}
   ]
 }}
+
+When decompose is false, return empty subtasks array.
 """
 
 
@@ -240,6 +261,19 @@ class SubtaskDispatch:
         )
 
 
+@dataclass
+class RoutingPlan:
+    """Full routing decision: owner + tier + effort + decomposition."""
+    owner: str
+    tier: str
+    effort: str
+    decompose: bool
+    rationale: str = ""
+    subtasks: list[dict[str, Any]] = field(default_factory=list)
+    total_estimated_cost_usd: float = 0.0
+    recommended_budget_usd: float = 0.0
+
+
 class Orchestrator:
     """Opus-level orchestrator that decomposes tasks for sub-agent dispatch."""
 
@@ -273,6 +307,83 @@ class Orchestrator:
             cost_breakdown=task_estimate.subtask_estimates,
             total_estimated_cost_usd=task_estimate.total_estimated_cost_usd,
             recommended_budget_usd=task_estimate.recommended_budget_usd,
+        )
+
+    def route(self, task: dict[str, Any]) -> RoutingPlan:
+        """Full routing decision: owner + tier + effort + decomposition.
+
+        Calls the orchestrator model to decide WHO executes the task,
+        at WHAT tier, with WHAT effort, and whether to split into subtasks.
+        Falls back to standard dispatch on failure.
+        """
+        prompt = self._build_decompose_prompt(task)
+        raw = self._call_orchestrator_model(prompt)
+
+        try:
+            data = json.loads(raw) if isinstance(raw, str) else raw
+        except json.JSONDecodeError:
+            logger.warning("Orchestrator returned invalid JSON, using fallback")
+            return self._fallback_routing(task)
+
+        if not isinstance(data, dict):
+            return self._fallback_routing(task)
+
+        owner = str(data.get("owner") or "claude-code")
+        tier = str(data.get("tier") or "standard")
+        effort = str(data.get("effort") or "medium")
+        decompose = bool(data.get("decompose", False))
+        rationale = str(data.get("rationale") or "")
+        raw_subtasks = data.get("subtasks") or []
+
+        subtasks: list[dict[str, Any]] = []
+        if decompose and isinstance(raw_subtasks, list):
+            for st in raw_subtasks:
+                if isinstance(st, dict):
+                    st_owner = st.get("owner", owner)
+                    st_tier = st.get("tier", tier)
+                    st_effort = st.get("effort", effort)
+                    subtasks.append({
+                        "id": str(st.get("id", f"{task.get('id', 'task')}.st{len(subtasks)+1}")),
+                        "title": str(st.get("title", "subtask")),
+                        "owner": st_owner,
+                        "model_tier": st_tier,
+                        "effort": st_effort,
+                        "blocked_by": st.get("blocked_by"),
+                        "estimated_tokens": int(st.get("estimated_tokens", 0)),
+                    })
+
+        # Enrich with cost estimates
+        if subtasks:
+            cost_input = [
+                {"model_tier": st["model_tier"], "estimated_tokens": st["estimated_tokens"]}
+                for st in subtasks
+            ]
+            task_estimate = estimate_task_cost(cost_input)
+            total_cost = task_estimate.total_estimated_cost_usd
+            budget = task_estimate.recommended_budget_usd
+        else:
+            total_cost = 0.0
+            budget = 0.0
+
+        return RoutingPlan(
+            owner=owner,
+            tier=tier,
+            effort=effort,
+            decompose=decompose,
+            rationale=rationale,
+            subtasks=subtasks,
+            total_estimated_cost_usd=total_cost,
+            recommended_budget_usd=budget,
+        )
+
+    def _fallback_routing(self, task: dict[str, Any]) -> RoutingPlan:
+        """Fallback routing when orchestrator fails."""
+        return RoutingPlan(
+            owner=task.get("owner", "claude-code"),
+            tier="standard",
+            effort="medium",
+            decompose=False,
+            rationale="Orchestrator unavailable — using standard dispatch",
         )
 
     def _build_decompose_prompt(self, task: dict[str, Any]) -> str:

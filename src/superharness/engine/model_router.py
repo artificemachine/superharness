@@ -113,7 +113,7 @@ def classify_task(
             ["claude", "--model", "haiku", "-p", prompt],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=5,  # fast timeout — if Haiku is slow, fall back
             check=False,
         )
         if result.returncode != 0:

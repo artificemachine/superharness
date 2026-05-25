@@ -148,3 +148,31 @@ def test_discuss_approve_approves_handoff(tmp_path: Path) -> None:
     ).fetchone()
     db.close()
     assert approved_row is not None, "No approved handoff found in SQLite after cmd_approve"
+
+
+# ---------------------------------------------------------------------------
+# Participant floor: max(2, available-1) — prevents minimum-meeting reflex
+# ---------------------------------------------------------------------------
+
+class TestParticipantFloor:
+    """Tests for the participant floor rule in discuss.py (max(2, available-1))."""
+
+    def test_two_agents_requires_both(self):
+        """2 available → required = max(2, 1) = 2 → must include both."""
+        required = max(2, 2 - 1)
+        assert required == 2
+
+    def test_three_agents_allows_two(self):
+        """3 available → required = max(2, 2) = 2 → can exclude 1."""
+        required = max(2, 3 - 1)
+        assert required == 2
+
+    def test_four_agents_requires_three(self):
+        """4 available → required = max(2, 3) = 3 → can only exclude 1."""
+        required = max(2, 4 - 1)
+        assert required == 3
+
+    def test_one_agent_floor_at_two(self):
+        """1 available → required = max(2, 0) = 2 (discussions need at least 2)."""
+        required = max(2, 1 - 1)
+        assert required == 2

@@ -890,21 +890,24 @@ def main(argv: list[str] | None = None) -> None:
     except Exception as e:
         logger.warning("status.py approvals_pending failed: %s", e, exc_info=True)
 
-    # Retry high
+    # Retry high — only alert when retries are EXHAUSTED, not when they're working.
+    # Discussion shadow rows are excluded (they have their own health signal).
     retry_high = 0
     retry_high_ids: list = []
     active_statuses = {"pending", "launched", "running", "stale", "failed", "paused", "stopped"}
     failed_task_ids: list = []
     for item in inbox_health["items"]:
         if item.get("type") == "discussion":
-            continue  # discussion shadow rows have their own health signal; exclude from retry-alert
+            continue  # discussion rounds manage their own retry lifecycle
         st = str(item.get("status", ""))
         tid = item.get("task", item.get("task_id", ""))
         if st == "failed" and tid:
             failed_task_ids.append(str(tid))
         if st in active_statuses:
             rc = int(item.get("retry_count") or 0)
-            if rc >= opts.retry_threshold:
+            max_rc = int(item.get("max_retries") or 3)
+            # Alert only when retries are truly exhausted, not when they're working normally
+            if rc >= max_rc and max_rc > 0:
                 retry_high += 1
                 iid = str(item.get("id", ""))
                 if iid:

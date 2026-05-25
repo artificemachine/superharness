@@ -113,6 +113,11 @@ def get_latest(
     return _row_to_handoff(row) if row else None
 
 def _row_to_handoff(row: sqlite3.Row) -> HandoffRow:
+    metadata_raw = row["metadata"]
+    try:
+        metadata = json.loads(metadata_raw) if metadata_raw else {}
+    except (json.JSONDecodeError, TypeError):
+        metadata = {}
     return HandoffRow(
         id=row["id"],
         task_id=row["task_id"],
@@ -121,6 +126,6 @@ def _row_to_handoff(row: sqlite3.Row) -> HandoffRow:
         from_agent=row["from_agent"],
         to_agent=row["to_agent"],
         content=row["content"],
-        metadata=json.loads(row["metadata"]),
+        metadata=metadata,
         created_at=row["created_at"]
     )
