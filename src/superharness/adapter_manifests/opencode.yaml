@@ -7,13 +7,14 @@ capabilities:
   - code_generation
   - file_editing
   - test_execution
+supports_effort: false  # no --effort flag in opencode CLI
 model_tiers:
   mini:
     versions:
       "*": { id: deepseek/deepseek-chat, label: "DeepSeek Chat (via opencode)" }
   standard:
     versions:
-      "*": { id: deepseek/deepseek-v4-pro, label: "DeepSeek V4 Pro (via opencode)" }
+      "*": { id: deepseek/deepseek-v4-flash, label: "DeepSeek V4 Flash (via opencode)" }
   max:
     versions:
       "*": { id: deepseek/deepseek-v4-pro, label: "DeepSeek V4 Pro (via opencode)" }
