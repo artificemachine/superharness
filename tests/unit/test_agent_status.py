@@ -355,6 +355,28 @@ def test_read_all_skips_invalid_files(tmp_path: Path) -> None:
     assert "bad" not in result  # bad file skipped
 
 
+def test_read_all_merges_sqlite_with_external_yaml(tmp_path: Path) -> None:
+    """v8 regression: when SQLite has native runtimes AND external runtime writes YAML,
+    read_all_agent_statuses must include BOTH. Regresses the `if rows: return` flaw
+    that hid external runtimes once SQLite became non-empty."""
+    project = _setup_project(tmp_path)
+    from superharness.engine.agent_status import write_agent_status, read_all_agent_statuses
+    # SQLite gets native runtimes
+    write_agent_status(project, runtime="claude-code")
+    write_agent_status(project, runtime="codex-cli")
+    # External runtime writes YAML directly (bypasses our API)
+    agents_dir = project / ".superharness" / "agents"
+    agents_dir.mkdir(exist_ok=True)
+    (agents_dir / "rogue-runtime.status.yaml").write_text(
+        "schema_version: '1'\nruntime: rogue-runtime\nupdated_at: '2026-04-05T14:30:45Z'\nliveness: active\n",
+        encoding="utf-8",
+    )
+    result = read_all_agent_statuses(project)
+    assert "claude-code" in result, "native (SQLite) missing"
+    assert "codex-cli" in result, "native (SQLite) missing"
+    assert "rogue-runtime" in result, "external (YAML-only) hidden by SQLite-first short-circuit"
+
+
 # ---------------------------------------------------------------------------
 # 7. list_stale_agents — returns list of stale runtime names
 # ---------------------------------------------------------------------------

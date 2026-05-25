@@ -13,15 +13,26 @@ from superharness.utils.paths import resolve_xdg_state_db_path
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 25
+CURRENT_SCHEMA_VERSION = 26
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 def _column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
-    """Check if a column exists in a table using PRAGMA table_info."""
-    return any(r["name"] == column for r in conn.execute(f"PRAGMA table_info({table})"))
+    """Check if a column exists in a table using PRAGMA table_info.
+
+    Robust to both row_factory=None (returns tuples) and row_factory=Row.
+    Previously required row_factory=Row; missing it caused silent migration
+    drift where ALTER columns weren't added but user_version still bumped.
+    """
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    for r in rows:
+        # PRAGMA table_info columns: (cid, name, type, notnull, dflt_value, pk)
+        name = r["name"] if hasattr(r, "keys") else r[1]
+        if name == column:
+            return True
+    return False
 
 def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, ddl_clause: str):
     """Add a column to a table if it doesn't already exist."""
@@ -735,6 +746,25 @@ def _migration_v25(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_v26(conn: sqlite3.Connection) -> None:
+    """SQLite SoT for onboarding state (v8 bulletproof fix).
+
+    onboarding.yaml previously lived only as YAML. Tracks per-step completion
+    status ('pending' | 'completed') and config_version for wizard migrations.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS onboarding_state (
+            project_key      TEXT    PRIMARY KEY,
+            version          INTEGER NOT NULL DEFAULT 1,
+            config_version   INTEGER NOT NULL DEFAULT 1,
+            steps_json       TEXT    NOT NULL,
+            updated_at       TEXT    NOT NULL
+        )
+        """
+    )
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -761,4 +791,5 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v23,
     _migration_v24,
     _migration_v25,
+    _migration_v26,
 ]

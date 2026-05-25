@@ -1,0 +1,204 @@
+# YAML Manifest — every .yaml/.yml in the project, classified.
+#
+# Purpose: structural fix from bulletproof v8 — every YAML the system touches
+# must be explicitly classified. New YAML anywhere → fail CI until added here.
+# See tests/test_yaml_manifest_complete.py for enforcement.
+#
+# Classifications:
+#   config    — static input, read at startup or rarely; not state
+#   state     — runtime-mutated; SoT must be SQLite (table named in backed_by)
+#   boundary  — external-agent input; consumed via ingest function
+#   template  — examples/scaffolds, not consumed by runtime
+#   ignore    — build artifacts, venv, caches, generated docs
+#
+# Patterns match via fnmatch (POSIX shell glob). Explicit files win over patterns.
+
+version: 1
+
+# ---------------------------------------------------------------------------
+# CI / repo-level tooling configs (static input, never state)
+# ---------------------------------------------------------------------------
+files:
+  - path: .github/workflows/ci-matrix.yml
+    type: config
+    reason: GitHub Actions matrix workflow
+  - path: .github/workflows/publish.yml
+    type: config
+    reason: PyPI publish workflow (fires on release:published)
+  - path: .github/workflows/release.yml
+    type: config
+    reason: tag-based release workflow
+  - path: .github/workflows/security.yml
+    type: config
+    reason: security scan workflow
+  - path: .github/workflows/shell-guard.yml
+    type: config
+    reason: shell script guard workflow
+  - path: .github/workflows/tests.yml
+    type: config
+    reason: full test suite workflow
+  - path: .shipguard.yml
+    type: config
+    reason: ShipGuard SAST scan rules
+  - path: .serena/project.yml
+    type: config
+    reason: Serena MCP project profile (path roots, ignored dirs)
+  - path: .serena/project.local.yml
+    type: config
+    reason: Serena MCP local override (untracked)
+
+  # -------------------------------------------------------------------------
+  # Per-project configs in .superharness/ (read mostly at startup)
+  # -------------------------------------------------------------------------
+  - path: .superharness/profile.yaml
+    type: config
+    reason: per-project autonomy + dispatch settings (state_backend, model defaults)
+  - path: .superharness/onboarding.yaml
+    type: state
+    backed_by: onboarding_state          # migration v26 — SQLite SoT
+    mirror: dual-write (gated by is_sqlite_only)
+    reason: per-step onboarding wizard progress; SQLite SoT via onboarding_dao
+
+  # -------------------------------------------------------------------------
+  # Runtime state files in .superharness/ — SoT in SQLite, YAML mirror only
+  # -------------------------------------------------------------------------
+  - path: .superharness/watcher.heartbeat.yaml
+    type: state
+    backed_by: agent_heartbeats          # migration v25
+    mirror: dual-write (gated by is_sqlite_only)
+    reason: watcher liveness; SQLite SoT via watcher_heartbeat_dao
+
+  # -------------------------------------------------------------------------
+  # Templates / specs (consumed only as examples, not runtime state)
+  # -------------------------------------------------------------------------
+  - path: protocol/templates/agent-status.yaml
+    type: template
+    reason: schema example for the agent-status contract
+  - path: protocol/templates/heartbeat.yaml
+    type: template
+    reason: schema example for the heartbeat contract
+
+  # -------------------------------------------------------------------------
+  # Bundled config under src/ (shipped in the wheel; read at runtime as config)
+  # -------------------------------------------------------------------------
+  - path: src/superharness/engine/models.yaml
+    type: config
+    reason: model registry (Sonnet/Haiku/Opus IDs, defaults)
+  - path: src/superharness/adapter_manifests/claude-code.yaml
+    type: config
+    reason: Claude Code adapter manifest
+  - path: src/superharness/adapter_manifests/codex-cli.yaml
+    type: config
+    reason: Codex CLI adapter manifest
+  - path: src/superharness/adapter_manifests/gemini-cli.yaml
+    type: config
+    reason: Gemini CLI adapter manifest
+  - path: src/superharness/adapter_manifests/opencode.yaml
+    type: config
+    reason: OpenCode adapter manifest
+  - path: src/superharness/module_templates/auto-schedule.yaml
+    type: template
+    reason: module template — auto-schedule cron
+  - path: src/superharness/module_templates/examples/hello-world.yaml
+    type: template
+    reason: module template — hello-world example
+  - path: src/superharness/module_templates/examples/task-logger.yaml
+    type: template
+    reason: module template — task-logger example
+  - path: src/superharness/module_templates/ntfy.yaml
+    type: template
+    reason: module template — ntfy notifications
+  - path: src/superharness/module_templates/obsidian.yaml
+    type: template
+    reason: module template — Obsidian integration
+  - path: src/superharness/module_templates/openclaw.yaml
+    type: template
+    reason: module template — OpenClaw relay
+  - path: src/superharness/module_templates/remember.yaml
+    type: template
+    reason: module template — remember (vault recall)
+  - path: src/superharness/module_templates/security.yaml
+    type: template
+    reason: module template — security scans
+  - path: src/superharness/module_templates/ship.yaml
+    type: template
+    reason: module template — ship release pipeline
+  - path: src/superharness/module_templates/telegram.yaml
+    type: template
+    reason: module template — Telegram notifier
+
+# ---------------------------------------------------------------------------
+# Patterns for runtime-generated files. Order matters: first match wins.
+# ---------------------------------------------------------------------------
+patterns:
+  # External-agent submission YAMLs — boundary input, ingested by harness
+  - glob: .superharness/discussions/*/round-*-*.yaml
+    type: boundary
+    ingest_function: discussions_dao.register_yaml_submission
+    reason: external-agent round submissions; SQLite SoT via discussion_rounds table
+
+  # Removed v10: discussion state.yaml pattern was vestigial. No code in src/
+  # writes or reads .superharness/discussions/*/state.yaml. If old worktrees
+  # still have such files on disk they're picked up by the worktree ignore
+  # pattern; freshly active projects don't generate them. Add back only if a
+  # future runtime starts writing them — accompanied by a SQLite table.
+
+  # Agent-managed runtime state YAMLs — SoT in SQLite
+  - glob: .superharness/agents/*.status.yaml
+    type: state
+    backed_by: agent_runtime_status      # migration v25
+    mirror: dual-write (gated by is_sqlite_only) for native; direct YAML for external runtimes
+    reason: per-agent runtime status; SQLite SoT via agent_runtime_status_dao
+
+  - glob: .superharness/agents/*.heartbeat.yaml
+    type: state
+    backed_by: agent_heartbeats          # migration v25
+    mirror: dual-write (gated by is_sqlite_only) for native; direct YAML for external runtimes
+    reason: per-agent heartbeats; SQLite SoT via watcher_heartbeat_dao
+
+  - glob: .superharness/agent-pulse.yaml
+    type: state
+    backed_by: agent_pulses              # migration v25
+    mirror: dual-write (gated by is_sqlite_only)
+    reason: CLI pulse signal; SQLite SoT via agent_pulse_dao
+
+  # Cached / derived artifacts (not authoritative)
+  - glob: .superharness/context-cache/*.yaml
+    type: ignore
+    reason: per-task cost cache (derived from SDK telemetry)
+
+  # Operator/agent module YAMLs (per-project enable list, configs)
+  - glob: .superharness/modules/*.yaml
+    type: config
+    reason: per-project enabled modules + per-module settings
+
+  # Backups + archives
+  - glob: .superharness/archive/*.yaml
+    type: ignore
+    reason: archived state snapshots (read-only, no SoT relevance)
+  - glob: .superharness/backups/*.yaml
+    type: ignore
+    reason: pre-migration DB backups
+
+  # Build / venv / generated — explicitly ignored
+  - glob: build/lib/**/*.yaml
+    type: ignore
+    reason: setuptools build artifact (duplicate of src/)
+  - glob: build/lib/**/*.yml
+    type: ignore
+    reason: setuptools build artifact
+  - glob: .venv/**/*.yaml
+    type: ignore
+    reason: virtualenv package internals
+  - glob: .venv/**/*.yml
+    type: ignore
+    reason: virtualenv package internals
+  - glob: .claude/worktrees/**/*.yaml
+    type: ignore
+    reason: git worktree (parallel session checkouts)
+  - glob: .claude/worktrees/**/*.yml
+    type: ignore
+    reason: git worktree (parallel session checkouts)
+  - glob: __pycache__/**/*.yaml
+    type: ignore
+    reason: Python bytecode cache
