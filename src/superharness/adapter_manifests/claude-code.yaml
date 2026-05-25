@@ -8,6 +8,7 @@ capabilities:
   - file_editing
   - test_execution
   - multi_file_refactor
+supports_effort: true  # --effort low/medium/high passed to claude CLI
 # model_tiers uses versioned entries: each tier has a `versions` map.
 # The `"*"` key is the default (resolved when no version is pinned).
 # EFFORT_TO_TIER_VERSION in engine/taxonomy.py drives effort→tier+version routing.

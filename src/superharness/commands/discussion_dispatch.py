@@ -75,6 +75,92 @@ def _retry_exhausted(project_dir: str, agent: str, task_key: str) -> bool:
         return False
 
 
+def _retry_agent(project_dir: str, agent: str, task_key: str, disc_id: str, round_: int, round_title: str = "") -> bool:
+    """Re-queue the last failed inbox row for (agent, task_key) with incremented retry_count.
+
+    Unlike _enqueue_for_agent (which creates a NEW row with retry_count=0),
+    this preserves the row identity, failed_reason, and increments retry_count
+    so the retry cap actually works. Returns True if retried, False if no
+    failed row was found.
+    """
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import inbox_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            row = conn.execute(
+                "SELECT id, retry_count, max_retries, failed_reason "
+                "FROM inbox "
+                "WHERE target_agent = ? AND task_id = ? AND status = 'failed' "
+                "ORDER BY created_at DESC LIMIT 1",
+                (agent, task_key),
+            ).fetchone()
+            if not row:
+                return False
+            new_count = int(row["retry_count"] or 0) + 1
+            max_retries = int(row["max_retries"] or 3)
+            if new_count > max_retries:
+                return False
+            preserved_reason = row["failed_reason"] or f"retry {new_count}/{max_retries}"
+            now = _now_utc()
+            inbox_dao.set_retry(conn, row["id"], new_count, preserved_reason, now)
+            conn.commit()
+            print(f"  Retried round {round_} for {agent}: {row['id']} (attempt {new_count}/{max_retries})")
+            return True
+        finally:
+            conn.close()
+    except Exception as e:
+        _log.warning("discussion_dispatch.py _retry_agent failed: %s", e)
+        return False
+
+
+def _agent_available(agent: str, project_dir: str) -> tuple[bool, str]:
+    """Check if an agent is available for dispatch.
+
+    Returns (available: bool, reason: str).
+    Unavailable reasons: binary not installed, rate limited, quota exhausted.
+    """
+    import shutil
+
+    # 1. Check if the adapter binary is installed
+    try:
+        from superharness.engine.adapter_registry import load_manifest
+        manifest = load_manifest(agent)
+        required_bin = (manifest.requires or {}).get("bin")
+        if required_bin and manifest.validation.get("check_bin", True):
+            if not shutil.which(str(required_bin)):
+                return False, f"binary '{required_bin}' not installed"
+    except Exception:
+        pass  # manifest load failure — don't block on it
+
+    # 2. Check if agent recently hit rate limit or quota exhaustion
+    try:
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            row = conn.execute(
+                "SELECT failed_reason, created_at FROM inbox "
+                "WHERE target_agent = ? AND status = 'failed' "
+                "AND failed_reason IS NOT NULL "
+                "ORDER BY created_at DESC LIMIT 1",
+                (agent,),
+            ).fetchone()
+            if row:
+                reason = str(row["failed_reason"] or "").lower()
+                if "rate limit" in reason or "quota" in reason or "429" in reason:
+                    return False, f"recent rate limit: {reason[:80]}"
+                if "permanent block" in reason:
+                    return False, f"permanent block: {reason[:80]}"
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+    return True, ""
+
+
 def _ensure_round_task(project_dir: str, disc_id: str, round_: int, title: str) -> None:
     """Create the round task row in tasks if it doesn't already exist.
 
@@ -228,6 +314,15 @@ def dispatch(project_dir: str) -> int:
                 if already_active:
                     continue
 
+                # Check if the agent is actually available (binary installed, not rate-limited)
+                available, reason = _agent_available(agent, project_dir)
+                if not available:
+                    print(
+                        f"  Skipping {agent} for round {current_round}: "
+                        f"agent unavailable ({reason})"
+                    )
+                    continue
+
                 # Honour the per-(discussion, round, agent) retry cap.
                 # If a prior inbox item for this task_key reached its
                 # max_retries threshold, treat the agent as a failed
@@ -241,8 +336,12 @@ def dispatch(project_dir: str) -> int:
                     )
                     continue
 
-                _enqueue_for_agent(inbox_file, disc_id, current_round, agent, project_dir,
-                                   f"Discussion round {current_round}: {topic}")
+                # Re-queue existing failed row (preserves retry_count + failed_reason).
+                # Falls back to creating a new row if no failed row exists (first launch).
+                if not _retry_agent(project_dir, agent, task_key, disc_id, current_round,
+                                    f"Discussion round {current_round}: {topic}"):
+                    _enqueue_for_agent(inbox_file, disc_id, current_round, agent, project_dir,
+                                       f"Discussion round {current_round}: {topic}")
 
     return 0
 

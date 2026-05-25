@@ -14,7 +14,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 import yaml
 
-from superharness.engine.orchestrator import Orchestrator, DecompositionResult
+from superharness.engine.orchestrator import Orchestrator, DecompositionResult, RoutingPlan
 from superharness.engine.cost_estimator import CostEstimate
 
 
@@ -65,50 +65,37 @@ def _setup_project(tmp_path: Path) -> Path:
     return tmp_path
 
 
-MOCK_DECOMPOSITION = DecompositionResult(
+MOCK_ROUTING = RoutingPlan(
+    owner="claude-code",
+    tier="standard",
+    effort="medium",
+    decompose=True,
+    rationale="cross-cutting feature with multiple concerns",
     subtasks=[
         {
             "id": "T-42.1",
             "title": "Write rate limiter middleware",
+            "owner": "codex-cli",
             "model_tier": "standard",
-            "owner": "claude-code",
+            "effort": "medium",
             "estimated_tokens": 45000,
-            "estimated_cost_usd": 0.28,
-            "rationale": "Multi-file coding",
         },
         {
             "id": "T-42.2",
             "title": "Add Redis backend",
-            "model_tier": "mini",
             "owner": "claude-code",
+            "model_tier": "mini",
+            "effort": "low",
             "estimated_tokens": 12000,
-            "estimated_cost_usd": 0.02,
-            "rationale": "Boilerplate",
         },
     ],
-    cost_breakdown=[
-        CostEstimate(
-            model_id="claude-sonnet-4-6",
-            tier="standard",
-            estimated_input_tokens=27000,
-            estimated_output_tokens=18000,
-            estimated_cost_usd=0.28,
-        ),
-        CostEstimate(
-            model_id="claude-haiku-4-5-20251001",
-            tier="mini",
-            estimated_input_tokens=7200,
-            estimated_output_tokens=4800,
-            estimated_cost_usd=0.02,
-        ),
-    ],
     total_estimated_cost_usd=0.30,
-    recommended_budget_usd=0.45,
+    recommended_budget_usd=2.00,
 )
 
 
 # ---------------------------------------------------------------------------
-# _record_decomposition
+# Tests
 # ---------------------------------------------------------------------------
 
 
@@ -122,7 +109,7 @@ class TestRecordDecomposition:
         project = _setup_project(tmp_path)
         seed_sqlite_from_yaml(project)
 
-        _record_decomposition(str(project), "T-42", MOCK_DECOMPOSITION)
+        _record_decomposition(str(project), "T-42", MOCK_ROUTING)
 
         conn = get_connection(str(project))
         try:
@@ -141,7 +128,7 @@ class TestRecordDecomposition:
             extras = json.loads(parent.extras_json)
             assert "subtasks" in extras
             assert len(extras["subtasks"]) == 2
-            assert extras["budget_usd"] == pytest.approx(0.45, abs=0.01)
+            assert extras["budget_usd"] == pytest.approx(2.00, abs=0.01)
         finally:
             conn.close()
 
@@ -154,7 +141,7 @@ class TestRecordDecomposition:
         project = _setup_project(tmp_path)
         seed_sqlite_from_yaml(project)
 
-        _record_decomposition(str(project), "T-42", MOCK_DECOMPOSITION)
+        _record_decomposition(str(project), "T-42", MOCK_ROUTING)
 
         conn = get_connection(str(project))
         try:
@@ -163,7 +150,7 @@ class TestRecordDecomposition:
             import json
             extras = json.loads(parent.extras_json)
             assert extras["estimated_cost_usd"] == pytest.approx(0.30, abs=0.01)
-            assert extras["budget_usd"] == pytest.approx(0.45, abs=0.01)
+            assert extras["budget_usd"] == pytest.approx(2.00, abs=0.01)
         finally:
             conn.close()
 
@@ -182,9 +169,9 @@ class TestOrchestrateMode:
         project = _setup_project(tmp_path)
         seed_sqlite_from_yaml(project)
 
-        with patch("superharness.commands.delegate.Orchestrator") as MockOrch:
+        with patch("superharness.engine.orchestrator.Orchestrator") as MockOrch:
             mock_instance = MockOrch.return_value
-            mock_instance.decompose.return_value = MOCK_DECOMPOSITION
+            mock_instance.route.return_value = MOCK_ROUTING
 
             with patch("superharness.commands.delegate._launch_agent"):
                 with patch("superharness.commands.delegate.sdk_available", return_value=False):
@@ -199,7 +186,7 @@ class TestOrchestrateMode:
                         no_auto_model=True,
                     )
 
-            mock_instance.decompose.assert_called_once()
+            mock_instance.route.assert_called_once()
             assert rc == 0
 
     def test_orchestrate_prints_cost_summary(self, tmp_path, capsys):
@@ -210,9 +197,9 @@ class TestOrchestrateMode:
         project = _setup_project(tmp_path)
         seed_sqlite_from_yaml(project)
 
-        with patch("superharness.commands.delegate.Orchestrator") as MockOrch:
+        with patch("superharness.engine.orchestrator.Orchestrator") as MockOrch:
             mock_instance = MockOrch.return_value
-            mock_instance.decompose.return_value = MOCK_DECOMPOSITION
+            mock_instance.route.return_value = MOCK_ROUTING
 
             with patch("superharness.commands.delegate._launch_agent"):
                 with patch("superharness.commands.delegate.sdk_available", return_value=False):
@@ -239,9 +226,9 @@ class TestOrchestrateMode:
         project = _setup_project(tmp_path)
         seed_sqlite_from_yaml(project)
 
-        with patch("superharness.commands.delegate.Orchestrator") as MockOrch:
+        with patch("superharness.engine.orchestrator.Orchestrator") as MockOrch:
             mock_instance = MockOrch.return_value
-            mock_instance.decompose.return_value = MOCK_DECOMPOSITION
+            mock_instance.route.return_value = MOCK_ROUTING
 
             with patch("superharness.commands.delegate._launch_agent"):
                 with patch("superharness.commands.delegate.sdk_available", return_value=False):
@@ -256,8 +243,8 @@ class TestOrchestrateMode:
                         no_auto_model=True,
                     )
 
-        mock_instance.decompose.assert_called_once()
+        mock_instance.route.assert_called_once()
         # owner in task_data should reflect the actual target
-        call_args = mock_instance.decompose.call_args[0][0]
+        call_args = mock_instance.route.call_args[0][0]
         assert call_args["owner"] == "codex-cli"
         assert rc == 0

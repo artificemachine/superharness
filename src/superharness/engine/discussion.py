@@ -249,14 +249,32 @@ def _create_consensus_task(conn, disc, round_: int, submitted_agents: set[str]) 
             pass
         tasks_dao.upsert(conn, TaskRow(
             id=task_id, title=f"Implement: {topic}", owner=owner,
-            status="todo", effort="medium", project_path=project_dir,
+            status="plan_approved", effort="medium", project_path=project_dir,
             development_method="tdd",
             acceptance_criteria=list(criteria),
             test_types=[], out_of_scope=[], definition_of_done=[],
             context=f"Auto-created from discussion {disc_id} (consensus)",
             tdd=None, version=1, created_at=now,
         ))
-        print(f"[discussion] auto-task: {task_id}", file=sys.stderr)
+        print(f"[discussion] auto-task: {task_id} (plan_approved)", file=sys.stderr)
+
+        # Auto-dispatch through orchestrator — the best model decides routing.
+        try:
+            from superharness.engine.orchestrator import Orchestrator
+            orch = Orchestrator(project_dir=project_dir)
+            task_data = {
+                "id": task_id,
+                "title": f"Implement: {topic}",
+                "owner": owner,
+                "acceptance_criteria": list(criteria),
+            }
+            routing = orch.route(task_data)
+            print(f"[discussion] orchestrator: {task_id} → {routing.owner}/{routing.tier}/{routing.effort}", file=sys.stderr)
+            if routing.decompose:
+                print(f"[discussion] orchestrator: decomposed into {len(routing.subtasks)} subtasks", file=sys.stderr)
+            # TODO: dispatch subtasks through inbox (see delegate.py _record_decomposition)
+        except Exception as route_err:
+            print(f"[discussion] orchestrator skipped: {route_err}", file=sys.stderr)
     except Exception as e:
         print(f"[discussion] auto-task failed: {e}", file=sys.stderr)
 

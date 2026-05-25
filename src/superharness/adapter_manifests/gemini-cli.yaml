@@ -7,16 +7,17 @@ capabilities:
   - code_generation
   - file_editing
   - test_execution
+supports_effort: false  # no --effort or --thinking-budget in gemini CLI
 model_tiers:
   mini:
     versions:
-      "*": { id: gemini-2.0-flash, label: "Gemini 2.0 Flash" }
+      "*": { id: gemini-2.5-flash, label: "Gemini 2.5 Flash" }
   standard:
     versions:
-      "*": { id: gemini-2.0-pro, label: "Gemini 2.0 Pro" }
+      "*": { id: gemini-2.5-pro, label: "Gemini 2.5 Pro" }
   max:
     versions:
-      "*": { id: gemini-ultra, label: "Gemini Ultra" }
+      "*": { id: gemini-3.1-pro-preview, label: "Gemini 3.1 Pro" }
 requires:
   bin: gemini
   env: []

@@ -499,7 +499,7 @@ def _sqlite_mirror_dispatch(
     *,
     reason: str = "",
 ) -> None:
-    """Mirror inbox dispatch status change to SQLite. Never raises."""
+    """Mirror inbox dispatch status change to SQLite. Never raises, logs errors."""
     try:
         from superharness.engine.db import get_connection, init_db, transaction
         from superharness.engine import inbox_dao, ledger_dao
@@ -511,15 +511,24 @@ def _sqlite_mirror_dispatch(
                     conn, agent=agent, action=f"dispatch_{to_status}",
                     task_id=task_id, now=now,
                 )
+                updated = False
                 for _from in ("pending", "launched", "running"):
                     if inbox_dao.update_status(
                         conn, item_id,
                         from_status=_from, to_status=to_status,
                         now=now, reason=reason or None,
                     ):
+                        updated = True
                         break
+                if not updated:
+                    _log.warning(
+                        "_sqlite_mirror_dispatch: no row matched for item=%s to_status=%s",
+                        item_id, to_status,
+                    )
         finally:
             conn.close()
+    except Exception as e:
+        _log.warning("_sqlite_mirror_dispatch failed for %s: %s", item_id, e)
     except Exception as e:
         _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         pass
