@@ -64,8 +64,15 @@ def heartbeat_path(project_dir: str, agent_id: str = "watcher") -> str:
 
 
 def write_heartbeat(project_dir: str, heartbeat: AgentHeartbeat) -> None:
-    """Write an AgentHeartbeat: SQLite is primary, YAML mirror for export."""
+    """Write an AgentHeartbeat: SQLite is primary, YAML mirror for export.
+
+    Durability (C-DURABLE bulletproof fix v10):
+      - If SQLite write SUCCEEDS in sqlite_only mode → YAML write is skipped (SoT clean).
+      - If SQLite write FAILS in sqlite_only mode → YAML is written as a crash dump
+        so data is not silently lost. Caller still sees no exception.
+    """
     # SQLite primary write — source of truth
+    sqlite_ok = False
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import watcher_heartbeat_dao
@@ -90,15 +97,17 @@ def write_heartbeat(project_dir: str, heartbeat: AgentHeartbeat) -> None:
                 cost_usd=cost_usd,
             )
             conn.commit()
+            sqlite_ok = True
         finally:
             conn.close()
     except Exception as e:
-        logger.warning("heartbeat_contract: SQLite write failed (continuing with YAML): %s", e)
+        logger.error("heartbeat_contract: SQLite SoT write failed — falling back to YAML crash dump: %s", e)
 
-    # YAML mirror — skipped in sqlite_only mode (SQLite is SoT, YAML on-demand only)
+    # YAML mirror: skip only when SQLite succeeded AND sqlite_only mode is active.
+    # If SQLite failed, write YAML regardless (durability fallback).
     try:
         from superharness.engine.sqlite_only import is_sqlite_only
-        if is_sqlite_only(project_dir=project_dir):
+        if sqlite_ok and is_sqlite_only(project_dir=project_dir):
             return
     except Exception as e:
         logger.debug("heartbeat_contract: is_sqlite_only check failed, writing YAML mirror: %s", e)
@@ -131,7 +140,14 @@ def write_heartbeat(project_dir: str, heartbeat: AgentHeartbeat) -> None:
 
 
 def read_heartbeat_db(project_dir: str, agent_id: str = "watcher") -> Optional[AgentHeartbeat]:
-    """Read AgentHeartbeat from SQLite (source of truth). Returns None if absent."""
+    """Read AgentHeartbeat: prefer SQLite, but if a YAML crash dump is newer
+    (i.e. C-DURABLE fallback fired and SQLite is stale), prefer the YAML.
+
+    Without this comparison, stale SQLite data would shadow a fresher crash
+    dump indefinitely until SQLite was healed AND a new write succeeded.
+    See bulletproof report v11 for the discovery scenario.
+    """
+    sqlite_hb: Optional[AgentHeartbeat] = None
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import watcher_heartbeat_dao
@@ -141,29 +157,64 @@ def read_heartbeat_db(project_dir: str, agent_id: str = "watcher") -> Optional[A
             row = watcher_heartbeat_dao.get(conn, agent_id)
         finally:
             conn.close()
-        if row is None:
-            return None
-        budget: Optional[AgentBudget] = None
-        if row.tokens_used is not None or row.tokens_limit is not None or row.cost_usd is not None:
-            budget = AgentBudget(
-                tokens_used=int(row.tokens_used or 0),
-                tokens_limit=row.tokens_limit,
-                cost_usd=float(row.cost_usd or 0.0),
+        if row is not None:
+            budget: Optional[AgentBudget] = None
+            if row.tokens_used is not None or row.tokens_limit is not None or row.cost_usd is not None:
+                budget = AgentBudget(
+                    tokens_used=int(row.tokens_used or 0),
+                    tokens_limit=row.tokens_limit,
+                    cost_usd=float(row.cost_usd or 0.0),
+                )
+            sqlite_hb = AgentHeartbeat(
+                schema_version=row.schema_version,
+                agent_id=row.agent_id,
+                runtime=row.runtime,
+                pid=row.pid,
+                status=row.status,
+                active_task=row.active_task,
+                next_wake_at=row.next_wake_at,
+                written_at=row.written_at,
+                budget=budget,
             )
-        return AgentHeartbeat(
-            schema_version=row.schema_version,
-            agent_id=row.agent_id,
-            runtime=row.runtime,
-            pid=row.pid,
-            status=row.status,
-            active_task=row.active_task,
-            next_wake_at=row.next_wake_at,
-            written_at=row.written_at,
-            budget=budget,
-        )
     except Exception as e:
         logger.warning("heartbeat_contract.read_heartbeat_db error: %s", e)
-        return None
+
+    # Check for a YAML crash dump / mirror; prefer it if newer.
+    # Use FILE MTIME (not written_at) because consecutive writes within the
+    # same second produce identical written_at strings, hiding crash dumps.
+    yaml_path_str = heartbeat_path(project_dir, agent_id)
+    if not os.path.isfile(yaml_path_str):
+        return sqlite_hb
+    yaml_hb = read_heartbeat(yaml_path_str)
+    if yaml_hb is None:
+        return sqlite_hb
+    if sqlite_hb is None:
+        return yaml_hb
+    if _yaml_newer_than(yaml_path_str, sqlite_hb.written_at):
+        return yaml_hb
+    return sqlite_hb
+
+
+def _yaml_newer_than(yaml_path: str, sqlite_iso_ts: str | None) -> bool:
+    """Return True if yaml_path's mtime is newer than sqlite's ISO timestamp.
+
+    SQLite stores ISO timestamps at second precision but our write order is
+    always "SQLite first, then YAML". So if YAML mtime > parsed SQLite ts (second
+    boundary), YAML was written after SQLite — either in dual-mode (same content
+    as SQLite, harmless) or as a sqlite_only crash dump (fresher than SQLite).
+    Legacy YAMLs from before SQLite was introduced have mtimes far in the past
+    and are correctly NOT preferred.
+    """
+    try:
+        yaml_mtime = os.path.getmtime(yaml_path)
+        if not sqlite_iso_ts:
+            return True
+        sqlite_dt = datetime.strptime(sqlite_iso_ts.rstrip("Z"), "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+        sqlite_unix = sqlite_dt.timestamp()
+        return yaml_mtime > sqlite_unix
+    except Exception as e:
+        logger.debug("heartbeat_contract._yaml_newer_than: %s", e)
+        return False
 
 
 def read_heartbeat(path: str) -> Optional[AgentHeartbeat]:
@@ -220,8 +271,15 @@ def age_seconds(heartbeat: AgentHeartbeat) -> int:
 
 
 def list_agent_heartbeats(project_dir: str) -> list[AgentHeartbeat]:
-    """Return all valid heartbeats in a project, SQLite first, YAML fallback."""
-    # SQLite primary
+    """Return all valid heartbeats: merge SQLite (authoritative) with YAML (external agents).
+
+    External agent runtimes (Claude Code, Codex CLI, Gemini, OpenCode) may write
+    heartbeat YAMLs directly without calling write_heartbeat(). The merge ensures
+    they remain visible even when SQLite has watcher + native-agent rows.
+    SQLite wins for shared agent_ids.
+    """
+    # SQLite primary — collect into dict keyed by agent_id
+    by_id: dict[str, AgentHeartbeat] = {}
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import watcher_heartbeat_dao
@@ -231,47 +289,59 @@ def list_agent_heartbeats(project_dir: str) -> list[AgentHeartbeat]:
             rows = watcher_heartbeat_dao.get_all(conn)
         finally:
             conn.close()
-        if rows:
-            results: list[AgentHeartbeat] = []
-            # Watcher first, then others sorted
-            watcher_rows = [r for r in rows if r.agent_id == "watcher"]
-            other_rows = sorted(
-                [r for r in rows if r.agent_id != "watcher"],
-                key=lambda r: r.agent_id,
+        for row in rows:
+            budget: Optional[AgentBudget] = None
+            if row.tokens_used is not None or row.tokens_limit is not None or row.cost_usd is not None:
+                budget = AgentBudget(
+                    tokens_used=int(row.tokens_used or 0),
+                    tokens_limit=row.tokens_limit,
+                    cost_usd=float(row.cost_usd or 0.0),
+                )
+            by_id[row.agent_id] = AgentHeartbeat(
+                schema_version=row.schema_version,
+                agent_id=row.agent_id,
+                runtime=row.runtime,
+                pid=row.pid,
+                status=row.status,
+                active_task=row.active_task,
+                next_wake_at=row.next_wake_at,
+                written_at=row.written_at,
+                budget=budget,
             )
-            for row in watcher_rows + other_rows:
-                budget: Optional[AgentBudget] = None
-                if row.tokens_used is not None or row.tokens_limit is not None or row.cost_usd is not None:
-                    budget = AgentBudget(
-                        tokens_used=int(row.tokens_used or 0),
-                        tokens_limit=row.tokens_limit,
-                        cost_usd=float(row.cost_usd or 0.0),
-                    )
-                results.append(AgentHeartbeat(
-                    schema_version=row.schema_version,
-                    agent_id=row.agent_id,
-                    runtime=row.runtime,
-                    pid=row.pid,
-                    status=row.status,
-                    active_task=row.active_task,
-                    next_wake_at=row.next_wake_at,
-                    written_at=row.written_at,
-                    budget=budget,
-                ))
-            return results
     except Exception as e:
-        logger.debug("heartbeat_contract.list_agent_heartbeats SQLite read failed, falling back to YAML: %s", e)
+        logger.debug("heartbeat_contract.list_agent_heartbeats SQLite read failed: %s", e)
 
-    # YAML fallback (legacy projects without SQLite-populated heartbeats)
-    results = []
-    watcher_hb = read_heartbeat(heartbeat_path(project_dir, "watcher"))
-    if watcher_hb is not None:
-        results.append(watcher_hb)
+    # YAML scan — fills in agents not in SQLite (external runtimes, legacy projects)
+    # AND prefers YAML over SQLite when YAML's mtime is newer than the SQLite row
+    # (C-DURABLE-READ: crash dump supersedes stale SQLite row).
+    def _consider_yaml(agent_id: str, yaml_hb: AgentHeartbeat, yaml_path: str) -> None:
+        existing = by_id.get(agent_id)
+        if existing is None:
+            by_id[agent_id] = yaml_hb
+            return
+        if _yaml_newer_than(yaml_path, existing.written_at):
+            by_id[agent_id] = yaml_hb
+
+    watcher_path = heartbeat_path(project_dir, "watcher")
+    if os.path.isfile(watcher_path):
+        watcher_hb = read_heartbeat(watcher_path)
+        if watcher_hb is not None:
+            _consider_yaml("watcher", watcher_hb, watcher_path)
     agents_dir = os.path.join(project_dir, ".superharness", "agents")
     if os.path.isdir(agents_dir):
         for fname in sorted(os.listdir(agents_dir)):
-            if fname.endswith(".heartbeat.yaml"):
-                hb = read_heartbeat(os.path.join(agents_dir, fname))
-                if hb is not None:
-                    results.append(hb)
+            if not fname.endswith(".heartbeat.yaml"):
+                continue
+            agent_id = fname.removesuffix(".heartbeat.yaml")
+            yaml_path = os.path.join(agents_dir, fname)
+            hb = read_heartbeat(yaml_path)
+            if hb is not None:
+                _consider_yaml(hb.agent_id or agent_id, hb, yaml_path)
+
+    # Output: watcher first, then others sorted by agent_id
+    results: list[AgentHeartbeat] = []
+    if "watcher" in by_id:
+        results.append(by_id["watcher"])
+    for aid in sorted(k for k in by_id if k != "watcher"):
+        results.append(by_id[aid])
     return results

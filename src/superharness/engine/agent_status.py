@@ -92,6 +92,7 @@ def write_agent_status(
     when = updated_at or _now_utc()
 
     # SQLite primary — source of truth
+    sqlite_ok = False
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import agent_runtime_status_dao
@@ -109,15 +110,17 @@ def write_agent_status(
                 updated_at=when,
             )
             conn.commit()
+            sqlite_ok = True
         finally:
             conn.close()
     except Exception as e:
-        logger.warning("agent_status: SQLite write failed (continuing with YAML): %s", e)
+        logger.error("agent_status: SQLite SoT write failed — falling back to YAML crash dump: %s", e)
 
-    # YAML mirror — skipped in sqlite_only mode (SQLite is SoT)
+    # YAML mirror: skip only when SQLite succeeded AND sqlite_only mode is active.
+    # If SQLite failed, write YAML regardless (C-DURABLE fallback).
     try:
         from superharness.engine.sqlite_only import is_sqlite_only
-        if is_sqlite_only(project_dir=project_dir_str):
+        if sqlite_ok and is_sqlite_only(project_dir=project_dir_str):
             return
     except Exception as e:
         logger.debug("agent_status: is_sqlite_only check failed, writing YAML mirror: %s", e)
@@ -182,8 +185,14 @@ def read_agent_status(
     project_dir: Path | str,
     runtime: str,
 ) -> AgentStatusRecord | None:
-    """Read one runtime's status: SQLite primary, YAML fallback."""
+    """Read one runtime's status: prefer the FRESHER of SQLite vs YAML.
+
+    C-DURABLE-READ (v11 fix): if a YAML crash dump is newer than the SQLite row
+    (i.e. the last write failed SQLite but succeeded YAML), the YAML wins.
+    Without this, stale SQLite data shadows fresh YAML crash dumps indefinitely.
+    """
     # SQLite primary
+    sqlite_rec: AgentStatusRecord | None = None
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import agent_runtime_status_dao
@@ -194,32 +203,61 @@ def read_agent_status(
         finally:
             conn.close()
         if row is not None:
-            return _dao_row_to_record(row)
+            sqlite_rec = _dao_row_to_record(row)
     except Exception as e:
-        logger.debug("agent_status: SQLite read failed, falling back to YAML: %s", e)
+        logger.debug("agent_status: SQLite read failed: %s", e)
 
-    # YAML fallback (legacy)
+    # YAML check — prefer if mtime newer than SQLite row (sub-second-safe).
     path = _status_path(Path(project_dir), runtime)
     if not path.exists():
-        return None
+        return sqlite_rec
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}  # noqa: state-read — YAML fallback when SQLite empty (legacy projects)
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}  # noqa: state-read — YAML compare-or-fallback when SQLite empty or stale
         if not isinstance(data, dict):
-            return None
-        return _parse_record(data)
+            return sqlite_rec
+        yaml_rec = _parse_record(data)
     except Exception as e:
         logger.warning("agent_status.py unexpected error: %s", e, exc_info=True)
-        return None
+        return sqlite_rec
+
+    if yaml_rec is None:
+        return sqlite_rec
+    if sqlite_rec is None:
+        return yaml_rec
+    if _yaml_newer_than(str(path), sqlite_rec.updated_at):
+        return yaml_rec
+    return sqlite_rec
+
+
+def _yaml_newer_than(yaml_path: str, sqlite_iso_ts: str | None) -> bool:
+    """Return True if yaml mtime > parsed SQLite ISO timestamp. See
+    heartbeat_contract._yaml_newer_than for rationale (sub-second safety)."""
+    import os as _os
+    from datetime import datetime as _dt, timezone as _tz
+    try:
+        yaml_mtime = _os.path.getmtime(yaml_path)
+        if not sqlite_iso_ts:
+            return True
+        sqlite_dt = _dt.strptime(sqlite_iso_ts.rstrip("Z"), "%Y-%m-%dT%H:%M:%S").replace(tzinfo=_tz.utc)
+        return yaml_mtime > sqlite_dt.timestamp()
+    except Exception as e:
+        logger.debug("agent_status._yaml_newer_than: %s", e)
+        return False
 
 
 def read_all_agent_statuses(
     project_dir: Path | str,
 ) -> dict[str, AgentStatusRecord]:
-    """Read all agent statuses: SQLite primary, YAML fallback.
+    """Read all agent statuses: merge SQLite (authoritative) with YAML (external runtimes).
+
+    External agents may write status YAMLs directly without calling
+    write_agent_status(). The merge ensures they remain visible even when
+    SQLite already has native-runtime rows. SQLite wins for shared runtimes.
 
     Skips records that are corrupt or missing required fields — never raises.
     """
-    # SQLite primary
+    # SQLite primary — collect into dict keyed by runtime
+    result: dict[str, AgentStatusRecord] = {}
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import agent_runtime_status_dao
@@ -229,25 +267,28 @@ def read_all_agent_statuses(
             rows = agent_runtime_status_dao.get_all(conn)
         finally:
             conn.close()
-        if rows:
-            return {r.runtime: _dao_row_to_record(r) for r in rows}
+        for r in rows:
+            result[r.runtime] = _dao_row_to_record(r)
     except Exception as e:
-        logger.debug("agent_status: SQLite get_all failed, falling back to YAML: %s", e)
+        logger.debug("agent_status: SQLite get_all failed: %s", e)
 
-    # YAML fallback (legacy)
+    # YAML scan — fills in runtimes not in SQLite AND prefers YAML when it is
+    # newer than the SQLite row (C-DURABLE-READ: fresh crash dump > stale SQLite).
     agents_dir = _agents_dir(Path(project_dir))
     if not agents_dir.exists():
-        return {}
+        return result
 
-    result: dict[str, AgentStatusRecord] = {}
-    for path in sorted(agents_dir.glob("*.status.yaml")):  # noqa: state-read — YAML fallback scan when SQLite empty (legacy projects)
+    for path in sorted(agents_dir.glob("*.status.yaml")):  # noqa: state-read — YAML scan: external runtimes + freshness compare
         runtime_name = path.name.removesuffix(".status.yaml")
         try:
-            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}  # noqa: state-read — YAML fallback when SQLite empty (legacy projects)
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}  # noqa: state-read — YAML scan: external runtimes + freshness compare
             if not isinstance(data, dict):
                 continue
             record = _parse_record(data)
-            if record is not None:
+            if record is None:
+                continue
+            existing = result.get(runtime_name)
+            if existing is None or _yaml_newer_than(str(path), existing.updated_at):
                 result[runtime_name] = record
         except Exception as e:
             logger.warning("agent_status.py unexpected error: %s", e, exc_info=True)
