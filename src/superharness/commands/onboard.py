@@ -285,20 +285,11 @@ def _step_init(project: Path, state: dict) -> None:
     if already_existed:
         click.echo("[skip] Step 2 (init): .superharness/ already exists")
     else:
-        # Create scaffold
+        # Create scaffold — state lives in SQLite, no YAML files created.
         sh.mkdir(exist_ok=True)
-        contract = sh / "contract.yaml"
-        if not contract.exists():
-            contract.write_text("id: main\ntasks: []\n", encoding="utf-8")
         ledger = sh / "ledger.md"
         if not ledger.exists():
             ledger.write_text("# Ledger\n", encoding="utf-8")
-        decisions = sh / "decisions.yaml"
-        if not decisions.exists():
-            decisions.write_text("[]\n")
-        failures = sh / "failures.yaml"
-        if not failures.exists():
-            failures.write_text("[]\n")
         handoffs = sh / "handoffs"
         handoffs.mkdir(exist_ok=True)
         

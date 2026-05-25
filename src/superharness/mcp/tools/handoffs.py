@@ -34,25 +34,26 @@ def write_handoff(
     phase: str,
     content: dict[str, Any],
 ) -> str:
-    """Write a handoff YAML file. Returns the file path."""
+    """Write a handoff to SQLite (source of truth). YAML export is optional.
+    Returns the YAML export file path for backward compat."""
+    # ── SQLite is the source of truth (mandatory). ──
+    from superharness.engine.state_writer import write_handoff_to_db
+    write_handoff_to_db(project_path, content, task_id=task_id, phase=phase)
+
+    # Optional YAML export — best-effort, never blocks the write path.
     d = _handoffs_dir(project_path)
     os.makedirs(d, exist_ok=True)
     ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     fname = f"{task_id}-{phase}-{ts}-mcp.yaml"
     path = os.path.join(d, fname)
-    with open(path, "w", encoding="utf-8") as f:
-        if yaml:
-            yaml.dump(content, f, allow_unicode=True, default_flow_style=False)
-        else:
-            import json
-            f.write(json.dumps(content, indent=2))
-
-    # Source of truth: also persist to SQLite (best-effort; YAML stays for
-    # readers not yet migrated). See docs/PLAN-sqlite-source-of-truth-refactor.md.
     try:
-        from superharness.engine.state_writer import write_handoff_to_db
-        write_handoff_to_db(project_path, content, task_id=task_id, phase=phase)
-    except Exception:
-        pass
+        with open(path, "w", encoding="utf-8") as f:
+            if yaml:
+                yaml.dump(content, f, allow_unicode=True, default_flow_style=False)
+            else:
+                import json
+                f.write(json.dumps(content, indent=2))
+    except OSError:
+        pass  # export-only; failure is non-fatal
 
     return path

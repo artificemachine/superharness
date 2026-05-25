@@ -202,3 +202,25 @@ patterns:
   - glob: __pycache__/**/*.yaml
     type: ignore
     reason: Python bytecode cache
+
+# ---------------------------------------------------------------------------
+# Process state — runtime artifacts that live outside SQLite by design.
+# These are PID files, tick counters, event streams, and other ephemeral
+# runtime data that dies with the process. Not subject to SoT enforcement.
+# Classification: process_state (excluded from "SQLite is SoT" auditing).
+# ---------------------------------------------------------------------------
+process_state:
+  - path: .superharness/daemon-state.json
+    reason: daemon PID, watcher PID, intervals — ephemeral runtime
+  - path: .superharness/operator-state.json
+    reason: operator PID, dashboard port — ephemeral runtime
+  - path: .superharness/loop_guard_state.json
+    reason: loop detector state — tick counter; resets on restart
+  - path: .superharness/events.jsonl
+    reason: per-project event stream — append-only log, not relational state
+  - path: .superharness/benchmark.jsonl
+    reason: dispatch telemetry — metrics stream, not state
+  - path: .superharness/watcher.heartbeat
+    reason: legacy plain-text timestamp — separate from .yaml heartbeat
+  - path: .superharness/session-progress.md
+    reason: runtime-modified markdown — session log, not operational state
