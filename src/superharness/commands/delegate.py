@@ -541,6 +541,7 @@ def delegate(
     no_auto_model: bool = False,
     via_sdk: bool | None = None,
     orchestrate: bool = False,
+    no_orchestrate: bool = False,
     skip_preflight: bool = False,
     force: bool = False,
     plan_only: bool = False,
@@ -714,8 +715,8 @@ def delegate(
         if task_effort:
             resolved_effort = task_effort
 
-    # 3. Auto-classification (if not fully resolved and not disabled)
-    if not no_auto_model and (not resolved_model or not resolved_effort):
+    # 3. Auto-classification (skip if print_only — don't call Claude for a preview)
+    if not print_only and not no_auto_model and (not resolved_model or not resolved_effort):
         try:
             from superharness.engine.adapter_registry import (
                 clear_manifest_cache,
@@ -797,32 +798,57 @@ def delegate(
         logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
         pass
     # -----------------------------------------------------------------------
-    # Orchestrator mode: decompose task into subtasks before dispatch
+    # Auto-orchestrate: let the best model decide owner+tier+effort+decompose.
+    # Default path. Skip with --no-orchestrate for trivial tasks.
+    # --orchestrate flag forces this path (backward compat, same behavior).
     # -----------------------------------------------------------------------
-    if orchestrate and target in ("claude-code", "codex-cli"):
-        orch = Orchestrator(project_dir=project_dir)
-        task_data = {
-            "id": task_id,
-            "title": _get_task_title(project_dir, task_id) or task_id,
-            "owner": target,
-            "acceptance_criteria": _get_task_acceptance_criteria(project_dir, task_id),
-        }
-        decomposition = orch.decompose(task_data)
+    should_orchestrate = not no_orchestrate
+    if should_orchestrate and not print_only:
+        try:
+            from superharness.engine.orchestrator import Orchestrator
+            orch = Orchestrator(project_dir=project_dir)
+            task_data = {
+                "id": task_id,
+                "title": _get_task_title(project_dir, task_id) or task_id,
+                "owner": target,
+                "acceptance_criteria": _get_task_acceptance_criteria(project_dir, task_id),
+            }
+            routing = orch.route(task_data)
 
-        # Write subtasks and metadata to SQLite
-        _record_decomposition(project_dir, task_id, decomposition)
+            print()
+            print(f"Orchestrator routing for {task_id}:")
+            print(f"  Owner:    {routing.owner}")
+            print(f"  Tier:     {routing.tier}")
+            print(f"  Effort:   {routing.effort}")
+            print(f"  Rationale: {routing.rationale}")
 
-        # Print decomposition summary
-        print()
-        print(f"Orchestrator decomposition for {task_id}:")
-        print(f"  Subtasks: {len(decomposition.subtasks)}")
-        for st in decomposition.subtasks:
-            print(f"    - {st['id']}: {st['title']} [{st['model_tier']}] ~{st.get('estimated_tokens', 0)} tokens")
-        print(f"  Estimated cost: ${decomposition.total_estimated_cost_usd:.4f}")
-        print(f"  Recommended budget: ${decomposition.recommended_budget_usd:.4f}")
+            if routing.decompose and routing.subtasks:
+                print(f"  Decomposed into {len(routing.subtasks)} subtasks:")
+                for st in routing.subtasks:
+                    print(f"    - {st['id']}: {st['title']} [{st['owner']} / {st['model_tier']}]")
+                print(f"  Estimated cost: ${routing.total_estimated_cost_usd:.4f}")
+                print(f"  Recommended budget: ${routing.recommended_budget_usd:.4f}")
 
-        if print_only:
-            return 0
+                if print_only:
+                    return 0
+
+                # Override target/model/effort from routing plan
+                target = routing.owner
+                if not resolved_model:
+                    resolved_model = _resolve_model(target, routing.tier)
+                if not resolved_effort:
+                    resolved_effort = routing.effort
+                model_source = "orchestrator"
+            else:
+                print(f"  Plan:     direct dispatch (no decomposition)")
+                # Apply routing: override target/model/effort
+                target = routing.owner
+                resolved_model = _resolve_model(target, routing.tier)
+                resolved_effort = routing.effort
+                model_source = "orchestrator"
+        except Exception as e:
+            logger.warning("delegate.py orchestrator failed, falling back to standard dispatch: %s", e, exc_info=True)
+            # Fall through to existing dispatch path
 
     # Acceptance criteria
     ac_lines = _get_task_acceptance_criteria(project_dir, task_id)
@@ -1218,7 +1244,11 @@ def _build_parser() -> "argparse.ArgumentParser":
     )
     parser.add_argument(
         "--orchestrate", action="store_true", default=False,
-        help="Opus orchestrator mode: decompose task into subtasks, assign model tiers, estimate cost",
+        help="Force orchestrator mode: decompose task into subtasks (also the default — use --no-orchestrate to skip)",
+    )
+    parser.add_argument(
+        "--no-orchestrate", action="store_true", default=False,
+        help="Skip orchestrator — dispatch directly without analysis (for trivial fix/chore tasks)",
     )
     parser.add_argument(
         "--skip-preflight", action="store_true", default=False,
@@ -1311,6 +1341,7 @@ def main(argv: list[str] | None = None) -> None:
                 no_auto_model=opts.no_auto_model,
                 via_sdk=True if opts.via == "sdk" else (False if opts.via == "cli" else None),
                 orchestrate=opts.orchestrate,
+                no_orchestrate=opts.no_orchestrate,
                 skip_preflight=opts.skip_preflight,
                 force=opts.force,
                 plan_only=opts.plan_only,

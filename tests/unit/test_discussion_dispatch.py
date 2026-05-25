@@ -439,3 +439,99 @@ def test_discuss_start_explicit_owner_only_rejects(repo_root, tmp_path) -> None:
     assert result.returncode == 2
     assert "at least 2 AI-agent participants" in result.stderr
     assert "Non-agent (removed): owner" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# _retry_agent — preserves retry_count + failed_reason on re-queue
+# ---------------------------------------------------------------------------
+
+class TestRetryAgent:
+    """Tests that _retry_agent increments retry_count and preserves failed_reason."""
+
+    def test_retry_increments_count(self, tmp_path):
+        """_retry_agent increments retry_count on the existing failed row."""
+        import sqlite3
+        from superharness.commands.discussion_dispatch import _retry_agent
+        from superharness.engine.db import init_db
+
+        harness = tmp_path / ".superharness"
+        harness.mkdir()
+        db_path = harness / "state.sqlite3"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+
+        # Seed a failed inbox row
+        conn.execute("""
+            INSERT INTO inbox (id, task_id, target_agent, status, retry_count, max_retries, failed_reason, created_at)
+            VALUES ('test-item', 'disc/round-1', 'gemini-cli', 'failed', 0, 3, 'timeout', '2026-01-01T00:00:00Z')
+        """)
+        conn.execute("INSERT OR IGNORE INTO tasks (id, title, status, created_at) VALUES ('disc/round-1', 'Round 1', 'in_progress', '2026-01-01T00:00:00Z')")
+        conn.commit()
+
+        result = _retry_agent(str(tmp_path), 'gemini-cli', 'disc/round-1', 'disc', 1)
+        assert result is True
+
+        row = conn.execute("SELECT retry_count, failed_reason, status FROM inbox WHERE id='test-item'").fetchone()
+        assert row["retry_count"] == 1
+        assert "timeout" in (row["failed_reason"] or "")
+        assert row["status"] == "pending"
+        conn.close()
+
+    def test_retry_exhausted_returns_false(self, tmp_path):
+        """_retry_agent returns False when retry_count >= max_retries."""
+        import sqlite3
+        from superharness.commands.discussion_dispatch import _retry_agent
+        from superharness.engine.db import init_db
+
+        harness = tmp_path / ".superharness"
+        harness.mkdir()
+        db_path = harness / "state.sqlite3"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+
+        conn.execute("""
+            INSERT INTO inbox (id, task_id, target_agent, status, retry_count, max_retries, failed_reason, created_at)
+            VALUES ('exhausted-item', 'disc/round-1', 'gemini-cli', 'failed', 3, 3, 'timeout', '2026-01-01T00:00:00Z')
+        """)
+        conn.execute("INSERT OR IGNORE INTO tasks (id, title, status, created_at) VALUES ('disc/round-1', 'Round 1', 'in_progress', '2026-01-01T00:00:00Z')")
+        conn.commit()
+
+        result = _retry_agent(str(tmp_path), 'gemini-cli', 'disc/round-1', 'disc', 1)
+        assert result is False  # exhausted, can't retry
+        conn.close()
+
+    def test_no_failed_row_returns_false(self, tmp_path):
+        """_retry_agent returns False when no failed row exists."""
+        from superharness.commands.discussion_dispatch import _retry_agent
+        result = _retry_agent(str(tmp_path), 'gemini-cli', 'disc/round-1', 'disc', 1)
+        assert result is False
+
+    def test_preserves_original_reason(self, tmp_path):
+        """_retry_agent preserves the original failed_reason in the retry."""
+        import sqlite3
+        from superharness.commands.discussion_dispatch import _retry_agent
+        from superharness.engine.db import init_db
+
+        harness = tmp_path / ".superharness"
+        harness.mkdir()
+        db_path = harness / "state.sqlite3"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+
+        conn.execute("""
+            INSERT INTO inbox (id, task_id, target_agent, status, retry_count, max_retries, failed_reason, created_at)
+            VALUES ('reason-item', 'disc/round-1', 'codex-cli', 'failed', 1, 3, 'permanent block (lifecycle gate)', '2026-01-01T00:00:00Z')
+        """)
+        conn.execute("INSERT OR IGNORE INTO tasks (id, title, status, created_at) VALUES ('disc/round-1', 'Round 1', 'in_progress', '2026-01-01T00:00:00Z')")
+        conn.commit()
+
+        result = _retry_agent(str(tmp_path), 'codex-cli', 'disc/round-1', 'disc', 1)
+        assert result is True
+
+        row = conn.execute("SELECT failed_reason, retry_count FROM inbox WHERE id='reason-item'").fetchone()
+        assert "permanent block" in (row["failed_reason"] or "")
+        assert row["retry_count"] == 2
+        conn.close()

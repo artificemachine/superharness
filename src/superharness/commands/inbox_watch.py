@@ -1543,10 +1543,13 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                         recovery_count = int(rc_match.group(1))
 
                 # Skip permanent failures — agent routing won't help
-                # But revert stuck in_progress tasks so they can be re-dispatched
+                # But revert stuck in_progress tasks so they can be re-dispatched.
+                # EXCEPTION: discussion rounds (/round-N) are multi-agent —
+                # one agent's permanent block must not freeze the entire round.
                 if "permanent_block" in reason or "no_op" in reason or "permanent block" in reason:
+                    is_discussion_round = "/round-" in row.task_id
                     task_pb = tasks_dao.get(conn, row.task_id)
-                    if task_pb and task_pb.status in ("in_progress", "todo"):
+                    if task_pb and task_pb.status in ("in_progress", "todo") and not is_discussion_round:
                         try:
                             from superharness.engine.next_action import validate_status_transition
                             validate_status_transition(task_pb.status, "waiting_input")
@@ -2552,6 +2555,17 @@ def _run_scripts(
     except Exception as e:
         print(f"Warning: stale inbox cleanup failed: {e}", file=sys.stderr)
 
+    # Comprehensive GC — time-gated, runs at most once per minute
+    try:
+        gc_results = _comprehensive_gc(project_dir)
+        if gc_results:
+            _total = sum(gc_results.values())
+            if _total > 0:
+                _parts = [f"{k}={v}" for k, v in gc_results.items() if v > 0]
+                print(f"GC: {' '.join(_parts)}", file=sys.stderr)
+    except Exception as e:
+        print(f"Warning: comprehensive gc failed: {e}", file=sys.stderr)
+
     # Cancel pending items for agents without dispatch scripts (will never dispatch)
     try:
         _cancel_undispatchable_agents(project_dir)
@@ -3497,6 +3511,323 @@ def _auto_delete_stale_inbox(project_dir: str) -> int:
     except Exception as e:
         print(f"auto-delete-stale: failed: {e}", file=sys.stderr)
         return 0
+
+
+# ---------------------------------------------------------------------------
+# Comprehensive GC pass — runs once per tick, handles all cleanup in one sweep.
+# ---------------------------------------------------------------------------
+
+_last_gc_time: dict[str, float] = {}  # project_dir → last GC timestamp
+_GC_MIN_INTERVAL_SECONDS = 60  # run at most once per minute
+
+
+def _comprehensive_gc(project_dir: str) -> dict[str, int]:
+    """Run all GC passes in one sweep. Returns counts per action."""
+    now_ts = __import__("time").time()
+    if project_dir in _last_gc_time:
+        elapsed = now_ts - _last_gc_time[project_dir]
+        if elapsed < _GC_MIN_INTERVAL_SECONDS:
+            return {}
+    _last_gc_time[project_dir] = now_ts
+
+    counts: dict[str, int] = {}
+    counts["duplicates"] = _gc_duplicate_inbox(project_dir)
+    counts["zombies_running"] = _gc_zombie_running(project_dir)
+    counts["zombies_pending"] = _gc_zombie_pending(project_dir)
+    counts["deadlocked_discussions"] = _gc_discussion_deadlock(project_dir)
+    counts["orphaned_discussion_inbox"] = _gc_orphaned_discussion_inbox(project_dir)
+    counts["stuck_waiting_input"] = _gc_stuck_waiting_input(project_dir)
+    return counts
+
+
+# ── Gap 2: duplicate inbox cleanup ────────────────────────────────────────────
+
+def _gc_duplicate_inbox(project_dir: str) -> int:
+    """Merge duplicate pending inbox items: keep newest, cancel older ones."""
+    try:
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            # Find tasks with multiple pending items for the same agent
+            dupes = conn.execute("""
+                SELECT task_id, target_agent, COUNT(*) as cnt
+                FROM inbox
+                WHERE status = 'pending'
+                GROUP BY task_id, target_agent
+                HAVING cnt > 1
+            """).fetchall()
+            cleaned = 0
+            for dupe in dupes:
+                task_id, agent = dupe["task_id"], dupe["target_agent"]
+                # Keep newest, cancel older
+                rows = conn.execute(
+                    "SELECT id FROM inbox WHERE task_id=? AND target_agent=? AND status='pending' ORDER BY created_at DESC",
+                    (task_id, agent),
+                ).fetchall()
+                for row in rows[1:]:  # skip newest
+                    conn.execute(
+                        "UPDATE inbox SET status='done', failed_reason='gc: duplicate merged' WHERE id=?",
+                        (row["id"],),
+                    )
+                    cleaned += 1
+            if cleaned:
+                conn.commit()
+            return cleaned
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("_gc_duplicate_inbox failed: %s", e)
+        return 0
+
+
+# ── Gap 3: zombie reconciler for running/pending ──────────────────────────────
+
+def _gc_zombie_running(project_dir: str) -> int:
+    """Mark running items as failed if no dispatcher process is active."""
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import inbox_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            rows = conn.execute(
+                "SELECT id, pid FROM inbox WHERE status='running'"
+            ).fetchall()
+            cleaned = 0
+            now = _now_utc()
+            for row in rows:
+                pid = row["pid"]
+                if pid and not _pid_alive(int(pid)):
+                    inbox_dao.update_status(
+                        conn, row["id"], from_status="running", to_status="failed",
+                        now=now, reason="gc: dispatcher process died",
+                    )
+                    cleaned += 1
+            if cleaned:
+                conn.commit()
+            return cleaned
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("_gc_zombie_running failed: %s", e)
+        return 0
+
+
+def _gc_zombie_pending(project_dir: str) -> int:
+    """Cancel pending items that have been waiting > 15 minutes with no dispatch."""
+    try:
+        from datetime import datetime, timezone, timedelta
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            cutoff = (datetime.now(timezone.utc) - timedelta(minutes=15)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+            cursor = conn.execute(
+                "UPDATE inbox SET status='done', failed_reason='gc: pending timeout (>15min)' "
+                "WHERE status='pending' AND created_at < ?",
+                (cutoff,),
+            )
+            cleaned = cursor.rowcount or 0
+            if cleaned:
+                conn.commit()
+            return cleaned
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("_gc_zombie_pending failed: %s", e)
+        return 0
+
+
+# ── Gap 1: discussion deadlock detection ──────────────────────────────────────
+
+def _gc_discussion_deadlock(project_dir: str) -> int:
+    """Auto-close discussion rounds where required agents can't submit.
+
+    A round is deadlocked when:
+    - Round age > 30 min
+    - At least 1 agent submitted
+    - Remaining required agents all failed (retry_count >= max_retries)
+    """
+    try:
+        from datetime import datetime, timezone, timedelta
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import discussions_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            now = datetime.now(timezone.utc)
+            cutoff = (now - timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            # Find active discussions with rounds older than cutoff
+            active = discussions_dao.get_all(conn, status="active")
+            closed_count = 0
+            for disc in active:
+                # Get current round (max round_number from discussion_rounds)
+                max_round_row = conn.execute(
+                    "SELECT MAX(round_number) as current_round FROM discussion_rounds WHERE discussion_id=?",
+                    (disc.id,),
+                ).fetchone()
+                current_round = int(max_round_row["current_round"] or 0)
+                if current_round < 1:
+                    # No rounds submitted — check for no-engagement timeout (>2 hours)
+                    if disc.created_at and disc.created_at < cutoff:
+                        conn.execute(
+                            "UPDATE discussions SET status='failed_participant', closed_at=? WHERE id=?",
+                            (now.strftime("%Y-%m-%dT%H:%M:%SZ"), disc.id),
+                        )
+                        conn.commit()
+                        closed_count += 1
+                        print(
+                            f"gc: discussion {disc.id} closed as failed_participant "
+                            f"(no engagement after 2+ hours)",
+                            file=sys.stderr,
+                        )
+                    continue
+
+                # Check if the round task is old enough
+                task_id = f"{disc.id}/round-{current_round}"
+                task_row = conn.execute(
+                    "SELECT created_at FROM tasks WHERE id=?", (task_id,)
+                ).fetchone()
+                if not task_row:
+                    continue
+                created = str(task_row["created_at"] or "")
+                if not created or created >= cutoff:
+                    continue  # too new
+
+                # Count submitted vs required
+                submissions = discussions_dao.get_rounds(conn, disc.id)
+                submitted = len([s for s in submissions if s.round_number == current_round])
+                # Parse participants from owners JSON
+                import json as _json
+                participants = _json.loads(disc.owners) if isinstance(disc.owners, str) else (disc.owners or [])
+                total_participants = len(participants)
+                required = max(2, total_participants - 1) if total_participants > 1 else 2
+
+                if submitted >= required:
+                    continue  # enough submitted, normal advance
+
+                # Check if remaining agents are dead
+                submitted_agents = {s.agent for s in submissions if s.round_number == current_round}
+                missing_agents = set(participants) - submitted_agents
+                all_dead = True
+                for agent in missing_agents:
+                    agent_task = f"{disc.id}/round-{current_round}"
+                    failed_row = conn.execute(
+                        "SELECT retry_count, max_retries FROM inbox "
+                        "WHERE target_agent=? AND task_id=? AND status='failed' "
+                        "ORDER BY created_at DESC LIMIT 1",
+                        (agent, agent_task),
+                    ).fetchone()
+                    if not failed_row:
+                        all_dead = False
+                        break
+                    retry = int(failed_row["retry_count"] or 0)
+                    max_retries = int(failed_row["max_retries"] or 3)
+                    if retry < max_retries:
+                        all_dead = False
+                        break
+
+                if all_dead and submitted >= 1:
+                    conn.execute(
+                        "UPDATE discussions SET status='failed_participant', closed_at=? WHERE id=?",
+                        (now.strftime("%Y-%m-%dT%H:%M:%SZ"), disc.id),
+                    )
+                    conn.commit()
+                    closed_count += 1
+                    print(
+                        f"gc: deadlocked discussion {disc.id} closed as failed_participant "
+                        f"(round {disc.current_round}: {submitted} submitted, "
+                        f"{len(missing_agents)} agents exhausted)",
+                        file=sys.stderr,
+                    )
+            return closed_count
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("_gc_discussion_deadlock failed: %s", e)
+        return 0
+
+
+# ── Gap 4: discussion inbox cleanup ───────────────────────────────────────────
+
+def _gc_orphaned_discussion_inbox(project_dir: str) -> int:
+    """Cancel inbox items for discussions that are already closed/failed."""
+    try:
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            # Find closed/failed discussions (anything not active or consensus)
+            closed_ids = [
+                r["id"] for r in conn.execute(
+                    "SELECT id FROM discussions WHERE status NOT IN ('active','consensus')"
+                ).fetchall()
+            ]
+            if not closed_ids:
+                return 0
+
+            cleaned = 0
+            for disc_id in closed_ids:
+                # Cancel pending/launched/running/failed inbox items for this discussion
+                cursor = conn.execute(
+                    "UPDATE inbox SET status='done', failed_reason='gc: discussion closed' "
+                    "WHERE task_id LIKE ? AND status IN ('pending','launched','running','failed')",
+                    (f"{disc_id}/%",),
+                )
+                cleaned += cursor.rowcount or 0
+            if cleaned:
+                conn.commit()
+            return cleaned
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("_gc_orphaned_discussion_inbox failed: %s", e)
+        return 0
+
+
+# ── Gap 7: stuck waiting_input timeout ────────────────────────────────────────
+
+def _gc_stuck_waiting_input(project_dir: str) -> int:
+    """Auto-archive tasks stuck in waiting_input > 30 minutes."""
+    try:
+        from datetime import datetime, timezone, timedelta
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            cutoff = (datetime.now(timezone.utc) - timedelta(minutes=30)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+            cursor = conn.execute(
+                "UPDATE tasks SET status='archived', archived_reason='gc: waiting_input timeout (>30min)' "
+                "WHERE status='waiting_input' AND "
+                "(in_progress_at IS NOT NULL AND in_progress_at < ?) "
+                "OR (created_at IS NOT NULL AND created_at < ? AND in_progress_at IS NULL)",
+                (cutoff, cutoff),
+            )
+            cleaned = cursor.rowcount or 0
+            if cleaned:
+                conn.commit()
+            return cleaned
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("_gc_stuck_waiting_input failed: %s", e)
+        return 0
+
+
+def _pid_alive(pid: int) -> bool:
+    """Return True if process with given PID exists."""
+    try:
+        import signal
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
 
 
 def _cancel_undispatchable_agents(project_dir: str) -> int:
