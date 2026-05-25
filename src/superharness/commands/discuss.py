@@ -142,21 +142,35 @@ def cmd_start(
             file=sys.stderr,
         )
 
-    if len(participants) < 2:
+    # Require at least n-1 of the available AI agents (minimum 2).
+    available = sorted(set(candidates) & _ai_agents)
+    required = max(2, len(available) - 1)
+
+    if len(participants) < required:
         print(
-            f"Error: discussions require at least 2 AI-agent participants "
-            f"(found: {len(participants)} after filtering non-agents and exclusions).",
+            f"Error: discussions require at least {required} AI-agent participants "
+            f"(found: {len(participants)} of {len(available)} available).",
             file=sys.stderr,
         )
         if exclude_set:
             print(f"Excluded: {' '.join(sorted(exclude_set))}", file=sys.stderr)
         if non_agents:
             print(f"Non-agent (removed): {' '.join(non_agents)}", file=sys.stderr)
-        if owners:
-            print("Pass at least 2 agent owners (claude-code, codex-cli, gemini-cli, opencode).", file=sys.stderr)
-        else:
-            print("Add tasks for both claude-code and codex-cli or pass --owners.", file=sys.stderr)
+        print(
+            "Pass --owners " + " ".join(available)
+            + f" (at least {required} required).",
+            file=sys.stderr,
+        )
         return 2
+
+    # Recommend full coverage when fewer than all available agents are included.
+    missing = sorted(set(available) - set(participants))
+    if missing:
+        print(
+            f"Note: {len(participants)} agent(s) selected, {len(missing)} excluded: "
+            f"{' '.join(missing)}.",
+            file=sys.stderr,
+        )
 
     participant_args: list[str] = []
     for p in participants:
