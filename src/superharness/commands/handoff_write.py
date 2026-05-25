@@ -1,4 +1,6 @@
-"""shux handoff write — author a plan or report handoff YAML from the CLI.
+"""shux handoff write — author a plan or report handoff from the CLI.
+
+Writes to SQLite as source of truth. YAML export is optional and best-effort.
 
 This command is the CLI-facing surface for authoring plan and report handoffs,
 the same artifacts agents write during the task lifecycle. It exists so that
@@ -241,31 +243,26 @@ def write_handoff(
     else:
         _abort(f"invalid --phase: {args.phase} (expected plan or report)", 2)
 
+    # ── SQLite is the source of truth (mandatory). YAML is export-only. ──
+    from superharness.engine.state_writer import write_handoff_to_db
+    write_handoff_to_db(str(project_dir), payload,
+                        task_id=args.task_id, phase=args.phase)
+
+    # Optional YAML export — best-effort, never blocks the write path.
     handoffs_dir = project_dir / ".superharness" / "handoffs"
     handoffs_dir.mkdir(parents=True, exist_ok=True)
-
     fname = args.out or _handoff_filename(
         args.task_id, args.phase, args.from_agent, str(payload["date"]),
     )
     target = handoffs_dir / fname
     if target.exists() and not args.force:
         _abort(f"handoff already exists: {target} (use --force to overwrite)", 1)
-
     try:
         target.write_text(yaml.safe_dump(
             payload, default_flow_style=False, allow_unicode=True, sort_keys=False,
         ))
-    except OSError as e:
-        _abort(f"failed to write handoff: {e}", 1)
-
-    # Source of truth: also persist to SQLite (best-effort; YAML stays for
-    # readers not yet migrated). See docs/PLAN-sqlite-source-of-truth-refactor.md.
-    try:
-        from superharness.engine.state_writer import write_handoff_to_db
-        write_handoff_to_db(str(project_dir), payload,
-                            task_id=args.task_id, phase=args.phase)
-    except Exception:
-        pass
+    except OSError:
+        pass  # export-only; failure is non-fatal
 
     return 0, {"path": str(target), **payload}
 
@@ -273,7 +270,7 @@ def write_handoff(
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="handoff write",
-        description="Author a plan or report handoff YAML in .superharness/handoffs/.",
+        description="Author a plan or report handoff (SQLite SoT, YAML export optional).",
     )
     p.add_argument("--project", "-p", default=None, help="Project directory (default: cwd)")
     p.add_argument("--task", required=True, dest="task_id", help="Task ID from contract.yaml")

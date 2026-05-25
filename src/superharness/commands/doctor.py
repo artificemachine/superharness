@@ -116,7 +116,7 @@ def main(argv: list[str] | None = None) -> None:
         print("WARN project:path is macOS protected folder (launchd may fail: Operation not permitted)")
         warns += 1
 
-    for fname in ("contract.yaml", "ledger.md", "decisions.yaml", "failures.yaml"):
+    for fname in ("ledger.md",):
         fpath = os.path.join(harness_dir, fname)
         if os.path.isfile(fpath):
             print(f"PASS file:{fname}")
@@ -124,6 +124,9 @@ def main(argv: list[str] | None = None) -> None:
             print(f"FAIL file:{fname} missing")
             print("       Re-initialize: superharness init")
             failures += 1
+
+    # State lives in SQLite — contract.yaml, decisions.yaml, failures.yaml are export-only.
+    # The state-db check below confirms SQLite is healthy instead.
 
     if os.path.isdir(os.path.join(harness_dir, "handoffs")):
         print("PASS dir:handoffs")
