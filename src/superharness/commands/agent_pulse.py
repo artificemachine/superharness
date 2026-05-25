@@ -46,6 +46,7 @@ def _write_pulse(project_dir: str, task_id: str, agent: str,
     last_seen = _now_iso()
 
     # SQLite primary — source of truth
+    sqlite_ok = False
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import agent_pulse_dao
@@ -62,16 +63,18 @@ def _write_pulse(project_dir: str, task_id: str, agent: str,
                 last_seen=last_seen,
             )
             conn.commit()
+            sqlite_ok = True
         finally:
             conn.close()
     except Exception as e:
-        print(f"agent-pulse: SQLite write failed (continuing with YAML): {e}", file=sys.stderr)
+        print(f"agent-pulse: SQLite SoT write failed — falling back to YAML crash dump: {e}", file=sys.stderr)
 
-    # YAML mirror — skipped in sqlite_only mode (SQLite is SoT)
+    # YAML mirror: skip only when SQLite succeeded AND sqlite_only mode is active.
+    # If SQLite failed, write YAML regardless (C-DURABLE fallback).
     skip_yaml = False
     try:
         from superharness.engine.sqlite_only import is_sqlite_only
-        skip_yaml = is_sqlite_only(project_dir=project_dir)
+        skip_yaml = sqlite_ok and is_sqlite_only(project_dir=project_dir)
     except Exception as e:
         print(f"agent-pulse: is_sqlite_only check failed, writing YAML mirror: {e}", file=sys.stderr)
 
@@ -91,9 +94,10 @@ def _write_pulse(project_dir: str, task_id: str, agent: str,
 
 
 def _read_pulse(project_dir: str, stale_minutes: int = 10) -> int:
-    # SQLite primary — source of truth
-    data: dict = {}
-    found_in_sqlite = False
+    # Read from BOTH stores and pick the fresher.
+    # C-DURABLE-READ (v11): if SQLite write failed and YAML crash dump exists,
+    # the YAML is fresher than the stale SQLite row; we must serve it.
+    sqlite_data: dict | None = None
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import agent_pulse_dao
@@ -104,7 +108,7 @@ def _read_pulse(project_dir: str, stale_minutes: int = 10) -> int:
         finally:
             conn.close()
         if row is not None:
-            data = {
+            sqlite_data = {
                 "task_id": row.task_id,
                 "agent": row.agent,
                 "status": row.status,
@@ -112,21 +116,45 @@ def _read_pulse(project_dir: str, stale_minutes: int = 10) -> int:
                 "pid": row.pid,
                 "message": row.message,
             }
-            found_in_sqlite = True
     except Exception as e:
-        print(f"agent-pulse: SQLite read failed, falling back to YAML: {e}", file=sys.stderr)
+        print(f"agent-pulse: SQLite read failed: {e}", file=sys.stderr)
 
-    # YAML fallback (legacy)
-    if not found_in_sqlite:
-        pulse_path = _pulse_path(project_dir)
-        if not pulse_path.exists():
-            print("agent-pulse: no pulse file found — no agent currently running")
-            return 0
+    yaml_data: dict | None = None
+    pulse_path = _pulse_path(project_dir)
+    if pulse_path.exists():
         try:
-            data = yaml.safe_load(pulse_path.read_text(encoding="utf-8")) or {}  # noqa: state-read — YAML fallback when SQLite empty (legacy projects)
+            yaml_data = yaml.safe_load(pulse_path.read_text(encoding="utf-8")) or {}  # noqa: state-read — YAML compare-or-fallback (legacy projects + crash dumps)
+            if not isinstance(yaml_data, dict):
+                yaml_data = None
         except Exception as e:
             print(f"agent-pulse: could not read pulse file: {e}", file=sys.stderr)
-            return 1
+
+    if sqlite_data is None and yaml_data is None:
+        print("agent-pulse: no pulse file found — no agent currently running")
+        return 0
+    if sqlite_data is None:
+        data = yaml_data
+    elif yaml_data is None:
+        data = sqlite_data
+    else:
+        # Compare via YAML file mtime vs SQLite ISO timestamp; mtime is sub-second
+        # while SQLite ISO is second-truncated, so consecutive same-second writes
+        # are correctly resolved.
+        from datetime import datetime as _dt, timezone as _tz
+        import os as _os
+        yaml_newer = False
+        try:
+            yaml_mtime = _os.path.getmtime(str(pulse_path))
+            sqlite_ts = str(sqlite_data.get("last_seen") or "")
+            if sqlite_ts:
+                sqlite_dt = _dt.strptime(sqlite_ts.rstrip("Z"), "%Y-%m-%dT%H:%M:%S").replace(tzinfo=_tz.utc)
+                yaml_newer = yaml_mtime > sqlite_dt.timestamp()
+            else:
+                yaml_newer = True
+        except Exception:
+            yaml_newer = False
+        data = yaml_data if yaml_newer else sqlite_data
+    assert data is not None  # both-None case handled above
 
     task_id = data.get("task_id", "unknown")
     agent = data.get("agent", "unknown")
