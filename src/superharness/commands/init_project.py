@@ -215,8 +215,8 @@ def main(argv: list[str] | None = None) -> None:
     print()
 
     if opts.dry_run:
-        print("[dry-run] Would create: .superharness/{handoffs,contracts,review-lenses}")
-        print("[dry-run] Would create: .superharness/{failures.yaml,decisions.yaml,ledger.md,contract.yaml}")
+        print("[dry-run] Would create: .superharness/{handoffs,contracts,review-lenses,rules}")
+        print("[dry-run] Would create: .superharness/{ledger.md,features.json,heartbeat.yaml,.gitignore}")
         print("[dry-run] Would create if missing: CLAUDE.md, AGENTS.md, GEMINI.md")
         return
 
@@ -534,14 +534,13 @@ def main(argv: list[str] | None = None) -> None:
     print()
     print("Directory structure:")
     print("  .superharness/")
-    print("  ├── contract.yaml       ← edit this with your first task")
     print("  ├── contracts/           ← completed contracts archive")
     print("  ├── handoffs/            ← agent handoff files")
     print("  ├── review-lenses/       ← project-specific lenses (optional)")
+    print("  ├── rules/               ← project rules and policies")
     print("  ├── features.json        ← project feature tracking (passes: false→true only)")
-    print("  ├── failures.yaml        ← cross-agent failure memory")
-    print("  ├── decisions.yaml       ← cross-agent decision records")
     print("  └── ledger.md            ← append-only activity log")
+    print("  State lives in SQLite (XDG state dir) — no state YAML files created.")
     print()
     print("Inside Claude Code or Codex CLI, type:")
     print("  shux doctor            ← verify setup")
