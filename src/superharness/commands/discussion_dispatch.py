@@ -153,6 +153,14 @@ def _agent_available(agent: str, project_dir: str) -> tuple[bool, str]:
                     return False, f"recent rate limit: {reason[:80]}"
                 if "permanent block" in reason:
                     return False, f"permanent block: {reason[:80]}"
+
+            # 3. Check if agent daemon is alive (recent heartbeat)
+            hb = conn.execute(
+                "SELECT updated_at, status FROM agent_heartbeats WHERE agent=?",
+                (agent,),
+            ).fetchone()
+            if hb is None or hb["status"] == "zombie":
+                return False, f"no daemon heartbeat (agent not running)"
         finally:
             conn.close()
     except Exception:
@@ -303,6 +311,17 @@ def dispatch(project_dir: str) -> int:
                 )
                 if os.path.isfile(yaml_path):
                     continue
+
+                # Defense-in-depth: also check the discussion_rounds table.
+                # cmd_check_round uses is_submitted() which covers this, but
+                # if the discussion_dir is wrong or the round number mismatches,
+                # we still catch already-submitted agents here.
+                try:
+                    from superharness.engine import discussions_dao as _ddao
+                    if _ddao.is_submitted(conn, disc_id, current_round, agent):
+                        continue
+                except Exception:
+                    pass  # don't block on DAO failure
 
                 has_result = _run_inbox([
                     "has_active",
