@@ -32,13 +32,44 @@ def git_project(tmp_path):
 
 
 def _seed_state(project: Path, steps: dict, config_version: int | None = None):
-    state: dict = {"version": 1, "steps": steps}
-    if config_version is not None:
-        state["config_version"] = config_version
-    (project / ".superharness" / "onboarding.yaml").write_text(yaml.dump(state))
+    """Seed onboarding state: SQLite SoT first (v1.65.0+), YAML mirror for legacy compat."""
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import onboarding_dao
+    cv = config_version if config_version is not None else 1
+    conn = get_connection(str(project))
+    try:
+        init_db(conn)
+        onboarding_dao.upsert(
+            conn,
+            version=1,
+            config_version=cv,
+            steps=dict(steps),
+            updated_at="2026-05-25T00:00:00Z",
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _read_state(project: Path) -> dict:
+    """Read onboarding state from SoT (SQLite); fall back to YAML if SQLite empty."""
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import onboarding_dao
+        conn = get_connection(str(project))
+        try:
+            init_db(conn)
+            row = onboarding_dao.get(conn)
+        finally:
+            conn.close()
+        if row is not None:
+            return {
+                "version": row.version,
+                "config_version": row.config_version,
+                "steps": dict(row.steps),
+            }
+    except Exception:
+        pass
     f = project / ".superharness" / "onboarding.yaml"
     return yaml.safe_load(f.read_text()) if f.exists() else {}
 

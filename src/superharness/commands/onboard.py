@@ -80,13 +80,70 @@ def _apply_version_migrations(state: dict) -> None:
     state["config_version"] = ONBOARD_CONFIG_VERSION
 
 
+def _project_dir_from_sh(sh: Path) -> str:
+    return str(sh.parent)
+
+
 def _load_state(sh: Path) -> dict:
+    """Load onboarding state: prefer fresher of SQLite vs YAML crash dump.
+
+    C-DURABLE-READ (v11): if a SQLite write failed and the crash-dump YAML has
+    fresher data, return YAML. Otherwise SQLite wins.
+    """
+    sqlite_doc: dict | None = None
+    sqlite_ts = ""
+    try:
+        from superharness.engine import onboarding_dao
+        project_dir = _project_dir_from_sh(sh)
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            row = onboarding_dao.get(conn)
+        finally:
+            conn.close()
+        if row is not None:
+            sqlite_doc = {
+                "version": row.version,
+                "config_version": row.config_version,
+                "steps": dict(row.steps),
+            }
+            sqlite_ts = row.updated_at or ""
+    except Exception as e:
+        logger.debug("onboard: SQLite read failed: %s", e)
+
+    yaml_doc: dict | None = None
+    yaml_ts = ""
     state_file = sh / "onboarding.yaml"
     if state_file.exists():
-        doc = yaml.safe_load(state_file.read_text()) or {}
-        if isinstance(doc, dict) and "steps" in doc:
-            _apply_version_migrations(doc)
-            return doc
+        try:
+            raw = yaml.safe_load(state_file.read_text()) or {}  # noqa: state-read — YAML compare-or-fallback (legacy + crash dumps)
+            if isinstance(raw, dict) and "steps" in raw:
+                yaml_doc = raw
+                # YAML mirror doesn't store updated_at; we treat its mtime as the timestamp
+                # so a fresh crash-dump (just written) wins over stale SQLite.
+                try:
+                    import datetime as _dt
+                    yaml_ts = _dt.datetime.utcfromtimestamp(
+                        state_file.stat().st_mtime
+                    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+                except Exception:
+                    yaml_ts = ""
+        except Exception as e:
+            logger.warning("onboard: YAML read error: %s", e)
+
+    chosen: dict | None
+    if sqlite_doc is None and yaml_doc is None:
+        chosen = None
+    elif sqlite_doc is None:
+        chosen = yaml_doc
+    elif yaml_doc is None:
+        chosen = sqlite_doc
+    else:
+        chosen = yaml_doc if yaml_ts > sqlite_ts else sqlite_doc
+
+    if chosen is not None:
+        _apply_version_migrations(chosen)
+        return chosen
     return {
         "version": 1,
         "config_version": ONBOARD_CONFIG_VERSION,
@@ -95,6 +152,38 @@ def _load_state(sh: Path) -> dict:
 
 
 def _save_state(sh: Path, state: dict) -> None:
+    when = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # SQLite primary — source of truth
+    sqlite_ok = False
+    try:
+        from superharness.engine import onboarding_dao
+        project_dir = _project_dir_from_sh(sh)
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            onboarding_dao.upsert(
+                conn,
+                version=int(state.get("version", 1)),
+                config_version=int(state.get("config_version", ONBOARD_CONFIG_VERSION)),
+                steps=dict(state.get("steps", {})),
+                updated_at=when,
+            )
+            conn.commit()
+            sqlite_ok = True
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error("onboard: SQLite SoT write failed — falling back to YAML crash dump: %s", e)
+
+    # YAML mirror: skip only when SQLite succeeded AND sqlite_only mode is active.
+    # If SQLite failed, write YAML regardless (C-DURABLE fallback).
+    try:
+        from superharness.engine.sqlite_only import is_sqlite_only
+        if sqlite_ok and is_sqlite_only(project_dir=_project_dir_from_sh(sh)):
+            return
+    except Exception as e:
+        logger.debug("onboard: is_sqlite_only check failed, writing YAML mirror: %s", e)
+
     (sh / "onboarding.yaml").write_text(yaml.dump(state, default_flow_style=False))
 
 

@@ -192,6 +192,41 @@ def test_external_runtime_heartbeat_readable(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 9b. v8 regression — external YAML stays visible when SQLite has watcher
+# ---------------------------------------------------------------------------
+
+def test_list_agent_heartbeats_merges_sqlite_with_external_yaml(tmp_path: Path) -> None:
+    """When SQLite has watcher's heartbeat AND an external agent writes YAML,
+    list_agent_heartbeats must include BOTH (not just SQLite).
+
+    This regresses v1.64.0's `if rows: return` flaw that hid external agents
+    once SQLite became non-empty.
+    """
+    project = _setup_project(tmp_path)
+    hc = _import_contract()
+
+    # SQLite gets watcher heartbeat (via the normal API)
+    hc.write_heartbeat(str(project), hc.AgentHeartbeat(agent_id="watcher", runtime="native", status="idle"))
+
+    # External agent writes YAML directly, bypassing the SQLite-aware API
+    agents_dir = project / ".superharness" / "agents"
+    agents_dir.mkdir(parents=True, exist_ok=True)
+    (agents_dir / "external-agent.heartbeat.yaml").write_text(textwrap.dedent("""\
+        schema_version: "1"
+        agent_id: external-agent
+        runtime: external
+        status: running
+        active_task: feat.some-task
+        written_at: "2026-04-05T14:30:45Z"
+    """))
+
+    listed = hc.list_agent_heartbeats(str(project))
+    agent_ids = [hb.agent_id for hb in listed]
+    assert "watcher" in agent_ids, "watcher (from SQLite) missing"
+    assert "external-agent" in agent_ids, "external agent (YAML-only) hidden by SQLite-first short-circuit"
+
+
+# ---------------------------------------------------------------------------
 # 10. age_seconds utility
 # ---------------------------------------------------------------------------
 

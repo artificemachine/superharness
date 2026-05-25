@@ -12,6 +12,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -19,6 +20,7 @@ from pathlib import Path
 
 import click
 
+logger = logging.getLogger(__name__)
 
 _DAEMON_STATE_FILE = ".superharness/daemon-state.json"
 
