@@ -1,8 +1,83 @@
 # Handoff — superharness
 
-> Latest: 2026-05-18, state isolation iterations 1-4 on feat/paths-resolver (not yet PRed)
-> Previous: 2026-05-14, gateway Phase 1 + ntfy.sh backend (v1.58.4 → v1.58.5)
-> PyPI latest: v1.59.0 (dedup fix + flake fix, no release cut yet)
+> Latest: 2026-05-25, massive production hardening session (v1.65.1 live, 5 PRs merged)
+> Previous: 2026-05-18, state isolation iterations 1-4 on feat/paths-resolver
+> PyPI latest: **v1.65.1** (live)
+> PRs merged: #285, #286, #287, #288, #289, #290
+
+---
+
+## 2026-05-25 session: production hardening — 16 bugs, 900+ tests, orchestrator, GC
+
+### What shipped
+
+**Orchestrator auto-dispatch:**
+- Orchestrator now default path (`RoutingPlan`, `route()`). Decides owner+tier+effort+decompose.
+- `--no-orchestrate` flag skips. `--print-only` skips both orchestrator + auto-classify (no more hangs).
+- Fallback routing when all models fail. Consensus pipeline: discussion → extract action items → tasks (plan_proposed → operator approval required).
+
+**Model updates:**
+- All 4 owner max-tier models: claude=Opus 4.7, codex=GPT-5.5, gemini=Gemini 3.1 Pro, opencode=DeepSeek V4 Pro
+- Standard/mini tiers updated across all agents. `supports_effort` on all manifests.
+- Orchestrator chain includes all 4 owners with correct model IDs.
+
+**GC overhaul (7 gaps + no-engagement timeout):**
+- Duplicate inbox merge, zombie running+pending detection, discussion deadlock auto-close (>30min)
+- Orphaned discussion inbox cleanup, stuck waiting_input auto-archive (10,210 cleaned)
+- Time-based GC (every 60s), no-engagement timeout (0 submissions after 30min → failed_participant)
+- `retry_count` now increments via `_retry_agent` (preserves row identity + failed_reason)
+- Retry-alert fires at exhausted (rc >= max_rc), not at rc >= 3 (false positives fixed)
+
+**Bug fixes (16 total):**
+1. Retry creates new rows → retry_count=0 forever → `_retry_agent`
+2. Discussion rounds stuck → lifecycle gate blocks multi-agent → skip waiting_input for /round- tasks
+3. Participant floor minimum reflex → `max(2, available-1)` + warning
+4. NULL metadata crashes handoffs → `_row_to_handoff` handles None
+5. Effort silently ignored → manifests declare `supports_effort`
+6. Duplicate inbox → `_gc_duplicate_inbox`
+7. Stale waiting_input → `_gc_stuck_waiting_input`
+8. No-engagement timeout → GC closes 0-round discussions after 30min
+9. Retry-alert false positive → exhausted check
+10. Agent availability gate → binary + rate-limit + daemon heartbeat
+11. --print-only hangs → skip orchestrator + auto-classify
+12. YAML write paths → SQLite-first, YAML export-only
+13. Already-submitted re-dispatch → defense-in-depth is_submitted check
+14. Agents without daemons enqueued → heartbeat check in `_agent_available`
+15. Watcher dead → `discuss start` warns if watcher missing
+16. API key in status → removed, replaced with daemon heartbeat check
+
+**Discussions ran (3):**
+| ID | Topic | Outcome |
+|----|-------|---------|
+| `...114727Z` | Review production readiness | Deadlocked (bug found + fixed) |
+| `...123734Z` | Self-learning architecture | No engagement → auto-closed |
+| `...131328Z` | GC improvement | Consensus reached, task auto-created |
+
+**Testing (900+ new):**
+- Smoke: 299 | State machine: 306 | Contract: 122 | Integration: 110 | GC: 24 | Chaos: 14 | E2E: 5 | Perf: 2
+- `docs/TEST_STRATEGY.md` — mandatory CI gates with current counts
+- State machine: all 54 legal + 220+ illegal transitions tested
+- Contract: manifest structure, model resolution, orchestrator chain, launcher scripts
+- Vault `notes/tests/Testing Strategy.md` updated with overlay template + superharness case study
+
+**Backlog completed:**
+- Observability spec (`docs/observability-spec-d2.md`): metrics table, dashboard API, KPIs, alert thresholds
+- Agent health: `/api/health` dashboard endpoint, daemon heartbeat in status
+- E2E tests: 5 passing (task lifecycle, doctor, status, contract, discussion)
+- Self-learning pipeline: consensus extracts per-agent action items as `plan_proposed` tasks
+- Performance benchmarks: inbox query <100ms, status count <50ms
+
+**Vidistiller integration:**
+- SSH tunnel: `localhost:8000` → vidistiller VM (`10.255.181.20`)
+- API key configured. Submit video URLs → get transcripts via `/api/jobs`.
+
+### Where to pick up
+
+1. **Build the observability metrics engine** from `docs/observability-spec-d2.md` — add `learning_metrics` table, capture on task completion
+2. **Wire orchestrator subtask dispatch** — `_record_decomposition` creates subtasks but doesn't enqueue them
+3. **More integration tests** — discussion round advance, orchestrator decomposition, state machine timeouts
+4. **Watcher health check in all discussion projects** — scalping_bot, synod, semblar
+
 
 ---
 
