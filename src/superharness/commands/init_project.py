@@ -482,6 +482,7 @@ def main(argv: list[str] | None = None) -> None:
 
     # Install watcher (macOS only) — runs for both fresh init and --refresh
     _SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
+    watcher_started = False
     if install_watcher and platform.system() == "Darwin":
         ensure_script = str(_SCRIPTS / "ensure-launchd-inbox-watcher.sh")
         if os.path.isfile(ensure_script):
@@ -489,11 +490,18 @@ def main(argv: list[str] | None = None) -> None:
                                capture_output=True, text=True)
             if r.returncode == 0:
                 print("Watcher: launchd inbox watcher is configured.")
+                watcher_started = True
             else:
                 print("Watcher: unable to auto-configure (non-fatal).")
-                print("  Run manually: shux watcher-worker -p .")
-                if r.stderr.strip():
-                    print(f"  Detail: {r.stderr.strip()[:200]}")
+    # Fallback: try to start watcher in foreground if launchd wasn't available
+    if not watcher_started and install_watcher:
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "superharness.commands.inbox_watch", "--project", project_dir],
+                capture_output=True, text=True, timeout=5,
+            )
+        except Exception:
+            print("  Run manually: shux watcher-worker -p .")
 
     # Install Claude Code hooks into ~/.claude/settings.json — runs for both fresh init and --refresh
     if not opts.skip_hooks:

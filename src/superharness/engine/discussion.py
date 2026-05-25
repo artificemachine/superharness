@@ -230,15 +230,35 @@ def _create_consensus_task(conn, disc, round_: int, submitted_agents: set[str]) 
         if not has_actionable:
             return
 
-        criteria = [f"Implement consensus from {disc_id}"]
-        for p in all_points:
-            criteria.append(f"  * {p['id']} [{p['verdict']}]")
+        # Extract individual action items from round submissions.
+        # Each agent's non-agree verdict becomes a separate task with
+        # the agent's content as the acceptance criteria.
+        created = 0
+        for r in rounds:
+            if r.round_number != round_ or not r.verdict:
+                continue
+            v = r.verdict.lower()
+            if v == "agree":
+                continue
+            # Create a task per non-agree verdict
+            action_id = f"action-{disc_id[:20]}-{r.agent}-{round_}"
+            action_criteria = [f"From {r.agent} (verdict: {v})"]
+            if r.content:
+                action_criteria.append(r.content[:200])
+            tasks_dao.upsert(conn, TaskRow(
+                id=action_id, title=f"[{v}] {topic[:60]}", owner=r.agent,
+                status="plan_proposed", effort="medium", project_path=project_dir,
+                development_method="tdd",
+                acceptance_criteria=action_criteria,
+                test_types=[], out_of_scope=[], definition_of_done=[],
+                context=f"Auto-extracted from discussion {disc_id} round {round_} ({r.agent})",
+                tdd=None, version=1, created_at=now,
+            ))
+            created += 1
 
-        owner = disc.owners[0] if disc.owners else "claude-code"
+        # Also create a summary task that collects all points
         topic = str(disc.topic)[:80]
         now = _now_utc()
-        # Derive project_dir from the connection path
-        import sqlite3 as _sql
         project_dir = "/"  # fallback
         try:
             db_path = conn.execute("PRAGMA database_list").fetchone()
@@ -247,18 +267,22 @@ def _create_consensus_task(conn, disc, round_: int, submitted_agents: set[str]) 
         except Exception as e:
             logger.warning("discussion.py unexpected error: %s", e, exc_info=True)
             pass
+        criteria = [f"Implement consensus from {disc_id}"]
+        for p in all_points:
+            criteria.append(f"  * {p['id']} [{p['verdict']}]")
+        owner = disc.owners[0] if disc.owners else "claude-code"
         tasks_dao.upsert(conn, TaskRow(
             id=task_id, title=f"Implement: {topic}", owner=owner,
-            status="plan_approved", effort="medium", project_path=project_dir,
+            status="plan_proposed", effort="medium", project_path=project_dir,
             development_method="tdd",
             acceptance_criteria=list(criteria),
             test_types=[], out_of_scope=[], definition_of_done=[],
-            context=f"Auto-created from discussion {disc_id} (consensus)",
+            context=f"Auto-created from discussion {disc_id} (consensus) — {created} actions extracted",
             tdd=None, version=1, created_at=now,
         ))
         print(f"[discussion] auto-task: {task_id} (plan_approved)", file=sys.stderr)
 
-        # Auto-dispatch through orchestrator — the best model decides routing.
+        # Auto-dispatch through orchestrator — use fallback to avoid blocking on Claude CLI.
         try:
             from superharness.engine.orchestrator import Orchestrator
             orch = Orchestrator(project_dir=project_dir)
@@ -268,11 +292,10 @@ def _create_consensus_task(conn, disc, round_: int, submitted_agents: set[str]) 
                 "owner": owner,
                 "acceptance_criteria": list(criteria),
             }
-            routing = orch.route(task_data)
-            print(f"[discussion] orchestrator: {task_id} → {routing.owner}/{routing.tier}/{routing.effort}", file=sys.stderr)
-            if routing.decompose:
-                print(f"[discussion] orchestrator: decomposed into {len(routing.subtasks)} subtasks", file=sys.stderr)
-            # TODO: dispatch subtasks through inbox (see delegate.py _record_decomposition)
+            # Use fallback routing (no network call) — the task will be properly
+            # routed when it's dispatched through the normal delegate pipeline.
+            routing = orch._fallback_routing(task_data)
+            print(f"[discussion] orchestrator: {task_id} → {routing.owner}/{routing.tier}", file=sys.stderr)
         except Exception as route_err:
             print(f"[discussion] orchestrator skipped: {route_err}", file=sys.stderr)
     except Exception as e:
