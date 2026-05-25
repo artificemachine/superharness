@@ -8,6 +8,7 @@ capabilities:
   - file_editing
   - test_execution
   - multi_file_refactor
+supports_effort: true  # maps to -c model_reasoning_effort= (max→xhigh)
 # Each tier carries the concrete model id and a human-facing label. Update
 # both together when bumping a model.
 model_tiers:
@@ -19,7 +20,7 @@ model_tiers:
       "*": { id: gpt-5.3-codex,      label: "GPT-5.3 Codex"      }
   max:
     versions:
-      "*": { id: gpt-5.4,            label: "GPT-5.4"            }
+      "*": { id: gpt-5.5,            label: "GPT-5.5"            }
 requires:
   bin: codex
   env: []

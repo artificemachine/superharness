@@ -262,11 +262,11 @@ class TestDecomposerPromptV2:
         prompt = orch._build_decompose_prompt(SAMPLE_TASK)
         assert "xhigh" in prompt
 
-    def test_prompt_includes_should_split_field(self):
-        """Prompt instructs LLM to emit should_split field in JSON."""
+    def test_prompt_includes_decompose_field(self):
+        """Prompt instructs LLM to emit decompose field in JSON."""
         orch = Orchestrator(project_dir="/tmp/test")
         prompt = orch._build_decompose_prompt(SAMPLE_TASK)
-        assert "should_split" in prompt
+        assert "decompose" in prompt
 
     def test_prompt_includes_development_method_field(self):
         """Prompt template surfaces development_method when set."""
@@ -338,3 +338,138 @@ class TestDecomposerPromptV2:
         """DECOMPOSER_FALLBACK escalates to Opus 4.7 when 4.6 is unavailable."""
         from superharness.engine.orchestrator import DECOMPOSER_FALLBACK
         assert DECOMPOSER_FALLBACK == "claude-opus-4-7"
+
+
+# ---------------------------------------------------------------------------
+# RoutingPlan + route() — auto-orchestrate routing decisions
+# ---------------------------------------------------------------------------
+
+class TestRoutingPlan:
+    """Tests for the RoutingPlan dataclass and Orchestrator.route() method."""
+
+    def test_routing_plan_defaults(self):
+        """RoutingPlan has correct default values."""
+        from superharness.engine.orchestrator import RoutingPlan
+        plan = RoutingPlan(owner="claude-code", tier="standard", effort="medium", decompose=False)
+        assert plan.owner == "claude-code"
+        assert plan.tier == "standard"
+        assert plan.effort == "medium"
+        assert plan.decompose is False
+        assert plan.rationale == ""
+        assert plan.subtasks == []
+        assert plan.total_estimated_cost_usd == 0.0
+        assert plan.recommended_budget_usd == 0.0
+
+    def test_routing_plan_with_decomposition(self):
+        """RoutingPlan handles decompose=true with subtasks."""
+        from superharness.engine.orchestrator import RoutingPlan
+        plan = RoutingPlan(
+            owner="claude-code", tier="max", effort="high", decompose=True,
+            rationale="cross-cutting feature",
+            subtasks=[
+                {"id": "t.st1", "title": "API layer", "owner": "codex-cli", "model_tier": "standard"},
+                {"id": "t.st2", "title": "Auth tests", "owner": "claude-code", "model_tier": "max"},
+            ],
+            total_estimated_cost_usd=3.50,
+            recommended_budget_usd=5.00,
+        )
+        assert plan.decompose is True
+        assert len(plan.subtasks) == 2
+        assert plan.subtasks[0]["owner"] == "codex-cli"
+        assert plan.total_estimated_cost_usd == 3.50
+
+    def test_fallback_routing(self):
+        """_fallback_routing returns standard dispatch plan."""
+        from superharness.engine.orchestrator import Orchestrator
+        orch = Orchestrator(project_dir="/tmp")
+        task = {"id": "t1", "title": "Test", "owner": "codex-cli"}
+        plan = orch._fallback_routing(task)
+        assert plan.owner == "codex-cli"
+        assert plan.tier == "standard"
+        assert plan.effort == "medium"
+        assert plan.decompose is False
+        assert "unavailable" in plan.rationale.lower()
+
+
+# ---------------------------------------------------------------------------
+# NULL metadata in handoffs — defensive json.loads
+# ---------------------------------------------------------------------------
+
+class TestHandoffNullMetadata:
+    """Tests that handoffs_dao handles NULL metadata columns gracefully."""
+
+    def test_null_metadata_returns_empty_dict(self, tmp_path):
+        """Row with NULL metadata → empty dict, no crash."""
+        import sqlite3
+        from superharness.engine.handoffs_dao import _row_to_handoff
+
+        db_path = tmp_path / "test.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        conn.execute("""
+            CREATE TABLE handoffs (
+                id INTEGER PRIMARY KEY,
+                task_id TEXT, phase TEXT, status TEXT,
+                from_agent TEXT, to_agent TEXT,
+                content TEXT, metadata TEXT, created_at TEXT
+            )
+        """)
+        conn.execute(
+            "INSERT INTO handoffs VALUES (1, 't1', 'report', 'done', 'claude-code', 'owner', 'content', NULL, '2026-01-01')"
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM handoffs WHERE id=1").fetchone()
+
+        result = _row_to_handoff(row)
+        assert result.metadata == {}  # not None, not crash
+        assert result.task_id == "t1"
+
+    def test_empty_string_metadata(self, tmp_path):
+        """Empty string metadata → empty dict."""
+        import sqlite3
+        from superharness.engine.handoffs_dao import _row_to_handoff
+
+        db_path = tmp_path / "test.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        conn.execute("""
+            CREATE TABLE handoffs (
+                id INTEGER PRIMARY KEY,
+                task_id TEXT, phase TEXT, status TEXT,
+                from_agent TEXT, to_agent TEXT,
+                content TEXT, metadata TEXT, created_at TEXT
+            )
+        """)
+        conn.execute(
+            "INSERT INTO handoffs VALUES (2, 't2', 'plan', 'proposed', 'gemini', 'owner', 'plan', '', '2026-01-01')"
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM handoffs WHERE id=2").fetchone()
+
+        result = _row_to_handoff(row)
+        assert result.metadata == {}
+
+    def test_valid_json_metadata(self, tmp_path):
+        """Valid JSON metadata parses correctly."""
+        import sqlite3
+        from superharness.engine.handoffs_dao import _row_to_handoff
+
+        db_path = tmp_path / "test.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        conn.execute("""
+            CREATE TABLE handoffs (
+                id INTEGER PRIMARY KEY,
+                task_id TEXT, phase TEXT, status TEXT,
+                from_agent TEXT, to_agent TEXT,
+                content TEXT, metadata TEXT, created_at TEXT
+            )
+        """)
+        conn.execute(
+            "INSERT INTO handoffs VALUES (3, 't3', 'report', 'done', 'claude', 'owner', 'done', '{\"key\": \"val\"}', '2026-01-01')"
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM handoffs WHERE id=3").fetchone()
+
+        result = _row_to_handoff(row)
+        assert result.metadata == {"key": "val"}
