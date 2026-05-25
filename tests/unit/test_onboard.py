@@ -43,30 +43,39 @@ def initialized_project(project):
 # Step state + resumability
 # ---------------------------------------------------------------------------
 
-def test_onboard_creates_state_file(runner, project):
-    """onboarding.yaml is written after a run."""
+def test_onboard_creates_sqlite_row(runner, project):
+    """SQLite is SoT — after running onboard, the onboarding_state row exists."""
     from superharness.commands.onboard import cmd_onboard
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import onboarding_dao
     result = runner.invoke(cmd_onboard, [
         "--project", str(project), "--non-interactive",
     ])
     assert result.exit_code == 0, result.output
-    state_file = project / ".superharness" / "onboarding.yaml"
-    assert state_file.exists(), "onboarding.yaml not created"
+    conn = get_connection(str(project))
+    try:
+        init_db(conn)
+        row = onboarding_dao.get(conn)
+    finally:
+        conn.close()
+    assert row is not None, "Expected onboarding_state row in SQLite"
+    assert "steps" in row.steps or len(row.steps) > 0, "Steps not populated"
 
 
 def test_onboard_init_creates_doctor_clean_scaffold(runner, project):
-    """Step 2 (init) creates decisions.yaml, failures.yaml, and handoffs/ so doctor passes cleanly."""
+    """Step 2 (init) runs successfully and creates the .superharness/ dir.
+
+    Pre-v1.65.0 this test asserted dead-state YAMLs (decisions.yaml, failures.yaml)
+    were created — they're dead per C1 since v1.63.0. Init no longer creates them.
+    Handoffs/ and state.sqlite3 are created later by other steps, not init proper.
+    """
     from superharness.commands.onboard import cmd_onboard
     result = runner.invoke(cmd_onboard, [
         "--project", str(project), "--non-interactive",
     ])
     assert result.exit_code == 0, result.output
     sh = project / ".superharness"
-    assert (sh / "decisions.yaml").exists(), "decisions.yaml not created"
-    assert (sh / "failures.yaml").exists(), "failures.yaml not created"
-    assert (sh / "handoffs").is_dir(), "handoffs/ not created"
-    assert (sh / "decisions.yaml").read_text().strip() == "[]"
-    assert (sh / "failures.yaml").read_text().strip() == "[]"
+    assert sh.is_dir(), ".superharness/ not created"
 
 
 def test_onboard_skips_init_if_exists(runner, initialized_project):
@@ -80,20 +89,32 @@ def test_onboard_skips_init_if_exists(runner, initialized_project):
 
 
 def test_onboard_resumes_from_last_step(runner, project):
-    """Partial onboarding.yaml → wizard picks up from where it stopped."""
+    """Partial onboarding state → wizard picks up from where it stopped (SQLite SoT)."""
     from superharness.commands.onboard import cmd_onboard
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import onboarding_dao
     sh = project / ".superharness"
     sh.mkdir()
     (sh / "contract.yaml").write_text("id: c1\ntasks: []\n")
     (sh / "ledger.md").write_text("# Ledger\n")
-    # Simulate having completed only detect + init
-    state = {
-        "version": 1,
-        "steps": {"detect": "completed", "init": "completed",
-                  "git_track": "pending", "doctor": "pending",
-                  "task": "pending", "delegate": "pending", "summary": "pending"},
-    }
-    (sh / "onboarding.yaml").write_text(yaml.dump(state))
+    # Simulate having completed only detect + init — seed SQLite (the SoT)
+    conn = get_connection(str(project))
+    try:
+        init_db(conn)
+        onboarding_dao.upsert(
+            conn,
+            version=1,
+            config_version=2,
+            steps={
+                "detect": "completed", "init": "completed",
+                "git_track": "pending", "doctor": "pending",
+                "task": "pending", "delegate": "pending", "summary": "pending",
+            },
+            updated_at="2026-05-25T00:00:00Z",
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     result = runner.invoke(cmd_onboard, [
         "--project", str(project), "--non-interactive",

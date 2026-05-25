@@ -385,8 +385,12 @@ def _load_inbox(sh_dir: Path) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def _load_agent_pulse(sh_dir: Path) -> dict | None:
-    """Load agent pulse: SQLite primary, YAML fallback."""
-    # SQLite primary — source of truth
+    """Load agent pulse: prefer fresher of SQLite vs YAML crash dump.
+
+    C-DURABLE-READ (v11): when SQLite write failed and YAML crash dump exists,
+    YAML carries the fresh data while SQLite still has the stale last-success row.
+    """
+    sqlite_data: dict | None = None
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import agent_pulse_dao
@@ -398,35 +402,64 @@ def _load_agent_pulse(sh_dir: Path) -> dict | None:
         finally:
             conn.close()
         if row is not None:
-            return {
+            sqlite_data = {
                 "task_id":   row.task_id,
                 "agent":     row.agent,
                 "status":    row.status,
-                "last_seen": _coerce_date(row.last_seen),
+                "last_seen": row.last_seen,    # raw ISO timestamp for compare
                 "message":   row.message,
                 "pid":       row.pid,
             }
     except Exception as e:
-        logger.debug("adapter_payload: pulse SQLite read failed, falling back to YAML: %s", e)
+        logger.debug("adapter_payload: pulse SQLite read failed: %s", e)
 
-    # YAML fallback (legacy)
+    yaml_data: dict | None = None
     path = sh_dir / "agent-pulse.yaml"
-    if not path.exists():
+    if path.exists():
+        try:
+            raw = yaml.safe_load(path.read_text(errors="replace"))  # noqa: state-read — YAML compare-or-fallback (legacy + crash dumps)
+            if isinstance(raw, dict):
+                yaml_data = {
+                    "task_id":   raw.get("task_id"),
+                    "agent":     raw.get("agent"),
+                    "status":    raw.get("status"),
+                    "last_seen": raw.get("last_seen"),
+                    "message":   raw.get("message"),
+                    "pid":       raw.get("pid"),
+                }
+        except Exception as e:
+            logger.warning("adapter_payload.py unexpected error: %s", e, exc_info=True)
+
+    if sqlite_data is None and yaml_data is None:
         return None
-    try:
-        raw = yaml.safe_load(path.read_text(errors="replace"))  # noqa: state-read — YAML fallback when SQLite empty (legacy projects)
-    except Exception as e:
-        logger.warning("adapter_payload.py unexpected error: %s", e, exc_info=True)
-        return None
-    if not isinstance(raw, dict):
-        return None
+    if sqlite_data is None:
+        chosen = yaml_data
+    elif yaml_data is None:
+        chosen = sqlite_data
+    else:
+        # Sub-second-safe freshness: file mtime vs SQLite ISO timestamp.
+        from datetime import datetime as _dt, timezone as _tz
+        import os as _os
+        yaml_newer = False
+        try:
+            yaml_mtime = _os.path.getmtime(str(path))
+            sqlite_ts = str(sqlite_data.get("last_seen") or "")
+            if sqlite_ts:
+                sqlite_dt = _dt.strptime(sqlite_ts.rstrip("Z"), "%Y-%m-%dT%H:%M:%S").replace(tzinfo=_tz.utc)
+                yaml_newer = yaml_mtime > sqlite_dt.timestamp()
+            else:
+                yaml_newer = True
+        except Exception:
+            yaml_newer = False
+        chosen = yaml_data if yaml_newer else sqlite_data
+    assert chosen is not None
     return {
-        "task_id":   raw.get("task_id"),
-        "agent":     raw.get("agent"),
-        "status":    raw.get("status"),
-        "last_seen": _coerce_date(raw.get("last_seen")),
-        "message":   raw.get("message"),
-        "pid":       raw.get("pid"),
+        "task_id":   chosen.get("task_id"),
+        "agent":     chosen.get("agent"),
+        "status":    chosen.get("status"),
+        "last_seen": _coerce_date(chosen.get("last_seen")),
+        "message":   chosen.get("message"),
+        "pid":       chosen.get("pid"),
     }
 
 
