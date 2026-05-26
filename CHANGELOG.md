@@ -534,3 +534,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-25: fix(GC): comprehensive garbage collector — 7 gaps fixed: duplicate inbox merge, zombie running+pending detection, discussion deadlock auto-close (>30min), orphaned discussion inbox cleanup, stuck waiting_input auto-archive, time-based GC (60s), failed_reason error logging
 - 2026-05-25: feat(sot): state_manifest.yaml with process_state classification; delete stale discussion round YAMLs
 - 2026-05-25: test(strategy): 873 new tests across 6 categories — smoke (299), state machine (306), contract (122), integration (110), GC (22), chaos (14); TEST_STRATEGY.md defines mandatory CI gates
+- 2026-05-26: chore(release): bump to v1.66.0 — discussion fixes
