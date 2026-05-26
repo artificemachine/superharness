@@ -192,8 +192,8 @@ class TestDiscussionIntegration:
         self._create_discussion(conn, "d2", ["claude-code"])
         conn.commit()
 
-        from superharness.engine.db import get_connection, init_db
-        from superharness.engine import discussions_dao, now_iso
+        from superharness.engine.db import get_connection, init_db, now_iso
+        from superharness.engine import discussions_dao
         conn2 = get_connection(str(tmp_path))
         try:
             init_db(conn2)
@@ -431,3 +431,71 @@ class TestFinalEdgeCases:
             row = conn.execute("SELECT status FROM tasks WHERE id='chain'").fetchone()
             assert row["status"] == status
         conn.close()
+
+class TestDiscussionRoundPrompt:
+    """Discussion round prompts instruct agents to write their own files."""
+
+    def test_prompt_round_1_structure(self):
+        """Round 1 prompt includes the agent-specific submit path and required fields."""
+        from superharness.commands.delegate import build_discussion_prompt
+        
+        target = "codex-cli"
+        disc_id = "disc-123"
+        submit_path = f".superharness/discussions/{disc_id}/round-1-{target}.yaml"
+        
+        prompt = build_discussion_prompt(
+            target=target,
+            discussion_id=disc_id,
+            discussion_round=1,
+            disc_topic="Test Topic",
+            disc_max="3",
+            submit_path=submit_path
+        )
+        
+        assert "Topic: Test Topic" in prompt
+        assert "You are: codex-cli" in prompt
+        assert f"write a YAML file to: {submit_path}" in prompt
+        assert "discussion_id: disc-123" in prompt
+        assert "round: 1" in prompt
+        assert "agent: codex-cli" in prompt
+        assert "verdict: agree OR disagree OR partial" in prompt
+        assert "YOUR OWN" in prompt
+
+    def test_prompt_round_2_includes_prior_context(self):
+        """Round 2+ prompt includes prior context and different instructions."""
+        from superharness.commands.delegate import build_discussion_prompt
+        
+        target = "claude-code"
+        disc_id = "disc-456"
+        submit_path = f".superharness/discussions/{disc_id}/round-2-{target}.yaml"
+        prior = "--- Round 1 ---\nAgent: gemini-cli\nVerdict: partial\nPosition: I think X."
+        
+        prompt = build_discussion_prompt(
+            target=target,
+            discussion_id=disc_id,
+            discussion_round=2,
+            disc_topic="Deep Tech",
+            disc_max="3",
+            submit_path=submit_path,
+            prior_context=prior
+        )
+        
+        assert "Topic: Deep Tech" in prompt
+        assert "This is round 2 of 3" in prompt
+        assert "Here are the positions from prior rounds:" in prompt
+        assert prior in prompt
+        assert "Consider the other agent's position carefully" in prompt
+        assert f"Write your response to: {submit_path}" in prompt
+
+    def test_prompt_includes_auto_directive(self):
+        """Prompt includes non-interactive directive when provided."""
+        from superharness.commands.delegate import build_discussion_prompt
+        
+        directive = "\nApply all changes immediately."
+        prompt = build_discussion_prompt(
+            target="agent", discussion_id="d", discussion_round=1,
+            disc_topic="T", disc_max="2", submit_path="p",
+            auto_directive=directive
+        )
+        assert directive in prompt
+

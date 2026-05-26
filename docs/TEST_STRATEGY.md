@@ -53,7 +53,7 @@ This document defines **mandatory test categories** — tests that must exist an
 
 ## Category 3 — INTEGRATION (`tests/integration/`)
 
-**Required: YES. Blocking on fail. Currently MISSING — 0 tests.**
+**Required: YES. Blocking on fail. Status: Implemented — 255 tests.**
 
 | Test | Covers |
 |------|--------|
@@ -70,7 +70,7 @@ This document defines **mandatory test categories** — tests that must exist an
 
 ## Category 4 — STATE MACHINE (`tests/state_machine/`)
 
-**Required: YES. Blocking on fail. Currently MISSING — 0 tests.**
+**Required: YES. Blocking on fail. Status: Implemented — 325 tests.**
 
 The task lifecycle has 16 statuses with legal transitions defined in `next_action.py`. Every transition must be tested:
 
@@ -164,21 +164,21 @@ Full user workflows through the CLI. Tests the system exactly as an operator wou
 
 ---
 
-## Enforcement — CI gates (current as of 2026-05-25)
+## Enforcement — CI gates (current as of 2026-05-26)
 
 | Gate | Required? | Blocking? | Current tests | Status |
 |------|-----------|-----------|---------------|--------|
-| Smoke | ✅ Yes | ✅ Blocking | 299 | ✅ Implemented |
-| Unit | ✅ Yes | ✅ Blocking | 3,500+ | ✅ Existing |
-| Integration | ✅ Yes | ✅ Blocking | 110 | ✅ Implemented |
-| State machine | ✅ Yes | ✅ Blocking | 306 | ✅ Implemented |
-| Contract | ✅ Yes | ✅ Blocking | 122 | ✅ Implemented |
-| Regression | ✅ Yes | ✅ Blocking | 15+ | ✅ Added today |
-| Chaos | ⚠️ Recommend | ❌ Warn | 14 | ✅ Implemented (natural ceiling: 18) |
-| E2E | ⚠️ Recommend | ❌ Warn | Some exist | Partial |
-| Performance | ❌ Optional | ❌ Info | 0 | Not started |
+| Smoke | ✅ Yes | ✅ Blocking | 317 | ✅ Implemented |
+| Unit | ✅ Yes | ✅ Blocking | 3,602 | ✅ Existing |
+| Integration | ✅ Yes | ✅ Blocking | 255 | ✅ Implemented |
+| State machine | ✅ Yes | ✅ Blocking | 325 | ✅ Implemented |
+| Contract | ✅ Yes | ✅ Blocking | 128 | ✅ Implemented |
+| Regression | ✅ Yes | ✅ Blocking | per bug | ✅ Added per fix |
+| Chaos | ⚠️ Recommend | ❌ Warn | 14 | ✅ Implemented |
+| E2E | ⚠️ Recommend | ❌ Warn | 155 | ✅ Implemented |
+| Performance | ❌ Optional | ❌ Info | 2 | Minimal |
 
-**Total new tests this session: 873 across 6 categories** (excluding existing 3,500+ unit tests).
+**Total: ~4,800 tests across 9 categories** (excluding existing 3,500+ unit tests that predate this strategy).
 
 ---
 
@@ -195,13 +195,13 @@ tests/
 │   ├── test_discussion_dispatch.py      ← existing + retry tests
 │   ├── test_gc_comprehensive.py         ← NEW (15 tests)
 │   └── ...                               (3,500+ existing)
-├── integration/                          ← NEW — 0 tests today
+├── integration/                          ← 255 tests
 │   ├── test_task_lifecycle.py           ← create → dispatch → close
 │   ├── test_discussion_lifecycle.py     ← start → rounds → consensus
 │   ├── test_orchestrator_pipeline.py    ← auto-orchestrate default
 │   ├── test_gc_pipeline.py              ← all GC functions together
 │   └── test_launcher_contract.py        ← effort + model propagation
-├── state_machine/                        ← NEW — 0 tests today
+├── state_machine/                        ← 325 tests
 │   ├── test_transitions.py              ← all legal/illegal moves
 │   ├── test_lifecycle_timeouts.py       ← timeout rules fire
 │   └── test_discussion_round_lifecycle.py
