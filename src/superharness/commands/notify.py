@@ -96,6 +96,8 @@ def main(argv: list[str] | None = None) -> None:
 
     p = argparse.ArgumentParser(prog="notify")
     p.add_argument("-p", "--project", default=os.getcwd())
+    p.add_argument("-m", "--message", default="", dest="message",
+                   help="Send a custom message instead of automated alerts")
     p.add_argument("--retry-threshold", type=int, default=3, dest="retry_threshold")
     p.add_argument("--watcher-down-streak", type=int, default=3, dest="watcher_down_streak")
     p.add_argument("--cooldown-minutes", type=int, default=30, dest="cooldown_minutes")
@@ -104,8 +106,26 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--dry-run", action="store_true")
     opts = p.parse_args(argv)
 
-    if opts.retry_threshold <= 0 or opts.watcher_down_streak <= 0:
-        sys.exit("--retry-threshold and --watcher-down-streak must be positive integers")
+    if opts.message:
+        # Custom message mode — skip all automated checks, just send.
+        project_dir = os.path.realpath(opts.project)
+        message = opts.message
+        if opts.dry_run:
+            print("notify: dry-run")
+            print(f"  → {message}")
+            sys.exit(0)
+        try:
+            from superharness.engine.relay_client import dispatch_notification
+            sent, backend = dispatch_notification(message)
+            if sent:
+                print(f"notify: sent via {backend}")
+            else:
+                print(f"notify: failed to send via any backend")
+                sys.exit(1)
+        except Exception as e:
+            logger.warning("notify.py unexpected error: %s", e, exc_info=True)
+            sys.exit(1)
+        sys.exit(0)
 
     project_dir = os.path.realpath(opts.project)
     if not os.path.isdir(project_dir):
