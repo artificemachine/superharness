@@ -1,9 +1,30 @@
 # Handoff — superharness
 
-> Latest: 2026-05-25, massive production hardening session (v1.65.1 live, 5 PRs merged)
-> Previous: 2026-05-18, state isolation iterations 1-4 on feat/paths-resolver
-> PyPI latest: **v1.65.1** (live)
+> Latest: 2026-05-26, discussion engine overhaul + agent availability (v1.66.0 live, PR #292)
+> Previous: 2026-05-25, massive production hardening (v1.65.1, PRs #285-#291)
+> PyPI latest: **v1.66.0** (released)
 > PRs merged: #285, #286, #287, #288, #289, #290
+
+
+## 2026-05-26 session: discussion engine + consensus + agent availability
+
+### What shipped (v1.66.0, PR #292)
+
+**Discussion engine:** orchestrator skip for rounds, stronger prompt, verdict normalization (word-boundary regex), consensus threshold max(2,n-1), disk file scanning, no-engagement timeout.
+
+**Agent availability:** binary + rate-limit + daemon heartbeat checks before dispatch, heartbeat auto-registration on delegate, daemon-dead GC detection.
+
+**Other:** notify --message, --print-only no longer hangs, retry_count + failed_reason preserved, retry-alert fires at exhausted.
+
+**Tests:** 20+ new (consensus threshold, verdict normalization, disk detection, heartbeat registration, round completion).
+
+**Discussions run:** 6 attempts today, root cause found: agents complete inbox items but don't always create submission files. Fixed by disk scanning + stronger prompt + verdict normalization.
+
+### Where to pick up
+
+1. Start fresh discussion with all fixes — should work end-to-end
+2. Observability metrics engine from docs/observability-spec-d2.md
+3. Ship SKILL_GENERICITY_REVIEW.md to Claude
 
 ---
 
