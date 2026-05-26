@@ -3713,6 +3713,33 @@ def _gc_discussion_deadlock(project_dir: str) -> int:
                 # Check if remaining agents are dead
                 submitted_agents = {s.agent for s in submissions if s.round_number == current_round}
                 missing_agents = set(participants) - submitted_agents
+
+                # Fast-close: if all missing agents have no daemon heartbeat, close now.
+                # Don't wait for retry exhaustion — they can't respond.
+                all_daemon_dead = True
+                for agent in missing_agents:
+                    hb = conn.execute(
+                        "SELECT status FROM agent_heartbeats WHERE agent=?",
+                        (agent,),
+                    ).fetchone()
+                    if hb and hb["status"] not in ("zombie", None):
+                        all_daemon_dead = False
+                        break
+                if all_daemon_dead and submitted >= 1:
+                    conn.execute(
+                        "UPDATE discussions SET status='failed_participant', closed_at=? WHERE id=?",
+                        (now.strftime("%Y-%m-%dT%H:%M:%SZ"), disc.id),
+                    )
+                    conn.commit()
+                    closed_count += 1
+                    print(
+                        f"gc: discussion {disc.id} closed as failed_participant "
+                        f"(round {current_round}: {submitted} submitted, "
+                        f"{len(missing_agents)} agents have no daemon)",
+                        file=sys.stderr,
+                    )
+                    continue
+
                 all_dead = True
                 for agent in missing_agents:
                     agent_task = f"{disc.id}/round-{current_round}"

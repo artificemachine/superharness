@@ -1103,6 +1103,26 @@ def _handle_failure(ctx: DispatchContext) -> int:
         print(f"Permanent block for {ctx.item_id}: lifecycle gate rejected. Not retrying.", file=sys.stderr)
     else:
         fail_reason = f"{failure_class}: {failure_explain}"
+
+    # Check if the agent's daemon was even running when it failed
+    if failure_class == "unknown" and ctx.launcher_rc == 1:
+        try:
+            from superharness.engine.db import get_connection, init_db
+            conn = get_connection(ctx.project_dir)
+            try:
+                init_db(conn)
+                hb = conn.execute(
+                    "SELECT status FROM agent_heartbeats WHERE agent=?",
+                    (ctx.item_to,),
+                ).fetchone()
+                if hb is None:
+                    fail_reason = "agent daemon not running (no heartbeat)"
+                elif hb["status"] == "zombie":
+                    fail_reason = "agent daemon zombie (stale heartbeat)"
+            finally:
+                conn.close()
+        except Exception:
+            pass
     new_lock = _MkdirLock(ctx.inbox_file + ".lock.d")
     # Record failure in decision ledger for debugging
     try:

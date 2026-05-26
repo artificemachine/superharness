@@ -183,6 +183,23 @@ def cmd_start(
         )
         return 2
 
+    # Check agent availability: warn about agents without running daemons.
+    unavailable = []
+    try:
+        from superharness.commands.discussion_dispatch import _agent_available
+        for agent in participants:
+            ok, reason = _agent_available(agent, project_dir)
+            if not ok:
+                unavailable.append((agent, reason))
+    except Exception:
+        pass  # best-effort check, don't block on it
+    if unavailable:
+        for agent, reason in unavailable:
+            print(
+                f"⚠️  {agent}: may not respond — {reason}",
+                file=sys.stderr,
+            )
+
     # Recommend full coverage when fewer than all available agents are included.
     missing = sorted(set(available) - set(participants))
     if missing:
