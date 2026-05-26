@@ -448,7 +448,7 @@ def main(argv: list[str] | None = None) -> None:
             gemini_dst.write_text(
                 f"# Gemini Agent — {project_name}\n\n"
                 f"You are `gemini-cli`, an agent in the superharness multi-agent framework.\n"
-                f"Read `.superharness/contract.yaml` to find your task (owner: gemini-cli).\n"
+                f"Run `shux contract` to find your task (owner: gemini-cli).\n"
                 f"Follow the lifecycle: todo → plan_proposed → plan_approved → in_progress → report_ready.\n"
                 f"Use `shux` / `superharness` CLI to advance task status and write handoffs.\n"
                 f"Never close a task — only the operator runs `shux close`.\n",

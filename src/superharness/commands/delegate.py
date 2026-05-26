@@ -356,6 +356,74 @@ def _record_decomposition(
         pass
 
 
+def build_discussion_prompt(
+    target: str,
+    discussion_id: str,
+    discussion_round: int,
+    disc_topic: str,
+    disc_max: str,
+    submit_path: str,
+    auto_directive: str = "",
+    prior_context: str = "",
+) -> str:
+    """Build the instruction prompt for a discussion round."""
+    if discussion_round == 1:
+        return (
+            f"You are participating in a multi-agent discussion.\n"
+            f"Topic: {disc_topic}\n"
+            f"You are: {target}\n"
+            f"This is round {discussion_round} of {disc_max}.\n"
+            f"\n"
+            f"Review the topic and write YOUR OWN position. Be specific about what you agree or disagree with.\n"
+            f"\n"
+            f"IMPORTANT: You MUST write your own submission file. Other agents write their own files.\n"
+            f"Do NOT skip writing because another agent already submitted. Every agent's perspective matters.\n"
+            f"\n"
+            f"When done, write a YAML file to: {submit_path}\n"
+            f"The file must have these fields:\n"
+            f"  discussion_id: {discussion_id}\n"
+            f"  round: {discussion_round}\n"
+            f"  agent: {target}\n"
+            f"  verdict: agree OR disagree OR partial\n"
+            f"  position: your free-form analysis\n"
+            f"  points: list of {{id, verdict, rationale}} for each sub-point\n"
+            f"  submitted_at: (current UTC ISO 8601 timestamp)\n"
+            f"\n"
+            f"If you agree with everything, set verdict: agree. "
+            f"Otherwise set verdict: disagree or partial and explain in points.\n"
+            f"Run `shux context {discussion_id}` for the full discussion context.\n"
+            f"Read the handoff referenced in the project contract for the task details."
+            f"{auto_directive}"
+        )
+    else:
+        return (
+            f"You are participating in a multi-agent discussion.\n"
+            f"Topic: {disc_topic}\n"
+            f"You are: {target}\n"
+            f"This is round {discussion_round} of {disc_max}.\n"
+            f"\n"
+            f"Here are the positions from prior rounds:\n"
+            f"{prior_context}\n"
+            f"\n"
+            f"Consider the other agent's position carefully. "
+            f"If you now agree with all points, set verdict: agree.\n"
+            f"If you still disagree, explain specifically what remains unresolved.\n"
+            f"\n"
+            f"Write your response to: {submit_path}\n"
+            f"The file must have these fields:\n"
+            f"  discussion_id: {discussion_id}\n"
+            f"  round: {discussion_round}\n"
+            f"  agent: {target}\n"
+            f"  verdict: agree OR disagree OR partial\n"
+            f"  position: your free-form analysis\n"
+            f"  points: list of {{id, verdict, rationale}} for each sub-point\n"
+            f"  submitted_at: (current UTC ISO 8601 timestamp)\n"
+            f"\n"
+            f"Run `shux context {discussion_id}` for full context."
+            f"{auto_directive}"
+        )
+
+
 def _get_round_context(disc_dir: str, round_: int, agent: str) -> dict:
     result = subprocess.run(
         [sys.executable, "-m", "superharness.engine.discussion",
@@ -492,6 +560,24 @@ def _launch_agent(
     if print_only:
         print(f"would launch: {launcher}")
         return
+
+    # Register agent daemon heartbeat before dispatching.
+    # Agent daemons don't self-register — this keeps the heartbeat table accurate.
+    try:
+        from superharness.engine.db import get_connection, init_db, now_iso
+        from superharness.engine import heartbeat_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            heartbeat_dao.upsert(
+                conn, agent=target, task_id=task_id,
+                status="launched", pid=os.getpid(), now=now_iso(),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        pass  # best-effort, don't block dispatch
 
     display_label = f" {label}" if label else ""
     agent_name = target.replace("-cli", "").replace("-code", "").capitalize()
@@ -803,7 +889,11 @@ def delegate(
     # --orchestrate flag forces this path (backward compat, same behavior).
     # -----------------------------------------------------------------------
     should_orchestrate = not no_orchestrate
-    if should_orchestrate and not print_only:
+    # Discussion rounds need multi-agent perspectives — skip orchestrator.
+    # The orchestrator would reroute every agent to the same "best" model,
+    # defeating the purpose of multi-agent deliberation.
+    is_discussion_round = "/round-" in task_id
+    if should_orchestrate and not print_only and not is_discussion_round:
         try:
             from superharness.engine.orchestrator import Orchestrator
             orch = Orchestrator(project_dir=project_dir)
@@ -920,60 +1010,18 @@ def delegate(
         disc_topic = str(ctx.get("topic") or "")
         disc_max = str(ctx.get("max_rounds") or "")
         submit_path = os.path.join(disc_dir, f"round-{discussion_round}-{target}.yaml")
+        prior_context = _build_prior_context(ctx) if discussion_round > 1 else ""
 
-        if discussion_round == 1:
-            prompt = (
-                f"You are participating in a multi-agent discussion.\n"
-                f"Topic: {disc_topic}\n"
-                f"You are: {target}\n"
-                f"This is round {discussion_round} of {disc_max}.\n"
-                f"\n"
-                f"Review the topic and write your position. Be specific about what you agree or disagree with.\n"
-                f"\n"
-                f"When done, write a YAML file to: {submit_path}\n"
-                f"The file must have these fields:\n"
-                f"  discussion_id: {discussion_id}\n"
-                f"  round: {discussion_round}\n"
-                f"  agent: {target}\n"
-                f"  verdict: agree OR disagree OR partial\n"
-                f"  position: your free-form analysis\n"
-                f"  points: list of {{id, verdict, rationale}} for each sub-point\n"
-                f"  submitted_at: (current UTC ISO 8601 timestamp)\n"
-                f"\n"
-                f"If you agree with everything, set verdict: agree. "
-                f"Otherwise set verdict: disagree or partial and explain in points.\n"
-                f"Run `shux context {discussion_id}` for the full discussion context.\n"
-                f"Read the handoff referenced in the project contract for the task details."
-                f"{auto_directive}"
-            )
-        else:
-            prior_context = _build_prior_context(ctx)
-            prompt = (
-                f"You are participating in a multi-agent discussion.\n"
-                f"Topic: {disc_topic}\n"
-                f"You are: {target}\n"
-                f"This is round {discussion_round} of {disc_max}.\n"
-                f"\n"
-                f"Here are the positions from prior rounds:\n"
-                f"{prior_context}\n"
-                f"\n"
-                f"Consider the other agent's position carefully. "
-                f"If you now agree with all points, set verdict: agree.\n"
-                f"If you still disagree, explain specifically what remains unresolved.\n"
-                f"\n"
-                f"Write your response to: {submit_path}\n"
-                f"The file must have these fields:\n"
-                f"  discussion_id: {discussion_id}\n"
-                f"  round: {discussion_round}\n"
-                f"  agent: {target}\n"
-                f"  verdict: agree OR disagree OR partial\n"
-                f"  position: your free-form analysis\n"
-                f"  points: list of {{id, verdict, rationale}} for each sub-point\n"
-                f"  submitted_at: (current UTC ISO 8601 timestamp)\n"
-                f"\n"
-                f"Run `shux context {discussion_id}` for full context."
-                f"{auto_directive}"
-            )
+        prompt = build_discussion_prompt(
+            target=target,
+            discussion_id=discussion_id,
+            discussion_round=discussion_round,
+            disc_topic=disc_topic,
+            disc_max=disc_max,
+            submit_path=submit_path,
+            auto_directive=auto_directive,
+            prior_context=prior_context,
+        )
 
         print(f"Project: {project_dir}")
         print(f"Discussion: {discussion_id}")

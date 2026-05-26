@@ -120,6 +120,23 @@ def cmd_submit_round(
         if agent not in disc.owners:
             sys.exit(f"Agent '{agent}' is not a participant")
 
+        # Normalize verdict: agents sometimes copy the prompt's example verbatim
+        # ("agree or disagree or partial") instead of picking one.
+        # Only normalize when ALL options appear — a real "disagree or partial"
+        # is ambiguous and should be rejected.
+        valid_verdicts = {"agree", "disagree", "partial", "consensus", "abstain"}
+        verdict_lower = str(verdict).strip().lower()
+        if verdict_lower not in valid_verdicts:
+            import re
+            matches = [v for v in sorted(valid_verdicts) if re.search(r'\b' + re.escape(v) + r'\b', verdict_lower)]
+            if len(matches) >= 3:
+                # All three main options present → copied the prompt. Take first match.
+                verdict_lower = matches[0]
+                print(f"[discussion] normalized verdict '{verdict}' → '{verdict_lower}' (prompt copy)", file=sys.stderr)
+            else:
+                sys.exit(f"Invalid verdict '{verdict}'. Must be one of: {', '.join(sorted(valid_verdicts))}")
+        verdict = verdict_lower
+
         # Check if already submitted this round
         existing = discussions_dao.get_rounds(conn, disc_id)
         for r in existing:
@@ -176,11 +193,12 @@ def _check_all_submitted_and_set_consensus(conn, disc, round_: int) -> None:
         logger.warning("discussion.py unexpected error: %s", e, exc_info=True)
         ai_agents = set()
     agent_participants = [o for o in disc.owners if o in ai_agents] if ai_agents else list(disc.owners)
-    required_count = len(agent_participants) if agent_participants else len(disc.owners)
+    total_participants = len(agent_participants) if agent_participants else len(disc.owners)
+    # Require max(2, n-1) — same formula as discuss.py participant floor.
+    # A discussion with 4 owners needs 3 submissions for consensus, not 4.
+    required_count = max(2, total_participants - 1) if total_participants > 1 else 2
 
     if len(submitted_agents) < required_count:
-        return
-    if agent_participants and not set(agent_participants).issubset(submitted_agents):
         return
 
     # Auto-consensus requires every participant to not disagree.
@@ -347,17 +365,28 @@ def cmd_check_consensus(discussion_dir: str) -> int:
             sys.exit(f"Discussion not found: {disc_id}")
 
         rounds = discussions_dao.get_rounds(conn, disc_id)
-        # Use first round number present or default to 1
         round_nums = sorted({r.round_number for r in rounds})
         current_round = round_nums[-1] if round_nums else 1
 
+        # Collect verdicts from DB submissions
         verdicts: dict[str, str] = {}
         for r in rounds:
             if r.round_number == current_round:
                 verdicts[r.agent] = str(r.verdict or "").lower()
 
-        all_submitted = len(verdicts) == len(disc.owners)
-        consensus = all_submitted and all(v == "agree" for v in verdicts.values())
+        # Also scan disk for YAML files — agents may write files without calling
+        # cmd_submit_round(). If a round-N-agent.yaml exists, treat it as submitted.
+        for agent in disc.owners:
+            if agent not in verdicts:
+                yaml_path = os.path.join(discussion_dir, f"round-{current_round}-{agent}.yaml")
+                if os.path.isfile(yaml_path):
+                    verdicts[agent] = "file_on_disk"
+
+        # Require max(2, n-1) submissions — same formula as discuss.py
+        total = len(disc.owners)
+        required = max(2, total - 1) if total > 1 else 2
+        all_submitted = len(verdicts) >= required
+        consensus = all_submitted and "disagree" not in {v for v in verdicts.values() if v not in ("file_on_disk",)}
 
         print(
             json.dumps(
