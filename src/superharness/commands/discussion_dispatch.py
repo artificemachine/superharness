@@ -175,19 +175,40 @@ def _ensure_round_task(project_dir: str, disc_id: str, round_: int, title: str) 
     inbox.task_id is a FK reference to tasks.id — enqueue fails with
     IntegrityError if the task row is absent. This happens on every
     round advance because only round-1 is seeded at discussion-start time.
+
+    Copies model_tier and effort from round-1 so classification done at
+    discussion creation carries through to all subsequent rounds.
     """
     from superharness.engine.db import get_connection, init_db
     task_id = f"{disc_id}/round-{round_}"
+    # Read model_tier and effort from round-1 to propagate to later rounds
+    model_tier = "standard"
+    effort = "medium"
+    if round_ > 1:
+        round_1_id = f"{disc_id}/round-1"
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            row = conn.execute(
+                "SELECT model_tier, effort FROM tasks WHERE id = ?",
+                (round_1_id,),
+            ).fetchone()
+            if row:
+                model_tier = row["model_tier"] or "standard"
+                effort = row["effort"] or "medium"
+        finally:
+            conn.close()
+
     conn = get_connection(project_dir)
     try:
         init_db(conn)
         conn.execute(
             """
             INSERT OR IGNORE INTO tasks
-                (id, title, owner, status, project_path, created_at, updated_at, workflow)
-            VALUES (?, ?, 'claude-code', 'in_progress', ?, ?, ?, 'discussion')
+                (id, title, owner, status, project_path, created_at, updated_at, workflow, model_tier, effort)
+            VALUES (?, ?, 'claude-code', 'in_progress', ?, ?, ?, 'discussion', ?, ?)
             """,
-            (task_id, title, project_dir, _now_utc(), _now_utc()),
+            (task_id, title, project_dir, _now_utc(), _now_utc(), model_tier, effort),
         )
         conn.commit()
     finally:
