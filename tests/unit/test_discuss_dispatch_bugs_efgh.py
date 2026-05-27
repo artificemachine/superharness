@@ -343,7 +343,7 @@ class TestDiscussionRoundTimeoutEnvOverride:
     def test_unset_env_falls_back_to_bundled_default(self, tmp_path, monkeypatch):
         from superharness.commands.inbox_dispatch import (
             DispatchContext, _prepare_launch_context,
-            DISCUSSION_ROUND_TIMEOUT_SECONDS,
+            DISCUSSION_TIMEOUT_MEDIUM,
         )
 
         monkeypatch.delenv("SUPERHARNESS_DISCUSSION_ROUND_TIMEOUT_SECONDS", raising=False)
@@ -369,7 +369,8 @@ class TestDiscussionRoundTimeoutEnvOverride:
         ctx.effective_timeout = 0
 
         _prepare_launch_context(ctx)
-        assert ctx.effective_timeout == DISCUSSION_ROUND_TIMEOUT_SECONDS
+        # With no tasks table, effort defaults to medium → 1200s timeout
+        assert ctx.effective_timeout == DISCUSSION_TIMEOUT_MEDIUM
 
     def test_invalid_env_value_falls_back_to_default(self, tmp_path, monkeypatch):
         from superharness.commands.inbox_dispatch import (
@@ -400,4 +401,5 @@ class TestDiscussionRoundTimeoutEnvOverride:
         ctx.effective_timeout = 0
 
         _prepare_launch_context(ctx)
+        # Invalid env var → falls back to DISCUSSION_ROUND_TIMEOUT_SECONDS (900s)
         assert ctx.effective_timeout == DISCUSSION_ROUND_TIMEOUT_SECONDS

@@ -207,12 +207,21 @@ class TestDiscussionTimeout:
         assert DISCUSSION_ROUND_TIMEOUT_SECONDS >= 600   # at least 10 min
 
     def test_discussion_timeout_applied_in_context(self, tmp_path):
-        """_prepare_launch_context sets effective_timeout to discussion default for round tasks."""
+        """_prepare_launch_context sets effective_timeout to effort-driven default
+        for round tasks (medium=1200s when task effort is unknown)."""
         import sqlite3
         sh = tmp_path / ".superharness"
         sh.mkdir()
         db_path = sh / "state.sqlite3"
         conn = sqlite3.connect(str(db_path))
+        # Create tasks table so the code can read effort (will be NULL → medium fallback)
+        conn.execute("CREATE TABLE tasks (id TEXT, title TEXT, owner TEXT, status TEXT, "
+                      "project_path TEXT, created_at TEXT, updated_at TEXT, workflow TEXT, "
+                      "model_tier TEXT, effort TEXT)")
+        conn.execute("INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?)",
+                     (ROUND_TASK, "Round 1", "claude-code", "in_progress",
+                      str(tmp_path), "2026-05-01T00:00:00Z", "2026-05-01T00:00:00Z",
+                      "discussion", None, None))
         conn.execute("CREATE TABLE inbox (id TEXT, task_id TEXT, target_agent TEXT, status TEXT, priority INTEGER, retry_count INTEGER, max_retries INTEGER, pid INTEGER, project_path TEXT, plan_only INTEGER, failed_reason TEXT, created_at TEXT, launched_at TEXT, last_heartbeat TEXT, paused_at TEXT, failed_at TEXT, done_at TEXT)")
         conn.execute("INSERT INTO inbox VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                      ("item-1", ROUND_TASK, "claude-code", "launched", 5, 0, 3, None,
@@ -220,7 +229,7 @@ class TestDiscussionTimeout:
         conn.commit()
 
         from superharness.commands.inbox_dispatch import (
-            DispatchContext, _prepare_launch_context, DISCUSSION_ROUND_TIMEOUT_SECONDS
+            DispatchContext, _prepare_launch_context, DISCUSSION_TIMEOUT_MEDIUM
         )
         ctx = DispatchContext(
             project_dir=str(tmp_path),
@@ -244,4 +253,360 @@ class TestDiscussionTimeout:
 
         _prepare_launch_context(ctx)
 
-        assert ctx.effective_timeout == DISCUSSION_ROUND_TIMEOUT_SECONDS
+        # With no effort set on task, falls back to DISCUSSION_TIMEOUT_MEDIUM (1200s)
+        assert ctx.effective_timeout == DISCUSSION_TIMEOUT_MEDIUM
+
+
+# ---------------------------------------------------------------------------
+# Effort-driven discussion timeout (low=10min, medium=20min, high=30min)
+# ---------------------------------------------------------------------------
+
+
+class TestEffortDrivenDiscussionTimeout:
+    def test_low_effort_gets_10_minutes(self, tmp_path):
+        """Discussion task with effort=low → 600s timeout."""
+        from superharness.commands.inbox_dispatch import (
+            DispatchContext, _prepare_launch_context,
+            DISCUSSION_TIMEOUT_LOW,
+        )
+
+        sh = tmp_path / ".superharness"
+        sh.mkdir()
+
+        ctx = DispatchContext(
+            project_dir=str(tmp_path),
+            inbox_file=str(sh / "inbox.yaml"),
+            contract_file=str(sh / "contract.yaml"),
+            non_interactive=True,
+            codex_bypass=False,
+            launcher_timeout=0,
+            script_dir="",
+            sqlite_primary=True,
+            print_only=True,
+        )
+        ctx.item = {"id": "item-1", "task_id": ROUND_TASK, "target_agent": "claude-code",
+                    "status": "launched", "plan_only": False}
+        ctx.item_id = "item-1"
+        ctx.item_to = "claude-code"
+        ctx.item_task = ROUND_TASK
+        ctx.exec_project = str(tmp_path)
+        ctx.is_discussion = True
+        ctx.worktree_dir = None
+
+        # Mock the task read: return a task with effort=low
+        mock_task = MagicMock()
+        mock_task.model_tier = "standard"
+        mock_task.effort = "low"
+        with patch("superharness.engine.db.init_db"), \
+             patch("superharness.engine.tasks_dao.get", return_value=mock_task):
+            _prepare_launch_context(ctx)
+
+        assert ctx.effective_timeout == DISCUSSION_TIMEOUT_LOW, (
+            f"Expected {DISCUSSION_TIMEOUT_LOW}s for low effort, got {ctx.effective_timeout}"
+        )
+
+    def test_high_effort_gets_30_minutes(self, tmp_path):
+        """Discussion task with effort=high → 1800s timeout."""
+        from superharness.commands.inbox_dispatch import (
+            DispatchContext, _prepare_launch_context,
+            DISCUSSION_TIMEOUT_HIGH,
+        )
+
+        sh = tmp_path / ".superharness"
+        sh.mkdir()
+
+        ctx = DispatchContext(
+            project_dir=str(tmp_path),
+            inbox_file=str(sh / "inbox.yaml"),
+            contract_file=str(sh / "contract.yaml"),
+            non_interactive=True,
+            codex_bypass=False,
+            launcher_timeout=0,
+            script_dir="",
+            sqlite_primary=True,
+            print_only=True,
+        )
+        ctx.item = {"id": "item-1", "task_id": ROUND_TASK, "target_agent": "claude-code",
+                    "status": "launched", "plan_only": False}
+        ctx.item_id = "item-1"
+        ctx.item_to = "claude-code"
+        ctx.item_task = ROUND_TASK
+        ctx.exec_project = str(tmp_path)
+        ctx.is_discussion = True
+        ctx.worktree_dir = None
+
+        mock_task = MagicMock()
+        mock_task.model_tier = "max"
+        mock_task.effort = "high"
+        with patch("superharness.engine.db.init_db"), \
+             patch("superharness.engine.tasks_dao.get", return_value=mock_task):
+            _prepare_launch_context(ctx)
+
+        assert ctx.effective_timeout == DISCUSSION_TIMEOUT_HIGH, (
+            f"Expected {DISCUSSION_TIMEOUT_HIGH}s for high effort, got {ctx.effective_timeout}"
+        )
+
+    def test_env_var_overrides_effort_timeout(self, tmp_path, monkeypatch):
+        """SUPERHARNESS_DISCUSSION_ROUND_TIMEOUT_SECONDS overrides effort-based timeout."""
+        from superharness.commands.inbox_dispatch import (
+            DispatchContext, _prepare_launch_context,
+        )
+        import sqlite3
+
+        monkeypatch.setenv("SUPERHARNESS_DISCUSSION_ROUND_TIMEOUT_SECONDS", "42")
+
+        sh = tmp_path / ".superharness"
+        sh.mkdir()
+        db_path = sh / "state.sqlite3"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "CREATE TABLE tasks (id TEXT, title TEXT, owner TEXT, status TEXT, "
+            "project_path TEXT, created_at TEXT, updated_at TEXT, workflow TEXT, "
+            "model_tier TEXT, effort TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (ROUND_TASK, "Round 1", "claude-code", "in_progress",
+             str(tmp_path), "2026-05-01T00:00:00Z", "2026-05-01T00:00:00Z",
+             "discussion", "standard", "high"),
+        )
+        conn.execute(
+            "CREATE TABLE inbox (id TEXT, task_id TEXT, target_agent TEXT, status TEXT, "
+            "priority INTEGER, retry_count INTEGER, max_retries INTEGER, pid INTEGER, "
+            "project_path TEXT, plan_only INTEGER, failed_reason TEXT, created_at TEXT, "
+            "launched_at TEXT, last_heartbeat TEXT, paused_at TEXT, failed_at TEXT, done_at TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO inbox VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("item-1", ROUND_TASK, "claude-code", "launched", 5, 0, 3, None,
+             str(tmp_path), 0, None, "2026-05-07T11:00:00Z", None, None, None, None, None),
+        )
+        conn.commit()
+
+        ctx = DispatchContext(
+            project_dir=str(tmp_path),
+            inbox_file=str(sh / "inbox.yaml"),
+            contract_file=str(sh / "contract.yaml"),
+            non_interactive=True,
+            codex_bypass=False,
+            launcher_timeout=0,
+            script_dir="",
+            sqlite_primary=True,
+            print_only=True,
+        )
+        ctx.item = {"id": "item-1", "task_id": ROUND_TASK, "target_agent": "claude-code",
+                    "status": "launched", "plan_only": False}
+        ctx.item_id = "item-1"
+        ctx.item_to = "claude-code"
+        ctx.item_task = ROUND_TASK
+        ctx.exec_project = str(tmp_path)
+        ctx.is_discussion = True
+        ctx.worktree_dir = None
+
+        _prepare_launch_context(ctx)
+
+        assert ctx.effective_timeout == 42, (
+            f"Env var override should set timeout to 42, got {ctx.effective_timeout}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Profile config fallback for discussion_model_tier
+# ---------------------------------------------------------------------------
+
+
+class TestProfileConfigFallback:
+    def test_profile_config_used_when_task_has_no_model_tier(self, tmp_path):
+        """When task has no model_tier, profile config discussion_model_tier is used."""
+        from superharness.commands.inbox_dispatch import (
+            DispatchContext, _prepare_launch_context,
+        )
+        import os, yaml, sqlite3
+
+        # Set up profile with discussion_model_tier = max
+        sh = tmp_path / ".superharness"
+        sh.mkdir()
+        profile = {
+            "discussion_model_tier": "max",
+        }
+        (sh / "profile.yaml").write_text(yaml.dump(profile))
+
+        # Set up task without model_tier
+        db_path = sh / "state.sqlite3"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "CREATE TABLE tasks (id TEXT, title TEXT, owner TEXT, status TEXT, "
+            "project_path TEXT, created_at TEXT, updated_at TEXT, workflow TEXT, "
+            "model_tier TEXT, effort TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (ROUND_TASK, "Round 1", "claude-code", "in_progress",
+             str(tmp_path), "2026-05-01T00:00:00Z", "2026-05-01T00:00:00Z",
+             "discussion", None, "medium"),
+        )
+        conn.execute(
+            "CREATE TABLE inbox (id TEXT, task_id TEXT, target_agent TEXT, status TEXT, "
+            "priority INTEGER, retry_count INTEGER, max_retries INTEGER, pid INTEGER, "
+            "project_path TEXT, plan_only INTEGER, failed_reason TEXT, created_at TEXT, "
+            "launched_at TEXT, last_heartbeat TEXT, paused_at TEXT, failed_at TEXT, done_at TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO inbox VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("item-1", ROUND_TASK, "claude-code", "launched", 5, 0, 3, None,
+             str(tmp_path), 0, None, "2026-05-07T11:00:00Z", None, None, None, None, None),
+        )
+        conn.commit()
+
+        ctx = DispatchContext(
+            project_dir=str(tmp_path),
+            inbox_file=str(sh / "inbox.yaml"),
+            contract_file=str(sh / "contract.yaml"),
+            non_interactive=True,
+            codex_bypass=False,
+            launcher_timeout=0,
+            script_dir="",
+            sqlite_primary=True,
+            print_only=True,
+        )
+        ctx.item = {"id": "item-1", "task_id": ROUND_TASK, "target_agent": "claude-code",
+                    "status": "launched", "plan_only": False}
+        ctx.item_id = "item-1"
+        ctx.item_to = "claude-code"
+        ctx.item_task = ROUND_TASK
+        ctx.exec_project = str(tmp_path)
+        ctx.is_discussion = True
+        ctx.worktree_dir = None
+
+        _prepare_launch_context(ctx)
+
+        # Should have resolved to opus (max tier)
+        assert "--model" in ctx.launch_args, "discussion dispatch must pass --model"
+        model_idx = ctx.launch_args.index("--model")
+        model_val = ctx.launch_args[model_idx + 1]
+        assert "opus" in model_val.lower() or "max" in model_val.lower(), (
+            f"Expected max-tier model (opus), got: {model_val}"
+        )
+
+    def test_env_var_overrides_profile_config(self, tmp_path, monkeypatch):
+        """SUPERHARNESS_CLAUDE_MODEL env var overrides profile config."""
+        from superharness.commands.inbox_dispatch import (
+            DispatchContext, _prepare_launch_context,
+        )
+        import yaml, sqlite3
+
+        monkeypatch.setenv("SUPERHARNESS_CLAUDE_MODEL", "claude-haiku-4-5")
+
+        sh = tmp_path / ".superharness"
+        sh.mkdir()
+        profile = {"discussion_model_tier": "max"}
+        (sh / "profile.yaml").write_text(yaml.dump(profile))
+
+        db_path = sh / "state.sqlite3"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(
+            "CREATE TABLE tasks (id TEXT, title TEXT, owner TEXT, status TEXT, "
+            "project_path TEXT, created_at TEXT, updated_at TEXT, workflow TEXT, "
+            "model_tier TEXT, effort TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (ROUND_TASK, "Round 1", "claude-code", "in_progress",
+             str(tmp_path), "2026-05-01T00:00:00Z", "2026-05-01T00:00:00Z",
+             "discussion", None, "medium"),
+        )
+        conn.execute(
+            "CREATE TABLE inbox (id TEXT, task_id TEXT, target_agent TEXT, status TEXT, "
+            "priority INTEGER, retry_count INTEGER, max_retries INTEGER, pid INTEGER, "
+            "project_path TEXT, plan_only INTEGER, failed_reason TEXT, created_at TEXT, "
+            "launched_at TEXT, last_heartbeat TEXT, paused_at TEXT, failed_at TEXT, done_at TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO inbox VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("item-1", ROUND_TASK, "claude-code", "launched", 5, 0, 3, None,
+             str(tmp_path), 0, None, "2026-05-07T11:00:00Z", None, None, None, None, None),
+        )
+        conn.commit()
+
+        ctx = DispatchContext(
+            project_dir=str(tmp_path),
+            inbox_file=str(sh / "inbox.yaml"),
+            contract_file=str(sh / "contract.yaml"),
+            non_interactive=True,
+            codex_bypass=False,
+            launcher_timeout=0,
+            script_dir="",
+            sqlite_primary=True,
+            print_only=True,
+        )
+        ctx.item = {"id": "item-1", "task_id": ROUND_TASK, "target_agent": "claude-code",
+                    "status": "launched", "plan_only": False}
+        ctx.item_id = "item-1"
+        ctx.item_to = "claude-code"
+        ctx.item_task = ROUND_TASK
+        ctx.exec_project = str(tmp_path)
+        ctx.is_discussion = True
+        ctx.worktree_dir = None
+
+        _prepare_launch_context(ctx)
+
+        assert "--model" in ctx.launch_args
+        model_idx = ctx.launch_args.index("--model")
+        model_val = ctx.launch_args[model_idx + 1]
+        # Env var should win — should be haiku, not opus
+        assert model_val == "claude-haiku-4-5" or "haiku" in model_val.lower(), (
+            f"Env var should override profile config. Expected haiku, got: {model_val}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# --tier flag on shux discuss cmd_start
+# ---------------------------------------------------------------------------
+
+
+class TestTierFlagOnDiscussStart:
+    def test_tier_flag_stored_on_task(self, tmp_path):
+        """When --tier max is passed, task gets model_tier=max without classify_task call."""
+        import os, yaml, json, secrets, sqlite3
+        from unittest.mock import patch
+
+        sh = tmp_path / ".superharness"
+        sh.mkdir(parents=True)
+        discussions_dir = str(sh / "discussions")
+        inbox_file = str(sh / "inbox.yaml")
+        contract_file = str(sh / "contract.yaml")
+        os.makedirs(discussions_dir, exist_ok=True)
+
+        # Create empty state.sqlite3 (let the engine handle table creation)
+        db_path = sh / "state.sqlite3"
+        conn = sqlite3.connect(str(db_path))
+        conn.close()
+
+        with patch("superharness.engine.inbox._inbox_lock"):
+            from superharness.commands.discuss import cmd_start
+            rc = cmd_start(
+                discussions_dir=discussions_dir,
+                inbox_file=inbox_file,
+                contract_file=contract_file,
+                topic="Test discussion with tier override",
+                task_id=None,
+                max_rounds=2,
+                project_dir=str(tmp_path),
+                actor="owner",
+                tier="max",  # <-- the --tier flag value
+                owners=["claude-code", "gemini-cli"],
+                exclude=[],
+            )
+
+        # Verify the task was created with model_tier=max
+        conn2 = sqlite3.connect(str(db_path))
+        conn2.row_factory = sqlite3.Row  # match production get_connection
+        row = conn2.execute(
+            "SELECT id, model_tier, effort FROM tasks WHERE workflow = 'discussion'"
+        ).fetchone()
+        conn2.close()
+
+        assert row is not None, "Discussion task should have been created"
+        assert row["model_tier"] == "max", (
+            f"With --tier max, model_tier should be 'max', got: {row['model_tier']}"
+        )
