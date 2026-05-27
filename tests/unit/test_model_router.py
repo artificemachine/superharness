@@ -214,6 +214,194 @@ class TestModelMapCompleteness:
             for tier in VALID_TIERS:
                 assert tier in tier_map, f"{target} missing tier {tier}"
 
+    def test_opencode_has_all_tiers(self):
+        """opencode must be in MODEL_MAP with mini/standard/max entries."""
+        assert "opencode" in MODEL_MAP
+        for tier in VALID_TIERS:
+            assert tier in MODEL_MAP["opencode"], f"opencode missing tier {tier}"
+
+    def test_gemini_models_updated_from_legacy(self):
+        """Gemini entries must use current model IDs, not legacy ones."""
+        gemini = MODEL_MAP["gemini-cli"]
+        assert gemini["mini"] == "gemini-2.5-flash"
+        assert gemini["standard"] == "gemini-2.5-pro"
+        assert gemini["max"] == "gemini-3.1-pro-preview"
+        # Legacy names must not appear
+        assert gemini["max"] != "gemini-ultra"
+        assert "2.0" not in gemini["mini"]
+        assert "2.0" not in gemini["standard"]
+
+
+# ---------------------------------------------------------------------------
+# Multi-agent classifier chain
+# ---------------------------------------------------------------------------
+
+
+class TestMultiAgentClassifier:
+    def test_classifier_agents_list_has_four_entries(self):
+        from superharness.engine.model_router import _CLASSIFIER_AGENTS
+        assert len(_CLASSIFIER_AGENTS) == 4
+
+    def test_classifier_agent_names_are_registered(self):
+        from superharness.engine.model_router import _CLASSIFIER_AGENTS
+        names = [a for a, _ in _CLASSIFIER_AGENTS]
+        assert "claude-code" in names
+        assert "gemini-cli" in names
+        assert "opencode" in names
+        assert "codex-cli" in names
+
+    def test_classifier_templates_use_model_and_prompt(self):
+        from superharness.engine.model_router import _CLASSIFIER_AGENTS
+        for _, template in _CLASSIFIER_AGENTS:
+            cmd = " ".join(template)
+            assert "{model}" in cmd, f"missing {{model}} in {template}"
+            assert "{prompt}" in cmd, f"missing {{prompt}} in {template}"
+
+    def test_try_classify_returns_tier_effort(self):
+        from superharness.engine.model_router import _try_classify
+        fake_result = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="max high\n", stderr=""
+        )
+        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake_result):
+            result = _try_classify(
+                "claude-code",
+                ["claude", "--model", "{model}", "-p", "{prompt}"],
+                "haiku",
+                "test prompt",
+            )
+        assert result is not None
+        assert result == ("max", "high")
+
+    def test_try_classify_returns_none_on_subprocess_failure(self):
+        from superharness.engine.model_router import _try_classify
+        fake_result = subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr="error"
+        )
+        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake_result):
+            result = _try_classify(
+                "gemini-cli",
+                ["gemini", "-m", "{model}", "-p", "{prompt}"],
+                "gemini-2.5-flash",
+                "test prompt",
+            )
+        assert result is None
+
+    def test_try_classify_returns_none_on_timeout(self):
+        from superharness.engine.model_router import _try_classify
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="test", timeout=5),
+        ):
+            result = _try_classify(
+                "opencode",
+                ["opencode", "run", "-m", "{model}", "{prompt}"],
+                "deepseek-chat",
+                "test prompt",
+            )
+        assert result is None
+
+    def test_try_classify_returns_none_on_missing_cli(self):
+        from superharness.engine.model_router import _try_classify
+        with mock.patch(
+            "superharness.engine.model_router.subprocess.run",
+            side_effect=FileNotFoundError("not found"),
+        ):
+            result = _try_classify(
+                "codex-cli",
+                ["codex", "exec", "-m", "{model}", "{prompt}"],
+                "gpt-5.1-codex-mini",
+                "test prompt",
+            )
+        assert result is None
+
+    def test_classify_task_tries_first_agent_and_succeeds(self):
+        """First agent (claude/haiku) responds → no other agents tried."""
+        from superharness.engine.model_router import classify_task, _try_classify
+        real_try = _try_classify
+
+        call_count = {"count": 0}
+
+        def counting_try(agent, cmd_template, model, prompt):
+            call_count["count"] += 1
+            if agent == "claude-code":
+                return ("standard", "medium")
+            return None
+
+        with mock.patch(
+            "superharness.engine.model_router._try_classify",
+            side_effect=counting_try,
+        ):
+            tier, effort = classify_task("Some task")
+
+        assert tier == "standard"
+        assert effort == "medium"
+        assert call_count["count"] == 1  # Only first agent tried
+
+    def test_classify_task_falls_through_to_second_agent(self):
+        """First agent fails, second agent (gemini) responds."""
+        from superharness.engine.model_router import classify_task, _try_classify
+        real_try = _try_classify
+
+        call_count = {"count": 0}
+
+        def fallthrough_try(agent, cmd_template, model, prompt):
+            call_count["count"] += 1
+            if agent == "claude-code":
+                return None  # Haiku down
+            if agent == "gemini-cli":
+                return ("max", "high")
+            return None
+
+        with mock.patch(
+            "superharness.engine.model_router._try_classify",
+            side_effect=fallthrough_try,
+        ):
+            tier, effort = classify_task("Complex architecture task")
+
+        assert tier == "max"
+        assert effort == "high"
+        assert call_count["count"] == 2
+
+    def test_classify_task_all_agents_fail_falls_back(self):
+        """All four agents fail → returns standard/medium."""
+        from superharness.engine.model_router import classify_task
+
+        with mock.patch(
+            "superharness.engine.model_router._try_classify",
+            return_value=None,
+        ):
+            tier, effort = classify_task("Some task")
+
+        assert tier == "standard"
+        assert effort == "medium"
+
+    def test_classify_task_skips_agent_without_mini_model(self):
+        """Agent without mini model in the map → skipped gracefully."""
+        from superharness.engine.model_router import classify_task
+        real_map = MODEL_MAP
+
+        # Remove gemini's mini entry to simulate missing config
+        broken_map = dict(real_map)
+        broken_map["gemini-cli"] = {"standard": "gpt-4", "max": "gpt-4o"}
+
+        with mock.patch(
+            "superharness.engine.model_router._load_model_map",
+            return_value=broken_map,
+        ), mock.patch(
+            "superharness.engine.model_router._try_classify",
+        ) as mock_try:
+            mock_try.return_value = None
+            tier, effort = classify_task("Some task")
+
+        assert tier == "standard"
+        assert effort == "medium"
+        # gemini-cli was never passed to _try_classify (no mini model)
+        gemini_called = any(
+            call_args[0][0] == "gemini-cli"
+            for call_args in mock_try.call_args_list
+        )
+        assert not gemini_called, "gemini-cli should be skipped when mini model is missing"
+
 
 # ---------------------------------------------------------------------------
 # Codex auth-mode detection + ChatGPT-account routing override
