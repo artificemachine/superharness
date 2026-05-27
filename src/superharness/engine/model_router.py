@@ -22,9 +22,14 @@ MODEL_MAP: dict[str, dict[str, str]] = {
         "max": "gpt-5.4"
     },
     "gemini-cli": {
-        "mini": "gemini-2.0-flash",
-        "standard": "gemini-2.0-pro",
-        "max": "gemini-ultra"
+        "mini": "gemini-2.5-flash",
+        "standard": "gemini-2.5-pro",
+        "max": "gemini-3.1-pro-preview"
+    },
+    "opencode": {
+        "mini": "deepseek/deepseek-chat",
+        "standard": "deepseek/deepseek-v4-pro",
+        "max": "deepseek/deepseek-v4-pro"
     },
 }
 
@@ -85,6 +90,39 @@ Task:
 Reply:"""
 
 
+# Classifier chain: agents tried in order for task/discussion classification.
+# Each agent is queried with its mini-tier model. First to respond wins.
+# If all agents fail (down, timeout, not installed), falls back to standard.
+# Order: cheapest first, then by reliability.
+_CLASSIFIER_AGENTS: list[tuple[str, list[str]]] = [
+    ("claude-code", ["claude", "--model", "{model}", "-p", "{prompt}"]),
+    ("gemini-cli",  ["gemini", "-m", "{model}", "-p", "{prompt}"]),
+    ("opencode",    ["opencode", "run", "-m", "{model}", "{prompt}"]),
+    ("codex-cli",   ["codex", "exec", "-m", "{model}", "{prompt}"]),
+]
+
+_CLASSIFY_TIMEOUT_SECONDS = 5
+
+
+def _try_classify(agent: str, cmd_template: list[str], model: str, prompt: str) -> tuple[str, str] | None:
+    """Try classification with one agent's mini model. Returns (tier, effort) or None."""
+    cmd = [part.format(model=model, prompt=prompt) for part in cmd_template]
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=_CLASSIFY_TIMEOUT_SECONDS, check=False,
+        )
+        if result.returncode != 0:
+            return None
+        parts = result.stdout.strip().lower().split()
+        if len(parts) < 2:
+            return None
+        tier = parts[0] if parts[0] in VALID_TIERS else _FALLBACK_TIER
+        effort = parts[1] if parts[1] in VALID_EFFORTS else _FALLBACK_EFFORT
+        return tier, effort
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+
+
 def classify_task(
     title: str,
     criteria: list[str] | None = None,
@@ -92,8 +130,9 @@ def classify_task(
     previously_failed: bool = False,
     project_dir: str | None = None,
 ) -> tuple[str, str]:
-    """Ask Haiku which tier and effort should handle this task.
+    """Ask the classifier chain which tier and effort should handle this task.
 
+    Tries each agent's mini model in order. First to respond wins.
     Returns (tier, effort). Defaults to ('standard', 'medium') on any failure.
     """
     mmap = _load_model_map(project_dir)
@@ -108,27 +147,16 @@ def classify_task(
         failed=failed_str,
     )
 
-    try:
-        result = subprocess.run(
-            ["claude", "--model", "haiku", "-p", prompt],
-            capture_output=True,
-            text=True,
-            timeout=5,  # fast timeout — if Haiku is slow, fall back
-            check=False,
-        )
-        if result.returncode != 0:
-            return _FALLBACK_TIER, _FALLBACK_EFFORT
+    for agent_name, cmd_template in _CLASSIFIER_AGENTS:
+        agent_map = mmap.get(agent_name, {})
+        model = agent_map.get("mini", "")
+        if not model:
+            continue
+        result = _try_classify(agent_name, cmd_template, model, prompt)
+        if result is not None:
+            return result
 
-        parts = result.stdout.strip().lower().split()
-        if len(parts) < 2:
-            return _FALLBACK_TIER, _FALLBACK_EFFORT
-
-        tier = parts[0] if parts[0] in VALID_TIERS else _FALLBACK_TIER
-        effort = parts[1] if parts[1] in VALID_EFFORTS else _FALLBACK_EFFORT
-        return tier, effort
-
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        return _FALLBACK_TIER, _FALLBACK_EFFORT
+    return _FALLBACK_TIER, _FALLBACK_EFFORT
 
 
 _CODEX_AUTH_MODE_CACHE: str | None = None

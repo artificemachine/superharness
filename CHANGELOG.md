@@ -535,3 +535,10 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-25: feat(sot): state_manifest.yaml with process_state classification; delete stale discussion round YAMLs
 - 2026-05-25: test(strategy): 873 new tests across 6 categories — smoke (299), state machine (306), contract (122), integration (110), GC (22), chaos (14); TEST_STRATEGY.md defines mandatory CI gates
 - 2026-05-26: chore(release): bump to v1.66.0 — discussion fixes
+- 2026-05-27: feat(classify): multi-agent classifier chain — 4 agents (haiku→flash→deepseek-chat→codex-mini) tried in order for task/discussion tier+effort classification; all four down → standard fallback
+- 2026-05-27: feat(discussion): effort-driven timeout — low=10min, medium=20min, high=30min; env var override SUPERHARNESS_DISCUSSION_ROUND_TIMEOUT_SECONDS still works
+- 2026-05-27: feat(discussion): profile config discussion_model_tier — set once per project, applies to all discussion rounds for all agents
+- 2026-05-27: feat(discuss): --tier flag on shux discuss start — per-discussion override (mini/standard/max), bypasses classifier
+- 2026-05-27: fix(gemini): delegate-to-gemini.sh now forwards --model flag to gemini CLI
+- 2026-05-27: fix(models): update stale gemini model IDs (2.0→2.5, ultra→3.1-pro); add opencode to MODEL_MAP
+- 2026-05-27: chore(release): bump to v1.67.0 — multi-agent classifier + discussion auto-tiering

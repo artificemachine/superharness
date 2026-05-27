@@ -104,6 +104,7 @@ def cmd_start(
     max_rounds: int,
     project_dir: str,
     actor: str,
+    tier: str | None = None,
     owners: list[str] | None = None,
     exclude: list[str] | None = None,
 ) -> int:
@@ -259,6 +260,36 @@ def cmd_start(
          "--workflow", "discussion"],
         capture_output=True, check=False,
     )
+
+    # Classify the discussion topic to determine model tier and effort.
+    # Uses the multi-agent classifier chain (cheapest mini model first).
+    # Falls back to standard/medium on any failure.
+    # --tier flag overrides auto-classification entirely.
+    try:
+        from superharness.engine.model_router import classify_task
+        from superharness.engine.db import get_connection, init_db
+
+        if tier:
+            # Explicit --tier flag: use given tier, classify effort only
+            _, effort = classify_task(title=topic, project_dir=project_dir)
+            print(f"  Tier override: {tier} (classified effort: {effort})")
+        else:
+            tier, effort = classify_task(title=topic, project_dir=project_dir)
+            print(f"  Classified: tier={tier} effort={effort}")
+
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            conn.execute(
+                "UPDATE tasks SET model_tier = ?, effort = ? WHERE id = ?",
+                (tier, effort, round_task_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        # Classification is best-effort. Failure falls back to standard at dispatch.
+        logger.warning("discuss.py unexpected error: %s", e, exc_info=True)
 
     # Ensure inbox file exists
     if not os.path.exists(inbox_file):
@@ -539,6 +570,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--topic", required=True)
     p.add_argument("--task", default=None)
     p.add_argument("--max-rounds", type=int, default=3)
+    p.add_argument("--tier", default=None, choices=["mini", "standard", "max"],
+                   help="Force discussion tier (bypasses auto-classification)")
     p.add_argument("--owners", action="append", default=[], metavar="OWNER[,OWNER...]")
     p.add_argument("--exclude", action="append", default=[], metavar="OWNER")
 
@@ -627,6 +660,7 @@ def main(argv: list[str] | None = None) -> None:
             max_rounds=opts.max_rounds,
             project_dir=project_dir,
             actor="owner",
+            tier=opts.tier,
             owners=opts.owners,
             exclude=opts.exclude,
         )

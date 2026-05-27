@@ -23,7 +23,10 @@ TIMEOUT_LOW_EFFORT = 900       # 15 minutes
 TIMEOUT_MEDIUM_EFFORT = 1800   # 30 minutes
 TIMEOUT_HIGH_EFFORT = 3600     # 60 minutes
 
-DISCUSSION_ROUND_TIMEOUT_SECONDS = 900  # 15 min hard cap per discussion round
+DISCUSSION_ROUND_TIMEOUT_SECONDS = 900  # 15 min hard cap per discussion round (fallback)
+DISCUSSION_TIMEOUT_LOW = 600           # 10 min
+DISCUSSION_TIMEOUT_MEDIUM = 1200       # 20 min
+DISCUSSION_TIMEOUT_HIGH = 1800         # 30 min
 
 
 @dataclass
@@ -1465,28 +1468,78 @@ def _classify_launch_failure(exit_code: int, log_tail: str) -> dict:
 
 def _prepare_launch_context(ctx: DispatchContext) -> None:
     """Build launch args, apply discussion-specific timeout and model overrides."""
-    # Bug 4 fix: discussion rounds get a hard timeout when none was set.
-    # Bug H (docs/bugs/2026-05-11_discuss_dispatch_bugs.md): operators
-    # can bump the cap via SUPERHARNESS_DISCUSSION_ROUND_TIMEOUT_SECONDS
-    # without touching the watcher-wide default. Multi-agent web-research
-    # rounds routinely need 15+ minutes; the bundled 900s default cut
-    # opencode off mid-WebFetch in the 2026-05-11 repro.
-    if ctx.is_discussion and ctx.effective_timeout == 0:
-        _override = os.environ.get("SUPERHARNESS_DISCUSSION_ROUND_TIMEOUT_SECONDS", "").strip()
-        if _override:
-            try:
-                ctx.effective_timeout = int(_override)
-            except ValueError:
-                ctx.effective_timeout = DISCUSSION_ROUND_TIMEOUT_SECONDS
-        else:
-            ctx.effective_timeout = DISCUSSION_ROUND_TIMEOUT_SECONDS
-
     _prepare_execution(ctx)
 
-    # Bug 1 fix: claude-code discussion rounds need an explicit --model so the
-    # CLI doesn't pause at the interactive /model prompt.
-    if ctx.is_discussion and ctx.item_to == "claude-code":
-        model = os.environ.get("SUPERHARNESS_CLAUDE_MODEL", "claude-sonnet-4-6")
+    # Discussion timeout and model resolution: read the discussion task from
+    # SQLite once, then derive both timeout (from effort) and model (from
+    # model_tier). Both are set by classify_task at discussion creation time.
+    #
+    # Timeout order: env var > task effort > fallback (900s)
+    # Model order:   env var > task model_tier > resolve_model > fallback
+    #
+    # Applies to ALL agents uniformly — no more agent-by-agent hardcoding.
+    if ctx.is_discussion:
+        tier = "standard"
+        effort = "medium"
+        try:
+            from superharness.engine.db import get_connection, init_db
+            from superharness.engine import tasks_dao
+
+            conn = get_connection(ctx.project_dir)
+            try:
+                init_db(conn)
+                task = tasks_dao.get(conn, ctx.item_task)
+                if task:
+                    if task.model_tier and task.model_tier != "standard":
+                        tier = task.model_tier
+                    if task.effort:
+                        effort = task.effort
+            finally:
+                conn.close()
+        except Exception as e:
+            _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
+
+        # Fall back to profile config if task has no model_tier set
+        if tier == "standard":
+            try:
+                from superharness.commands.config import get_config_value
+                profile_tier = get_config_value(ctx.project_dir, "discussion_model_tier")
+                if profile_tier and str(profile_tier) in ("mini", "standard", "max"):
+                    tier = str(profile_tier)
+            except Exception as e:
+                _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
+
+        # Timeout from effort (env var override wins)
+        if ctx.effective_timeout == 0:
+            _override = os.environ.get("SUPERHARNESS_DISCUSSION_ROUND_TIMEOUT_SECONDS", "").strip()
+            if _override:
+                try:
+                    ctx.effective_timeout = int(_override)
+                except ValueError:
+                    ctx.effective_timeout = DISCUSSION_ROUND_TIMEOUT_SECONDS
+            elif effort == "low":
+                ctx.effective_timeout = DISCUSSION_TIMEOUT_LOW
+            elif effort == "high":
+                ctx.effective_timeout = DISCUSSION_TIMEOUT_HIGH
+            else:
+                ctx.effective_timeout = DISCUSSION_TIMEOUT_MEDIUM  # medium or unknown
+
+        # Resolve tier → agent-specific model
+        try:
+            from superharness.engine.model_router import resolve_model
+            model = resolve_model(ctx.item_to, tier)
+        except Exception as e:
+            _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
+            model = "claude-sonnet-4-6"  # absolute last-resort fallback
+
+        # Env var override (agent-specific, back compat)
+        env_key = f"SUPERHARNESS_{ctx.item_to.upper().replace('-','_')}_MODEL"
+        if ctx.item_to == "claude-code":
+            env_key = "SUPERHARNESS_CLAUDE_MODEL"  # legacy short name
+        elif ctx.item_to == "gemini-cli":
+            env_key = "SUPERHARNESS_GEMINI_MODEL"  # legacy short name
+        model = os.environ.get(env_key, model)
+
         ctx.launch_args = ctx.launch_args + ["--model", model]
 
 
