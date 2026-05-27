@@ -84,6 +84,10 @@ while [[ $# -gt 0 ]]; do
       GEMINI_ARGS+=("--skip-trust")
       shift
       ;;
+    --model)
+      GEMINI_ARGS+=("--model" "$2")
+      shift 2
+      ;;
     *)
       shift
       ;;
