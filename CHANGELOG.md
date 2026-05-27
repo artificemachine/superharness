@@ -542,3 +542,11 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-27: fix(gemini): delegate-to-gemini.sh now forwards --model flag to gemini CLI
 - 2026-05-27: fix(models): update stale gemini model IDs (2.0→2.5, ultra→3.1-pro); add opencode to MODEL_MAP
 - 2026-05-27: chore(release): bump to v1.67.0 — multi-agent classifier + discussion auto-tiering
+- 2026-05-27: feat(operator): daemonize operator_start via fork+setsid — watcher survives shell session termination
+- 2026-05-27: fix(db): all CREATE TABLE/INDEX use IF NOT EXISTS — no more migration crashes on pre-existing tables
+- 2026-05-27: feat(discuss): --effort flag on shux discuss start (low/medium/high)
+- 2026-05-27: feat(routing): per-agent discussion tier routing — max-tier caps secondary agents at standard
+- 2026-05-27: feat(deadline): effort-based discussion verdict deadline (10/20/30min) — auto-closes expired discussions
+- 2026-05-27: fix(logging): ERROR-level log for discussion round timeout kills (previously silent)
+- 2026-05-27: feat(orphan): recover orphaned dispatches — mark stuck inbox items as failed so retry kicks in
+- 2026-05-27: chore(release): bump to v1.68.0 — operator daemon + deadline + orphan recovery

@@ -1091,6 +1091,15 @@ def _handle_failure(ctx: DispatchContext) -> int:
     if ctx.launcher_rc == 124:
         fail_reason = f"launcher timed out after {ctx.effective_timeout}s"
         print(f"Launcher timed out after {ctx.effective_timeout}s for {ctx.item_id}", file=sys.stderr)
+        # Discussion round timeouts are silent failures today — log FATAL
+        # so operators can trace which agent/round was affected.
+        if ctx.is_discussion:
+            _log.error(
+                "FATAL: discussion round dispatch timed out — "
+                "agent=%s discussion=%s round_task=%s timeout=%ds",
+                ctx.item_to, ctx.item_task.split("/round-")[0],
+                ctx.item_task, ctx.effective_timeout,
+            )
     elif ctx.launcher_rc < 0:
         # Signal death: killed by SIGKILL (-9), SIGTERM (-15), etc.
         import signal as _signal_mod
@@ -1524,10 +1533,14 @@ def _prepare_launch_context(ctx: DispatchContext) -> None:
             else:
                 ctx.effective_timeout = DISCUSSION_TIMEOUT_MEDIUM  # medium or unknown
 
-        # Resolve tier → agent-specific model
+        # Resolve tier → agent-specific model, with per-agent routing.
+        # For discussions, primary reasoners (claude, opencode) get the
+        # full classified tier; secondary agents (gemini, codex) are capped
+        # at standard for cost efficiency on max-tier topics.
         try:
-            from superharness.engine.model_router import resolve_model
-            model = resolve_model(ctx.item_to, tier)
+            from superharness.engine.model_router import resolve_model, route_discussion_tier
+            agent_tier = route_discussion_tier(tier, ctx.item_to)
+            model = resolve_model(ctx.item_to, agent_tier)
         except Exception as e:
             _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
             model = "claude-sonnet-4-6"  # absolute last-resort fallback

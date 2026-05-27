@@ -169,6 +169,53 @@ def _agent_available(agent: str, project_dir: str) -> tuple[bool, str]:
     return True, ""
 
 
+def _recover_orphaned_dispatches(project_dir: str) -> None:
+    """Mark stuck inbox items (launched/running with no heartbeat) as failed.
+
+    When the watcher dies mid-dispatch, the agent process may keep running
+    but the inbox item stays 'launched' forever with no PID tracking.
+    This creates invisible failures — the agent never submits and the
+    dispatcher never retries because there's no 'failed' row to retry.
+
+    This function finds stuck inbox items (status IN ('launched','running'),
+    last_heartbeat IS NULL or > timeout_ago) and marks them as failed so
+    the normal retry mechanism picks them up on the next poll cycle.
+    """
+    import sqlite3
+    try:
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            now = _now_utc()
+            # Stuck = launched/running, no heartbeat in 15+ minutes
+            stuck = conn.execute(
+                """
+                SELECT id, task_id, target_agent, status, launched_at, last_heartbeat
+                FROM inbox
+                WHERE status IN ('launched', 'running')
+                  AND (last_heartbeat IS NULL
+                       OR last_heartbeat < datetime('now', '-15 minutes'))
+                """
+            ).fetchall()
+            for row in stuck:
+                conn.execute(
+                    "UPDATE inbox SET status = 'failed', failed_reason = ?, failed_at = ? WHERE id = ?",
+                    ("orphaned_dispatch (watcher restart, no heartbeat)", now, row["id"]),
+                )
+                _log.warning(
+                    "discussion_dispatch: orphaned inbox item %s (agent=%s task=%s) marked failed",
+                    row["id"], row["target_agent"], row["task_id"],
+                )
+            if stuck:
+                conn.commit()
+                print(f"  Recovered {len(stuck)} orphaned dispatch(es)")
+        finally:
+            conn.close()
+    except Exception as e:
+        _log.warning("discussion_dispatch.py orphan recovery error: %s", e, exc_info=True)
+
+
 def _ensure_round_task(project_dir: str, disc_id: str, round_: int, title: str) -> None:
     """Create the round task row in tasks if it doesn't already exist.
 
@@ -249,6 +296,12 @@ def dispatch(project_dir: str) -> int:
     discussions_dir = os.path.join(project_dir, ".superharness", "discussions")
     inbox_file = os.path.join(project_dir, ".superharness", "inbox.yaml")
 
+    # Recover orphaned dispatches before scanning discussions.
+    # If the watcher died mid-dispatch, the inbox item stays "launched"
+    # forever and the dispatcher never retries. Mark them as failed here
+    # so the normal retry flow kicks in on the next poll cycle.
+    _recover_orphaned_dispatches(project_dir)
+
     conn = get_connection(project_dir)
     try:
         init_db(conn)
@@ -275,6 +328,43 @@ def dispatch(project_dir: str) -> int:
         current_round = int(status_json.get("current_round", 1))
         participants = status_json.get("participants") or []
         topic = status_json.get("topic") or disc_id
+        created_at = status_json.get("created_at") or ""
+
+        # Effort-based deadline: auto-close discussions that outlive their
+        # classified effort budget. Prevents orphaned discussions that hang
+        # forever when agents go silent. Deadline matches the timeout caps:
+        # low=10min, medium=20min, high=30min. Unknown effort → 20min.
+        if created_at:
+            try:
+                from superharness.engine import tasks_dao
+                round_1_id = f"{disc_id}/round-1"
+                conn2 = get_connection(project_dir)
+                try:
+                    init_db(conn2)
+                    task = tasks_dao.get(conn2, round_1_id)
+                    effort = (task.effort if task and task.effort else "medium")
+                finally:
+                    conn2.close()
+
+                deadline_minutes = {"low": 10, "medium": 20, "high": 30}.get(effort, 20)
+                from datetime import datetime, timezone, timedelta
+                created_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                deadline_dt = created_dt + timedelta(minutes=deadline_minutes)
+                now = datetime.now(timezone.utc)
+
+                if now > deadline_dt:
+                    print(
+                        f"Discussion {disc_id}: deadline exceeded "
+                        f"(effort={effort}, {deadline_minutes}min, "
+                        f"created={created_at}) — auto-closing"
+                    )
+                    _run_engine([
+                        "close", "--discussion-dir", discussion_dir,
+                        "--reason", f"deadline_exceeded ({deadline_minutes}min, effort={effort})",
+                    ])
+                    continue
+            except Exception as e:
+                _log.warning("discussion_dispatch.py deadline check error: %s", e, exc_info=True)
 
         # Check if current round is complete
         check_result = _run_engine([
