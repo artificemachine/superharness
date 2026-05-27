@@ -593,14 +593,41 @@ def operator_check(project):
 @click.option("--project", "-p", default=".", help="Project directory")
 @click.option("--port", default=8787, help="Dashboard port")
 @click.option("--no-open", "no_open", is_flag=True, default=False, help="Do not open browser on start (for daemon/launchd use)")
-def operator_start(project, port, no_open):
-    """Start the Superharness Guardian (Watcher + Dashboard)."""
+@click.option("--no-daemon", "no_daemon", is_flag=True, default=False,
+              help="Run in foreground (for debugging; default detaches)")
+def operator_start(project, port, no_open, no_daemon):
+    """Start the Superharness Guardian (Watcher + Dashboard).
+
+    By default, daemonizes via fork+setsid so the watcher survives the
+    invoking shell session. Use --no-daemon for foreground debugging.
+    """
     from superharness.engine.operator import Operator
     op = Operator(project)
     op.start_stack(dashboard_port=port, no_open=no_open)
     click.echo(f"dashboard: http://127.0.0.1:{port}")
     click.echo(f"monitor pid: {os.getpid()}")
     click.echo("  (watcher cycles every 15s, dashboard auto-restarts on crash)")
+
+    if no_daemon:
+        op.monitor_and_recover()
+        return
+
+    # Daemonize: fork+detach so the watcher survives the invoking shell.
+    # The parent returns immediately; the child runs the monitor loop.
+    pid = os.fork()
+    if pid:
+        click.echo(f"  daemon pid: {pid}")
+        return  # parent exits, CLI returns
+
+    # Child: detach from terminal, close stdio, run monitor
+    os.setsid()
+    os.chdir(project)
+    # Redirect stdio to /dev/null
+    devnull = os.open(os.devnull, os.O_RDWR)
+    os.dup2(devnull, 0)
+    os.dup2(devnull, 1)
+    os.dup2(devnull, 2)
+    os.close(devnull)
     op.monitor_and_recover()
 
 
