@@ -404,6 +404,44 @@ class TestMultiAgentClassifier:
 
 
 # ---------------------------------------------------------------------------
+# Per-agent discussion tier routing
+# ---------------------------------------------------------------------------
+
+
+class TestDiscussionTierRouting:
+    def test_route_max_primary_gets_max(self):
+        from superharness.engine.model_router import route_discussion_tier
+        assert route_discussion_tier("max", "claude-code") == "max"
+        assert route_discussion_tier("max", "opencode") == "max"
+
+    def test_route_max_secondary_capped_at_standard(self):
+        from superharness.engine.model_router import route_discussion_tier
+        assert route_discussion_tier("max", "gemini-cli") == "standard"
+        assert route_discussion_tier("max", "codex-cli") == "standard"
+
+    def test_route_standard_all_same(self):
+        from superharness.engine.model_router import route_discussion_tier
+        assert route_discussion_tier("standard", "claude-code") == "standard"
+        assert route_discussion_tier("standard", "gemini-cli") == "standard"
+        assert route_discussion_tier("standard", "opencode") == "standard"
+        assert route_discussion_tier("standard", "codex-cli") == "standard"
+
+    def test_route_mini_all_same(self):
+        from superharness.engine.model_router import route_discussion_tier
+        assert route_discussion_tier("mini", "claude-code") == "mini"
+        assert route_discussion_tier("mini", "codex-cli") == "mini"
+
+    def test_route_unknown_agent_returns_topic_tier(self):
+        from superharness.engine.model_router import route_discussion_tier
+        assert route_discussion_tier("max", "unknown-agent") == "max"
+        assert route_discussion_tier("standard", "unknown-agent") == "standard"
+
+    def test_route_unknown_tier_returns_agent_default(self):
+        from superharness.engine.model_router import route_discussion_tier
+        assert route_discussion_tier("nonexistent", "claude-code") == "nonexistent"
+
+
+# ---------------------------------------------------------------------------
 # Codex auth-mode detection + ChatGPT-account routing override
 # ---------------------------------------------------------------------------
 

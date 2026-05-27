@@ -194,7 +194,7 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
     
     # Tasks
     conn.execute("""
-        CREATE TABLE tasks (
+        CREATE TABLE IF NOT EXISTS tasks (
             id                   TEXT    PRIMARY KEY,
             title                TEXT    NOT NULL,
             owner                TEXT,
@@ -219,12 +219,12 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
             cancelled_at         TEXT
         )
     """)
-    conn.execute("CREATE INDEX idx_tasks_status ON tasks(status)")
-    conn.execute("CREATE INDEX idx_tasks_owner  ON tasks(owner)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_owner  ON tasks(owner)")
 
     # Task Dependencies
     conn.execute("""
-        CREATE TABLE task_dependencies (
+        CREATE TABLE IF NOT EXISTS task_dependencies (
             dependent_task_id     TEXT NOT NULL,
             prerequisite_task_id  TEXT NOT NULL,
             PRIMARY KEY (dependent_task_id, prerequisite_task_id),
@@ -232,11 +232,11 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (prerequisite_task_id) REFERENCES tasks(id) ON DELETE RESTRICT
         )
     """)
-    conn.execute("CREATE INDEX idx_deps_prereq ON task_dependencies(prerequisite_task_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_deps_prereq ON task_dependencies(prerequisite_task_id)")
 
     # Inbox
     conn.execute("""
-        CREATE TABLE inbox (
+        CREATE TABLE IF NOT EXISTS inbox (
             id              TEXT    PRIMARY KEY,
             task_id         TEXT    NOT NULL,
             target_agent    TEXT    NOT NULL,
@@ -258,12 +258,12 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
         )
     """)
-    conn.execute("CREATE INDEX idx_inbox_status_priority ON inbox(status, priority DESC, created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_inbox_status_priority ON inbox(status, priority DESC, created_at)")
     conn.execute("CREATE INDEX idx_inbox_heartbeat       ON inbox(status, last_heartbeat)")
 
     # Handoffs
     conn.execute("""
-        CREATE TABLE handoffs (
+        CREATE TABLE IF NOT EXISTS handoffs (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             task_id      TEXT    NOT NULL,
             phase        TEXT    NOT NULL,
@@ -276,11 +276,11 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
             FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
         )
     """)
-    conn.execute("CREATE INDEX idx_handoffs_task ON handoffs(task_id, created_at DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_handoffs_task ON handoffs(task_id, created_at DESC)")
 
     # Failures
     conn.execute("""
-        CREATE TABLE failures (
+        CREATE TABLE IF NOT EXISTS failures (
             id             INTEGER PRIMARY KEY AUTOINCREMENT,
             task_id        TEXT,
             agent          TEXT,
@@ -294,7 +294,7 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
 
     # Decisions
     conn.execute("""
-        CREATE TABLE decisions (
+        CREATE TABLE IF NOT EXISTS decisions (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             agent         TEXT,
             task_id       TEXT,
@@ -304,11 +304,11 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
             created_at    TEXT    NOT NULL
         )
     """)
-    conn.execute("CREATE INDEX idx_decisions_agent_time ON decisions(agent, created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_decisions_agent_time ON decisions(agent, created_at)")
 
     # Ledger
     conn.execute("""
-        CREATE TABLE ledger (
+        CREATE TABLE IF NOT EXISTS ledger (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             task_id     TEXT,
             agent       TEXT,
@@ -317,12 +317,12 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
             created_at  TEXT NOT NULL
         )
     """)
-    conn.execute("CREATE INDEX idx_ledger_time ON ledger(created_at)")
-    conn.execute("CREATE INDEX idx_ledger_task ON ledger(task_id, created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ledger_time ON ledger(created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ledger_task ON ledger(task_id, created_at)")
 
     # Review store
     conn.execute("""
-        CREATE TABLE review_store (
+        CREATE TABLE IF NOT EXISTS review_store (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             owner       TEXT    NOT NULL,
             task_type   TEXT    NOT NULL DEFAULT '',
@@ -332,11 +332,11 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
             recorded_at TEXT    NOT NULL DEFAULT (datetime('now'))
         )
     """)
-    conn.execute("CREATE INDEX idx_review_owner_type ON review_store(owner, task_type)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_review_owner_type ON review_store(owner, task_type)")
 
     # Watcher singleton
     conn.execute("""
-        CREATE TABLE watcher_instance (
+        CREATE TABLE IF NOT EXISTS watcher_instance (
             key             TEXT    PRIMARY KEY CHECK (key = 'singleton'),
             pid             INTEGER NOT NULL,
             hostname        TEXT,
@@ -347,7 +347,7 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
 
     # Parity queue
     conn.execute("""
-        CREATE TABLE yaml_sync_queue (
+        CREATE TABLE IF NOT EXISTS yaml_sync_queue (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             op_type     TEXT    NOT NULL,
             payload     TEXT    NOT NULL,
@@ -358,7 +358,7 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
             applied_at  TEXT
         )
     """)
-    conn.execute("CREATE INDEX idx_yaml_sync_pending ON yaml_sync_queue(status, created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_yaml_sync_pending ON yaml_sync_queue(status, created_at)")
 
 def _migration_v2(conn: sqlite3.Connection) -> None:
     """Add parent_id to tasks, discussions tables, and yaml_sync_queue dedup index."""
