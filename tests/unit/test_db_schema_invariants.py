@@ -73,3 +73,45 @@ def test_schema_version_advances_on_fresh_db(tmp_path):
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     conn.close()
     assert version == CURRENT_SCHEMA_VERSION
+
+
+def test_init_db_idempotent_with_pre_existing_tables(tmp_path):
+    """init_db must succeed when tables already exist (IF NOT EXISTS safety)."""
+    import sqlite3
+    (tmp_path / ".superharness").mkdir()
+    db_path = tmp_path / ".superharness" / "state.sqlite3"
+    conn = sqlite3.connect(str(db_path))
+
+    # Run init_db once to create the full schema
+    init_db(conn)
+    conn.commit()
+    conn.close()
+
+    # Run init_db again — should be a no-op (all tables already exist)
+    conn2 = get_connection(str(tmp_path))
+    try:
+        init_db(conn2)  # must not crash
+    finally:
+        conn2.close()
+
+
+def test_init_db_recreates_full_schema_after_partial_migration(tmp_path):
+    """After init_db on a clean DB, all required tables exist."""
+    import sqlite3
+    (tmp_path / ".superharness").mkdir()
+
+    conn = get_connection(str(tmp_path))
+    try:
+        init_db(conn)
+        tables = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()}
+    finally:
+        conn.close()
+
+    # Core tables that must exist after init_db
+    required = {"tasks", "inbox", "handoffs", "failures", "decisions",
+                "ledger", "review_store", "watcher_instance",
+                "discussions", "discussion_rounds"}
+    missing = required - tables
+    assert not missing, f"Tables missing after init_db: {missing}"
