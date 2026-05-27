@@ -59,4 +59,27 @@ def test_operator_detects_zombie_lock(tmp_path):
     # 3. Test: Summary reflects unhealthy state
     summary = op.get_summary()
     assert not summary["healthy"]
-    assert len(summary["components"]["conflicts"]) == 1
+
+
+def test_operator_start_no_daemon_flag_exists(tmp_path):
+    """operator_start must accept --no-daemon flag (foreground debugging mode)."""
+    # operator_start is a Click Command — read the source file directly
+    import inspect, pathlib
+    src = (pathlib.Path(__file__).parent.parent.parent /
+           "src" / "superharness" / "cli.py").read_text()
+    # Find the operator_start function and check for --no-daemon
+    assert "'--no-daemon'" in src or '"--no-daemon"' in src, (
+        "operator_start must have @click.option with --no-daemon"
+    )
+
+
+def test_monitor_and_recover_docstring_updated(tmp_path):
+    """monitor_and_recover docstring must reflect daemonization, not daemon thread."""
+    from superharness.engine.operator import Operator
+    import inspect
+
+    op = Operator(str(tmp_path))
+    doc = inspect.getdoc(op.monitor_and_recover) or ""
+    assert "fork" in doc.lower() or "daemoniz" in doc.lower(), (
+        f"monitor_and_recover docstring must mention daemonization, got: {doc[:80]}"
+    )

@@ -333,3 +333,40 @@ def suggest_tier(complexity: str, budget_remaining: float | None = None) -> str:
     if budget_remaining is not None and budget_remaining < 3.0:
         return "mini"
     return "standard"
+
+
+# Per-agent tier routing for discussions.
+# When the discussion topic tier is high, not all agents need max compute.
+# Primary reasoners (claude, opencode) get the full tier; secondary agents
+# (gemini, codex) are capped at standard for cost efficiency.
+_DISCUSSION_TIER_ROUTING: dict[str, dict[str, str]] = {
+    "max": {
+        "claude-code": "max",
+        "opencode": "max",
+        "gemini-cli": "standard",
+        "codex-cli": "standard",
+    },
+    "standard": {
+        "claude-code": "standard",
+        "opencode": "standard",
+        "gemini-cli": "standard",
+        "codex-cli": "standard",
+    },
+    "mini": {
+        "claude-code": "mini",
+        "opencode": "mini",
+        "gemini-cli": "mini",
+        "codex-cli": "mini",
+    },
+}
+
+
+def route_discussion_tier(topic_tier: str, agent: str) -> str:
+    """Route a discussion topic tier to a per-agent tier.
+
+    For max-tier discussions, primary reasoners get max while secondary
+    agents are capped at standard. For standard and mini, everyone gets
+    the same tier. Unknown agents get the topic tier unchanged.
+    """
+    tier_map = _DISCUSSION_TIER_ROUTING.get(topic_tier, {})
+    return tier_map.get(agent, topic_tier)

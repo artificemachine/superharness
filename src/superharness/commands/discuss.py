@@ -105,6 +105,7 @@ def cmd_start(
     project_dir: str,
     actor: str,
     tier: str | None = None,
+    effort: str | None = None,
     owners: list[str] | None = None,
     exclude: list[str] | None = None,
 ) -> int:
@@ -264,15 +265,22 @@ def cmd_start(
     # Classify the discussion topic to determine model tier and effort.
     # Uses the multi-agent classifier chain (cheapest mini model first).
     # Falls back to standard/medium on any failure.
-    # --tier flag overrides auto-classification entirely.
+    # --tier and --effort flags override auto-classification.
     try:
         from superharness.engine.model_router import classify_task
         from superharness.engine.db import get_connection, init_db
 
-        if tier:
-            # Explicit --tier flag: use given tier, classify effort only
+        if tier and effort:
+            # Both flags given: skip classifier entirely
+            print(f"  Tier override: {tier}, effort override: {effort}")
+        elif tier:
+            # --tier given: classify effort only
             _, effort = classify_task(title=topic, project_dir=project_dir)
             print(f"  Tier override: {tier} (classified effort: {effort})")
+        elif effort:
+            # --effort given: classify tier only
+            tier, _ = classify_task(title=topic, project_dir=project_dir)
+            print(f"  Effort override: {effort} (classified tier: {tier})")
         else:
             tier, effort = classify_task(title=topic, project_dir=project_dir)
             print(f"  Classified: tier={tier} effort={effort}")
@@ -572,6 +580,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--max-rounds", type=int, default=3)
     p.add_argument("--tier", default=None, choices=["mini", "standard", "max"],
                    help="Force discussion tier (bypasses auto-classification)")
+    p.add_argument("--effort", default=None, choices=["low", "medium", "high"],
+                   help="Force discussion effort (bypasses auto-classification)")
     p.add_argument("--owners", action="append", default=[], metavar="OWNER[,OWNER...]")
     p.add_argument("--exclude", action="append", default=[], metavar="OWNER")
 
@@ -661,6 +671,7 @@ def main(argv: list[str] | None = None) -> None:
             project_dir=project_dir,
             actor="owner",
             tier=opts.tier,
+            effort=opts.effort,
             owners=opts.owners,
             exclude=opts.exclude,
         )
