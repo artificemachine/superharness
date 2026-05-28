@@ -1135,6 +1135,23 @@ def _handle_failure(ctx: DispatchContext) -> int:
                 conn.close()
         except Exception:
             pass
+    # Append structured diagnostic to the task log file so operators can trace
+    # which agent/round failed and why — the Python logger is not visible to them.
+    if ctx.is_discussion and ctx.task_log:
+        try:
+            with open(ctx.task_log, "a", encoding="utf-8") as _lf:
+                _lf.write(
+                    f"\n--- superharness failure diagnostic ---\n"
+                    f"agent={ctx.item_to}\n"
+                    f"round_task={ctx.item_task}\n"
+                    f"exit_code={ctx.launcher_rc}\n"
+                    f"reason={fail_reason}\n"
+                    f"classification={failure_class}\n"
+                    f"failed_at={fail_now}\n"
+                    f"--- end diagnostic ---\n"
+                )
+        except Exception as _diag_err:
+            _log.warning("inbox_dispatch.py: could not write failure diagnostic: %s", _diag_err)
     new_lock = _MkdirLock(ctx.inbox_file + ".lock.d")
     # Record failure in decision ledger for debugging
     try:

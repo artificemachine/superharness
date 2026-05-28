@@ -1,10 +1,39 @@
 # Handoff — superharness
 
-> Latest: 2026-05-26, discussion engine overhaul + agent availability (v1.66.0 live, PR #292)
-> Previous: 2026-05-25, massive production hardening (v1.65.1, PRs #285-#291)
-> PyPI latest: **v1.66.0** (released)
-> PRs merged: #285, #286, #287, #288, #289, #290
+> Latest: 2026-05-27, 3 bug reports from nemorad session + v1.68.0 fixes
+> Previous: 2026-05-26, discussion engine overhaul + agent availability (v1.66.0 live, PR #292)
+> PyPI latest: **v1.68.0** (released)
 
+## 2026-05-27 session: 3 bugs found during nemorad integration
+
+### Bugs reported (with root cause + fix)
+
+| Bug | Doc | Severity | Fixed in |
+|-----|-----|:---:|:---:|
+| Watcher dies between sessions | `docs/bugs/watcher-dies-between-sessions.md` | HIGH | v1.68.0 (operator daemonize) |
+| Gemini CLI silent failure in discussion | `docs/bugs/gemini-discussion-dispatch-silent-failure.md` | MEDIUM | v1.68.0 (orphan recovery) |
+| `--tier max` ignored for discussions | `docs/bugs/discussion-dispatch-tier-ignored-double-failure.md` | HIGH | NOT YET (wiring needed) |
+
+### Watcher death root cause
+
+`shux operator start` runs `monitor_and_recover()` as a foreground blocking call. When the invoking shell (bash tool) terminates, the process tree dies. Fix: `shux operator install` creates launchd plist with KeepAlive.
+
+### Discussion dispatch issues (2 failures in one session)
+
+1. **`--tier max` silently ignored** — `_prepare_launch_context` hardcodes `claude-sonnet-4-6` for discussions. The `--tier` CLI flag is never consumed by the discussion dispatch code path.
+
+2. **Silent dispatch failures** — Both claude-code and opencode dispatched at 19:38 UTC, both failed, zero round files, zero error logs, zero retry attempts. Likely Anthropic API evening degradation + no retry logic for discussion rounds.
+
+3. **Orphan dispatch during operator cycling** — v1.68.0 added orphan recovery for inbox items, but discussion round retries still go straight to `failed_participant`.
+
+### What's still needed (not yet in any release)
+
+- Wire `--tier` flag into `_prepare_launch_context` via `model_routing.resolve_model()`
+- Capture agent stderr on discussion round failure
+- Add retry (at least 1x) for discussion round dispatch failures
+- Dispatch heartbeat for long-running rounds
+
+---
 
 ## 2026-05-26 session: discussion engine + consensus + agent availability
 
@@ -704,7 +733,7 @@ scripts. The same problem affects three projects. This session diagnosed the
 root cause and wrote the cross-cutting plan but did NOT execute on superharness.
 
 Specifically, `~/.claude/settings.json` lines 209/245/277/287/308 reference
-`bash /Users/airm2max/DevOpsSec/superharness/src/superharness/adapters/claude-code/hooks/<hook>.sh`
+`bash ~/DevOpsSec/superharness/src/superharness/adapters/claude-code/hooks/<hook>.sh`
 which breaks under (a) repo moves, (b) release installs (`pip install
 superharness`), (c) temp worktrees (a stale worktree path was already found and
 fixed in `settings.json` earlier this session).

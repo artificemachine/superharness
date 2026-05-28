@@ -160,7 +160,10 @@ def update_status(
     """Transition a row status atomically if current status matches from_status."""
     query = "UPDATE inbox SET status = ?"
     params: list[Any] = [to_status]
-    if to_status == "done":
+    if to_status == "launched":
+        query += ", launched_at = ?"
+        params.append(now)
+    elif to_status == "done":
         query += ", done_at = ?"
         params.append(now)
     elif to_status == "failed":

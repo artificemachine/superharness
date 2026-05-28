@@ -137,6 +137,18 @@ patterns:
     ingest_function: discussions_dao.register_yaml_submission
     reason: external-agent round submissions; SQLite SoT via discussion_rounds table
 
+  # Discussion summary handoffs written by the discuss command after consensus
+  - glob: .superharness/handoffs/discuss.*.yaml
+    type: state
+    backed_by: discussions
+    reason: discussion summary handoffs; SQLite SoT via discussions_dao
+
+  # Inbox export artifact — snapshot of the inbox SQLite table
+  - glob: .superharness/inbox.yaml
+    type: state
+    backed_by: inbox
+    reason: inbox YAML export; SQLite SoT via inbox_dao
+
   # Removed v10: discussion state.yaml pattern was vestigial. No code in src/
   # writes or reads .superharness/discussions/*/state.yaml. If old worktrees
   # still have such files on disk they're picked up by the worktree ignore

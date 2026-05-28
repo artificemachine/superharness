@@ -669,8 +669,8 @@ def test_discussion_auto_consensus_on_all_submissions():
 
 
 def test_discussion_not_consensus_on_partial_submission():
-    """Discussion must NOT transition to consensus when not all submitted."""
-    import tempfile, yaml, os
+    """With 4 owners and n-1=3 threshold, 2 submissions must NOT trigger consensus."""
+    import tempfile
     from pathlib import Path
 
     d = Path(tempfile.mkdtemp())
@@ -681,18 +681,19 @@ def test_discussion_not_consensus_on_partial_submission():
         from superharness.engine.db import get_connection as _gc, init_db as _idb
         from superharness.engine import discussions_dao as _dd
         _conn = _gc(str(d)); _idb(_conn, str(d))
+        # 4 owners → threshold = n-1 = 3; submitting only 2 must leave status active
         _dd.create(_conn, id="test-partial", topic="Test partial",
-                   owners=["claude-code", "codex-cli", "opencode"],
+                   owners=["claude-code", "codex-cli", "opencode", "gemini-cli"],
                    task_id=None, now="2026-01-01T00:00:00Z")
         _conn.commit(); _conn.close()
 
         from superharness.engine.discussion import cmd_submit_round
 
-        # Submit only 2 of 3
+        # Submit only 2 of 4 (need 3 to reach consensus)
         cmd_submit_round(str(disc_dir), 1, "claude-code", "consensus", "P1", None)
         cmd_submit_round(str(disc_dir), 1, "codex-cli", "consensus", "P2", None)
 
-        # State should NOT be consensus
+        # State should NOT be consensus (2 < threshold of 3)
         _c = _gc(str(d))
         try:
             row = _c.execute("SELECT status FROM discussions WHERE id='test-partial'").fetchone()

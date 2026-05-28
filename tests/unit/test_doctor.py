@@ -54,7 +54,7 @@ def test_doctor_passes_healthy_project(repo_root, tmp_path) -> None:
     result = _run_python(["--project", str(project)])
     assert result.returncode == 0
     assert "PASS project:.superharness present" in result.stdout
-    assert "PASS file:contract.yaml" in result.stdout
+    # contract.yaml is an export-only artifact; doctor checks SQLite state-db instead
     assert "PASS file:ledger.md" in result.stdout
     assert "PASS dir:handoffs" in result.stdout
 

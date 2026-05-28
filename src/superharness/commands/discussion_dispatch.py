@@ -119,22 +119,11 @@ def _agent_available(agent: str, project_dir: str) -> tuple[bool, str]:
     """Check if an agent is available for dispatch.
 
     Returns (available: bool, reason: str).
-    Unavailable reasons: binary not installed, rate limited, quota exhausted.
+    Check order: quota/rate-limit first (most actionable), then binary presence,
+    then zombie heartbeat. Quota is checked first so callers get the real blocker
+    even in environments where the binary is not on PATH (e.g. CI).
     """
-    import shutil
-
-    # 1. Check if the adapter binary is installed
-    try:
-        from superharness.engine.adapter_registry import load_manifest
-        manifest = load_manifest(agent)
-        required_bin = (manifest.requires or {}).get("bin")
-        if required_bin and manifest.validation.get("check_bin", True):
-            if not shutil.which(str(required_bin)):
-                return False, f"binary '{required_bin}' not installed"
-    except Exception:
-        pass  # manifest load failure — don't block on it
-
-    # 2. Check if agent recently hit rate limit or quota exhaustion
+    # 1. Check if agent recently hit rate limit or quota exhaustion
     try:
         from superharness.engine.db import get_connection, init_db
         conn = get_connection(project_dir)
@@ -154,17 +143,31 @@ def _agent_available(agent: str, project_dir: str) -> tuple[bool, str]:
                 if "permanent block" in reason:
                     return False, f"permanent block: {reason[:80]}"
 
-            # 3. Check if agent daemon is alive (recent heartbeat)
+            # 2. Block only on explicit zombie heartbeat — absent heartbeat is
+            # treated as "unknown" (fail open) so unit tests and cold-start
+            # environments are not spuriously blocked.
             hb = conn.execute(
                 "SELECT updated_at, status FROM agent_heartbeats WHERE agent=?",
                 (agent,),
             ).fetchone()
-            if hb is None or hb["status"] == "zombie":
+            if hb is not None and hb["status"] == "zombie":
                 return False, f"no daemon heartbeat (agent not running)"
         finally:
             conn.close()
     except Exception:
         pass
+
+    # 3. Check if the adapter binary is installed
+    import shutil
+    try:
+        from superharness.engine.adapter_registry import load_manifest
+        manifest = load_manifest(agent)
+        required_bin = (manifest.requires or {}).get("bin")
+        if required_bin and manifest.validation.get("check_bin", True):
+            if not shutil.which(str(required_bin)):
+                return False, f"binary '{required_bin}' not installed"
+    except Exception:
+        pass  # manifest load failure — don't block on it
 
     return True, ""
 

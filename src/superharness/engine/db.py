@@ -98,7 +98,7 @@ def get_connection(project_dir: str) -> sqlite3.Connection:
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
     try:
-        conn = sqlite3.connect(db_path, timeout=5000)
+        conn = sqlite3.connect(db_path, timeout=5.0)
         conn.row_factory = sqlite3.Row
 
         # Mandatory PRAGMAs
