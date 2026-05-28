@@ -28,9 +28,10 @@ _bootstrap_logger("superharness").debug("cli bootstrap")
 MODEL_SHORTCUTS: dict[str, str] = {
     "sonnet":    os.environ.get("SUPERHARNESS_MODEL_SONNET", "claude-sonnet-4-6"),
     "haiku":     os.environ.get("SUPERHARNESS_MODEL_HAIKU", "claude-haiku-4-5-20251001"),
-    "opus":      os.environ.get("SUPERHARNESS_MODEL_OPUS", "claude-opus-4-7"),
-    "opus-4-6":  os.environ.get("SUPERHARNESS_MODEL_OPUS", "claude-opus-4-7"),
-    "opus-4-7":  os.environ.get("SUPERHARNESS_MODEL_OPUS", "claude-opus-4-7"),
+    "opus":      os.environ.get("SUPERHARNESS_MODEL_OPUS", "claude-opus-4-8"),
+    "opus-4-8":  os.environ.get("SUPERHARNESS_MODEL_OPUS", "claude-opus-4-8"),
+    "opus-4-7":  "claude-opus-4-7",  # version pin
+    "opus-4-6":  "claude-opus-4-7",  # alias — same cost, route to latest stable
 }
 
 _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))

@@ -12,8 +12,8 @@ from superharness.engine.sdk_runner import MODEL_PRICING as PRICING
 _TIER_TO_MODEL: dict[str, str] = {
     "mini":     "claude-haiku-4-5-20251001",
     "standard": "claude-sonnet-4-6",
-    "max":      "claude-opus-4-7",
-    "max-1m":   "claude-opus-4-7[1m]",
+    "max":      "claude-opus-4-8",
+    "max-1m":   "claude-opus-4-8[1m]",
     "flash":    "flash",
     "pro":      "pro",
     "ultra":    "ultra",

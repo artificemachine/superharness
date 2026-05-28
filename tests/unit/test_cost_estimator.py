@@ -20,6 +20,7 @@ from superharness.engine.cost_estimator import (
 class TestPricing:
     def test_all_models_have_pricing(self):
         expected = {
+            "claude-opus-4-8", "claude-opus-4-8[1m]",
             "claude-opus-4-7", "claude-opus-4-7[1m]", "claude-opus-4-6",
             "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
             "flash", "pro", "ultra",
@@ -46,11 +47,11 @@ class TestTierToModelId:
     def test_standard_maps_to_sonnet(self):
         assert tier_to_model_id("standard") == "claude-sonnet-4-6"
 
-    def test_max_maps_to_opus_47(self):
-        assert tier_to_model_id("max") == "claude-opus-4-7"
+    def test_max_maps_to_opus_48(self):
+        assert tier_to_model_id("max") == "claude-opus-4-8"
 
-    def test_max_1m_maps_to_opus_47_1m(self):
-        assert tier_to_model_id("max-1m") == "claude-opus-4-7[1m]"
+    def test_max_1m_maps_to_opus_48_1m(self):
+        assert tier_to_model_id("max-1m") == "claude-opus-4-8[1m]"
 
     def test_unknown_defaults_to_sonnet(self):
         assert tier_to_model_id("unknown") == "claude-sonnet-4-6"
@@ -78,7 +79,7 @@ class TestEstimateSubtaskCost:
 
     def test_opus_cost(self):
         est = estimate_subtask_cost("max", estimated_tokens=50000)
-        assert est.model_id == "claude-opus-4-7"
+        assert est.model_id == "claude-opus-4-8"
         assert est.estimated_cost_usd > 0.50
 
     def test_cost_scales_with_tokens(self):

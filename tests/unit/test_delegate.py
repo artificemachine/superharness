@@ -230,7 +230,7 @@ def test_delegate_task_level_model_field(repo_root, tmp_path) -> None:
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_delegate_tier_name_resolves_to_agent_model(repo_root, tmp_path) -> None:
-    """Passing --model max resolves to claude-opus-4-7 for claude-code."""
+    """Passing --model max resolves to claude-opus-4-8 for claude-code."""
     project = _setup_project(tmp_path)
 
     result = _run_delegate_py(
@@ -244,7 +244,7 @@ def test_delegate_tier_name_resolves_to_agent_model(repo_root, tmp_path) -> None
     )
 
     assert result.returncode == 0, result.stderr
-    assert "Model: claude-opus-4-7 (manual)" in result.stdout
+    assert "Model: claude-opus-4-8 (manual)" in result.stdout
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
