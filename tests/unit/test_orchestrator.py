@@ -151,7 +151,7 @@ class TestSubtaskDispatch:
             task_id="T-42",
             project_dir="/tmp/test",
         )
-        assert dispatch.model == "claude-opus-4-7"
+        assert dispatch.model == "claude-opus-4-8"
         assert dispatch.tier == "max"
 
     def test_dispatch_includes_subtask_prompt(self):

@@ -23,12 +23,13 @@ model_tiers:
       "4.5": { id: claude-sonnet-4-5, label: "Sonnet 4.5" }
   max:
     versions:
-      "*":   { id: claude-opus-4-7,   label: "Opus 4.7" }
-      "4.7": { id: claude-opus-4-7,   label: "Opus 4.7" }
+      "*":   { id: claude-opus-4-8,   label: "Opus 4.8" }
+      "4.8": { id: claude-opus-4-8,   label: "Opus 4.8" }
+      "4.7": { id: claude-opus-4-7,   label: "Opus 4.7" }  # pin available
       "4.6": { id: claude-opus-4-7,   label: "Opus 4.7" }  # 4.6 alias — same cost
   max-1m:
     versions:
-      "*": { id: "claude-opus-4-7[1m]", label: "Opus 4.7 (1M)" }
+      "*": { id: "claude-opus-4-8[1m]", label: "Opus 4.8 (1M)" }
 requires:
   bin: claude
   env: []
