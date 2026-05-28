@@ -219,7 +219,7 @@ class TestLauncherScripts:
         script = manifest.get("launcher_script", "")
         if not script:
             pytest.skip(f"{name}: no launcher_script")
-        script_path = MANIFEST_DIR.parent.parent / "scripts" / script
+        script_path = MANIFEST_DIR.parent / "scripts" / script
         assert script_path.exists(), (
             f"{name}: launcher_script '{script}' not found at {script_path}"
         )
@@ -260,13 +260,13 @@ class TestModelPricing:
 
     def test_pricing_file_exists(self):
         """models.yaml must exist."""
-        pricing_path = MANIFEST_DIR.parent.parent / "engine" / "models.yaml"
+        pricing_path = MANIFEST_DIR.parent / "engine" / "models.yaml"
         assert pricing_path.exists(), "models.yaml not found"
 
     def test_pricing_has_entries(self):
         """models.yaml must have pricing for all models."""
         import yaml
-        pricing_path = MANIFEST_DIR.parent.parent / "engine" / "models.yaml"
+        pricing_path = MANIFEST_DIR.parent / "engine" / "models.yaml"
         with open(pricing_path) as f:
             data = yaml.safe_load(f) or {}
         pricing = data.get("pricing", {})
@@ -300,7 +300,7 @@ class TestLauncherFlagCombinations:
         script = manifest.get("launcher_script", "")
         if not script:
             pytest.skip(f"{name}: no launcher_script")
-        script_path = MANIFEST_DIR.parent.parent / "scripts" / script
+        script_path = MANIFEST_DIR.parent / "scripts" / script
         if not script_path.exists():
             pytest.skip(f"Script not found")
         supports = manifest.get("supports_effort", False)
