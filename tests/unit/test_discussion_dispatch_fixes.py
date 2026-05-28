@@ -680,6 +680,42 @@ class TestPerAgentTierRouting:
             f"gemini-cli on max discussion should be capped at standard (2.5-pro), got {m2}"
         )
 
+    def test_max_tier_opencode_gets_v4_pro(self, tmp_path):
+        """opencode on max-tier discussion must get deepseek-v4-pro, not v4-flash."""
+        from superharness.commands.inbox_dispatch import DispatchContext, _prepare_launch_context
+
+        sh = tmp_path / ".superharness"
+        sh.mkdir()
+
+        mock_task = MagicMock()
+        mock_task.model_tier = "max"
+        mock_task.effort = "high"
+
+        ctx = DispatchContext(
+            project_dir=str(tmp_path),
+            inbox_file=str(sh / "inbox.yaml"),
+            contract_file=str(sh / "contract.yaml"),
+            non_interactive=True, codex_bypass=False, launcher_timeout=0,
+            script_dir="", sqlite_primary=True, print_only=True,
+        )
+        ctx.item = {"id": "item-o", "task_id": ROUND_TASK, "target_agent": "opencode",
+                    "status": "launched", "plan_only": False}
+        ctx.item_id = "item-o"
+        ctx.item_to = "opencode"
+        ctx.item_task = ROUND_TASK
+        ctx.exec_project = str(tmp_path)
+        ctx.is_discussion = True
+        ctx.worktree_dir = None
+
+        with patch("superharness.engine.tasks_dao.get", return_value=mock_task):
+            _prepare_launch_context(ctx)
+
+        assert "--model" in ctx.launch_args, "opencode discussion dispatch must include --model"
+        m = ctx.launch_args[ctx.launch_args.index("--model") + 1]
+        assert "v4-pro" in m or "deepseek-v4-pro" in m, (
+            f"opencode on max discussion should get deepseek-v4-pro, got {m!r}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Effort-based discussion deadline enforcement
@@ -1083,3 +1119,175 @@ class TestEffortFlagOnDiscussStart:
         assert row["effort"] == "low", (
             f"With --effort low, effort should be 'low', got: {row['effort']}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Bug 2 — failure diagnostic must be written to task_log for discussion rounds
+# ---------------------------------------------------------------------------
+
+
+class TestDiscussionFailureDiagnostic:
+    """_handle_failure must append a structured diagnostic to ctx.task_log when
+    a discussion round fails, so operators can distinguish timeout from crash."""
+
+    def _make_ctx(self, tmp_path):
+        from superharness.commands.inbox_dispatch import DispatchContext
+        sh = tmp_path / ".superharness"
+        sh.mkdir(parents=True, exist_ok=True)
+        task_log = str(tmp_path / "round-1-claude-code.log")
+        # Seed the log with dummy launcher output so the file exists
+        Path(task_log).write_text("launcher started\n")
+        ctx = DispatchContext(
+            project_dir=str(tmp_path),
+            inbox_file=str(sh / "inbox.yaml"),
+            contract_file=str(sh / "contract.yaml"),
+            non_interactive=True, codex_bypass=False, launcher_timeout=300,
+            script_dir="", sqlite_primary=True, print_only=False,
+        )
+        ctx.item = {"id": "item-cc", "task_id": ROUND_TASK, "target_agent": "claude-code",
+                    "status": "launched", "plan_only": False, "max_retries": 3}
+        ctx.item_id = "item-cc"
+        ctx.item_to = "claude-code"
+        ctx.item_task = ROUND_TASK
+        ctx.exec_project = str(tmp_path)
+        ctx.is_discussion = True
+        ctx.worktree_dir = None
+        ctx.task_log = task_log
+        ctx.effective_timeout = 300
+        ctx.launch_start = 0.0
+        return ctx
+
+    def test_timeout_appends_diagnostic_to_task_log(self, tmp_path):
+        """rc=124 (timeout) must append failure block to task_log file."""
+        from superharness.commands.inbox_dispatch import _handle_failure
+
+        ctx = self._make_ctx(tmp_path)
+        ctx.launcher_rc = 124
+
+        with patch("superharness.commands.inbox_dispatch._mark_item_failed"), \
+             patch("superharness.commands.inbox_dispatch._sqlite_mirror_dispatch"), \
+             patch("superharness.commands.inbox_dispatch._set_inbox_status", return_value=False), \
+             patch("superharness.commands.inbox_dispatch._inbox_cmd"), \
+             patch("superharness.engine.ledger_dao.decision_log"):
+            _handle_failure(ctx)
+
+        content = Path(ctx.task_log).read_text()
+        assert "superharness failure diagnostic" in content, (
+            "task_log must contain failure diagnostic block after timeout"
+        )
+        assert "124" in content, "task_log diagnostic must include exit code"
+        assert "claude-code" in content, "task_log diagnostic must include agent name"
+
+    def test_crash_appends_diagnostic_to_task_log(self, tmp_path):
+        """rc=1 (crash) must append failure block to task_log file."""
+        from superharness.commands.inbox_dispatch import _handle_failure
+
+        ctx = self._make_ctx(tmp_path)
+        ctx.launcher_rc = 1
+
+        with patch("superharness.commands.inbox_dispatch._mark_item_failed"), \
+             patch("superharness.commands.inbox_dispatch._sqlite_mirror_dispatch"), \
+             patch("superharness.commands.inbox_dispatch._set_inbox_status", return_value=False), \
+             patch("superharness.commands.inbox_dispatch._inbox_cmd"), \
+             patch("superharness.engine.ledger_dao.decision_log"):
+            _handle_failure(ctx)
+
+        content = Path(ctx.task_log).read_text()
+        assert "superharness failure diagnostic" in content, (
+            "task_log must contain failure diagnostic block after crash"
+        )
+
+    def test_no_diagnostic_for_non_discussion(self, tmp_path):
+        """Non-discussion round failures must NOT append extra diagnostic block."""
+        from superharness.commands.inbox_dispatch import DispatchContext, _handle_failure
+
+        sh = tmp_path / ".superharness"
+        sh.mkdir()
+        task_log = str(tmp_path / "task.log")
+        Path(task_log).write_text("launcher output\n")
+
+        ctx = DispatchContext(
+            project_dir=str(tmp_path),
+            inbox_file=str(sh / "inbox.yaml"),
+            contract_file=str(sh / "contract.yaml"),
+            non_interactive=True, codex_bypass=False, launcher_timeout=300,
+            script_dir="", sqlite_primary=True, print_only=False,
+        )
+        ctx.item = {"id": "item-t", "task_id": "task-abc", "target_agent": "claude-code",
+                    "status": "launched", "plan_only": False, "max_retries": 3}
+        ctx.item_id = "item-t"
+        ctx.item_to = "claude-code"
+        ctx.item_task = "task-abc"
+        ctx.exec_project = str(tmp_path)
+        ctx.is_discussion = False
+        ctx.worktree_dir = None
+        ctx.task_log = task_log
+        ctx.effective_timeout = 300
+        ctx.launch_start = 0.0
+        ctx.launcher_rc = 1
+
+        with patch("superharness.commands.inbox_dispatch._mark_item_failed"), \
+             patch("superharness.commands.inbox_dispatch._sqlite_mirror_dispatch"), \
+             patch("superharness.commands.inbox_dispatch._set_inbox_status", return_value=False), \
+             patch("superharness.commands.inbox_dispatch._inbox_cmd"), \
+             patch("superharness.engine.ledger_dao.decision_log"):
+            _handle_failure(ctx)
+
+        content = Path(task_log).read_text()
+        assert "superharness failure diagnostic" not in content, (
+            "Non-discussion items must not get the extra diagnostic block"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Bug 3 — discussion shadow rows must have max_retries=3
+# ---------------------------------------------------------------------------
+
+
+class TestDiscussionRetryBudget:
+    """Discussion inbox shadow rows must start with max_retries=3 so the watcher
+    can retry at least 3 times before marking a round as failed_participant."""
+
+    def test_shadow_row_max_retries_is_three(self, tmp_path):
+        """_enqueue_sqlite_shadow must create inbox rows with max_retries=3."""
+        from superharness.commands.discuss import _enqueue_sqlite_shadow
+        from superharness.engine.db import get_connection, init_db
+
+        item_id = "test-item-retry-budget"
+        disc_id = DISC_ID
+        created_at = "2026-05-27T00:00:00Z"
+
+        _enqueue_sqlite_shadow(str(tmp_path), item_id, disc_id, "claude-code", created_at)
+
+        conn = get_connection(str(tmp_path))
+        init_db(conn)
+        row = conn.execute(
+            "SELECT max_retries FROM inbox WHERE id=?", (item_id,)
+        ).fetchone()
+        conn.close()
+
+        assert row is not None, "Shadow inbox row must exist after _enqueue_sqlite_shadow"
+        assert row["max_retries"] == 3, (
+            f"Discussion shadow rows must have max_retries=3 for retry headroom, got {row['max_retries']}"
+        )
+
+    def test_shadow_row_retry_count_starts_at_zero(self, tmp_path):
+        """New shadow rows must start with retry_count=0."""
+        from superharness.commands.discuss import _enqueue_sqlite_shadow
+        from superharness.engine.db import get_connection, init_db
+
+        item_id = "test-item-retry-count"
+        created_at = "2026-05-27T00:00:00Z"
+
+        _enqueue_sqlite_shadow(str(tmp_path), item_id, DISC_ID, "opencode", created_at)
+
+        conn = get_connection(str(tmp_path))
+        init_db(conn)
+        row = conn.execute(
+            "SELECT retry_count, max_retries FROM inbox WHERE id=?", (item_id,)
+        ).fetchone()
+        conn.close()
+
+        assert row is not None
+        assert row["retry_count"] == 0, f"retry_count must start at 0, got {row['retry_count']}"
+        assert row["max_retries"] >= 3, f"max_retries must be >=3, got {row['max_retries']}"

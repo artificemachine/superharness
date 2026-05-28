@@ -73,6 +73,12 @@ def _start_server(module, repo_root: Path, project: Path):
         server = module.ThreadingHTTPServer(("127.0.0.1", 0), module.Handler)
     except PermissionError as exc:
         pytest.skip(f"Socket bind not permitted in this environment: {exc}")
+    # Process requests synchronously in the serve_forever thread instead of spawning a
+    # new OS thread per request. This eliminates Windows thread-starvation: after ~2000
+    # tests, each making several HTTP requests, the thread count saturates the Windows
+    # scheduler and Thread.start() hangs indefinitely at _started.wait().
+    # process_request_thread already handles exceptions and calls shutdown_request.
+    server.process_request = server.process_request_thread  # type: ignore[method-assign]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     host, port = server.server_address
@@ -93,6 +99,13 @@ def _request_json(method: str, url: str, payload: dict | None = None, headers: d
 
 
 def _stop_server(server, thread) -> None:
+    server.block_on_close = False
+    # Call shutdown() directly — serve_forever() polls every 0.5s (its poll_interval) and
+    # has no lingering sub-threads because we use synchronous dispatch. It responds within
+    # one poll cycle, so this returns in ≤ 0.5s.
+    # Do NOT wrap in a daemon thread here: Thread.start() blocks at _started.wait() on
+    # Windows when the OS scheduler is saturated after ~2000 cumulative thread creations.
+    # Creating one more thread per teardown triggers the same hang we fixed in _start_server.
     server.shutdown()
     server.server_close()
     thread.join(timeout=2)

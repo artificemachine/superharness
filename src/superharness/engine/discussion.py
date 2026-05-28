@@ -194,9 +194,8 @@ def _check_all_submitted_and_set_consensus(conn, disc, round_: int) -> None:
         ai_agents = set()
     agent_participants = [o for o in disc.owners if o in ai_agents] if ai_agents else list(disc.owners)
     total_participants = len(agent_participants) if agent_participants else len(disc.owners)
-    # Require max(2, n-1) — same formula as discuss.py participant floor.
-    # A discussion with 4 owners needs 3 submissions for consensus, not 4.
-    required_count = max(2, total_participants - 1) if total_participants > 1 else 2
+    # n=1 or n=2: all must submit; n≥3: n-1 suffices (one dissenter tolerated).
+    required_count = total_participants if total_participants <= 2 else total_participants - 1
 
     if len(submitted_agents) < required_count:
         return
@@ -230,6 +229,18 @@ def _create_consensus_task(conn, disc, round_: int, submitted_agents: set[str]) 
 
         disc_id = disc.id
         task_id = f"impl-{disc_id[:30]}"
+
+        # Initialise shared variables before any loop that references them
+        topic = str(disc.topic)[:80]
+        now = _now_utc()
+        project_dir = "/"  # fallback
+        try:
+            db_path = conn.execute("PRAGMA database_list").fetchone()
+            if db_path:
+                project_dir = os.path.dirname(os.path.dirname(db_path["file"]))
+        except Exception as e:
+            logger.warning("discussion.py unexpected error: %s", e, exc_info=True)
+            pass
 
         # Collect non-agree points from round submissions
         rounds = discussions_dao.get_rounds(conn, disc_id)
@@ -275,23 +286,13 @@ def _create_consensus_task(conn, disc, round_: int, submitted_agents: set[str]) 
             created += 1
 
         # Also create a summary task that collects all points
-        topic = str(disc.topic)[:80]
-        now = _now_utc()
-        project_dir = "/"  # fallback
-        try:
-            db_path = conn.execute("PRAGMA database_list").fetchone()
-            if db_path:
-                project_dir = os.path.dirname(os.path.dirname(db_path["file"]))
-        except Exception as e:
-            logger.warning("discussion.py unexpected error: %s", e, exc_info=True)
-            pass
         criteria = [f"Implement consensus from {disc_id}"]
         for p in all_points:
             criteria.append(f"  * {p['id']} [{p['verdict']}]")
         owner = disc.owners[0] if disc.owners else "claude-code"
         tasks_dao.upsert(conn, TaskRow(
             id=task_id, title=f"Implement: {topic}", owner=owner,
-            status="plan_proposed", effort="medium", project_path=project_dir,
+            status="todo", effort="medium", project_path=project_dir,
             development_method="tdd",
             acceptance_criteria=list(criteria),
             test_types=[], out_of_scope=[], definition_of_done=[],

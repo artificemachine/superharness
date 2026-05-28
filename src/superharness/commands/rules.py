@@ -135,6 +135,15 @@ def main(argv: list[str] | None = None) -> None:
     if argv is None:
         argv = sys.argv[1:]
 
+    if argv and argv[0] in ("--help", "-h"):
+        print("Usage: shux rules [--list | --search <keyword> | <rule-id>]")
+        print("\nList, show, or search project rules stored in .superharness/rules/.")
+        print("\nOptions:")
+        print("  -l, --list             List all rules")
+        print("  -s, --search <kw>      Search rules by keyword")
+        print("  <rule-id>              Show a specific rule")
+        return
+
     if not argv or argv[0] in ("list", "-l", "--list"):
         rules = list_rules()
         if not rules:

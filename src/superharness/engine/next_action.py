@@ -138,6 +138,31 @@ _MAPPING: dict[str, tuple[Optional[str], list[str], str]] = {
 
 
 # ---------------------------------------------------------------------------
+# Human-readable labels for every task status (used by dashboard + tests)
+# ---------------------------------------------------------------------------
+
+_STATUS_LABELS: dict[str, str] = {
+    "todo":                  "To Do",
+    "plan_proposed":         "Plan Proposed",
+    "plan_approved":         "Plan Approved",
+    "in_progress":           "In Progress",
+    "pending_user_approval": "Pending User Approval",
+    "report_ready":          "Report Ready",
+    "review_requested":      "Review Requested",
+    "review_passed":         "Review Passed",
+    "review_failed":         "Review Failed",
+    "pr_open":               "PR Open",
+    "done":                  "Done",
+    "failed":                "Failed",
+    "stopped":               "Stopped",
+    "blocked":               "Blocked",
+    "waiting_input":         "Waiting Input",
+    "paused":                "Paused",
+    "archived":              "Archived",
+}
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -153,6 +178,11 @@ class NextAction:
             "legal": self.legal,
             "reason": self.reason,
         }
+
+    @classmethod
+    def compute(cls, status: str) -> "NextAction":
+        """Return the NextAction for the given status."""
+        return next_action(status)
 
 
 def next_action(status: str) -> NextAction:
@@ -295,11 +325,13 @@ def dashboard_status_mapping() -> dict:
 
 def validate_status_transition(current: str, new: str) -> None:
     """Raise ValueError if `new` is not a legal transition from `current`.
-    
+
     Uses the authoritative _MAPPING from this module.
     Terminal statuses accept no transitions.
     Unknown current statuses accept any transition (fail open).
     """
+    if not current:
+        raise ValueError("current status must not be empty")
     if new not in ALL_STATUSES:
         raise ValueError(
             f"Invalid status '{new}'. Valid statuses: {', '.join(ALL_STATUSES)}"

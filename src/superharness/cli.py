@@ -418,6 +418,10 @@ def _is_git_repo(path: str) -> bool:
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def cmd_update(args):
     """Pull latest superharness and refresh project templates."""
+    if "--help" in args or "-h" in args:
+        click.echo("Usage: shux update [OPTIONS]")
+        click.echo("\nPull latest superharness and refresh project templates.")
+        return
     print("superharness — update")
     print("=====================")
     if _is_git_repo(_ROOT):
@@ -709,6 +713,33 @@ def operator_heal(project, quiet):
     if report.fixed_count() == 0 and quiet:
         return
     click.echo(report.summary())
+
+
+@operator.command(name="stop")
+@click.option("--project", "-p", default=".", help="Project directory")
+def operator_stop(project):
+    """Stop a running operator for this project (uses operator-state.json PID)."""
+    import json
+    from pathlib import Path
+    state_file = Path(project).resolve() / ".superharness" / "operator-state.json"
+    if not state_file.exists():
+        click.echo("No running operator found (operator-state.json missing).")
+        return
+    try:
+        with open(state_file) as f:
+            state = json.load(f)
+        pid = int(state.get("operator_pid", 0))
+        if pid:
+            try:
+                import signal as _signal
+                os.kill(pid, _signal.SIGTERM)
+                click.echo(f"Sent SIGTERM to operator (pid={pid}).")
+            except ProcessLookupError:
+                click.echo(f"Operator pid={pid} already gone.")
+        state_file.unlink(missing_ok=True)
+        click.echo("operator-state.json removed.")
+    except Exception as e:
+        click.echo(f"Error stopping operator: {e}", err=True)
 
 
 if __name__ == "__main__":
