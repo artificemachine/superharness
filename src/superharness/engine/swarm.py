@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from superharness.engine.adapter_registry import flagship
 from superharness.engine.parallel_dispatch import (
     FanoutResult,
     _collect_diffs,
@@ -103,7 +104,7 @@ def swarm_dispatch(
     prompt: str,
     n: int = 3,
     worker_model: str | None = None,
-    reviewer_model: str = "claude-opus-4-8",
+    reviewer_model: str = flagship(),
     max_budget_per_worker: float | None = None,
     max_review_budget: float = 2.00,
     task_id: str = "swarm",

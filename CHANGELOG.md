@@ -572,3 +572,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-28: fix(pricing): correct Opus pricing to $5/$25 per MTok (4.8/4.7/4.6) in sdk_runner MODEL_PRICING and engine/models.yaml — prior $15/$75 entries overcounted Opus cost 3x in analytics
 - 2026-05-28: chore(release): bump to v1.68.4 (Opus 4.8 model bump + Opus pricing correction)
 - 2026-05-28: chore(release): correct version bump to v1.69.0 (feat → minor per Rule 13; supersedes the v1.68.4 line above)
+- 2026-05-28: refactor(models): single source of truth for flagship model — add flagship()/flagship_1m()/fallback_flagship() to adapter_registry; route all 7 consumer literals through these helpers; add guard test that fails if any claude-opus-4-N literal appears outside approved files
+- 2026-05-28: chore(release): bump to v1.69.1 (refactor → patch; flagship source-of-truth cleanup)

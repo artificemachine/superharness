@@ -11,9 +11,9 @@ from __future__ import annotations
 import subprocess
 import warnings
 
+from superharness.engine.adapter_registry import fallback_flagship, flagship, flagship_1m
 from superharness.engine.taxonomy import EFFORT_ORDER, OPUS_KEYWORDS, VALID_EFFORTS
 
-_FALLBACK_TIER = "standard"
 _FALLBACK_EFFORT = "medium"
 
 _1M_TOKEN_THRESHOLD = 200_000
@@ -22,38 +22,43 @@ _LOW_TITLE_PREFIXES = ("fix.typo", "docs:", "chore:")
 
 _FALLBACK_MODEL = "claude-sonnet-4-6"
 
+# Module-level constants resolved from the manifest once at import time.
+_FLAGSHIP = flagship()
+_FLAGSHIP_1M = flagship_1m()
+_FALLBACK = fallback_flagship()
+
+def _is_opus_model(model_id: str) -> bool:
+    """Return True if model_id is any Claude Opus variant (any generation)."""
+    return model_id.startswith("claude-opus-")
+
 _LLM_MODEL_MAP: dict[str, str] = {
     "sonnet-4-6": "claude-sonnet-4-6",
-    "opus-4-6":   "claude-opus-4-8",  # alias — route to latest flagship
-    "opus-4-7":   "claude-opus-4-7",  # version pin
-    "opus-4-8":   "claude-opus-4-8",
+    "opus-4-6":   _FLAGSHIP,  # alias — route to latest flagship
+    "opus-4-7":   _FALLBACK,  # version pin
+    "opus-4-8":   _FLAGSHIP,
     "mini":       "claude-haiku-4-5-20251001",
     "standard":   "claude-sonnet-4-6",
-    "max":        "claude-opus-4-8",
+    "max":        _FLAGSHIP,
 }
 
-_LLM_CLASSIFY_PROMPT = """\
-You are a model router. Decide which model+effort handles this task best.
-
-Models:
-- sonnet-4-6: multi-file coding, refactoring, debugging, tests, features, API integration
-- opus-4-8:   5+ interdependent constraints, cross-domain judgment, architecture, irreversible decisions, security review, compliance
-
-Effort: low | medium | high | xhigh | max
-(low=bounded; medium=typical; high=complex; xhigh=cross-system; max=highest-stakes)
-
-Task:
-  Title: {title}
-  Acceptance criteria: {criteria}
-  Files: {files}
-  Test types: {test_types}
-  Out of scope: {out_of_scope}
-  Context: {context}
-  Previously failed: {failed}
-
-Reply with exactly: <model> <effort>
-Example: "sonnet-4-6 medium"\
-"""
+_LLM_CLASSIFY_PROMPT = (
+    "You are a model router. Decide which model+effort handles this task best.\n\n"
+    "Models:\n"
+    "- sonnet-4-6: multi-file coding, refactoring, debugging, tests, features, API integration\n"
+    f"- {_FLAGSHIP}: 5+ interdependent constraints, cross-domain judgment, architecture, irreversible decisions, security review, compliance\n\n"
+    "Effort: low | medium | high | xhigh | max\n"
+    "(low=bounded; medium=typical; high=complex; xhigh=cross-system; max=highest-stakes)\n\n"
+    "Task:\n"
+    "  Title: {title}\n"
+    "  Acceptance criteria: {criteria}\n"
+    "  Files: {files}\n"
+    "  Test types: {test_types}\n"
+    "  Out of scope: {out_of_scope}\n"
+    "  Context: {context}\n"
+    "  Previously failed: {failed}\n\n"
+    "Reply with exactly: <model> <effort>\n"
+    'Example: "sonnet-4-6 medium"'
+)
 
 
 def heuristic_classify(
@@ -74,22 +79,22 @@ def heuristic_classify(
     test_types_set = set(test_types or [])
     title_lower = title.lower()
 
-    # Retry escalation: any opus failure → promote to max
-    if retry_count > 0 and previous_model in ("claude-opus-4-6", "claude-opus-4-7", "claude-opus-4-8"):
-        return ("claude-opus-4-8", "max")
+    # Retry escalation: any Opus failure → promote to max
+    if retry_count > 0 and _is_opus_model(previous_model or ""):
+        return (_FLAGSHIP, "max")
 
     # Hard max triggers
     if criteria_count > 5:
-        return ("claude-opus-4-8", "max")
+        return (_FLAGSHIP, "max")
     if file_count > 10:
-        return ("claude-opus-4-8", "max")
+        return (_FLAGSHIP, "max")
     if "security" in test_types_set and criteria_count > 3:
-        return ("claude-opus-4-8", "max")
+        return (_FLAGSHIP, "max")
 
     # xhigh trigger: OPUS_KEYWORDS in title
     for keyword in OPUS_KEYWORDS:
         if keyword in title_lower:
-            return ("claude-opus-4-8", "xhigh")
+            return (_FLAGSHIP, "xhigh")
 
     # Low demote: trivial-title prefixes with few AC
     if any(title_lower.startswith(p) for p in _LOW_TITLE_PREFIXES) and criteria_count <= 2:
@@ -182,7 +187,7 @@ def apply_safety_floor(
 
     # 1M auto-promotion
     if effort == "max" and estimated_tokens > _1M_TOKEN_THRESHOLD:
-        model = "claude-opus-4-8[1m]"
+        model = _FLAGSHIP_1M
 
     return model, effort
 
