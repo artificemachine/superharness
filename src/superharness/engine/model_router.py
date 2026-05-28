@@ -9,12 +9,13 @@ import subprocess
 
 from superharness.engine.taxonomy import VALID_EFFORTS
 from superharness.engine.config_loader import load_yaml_config
+from superharness.engine.adapter_registry import flagship
 
 MODEL_MAP: dict[str, dict[str, str]] = {
     "claude-code": {
         "mini": "claude-haiku-4-5-20251001",
         "standard": "claude-sonnet-4-6",
-        "max": "claude-opus-4-8"
+        "max": flagship()
     },
     "codex-cli": {
         "mini": "gpt-5.1-codex-mini",

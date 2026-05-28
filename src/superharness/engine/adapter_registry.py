@@ -228,6 +228,27 @@ def resolve_model(owner: str, tier: str, version: str = "*") -> dict[str, str]:
     return manifest.resolve_tier_version(tier, version=version)
 
 
+def flagship(owner: str = "claude-code") -> str:
+    """Return the current flagship (max-tier default) model id for *owner*.
+
+    This is the single place that names the current-generation Opus model.
+    All routing consumers (taxonomy, classifier, orchestrator, etc.) must
+    call this instead of hardcoding a literal — so a model bump requires
+    editing only the adapter manifest under adapter_manifests/.
+    """
+    return resolve_model(owner, "max")["id"]
+
+
+def flagship_1m(owner: str = "claude-code") -> str:
+    """Return the 1M-context variant of the flagship model id for *owner*."""
+    return resolve_model(owner, "max-1m")["id"]
+
+
+def fallback_flagship(owner: str = "claude-code") -> str:
+    """Return the N-1 flagship model id (used as chain fallback / version pin)."""
+    return resolve_model(owner, "max", version="4.7")["id"]
+
+
 def adapter_info(name: str) -> dict[str, Any]:
     """Return structured info about an adapter for display/scripting.
 
