@@ -27,15 +27,15 @@ from superharness.engine.taxonomy import VALID_EFFORTS
 
 logger = logging.getLogger(__name__)
 
-DECOMPOSER_MODEL = "claude-opus-4-7"
-DECOMPOSER_FALLBACK = "claude-opus-4-6"  # kept as single-model fallback within claude
+DECOMPOSER_MODEL = "claude-opus-4-8"
+DECOMPOSER_FALLBACK = "claude-opus-4-7"  # kept as single-model fallback within claude
 
 # Cross-agent orchestrator chain: (binary, model_id, label)
 # Tries the best model from each agent. Randomly shuffled per call so
 # different models get a chance — quality scores accumulate over time.
 _ORCHESTRATOR_CHAIN: list[tuple[str, str, str]] = [
-    ("claude", "claude-opus-4-7",          "Claude Opus 4.7 (max)"),
-    ("claude", "claude-opus-4-6",          "Claude Opus 4.6 (fallback)"),
+    ("claude", "claude-opus-4-8",          "Claude Opus 4.8 (max)"),
+    ("claude", "claude-opus-4-7",          "Claude Opus 4.7 (fallback)"),
     ("codex",  "gpt-5.5",                 "Codex GPT-5.5 (max)"),
     ("gemini", "gemini-3.1-pro-preview",   "Gemini 3.1 Pro (max)"),
     ("opencode", "deepseek/deepseek-v4-pro", "DeepSeek V4 Pro (max)"),
@@ -110,6 +110,7 @@ _MODEL_TO_TIER: dict[str, str] = {
     "sonnet-4-5":    "standard",
     "opus-4-6":      "max",
     "opus-4-7":      "max",
+    "opus-4-8":      "max",
     # codex-cli
     "codex-mini":    "mini",
     "codex":         "standard",
@@ -126,7 +127,7 @@ Your job: for any task, decide WHO executes it, at WHAT tier, with WHAT effort, 
 
 Available executors:
   claude-code:
-    max:      opus-4-7       ($5/$25 per MTok)  — best reasoning, architecture, safety-critical
+    max:      opus-4-8       ($5/$25 per MTok)  — best reasoning, architecture, safety-critical
     standard: sonnet-4-6     ($3/$15 per MTok)  — solid code gen, balanced
     mini:     haiku-4-5      ($1/$5 per MTok)   — simple edits, typo fixes
     effort:   low | medium | high               (reasoning depth — Opus uses adaptive thinking)

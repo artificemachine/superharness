@@ -141,9 +141,9 @@ class TestOrchestratorChain:
             if manifest_id in ("mini", "standard", "max", ""):
                 continue
 
-            # claude has two entries (Opus 4.7 + fallback Opus 4.6)
+            # claude has two entries (Opus 4.8 + fallback Opus 4.7)
             if binary == "claude":
-                assert model_id in ("claude-opus-4-7", "claude-opus-4-6"), (
+                assert model_id in ("claude-opus-4-8", "claude-opus-4-7"), (
                     f"Claude orchestrator model {model_id} not recognized"
                 )
             elif binary == "opencode":

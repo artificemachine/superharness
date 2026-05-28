@@ -1315,7 +1315,7 @@ def _build_parser() -> "argparse.ArgumentParser":
     parser.add_argument(
         "--1m-context", action="store_true", default=False,
         dest="context_1m",
-        help="Force max-1m tier (claude-opus-4-7[1m]) for this dispatch. "
+        help="Force max-1m tier (claude-opus-4-8[1m]) for this dispatch. "
              "Implies effort=max. Use when prompt exceeds ~200K tokens.",
     )
     parser.add_argument(

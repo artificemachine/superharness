@@ -14,7 +14,7 @@ MODEL_MAP: dict[str, dict[str, str]] = {
     "claude-code": {
         "mini": "claude-haiku-4-5-20251001",
         "standard": "claude-sonnet-4-6",
-        "max": "claude-opus-4-7"
+        "max": "claude-opus-4-8"
     },
     "codex-cli": {
         "mini": "gpt-5.1-codex-mini",

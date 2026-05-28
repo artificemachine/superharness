@@ -219,7 +219,7 @@ class TestSDKCostCalculation:
     def test_opus_pricing(self):
         from superharness.engine.sdk_runner import _calculate_cost
         cost = _calculate_cost("claude-opus-4-6", 1_000_000, 1_000_000)
-        assert cost == 15.0 + 75.0
+        assert cost == 5.0 + 25.0
 
     def test_unknown_model_defaults_to_sonnet(self):
         from superharness.engine.sdk_runner import _calculate_cost

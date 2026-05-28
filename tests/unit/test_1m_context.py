@@ -1,4 +1,4 @@
-"""Tests for feat.1m-context-tier — auto-promotion to claude-opus-4-7[1m].
+"""Tests for feat.1m-context-tier — auto-promotion to claude-opus-4-8[1m].
 
 §3.3 spec: should_use_1m_context(effort, estimated_input_tokens, context_1m=False)
 Three paths to max-1m:
