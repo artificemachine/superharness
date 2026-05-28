@@ -8,12 +8,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from superharness.engine.sdk_runner import MODEL_PRICING as PRICING
+from superharness.engine.adapter_registry import flagship, flagship_1m
 
 _TIER_TO_MODEL: dict[str, str] = {
     "mini":     "claude-haiku-4-5-20251001",
     "standard": "claude-sonnet-4-6",
-    "max":      "claude-opus-4-8",
-    "max-1m":   "claude-opus-4-8[1m]",
+    "max":      flagship(),
+    "max-1m":   flagship_1m(),
     "flash":    "flash",
     "pro":      "pro",
     "ultra":    "ultra",

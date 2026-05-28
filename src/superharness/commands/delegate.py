@@ -11,6 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from superharness.engine.adapter_registry import flagship_1m
 from superharness.engine.sdk_runner import sdk_available, SDKRunner
 from superharness.engine.orchestrator import Orchestrator, DecompositionResult
 from superharness.engine.taxonomy import VALID_EFFORTS
@@ -1315,7 +1316,7 @@ def _build_parser() -> "argparse.ArgumentParser":
     parser.add_argument(
         "--1m-context", action="store_true", default=False,
         dest="context_1m",
-        help="Force max-1m tier (claude-opus-4-8[1m]) for this dispatch. "
+        help=f"Force max-1m tier ({flagship_1m()}) for this dispatch. "
              "Implies effort=max. Use when prompt exceeds ~200K tokens.",
     )
     parser.add_argument(

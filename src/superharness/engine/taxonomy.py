@@ -1,3 +1,5 @@
+from superharness.engine.adapter_registry import flagship
+
 VALID_EFFORTS: tuple[str, ...] = ("low", "medium", "high", "xhigh", "max")
 
 EFFORT_ORDER: list[str] = list(VALID_EFFORTS)
@@ -14,8 +16,8 @@ DEFAULT_MODEL_PER_EFFORT: dict[str, str] = {
     "low":    "claude-sonnet-4-6",
     "medium": "claude-sonnet-4-6",
     "high":   "claude-sonnet-4-6",
-    "xhigh":  "claude-opus-4-8",
-    "max":    "claude-opus-4-8",
+    "xhigh":  flagship(),
+    "max":    flagship(),
 }
 
 DEFAULT_TIMEOUT_PER_EFFORT: dict[str, int] = {
