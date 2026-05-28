@@ -82,7 +82,7 @@ def test_corrupt_config_falls_back(tmp_project):
     models_yaml = tmp_project / ".superharness" / "models.yaml"
     models_yaml.write_text("!!corrupt {")
     
-    assert resolve_model("claude-code", "max", project_dir=str(tmp_project)) == "claude-opus-4-7"
+    assert resolve_model("claude-code", "max", project_dir=str(tmp_project)) == "claude-opus-4-8"
 
 def test_pricing_loads_from_yaml(tmp_project):
     """6. pricing dict loaded from models.yaml when present"""

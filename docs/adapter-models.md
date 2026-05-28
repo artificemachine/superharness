@@ -24,13 +24,14 @@ Source of truth: `src/superharness/adapter_manifests/claude-code.yaml`.
 |---|---|---|---|
 | `mini` | `claude-haiku-4-5-20251001` | Haiku 4.5 | |
 | `standard` | `claude-sonnet-4-6` | Sonnet 4.6 | versioned: `4.6` pin available |
-| `max` | `claude-opus-4-7` | Opus 4.7 | versioned: `4.7` default, `4.6` pin available |
-| `max-1m` | `claude-opus-4-7[1m]` | Opus 4.7 (1M) | auto-promoted when effort=max AND tokens > 200K |
+| `max` | `claude-opus-4-8` | Opus 4.8 | versioned: `4.8` default, `4.7`/`4.6` pin available |
+| `max-1m` | `claude-opus-4-8[1m]` | Opus 4.8 (1M) | auto-promoted when effort=max AND tokens > 200K |
 
 **Rationale:** one model per tier from the current Claude family. The `max` tier
-was promoted from Opus 4.6 → Opus 4.7 (2026-04-17) as 4.7 became the default
-flagship. The `max-1m` tier activates automatically when a max-effort task
+was promoted Opus 4.6 → 4.7 (2026-04-17) → 4.8 (2026-05-28) as each became the
+default flagship. The `max-1m` tier activates automatically when a max-effort task
 estimates more than 200 K input tokens (`should_use_1m_context()` in taxonomy.py).
+Opus 4.8 is priced at $5/$25 per MTok input/output (same as 4.7/4.6).
 
 ### Model bump log — claude-code
 
@@ -38,6 +39,8 @@ estimates more than 200 K input tokens (`should_use_1m_context()` in taxonomy.py
 |---|---|---|---|---|
 | 2026-04-17 | `max` | `claude-opus-4-6` | `claude-opus-4-7` | Opus 4.7 is the current flagship |
 | 2026-04-17 | `max-1m` | (new) | `claude-opus-4-7[1m]` | 1M context tier for large prompts |
+| 2026-05-28 | `max` | `claude-opus-4-7` | `claude-opus-4-8` | Opus 4.8 is the current flagship; `4.7` retained as version pin |
+| 2026-05-28 | `max-1m` | `claude-opus-4-7[1m]` | `claude-opus-4-8[1m]` | Track 4.8 for large-prompt tier |
 
 ## codex-cli adapter
 

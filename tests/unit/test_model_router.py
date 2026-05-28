@@ -64,7 +64,7 @@ class TestResolveModel:
     @pytest.mark.parametrize("tier,expected", [
         ("mini", "claude-haiku-4-5-20251001"),
         ("standard", "claude-sonnet-4-6"),
-        ("max", "claude-opus-4-7"),
+        ("max", "claude-opus-4-8"),
     ])
     def test_claude_code_tiers(self, tier, expected):
         assert resolve_model("claude-code", tier) == expected
