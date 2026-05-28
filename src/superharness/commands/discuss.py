@@ -353,7 +353,7 @@ def _enqueue_sqlite_shadow(
                 task_id=f"{disc_id}/round-1",
                 target_agent=agent,
                 priority=1,
-                max_retries=1,
+                max_retries=3,
                 project_path=project_dir,
                 plan_only=False,
                 type="discussion",

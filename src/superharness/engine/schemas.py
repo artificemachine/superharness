@@ -93,7 +93,7 @@ class ContractTask(BaseModel):
 
     id: str
     title: Optional[str] = None
-    owner: str
+    owner: Optional[str] = None
     status: TaskStatus
     project_path: Optional[str] = None
     workflow: Optional[str] = None

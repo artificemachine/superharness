@@ -36,9 +36,49 @@ class Operator:
         self.processes: dict[str, subprocess.Popen] = {}
         self._stopping = False
 
+    def _check_singleton(self) -> bool:
+        """Return True if an operator is already running for this project.
+
+        Reads operator-state.json, checks the stored PID. If the PID is still
+        alive this is a duplicate invocation — the caller must abort. Stale
+        state files (dead PID) are silently removed so a fresh start proceeds.
+        """
+        op_file = self.project_dir / _OPERATOR_STATE_FILE
+        if not op_file.exists():
+            return False
+        try:
+            with open(op_file) as f:
+                state = json.load(f)
+            pid = int(state.get("operator_pid", 0))
+            if pid and self._is_pid_alive(pid):
+                return True
+            # Stale file — dead PID; remove so the fresh start writes cleanly.
+            op_file.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return False
+
     def start_stack(self, dashboard_port: int = 8787, no_open: bool = False):
         """Start the full Superharness stack."""
         from superharness.engine.trace import trace_event
+
+        if self._check_singleton():
+            op_file = self.project_dir / _OPERATOR_STATE_FILE
+            try:
+                with open(op_file) as f:
+                    state = json.load(f)
+                existing_pid = state.get("operator_pid", "?")
+                existing_port = state.get("dashboard_port", "?")
+            except Exception:
+                existing_pid = "?"
+                existing_port = "?"
+            print(
+                f"[operator] already running (pid={existing_pid}, port={existing_port}). "
+                "Refusing to start a second instance. "
+                "Run 'shux operator stop' first if you want to restart.",
+                file=sys.stderr,
+            )
+            sys.exit(0)
 
         # Patch: Try to reclaim the port if it is held by a stale dashboard FROM THIS PROJECT
         self._reclaim_port_if_zombie(dashboard_port)
@@ -131,13 +171,35 @@ class Operator:
     @staticmethod
     def _is_pid_alive(pid: int) -> bool:
         """Check if a process is alive without waiting on it (safe from forked child)."""
+        import sys
+
+        if sys.platform == "win32":
+            # os.kill(pid, 0) on Windows sends CTRL_C_EVENT (signal 0 == CTRL_C_EVENT)
+            # to the process group, which triggers KeyboardInterrupt in the calling
+            # process when pid == os.getpid(). Use OpenProcess instead.
+            import ctypes
+
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            STILL_ACTIVE = 259
+            handle = ctypes.windll.kernel32.OpenProcess(  # type: ignore[attr-defined]
+                PROCESS_QUERY_LIMITED_INFORMATION, False, pid
+            )
+            if not handle:
+                return False
+            exit_code = ctypes.c_ulong()
+            alive = bool(
+                ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))  # type: ignore[attr-defined]
+                and exit_code.value == STILL_ACTIVE
+            )
+            ctypes.windll.kernel32.CloseHandle(handle)  # type: ignore[attr-defined]
+            return alive
         try:
             os.kill(pid, 0)
             return True
-        except ProcessLookupError:
-            return False
         except PermissionError:
-            return True  # exists, no permission to signal
+            return True  # process exists but we lack signal permission
+        except OSError:
+            return False  # ESRCH on Unix; various codes on Windows = not alive
 
     def monitor_and_recover(self, poll_interval: int = 5):
         """Loop forever, restarting any crashed components.
@@ -235,14 +297,6 @@ class Operator:
                 logger.warning("operator.py unexpected error: %s", e, exc_info=True)
                 conflicts.append(HealthStatus(False, "lock", "Malformed lock"))
         return conflicts
-
-    def _is_pid_alive(self, pid: int) -> bool:
-        """Check if a process is alive."""
-        try:
-            os.kill(pid, 0)
-            return True
-        except OSError:
-            return False
 
     def get_summary(self) -> dict[str, Any]:
         """Get full health report."""

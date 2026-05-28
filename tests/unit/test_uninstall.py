@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+import subprocess
 import sys
-from pathlib import Path
 
 from tests.helpers import REPO_ROOT
 
 
-def _run_python(args: list[str], *, stdin: str | None = None) -> "subprocess.CompletedProcess[str]":
+def _run_python(
+    args: list[str],
+    *,
+    stdin: str | None = None,
+    extra_env: dict | None = None,
+) -> subprocess.CompletedProcess[str]:
     import os
     import subprocess
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT / "src")
+    if extra_env:
+        env.update(extra_env)
     return subprocess.run(
         [sys.executable, "-m", "superharness.commands.uninstall"] + args,
         cwd=REPO_ROOT,
@@ -59,18 +66,26 @@ def test_uninstall_unknown_option(repo_root) -> None:
 
 def test_uninstall_all_removes_lock_dirs(repo_root, tmp_path) -> None:
     import hashlib
-    import tempfile
-    fake_key = hashlib.sha1(b"/fake/project").hexdigest()
-    # Use the platform temp dir so the lock is where uninstall.py looks for it.
-    lock_dir = Path(tempfile.gettempdir()) / f"superharness-inbox-watch-{fake_key}.lock"
-    lock_dir.mkdir(exist_ok=True)
 
-    try:
-        result = _run_python(["--all"])
-        assert result.returncode == 0
-        # Lock dir should be removed
-        if not lock_dir.exists():
-            assert "Removed" in result.stdout
-    finally:
-        if lock_dir.exists():
-            lock_dir.rmdir()
+    fake_key = hashlib.sha1(b"/fake/project").hexdigest()
+
+    # Use tmp_path as the temp dir for both the test and the subprocess.
+    # Passing TMPDIR/TEMP/TMP makes platform_runtime.tmp_dir() agree with
+    # where we created the lock dir, eliminating the TOCTOU race that occurs
+    # when the system /tmp is shared with OS cleanup daemons or parallel jobs.
+    fake_tmp = tmp_path / "tmp"
+    fake_tmp.mkdir()
+    lock_dir = fake_tmp / f"superharness-inbox-watch-{fake_key}.lock"
+    lock_dir.mkdir()
+
+    result = _run_python(
+        ["--all"],
+        extra_env={"TMPDIR": str(fake_tmp), "TEMP": str(fake_tmp), "TMP": str(fake_tmp)},
+    )
+    assert result.returncode == 0
+    assert not lock_dir.exists(), (
+        f"uninstall --all should remove the lock dir; stdout={result.stdout!r}"
+    )
+    assert "Removed" in result.stdout, (
+        f"uninstall --all should print 'Removed'; stdout={result.stdout!r}"
+    )

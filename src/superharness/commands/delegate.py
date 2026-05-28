@@ -893,7 +893,7 @@ def delegate(
     # The orchestrator would reroute every agent to the same "best" model,
     # defeating the purpose of multi-agent deliberation.
     is_discussion_round = "/round-" in task_id
-    if should_orchestrate and not print_only and not is_discussion_round:
+    if should_orchestrate and not is_discussion_round and (not print_only or orchestrate):
         try:
             from superharness.engine.orchestrator import Orchestrator
             orch = Orchestrator(project_dir=project_dir)
