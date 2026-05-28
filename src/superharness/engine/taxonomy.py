@@ -14,8 +14,8 @@ DEFAULT_MODEL_PER_EFFORT: dict[str, str] = {
     "low":    "claude-sonnet-4-6",
     "medium": "claude-sonnet-4-6",
     "high":   "claude-sonnet-4-6",
-    "xhigh":  "claude-opus-4-7",
-    "max":    "claude-opus-4-7",
+    "xhigh":  "claude-opus-4-8",
+    "max":    "claude-opus-4-8",
 }
 
 DEFAULT_TIMEOUT_PER_EFFORT: dict[str, int] = {

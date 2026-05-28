@@ -17,46 +17,46 @@ import pytest
 class TestHeuristicClassify:
     """Stage 1: fast pattern-matching rules — no subprocess calls."""
 
-    def test_opus_keyword_in_title_promotes_to_opus_47_xhigh(self):
-        """'oauth' in title → (claude-opus-4-7, xhigh)."""
+    def test_opus_keyword_in_title_promotes_to_opus_48_xhigh(self):
+        """'oauth' in title → (claude-opus-4-8, xhigh)."""
         from superharness.engine.classifier import heuristic_classify
-        assert heuristic_classify("feat.oauth-integration") == ("claude-opus-4-7", "xhigh")
+        assert heuristic_classify("feat.oauth-integration") == ("claude-opus-4-8", "xhigh")
 
     def test_opus_keyword_case_insensitive(self):
-        """'ARCHITECTURE' in title (case-insensitive) → (claude-opus-4-7, xhigh)."""
+        """'ARCHITECTURE' in title (case-insensitive) → (claude-opus-4-8, xhigh)."""
         from superharness.engine.classifier import heuristic_classify
-        assert heuristic_classify("feat.ARCHITECTURE-overhaul") == ("claude-opus-4-7", "xhigh")
+        assert heuristic_classify("feat.ARCHITECTURE-overhaul") == ("claude-opus-4-8", "xhigh")
 
-    def test_many_criteria_promotes_to_opus_47_max(self):
-        """AC count > 5 → (claude-opus-4-7, max)."""
+    def test_many_criteria_promotes_to_opus_48_max(self):
+        """AC count > 5 → (claude-opus-4-8, max)."""
         from superharness.engine.classifier import heuristic_classify
         criteria = ["ac1", "ac2", "ac3", "ac4", "ac5", "ac6"]
-        assert heuristic_classify("feat.generic-task", criteria=criteria) == ("claude-opus-4-7", "max")
+        assert heuristic_classify("feat.generic-task", criteria=criteria) == ("claude-opus-4-8", "max")
 
-    def test_many_files_promotes_to_opus_47_max(self):
-        """File count > 10 → (claude-opus-4-7, max)."""
+    def test_many_files_promotes_to_opus_48_max(self):
+        """File count > 10 → (claude-opus-4-8, max)."""
         from superharness.engine.classifier import heuristic_classify
         files = [f"src/file{i}.py" for i in range(11)]
-        assert heuristic_classify("feat.generic-task", files=files) == ("claude-opus-4-7", "max")
+        assert heuristic_classify("feat.generic-task", files=files) == ("claude-opus-4-8", "max")
 
-    def test_security_test_type_with_many_criteria_promotes_to_opus_47_max(self):
-        """test_types includes 'security' AND AC count > 3 → (claude-opus-4-7, max)."""
+    def test_security_test_type_with_many_criteria_promotes_to_opus_48_max(self):
+        """test_types includes 'security' AND AC count > 3 → (claude-opus-4-8, max)."""
         from superharness.engine.classifier import heuristic_classify
         criteria = ["ac1", "ac2", "ac3", "ac4"]
         assert heuristic_classify(
             "feat.generic-task",
             criteria=criteria,
             test_types=["unit", "security"],
-        ) == ("claude-opus-4-7", "max")
+        ) == ("claude-opus-4-8", "max")
 
-    def test_retry_with_previous_opus_46_escalates_to_opus_47(self):
-        """retry_count > 0 AND previous_model == claude-opus-4-6 → (claude-opus-4-7, max)."""
+    def test_retry_with_previous_opus_46_escalates_to_opus_48(self):
+        """retry_count > 0 AND previous_model == claude-opus-4-6 → (claude-opus-4-8, max)."""
         from superharness.engine.classifier import heuristic_classify
         assert heuristic_classify(
             "feat.some-task",
             retry_count=1,
             previous_model="claude-opus-4-6",
-        ) == ("claude-opus-4-7", "max")
+        ) == ("claude-opus-4-8", "max")
 
     def test_typo_fix_title_demotes_to_sonnet_low(self):
         """Title starts with 'fix.typo' AND AC ≤ 2 → (claude-sonnet-4-6, low)."""
@@ -103,14 +103,14 @@ class TestLLMClassify:
         with patch("superharness.engine.classifier.subprocess.run", return_value=mock_result):
             assert llm_classify("feat.generic-feature", criteria=["ac1"]) == ("claude-sonnet-4-6", "medium")
 
-    def test_llm_classify_returns_opus_47_for_opus_46_alias(self):
-        """Mock subprocess returns 'opus-4-6 xhigh' → routed to (claude-opus-4-7, xhigh)."""
+    def test_llm_classify_returns_opus_48_for_opus_46_alias(self):
+        """Mock subprocess returns 'opus-4-6 xhigh' → routed to (claude-opus-4-8, xhigh)."""
         from superharness.engine.classifier import llm_classify
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "opus-4-6 xhigh\n"
         with patch("superharness.engine.classifier.subprocess.run", return_value=mock_result):
-            assert llm_classify("feat.complex-security-thing") == ("claude-opus-4-7", "xhigh")
+            assert llm_classify("feat.complex-security-thing") == ("claude-opus-4-8", "xhigh")
 
     def test_llm_classify_falls_back_on_subprocess_error(self):
         """Subprocess returns non-zero → fallback (claude-sonnet-4-6, medium)."""
@@ -151,12 +151,12 @@ class TestSafetyFloor:
         assert effort == "xhigh"
 
     def test_max_effort_with_large_token_count_promotes_to_1m(self):
-        """effort=max AND estimated_tokens > 200K → claude-opus-4-7[1m]."""
+        """effort=max AND estimated_tokens > 200K → claude-opus-4-8[1m]."""
         from superharness.engine.classifier import apply_safety_floor
         model, effort = apply_safety_floor(
-            "claude-opus-4-7", "max", estimated_tokens=250_000
+            "claude-opus-4-8", "max", estimated_tokens=250_000
         )
-        assert model == "claude-opus-4-7[1m]"
+        assert model == "claude-opus-4-8[1m]"
         assert effort == "max"
 
     def test_max_effort_at_threshold_does_not_promote_to_1m(self):
@@ -186,7 +186,7 @@ class TestClassify:
         with patch("superharness.engine.classifier.subprocess.run") as mock_run:
             model, effort = classify("feat.oauth-sso")
         mock_run.assert_not_called()
-        assert model == "claude-opus-4-7"
+        assert model == "claude-opus-4-8"
         assert effort == "xhigh"
 
     def test_classify_falls_through_to_llm_when_no_heuristic(self):

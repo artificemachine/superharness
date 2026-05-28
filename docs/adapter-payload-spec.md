@@ -390,7 +390,7 @@ Three new objects are always present on each task entry. When the pipeline has n
 | Field | Type | Description |
 |---|---|---|
 | `invoked` | bool | `true` when the Opus orchestrator decomposed this task |
-| `model` | string? | `"claude-opus-4-6"` (default) or `"claude-opus-4-7"` (fallback) |
+| `model` | string? | `"claude-opus-4-8"` (default) or `"claude-opus-4-7"` (fallback) |
 | `rationale` | string? | LLM-generated split rationale |
 | `cost_usd` | number? | Decomposer call cost in USD |
 | `duration_ms` | number? | Wall time in milliseconds |

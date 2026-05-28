@@ -33,11 +33,11 @@ def test_default_model_low():
 
 
 def test_default_model_xhigh():
-    assert DEFAULT_MODEL_PER_EFFORT["xhigh"] == "claude-opus-4-7"
+    assert DEFAULT_MODEL_PER_EFFORT["xhigh"] == "claude-opus-4-8"
 
 
 def test_default_model_max():
-    assert DEFAULT_MODEL_PER_EFFORT["max"] == "claude-opus-4-7"
+    assert DEFAULT_MODEL_PER_EFFORT["max"] == "claude-opus-4-8"
 
 
 def test_default_timeout_low():

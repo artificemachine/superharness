@@ -24,11 +24,12 @@ _FALLBACK_MODEL = "claude-sonnet-4-6"
 
 _LLM_MODEL_MAP: dict[str, str] = {
     "sonnet-4-6": "claude-sonnet-4-6",
-    "opus-4-6":   "claude-opus-4-7",  # alias — same cost as 4.7, route to latest
-    "opus-4-7":   "claude-opus-4-7",
+    "opus-4-6":   "claude-opus-4-8",  # alias — route to latest flagship
+    "opus-4-7":   "claude-opus-4-7",  # version pin
+    "opus-4-8":   "claude-opus-4-8",
     "mini":       "claude-haiku-4-5-20251001",
     "standard":   "claude-sonnet-4-6",
-    "max":        "claude-opus-4-7",
+    "max":        "claude-opus-4-8",
 }
 
 _LLM_CLASSIFY_PROMPT = """\
@@ -36,7 +37,7 @@ You are a model router. Decide which model+effort handles this task best.
 
 Models:
 - sonnet-4-6: multi-file coding, refactoring, debugging, tests, features, API integration
-- opus-4-7:   5+ interdependent constraints, cross-domain judgment, architecture, irreversible decisions, security review, compliance
+- opus-4-8:   5+ interdependent constraints, cross-domain judgment, architecture, irreversible decisions, security review, compliance
 
 Effort: low | medium | high | xhigh | max
 (low=bounded; medium=typical; high=complex; xhigh=cross-system; max=highest-stakes)
@@ -74,21 +75,21 @@ def heuristic_classify(
     title_lower = title.lower()
 
     # Retry escalation: any opus failure → promote to max
-    if retry_count > 0 and previous_model in ("claude-opus-4-6", "claude-opus-4-7"):
-        return ("claude-opus-4-7", "max")
+    if retry_count > 0 and previous_model in ("claude-opus-4-6", "claude-opus-4-7", "claude-opus-4-8"):
+        return ("claude-opus-4-8", "max")
 
     # Hard max triggers
     if criteria_count > 5:
-        return ("claude-opus-4-7", "max")
+        return ("claude-opus-4-8", "max")
     if file_count > 10:
-        return ("claude-opus-4-7", "max")
+        return ("claude-opus-4-8", "max")
     if "security" in test_types_set and criteria_count > 3:
-        return ("claude-opus-4-7", "max")
+        return ("claude-opus-4-8", "max")
 
     # xhigh trigger: OPUS_KEYWORDS in title
     for keyword in OPUS_KEYWORDS:
         if keyword in title_lower:
-            return ("claude-opus-4-7", "xhigh")
+            return ("claude-opus-4-8", "xhigh")
 
     # Low demote: trivial-title prefixes with few AC
     if any(title_lower.startswith(p) for p in _LOW_TITLE_PREFIXES) and criteria_count <= 2:
@@ -181,7 +182,7 @@ def apply_safety_floor(
 
     # 1M auto-promotion
     if effort == "max" and estimated_tokens > _1M_TOKEN_THRESHOLD:
-        model = "claude-opus-4-7[1m]"
+        model = "claude-opus-4-8[1m]"
 
     return model, effort
 
