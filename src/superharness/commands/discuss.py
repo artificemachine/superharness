@@ -146,7 +146,10 @@ def cmd_start(
     else:
         all_owners = norm_owners
 
-    exclude_set = set(exclude or [])
+    # _normalize_owners splits comma-joined values so "--exclude foo,bar" works
+    # the same as "--exclude foo --exclude bar". Without this, "foo,bar" is
+    # treated as a single literal name and neither agent is excluded.
+    exclude_set = set(_normalize_owners(exclude))
     candidates = [o for o in all_owners if o not in exclude_set]
 
     # Only AI agents (those with registered adapters) can participate in a discussion.
