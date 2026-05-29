@@ -219,7 +219,7 @@ def _recover_orphaned_dispatches(project_dir: str) -> None:
         _log.warning("discussion_dispatch.py orphan recovery error: %s", e, exc_info=True)
 
 
-def _ensure_round_task(project_dir: str, disc_id: str, round_: int, title: str) -> None:
+def _ensure_round_task(project_dir: str, disc_id: str, round_: int, title: str, owner: str = "claude-code") -> None:
     """Create the round task row in tasks if it doesn't already exist.
 
     inbox.task_id is a FK reference to tasks.id — enqueue fails with
@@ -228,6 +228,11 @@ def _ensure_round_task(project_dir: str, disc_id: str, round_: int, title: str) 
 
     Copies model_tier and effort from round-1 so classification done at
     discussion creation carries through to all subsequent rounds.
+
+    The owner should be the first participant in the discussion (passed by
+    the caller). Defaults to "claude-code" for backwards-compat but callers
+    should always pass the actual first participant to avoid the task appearing
+    under the wrong owner in shux contract / dashboard.
     """
     from superharness.engine.db import get_connection, init_db
     task_id = f"{disc_id}/round-{round_}"
@@ -256,9 +261,9 @@ def _ensure_round_task(project_dir: str, disc_id: str, round_: int, title: str) 
             """
             INSERT OR IGNORE INTO tasks
                 (id, title, owner, status, project_path, created_at, updated_at, workflow, model_tier, effort)
-            VALUES (?, ?, 'claude-code', 'in_progress', ?, ?, ?, 'discussion', ?, ?)
+            VALUES (?, ?, ?, 'in_progress', ?, ?, ?, 'discussion', ?, ?)
             """,
-            (task_id, title, project_dir, _now_utc(), _now_utc(), model_tier, effort),
+            (task_id, title, owner, project_dir, _now_utc(), _now_utc(), model_tier, effort),
         )
         conn.commit()
     finally:
@@ -273,7 +278,7 @@ def _enqueue_for_agent(
     project_dir: str,
     round_title: str = "",
 ) -> None:
-    _ensure_round_task(project_dir, disc_id, round_, round_title or f"Discussion round {round_}: {disc_id}")
+    _ensure_round_task(project_dir, disc_id, round_, round_title or f"Discussion round {round_}: {disc_id}", owner=agent)
     item_id = f"{_now_id_ts()}-{disc_id}-r{round_}-{agent}-{os.getpid()}-{secrets.token_hex(3)}"
     rc = _run_inbox([
         "enqueue",
@@ -398,6 +403,20 @@ def dispatch(project_dir: str) -> int:
                 print(f"Discussion {disc_id}: advanced to round {next_round}")
                 round_title = f"Discussion round {next_round}: {topic}"
                 for agent in participants:
+                    # Idempotency guard: skip if this agent already has an
+                    # active inbox item for the next round. Without this, two
+                    # consecutive poll cycles that both see complete=True on
+                    # the *current* round (before current_round increments in
+                    # the engine) flood the inbox with duplicate dispatches.
+                    task_key = f"{disc_id}/round-{next_round}"
+                    has_result = _run_inbox([
+                        "has_active",
+                        "--file", inbox_file,
+                        "--to", agent,
+                        "--task", task_key,
+                    ])
+                    if has_result.returncode == 0 and has_result.stdout.strip() == "true":
+                        continue
                     _enqueue_for_agent(inbox_file, disc_id, next_round, agent, project_dir, round_title)
 
             elif action == "closed":

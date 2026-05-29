@@ -574,3 +574,7 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-28: chore(release): correct version bump to v1.69.0 (feat → minor per Rule 13; supersedes the v1.68.4 line above)
 - 2026-05-28: refactor(models): single source of truth for flagship model — add flagship()/flagship_1m()/fallback_flagship() to adapter_registry; route all 7 consumer literals through these helpers; add guard test that fails if any claude-opus-4-N literal appears outside approved files
 - 2026-05-28: chore(release): bump to v1.69.1 (refactor → patch; flagship source-of-truth cleanup)
+- 2026-05-29: fix(discuss): --exclude comma-joined args silently ignored — run exclude list through _normalize_owners() so "--exclude foo,bar" splits correctly like --owners does
+- 2026-05-29: fix(discussion_dispatch): _ensure_round_task hardcoded 'claude-code' as round-task owner regardless of participants — now passes actual agent as owner
+- 2026-05-29: fix(discussion_dispatch): advance path missing idempotency guard — add has_active check before _enqueue_for_agent on round advance, matching existing pending-path guard; prevents duplicate-dispatch storm when two poll cycles see round complete before engine increments counter
+- 2026-05-29: chore(release): bump to v1.69.2 (fix dispatch --exclude, round-task owner, advance idempotency)
