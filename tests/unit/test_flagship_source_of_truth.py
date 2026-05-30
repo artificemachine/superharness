@@ -12,7 +12,6 @@ Approved files (may contain literal opus ids):
   - engine/adapter_registry.py                 — the resolver itself
   - engine/sdk_runner.py                        — pricing table (multi-version)
   - engine/models.yaml                          — per-project pricing overrides
-  - engine/model_router_roles.py               — role→model mapping (separate concern)
 """
 from __future__ import annotations
 
@@ -29,7 +28,6 @@ _APPROVED_SUFFIXES = frozenset({
     "engine/adapter_registry.py",
     "engine/sdk_runner.py",
     "engine/models.yaml",
-    "engine/model_router_roles.py",
 })
 
 _LITERAL_PATTERN = re.compile(r"claude-opus-4-\d")
