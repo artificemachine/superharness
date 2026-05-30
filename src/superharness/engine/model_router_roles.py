@@ -5,7 +5,9 @@ Reads project overrides from .superharness/profile.yaml under
 the `model_routing` key. Falls back to hardcoded defaults.
 
 Default routing rationale (from Factory Missions analysis):
-- orchestrator: slow + deep reasoning → Opus
+- orchestrator: slow + deep reasoning → flagship Opus (resolved via the
+  single source of truth, adapter_registry.flagship(), so a model bump
+  only edits the manifest — never this file)
 - worker: fast + code fluency → Sonnet
 - validator: precise instruction following → Sonnet
 """
@@ -14,11 +16,13 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from superharness.engine.adapter_registry import flagship
+
 import logging
 logger = logging.getLogger(__name__)
 
 _DEFAULT_ROUTING: dict[str, str] = {
-    "orchestrator": "claude-opus-4-6",
+    "orchestrator": flagship(),
     "worker": "claude-sonnet-4-6",
     "validator": "claude-sonnet-4-6",
     "code_reviewer": "claude-sonnet-4-6",

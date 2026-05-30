@@ -5,13 +5,14 @@ from pathlib import Path
 
 import pytest
 
+from superharness.engine.adapter_registry import flagship
 from superharness.engine.model_router_roles import ModelRouter, _DEFAULT_ROUTING
 
 
 class TestModelRouterDefaults:
-    def test_orchestrator_uses_opus(self):
+    def test_orchestrator_uses_flagship(self):
         router = ModelRouter()
-        assert router.model_for("orchestrator") == "claude-opus-4-6"
+        assert router.model_for("orchestrator") == flagship()
 
     def test_worker_uses_sonnet(self):
         router = ModelRouter()
@@ -38,7 +39,7 @@ class TestModelRouterOverrides:
     def test_override_does_not_affect_other_roles(self):
         router = ModelRouter(overrides={"validator": "claude-haiku-4-5-20251001"})
         assert router.model_for("worker") == "claude-sonnet-4-6"
-        assert router.model_for("orchestrator") == "claude-opus-4-6"
+        assert router.model_for("orchestrator") == flagship()
 
     def test_all_routes_merges_overrides(self):
         router = ModelRouter(overrides={"worker": "claude-haiku-4-5-20251001"})
@@ -50,7 +51,7 @@ class TestModelRouterOverrides:
 class TestModelRouterFromProject:
     def test_from_project_without_profile_returns_defaults(self, tmp_path: Path):
         router = ModelRouter.from_project(str(tmp_path))
-        assert router.model_for("orchestrator") == "claude-opus-4-6"
+        assert router.model_for("orchestrator") == flagship()
 
     def test_from_project_reads_profile_yaml(self, tmp_path: Path):
         sh = tmp_path / ".superharness"
