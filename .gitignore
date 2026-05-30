@@ -53,3 +53,4 @@ json
 # JSONL event stream — runtime data, not source
 .superharness/events.jsonl
 .hablatone-project
+.ship-check-passed
