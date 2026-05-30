@@ -1,8 +1,9 @@
 # Discussion Dispatch Fails Twice — Max Tier Ignored, Silent Failures
 
 **Date:** 2026-05-27  
-**Version:** superharness v1.68.0  
+**Version:** superharness v1.67.0 (FIXED in v1.68.0)  
 **Project:** nemorad  
+**Status:** ✅ FIXED — tier routing + model resolution works in v1.68.0  
 
 ---
 
@@ -85,7 +86,7 @@ Stacking impact:
 
 ## Recommended fixes (prioritized)
 
-### 1. Wire `--tier` flag into discussion dispatch (CRITICAL)
+### 1. Wire `--tier` flag into discussion dispatch (CRITICAL) — ✅ DONE in v1.68.0
 
 `_prepare_launch_context()` must read the tier from the discussion context and resolve it to the correct model ID for each agent. The `model_routing.py` module already has `resolve_model(owner, tier)` — it just needs to be called.
 
