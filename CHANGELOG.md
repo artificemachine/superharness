@@ -578,3 +578,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-29: fix(discussion_dispatch): _ensure_round_task hardcoded 'claude-code' as round-task owner regardless of participants — now passes actual agent as owner
 - 2026-05-29: fix(discussion_dispatch): advance path missing idempotency guard — add has_active check before _enqueue_for_agent on round advance, matching existing pending-path guard; prevents duplicate-dispatch storm when two poll cycles see round complete before engine increments counter
 - 2026-05-29: chore(release): bump to v1.69.2 (fix dispatch --exclude, round-task owner, advance idempotency)
+- 2026-05-30: fix(model-routing): orchestrator role default now resolves via adapter_registry.flagship() instead of the stale hardcoded claude-opus-4-6 literal — delegate --role orchestrator now dispatches on Opus 4.8 and the no-hardcoded-opus-literal guard now covers model_router_roles.py (removed from whitelist)
+- 2026-05-30: chore(release): bump to v1.69.3 (orchestrator role flagship resolution)
