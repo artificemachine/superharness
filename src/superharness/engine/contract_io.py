@@ -1,6 +1,11 @@
-"""Canonical contract read/write path.
+"""Full-document contract read/write path.
 
-All contract-mutating commands must use write_contract() from this module.
+write_contract() is the whole-document path: it validates a contract doc and
+syncs every task in it to SQLite. Row-level task mutations go through
+engine/tasks_dao.py; status transitions through engine/state_writer.py. Use
+write_contract() only when writing a complete contract document, not for
+single-field updates.
+
 Pydantic validation runs when pydantic is available; degrades gracefully when
 it is not (e.g. minimal CI environments that install only core deps).
 """
