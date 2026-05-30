@@ -2,6 +2,12 @@
 
 **Why it exists, how it works, the decisions behind it.**
 
+> **Legacy note (pre-SQLite migration).** This document predates the YAML→SQLite
+> migration (v1.43+, completed v1.63). State now lives in SQLite at
+> `.superharness/state.db`; the `.superharness/*.yaml` files described below are
+> export/tombstone artifacts, not the source of truth. For the current state
+> architecture see `AGENTS.md` ("State backend") and `engine/state_reader.py`.
+
 ---
 
 ## Problem
@@ -58,14 +64,14 @@ adapters/               → Claude Code hooks, Codex CLI templates
 ## Runtime State (`.superharness/`)
 
 ```
-contract.yaml       tasks, decisions, failures — the source of truth
+state.db            SQLite — the source of truth for tasks, inbox, decisions, failures
 handoffs/*.yaml     one file per task; written when a task completes or suspends
 ledger.md           append-only event log
-inbox.yaml          dispatch queue
-decisions.yaml      cross-agent ADRs
-failures.yaml       cross-agent failure memory
-heartbeat.yaml      proactive watcher check config
-profile.yaml        autonomy, primary_agent, team_size (written by install)
+heartbeat.yaml      proactive watcher check config (config, not state)
+profile.yaml        autonomy, primary_agent, team_size (config, written by install)
+
+# Tombstone exports (generated from SQLite via `shux export-yaml`, NOT read as state):
+#   contract.yaml, inbox.yaml, decisions.yaml, failures.yaml
 ```
 
 ---

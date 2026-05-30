@@ -45,8 +45,8 @@ As of v1.41+, all project state lives in `.superharness/state.sqlite3`. YAML fil
 - `shux status` — dashboard summary
 - `shux recall <keywords>` — search past handoffs
 
-The dual-write parity system (`parity.py`, `yaml_sync.py`, `heal_parity.py`) has been
-deprecated. The modules exist as no-op stubs during the transition.
+The dual-write parity system has been removed. Only `parity.py` remains — a
+no-op stub with zero callers, pending Phase-4 deletion.
 
 `shux export-yaml --all` generates human-readable YAML snapshots from SQLite
 for backup or inspection.
@@ -58,9 +58,9 @@ cli.py                → Click CLI, routes to commands/
 commands/             → one file per CLI command (task, delegate, inbox_watch, etc.)
 engine/next_action.py → pure state machine (16 task statuses, legal transitions)
 engine/schemas.py     → Pydantic v2 models (TaskStatus, InboxStatus, etc.)
-engine/contract_io.py → canonical contract write path (SQLite, atomic tempfile)
+engine/contract_io.py → full-document contract write path (SQLite, atomic tempfile)
 engine/state_writer.py→ set_task_status / set_inbox_status
-engine/state_reader.py→ read API (always SQLite)
+engine/state_reader.py→ read API (SQLite by default; yaml_only is an emergency override)
 engine/lifecycle_rules.py → data-driven timeout rules table
 engine/operator.py    → guardian: spawns watcher + dashboard, restarts on crash
 engine/failure_classifier.py → classifies dispatch errors (retryable vs permanent)
