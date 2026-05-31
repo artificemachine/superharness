@@ -8,6 +8,13 @@ import pytest
 
 from tests.helpers import REPO_ROOT, SCRIPTS_DIR, seed_sqlite_from_yaml
 
+# Ensure subprocesses spawned by tests can always import superharness from the repo
+# source tree, regardless of whether it is pip-installed in the active interpreter.
+# Tests that set PYTHONPATH explicitly (e.g. test_delegate.py) already do this;
+# this setdefault covers the ones that rely on bare sys.executable without a PYTHONPATH.
+_src = str(REPO_ROOT / "src")
+os.environ["PYTHONPATH"] = _src + os.pathsep + os.environ.get("PYTHONPATH", "")
+
 # Ensure shims (SUPERHARNESS_PYTHON shim pattern) always resolve to the interpreter
 # running the test suite, even when individual tests restrict PATH to /usr/bin:/bin.
 os.environ.setdefault("SUPERHARNESS_PYTHON", sys.executable)
