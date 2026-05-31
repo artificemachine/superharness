@@ -582,3 +582,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-30: chore(release): bump to v1.69.3 (orchestrator role flagship resolution)
 - 2026-05-30: test(doc-drift): add doctrine drift guard (tests/test_doc_drift.py) — fails CI if doctrine names a deleted module or calls a state-YAML the "source of truth"; reconcile drifted doctrine (AGENTS.md dual-write/state_reader/contract_io descriptions, docs/ARCHITECTURE.md, contract_io.py docstring) flagged by /bulletproof v13
 - 2026-05-30: chore(hygiene): stop tracking .ship-check-passed runtime marker (git rm --cached + .gitignore entry) so it no longer churns git status; refresh uv.lock self-version 1.62.25 -> 1.69.3
+- 2026-05-31: chore(release): bump to v1.69.4 (doc-drift guard + hygiene cleanup)
