@@ -31,33 +31,63 @@ def _is_ephemeral(path: Path) -> bool:
         return str(path.resolve()).startswith(str(tmp_prefix))
 
 
+def _find_installed_hooks_dir() -> Path | None:
+    """Find hooks inside the pipx/pip-installed package by locating the binary on PATH.
+
+    Resolves the ``shux`` or ``superharness`` symlink to the real binary inside
+    the venv, then walks up to site-packages.  This is independent of ``__file__``
+    so it stays correct even when this module is loaded from a dev repo via
+    PYTHONPATH — a scenario that previously caused the repo source path to be
+    written to settings.json.
+
+    Returns None if no installed binary is found.
+    """
+    import shutil
+    for binary in ("shux", "superharness"):
+        bin_path = shutil.which(binary)
+        if not bin_path:
+            continue
+        real_bin = Path(bin_path).resolve()
+        # pipx layout: …/venvs/<pkg>/bin/<binary>  → venv root is parent of bin/
+        venv_root = real_bin.parent.parent
+        for candidate in sorted(
+            venv_root.glob("lib/*/site-packages/superharness/adapters/claude-code/hooks")
+        ):
+            if candidate.is_dir() and not _is_ephemeral(candidate):
+                return candidate
+    return None
+
+
 def _find_hooks_dir() -> Path:
     """Locate the adapter hooks directory.
 
-    Checks two locations in order:
-    1. Bundled inside the installed package (pip/pipx install):
-       <package>/adapters/claude-code/hooks/
-    2. Editable install (repo checkout):
-       <repo_root>/adapters/claude-code/hooks/
+    Checks locations in order, preferring the installed package over a dev repo
+    so the path written to settings.json is always stable:
 
-    Paths that resolve into the system temp directory are skipped — they
-    indicate an ephemeral git worktree whose path must not be baked into
-    settings.json.
+    1. Installed binary on PATH (pipx/pip install) — independent of __file__.
+    2. In-package path derived from __file__ (regular pip install without shux on PATH).
+    3. Editable install (repo checkout, no binary installed elsewhere).
+
+    Paths that resolve into the system temp directory are skipped — they indicate
+    an ephemeral git worktree whose path must not be baked into settings.json.
     """
-    # 1. In-package location (regular pip/pipx install)
-    # __file__ is at <package>/commands/install_hooks.py
-    # adapters live at <package>/adapters/claude-code/hooks/
+    # 1. Prefer the installed binary's venv — immune to PYTHONPATH overrides
+    installed = _find_installed_hooks_dir()
+    if installed is not None:
+        return installed
+
+    # 2. In-package location: __file__ is at <package>/commands/install_hooks.py
     in_package = Path(__file__).resolve().parent.parent / "adapters" / "claude-code" / "hooks"
     if in_package.is_dir() and not _is_ephemeral(in_package):
         return in_package
 
-    # 2. Editable install: repo root is 3 levels up from src/superharness/commands/
+    # 3. Editable install: repo root is 3 levels up from src/superharness/commands/
     editable = Path(__file__).resolve().parents[3] / "adapters" / "claude-code" / "hooks"
     if editable.is_dir() and not _is_ephemeral(editable):
         return editable
 
     raise FileNotFoundError(
-        f"Adapter hooks directory not found at {in_package} or {editable}. "
+        f"Adapter hooks directory not found. "
         "Ensure superharness is installed with 'pip install superharness' or 'pip install -e .' from the repo root."
     )
 

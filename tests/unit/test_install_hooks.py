@@ -168,6 +168,9 @@ class TestEphemeralGuard:
         fake_hooks.mkdir(parents=True)
 
         monkeypatch.setattr(mod, "__file__", str(fake_file))
+        # Also suppress the installed-binary lookup so the test exercises the
+        # __file__-based fallback paths, where the ephemeral guard must fire.
+        monkeypatch.setattr(mod, "_find_installed_hooks_dir", lambda: None)
         with pytest.raises(FileNotFoundError, match="not found"):
             _find_hooks_dir()
 
