@@ -122,17 +122,20 @@ def cmd_submit_round(
 
         # Normalize verdict: agents sometimes copy the prompt's example verbatim
         # ("agree or disagree or partial") instead of picking one.
-        # Only normalize when ALL options appear — a real "disagree or partial"
-        # is ambiguous and should be rejected.
+        # Reject submissions with all options present — we cannot disambiguate
+        # the agent's intent, and guessing produces misleading consensus.
+        # (Fix: BUGREPORT-discussion-consensus-single-participant, root cause #4.)
         valid_verdicts = {"agree", "disagree", "partial", "consensus", "abstain"}
         verdict_lower = str(verdict).strip().lower()
         if verdict_lower not in valid_verdicts:
             import re
             matches = [v for v in sorted(valid_verdicts) if re.search(r'\b' + re.escape(v) + r'\b', verdict_lower)]
             if len(matches) >= 3:
-                # All three main options present → copied the prompt. Take first match.
-                verdict_lower = matches[0]
-                print(f"[discussion] normalized verdict '{verdict}' → '{verdict_lower}' (prompt copy)", file=sys.stderr)
+                # All three main options present → copied the prompt verbatim.
+                sys.exit(
+                    f"Rejected prompt-copy verdict '{verdict}'. "
+                    f"Please pick ONE of: {', '.join(sorted(valid_verdicts))}"
+                )
             else:
                 sys.exit(f"Invalid verdict '{verdict}'. Must be one of: {', '.join(sorted(valid_verdicts))}")
         verdict = verdict_lower
