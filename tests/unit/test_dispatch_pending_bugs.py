@@ -164,7 +164,7 @@ def test_operator_start_calls_start_stack_once(tmp_path):
             self.project = project
             self.processes = {}
 
-        def start_stack(self, dashboard_port=8787, no_open=False):
+        def start_stack(self, dashboard_port=8787, no_open=False, use_dashboard=False):
             call_count.append(1)
 
         def monitor_and_recover(self):

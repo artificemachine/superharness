@@ -14,6 +14,7 @@ import shutil  # noqa: F401 — patched by tests to mock agent CLI detection
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 import webbrowser
 from collections import Counter
@@ -1594,14 +1595,6 @@ def project_label(project_dir: Path) -> str:
     return f"com.superharness.inbox.{slug}"
 
 
-class Handler(BaseHTTPRequestHandler):
-    project_dir: Path
-    label: str
-    refresh_seconds: int
-    scripts_dir: Path
-    auth_token: str
-
-
 # ── Behavioral profile data (Iteration 7) ────────────────────────────────────
 
 def _profile_data(project_dir: Path) -> dict:
@@ -1650,6 +1643,13 @@ def _profile_data(project_dir: Path) -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
+    project_dir: Path
+    label: str
+    refresh_seconds: int
+    scripts_dir: Path
+    auth_token: str
+    idle_timeout: int = 0
+    last_ping: float = 0.0
 
     def _db_conn(self) -> sqlite3.Connection:
         """Get a thread-local database connection."""
@@ -1672,7 +1672,9 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _html(self, html: str) -> None:
-        body = html.replace("__AUTH_TOKEN__", json.dumps(self.auth_token)).encode("utf-8")
+        body = html.replace("__AUTH_TOKEN__", json.dumps(self.auth_token))
+        body = body.replace("__TIMEOUT_SECONDS__", str(self.idle_timeout))
+        body = body.encode("utf-8")
         self.send_response(200)
         self._set_common_headers("text/html; charset=utf-8", len(body))
         self.end_headers()
@@ -2459,10 +2461,15 @@ class Handler(BaseHTTPRequestHandler):
         return ({"error": f"unsupported action: {action}"}, 400)
 
     def do_GET(self) -> None:  # noqa: N802
+        Handler.last_ping = time.time()
         parsed = urlparse(self.path)
         p = parsed.path
         if p in {"/", "/index.html"}:
             self._html(HTML)
+            return
+
+        if p == "/api/ping":
+            self._json({"status": "ok", "idle_seconds": int(time.time() - Handler.last_ping)})
             return
 
         if p.startswith("/.superharness/handoffs/") and p.endswith(".md"):
@@ -3231,6 +3238,7 @@ def main() -> int:
     ap.add_argument("--no-open", action="store_true", help="do not open browser automatically")
     ap.add_argument("--autohealth", action="store_true", help="run watchdog that auto-restarts dashboard if it dies")
     ap.add_argument("--health-interval", type=int, default=5, help="health check interval in seconds (default: 5)")
+    ap.add_argument("--timeout", type=int, default=0, help="idle timeout in seconds (default: 0, disabled)")
     args = ap.parse_args()
 
     project_dir = Path(args.project).expanduser().resolve() if args.project else Path.cwd()
@@ -3253,6 +3261,19 @@ def main() -> int:
         return 0
 
     scripts_dir = Path(__file__).resolve().parent
+
+    Handler.idle_timeout = args.timeout
+    Handler.last_ping = time.time()
+
+    if Handler.idle_timeout > 0:
+        def _idle_monitor():
+            while True:
+                idle = time.time() - Handler.last_ping
+                if idle > Handler.idle_timeout:
+                    print(f"dashboard-ui: idle timeout ({Handler.idle_timeout}s) exceeded — shutting down")
+                    os._exit(0)
+                time.sleep(5)
+        threading.Thread(target=_idle_monitor, daemon=True).start()
 
     # Guard: prevent a second dashboard for the same project directory.
     _my_pid = os.getpid()

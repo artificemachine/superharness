@@ -111,6 +111,7 @@
   </style>
 </head>
 <body>
+  <div id="timeoutBanner" style="display:none;position:fixed;top:0;left:0;width:100%;background:var(--bad);color:#fff;text-align:center;padding:8px;font-weight:bold;z-index:9999"></div>
   <div class="wrap">
     <h1>superharness dashboard <span id="version" style="font-size:11px;color:var(--muted);font-weight:normal;margin-left:8px">...</span></h1>
     <div class="meta" id="meta">loading...</div>
@@ -584,6 +585,40 @@ function liveLogsToggleStream(btn) {
 liveLogsConnect();
 let knownOwners = [];
 const AUTH_TOKEN = __AUTH_TOKEN__;
+const TIMEOUT_SECONDS = __TIMEOUT_SECONDS__;
+let lastUserInteraction = Date.now();
+
+// Keep-alive heartbeats if a timeout is configured
+if (TIMEOUT_SECONDS > 0) {
+  setInterval(async () => {
+    try {
+      await fetch('/api/ping');
+    } catch (e) {}
+  }, 30000); // Ping every 30s
+
+  // Monitor idle time and show warning
+  setInterval(() => {
+    const idleMs = Date.now() - lastUserInteraction;
+    const idleSec = Math.floor(idleMs / 1000);
+    const remaining = TIMEOUT_SECONDS - idleSec;
+    const banner = document.getElementById('timeoutBanner');
+    
+    if (remaining <= 60 && remaining > 0) {
+      banner.style.display = 'block';
+      banner.textContent = `Dashboard will auto-close in ${remaining}s due to inactivity. Move mouse to stay alive.`;
+    } else if (remaining <= 0) {
+      banner.textContent = 'Dashboard session expired.';
+      document.body.style.opacity = '0.5';
+      document.body.style.pointerEvents = 'none';
+    } else {
+      banner.style.display = 'none';
+    }
+  }, 1000);
+
+  ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart'].forEach(evt => {
+    document.addEventListener(evt, () => { lastUserInteraction = Date.now(); });
+  });
+}
 
 async function api(path, init) {
   const r = await fetch(path, init);

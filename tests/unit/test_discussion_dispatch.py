@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from tests.helpers import REPO_ROOT, run_cmd, seed_sqlite_from_yaml
+from tests.helpers import REPO_ROOT, run_cmd, seed_sqlite_from_yaml, seed_sqlite_heartbeat
 import pytest
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
@@ -258,6 +258,15 @@ def _setup_project_with_contract(tmp_path: Path, owners: list[str] | None = None
     contract = "id: test\ntasks:\n" + ("\n".join(tasks) if tasks else "") + "\n"
     (harness / "contract.yaml").write_text(contract)
     seed_sqlite_from_yaml(project)
+
+    # Mock heartbeats for participants (v1.69.5 requirement)
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    seed_sqlite_heartbeat(project, agent="watcher", status="alive", now=now)
+    for owner in owners:
+        if owner != "owner":
+            seed_sqlite_heartbeat(project, agent=owner, status="alive", now=now)
+
     return project
 
 
@@ -300,13 +309,19 @@ def test_discuss_start_rejects_single_owner(repo_root, tmp_path) -> None:
         repo_root,
         args=["start", "--project", str(project), "--topic", "Should fail"],
     )
-    assert result.returncode == 2
-    assert "at least 2" in result.stderr
+    # v1.69.5: returns 1 because only 1 participant is running (availability check)
+    assert result.returncode == 1
+    assert "At least 2 running agents are required" in result.stderr
 
 
 def test_discuss_start_allows_explicit_owners_without_contract_owners(repo_root, tmp_path) -> None:
     """Explicit --owners should bypass the need for 2 distinct owners in the contract."""
     project = _setup_project_with_contract(tmp_path, owners=["codex-cli"])
+
+    # Mock heartbeats for explicit participants
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    seed_sqlite_heartbeat(project, agent="claude-code", status="alive", now=now)
 
     result = _run_discuss_py(
         repo_root,
@@ -340,8 +355,9 @@ def test_discuss_start_rejects_no_owners(repo_root, tmp_path) -> None:
         repo_root,
         args=["start", "--project", str(project), "--topic", "Should fail"],
     )
-    assert result.returncode == 2
-    assert "at least 2" in result.stderr
+    # v1.69.5: returns 1 (no running participants)
+    assert result.returncode == 1
+    assert "At least 2 running agents are required" in result.stderr
 
 
 def test_discuss_start_exclude_owner(repo_root, tmp_path) -> None:
@@ -384,9 +400,9 @@ def test_discuss_start_exclude_too_many_rejects(repo_root, tmp_path) -> None:
             "--exclude", "codex-cli",
         ],
     )
-    assert result.returncode == 2
-    assert "at least 2" in result.stderr
-    assert "Excluded: codex-cli" in result.stderr
+    # v1.69.5: returns 1 (only 1 running participant remains)
+    assert result.returncode == 1
+    assert "At least 2 running agents are required" in result.stderr
 
 
 def test_discuss_start_filters_owner_from_participants(repo_root, tmp_path) -> None:
@@ -436,9 +452,9 @@ def test_discuss_start_explicit_owner_only_rejects(repo_root, tmp_path) -> None:
             "--owners", "claude-code,owner",
         ],
     )
-    assert result.returncode == 2
-    assert "at least 2 AI-agent participants" in result.stderr
-    assert "Non-agent (removed): owner" in result.stderr
+    # v1.69.5: returns 1 (only 1 running AI participant remains)
+    assert result.returncode == 1
+    assert "At least 2 running agents are required" in result.stderr
 
 
 # ---------------------------------------------------------------------------

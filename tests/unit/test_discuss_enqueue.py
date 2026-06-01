@@ -7,7 +7,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
-from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite, seed_sqlite_handoff
+from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite, seed_sqlite_handoff, seed_sqlite_heartbeat
 
 import pytest
 
@@ -39,6 +39,14 @@ def _make_project(tmp_path: Path) -> Path:
     )
     (harness / "inbox.yaml").write_text(INBOX_HEADER)
     seed_sqlite_from_yaml(project)
+
+    # Mock heartbeats for participants (v1.69.5 requirement)
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    seed_sqlite_heartbeat(project, agent="watcher", status="alive", now=now)
+    seed_sqlite_heartbeat(project, agent="claude-code", status="alive", now=now)
+    seed_sqlite_heartbeat(project, agent="codex-cli", status="alive", now=now)
+
     return project
 
 

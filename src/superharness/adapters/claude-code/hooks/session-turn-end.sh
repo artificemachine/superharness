@@ -92,4 +92,18 @@ PROGRESS_EOF
 
 _ledger "$TIMESTAMP session-turn-end: snapshot written to session-progress.md (branch: ${GIT_BRANCH:-unknown})"
 
+# --- Session-inject: surface pending discussion prompts ---
+DISC_DIR="$SH_DIR/discussions"
+if [ -d "$DISC_DIR" ]; then
+  for prompt_file in "$DISC_DIR"/*/round-*-claude-code.prompt.md; do
+    [ -f "$prompt_file" ] || continue
+    echo ""
+    echo "📋 PENDING DISCUSSION TASK — $(basename "$(dirname "$prompt_file")")/$(basename "$prompt_file")"
+    echo "   To respond: write verdict to corresponding .yaml file or use:"
+    echo "   shux discuss submit --project $PROJECT_DIR --id <disc_id> --round <N> --verdict <agree|disagree|partial|consensus|abstain>"
+    # Mark as seen
+    touch "$prompt_file"
+  done
+fi
+
 exit 0

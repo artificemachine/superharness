@@ -5,6 +5,7 @@ model names. Falls back to ("standard", "medium") on any failure.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 
 from superharness.engine.taxonomy import VALID_EFFORTS
@@ -39,6 +40,64 @@ VALID_TIERS = {"mini", "standard", "max"}
 _FALLBACK_TIER = "standard"
 _FALLBACK_EFFORT = "medium"
 
+# Normalization map: ensure consistent output regardless of which model responds.
+# Some models output "max" others "maximum", some "small" others "mini", etc.
+_TIER_NORMALIZE: dict[str, str] = {
+    "maximum": "max", "large": "max", "heavy": "max", "opus": "max",
+    "medium": "standard", "normal": "standard", "mid": "standard",
+    "small": "mini", "light": "mini", "fast": "mini", "haiku": "mini",
+    "tiny": "mini",
+}
+_EFFORT_NORMALIZE: dict[str, str] = {
+    "high": "high", "hard": "high", "complex": "high",
+    "medium": "medium", "normal": "medium", "mid": "medium",
+    "low": "low", "easy": "low", "simple": "low", "trivial": "low",
+}
+
+
+def _normalize_classification(tier: str, effort: str) -> tuple[str, str]:
+    """Normalize classification output for consistent behavior across models."""
+    tier = _TIER_NORMALIZE.get(tier.lower(), tier.lower())
+    effort = _EFFORT_NORMALIZE.get(effort.lower(), effort.lower())
+    if tier not in VALID_TIERS:
+        tier = _FALLBACK_TIER
+    if effort not in VALID_EFFORTS:
+        effort = _FALLBACK_EFFORT
+    return tier, effort
+
+
+def _deterministic_classify(title: str, criteria: list[str] | None, previously_failed: bool) -> tuple[str, str]:
+    """Deterministic heuristic classification — always produces the same output.
+    
+    Used when all models are unavailable. Never fails, never varies.
+    """
+    if previously_failed:
+        return "max", "high"
+    
+    title_lower = title.lower()
+    criteria_text = " ".join(criteria).lower() if criteria else ""
+    combined = title_lower + " " + criteria_text
+    
+    # max-tier signals
+    max_signals = [
+        "architecture", "migration", "security audit", "breaking change",
+        "cross-system", "multi-service", "10+ files", "database schema",
+        "auth", "performance critical", "concurrency", "race condition",
+    ]
+    if any(s in combined for s in max_signals):
+        return "max", "high"
+    
+    # mini-tier signals
+    mini_signals = [
+        "readme", "changelog", "typo", "comment", "config", "env var",
+        "single file", "one-line", "field name", "rename",
+    ]
+    if any(s in combined for s in mini_signals):
+        return "mini", "low"
+    
+    # default
+    return _FALLBACK_TIER, _FALLBACK_EFFORT
+
 _cached_map: dict[str, dict[str, str]] | None = None
 _cached_project_maps: dict[str, dict[str, dict[str, str]]] = {}
 
@@ -62,11 +121,50 @@ def _load_model_map(project_dir: str | None = None) -> dict[str, dict[str, str]]
     )
     mmap = config.get("model_map", MODEL_MAP)
 
+    # Merge user fleet config if present (~/.config/superharness/fleet.yaml).
+    # Fleet endpoints are local GPU VMs that superharness ITSELF uses for
+    # internal AI operations (task classification, routing decisions, etc.).
+    # Agents keep their own model tiers unchanged — the fleet is the harness's
+    # brain, not the agents' provider.
+    fleet = _load_fleet_config()
+    if fleet:
+        _FLEET_CACHE = fleet
+
     if project_dir is None:
         _cached_map = mmap
     else:
         _cached_project_maps[project_dir] = mmap
     return mmap
+
+
+_FLEET_CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".config", "superharness", "fleet.yaml")
+_FLEET_CACHE: dict | None = None
+
+
+def _load_fleet_config() -> dict | None:
+    """Load user-specific fleet configuration if it exists.
+    
+    Returns dict with 'endpoints' and 'models' keys, or None if no fleet config.
+    Cached after first load.
+    """
+    global _FLEET_CACHE
+    if _FLEET_CACHE is not None:
+        return _FLEET_CACHE
+    if not os.path.isfile(_FLEET_CONFIG_PATH):
+        _FLEET_CACHE = None
+        return None
+    try:
+        import yaml
+        with open(_FLEET_CONFIG_PATH) as f:
+            config = yaml.safe_load(f) or {}
+        fleet = config.get("fleet", {})
+        if fleet:
+            _FLEET_CACHE = fleet
+            return fleet
+    except Exception:
+        pass
+    _FLEET_CACHE = None
+    return None
 
 
 _CLASSIFY_PROMPT = """\
@@ -105,6 +203,97 @@ _CLASSIFIER_AGENTS: list[tuple[str, list[str]]] = [
 _CLASSIFY_TIMEOUT_SECONDS = 5
 
 
+def _call_fleet(prompt: str, expect_tokens: int = 10) -> str | None:
+    """Call the fleet API and return the response text. Returns None on failure."""
+    fleet = _load_fleet_config()
+    if not fleet:
+        return None
+    endpoints = fleet.get("endpoints", {})
+    models = fleet.get("models", {})
+    endpoint = endpoints.get("mini") or endpoints.get("standard") or endpoints.get("all")
+    model_id = models.get("mini") or models.get("standard") or models.get("all")
+    if not endpoint or not model_id:
+        return None
+    try:
+        import urllib.request
+        import json as _json
+        payload = _json.dumps({
+            "model": model_id,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": expect_tokens,
+            "temperature": 0,
+        }).encode()
+        req = urllib.request.Request(
+            f"{endpoint.rstrip('/')}/chat/completions",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = _json.loads(resp.read())
+            return data["choices"][0]["message"]["content"].strip()
+    except Exception:
+        return None
+
+
+def _classify_via_fleet(prompt: str) -> tuple[str, str] | None:
+    """Try task classification using the local GPU fleet (OpenAI-compatible API).
+    
+    Returns (tier, effort) or None if fleet unavailable. This is superharness's
+    own brain — no external agent CLI needed, no API key, no latency to cloud.
+    """
+    response = _call_fleet(prompt, expect_tokens=2)
+    if response:
+        parts = response.lower().split()
+        if len(parts) >= 2:
+            tier = parts[0] if parts[0] in VALID_TIERS else _FALLBACK_TIER
+            effort = parts[1] if parts[1] in VALID_EFFORTS else _FALLBACK_EFFORT
+            return tier, effort
+    return None
+
+
+_FAILURE_ANALYSIS_PROMPT = """\
+You are superharness's diagnostic brain. Analyze this agent failure and reply with EXACTLY ONE classification word or phrase from the list below.
+
+Agent: {agent}
+Task: {task}
+Error: {error}
+Recent failures for this agent: {history}
+
+Classifications (pick ONE):
+- transient: temporary issue, retry with backoff
+- permanent_block: agent is misconfigured or broken, pause it
+- config: fixable configuration issue
+- dependency: missing module or binary
+- timeout: agent took too long
+- unknown: cannot determine cause
+
+Reply with exactly one word or phrase (transient, permanent_block, config, dependency, timeout, or unknown):"""
+
+
+def analyze_failure(agent: str, task: str, error: str, history: str = "") -> str:
+    """Use the fleet to analyze an agent failure and determine root cause.
+    
+    Returns one of: transient, permanent_block, config, dependency, timeout, unknown.
+    Falls back to 'unknown' if fleet unavailable.
+    """
+    prompt = _FAILURE_ANALYSIS_PROMPT.format(
+        agent=agent,
+        task=task[:200],
+        error=error[:500],
+        history=history[:300] or "none",
+    )
+    response = _call_fleet(prompt, expect_tokens=5)
+    if response:
+        response = response.strip().lower()
+        valid = {"transient", "permanent_block", "config", "dependency", "timeout", "unknown"}
+        # Extract the first valid classification word
+        for word in response.split():
+            word = word.strip(".,;:")
+            if word in valid:
+                return word
+    return "unknown"
+
+
 def _try_classify(agent: str, cmd_template: list[str], model: str, prompt: str) -> tuple[str, str] | None:
     """Try classification with one agent's mini model. Returns (tier, effort) or None."""
     cmd = [part.format(model=model, prompt=prompt) for part in cmd_template]
@@ -133,8 +322,13 @@ def classify_task(
 ) -> tuple[str, str]:
     """Ask the classifier chain which tier and effort should handle this task.
 
-    Tries each agent's mini model in order. First to respond wins.
-    Returns (tier, effort). Defaults to ('standard', 'medium') on any failure.
+    Classification chain (best-model-first, consistent fallbacks):
+      1. Fleet (local GPU) — fastest, no cloud cost
+      2. Cloud models via agent CLIs — always available, higher quality
+      3. Deterministic heuristic — never fails, consistent behavior
+
+    All outputs are normalized to ensure identical behavior regardless
+    of which model in the chain responds.
     """
     mmap = _load_model_map(project_dir)
     criteria_str = ", ".join(criteria) if criteria else "none"
@@ -148,6 +342,12 @@ def classify_task(
         failed=failed_str,
     )
 
+    # 1. Fleet first — superharness's own brain (local GPU, fastest)
+    result = _classify_via_fleet(prompt)
+    if result is not None:
+        return _normalize_classification(*result)
+
+    # 2. Agent CLIs — cloud models, best quality fallback
     for agent_name, cmd_template in _CLASSIFIER_AGENTS:
         agent_map = mmap.get(agent_name, {})
         model = agent_map.get("mini", "")
@@ -155,9 +355,10 @@ def classify_task(
             continue
         result = _try_classify(agent_name, cmd_template, model, prompt)
         if result is not None:
-            return result
+            return _normalize_classification(*result)
 
-    return _FALLBACK_TIER, _FALLBACK_EFFORT
+    # 3. Deterministic fallback — always consistent
+    return _deterministic_classify(title, criteria, previously_failed)
 
 
 _CODEX_AUTH_MODE_CACHE: str | None = None

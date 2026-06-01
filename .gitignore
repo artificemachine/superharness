@@ -54,3 +54,9 @@ json
 .superharness/events.jsonl
 .hablatone-project
 .ship-check-passed
+
+.env
+*.key
+*.pem
+*.p12
+*.pfx

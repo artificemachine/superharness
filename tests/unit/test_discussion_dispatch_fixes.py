@@ -12,6 +12,7 @@ import yaml
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
+from tests.helpers import seed_sqlite_heartbeat
 
 
 # ---------------------------------------------------------------------------
@@ -580,6 +581,13 @@ class TestTierFlagOnDiscussStart:
         conn = sqlite3.connect(str(db_path))
         conn.close()
 
+        # Mock heartbeats for participants (v1.69.5 requirement)
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        seed_sqlite_heartbeat(tmp_path, agent="watcher", status="alive", now=now)
+        seed_sqlite_heartbeat(tmp_path, agent="claude-code", status="alive", now=now)
+        seed_sqlite_heartbeat(tmp_path, agent="gemini-cli", status="alive", now=now)
+
         with patch("superharness.engine.inbox._inbox_lock"):
             from superharness.commands.discuss import cmd_start
             rc = cmd_start(
@@ -1043,6 +1051,13 @@ class TestEffortFlagOnDiscussStart:
         conn = sqlite3.connect(str(db_path))
         conn.close()
 
+        # Mock heartbeats for participants (v1.69.5 requirement)
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        seed_sqlite_heartbeat(tmp_path, agent="watcher", status="alive", now=now)
+        seed_sqlite_heartbeat(tmp_path, agent="claude-code", status="alive", now=now)
+        seed_sqlite_heartbeat(tmp_path, agent="gemini-cli", status="alive", now=now)
+
         with patch("superharness.engine.inbox._inbox_lock"):
             from superharness.commands.discuss import cmd_start
             rc = cmd_start(
@@ -1087,6 +1102,13 @@ class TestEffortFlagOnDiscussStart:
         db_path = sh / "state.sqlite3"
         conn = sqlite3.connect(str(db_path))
         conn.close()
+
+        # Mock heartbeats for participants (v1.69.5 requirement)
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        seed_sqlite_heartbeat(tmp_path, agent="watcher", status="alive", now=now)
+        seed_sqlite_heartbeat(tmp_path, agent="claude-code", status="alive", now=now)
+        seed_sqlite_heartbeat(tmp_path, agent="gemini-cli", status="alive", now=now)
 
         with patch("superharness.engine.inbox._inbox_lock"):
             from superharness.commands.discuss import cmd_start

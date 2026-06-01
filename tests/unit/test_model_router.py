@@ -112,6 +112,11 @@ class TestResolveTier:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def mock_no_fleet():
+    with mock.patch("superharness.engine.model_router._load_fleet_config", return_value=None):
+        yield
+
 class TestClassifyTask:
     def test_returns_parsed_tier_and_effort(self):
         fake_result = subprocess.CompletedProcess(

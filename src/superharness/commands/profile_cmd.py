@@ -37,7 +37,8 @@ def cmd_profile(args: list[str]) -> None:
     elif subcmd == "edit":
         profile_path = os.path.join(user_profile_path(), "task_style.json")
         editor = os.environ.get("EDITOR", "vim")
-        os.system(f"{editor} {profile_path}")
+        import subprocess
+        subprocess.run([editor, str(profile_path)])
     elif subcmd == "reset" and len(args) >= 2:
         key = args[1]
         _reset_key(key)

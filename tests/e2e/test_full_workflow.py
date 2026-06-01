@@ -60,5 +60,5 @@ class TestDiscussionE2E:
         project = _init_project(tmp_path)
         r = _shux("discuss", "start", "--topic", "E2E discussion",
                   "--owners", "claude-code,codex-cli", "--max-rounds", "1",
-                  cwd=str(project))
+                  "--force", cwd=str(project))
         assert r.returncode == 0

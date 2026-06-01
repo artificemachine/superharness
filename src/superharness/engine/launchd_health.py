@@ -376,7 +376,7 @@ def find_all_superharness_projects(search_roots: list[Path] | None = None, max_d
             # Skip hidden dirs to avoid noise
             dirnames[:] = [d for d in dirnames if not d.startswith(".") or d == ".superharness"]
 
-    _log.info("launchd_health: discovered %d project(s) with .superharness/", len(found))
+    _log.debug("launchd_health: discovered %d project(s) with .superharness/", len(found))
     return found
 
 
