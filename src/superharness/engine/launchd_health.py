@@ -203,6 +203,8 @@ class HealReport:
     orphan_plists_removed: list[str]
     bootstrapped: list[str]
     skipped_reason: str | None = None
+    label: str | None = None
+    project: str | None = None
 
     def summary(self) -> str:
         if self.skipped_reason:
@@ -321,12 +323,15 @@ def _render_watchdog_plist(label: str, python_bin: str, interval: int, log_dir: 
         <string>superharness.cli</string>
         <string>operator</string>
         <string>heal</string>
+        <string>--auto-discover</string>
         <string>--quiet</string>
     </array>
+    <key>WorkingDirectory</key>
+    <string>{Path.home()}</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
-    <false/>
+    <true/>
     <key>StartInterval</key>
     <integer>{interval}</integer>
     <key>StandardOutPath</key>
@@ -336,3 +341,75 @@ def _render_watchdog_plist(label: str, python_bin: str, interval: int, log_dir: 
 </dict>
 </plist>
 """
+
+
+def find_all_superharness_projects(search_roots: list[Path] | None = None, max_depth: int = 3) -> list[Path]:
+    """Discover all project directories containing a `.superharness/` directory.
+
+    Searches `search_roots` (defaults to ``$HOME/DevOpsSec`` if not provided)
+    up to `max_depth` levels deep. Returns a list of resolved project paths.
+
+    (Fix: BUGREPORT watcher-silent-death-no-recovery, root cause #4.)
+    """
+    _log.debug("launchd_health: scanning for .superharness/ dirs")
+    if search_roots is None:
+        devops = Path.home() / "DevOpsSec"
+        search_roots = [devops] if devops.is_dir() else [Path.home()]
+
+    found: list[Path] = []
+    seen: set[Path] = set()
+
+    for root in search_roots:
+        if not root.is_dir():
+            continue
+        for dirpath, dirnames, _ in os.walk(root):
+            depth = len(Path(dirpath).relative_to(root).parts)
+            if depth > max_depth:
+                dirnames.clear()  # don't recurse deeper
+                continue
+            harness_dir = Path(dirpath) / ".superharness"
+            if harness_dir.is_dir():
+                project = Path(dirpath).resolve()
+                if project not in seen:
+                    seen.add(project)
+                    found.append(project)
+            # Skip hidden dirs to avoid noise
+            dirnames[:] = [d for d in dirnames if not d.startswith(".") or d == ".superharness"]
+
+    _log.info("launchd_health: discovered %d project(s) with .superharness/", len(found))
+    return found
+
+
+def heal_all(search_roots: list[Path] | None = None) -> list[HealReport]:
+    """Run `heal()` for every discovered project with `.superharness/`.
+
+    Each project's operator plist is resolved via its deterministic
+    label hash. Returns a list of per-project HealReports.
+    """
+    import hashlib
+
+    projects = find_all_superharness_projects(search_roots=search_roots)
+    reports: list[HealReport] = []
+    any_fixes = False
+
+    for project_dir in projects:
+        short = hashlib.md5(str(project_dir).encode()).hexdigest()[:8]
+        operator_label = f"com.superharness.operator.{short}"
+        operator_plist = Path.home() / "Library" / "LaunchAgents" / f"{operator_label}.plist"
+
+        report = heal(operator_plist=operator_plist if operator_plist.is_file() else None)
+        report.label = operator_label
+        report.project = str(project_dir)
+        reports.append(report)
+        if report.fixed_count():
+            any_fixes = True
+
+    if any_fixes:
+        summary_lines = "\n".join(
+            f"  [{r.label}] {r.summary()}" for r in reports if r.fixed_count()
+        )
+        _log.info("launchd_health: heal_all fixed %d project(s):\n%s", sum(1 for r in reports if r.fixed_count()), summary_lines)
+    else:
+        _log.debug("launchd_health: heal_all — nothing to fix across %d project(s)", len(projects))
+
+    return reports
