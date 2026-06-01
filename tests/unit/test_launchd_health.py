@@ -236,11 +236,13 @@ class TestWatchdogPlist:
         assert "<key>Label</key>" in content
         assert "com.superharness.operator-watchdog" in content
         assert "<string>heal</string>" in content
+        assert "<string>--auto-discover</string>" in content
         assert "<string>--quiet</string>" in content
         assert "<integer>300</integer>" in content
-        # KeepAlive=false so the watchdog only runs on the timer, not in a loop.
-        assert "<key>KeepAlive</key>\n    <false/>" in content
+        # KeepAlive=true so launchd restarts the watchdog if it crashes.
+        assert "<key>KeepAlive</key>\n    <true/>" in content
         assert "<key>RunAtLoad</key>\n    <true/>" in content
+        assert "<key>WorkingDirectory</key>" in content
 
     def test_watchdog_uses_custom_interval(self, force_macos, isolated_launch_agents):
         from superharness.engine import launchd_health

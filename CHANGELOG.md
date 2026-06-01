@@ -585,3 +585,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-05-31: chore(release): bump to v1.69.4 (doc-drift guard + hygiene cleanup)
 - 2026-05-31: fix(install-hooks): _find_hooks_dir() now prefers the installed binary on PATH over __file__ — prevents hook path from drifting back to dev repo source when PYTHONPATH includes src/
 - 2026-05-31: chore(release): bump to v1.69.5 (fix install-hooks path drift)
+- 2026-06-01: fix(watcher): patch 4 root causes of silent daemon death (BUGREPORT-watcher-silent-death-no-recovery). monitor_and_recover() now catches all exceptions and continues polling; SQLite DB verified healthy on operator startup (0-byte DBs auto-deleted/recreated); watchdog plist KeepAlive=true + WorkingDirectory + --auto-discover flag; operator install --all for bulk project installation; operator heal --auto-discover scans all .superharness/ dirs

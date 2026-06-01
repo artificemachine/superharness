@@ -58,9 +58,63 @@ class Operator:
             pass
         return False
 
+    def _ensure_db_initialized(self):
+        """Verify the SQLite state database is healthy.
+
+        If the DB file is 0 bytes (empty / never initialized), delete and
+        re-create so heartbeat writes don't silently fail. Logs any issues.
+        (Fix: BUGREPORT watcher-silent-death-no-recovery, root cause #3.)
+        """
+        import sqlite3
+        from pathlib import Path
+
+        # Resolve the DB path using the same logic as get_connection().
+        try:
+            from superharness.engine.db import resolve_xdg_state_db_path
+        except ImportError:
+            return  # db module not available; not critical
+
+        state_project = os.environ.get("SUPERHARNESS_STATE_PROJECT", "").strip() or str(self.project_dir)
+        xdg_path = Path(resolve_xdg_state_db_path(state_project))
+        legacy_path = Path(self.project_dir) / ".superharness" / "state.sqlite3"
+
+        for db_file in (xdg_path, legacy_path):
+            if db_file.exists() and db_file.stat().st_size == 0:
+                try:
+                    db_file.unlink()
+                    logger.warning(
+                        "operator.py: deleted 0-byte SQLite DB %s (never initialized) — "
+                        "will be re-created on first write",
+                        db_file,
+                    )
+                except OSError as e:
+                    logger.error(
+                        "operator.py: failed to delete 0-byte SQLite DB %s: %s",
+                        db_file, e,
+                    )
+
+        # Try to initialize the DB to ensure tables exist.
+        try:
+            from superharness.engine.db import get_connection, init_db
+            conn = get_connection(str(self.project_dir))
+            try:
+                init_db(conn)
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(
+                "operator.py: failed to initialize SQLite DB for %s: %s",
+                self.project_dir, e, exc_info=True,
+            )
+
     def start_stack(self, dashboard_port: int = 8787, no_open: bool = False):
         """Start the full Superharness stack."""
         from superharness.engine.trace import trace_event
+
+        # Ensure the state database is healthy before spawning components
+        # that depend on it (watcher heartbeats write to SQLite).
+        self._ensure_db_initialized()
 
         if self._check_singleton():
             op_file = self.project_dir / _OPERATOR_STATE_FILE
@@ -208,21 +262,32 @@ class Operator:
         the forked child process. Uses proc.poll() which reaps zombies
         safely. The watcher is intentionally one-shot, so it exits after
         every tick; the monitor is what keeps it cycling.
+
+        Any unhandled exception in the loop body is caught and logged so
+        the daemon keeps running instead of dying silently. (Fix: BUGREPORT
+        watcher-silent-death-no-recovery, root cause #2.)
         """
         from superharness.engine.trace import trace_event
         try:
             while not self._stopping:
-                for name, proc in list(self.processes.items()):
-                    if proc.poll() is not None:
-                        trace_event(self.project_dir, "process_recovery", {
-                            "component": name, "pid": proc.pid,
-                            "exit_code": proc.returncode, "action": "restart"
-                        })
-                        if name == "watcher":
-                            self._spawn_watcher()
-                        elif name == "dashboard":
-                            port = self._find_available_port(8787)
-                            self._spawn_dashboard(port, no_open=True)
+                try:
+                    for name, proc in list(self.processes.items()):
+                        if proc.poll() is not None:
+                            trace_event(self.project_dir, "process_recovery", {
+                                "component": name, "pid": proc.pid,
+                                "exit_code": proc.returncode, "action": "restart"
+                            })
+                            if name == "watcher":
+                                self._spawn_watcher()
+                            elif name == "dashboard":
+                                port = self._find_available_port(8787)
+                                self._spawn_dashboard(port, no_open=True)
+                except Exception as exc:
+                    logger.error(
+                        "operator.py monitor_and_recover: unhandled exception in loop — "
+                        "continuing in %ss to avoid silent daemon death: %s",
+                        poll_interval, exc, exc_info=True
+                    )
                 time.sleep(poll_interval)
         except KeyboardInterrupt:
             self.stop_all()

@@ -639,52 +639,86 @@ def operator_start(project, port, no_open, no_daemon):
 
 @operator.command(name="install")
 @click.option("--project", "-p", default=".", help="Project directory")
+@click.option("--all", "install_all", is_flag=True, default=False,
+              help="Install the operator for ALL projects with .superharness/")
 @click.option("--watchdog/--no-watchdog", default=True,
               help="Install a 5-min watchdog plist that re-heals the operator on every tick")
-def operator_install(project, watchdog):
+def operator_install(project, install_all, watchdog):
     """Install the Guardian as a persistent system service.
 
     Aggressively removes any stale `com.superharness.*` services and
     orphan plists from prior versions before installing, so old layouts
     can never leak into the new install.
+
+    With --all, discovers every project with a .superharness/ directory
+    and installs the operator for each one. (Fix: BUGREPORT
+    watcher-silent-death-no-recovery, root cause #1.)
     """
     from pathlib import Path
     import hashlib
     import subprocess
 
+    def _install_one(project_dir: Path) -> str:
+        """Install the operator for a single project. Returns the label."""
+        # 1. Clean stale services + orphan plists from prior versions.
+        from superharness.engine.launchd_health import heal as _heal
+        pre = _heal(operator_plist=None)
+        if pre.fixed_count():
+            click.echo(f"  [{project_dir.name}] {pre.summary()}")
+
+        # 2. Run the install script.
+        script_path = Path(__file__).parent / "scripts" / "install-operator-service.sh"
+        if not script_path.exists():
+            script_path = Path(sys.prefix) / "lib" / "python3.11" / "site-packages" / "superharness" / "scripts" / "install-operator-service.sh"
+        click.echo(f"  Installing operator for {project_dir}...")
+        subprocess.run(["bash", str(script_path), str(project_dir)], check=True)
+
+        # 3. Self-heal: verify the operator plist is loaded.
+        short = hashlib.md5(str(project_dir).encode()).hexdigest()[:8]
+        operator_label = f"com.superharness.operator.{short}"
+        operator_plist = Path.home() / "Library" / "LaunchAgents" / f"{operator_label}.plist"
+        post = _heal(operator_plist=operator_plist)
+        if post.fixed_count():
+            click.echo(f"  [{project_dir.name}] {post.summary()}")
+        return operator_label
+
+    if install_all:
+        from superharness.engine.launchd_health import (
+            find_all_superharness_projects,
+            write_watchdog_plist,
+            bootstrap as _bootstrap,
+        )
+        projects = find_all_superharness_projects()
+        if not projects:
+            click.echo("No projects found with .superharness/ directory.")
+            return
+        click.echo(f"Installing operator for {len(projects)} project(s)...")
+        labels = []
+        for p in projects:
+            try:
+                labels.append(_install_one(p))
+            except Exception as e:
+                click.echo(f"  FAILED for {p}: {e}", err=True)
+        click.echo(f"\nInstalled operator for {len(labels)} of {len(projects)} project(s):")
+        for label in labels:
+            click.echo(f"  {label}")
+
+        # Watchdog: single global plist (already supports auto-discovery).
+        if watchdog:
+            wp = write_watchdog_plist()
+            if _bootstrap(wp):
+                click.echo(f"\nWatchdog installed: {wp.name} (heals every 5 min, auto-discovers projects)")
+            else:
+                click.echo(f"\nWarning: watchdog plist written but did not bootstrap", err=True)
+        return
+
     project_dir = Path(project).resolve()
+    _install_one(project_dir)
 
-    # 1. Clean stale services + orphan plists from prior versions BEFORE
-    # writing the new plist. This is the fix for "old versions leaking"
-    # — any com.superharness.inbox.* / .watcher.* or zombie entries get
-    # bootout'd here.
-    from superharness.engine.launchd_health import heal as _heal
-    pre = _heal(operator_plist=None)
-    if pre.fixed_count():
-        click.echo(pre.summary())
-
-    # 2. Hand off to the install script which writes + loads the plist.
-    script_path = Path(__file__).parent / "scripts" / "install-operator-service.sh"
-    if not script_path.exists():
-        script_path = Path(sys.prefix) / "lib" / "python3.11" / "site-packages" / "superharness" / "scripts" / "install-operator-service.sh"
-    click.echo(f"Installing Superharness service for {project_dir}...")
-    subprocess.run(["bash", str(script_path), str(project_dir)], check=True)
-
-    # 3. Self-heal: verify the operator plist actually ended up in launchd.
-    # Belt-and-braces in case the install script's `launchctl load` raced
-    # or the user previously bootout'd the same label.
-    short = hashlib.md5(str(project_dir).encode()).hexdigest()[:8]
-    operator_label = f"com.superharness.operator.{short}"
-    operator_plist = Path.home() / "Library" / "LaunchAgents" / f"{operator_label}.plist"
-    post = _heal(operator_plist=operator_plist)
-    if post.fixed_count():
-        click.echo(post.summary())
-
-    # 4. Watchdog: 5-min ticker that catches the pathological case
-    # (operator plist on disk + not loaded → no auto-restart possible).
+    # 4. Watchdog
     if watchdog:
         from superharness.engine.launchd_health import (
-            write_watchdog_plist, bootstrap as _bootstrap, watchdog_plist_path,
+            write_watchdog_plist, bootstrap as _bootstrap,
         )
         wp = write_watchdog_plist()
         if _bootstrap(wp):
@@ -695,16 +729,36 @@ def operator_install(project, watchdog):
 
 @operator.command(name="heal")
 @click.option("--project", "-p", default=".", help="Project directory")
+@click.option("--auto-discover", is_flag=True, default=False,
+              help="Scan for all projects with .superharness/ and heal each one")
 @click.option("--quiet", is_flag=True, default=False,
               help="Suppress 'nothing to do' output (for watchdog use)")
-def operator_heal(project, quiet):
+def operator_heal(project, auto_discover, quiet):
     """Repair launchd state: bootout zombies, remove stale prior-version
     services and plists, and bootstrap the operator if its plist is on
     disk but not loaded.
+
+    With --auto-discover, scans $HOME/DevOpsSec (or $HOME) for all
+    projects containing a .superharness/ directory and heals each one.
+    This is the mode the watchdog plist uses to catch every project.
+    (Fix: BUGREPORT watcher-silent-death-no-recovery, root cause #4.)
     """
     from pathlib import Path
     import hashlib
-    from superharness.engine.launchd_health import heal as _heal
+    from superharness.engine.launchd_health import heal as _heal, heal_all as _heal_all
+
+    if auto_discover:
+        reports = _heal_all()
+        total_fixes = sum(r.fixed_count() for r in reports)
+        if total_fixes == 0 and quiet:
+            return
+        for report in reports:
+            if report.fixed_count() or not quiet:
+                label_str = report.label or "?"
+                click.echo(f"[{label_str} | {report.project or '?'}] {report.summary()}")
+        if total_fixes:
+            click.echo(f"heal-all: fixed {total_fixes} issue(s) across {len(reports)} project(s)")
+        return
 
     project_dir = Path(project).resolve()
     short = hashlib.md5(str(project_dir).encode()).hexdigest()[:8]
