@@ -648,6 +648,98 @@ def _section_task(project: Path, config: dict, non_interactive: bool) -> None:
     print_info("Add your first task: shux task create --title \"...\"")
 
 
+def _section_fleet(project: Path, config: dict, non_interactive: bool) -> None:
+    """Detect and configure local AI model providers (Ollama, vLLM fleet, cloud).
+
+    Writes ~/.config/superharness/fleet.yaml if local providers are found.
+    This makes superharness use locally-hosted models instead of cloud APIs
+    for all agent tiers (mini/standard/max).
+    """
+    import urllib.request
+    import json as _json
+    from pathlib import Path
+
+    from superharness.ui.prompts import print_header, print_info, print_success, print_warning
+
+    print_header("AI model providers")
+    fleet_config: dict = {"fleet": {"endpoints": {}, "models": {}}}
+    fleet_dir = Path.home() / ".config" / "superharness"
+    fleet_path = fleet_dir / "fleet.yaml"
+
+    # 0. Check if fleet config already exists
+    if fleet_path.exists():
+        try:
+            import yaml
+            existing = yaml.safe_load(fleet_path.read_text()) or {}
+            if existing.get("fleet", {}).get("models"):
+                print_info(f"Fleet config already exists: {fleet_path}")
+                print_info(f"Tiers: {', '.join(existing['fleet']['models'].keys())}")
+                if non_interactive:
+                    return
+                choice = input("  Reconfigure? [y/N]: ").strip().lower()
+                if choice != "y":
+                    return
+        except Exception:
+            pass
+
+    # 1. Auto-detect Ollama
+    ollama_found = False
+    try:
+        req = urllib.request.Request("http://localhost:11434/api/tags")
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            tags = _json.loads(resp.read())
+            models = [m["name"] for m in tags.get("models", [])]
+            if models:
+                ollama_found = True
+                print_success(f"Ollama detected ({len(models)} models): {', '.join(models[:5])}")
+                # Map largest available model to max tier, smallest to mini
+                fleet_config["fleet"]["endpoints"]["all"] = "http://localhost:11434/v1"
+                if any("70b" in m or "32b" in m for m in models):
+                    fleet_config["fleet"]["models"]["max"] = next(m for m in models if "70b" in m or "32b" in m)
+                elif any("14b" in m or "13b" in m for m in models):
+                    fleet_config["fleet"]["models"]["max"] = next(m for m in models if "14b" in m or "13b" in m)
+                fleet_config["fleet"]["models"]["standard"] = next((m for m in models if "8b" in m or "7b" in m), models[0])
+                fleet_config["fleet"]["models"]["mini"] = fleet_config["fleet"]["models"]["standard"]
+    except Exception:
+        pass
+
+    if not ollama_found and not non_interactive:
+        print_info("No local models detected.")
+        print_info("You can configure providers now or later in ~/.config/superharness/fleet.yaml")
+        print_info("Options: ollama | vllm | cloud | skip")
+
+    # 2. Ask about vLLM fleet or cloud
+    if not non_interactive and not ollama_found:
+        choice = input("  Provider type [ollama/vllm/cloud/skip]: ").strip().lower()
+        if choice == "ollama":
+            endpoint = input("  Ollama URL [http://localhost:11434/v1]: ").strip()
+            fleet_config["fleet"]["endpoints"]["all"] = endpoint or "http://localhost:11434/v1"
+            fleet_config["fleet"]["models"]["max"] = input("  Model for max tier [llama3:70b]: ").strip() or "llama3:70b"
+            fleet_config["fleet"]["models"]["standard"] = input("  Model for standard tier [llama3:8b]: ").strip() or "llama3:8b"
+            fleet_config["fleet"]["models"]["mini"] = input("  Model for mini tier [llama3:8b]: ").strip() or "llama3:8b"
+        elif choice == "vllm":
+            fleet_config["fleet"]["endpoints"]["max"] = input("  vLLM endpoint (max tier) [http://10.0.0.1:8000/v1]: ").strip()
+            fleet_config["fleet"]["models"]["max"] = input("  Model for max tier [qwopus-27b]: ").strip()
+            fleet_config["fleet"]["endpoints"]["standard"] = input("  vLLM endpoint (standard tier) [same]: ").strip()
+            fleet_config["fleet"]["models"]["standard"] = input("  Model for standard tier [qwen3-32b]: ").strip()
+            fleet_config["fleet"]["endpoints"]["mini"] = input("  vLLM endpoint (mini tier) [same]: ").strip()
+            fleet_config["fleet"]["models"]["mini"] = input("  Model for mini tier [qwen3-14b]: ").strip()
+        elif choice == "cloud":
+            print_info("Using default cloud models (Claude, GPT, Gemini). No fleet config needed.")
+            return
+        else:
+            print_info("Skipped. Configure later: edit ~/.config/superharness/fleet.yaml")
+            return
+
+    # 3. Write fleet config
+    if fleet_config["fleet"]["models"]:
+        fleet_dir.mkdir(parents=True, exist_ok=True)
+        import yaml
+        fleet_path.write_text(yaml.dump(fleet_config, default_flow_style=False))
+        print_success(f"Fleet config written: {fleet_path}")
+        print_info("All agent tiers now route to local models. Run 'shux doctor' to verify.")
+
+
 # ---------------------------------------------------------------------------
 # Section registry
 # ---------------------------------------------------------------------------
@@ -655,6 +747,7 @@ def _section_task(project: Path, config: dict, non_interactive: bool) -> None:
 ONBOARD_SECTIONS: list[tuple[str, str, object]] = [
     ("project",  "Project identity",        _section_project),
     ("agent",    "Agent settings",          _section_agent),
+    ("fleet",    "AI model providers",      _section_fleet),
     ("git",      "Git & tracking",          _section_git),
     ("hooks",    "Hooks",                   _section_hooks),
     ("watcher",  "Watcher daemon",          _section_watcher),

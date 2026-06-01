@@ -22,7 +22,10 @@ Type these directly into Claude Code or Codex CLI — no terminal needed after f
 | `shux demo` | Zero-config task lifecycle walkthrough in a temp directory — explains what superharness is and shows all 5 core commands before running |
 | `shux uninstall` | Remove watcher and system artifacts for this project |
 | `shux hygiene` | Validate protocol compliance (contract, handoffs, ledger) |
-| `shux dashboard` | Open browser dashboard |
+| `shux operator start` | Start background watcher (Headless) |
+| `shux operator start --dashboard` | Start watcher + persistent dashboard |
+| `shux dashboard` | Launch on-demand UI (auto-closes if idle) |
+| `shux dashboard-list` | List all running dashboard processes |
 | `shux watch` | Start continuous watcher in foreground |
 | `shux update` | Pull latest superharness (`git pull` in repo) + re-run init to refresh `CLAUDE.md`, `AGENTS.md`, templates |
 | `shux config get <key>` | Read a dot-path key from `profile.yaml` (e.g. `budget.daily_limit`) |

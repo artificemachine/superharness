@@ -117,7 +117,7 @@ def test_blackbox_discuss_start_creates_discussion() -> None:
         r = subprocess.run(
             [sys.executable, "-m", "superharness.commands.discuss", "start",
              "--project", str(d), "--topic", "BB test", "--task", "bb-discuss",
-             "--owners", "claude-code,codex-cli", "--max-rounds", "1"],
+             "--owners", "claude-code,codex-cli", "--max-rounds", "1", "--force"],
             capture_output=True, text=True,
         )
         assert "started" in r.stdout.lower(), f"Discuss start failed: {r.stdout} {r.stderr}"

@@ -35,6 +35,28 @@ class Operator:
         self.heartbeat_file = self.harness_dir / "watcher.heartbeat"
         self.processes: dict[str, subprocess.Popen] = {}
         self._stopping = False
+        self._python = self._resolve_python()
+        self._dashboard_port: int | None = None  # track port for reuse on restart
+        self._use_dashboard = False  # only spawn dashboard if True (Opt-in)
+        self._restart_history: dict[str, list[float]] = {}  # component → restart timestamps
+        self._max_restarts = 5  # circuit breaker: max restarts per component in window
+        self._restart_window = 600  # 10-minute window for restart counting
+
+    @staticmethod
+    def _resolve_python() -> str:
+        """Resolve a stable Python that has superharness installed.
+        
+        sys.executable can become stale after pipx reinstall (venv is replaced).
+        Fall back to shutil.which for resilience.
+        """
+        import shutil
+        if os.path.isfile(sys.executable):
+            return sys.executable
+        for candidate in ("python3", "python"):
+            path = shutil.which(candidate)
+            if path:
+                return path
+        return sys.executable  # last resort
 
     def _check_singleton(self) -> bool:
         """Return True if an operator is already running for this project.
@@ -108,9 +130,11 @@ class Operator:
                 self.project_dir, e, exc_info=True,
             )
 
-    def start_stack(self, dashboard_port: int = 8787, no_open: bool = False):
-        """Start the full Superharness stack."""
+    def start_stack(self, dashboard_port: int = 8787, no_open: bool = False, use_dashboard: bool = False):
+        """Start the Superharness stack (Watcher, optional Dashboard)."""
         from superharness.engine.trace import trace_event
+
+        self._use_dashboard = use_dashboard
 
         # Ensure the state database is healthy before spawning components
         # that depend on it (watcher heartbeats write to SQLite).
@@ -134,20 +158,22 @@ class Operator:
             )
             sys.exit(0)
 
-        # Patch: Try to reclaim the port if it is held by a stale dashboard FROM THIS PROJECT
-        self._reclaim_port_if_zombie(dashboard_port)
-
-        actual_port = self._find_available_port(dashboard_port)
-
-        if actual_port != dashboard_port:
-            trace_event(self.project_dir, "port_arbitration", {
-                "requested": dashboard_port,
-                "assigned": actual_port,
-                "reason": "port_busy"
-            })
-
         self._spawn_watcher()
-        self._spawn_dashboard(actual_port, no_open=no_open)
+        
+        actual_port = dashboard_port
+        if self._use_dashboard:
+            # Patch: Try to reclaim the port if it is held by a stale dashboard FROM THIS PROJECT
+            self._reclaim_port_if_zombie(dashboard_port)
+            actual_port = self._find_available_port(dashboard_port)
+
+            if actual_port != dashboard_port:
+                trace_event(self.project_dir, "port_arbitration", {
+                    "requested": dashboard_port,
+                    "assigned": actual_port,
+                    "reason": "port_busy"
+                })
+            self._spawn_dashboard(actual_port, no_open=no_open)
+            
         self._write_daemon_info(actual_port)
 
     def _reclaim_port_if_zombie(self, port: int):
@@ -187,6 +213,7 @@ class Operator:
 
     def _write_daemon_info(self, port: int):
         """Record the active operator/dashboard state to disk."""
+        self._dashboard_port = port  # track for reuse on restart
         info = {
             "operator_pid": os.getpid(),
             "dashboard_port": port,
@@ -200,7 +227,7 @@ class Operator:
     def _spawn_watcher(self):
         """Launch the background watcher."""
         cmd = [
-            sys.executable, "-m", "superharness.commands.inbox_watch",
+            self._python, "-m", "superharness.commands.inbox_watch",
             "--project", str(self.project_dir),
             "--interval", "15",
             "--non-interactive",
@@ -212,7 +239,7 @@ class Operator:
     def _spawn_dashboard(self, port: int, no_open: bool = False):
         """Launch the dashboard UI."""
         cmd = [
-            sys.executable, "-m", "superharness.scripts.dashboard-ui",
+            self._python, "-m", "superharness.scripts.dashboard-ui",
             "--port", str(port),
             "--project", str(self.project_dir)
         ]
@@ -266,6 +293,11 @@ class Operator:
         Any unhandled exception in the loop body is caught and logged so
         the daemon keeps running instead of dying silently. (Fix: BUGREPORT
         watcher-silent-death-no-recovery, root cause #2.)
+
+        Before restarting a component, the old subprocess is terminated and
+        waited to prevent orphan accumulation. Dashboard ports are reused
+        rather than allocated fresh on every restart. (Fix: process-leak
+        with 403 orphans at load 373.)
         """
         from superharness.engine.trace import trace_event
         try:
@@ -277,11 +309,42 @@ class Operator:
                                 "component": name, "pid": proc.pid,
                                 "exit_code": proc.returncode, "action": "restart"
                             })
+                            # Circuit breaker: if a component has been restarted
+                            # more than _max_restarts times in _restart_window
+                            # seconds, stop restarting it. Prevents the death spiral
+                            # where a crashing component spawns hundreds of orphans
+                            # (observed: 121 inbox_watch, 86 dashboard-ui at load 373).
+                            now_ts = time.time()
+                            history = self._restart_history.setdefault(name, [])
+                            history[:] = [t for t in history if now_ts - t < self._restart_window]
+                            history.append(now_ts)
+                            if len(history) > self._max_restarts:
+                                logger.error(
+                                    "operator.py: circuit breaker TRIPPED for %s — "
+                                    "%d restarts in %ds. Pausing restarts for %ds.",
+                                    name, len(history), self._restart_window,
+                                    self._restart_window,
+                                )
+                                trace_event(self.project_dir, "circuit_breaker_trip", {
+                                    "component": name,
+                                    "restarts": len(history),
+                                    "window_seconds": self._restart_window,
+                                })
+                                continue  # skip restart this cycle; will retry later
+                            # Kill old process before replacing — prevents
+                            # orphan accumulation when subprocesses are slow
+                            # to exit (DB connections, HTTP keep-alive, etc.)
+                            self._kill_process(proc, name)
                             if name == "watcher":
                                 self._spawn_watcher()
-                            elif name == "dashboard":
-                                port = self._find_available_port(8787)
-                                self._spawn_dashboard(port, no_open=True)
+                            elif name == "dashboard" and self._use_dashboard:
+                                # Reuse the last known port instead of finding
+                                # a new one. Port inflation (8787→8796) was
+                                # caused by the old dashboard not releasing
+                                # the port before the new one bound.
+                                if self._dashboard_port is None:
+                                    self._dashboard_port = self._find_available_port(8787)
+                                self._spawn_dashboard(self._dashboard_port, no_open=True)
                 except Exception as exc:
                     logger.error(
                         "operator.py monitor_and_recover: unhandled exception in loop — "
@@ -291,6 +354,19 @@ class Operator:
                 time.sleep(poll_interval)
         except KeyboardInterrupt:
             self.stop_all()
+
+    @staticmethod
+    def _kill_process(proc: subprocess.Popen, name: str = "") -> None:
+        """Terminate and wait for a subprocess. Force-kill if it doesn't exit."""
+        try:
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=2)
+        except (OSError, ProcessLookupError):
+            pass  # already dead
 
     def stop_all(self):
         """Gracefully terminate all managed processes."""

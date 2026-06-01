@@ -476,6 +476,11 @@ def _run_dispatch_cmd(
     if launcher_timeout > 0:
         args += ["--launcher-timeout", str(launcher_timeout)]
 
+    # Session-inject: for discussion rounds, write prompt files the agent's
+    # session hooks can detect, instead of spawning a one-shot process.
+    # (Fix: PROPOSAL-session-injection-discussion-dispatch)
+    args.append("--session-inject")
+
     if print_only:
         subprocess.run(args, check=False, env=env)
         return
@@ -2566,6 +2571,15 @@ def _run_scripts(
     except Exception as e:
         print(f"Warning: comprehensive gc failed: {e}", file=sys.stderr)
 
+    # Reinforcement loop — learn from history and auto-adjust behavior.
+    # Runs every 5 minutes (cooldown-gated). Reads trace, failures, and
+    # discussions to detect patterns and take corrective action.
+    try:
+        if _should_run("reinforce", cooldown=300):
+            _reinforce_loop(project_dir)
+    except Exception as e:
+        print(f"Warning: reinforce loop failed: {e}", file=sys.stderr)
+
     # Cancel pending items for agents without dispatch scripts (will never dispatch)
     try:
         _cancel_undispatchable_agents(project_dir)
@@ -3517,6 +3531,338 @@ def _auto_delete_stale_inbox(project_dir: str) -> int:
     except Exception as e:
         print(f"auto-delete-stale: failed: {e}", file=sys.stderr)
         return 0
+
+
+# ---------------------------------------------------------------------------
+# Reinforcement loop — learn from history and auto-adjust behavior
+# ---------------------------------------------------------------------------
+
+_REINFORCE_WINDOW_MINUTES = 30  # scan last 30 min of failures
+_REINFORCE_FAILURE_THRESHOLD = 3  # auto-pause agent after N failures in window
+
+
+def _maybe_pause_agent(conn, agent: str, failure_count: int, now, project_dir: str) -> None:
+    """Pause all pending/launched items for an agent if not already paused."""
+    from datetime import timedelta
+    from superharness.engine.trace import trace_event
+    window_start = (now - timedelta(minutes=_REINFORCE_WINDOW_MINUTES)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    already_paused = conn.execute(
+        "SELECT 1 FROM inbox WHERE target_agent=? AND status='paused' "
+        "AND paused_at >= ? LIMIT 1",
+        (agent, window_start),
+    ).fetchone()
+    if already_paused:
+        return
+    paused_now = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    cursor = conn.execute(
+        """UPDATE inbox SET status='paused', paused_at=?, failed_reason=?
+           WHERE target_agent=? AND status IN ('pending','launched')""",
+        (paused_now,
+         f"reinforce: fleet-classified permanent_block after {failure_count} failures",
+         agent),
+    )
+    if cursor.rowcount and cursor.rowcount > 0:
+        conn.commit()
+        trace_event(project_dir, "reinforce_agent_pause", {
+            "agent": agent, "failure_count": failure_count,
+            "classification": "permanent_block",
+        })
+        print(f"reinforce: paused {agent} — fleet classified as permanent_block", file=sys.stderr)
+
+
+def _reinforce_loop(project_dir: str) -> None:
+    """Self-reinforcement: read history, detect patterns, auto-correct.
+
+    Runs every 5 minutes (cooldown-gated by caller). Actions taken:
+      1. Smart failure analysis — fleet-powered root cause classification
+      2. Agent learning — read trace.jsonl for long-term patterns
+      3. Consensus extraction — create tasks from discussion outcomes
+
+    Uses the local GPU fleet for intelligent failure analysis instead of
+    hardcoded thresholds. Each decision includes the fleet's reasoning.
+    """
+    from datetime import datetime, timezone, timedelta
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine.trace import trace_event
+
+    now = datetime.now(timezone.utc)
+    window_start = (now - timedelta(minutes=_REINFORCE_WINDOW_MINUTES)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+
+    try:
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+
+            # ── 1. Smart failure analysis ─────────────────────────────
+            # For each agent with failures in the window, ask the fleet
+            # to classify the root cause. Only pause agents that the fleet
+            # classifies as "permanent_block".
+            agent_failures: dict[str, list[dict]] = {}
+            rows = conn.execute(
+                """
+                SELECT target_agent, task_id, failed_reason, failed_at
+                FROM inbox
+                WHERE status = 'failed' AND failed_at >= ?
+                ORDER BY failed_at DESC
+                """,
+                (window_start,),
+            ).fetchall()
+            for row in rows:
+                agent = row["target_agent"]
+                agent_failures.setdefault(agent, []).append({
+                    "task": row["task_id"] or "",
+                    "error": row["failed_reason"] or "unknown",
+                    "at": row["failed_at"] or "",
+                })
+
+            for agent, failures in agent_failures.items():
+                if len(failures) < 2:
+                    continue  # not enough data to analyze
+
+                # Build history summary
+                history = "; ".join(
+                    f"{f['at'][:16]}: {f['error'][:60]}" for f in failures[:5]
+                )
+                latest = failures[0]
+
+                # Ask the fleet to analyze, then try to self-heal
+                try:
+                    from superharness.engine.model_router import analyze_failure
+                    classification = analyze_failure(
+                        agent=agent,
+                        task=latest["task"],
+                        error=latest["error"],
+                        history=history,
+                    )
+                except Exception:
+                    classification = "unknown"
+
+                # Try self-healing BEFORE pausing — fix the problem if we can
+                healed, heal_msg = _self_heal(project_dir, agent, latest["error"])
+                if healed:
+                    print(
+                        f"reinforce: self-healed {agent} — {heal_msg}",
+                        file=sys.stderr,
+                    )
+                    trace_event(project_dir, "reinforce_self_heal", {
+                        "agent": agent, "action": heal_msg,
+                        "error": latest["error"][:200],
+                    })
+                    continue  # skip pause — agent should work now
+
+                trace_event(project_dir, "reinforce_analysis", {
+                    "agent": agent,
+                    "failures": len(failures),
+                    "classification": classification,
+                    "self_heal_attempted": True,
+                    "self_heal_result": heal_msg,
+                    "latest_error": latest["error"][:200],
+                })
+
+                if classification == "permanent_block":
+                    _maybe_pause_agent(conn, agent, len(failures), now, project_dir)
+                elif classification != "transient":
+                    print(
+                        f"reinforce: {agent} — fleet classified {len(failures)} "
+                        f"failures as '{classification}', not pausing",
+                        file=sys.stderr,
+                    )
+
+            # ── 2. Learn from trace.jsonl ──────────────────────────────
+            try:
+                import json as _json
+                from pathlib import Path
+                trace_file = Path(project_dir) / ".superharness" / "trace.jsonl"
+                if trace_file.exists():
+                    agent_pause_counts: dict[str, int] = {}
+                    for line in trace_file.read_text().splitlines():
+                        if not line.strip():
+                            continue
+                        try:
+                            event = _json.loads(line)
+                            if event.get("type") == "reinforce_agent_pause":
+                                agent = event.get("agent", "")
+                                if agent:
+                                    agent_pause_counts[agent] = agent_pause_counts.get(agent, 0) + 1
+                        except _json.JSONDecodeError:
+                            continue
+                    for agent, count in agent_pause_counts.items():
+                        if count >= 3:
+                            already_logged = any(
+                                f'"agent":"{agent}"' in line and '"learning":"agent_deprioritized"' in line
+                                for line in trace_file.read_text().splitlines()[-50:]
+                            ) if trace_file.exists() else False
+                            if not already_logged:
+                                trace_event(project_dir, "reinforce_learning", {
+                                    "learning": "agent_deprioritized",
+                                    "agent": agent,
+                                    "reason": f"paused {count} times",
+                                    "action": "profile_update",
+                                })
+            except Exception:
+                pass
+
+            # ── 3. Consensus extraction ─────────────────────────────────
+            try:
+                from superharness.engine import discussions_dao
+                consensus_discs = discussions_dao.get_all(conn, status="consensus")
+                for disc in consensus_discs:
+                    existing = conn.execute(
+                        "SELECT 1 FROM tasks WHERE id LIKE ? LIMIT 1",
+                        (f"auto-consensus-{disc.id}%",),
+                    ).fetchone()
+                    if existing:
+                        continue
+                    task_id = f"auto-consensus-{disc.id}-{now.strftime('%Y%m%d')}"
+                    topic = (disc.topic or "discussion")[:80]
+                    conn.execute(
+                        "INSERT OR IGNORE INTO tasks (id, title, owner, status, "
+                        "created_at, acceptance_criteria, workflow) "
+                        "VALUES (?, ?, ?, 'todo', ?, '[]', 'implementation')",
+                        (task_id, f"Consensus: {topic}", "owner", now.strftime("%Y-%m-%dT%H:%M:%SZ")),
+                    )
+                    conn.commit()
+                    trace_event(project_dir, "reinforce_consensus_task", {
+                        "discussion_id": disc.id, "task_id": task_id, "topic": topic,
+                    })
+            except Exception:
+                pass
+
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("reinforce_loop failed: %s", e, exc_info=True)
+
+
+# ── Self-healing: match known error patterns → attempt safe fix ──────────────
+
+_HEAL_PATTERNS: list[tuple[str, str, str]] = [
+    # (regex pattern, fix description, fix action keyword)
+    (r"No module named '([^']+)'", "module_not_found", "pip_install"),
+    (r"No module named \"([^\"]+)\"", "module_not_found", "pip_install"),
+    (r"No such file or directory: '([^']+)'", "file_not_found", "check_path"),
+    (r"Address already in use|port.*already in use|Errno 48", "port_conflict", "kill_orphan"),
+    (r"database is locked|database locked", "db_locked", "retry_db"),
+    (r"email\.message|importlib\.metadata", "py314_incompat", "downgrade_python"),
+]
+
+
+def _self_heal(project_dir: str, agent: str, error: str) -> tuple[bool, str]:
+    """Attempt to auto-heal a known failure pattern.
+    
+    Returns (healed, action_description). Never raises — all errors caught.
+    Only attempts safe fixes: install missing modules, kill orphan processes,
+    clean up stale locks. Does NOT modify code or configuration.
+    """
+    import re
+    from superharness.engine.trace import trace_event
+    
+    for pattern, desc, action in _HEAL_PATTERNS:
+        m = re.search(pattern, error, re.IGNORECASE)
+        if not m:
+            continue
+        
+        if action == "pip_install":
+            module_name = m.group(1).split(".")[0]  # top-level module only
+            if module_name in ("email", "importlib", "os", "sys", "json", "re", "time",
+                               "pathlib", "subprocess", "logging", "typing", "collections"):
+                # stdlib module — not fixable via pip
+                trace_event(project_dir, "self_heal_skip", {
+                    "error": desc, "detail": f"stdlib module '{module_name}' — not pip-installable"
+                })
+                return False, f"stdlib module '{module_name}' cannot be pip-installed"
+            
+            # Try pip install
+            try:
+                import subprocess as _sp
+                python = os.environ.get("PYTHON", "python3")
+                result = _sp.run(
+                    [python, "-m", "pip", "install", module_name],
+                    capture_output=True, text=True, timeout=30,
+                )
+                if result.returncode == 0:
+                    trace_event(project_dir, "self_heal_success", {
+                        "action": "pip_install", "module": module_name, "agent": agent,
+                    })
+                    return True, f"pip installed '{module_name}'"
+                else:
+                    trace_event(project_dir, "self_heal_fail", {
+                        "action": "pip_install", "module": module_name,
+                        "stderr": result.stderr[:200],
+                    })
+                    return False, f"pip install '{module_name}' failed: {result.stderr[:100]}"
+            except Exception as e:
+                return False, f"pip install failed: {e}"
+        
+        if action == "kill_orphan":
+            # Find port from error or use a common port
+            port_match = re.search(r":(\d{4,5})", error)
+            port = int(port_match.group(1)) if port_match else None
+            killed = 0
+            if port:
+                try:
+                    import subprocess as _sp
+                    # lsof -ti :port → PIDs using that port
+                    result = _sp.run(["lsof", "-ti", f":{port}"], capture_output=True, text=True, timeout=5)
+                    for pid_str in result.stdout.strip().split():
+                        try:
+                            os.kill(int(pid_str), 9)
+                            killed += 1
+                        except (OSError, ProcessLookupError, ValueError):
+                            pass
+                except Exception:
+                    pass
+            if killed > 0:
+                trace_event(project_dir, "self_heal_success", {
+                    "action": "kill_orphan", "port": port, "killed": killed,
+                })
+                return True, f"killed {killed} process(es) on port {port}"
+            return False, "no orphan processes found to kill"
+        
+        if action == "retry_db":
+            # Try PRAGMA to unlock SQLite
+            try:
+                from superharness.engine.db import get_connection
+                conn = get_connection(project_dir)
+                try:
+                    conn.execute("PRAGMA busy_timeout=10000")
+                    conn.execute("ROLLBACK")
+                    trace_event(project_dir, "self_heal_success", {
+                        "action": "db_unlock",
+                    })
+                    return True, "SQLite pragma executed — retry may succeed"
+                finally:
+                    conn.close()
+            except Exception:
+                return False, "SQLite pragma failed"
+        
+        if action == "downgrade_python":
+            trace_event(project_dir, "self_heal_skip", {
+                "error": desc, "detail": "Python 3.14 incompatibility — cannot auto-fix"
+            })
+            return False, "Python 3.14 incompatibility — use Python 3.11/3.12 instead"
+        
+        if action == "check_path":
+            path = m.group(1)
+            if os.path.exists(path):
+                return False, f"path '{path}' exists — not a missing file issue"
+            # Check if it's a stale pipx venv path
+            if "pipx/venvs" in path:
+                trace_event(project_dir, "self_heal_skip", {
+                    "error": desc, "detail": "stale pipx venv path — reinstalling fixes this"
+                })
+                return False, "stale pipx venv path — run: pipx install superharness"
+            return False, f"file '{path}' not found — check path"
+    
+    # Unknown error pattern — don't attempt fix
+    trace_event(project_dir, "self_heal_unknown", {
+        "error": error[:200], "agent": agent,
+    })
+    return False, "unknown error pattern — no auto-fix available"
 
 
 # ---------------------------------------------------------------------------

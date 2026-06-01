@@ -41,6 +41,7 @@ class DispatchContext:
     script_dir: str
     sqlite_primary: bool
     target_filter: str | None = None
+    session_inject: bool = False
 
     # Mutated during stages
     item: dict = field(default_factory=dict)
@@ -599,6 +600,7 @@ def dispatch(
     non_interactive: bool = False,
     codex_bypass: bool = False,
     launcher_timeout: int = 0,
+    session_inject: bool = False,
 ) -> int:
     project_dir = os.path.realpath(project_dir)
     harness_dir = os.path.join(project_dir, ".superharness")
@@ -646,6 +648,7 @@ def dispatch(
             script_dir=script_dir,
             lock=lock,
             sqlite_primary=_sqlite_primary,
+            session_inject=session_inject,
         )
     finally:
         lock.release()
@@ -663,6 +666,7 @@ def _do_dispatch(
     script_dir: str,
     lock: _MkdirLock,
     sqlite_primary: bool = False,
+    session_inject: bool = False,
 ) -> int:
     ctx = DispatchContext(
         project_dir=project_dir,
@@ -675,6 +679,7 @@ def _do_dispatch(
         launcher_timeout=launcher_timeout,
         script_dir=script_dir,
         sqlite_primary=sqlite_primary,
+        session_inject=session_inject,
     )
 
     # 1. Claim
@@ -704,6 +709,20 @@ def _do_dispatch(
     # guard never sees them. Skip the launch and mark the item done.
     if _skip_already_done_discussion_round(ctx):
         return 0
+
+    # 4c. Session-inject mode: for discussion rounds, write a prompt file
+    # instead of spawning an agent subprocess. The agent's session hooks
+    # detect the file and surface the prompt in the active session.
+    # (Fix: PROPOSAL-session-injection-discussion-dispatch)
+    if ctx.session_inject and ctx.is_discussion:
+        # Guard: skip if this task+agent already has a dispatched or done item.
+        # Prevents duplicate dispatches when YAML inbox reconciliation
+        # creates new pending entries for the same task.
+        if _already_session_injected(ctx):
+            return 0
+        if _write_discussion_prompt_file(ctx):
+            return _reconcile_session_inject(ctx)
+        return _handle_failure(ctx)
 
     # 5. Execute
     _execute_agent(ctx)
@@ -1305,6 +1324,132 @@ def _skip_already_done_discussion_round(ctx: DispatchContext) -> bool:
     return False
 
 
+def _write_discussion_prompt_file(ctx: DispatchContext) -> bool:
+    """Write a .prompt.md file for session injection instead of spawning a process.
+
+    For discussion round tasks, the agent process is a one-shot that typically
+    exits without engaging. Instead, write the prompt to a known path that
+    the agent's session hooks can detect and surface in the active session.
+    (Fix: PROPOSAL-session-injection-discussion-dispatch)
+    """
+    parts = ctx.item_task.split("/")
+    if len(parts) != 2:
+        return False
+    discuss_id, round_slug = parts
+    try:
+        round_num = int(round_slug.split("-", 1)[1])
+    except (IndexError, ValueError):
+        round_num = -1
+
+    prompt_dir = os.path.join(
+        ctx.exec_project, ".superharness", "discussions", discuss_id,
+    )
+    os.makedirs(prompt_dir, exist_ok=True)
+    prompt_path = os.path.join(prompt_dir, f"{round_slug}-{ctx.item_to}.prompt.md")
+
+    # Build the prompt content from the delegate args
+    prompt_lines = [
+        f"# Discussion Round {round_num} — {ctx.item_to}",
+        "",
+        f"**Discussion ID:** `{discuss_id}`",
+        f"**Round:** {round_num}",
+        f"**Agent:** {ctx.item_to}",
+        "",
+        "## Task",
+        "",
+        "You have been dispatched to participate in this discussion round.",
+        "Analyze the topic and prior round context, then write your submission.",
+        "",
+        "## Submission Output",
+        "",
+        f"Write your verdict and position to:",
+        f"`.superharness/discussions/{discuss_id}/{round_slug}-{ctx.item_to}.yaml`",
+        "",
+        "Use: `shux discuss submit --project <project> --id <disc_id> --round <N> --verdict <agree|disagree|partial|consensus|abstain>`",
+    ]
+
+    # Include the original launch args as context (they contain the full prompt)
+    if ctx.launch_args:
+        prompt_lines.extend([
+            "",
+            "## Original Dispatch Prompt",
+            "",
+            "```",
+        ])
+        # Last arg is typically the full prompt text
+        prompt_text = ctx.launch_args[-1] if ctx.launch_args else ""
+        if isinstance(prompt_text, str) and len(prompt_text) > 10:
+            prompt_lines.append(prompt_text[:4000])  # truncate very long prompts
+        prompt_lines.append("```")
+
+    try:
+        with open(prompt_path, "w") as f:
+            f.write("\n".join(prompt_lines) + "\n")
+        _log.info(
+            "session-inject: wrote prompt file %s for agent %s (discussion %s, round %d)",
+            prompt_path, ctx.item_to, discuss_id, round_num,
+        )
+        return True
+    except OSError as e:
+        _log.error(
+            "session-inject: failed to write prompt file %s: %s",
+            prompt_path, e,
+        )
+        return False
+
+
+def _reconcile_session_inject(ctx: DispatchContext) -> int:
+    """After writing a prompt file, mark the inbox item as 'dispatched'.
+
+    'dispatched' means: the task was surfaced to the agent's session (via
+    prompt file) but has not yet been completed. The watcher treats this
+    as an active state that should not be re-dispatched.
+    """
+    now = _now_utc()
+    new_lock = _MkdirLock(ctx.inbox_file + ".lock.d")
+    if not new_lock.acquire_with_retry(50, 0.1):
+        return 1
+    try:
+        if (_set_inbox_status(ctx.inbox_file, ctx.item_id, "launched", "dispatched", now, "dispatched_at")
+                or _set_inbox_status(ctx.inbox_file, ctx.item_id, "running", "dispatched", now, "dispatched_at")
+                or _set_inbox_status(ctx.inbox_file, ctx.item_id, "pending", "dispatched", now, "dispatched_at")):
+            _sqlite_mirror_dispatch(
+                ctx.project_dir, ctx.item_id, ctx.item_task,
+                ctx.item_to, "dispatched", now,
+            )
+            print(
+                f"session-inject: {ctx.item_id} -> dispatched "
+                f"(prompt file written for {ctx.item_to}, discussion {ctx.item_task})"
+            )
+            return 0
+    finally:
+        new_lock.release()
+    return 1
+
+
+def _already_session_injected(ctx: DispatchContext) -> bool:
+    """Return True if a prompt file already exists for this task+agent.
+
+    Prevents duplicate dispatches when the YAML inbox reconciliation
+    creates new pending entries for the same discussion round task.
+    """
+    parts = ctx.item_task.split("/")
+    if len(parts) != 2:
+        return False
+    discuss_id, round_slug = parts
+    prompt_path = os.path.join(
+        ctx.exec_project, ".superharness", "discussions",
+        discuss_id, f"{round_slug}-{ctx.item_to}.prompt.md",
+    )
+    if os.path.isfile(prompt_path):
+        _log.info(
+            "session-inject: skipping %s — prompt file already exists for %s",
+            ctx.item_id, ctx.item_to,
+        )
+        return True
+    return False
+
+
 def _execute_agent(ctx: DispatchContext) -> None:
     # Spawn launcher. --print-only short-circuits here: the caller only wants
     # to see the dispatch decision, not actually invoke the underlying agent
@@ -1599,6 +1744,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--non-interactive", action="store_true", default=False)
     parser.add_argument("--codex-bypass", action="store_true", default=False)
     parser.add_argument("--launcher-timeout", default="0")
+    parser.add_argument("--session-inject", action="store_true", default=False,
+                        help="Write .prompt.md files for discussion rounds instead of spawning agent processes")
 
     opts = parser.parse_args(argv)
 
@@ -1626,6 +1773,7 @@ def main(argv: list[str] | None = None) -> None:
             non_interactive=opts.non_interactive,
             codex_bypass=opts.codex_bypass,
             launcher_timeout=launcher_timeout,
+            session_inject=opts.session_inject,
         )
     except Exception as e:
         _log_dispatch_error(opts.project, f"dispatch raised: {e}")

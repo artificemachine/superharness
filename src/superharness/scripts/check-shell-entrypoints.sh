@@ -23,6 +23,7 @@ ENTRYPOINT_FILES=(
   "src/superharness/scripts/inbox-dispatch.sh"
   "src/superharness/scripts/inbox-deadline-check.sh"
   "src/superharness/scripts/inbox-watch.sh"
+  "src/superharness/scripts/install-operator-service.sh"
   "src/superharness/scripts/install-remote.sh"
   "src/superharness/scripts/install-launchd-inbox-watcher.sh"
   "src/superharness/scripts/install-systemd-inbox-watcher.sh"
@@ -48,7 +49,9 @@ ENTRYPOINT_FILES=(
   "src/superharness/adapters/claude-code/hooks/session-stop.sh"
   "src/superharness/adapters/claude-code/hooks/session-turn-end.sh"
   "src/superharness/adapters/claude-code/hooks/session-exit.sh"
+  "src/superharness/adapters/opencode/hooks/session-inject.sh"
 )
+
 
 HOOK_FILES=(
   ".githooks/pre-commit"

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers import REPO_ROOT, run_bash, seed_sqlite_from_yaml, seed_sqlite_handoff
+from tests.helpers import REPO_ROOT, run_bash, seed_sqlite_from_yaml, seed_sqlite_handoff, seed_sqlite_heartbeat
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
@@ -266,6 +266,14 @@ def test_discuss_start_requires_topic(repo_root, tmp_path) -> None:
 
 def test_discuss_start_enqueues_round_one_for_both_agents(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
+    seed_sqlite_from_yaml(project)
+    
+    # Mock heartbeats for participants (v1.69.5 requirement)
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    seed_sqlite_heartbeat(project, agent="watcher", status="alive", now=now)
+    seed_sqlite_heartbeat(project, agent="claude-code", status="alive", now=now)
+    seed_sqlite_heartbeat(project, agent="codex-cli", status="alive", now=now)
 
     result = _run_discuss_py(
         repo_root,
