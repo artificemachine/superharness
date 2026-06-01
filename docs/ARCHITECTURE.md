@@ -59,6 +59,14 @@ adapters/               → Claude Code hooks, Codex CLI templates
 | `orchestrator.py` | Opus-level orchestrator: decomposes tasks into subtasks. |
 | `sdk_runner.py` | Wraps `claude_agent_sdk` for programmatic, headless Claude dispatch. |
 
+## Headless-First Principle (v1.69.5+)
+
+The core engine is decoupled from the UI. The Guardian runs only the background worker by default, reducing resource usage and preventing port/process leakage in headless environments. 
+
+1. **Persistent Headless**: `shux operator start` (managed by `launchd`) ensures the task loop is always running without an HTTP server.
+2. **On-Demand UI**: `shux dashboard` provides a temporary view with an **auto-timeout (lease pattern)** that shuts down the server if no user activity or heartbeats are detected.
+3. **Opt-in Monitoring**: The `--dashboard` flag allows the Guardian to maintain a persistent UI instance if specifically requested.
+
 ---
 
 ## Runtime State (`.superharness/`)

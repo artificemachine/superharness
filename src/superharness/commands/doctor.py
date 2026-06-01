@@ -278,6 +278,23 @@ def main(argv: list[str] | None = None) -> None:
             print("INFO state-db: state.sqlite3 not found — run 'shux init' to initialise")
         print("INFO parity: skipped (no state.sqlite3)")
 
+    # Fleet check: user-specific local GPU inference endpoints
+    from superharness.engine.model_router import _load_fleet_config
+    fleet = _load_fleet_config()
+    if fleet:
+        endpoints = fleet.get("endpoints", {})
+        models = fleet.get("models", {})
+        tiers = [t for t in ("max", "standard", "mini", "tiny") if t in models]
+        print(f"PASS fleet: {len(tiers)} GPU tier(s) configured ({', '.join(tiers)})")
+        for t in tiers:
+            ep = endpoints.get(t, "?")
+            model = models.get(t, "?")
+            print(f"  fleet/{t}: {model} @ {ep}")
+        print(f"  Agent: opencode tiers mapped to fleet models")
+    else:
+        print("INFO fleet: no fleet.yaml found — local GPU inference not configured")
+        print("  → Create ~/.config/superharness/fleet.yaml to enable local model routing")
+
     print(f"summary: failures={failures} warnings={warns}")
     if failures > 0:
         print()
