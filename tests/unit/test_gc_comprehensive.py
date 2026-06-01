@@ -11,6 +11,7 @@ from __future__ import annotations
 import sqlite3
 import time
 from pathlib import Path
+from datetime import datetime, timezone, timedelta
 
 import pytest
 
@@ -295,4 +296,141 @@ class TestGCNoEngagement:
 
         result = _gc_discussion_deadlock(str(tmp_path))
         assert result == 0  # too new, not closed
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Fix #3: discussion deadlock fast-close requires `required` submissions
+# (BUGREPORT-discussion-consensus-single-participant)
+# ---------------------------------------------------------------------------
+
+class TestGCDiscussionDeadlockRequiredSubmissions:
+    """_gc_discussion_deadlock must require `required` (not 1) submissions
+    before fast-closing, even when missing agents have no daemon."""
+
+    def _make_old_ts(self, hours_ago: int) -> str:
+        return (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+
+    def _seed_heartbeat(self, conn, agent: str, status: str):
+        ts = self._make_old_ts(1)
+        conn.execute(
+            "INSERT OR REPLACE INTO agent_heartbeats (agent, status, updated_at, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (agent, status, ts, ts),
+        )
+
+    def test_1_of_3_with_dead_daemons_does_not_fast_close(self, tmp_path):
+        """3 participants, 1 submitted, all missing daemons dead.
+        required = max(2, 3-1) = 2. 1 < 2 → must NOT fast-close."""
+        from superharness.commands.inbox_watch import _gc_discussion_deadlock
+
+        conn = _setup_db(tmp_path)
+        disc_id = "disc-1of3-dead-daemons"
+        old = self._make_old_ts(2)
+
+        # Create discussion
+        conn.execute(
+            "INSERT INTO discussions (id, topic, owners, status, created_at) "
+            "VALUES (?, ?, ?, 'active', ?)",
+            (disc_id, "test", '["claude-code","codex-cli","gemini-cli"]', old),
+        )
+        # Create task
+        _seed_task(conn, f"{disc_id}/round-1", created_at=old)
+        # Submit only 1 verdict (claude-code)
+        conn.execute(
+            "INSERT INTO discussion_rounds (discussion_id, round_number, agent, verdict, created_at) "
+            "VALUES (?, 1, ?, 'agree', ?)",
+            (disc_id, "claude-code", old),
+        )
+        # Mark other agents as zombie (no daemon)
+        self._seed_heartbeat(conn, "codex-cli", "zombie")
+        self._seed_heartbeat(conn, "gemini-cli", "zombie")
+        conn.commit()
+        conn.close()
+
+        result = _gc_discussion_deadlock(str(tmp_path))
+        assert result == 0, (
+            f"1/3 submissions < required=2 must NOT fast-close, got {result}"
+        )
+
+        conn = _setup_db(tmp_path)
+        row = conn.execute(
+            "SELECT status FROM discussions WHERE id=?", (disc_id,)
+        ).fetchone()
+        assert row["status"] == "active", "discussion should remain active"
+        conn.close()
+
+    def test_2_of_3_with_dead_daemons_skipped_normal_advance(self, tmp_path):
+        """3 participants, 2 submitted. required=2. 2 >= 2 → skip (normal advance).
+        The GC should not touch discussions with sufficient submissions."""
+        from superharness.commands.inbox_watch import _gc_discussion_deadlock
+
+        conn = _setup_db(tmp_path)
+        disc_id = "disc-2of3-normal"
+        old = self._make_old_ts(2)
+
+        conn.execute(
+            "INSERT INTO discussions (id, topic, owners, status, created_at) "
+            "VALUES (?, ?, ?, 'active', ?)",
+            (disc_id, "test", '["claude-code","codex-cli","gemini-cli"]', old),
+        )
+        _seed_task(conn, f"{disc_id}/round-1", created_at=old)
+        for agent in ("claude-code", "codex-cli"):
+            conn.execute(
+                "INSERT INTO discussion_rounds (discussion_id, round_number, agent, verdict, created_at) "
+                "VALUES (?, 1, ?, 'agree', ?)",
+                (disc_id, agent, old),
+            )
+        self._seed_heartbeat(conn, "gemini-cli", "zombie")
+        conn.commit()
+        conn.close()
+
+        result = _gc_discussion_deadlock(str(tmp_path))
+        assert result == 0, (
+            f"2/3 submissions >= required=2 should be left for normal advance, got {result}"
+        )
+
+        conn = _setup_db(tmp_path)
+        row = conn.execute(
+            "SELECT status FROM discussions WHERE id=?", (disc_id,)
+        ).fetchone()
+        assert row["status"] == "active", "discussion should remain active"
+        conn.close()
+
+    def test_1_of_2_with_dead_daemon_does_not_fast_close(self, tmp_path):
+        """2 participants, 1 submitted, missing daemon dead.
+        required = max(2, 2-1) = 2. 1 < 2 → must NOT fast-close."""
+        from superharness.commands.inbox_watch import _gc_discussion_deadlock
+
+        conn = _setup_db(tmp_path)
+        disc_id = "disc-1of2-dead-daemon"
+        old = self._make_old_ts(2)
+
+        conn.execute(
+            "INSERT INTO discussions (id, topic, owners, status, created_at) "
+            "VALUES (?, ?, ?, 'active', ?)",
+            (disc_id, "test", '["claude-code","codex-cli"]', old),
+        )
+        _seed_task(conn, f"{disc_id}/round-1", created_at=old)
+        conn.execute(
+            "INSERT INTO discussion_rounds (discussion_id, round_number, agent, verdict, created_at) "
+            "VALUES (?, 1, ?, 'agree', ?)",
+            (disc_id, "claude-code", old),
+        )
+        self._seed_heartbeat(conn, "codex-cli", "zombie")
+        conn.commit()
+        conn.close()
+
+        result = _gc_discussion_deadlock(str(tmp_path))
+        assert result == 0, (
+            f"1/2 submissions < required=2 must NOT fast-close"
+        )
+
+        conn = _setup_db(tmp_path)
+        row = conn.execute(
+            "SELECT status FROM discussions WHERE id=?", (disc_id,)
+        ).fetchone()
+        assert row["status"] == "active"
         conn.close()

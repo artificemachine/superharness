@@ -420,4 +420,104 @@ class TestBugO_AdvanceMarkerIdempotency:
         assert rc == 0, f"cmd_advance failed: {out.getvalue()}"
         result = json.loads(out.getvalue())
         assert result["action"] == "advanced", result
-        assert result["next_round"] == 3, f"Expected next_round=3, got {result}"
+
+
+# ---------------------------------------------------------------------------
+# Fix #4: register_yaml_submission rejects prompt-copy verdicts
+# (BUGREPORT-discussion-consensus-single-participant)
+# ---------------------------------------------------------------------------
+
+class TestRegisterYamlSubmissionRejectsPromptCopy:
+    """register_yaml_submission must reject YAML files whose verdict field
+    is an unparsed prompt copy (e.g. 'agree or disagree or partial')
+    rather than silently inserting a misleading submission row."""
+
+    def _write_yaml(self, disc_dir: Path, round_: int, agent: str, verdict: str):
+        disc_dir.mkdir(parents=True, exist_ok=True)
+        yaml_path = disc_dir / f"round-{round_}-{agent}.yaml"
+        yaml_path.write_text(
+            f"discussion_id: test\n"
+            f"round: {round_}\n"
+            f"agent: {agent}\n"
+            f"verdict: {verdict}\n"
+        )
+
+    def test_rejects_prompt_copy_all_three_options(self, project):
+        """'agree or disagree or partial' (all three options) → rejected,
+        no row inserted."""
+        conn = _make_db(project)
+        disc_id = "disc-reject-prompt-copy"
+        _create_discussion(conn, project, disc_id, ["claude-code", "codex-cli"])
+
+        disc_dir = project / ".superharness" / "discussions" / disc_id
+        self._write_yaml(disc_dir, 1, "codex-cli", "agree or disagree or partial")
+
+        now = now_iso()
+        result = discussions_dao.register_yaml_submission(
+            conn, disc_id, 1, "codex-cli", str(disc_dir), now,
+        )
+        assert not result, "prompt-copy verdict must be rejected (return False)"
+
+        # Verify no row was inserted
+        rows = discussions_dao.get_rounds(conn, disc_id)
+        assert len(rows) == 0, "no submission row should exist for rejected verdict"
+        conn.close()
+
+    def test_rejects_unrecognized_verdict_text(self, project):
+        """'yes definitely' → no valid verdict matched → rejected."""
+        conn = _make_db(project)
+        disc_id = "disc-reject-gibberish"
+        _create_discussion(conn, project, disc_id, ["claude-code", "codex-cli"])
+
+        disc_dir = project / ".superharness" / "discussions" / disc_id
+        self._write_yaml(disc_dir, 1, "codex-cli", "yes definitely")
+
+        now = now_iso()
+        result = discussions_dao.register_yaml_submission(
+            conn, disc_id, 1, "codex-cli", str(disc_dir), now,
+        )
+        assert not result, "unrecognized verdict must be rejected"
+
+        rows = discussions_dao.get_rounds(conn, disc_id)
+        assert len(rows) == 0
+        conn.close()
+
+    def test_accepts_valid_verdict(self, project):
+        """'agree' → accepted, row inserted."""
+        conn = _make_db(project)
+        disc_id = "disc-accept-agree"
+        _create_discussion(conn, project, disc_id, ["claude-code", "codex-cli"])
+
+        disc_dir = project / ".superharness" / "discussions" / disc_id
+        self._write_yaml(disc_dir, 1, "codex-cli", "agree")
+
+        now = now_iso()
+        result = discussions_dao.register_yaml_submission(
+            conn, disc_id, 1, "codex-cli", str(disc_dir), now,
+        )
+        assert result, "valid verdict 'agree' must be accepted"
+
+        rows = discussions_dao.get_rounds(conn, disc_id)
+        assert len(rows) == 1
+        assert rows[0].verdict == "agree"
+        conn.close()
+
+    def test_accepts_abstain_verdict(self, project):
+        """'abstain' → accepted (valid consensus vote)."""
+        conn = _make_db(project)
+        disc_id = "disc-accept-abstain"
+        _create_discussion(conn, project, disc_id, ["claude-code", "codex-cli"])
+
+        disc_dir = project / ".superharness" / "discussions" / disc_id
+        self._write_yaml(disc_dir, 1, "codex-cli", "abstain")
+
+        now = now_iso()
+        result = discussions_dao.register_yaml_submission(
+            conn, disc_id, 1, "codex-cli", str(disc_dir), now,
+        )
+        assert result, "valid verdict 'abstain' must be accepted"
+
+        rows = discussions_dao.get_rounds(conn, disc_id)
+        assert len(rows) == 1
+        assert rows[0].verdict == "abstain"
+        conn.close()

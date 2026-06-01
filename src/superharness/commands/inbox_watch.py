@@ -3344,20 +3344,26 @@ def _auto_advance_orphaned_rounds(project_dir: str) -> int:
 
             missing = [a for a in dispatched if a not in verdict_agents]
 
-            # Zero verdicts means dispatched agents completed their inbox task but
-            # never engaged with the discussion at all. That is a participant failure,
-            # not an orphaned round — mark failed_participant so it surfaces
-            # clearly and does not masquerade as consensus.
-            if not verdict_agents:
+            # Compute the required number of submitted verdicts for this round.
+            # Same formula as _gc_discussion_deadlock: n≤2 = all must submit,
+            # n≥3 = n-1 suffices. (Fix: BUGREPORT-discussion-consensus-single-participant, root cause #1.)
+            n_dispatched = len(dispatched)
+            required = max(2, n_dispatched - 1) if n_dispatched > 1 else 2
+
+            # Zero verdicts OR fewer than required submissions means participants
+            # didn't engage meaningfully. This is a participant failure, not a
+            # consensus — mark failed_participant so it does not masquerade.
+            if not verdict_agents or len(verdict_agents) < min(required, n_dispatched):
                 conn.execute(
                     "UPDATE discussions SET status='failed_participant' "
                     "WHERE id=? AND status='active'",
                     (disc.id,),
                 )
                 advanced += 1
+                reason = "0 verdicts" if not verdict_agents else f"{len(verdict_agents)}/{n_dispatched} verdicts (need {required})"
                 print(
                     f"discussion-orphan-advance: {disc.id} → failed_participant "
-                    f"(round {round_n} inbox complete, 0 verdicts submitted)",
+                    f"(round {round_n} inbox complete, {reason})",
                     file=sys.stderr,
                 )
                 continue
@@ -3716,6 +3722,10 @@ def _gc_discussion_deadlock(project_dir: str) -> int:
 
                 # Fast-close: if all missing agents have no daemon heartbeat, close now.
                 # Don't wait for retry exhaustion — they can't respond.
+                # BUT: still require `required` submissions, not just 1.
+                # Opening the gate at 1 submission produces misleading consensus
+                # verdicts when only one agent actually voted.
+                # (Fix: BUGREPORT-discussion-consensus-single-participant, root cause #3.)
                 all_daemon_dead = True
                 for agent in missing_agents:
                     hb = conn.execute(
@@ -3725,7 +3735,7 @@ def _gc_discussion_deadlock(project_dir: str) -> int:
                     if hb and hb["status"] not in ("zombie", None):
                         all_daemon_dead = False
                         break
-                if all_daemon_dead and submitted >= 1:
+                if all_daemon_dead and submitted >= required:
                     conn.execute(
                         "UPDATE discussions SET status='failed_participant', closed_at=? WHERE id=?",
                         (now.strftime("%Y-%m-%dT%H:%M:%SZ"), disc.id),
@@ -3758,7 +3768,7 @@ def _gc_discussion_deadlock(project_dir: str) -> int:
                         all_dead = False
                         break
 
-                if all_dead and submitted >= 1:
+                if all_dead and submitted >= required:
                     conn.execute(
                         "UPDATE discussions SET status='failed_participant', closed_at=? WHERE id=?",
                         (now.strftime("%Y-%m-%dT%H:%M:%SZ"), disc.id),

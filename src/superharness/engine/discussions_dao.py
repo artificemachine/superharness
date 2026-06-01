@@ -199,6 +199,41 @@ def register_yaml_submission(
         if not isinstance(data, dict):
             return False
         verdict = str(data.get("verdict") or "").lower()
+        # Normalize prompt-copy verdicts: agents sometimes copy the full prompt
+        # text ("agree or disagree or partial") instead of picking one value.
+        # Reject submissions that are clearly unparsed prompt text.
+        # (Fix: BUGREPORT-discussion-consensus-single-participant, root cause #4.)
+        valid_verdicts = {"agree", "disagree", "partial", "consensus", "abstain"}
+        if verdict not in valid_verdicts:
+            import re as _vre
+            matches = [v for v in sorted(valid_verdicts) if _vre.search(r'\b' + _vre.escape(v) + r'\b', verdict)]
+            if len(matches) >= 3:
+                # All three main options present → copied the prompt verbatim.
+                # Reject instead of silently normalizing — we don't know which
+                # position the agent actually intended.
+                _log.warning(
+                    "register_yaml_submission: disc=%s round=%d agent=%s — "
+                    "rejected prompt-copy verdict '%s' (all options present, "
+                    "cannot disambiguate)",
+                    disc_id, round_, agent, verdict,
+                )
+                return False
+            elif len(matches) == 0:
+                # No valid verdict found in string — reject.
+                _log.warning(
+                    "register_yaml_submission: disc=%s round=%d agent=%s — "
+                    "rejected invalid verdict '%s'",
+                    disc_id, round_, agent, verdict,
+                )
+                return False
+            else:
+                # Ambiguous partial match → reject rather than guess.
+                _log.warning(
+                    "register_yaml_submission: disc=%s round=%d agent=%s — "
+                    "rejected ambiguous verdict '%s' (matches: %s)",
+                    disc_id, round_, agent, verdict, matches,
+                )
+                return False
         position = str(data.get("position") or "")
         add_round(
             conn,

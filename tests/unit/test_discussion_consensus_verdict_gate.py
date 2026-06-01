@@ -63,53 +63,81 @@ class TestPartialDoesNotTriggerAutoConsensus:
         conn.close()
         assert updated.status == "consensus"
 
-    def test_all_consensus_verdicts_closes_as_consensus(self, project_with_db: Path):
-        """All 'consensus' verdicts must auto-close as consensus."""
-        conn = get_connection(str(project_with_db))
+
+# ---------------------------------------------------------------------------
+# Fix #4: cmd_submit_round rejects prompt-copy verdicts
+# (BUGREPORT-discussion-consensus-single-participant)
+# ---------------------------------------------------------------------------
+
+class TestSubmitRejectsPromptCopyVerdict:
+    """cmd_submit_round must reject verdicts that are unparsed prompt copies
+    ('agree or disagree or partial') instead of silently normalizing to a
+    random valid option."""
+
+    def _setup_discussion_dir(self, project: Path, disc_id: str, participants: list[str]) -> Path:
+        """Create a full discussion directory with DB so cmd_submit_round works."""
+        conn = get_connection(str(project))
         init_db(conn)
-        disc = _setup_discussion(conn, "disc-all-consensus", ["claude-code", "gemini-cli"])
-        _submit(conn, disc.id, 1, "claude-code", "consensus")
-        _submit(conn, disc.id, 1, "gemini-cli", "consensus")
+        _setup_discussion(conn, disc_id, participants)
 
-        _check_all_submitted_and_set_consensus(conn, disc, 1)
-        conn.commit()
-
-        updated = discussions_dao.get(conn, disc.id)
+        # Create discussion directory on disk
+        disc_dir = project / ".superharness" / "discussions" / disc_id
+        disc_dir.mkdir(parents=True, exist_ok=True)
         conn.close()
-        assert updated.status == "consensus"
+        return disc_dir
 
-    def test_partial_vote_keeps_discussion_active(self, project_with_db: Path):
-        """'partial' verdict must NOT auto-close — discussion stays active for next round."""
-        conn = get_connection(str(project_with_db))
-        init_db(conn)
-        disc = _setup_discussion(conn, "disc-partial", ["claude-code", "gemini-cli", "opencode"])
-        _submit(conn, disc.id, 1, "claude-code", "consensus")
-        _submit(conn, disc.id, 1, "gemini-cli", "partial")
-        _submit(conn, disc.id, 1, "opencode", "partial")
-
-        _check_all_submitted_and_set_consensus(conn, disc, 1)
-        conn.commit()
-
-        updated = discussions_dao.get(conn, disc.id)
-        conn.close()
-        assert updated.status == "active", (
-            "Discussion with partial votes must stay active, not auto-close as consensus"
+    def test_rejects_prompt_copy_all_three_options(self, project_with_db: Path):
+        """'agree or disagree or partial' (all 3 options) → SystemExit."""
+        project = project_with_db
+        disc_dir = self._setup_discussion_dir(
+            project, "disc-prompt-copy", ["claude-code", "codex-cli"]
         )
 
-    def test_disagree_vote_keeps_discussion_active(self, project_with_db: Path):
-        """'disagree' verdict must NOT auto-close — existing behaviour preserved."""
-        conn = get_connection(str(project_with_db))
+        from superharness.engine.discussion import cmd_submit_round
+        import io, sys
+
+        old_stderr = sys.stderr
+        sys.stderr = io.StringIO()
+        try:
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_submit_round(
+                    discussion_dir=str(disc_dir),
+                    round_=1,
+                    agent="codex-cli",
+                    verdict="agree or disagree or partial",
+                    position="test",
+                    points_file=None,
+                )
+            assert exc_info.value.code != 0, "must exit non-zero for prompt-copy verdict"
+        finally:
+            sys.stderr = old_stderr
+
+    def test_accepts_valid_abstain(self, project_with_db: Path):
+        """'abstain' → accepted (valid consensus vote)."""
+        project = project_with_db
+        disc_dir = self._setup_discussion_dir(
+            project, "disc-valid-abstain", ["claude-code", "codex-cli"]
+        )
+
+        from superharness.engine.discussion import cmd_submit_round
+        rc = cmd_submit_round(
+            discussion_dir=str(disc_dir),
+            round_=1,
+            agent="codex-cli",
+            verdict="abstain",
+            position="test",
+            points_file=None,
+        )
+        assert rc == 0
+
+        # Verify submission landed
+        conn = get_connection(str(project))
         init_db(conn)
-        disc = _setup_discussion(conn, "disc-disagree", ["claude-code", "gemini-cli"])
-        _submit(conn, disc.id, 1, "claude-code", "agree")
-        _submit(conn, disc.id, 1, "gemini-cli", "disagree")
-
-        _check_all_submitted_and_set_consensus(conn, disc, 1)
-        conn.commit()
-
-        updated = discussions_dao.get(conn, disc.id)
+        rounds = discussions_dao.get_rounds(conn, "disc-valid-abstain")
+        submitted = [r for r in rounds if r.agent == "codex-cli"]
+        assert len(submitted) == 1
+        assert submitted[0].verdict == "abstain"
         conn.close()
-        assert updated.status == "active"
 
     def test_mixed_agree_and_partial_keeps_active(self, project_with_db: Path):
         """agree + partial must keep discussion active."""
