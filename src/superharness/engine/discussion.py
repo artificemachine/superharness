@@ -628,11 +628,10 @@ def cmd_close(discussion_dir: str, outcome: str, reason: str = "") -> int:
                 (outcome, now, disc_id),
             )
 
-        # Cancel any pending/launched/paused inbox items for rounds of
-        # this discussion. We mark them 'done' (a terminal status the
-        # rest of the system already understands) with a failed_reason
-        # explaining the supersedence, so the row isn't re-claimed by
-        # claim_next and is visible in audit trails.
+        # Cancel ALL inbox items for rounds of this discussion — not just
+        # pending/launched. dispatched and failed items also need cleanup
+        # to prevent stale re-dispatch storms when the discussion is restarted.
+        # (Fix: stale inbox leak from discuss close → start cycle)
         cancel_reason = f"discussion closed ({outcome})"
         if reason:
             cancel_reason = f"{cancel_reason}: {reason}"
@@ -643,7 +642,8 @@ def cmd_close(discussion_dir: str, outcome: str, reason: str = "") -> int:
                 done_at = ?,
                 failed_reason = ?
             WHERE task_id LIKE ?
-              AND status IN ('pending', 'launched', 'running', 'paused')
+              AND status IN ('pending', 'launched', 'running', 'paused',
+                             'dispatched', 'failed')
             """,
             (now, cancel_reason, f"{disc_id}/round-%"),
         )

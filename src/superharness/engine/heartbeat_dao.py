@@ -22,6 +22,13 @@ class HeartbeatRow:
     pid: int | None
     updated_at: str
     created_at: str
+    runtime: str | None = None
+    active_task: str | None = None
+    next_wake_at: str | None = None
+    written_at: str | None = None
+    tokens_used: int | None = None
+    tokens_limit: int | None = None
+    cost_usd: float | None = None
 
 
 def upsert(
@@ -32,6 +39,12 @@ def upsert(
     status: str = "alive",
     pid: int | None = None,
     now: str,
+    runtime: str | None = None,
+    active_task: str | None = None,
+    next_wake_at: str | None = None,
+    tokens_used: int | None = None,
+    tokens_limit: int | None = None,
+    cost_usd: float | None = None,
 ) -> HeartbeatRow:
     """Insert or update the heartbeat row for an agent."""
     try:
@@ -40,21 +53,37 @@ def upsert(
         ).fetchone()
         if existing:
             conn.execute(
-                "UPDATE agent_heartbeats SET task_id=?, status=?, pid=?, updated_at=? WHERE agent=?",
-                (task_id, status, pid, now, agent),
+                """
+                UPDATE agent_heartbeats 
+                SET task_id=?, status=?, pid=?, updated_at=?, 
+                    runtime=?, active_task=?, next_wake_at=?, written_at=?,
+                    tokens_used=?, tokens_limit=?, cost_usd=?
+                WHERE agent=?
+                """,
+                (task_id, status, pid, now, 
+                 runtime, active_task, next_wake_at, now,
+                 tokens_used, tokens_limit, cost_usd, agent),
             )
             row = conn.execute(
-                "SELECT id, agent, task_id, status, pid, updated_at, created_at "
-                "FROM agent_heartbeats WHERE agent = ?",
+                "SELECT * FROM agent_heartbeats WHERE agent = ?",
                 (agent,),
             ).fetchone()
         else:
             cursor = conn.execute(
-                "INSERT INTO agent_heartbeats (agent, task_id, status, pid, updated_at, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?) RETURNING id, agent, task_id, status, pid, updated_at, created_at",
-                (agent, task_id, status, pid, now, now),
+                """
+                INSERT INTO agent_heartbeats 
+                (agent, task_id, status, pid, updated_at, created_at,
+                 runtime, active_task, next_wake_at, written_at,
+                 tokens_used, tokens_limit, cost_usd) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (agent, task_id, status, pid, now, now,
+                 runtime, active_task, next_wake_at, now,
+                 tokens_used, tokens_limit, cost_usd),
             )
-            row = cursor.fetchone()
+            row = conn.execute(
+                "SELECT * FROM agent_heartbeats WHERE id = last_insert_rowid()"
+            ).fetchone()
         if not row:
             raise StateError("heartbeat upsert returned no row")
         return _to_row(row)
@@ -66,8 +95,7 @@ def get_all(conn: sqlite3.Connection) -> list[HeartbeatRow]:
     """Return all heartbeat rows ordered by most recently updated."""
     try:
         rows = conn.execute(
-            "SELECT id, agent, task_id, status, pid, updated_at, created_at "
-            "FROM agent_heartbeats ORDER BY updated_at DESC"
+            "SELECT * FROM agent_heartbeats ORDER BY updated_at DESC"
         ).fetchall()
         return [_to_row(r) for r in rows]
     except sqlite3.Error as e:
@@ -78,8 +106,7 @@ def get(conn: sqlite3.Connection, agent: str) -> HeartbeatRow | None:
     """Return the heartbeat row for a specific agent, or None."""
     try:
         row = conn.execute(
-            "SELECT id, agent, task_id, status, pid, updated_at, created_at "
-            "FROM agent_heartbeats WHERE agent = ?",
+            "SELECT * FROM agent_heartbeats WHERE agent = ?",
             (agent,),
         ).fetchone()
         return _to_row(row) if row else None
@@ -119,4 +146,11 @@ def _to_row(row: sqlite3.Row) -> HeartbeatRow:
         pid=row["pid"],
         updated_at=row["updated_at"],
         created_at=row["created_at"],
+        runtime=row["runtime"] if "runtime" in row.keys() else None,
+        active_task=row["active_task"] if "active_task" in row.keys() else None,
+        next_wake_at=row["next_wake_at"] if "next_wake_at" in row.keys() else None,
+        written_at=row["written_at"] if "written_at" in row.keys() else None,
+        tokens_used=row["tokens_used"] if "tokens_used" in row.keys() else None,
+        tokens_limit=row["tokens_limit"] if "tokens_limit" in row.keys() else None,
+        cost_usd=row["cost_usd"] if "cost_usd" in row.keys() else None,
     )

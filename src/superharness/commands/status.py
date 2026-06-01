@@ -420,6 +420,135 @@ def _deep_task_health(project_dir: str) -> dict:
 # Issue collector and printer
 # ---------------------------------------------------------------------------
 
+def _detect_stuck_discussions(project_dir: str) -> list[dict]:
+    """Detect active discussions where all inbox items are dispatched/done
+    but zero verdicts have been submitted and no participant agents are running.
+    
+    Returns a list of dicts with id, round, age_min, verdicts, participants,
+    and missing_agents for each stuck discussion.
+    """
+    from datetime import datetime, timezone
+    import json as _json
+    
+    stuck = []
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import discussions_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            now = datetime.now(timezone.utc)
+            active = discussions_dao.get_all(conn, status="active")
+            for disc in active:
+                # Check inbox items: all must be dispatched or done
+                inbox_rows = conn.execute(
+                    "SELECT target_agent, status FROM inbox WHERE task_id LIKE ?",
+                    (f"{disc.id}/round-%",),
+                ).fetchall()
+                if not inbox_rows:
+                    continue
+                dispatched_done = {r["target_agent"] for r in inbox_rows 
+                                   if r["status"] in ("dispatched", "done")}
+                others = {r["target_agent"] for r in inbox_rows 
+                          if r["status"] not in ("dispatched", "done", "cancelled")}
+                if others:
+                    continue  # still has pending/running items
+                
+                # Check verdicts
+                rounds = discussions_dao.get_rounds(conn, disc.id)
+                verdict_agents = {r.agent for r in rounds if r.agent != "_advance"}
+                
+                participants = _json.loads(disc.owners) if isinstance(disc.owners, str) else (disc.owners or [])
+                
+                # Only flag if zero verdicts AND dispatched to at least 2 agents
+                if verdict_agents or len(dispatched_done) < 2:
+                    continue
+                
+                # Check agent heartbeats
+                missing = []
+                for p in participants:
+                    hb = conn.execute(
+                        "SELECT status, updated_at FROM agent_heartbeats WHERE agent=?",
+                        (p,),
+                    ).fetchone()
+                    if not hb or hb["status"] in ("zombie", None):
+                        missing.append(p)
+                
+                if not missing:
+                    continue  # agents might still respond
+                
+                # Compute age
+                age_min = 0
+                if disc.created_at:
+                    try:
+                        t = datetime.fromisoformat(str(disc.created_at).replace("Z", "+00:00"))
+                        age_min = int((now - t).total_seconds() / 60)
+                    except (ValueError, TypeError):
+                        pass
+                
+                stuck.append({
+                    "id": disc.id,
+                    "round": 1,
+                    "age_min": age_min,
+                    "verdicts": len(verdict_agents),
+                    "participants": len(participants),
+                    "missing_agents": missing,
+                })
+        finally:
+            conn.close()
+    except Exception:
+        pass
+    return stuck
+
+
+def _repair_missing_agents(project_dir: str, agents: list[str]) -> tuple[list[str], list[str]]:
+    """Investigate why each agent is unavailable and attempt repair.
+    
+    Returns (repaired_agents, report_lines).
+    """
+    import shutil
+    from pathlib import Path
+    
+    repaired = []
+    report = []
+    
+    for agent in agents:
+        # 1. Check if agent binary exists
+        binary = shutil.which(agent)
+        if not binary:
+            binary = shutil.which(agent.replace("-", ""))
+        
+        if binary:
+            report.append(f"  ✅ {agent}: binary found ({binary})")
+        else:
+            report.append(f"  ❌ {agent}: binary NOT on PATH — install it first")
+            continue
+        
+        # 2. Check for any launchd operator plist with KeepAlive=true
+        found_loaded = False
+        for plist in Path.home().glob("Library/LaunchAgents/com.superharness.operator.*.plist"):
+            try:
+                content = plist.read_text()
+            except Exception:
+                continue
+            if "KeepAlive" not in content:
+                continue
+            label = plist.stem
+            try:
+                from superharness.engine.launchd_health import is_loaded, bootstrap
+                if is_loaded(label):
+                    report.append(f"  ✅ operator plist {label} already loaded")
+                    found_loaded = True
+                    break
+            except Exception:
+                pass
+        
+        if not found_loaded:
+            report.append(f"  ⚠️  No loaded operator found — run: shux operator install")
+    
+    return repaired, report
+
+
 def _collect_issues(project_dir: str,
                      watcher_level: str, watcher_msg: str,
                      heartbeat_status: str, heartbeat_detail: str,
@@ -977,16 +1106,88 @@ def main(argv: list[str] | None = None) -> None:
         print()
         print(f"  → Run 'shux status --fix' to auto-clean orphans, duplicates, and close consensus discussions")
     else:
-        print()
-        print("No issues found. All clean.")
+        # Quick stuck-discussion check: flag discussions where all inbox items
+        # are dispatched/done but zero verdicts submitted and no agents running.
+        stuck = _detect_stuck_discussions(project_dir)
+        if stuck:
+            print()
+            print(f"⚠️  Stuck discussions ({len(stuck)}):")
+            for s in stuck:
+                print(f"  {s['id'][:20]}...  round={s['round']}  age={s['age_min']}m  "
+                      f"verdicts={s['verdicts']}/{s['participants']}  "
+                      f"agents={', '.join(s['missing_agents'][:3])}")
+            print()
+            print(f"  No agents are running. Discussions will auto-close as "
+                  f"failed_participant after grace period.")
+            print(f"  → Submit verdicts manually: shux discuss submit ...")
+            print(f"  → Or close them: shux discuss close --id <id> --outcome cancelled")
+        else:
+            print()
+            print("No issues found. All clean.")
 
     # --- Auto-fix if requested ---
-    if opts.fix and issues:
-        print()
-        print("Auto-fix:")
-        fixed = _auto_fix(project_dir, inbox_health, disc_health)
-        if fixed > 0:
-            print(f"Fixed {fixed} item(s). Run 'shux status' again to verify.")
+    if opts.fix:
+        # Also detect stuck discussions for fix
+        stuck = _detect_stuck_discussions(project_dir)
+        if stuck:
+            # Collect all missing agents across stuck discussions
+            all_missing = set()
+            for s in stuck:
+                all_missing.update(s["missing_agents"])
+            
+            print()
+            print("Auto-fix: investigating agent availability...")
+            
+            # Try to repair missing agents
+            repaired, report = _repair_missing_agents(project_dir, sorted(all_missing))
+            if report:
+                for line in report:
+                    print(f"  {line}")
+            
+            # If agents were repaired, skip closing — give them time to respond
+            if repaired:
+                print(f"  {len(repaired)} agent(s) restarted. Skipping discussion close — "
+                      f"give them time to respond.")
+                print(f"  Run 'shux status' again to verify.")
+            else:
+                print()
+                print("Auto-fix (stuck discussions):")
+                from datetime import datetime, timezone
+                now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                try:
+                    from superharness.engine.db import get_connection, init_db
+                    conn = get_connection(project_dir)
+                    try:
+                        init_db(conn)
+                        closed = 0
+                        for s in stuck:
+                            conn.execute(
+                                "UPDATE discussions SET status='failed_participant', "
+                                "closed_at=? WHERE id=? AND status='active'",
+                                (now_str, s["id"]),
+                            )
+                            conn.execute(
+                                "UPDATE inbox SET status='done', done_at=?, "
+                                "failed_reason='auto-fix: stuck — no agents running' "
+                                "WHERE task_id LIKE ? AND status NOT IN ('done','cancelled')",
+                                (now_str, f"{s['id']}/round-%"),
+                            )
+                            closed += 1
+                        conn.commit()
+                        print(f"  Closed {closed} stuck discussion(s) as failed_participant.")
+                        if closed:
+                            issues = True
+                    finally:
+                        conn.close()
+                except Exception as e:
+                    print(f"  Auto-fix failed: {e}", file=sys.stderr)
+        
+        if issues:
+            print()
+            print("Auto-fix:")
+            fixed = _auto_fix(project_dir, inbox_health, disc_health)
+            if fixed > 0:
+                print(f"Fixed {fixed} item(s). Run 'shux status' again to verify.")
 
     # Exit code for CI
     if opts.check and issues:

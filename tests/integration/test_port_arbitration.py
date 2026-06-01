@@ -25,7 +25,7 @@ def test_operator_arbitrates_conflicting_port(tmp_path):
         
         # 3. Start the Operator stack pointing at the blocked port
         op = Operator(project_dir)
-        op.start_stack(dashboard_port=base_port)
+        op.start_stack(dashboard_port=base_port, use_dashboard=True)
         
         # 4. Verify it chose base_port + 1 instead
         op_file = sh_dir / "operator-state.json"
