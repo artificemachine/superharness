@@ -34,13 +34,22 @@ Inside your project:
 shux onboard
 ```
 
-### 3. Start the stack
+### 3. Start the Guardian
 ```bash
-shux operator start --port 8787
-open http://localhost:8787
+# Start background watcher (Headless default)
+shux operator start
+
+# Start with dashboard (always-on UI)
+shux operator start --dashboard
 ```
 
-### 4. Check health
+### 4. Dashboard UI
+```bash
+# Launch on-demand UI (with auto-timeout)
+shux dashboard
+```
+
+### 5. Check health
 ```bash
 shux status          # Full health dashboard
 shux status --fix    # Auto-clean orphans, stale items, consensus discussions

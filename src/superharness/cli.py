@@ -599,20 +599,26 @@ def operator_check(project):
 @click.option("--project", "-p", default=".", help="Project directory")
 @click.option("--port", default=8787, help="Dashboard port")
 @click.option("--no-open", "no_open", is_flag=True, default=False, help="Do not open browser on start (for daemon/launchd use)")
+@click.option("--dashboard", "use_dashboard", is_flag=True, default=False, help="Also start the dashboard UI (opt-in)")
 @click.option("--no-daemon", "no_daemon", is_flag=True, default=False,
               help="Run in foreground (for debugging; default detaches)")
-def operator_start(project, port, no_open, no_daemon):
-    """Start the Superharness Guardian (Watcher + Dashboard).
+def operator_start(project, port, no_open, use_dashboard, no_daemon):
+    """Start the Superharness Guardian (Watcher + optional Dashboard).
 
     By default, daemonizes via fork+setsid so the watcher survives the
     invoking shell session. Use --no-daemon for foreground debugging.
     """
     from superharness.engine.operator import Operator
     op = Operator(project)
-    op.start_stack(dashboard_port=port, no_open=no_open)
-    click.echo(f"dashboard: http://127.0.0.1:{port}")
+    op.start_stack(dashboard_port=port, no_open=no_open, use_dashboard=use_dashboard)
+    if use_dashboard:
+        click.echo(f"dashboard: http://127.0.0.1:{port}")
     click.echo(f"monitor pid: {os.getpid()}")
-    click.echo("  (watcher cycles every 15s, dashboard auto-restarts on crash)")
+    
+    if not use_dashboard:
+        click.echo("  (watcher cycles every 15s)")
+    else:
+        click.echo("  (watcher cycles every 15s, dashboard auto-restarts on crash)")
 
     if no_daemon:
         op.monitor_and_recover()
@@ -641,9 +647,11 @@ def operator_start(project, port, no_open, no_daemon):
 @click.option("--project", "-p", default=".", help="Project directory")
 @click.option("--all", "install_all", is_flag=True, default=False,
               help="Install the operator for ALL projects with .superharness/")
+@click.option("--dashboard", "use_dashboard", is_flag=True, default=False,
+              help="Also start the dashboard UI in the installed service")
 @click.option("--watchdog/--no-watchdog", default=True,
               help="Install a 5-min watchdog plist that re-heals the operator on every tick")
-def operator_install(project, install_all, watchdog):
+def operator_install(project, install_all, use_dashboard, watchdog):
     """Install the Guardian as a persistent system service.
 
     Aggressively removes any stale `com.superharness.*` services and
@@ -671,7 +679,11 @@ def operator_install(project, install_all, watchdog):
         if not script_path.exists():
             script_path = Path(sys.prefix) / "lib" / "python3.11" / "site-packages" / "superharness" / "scripts" / "install-operator-service.sh"
         click.echo(f"  Installing operator for {project_dir}...")
-        subprocess.run(["bash", str(script_path), str(project_dir)], check=True)
+        
+        cmd = ["bash", str(script_path), str(project_dir)]
+        if use_dashboard:
+            cmd.append("--dashboard")
+        subprocess.run(cmd, check=True)
 
         # 3. Self-heal: verify the operator plist is loaded.
         short = hashlib.md5(str(project_dir).encode()).hexdigest()[:8]

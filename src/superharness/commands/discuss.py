@@ -108,6 +108,7 @@ def cmd_start(
     effort: str | None = None,
     owners: list[str] | None = None,
     exclude: list[str] | None = None,
+    force: bool = False,
 ) -> int:
     import secrets
     import subprocess
@@ -164,6 +165,77 @@ def cmd_start(
         print(
             f"Note: {', '.join(non_agents)} removed from participants "
             f"(not a registered AI agent — human roles cannot receive inbox dispatch).",
+            file=sys.stderr,
+        )
+
+    # Agent availability check: verify which participants have recent heartbeats
+    # (i.e., are actually running). Discussions with < 2 available agents are
+    # blocked unless --force is passed, because single-participant discussions
+    # cannot reach consensus.
+    AGENT_HEARTBEAT_STALE_SECONDS = 300  # 5 min — same as watcher's poll cycle
+    available_agents = []
+    unavailable_agents = []
+    try:
+        from datetime import datetime, timezone
+        conn2 = get_connection(project_dir)
+        try:
+            init_db(conn2)
+            now = datetime.now(timezone.utc)
+            for p in participants:
+                hb = heartbeat_dao.get(conn2, p)
+                if hb and hb.written_at:
+                    try:
+                        hb_ts = datetime.fromisoformat(str(hb.written_at).replace("Z", "+00:00"))
+                        age = (now - hb_ts).total_seconds()
+                        if age < AGENT_HEARTBEAT_STALE_SECONDS and hb.status not in ("zombie", None):
+                            available_agents.append(p)
+                            continue
+                    except (ValueError, TypeError):
+                        pass
+                unavailable_agents.append(p)
+        finally:
+            conn2.close()
+    except Exception:
+        pass  # best-effort check
+
+    if unavailable_agents:
+        for agent in unavailable_agents:
+            print(
+                f"⚠️  {agent}: may not respond — no daemon heartbeat (agent not running)",
+                file=sys.stderr,
+            )
+
+    if len(available_agents) < 2 and not force:
+        print(
+            f"\nError: only {len(available_agents)} of {len(participants)} participants "
+            f"are running (have recent heartbeats).",
+            file=sys.stderr,
+        )
+        print(
+            f"At least 2 running agents are required for a valid discussion. "
+            f"Use --force to override.",
+            file=sys.stderr,
+        )
+        print(
+            f"\nTip: submit verdicts manually via CLI — no agent session needed:",
+            file=sys.stderr,
+        )
+        for agent in participants:
+            print(
+                f"  shux discuss submit --project {project_dir} "
+                f"--discussion <id> --agent {agent} --round <N> "
+                f"--verdict <agree|disagree|partial|consensus|abstain>",
+                file=sys.stderr,
+            )
+        print(
+            f"\nAvailable: {', '.join(available_agents) if available_agents else 'none'}",
+            file=sys.stderr,
+        )
+        return 1
+    elif len(available_agents) < len(participants):
+        print(
+            f"Note: {len(available_agents)}/{len(participants)} participants are running. "
+            f"Missing agents can submit manually via CLI or will time out.",
             file=sys.stderr,
         )
 
@@ -328,6 +400,22 @@ def cmd_start(
             print(f"  Enqueued round 1 for {agent}: {item_id}")
         # Shadow entry in SQLite so the watcher can see discussion items
         _enqueue_sqlite_shadow(project_dir, item_id, disc_id, agent, created_at)
+
+    # Show manual submission instructions — no active session required.
+    # Each participant can submit via CLI, or the watcher dispatches via session-inject.
+    print()
+    print("═" * 60)
+    print("Manual submission (no agent session needed):")
+    print("═" * 60)
+    for agent in participants:
+        print(f"  {agent}:")
+        print(f"    shux discuss submit --project {project_dir} \\")
+        print(f"      --discussion {disc_id} --agent {agent} --round 1 \\")
+        print(f'      --verdict <agree|disagree|partial|consensus|abstain> \\')
+        print(f'      --position "your analysis here"')
+        print()
+    print(f"Status: shux discuss list --project {project_dir}")
+    print("═" * 60)
 
     return 0
 
@@ -587,6 +675,8 @@ def main(argv: list[str] | None = None) -> None:
                    help="Force discussion effort (bypasses auto-classification)")
     p.add_argument("--owners", action="append", default=[], metavar="OWNER[,OWNER...]")
     p.add_argument("--exclude", action="append", default=[], metavar="OWNER")
+    p.add_argument("--force", action="store_true", default=False,
+                   help="Allow discussion with fewer than 2 running agents")
 
     # rounds
     p = sub.add_parser("rounds", add_help=True)
@@ -677,6 +767,7 @@ def main(argv: list[str] | None = None) -> None:
             effort=opts.effort,
             owners=opts.owners,
             exclude=opts.exclude,
+            force=opts.force,
         )
 
     elif opts.subcmd == "rounds":

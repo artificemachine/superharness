@@ -29,7 +29,7 @@ class InboxRow:
     reason: str | None = None
     type: str = "task"
 
-_ACTIVE_STATUSES = ("pending", "launched", "running", "paused")
+_ACTIVE_STATUSES = ("pending", "launched", "running", "paused", "dispatched")
 
 
 def enqueue(
@@ -57,6 +57,17 @@ def enqueue(
         (task_id, target_agent, *_ACTIVE_STATUSES),
     ).fetchone()
     if existing:
+        # For discussion tasks, a duplicate is expected when the watcher
+        # races with discuss start. Downgrade to warning instead of crashing.
+        if "/round-" in (task_id or ""):
+            import logging
+            _log = logging.getLogger(__name__)
+            _log.warning(
+                "inbox_dao: duplicate suppressed for discussion task '%s' → '%s' "
+                "(watcher already claimed id=%s)",
+                task_id, target_agent, existing["id"],
+            )
+            return
         raise StateError(
             f"Duplicate rejected: active inbox row already exists for task '{task_id}' "
             f"→ '{target_agent}' (id={existing['id']})"

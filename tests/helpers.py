@@ -377,3 +377,26 @@ def seed_sqlite_ledger(
     ledger_dao.record(conn, task_id=task_id, agent=agent, action=action, now=now)
     conn.commit()
     conn.close()
+
+
+def seed_sqlite_heartbeat(
+    project_path,
+    *,
+    agent: str,
+    status: str = "ok",
+    now: str = "2026-06-01T00:00:00Z",
+) -> None:
+    """Insert a heartbeat record into SQLite."""
+    import sqlite3 as _sq
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import heartbeat_dao
+    project = Path(str(project_path))
+    _legacy = project / ".superharness" / "state.sqlite3"
+    _legacy.parent.mkdir(parents=True, exist_ok=True)
+    if not _legacy.exists():
+        _sq.connect(str(_legacy)).close()
+    conn = get_connection(str(project))
+    init_db(conn)
+    heartbeat_dao.upsert(conn, agent=agent, status=status, now=now)
+    conn.commit()
+    conn.close()

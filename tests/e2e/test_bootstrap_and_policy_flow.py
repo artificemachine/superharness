@@ -131,10 +131,11 @@ def test_bootstrap_discuss_start_enqueues_round_one_for_both_agents(repo_root, t
         args=[
             "start",
             "--project", str(project),
-            "--topic", "E2E test: dual-agent round enqueue",
+            "--topic", "Bootstrapping discussion",
             "--max-rounds", "2",
+            "--force",
         ],
-        extra_env={"SUPERHARNESS_STATE_DIR": state_dir},
+        extra_env={"SUPERHARNESS_STATE_DIR": state_dir}
     )
     assert start_res.returncode == 0, start_res.stderr
     assert "Discussion started:" in start_res.stdout
