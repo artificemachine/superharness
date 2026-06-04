@@ -143,6 +143,11 @@ patterns:
     backed_by: discussions
     reason: discussion summary handoffs; SQLite SoT via discussions_dao
 
+  # General handoffs (plan/report/repair) — session continuity logs, not relational state
+  - glob: .superharness/handoffs/*.yaml
+    type: ignore
+    reason: general handoff artifacts; session continuity logs, not relational state
+
   # Inbox export artifact — snapshot of the inbox SQLite table
   - glob: .superharness/inbox.yaml
     type: state
