@@ -593,3 +593,6 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-06-02: chore(release): bump to v1.70.1 (fix launchd respawn loop + test stability)
 - 2026-06-04: fix(operator): gate 'operator install --all' behind TTY check + opt-in persistent marker; agents can no longer trigger bulk launchd installs non-interactively; find_all_superharness_projects now requires .superharness/persistent marker by default
 - 2026-06-04: chore(release): bump to v1.70.2 (fix operator install --all agent guard + persistent marker)
+
+- 2026-06-04: fix(operator): circuit breaker cooldown enforced — prevents log-spam every 5s when tripped; _kill_process uses os.killpg to kill entire process group, preventing orphaned grandchildren (e.g. pytest); stop_all kills process groups on shutdown
+- 2026-06-04: chore(release): bump to v1.70.3 (fix operator circuit breaker + orphan cleanup)
