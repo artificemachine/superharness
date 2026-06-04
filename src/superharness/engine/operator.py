@@ -319,11 +319,24 @@ class Operator:
                                 "component": name, "pid": proc.pid,
                                 "exit_code": proc.returncode, "action": "restart"
                             })
-                            # Circuit breaker: if a component has been restarted
-                            # more than _max_restarts times in _restart_window
-                            # seconds, stop restarting it. Prevents the death spiral
-                            # where a crashing component spawns hundreds of orphans
-                            # (observed: 121 inbox_watch, 86 dashboard-ui at load 373).
+                            # Circuit breaker: only count non-zero exits (actual
+                            # crashes). The watcher is designed as a one-shot
+                            # process — it exits after every tick and the monitor
+                            # restarts it. Normal exits must not accumulate toward
+                            # the circuit breaker threshold or the watcher gets
+                            # permanently disabled after 6 normal cycles.
+                            # Fix: BUG-2026-06-04-operator-orphans-pytest-swap-storm
+                            # (watcher was being circuit-broken for normal exits)
+                            if proc.returncode == 0:
+                                self._kill_process(proc, name)
+                                if name == "watcher":
+                                    self._spawn_watcher()
+                                elif name == "dashboard" and self._use_dashboard:
+                                    if self._dashboard_port is None:
+                                        self._dashboard_port = self._find_available_port(8787)
+                                    self._spawn_dashboard(self._dashboard_port, no_open=True)
+                                continue
+                            # Non-zero exit: count toward circuit breaker
                             now_ts = time.time()
                             history = self._restart_history.setdefault(name, [])
                             history[:] = [t for t in history if now_ts - t < self._restart_window]
