@@ -646,21 +646,24 @@ def operator_start(project, port, no_open, use_dashboard, no_daemon):
 @operator.command(name="install")
 @click.option("--project", "-p", default=".", help="Project directory")
 @click.option("--all", "install_all", is_flag=True, default=False,
-              help="Install the operator for ALL projects with .superharness/")
+              help="Install the operator for ALL opted-in projects (.superharness/persistent marker required)")
+@click.option("--force", is_flag=True, default=False,
+              help="Allow --all to run non-interactively (e.g. in scripts). Never pass this from an agent.")
 @click.option("--dashboard", "use_dashboard", is_flag=True, default=False,
               help="Also start the dashboard UI in the installed service")
 @click.option("--watchdog/--no-watchdog", default=True,
               help="Install a 5-min watchdog plist that re-heals the operator on every tick")
-def operator_install(project, install_all, use_dashboard, watchdog):
+def operator_install(project, install_all, force, use_dashboard, watchdog):
     """Install the Guardian as a persistent system service.
 
     Aggressively removes any stale `com.superharness.*` services and
     orphan plists from prior versions before installing, so old layouts
     can never leak into the new install.
 
-    With --all, discovers every project with a .superharness/ directory
-    and installs the operator for each one. (Fix: BUGREPORT
-    watcher-silent-death-no-recovery, root cause #1.)
+    With --all, discovers every opted-in project (.superharness/persistent)
+    and installs the operator for each one. Requires an interactive terminal
+    unless --force is also passed. --force is intentionally undocumented for
+    agent use: agents must never run --all unattended.
     """
     from pathlib import Path
     import hashlib
@@ -695,6 +698,14 @@ def operator_install(project, install_all, use_dashboard, watchdog):
         return operator_label
 
     if install_all:
+        if not force and not sys.stdin.isatty():
+            click.echo(
+                "ERROR: 'operator install --all' refused to run non-interactively.\n"
+                "This command installs a persistent system service for every opted-in project.\n"
+                "Run it manually in a terminal. Never invoke it from an agent or script.",
+                err=True,
+            )
+            raise SystemExit(1)
         from superharness.engine.launchd_health import (
             find_all_superharness_projects,
             write_watchdog_plist,
@@ -702,9 +713,15 @@ def operator_install(project, install_all, use_dashboard, watchdog):
         )
         projects = find_all_superharness_projects()
         if not projects:
-            click.echo("No projects found with .superharness/ directory.")
+            click.echo(
+                "No opted-in projects found.\n"
+                "To enroll a project: touch .superharness/persistent"
+            )
             return
-        click.echo(f"Installing operator for {len(projects)} project(s)...")
+        click.echo(f"Found {len(projects)} opted-in project(s):")
+        for p in projects:
+            click.echo(f"  {p}")
+        click.confirm(f"\nInstall a persistent operator service for each?", abort=True)
         labels = []
         for p in projects:
             try:
