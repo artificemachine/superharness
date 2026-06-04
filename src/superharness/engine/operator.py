@@ -41,6 +41,7 @@ class Operator:
         self._restart_history: dict[str, list[float]] = {}  # component → restart timestamps
         self._max_restarts = 5  # circuit breaker: max restarts per component in window
         self._restart_window = 600  # 10-minute window for restart counting
+        self._circuit_open_until: dict[str, float] = {}  # component → cooldown deadline (epoch seconds)
 
     @staticmethod
     def _resolve_python() -> str:
@@ -304,6 +305,15 @@ class Operator:
             while not self._stopping:
                 try:
                     for name, proc in list(self.processes.items()):
+                        # Circuit breaker cooldown: if the circuit is open
+                        # (tripped for this component), skip entirely until
+                        # the cooldown expires. Prevents log-spam looping where
+                        # a tripped component retriggers the error every 5s.
+                        # Fix: BUG-2026-06-04-operator-orphans-pytest-swap-storm
+                        cooldown_until = self._circuit_open_until.get(name, 0)
+                        if time.time() < cooldown_until:
+                            continue
+
                         if proc.poll() is not None:
                             trace_event(self.project_dir, "process_recovery", {
                                 "component": name, "pid": proc.pid,
@@ -330,7 +340,15 @@ class Operator:
                                     "restarts": len(history),
                                     "window_seconds": self._restart_window,
                                 })
-                                continue  # skip restart this cycle; will retry later
+                                # Clear history and set cooldown so we don't
+                                # re-trigger every 5s. The component will not
+                                # be restarted until cooldown expires.
+                                self._restart_history[name] = []
+                                self._circuit_open_until[name] = now_ts + self._restart_window
+                                # Still kill the old process group so orphans
+                                # don't accumulate while the circuit is open.
+                                self._kill_process(proc, name)
+                                continue
                             # Kill old process before replacing — prevents
                             # orphan accumulation when subprocesses are slow
                             # to exit (DB connections, HTTP keep-alive, etc.)
@@ -355,9 +373,50 @@ class Operator:
         except KeyboardInterrupt:
             self.stop_all()
 
-    @staticmethod
-    def _kill_process(proc: subprocess.Popen, name: str = "") -> None:
-        """Terminate and wait for a subprocess. Force-kill if it doesn't exit."""
+    def _kill_process(self, proc: subprocess.Popen, name: str = "") -> None:
+        """Terminate a subprocess and ALL its children (process group).
+
+        On Unix: uses os.killpg to send SIGTERM to the entire process group,
+        then SIGKILL if any survivors remain. This prevents orphaned
+        grandchildren (e.g. pytest, bridge_worker.js spawned by the
+        watcher) from accumulating as PPID=1 zombies.
+
+        On Windows: falls back to proc.terminate() + proc.kill() since
+        os.killpg and process groups are Unix-only concepts.
+
+        Fix: BUG-2026-06-04-operator-orphans-pytest-swap-storm — 10.7 GB
+        orphaned pytest survived because only the direct child was killed.
+        """
+        # Unix: kill the entire process group
+        if hasattr(os, "killpg") and hasattr(os, "getpgid"):
+            pgid = None
+            try:
+                pgid = os.getpgid(proc.pid)
+            except (OSError, ProcessLookupError):
+                pass  # already dead
+
+            if pgid is not None and pgid != os.getpid():
+                try:
+                    os.killpg(pgid, signal.SIGTERM)
+                except (OSError, ProcessLookupError):
+                    pass
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(pgid, signal.SIGKILL)
+                    except (OSError, ProcessLookupError):
+                        pass
+                    try:
+                        proc.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        logger.warning(
+                            "operator.py _kill_process: process group %d for %s did not exit "
+                            "after SIGKILL; abandoning", pgid, name
+                        )
+                return
+
+        # Fallback: Windows, or process already dead / no pgid available
         try:
             proc.terminate()
             try:
@@ -369,14 +428,46 @@ class Operator:
             pass  # already dead
 
     def stop_all(self):
-        """Gracefully terminate all managed processes."""
+        """Gracefully terminate all managed processes and their children.
+
+        Unix: sends SIGTERM to each process group (since watcher/dashboard
+        use start_new_session=True), then force-kills survivors. This
+        ensures no orphaned grandchildren leak when the operator shuts down.
+
+        Windows: falls back to proc.terminate() + proc.kill().
+        """
         self._stopping = True
+        has_pg = hasattr(os, "killpg") and hasattr(os, "getpgid")
         for name, proc in self.processes.items():
-            proc.terminate()
+            try:
+                if has_pg:
+                    pgid = os.getpgid(proc.pid)
+                    if pgid != os.getpid():
+                        os.killpg(pgid, signal.SIGTERM)
+                    else:
+                        proc.terminate()
+                else:
+                    proc.terminate()
+            except (OSError, ProcessLookupError):
+                continue
             try:
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                proc.kill()
+                try:
+                    if has_pg:
+                        pgid = os.getpgid(proc.pid)
+                        if pgid != os.getpid():
+                            os.killpg(pgid, signal.SIGKILL)
+                        else:
+                            proc.kill()
+                    else:
+                        proc.kill()
+                except (OSError, ProcessLookupError):
+                    pass
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    pass
         self.processes.clear()
         op_file = self.project_dir / _OPERATOR_STATE_FILE
         if op_file.exists():
