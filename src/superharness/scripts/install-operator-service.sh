@@ -46,6 +46,7 @@ cat <<EOF > "$PLIST_PATH"
         <string>superharness.cli</string>
         <string>operator</string>
         <string>start</string>
+        <string>--no-daemon</string>
         <string>--project</string>
         <string>${PROJECT_DIR}</string>${EXTRA_ARGS}
     </array>
