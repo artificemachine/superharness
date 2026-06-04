@@ -343,15 +343,29 @@ def _render_watchdog_plist(label: str, python_bin: str, interval: int, log_dir: 
 """
 
 
-def find_all_superharness_projects(search_roots: list[Path] | None = None, max_depth: int = 3) -> list[Path]:
-    """Discover all project directories containing a `.superharness/` directory.
+PERSISTENT_MARKER = "persistent"
+
+
+def find_all_superharness_projects(
+    search_roots: list[Path] | None = None,
+    max_depth: int = 3,
+    require_marker: bool = True,
+) -> list[Path]:
+    """Discover project directories containing a `.superharness/` directory.
 
     Searches `search_roots` (defaults to ``$HOME/DevOpsSec`` if not provided)
     up to `max_depth` levels deep. Returns a list of resolved project paths.
 
+    When `require_marker` is True (the default), only projects that contain
+    `.superharness/persistent` are returned. This prevents `operator install
+    --all` and `heal --auto-discover` from silently enrolling every project
+    that has ever been `shux init`-ed into a persistent system service.
+
+    Create the marker with: ``touch .superharness/persistent``
+
     (Fix: BUGREPORT watcher-silent-death-no-recovery, root cause #4.)
     """
-    _log.debug("launchd_health: scanning for .superharness/ dirs")
+    _log.debug("launchd_health: scanning for .superharness/ dirs (require_marker=%s)", require_marker)
     if search_roots is None:
         devops = Path.home() / "DevOpsSec"
         search_roots = [devops] if devops.is_dir() else [Path.home()]
@@ -369,10 +383,13 @@ def find_all_superharness_projects(search_roots: list[Path] | None = None, max_d
                 continue
             harness_dir = Path(dirpath) / ".superharness"
             if harness_dir.is_dir():
-                project = Path(dirpath).resolve()
-                if project not in seen:
-                    seen.add(project)
-                    found.append(project)
+                if require_marker and not (harness_dir / PERSISTENT_MARKER).is_file():
+                    _log.debug("launchd_health: skipping %s (no .superharness/persistent marker)", dirpath)
+                else:
+                    project = Path(dirpath).resolve()
+                    if project not in seen:
+                        seen.add(project)
+                        found.append(project)
             # Skip hidden dirs to avoid noise
             dirnames[:] = [d for d in dirnames if not d.startswith(".") or d == ".superharness"]
 

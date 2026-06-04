@@ -8,6 +8,7 @@ transition itself still succeeds.
 from __future__ import annotations
 
 import pytest
+from unittest import mock
 
 from superharness.engine.db import get_connection, init_db, now_iso
 from superharness.engine import observations_dao, handoffs_dao
@@ -47,18 +48,18 @@ def _seed_task(project_dir: str, task_id: str = "t-1"):
 def test_transition_to_report_ready_captures_observation(tmp_path):
     project_dir = tmp_path / "proj"
     project_dir.mkdir()
-    _seed_task(str(project_dir))
+    _seed_task(str(project_dir), "t-1")
 
-    ok = set_task_status(str(project_dir), "t-1", "report_ready", force=True)
-    assert ok is True
+    from superharness.engine.summarizer import NoopSummarizer
+    with mock.patch("superharness.engine.observation_capture.get_summarizer", return_value=NoopSummarizer()):
+        ok = set_task_status(str(project_dir), "t-1", "report_ready", force=True)
+        assert ok is True
 
     conn = get_connection(str(project_dir))
     try:
         rows = observations_dao.list_for_task(conn, "t-1")
         assert len(rows) == 1
         assert rows[0]["phase"] == "report_ready"
-        # summary is LLM-generated — assert non-empty and task-id present, not exact content
-        assert rows[0]["summary"]
         assert "t-1" in rows[0]["summary"]
     finally:
         conn.close()
