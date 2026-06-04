@@ -596,3 +596,6 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 
 - 2026-06-04: fix(operator): circuit breaker cooldown enforced — prevents log-spam every 5s when tripped; _kill_process uses os.killpg to kill entire process group, preventing orphaned grandchildren (e.g. pytest); stop_all kills process groups on shutdown
 - 2026-06-04: chore(release): bump to v1.70.3 (fix operator circuit breaker + orphan cleanup)
+
+- 2026-06-04: fix(operator): circuit breaker no longer counts zero-exit (normal completion) toward restart threshold — watcher is intentionally one-shot, exiting after each tick; only non-zero exit codes trigger the circuit breaker now
+- 2026-06-04: chore(release): bump to v1.70.4 (fix circuit breaker for one-shot watcher)
