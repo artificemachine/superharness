@@ -599,3 +599,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 
 - 2026-06-04: fix(operator): circuit breaker no longer counts zero-exit (normal completion) toward restart threshold — watcher is intentionally one-shot, exiting after each tick; only non-zero exit codes trigger the circuit breaker now
 - 2026-06-04: chore(release): bump to v1.70.4 (fix circuit breaker for one-shot watcher)
+- 2026-06-06: fix(discuss): claude-code and opencode are now primary participants in all discussions by default; contract-owner logic adds further agents on top
+- 2026-06-06: chore(release): bump to v1.70.5 (fix discuss default participants)

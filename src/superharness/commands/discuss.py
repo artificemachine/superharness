@@ -14,6 +14,10 @@ from superharness.commands.task import VALID_OWNERS
 import logging
 logger = logging.getLogger(__name__)
 
+# Primary reasoners always included in discussions by default (before contract-owner
+# additions). Mirrors the model-router bucketing in inbox_dispatch.py.
+PRIMARY_AGENTS = ["claude-code", "opencode"]
+
 
 def _abort(msg: str, code: int = 1) -> None:
     print(msg, file=sys.stderr)
@@ -143,7 +147,8 @@ def cmd_start(
         from superharness.engine.adapter_registry import list_adapters
         all_owners = list_adapters()
     elif not norm_owners:
-        all_owners = _read_contract_owners(contract_file)
+        contract_owners = _read_contract_owners(contract_file)
+        all_owners = list(dict.fromkeys(PRIMARY_AGENTS + contract_owners))
     else:
         all_owners = norm_owners
 
