@@ -373,8 +373,13 @@ def test_discuss_start_exclude_owner(repo_root, tmp_path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert "Discussion started:" in result.stdout
-    assert "Participants: claude-code gemini-cli" in result.stdout
+    participants_line = result.stdout.split("Participants:")[1].split("\n")[0]
+    assert "claude-code" in participants_line
+    assert "opencode" in participants_line
+    assert "gemini-cli" in participants_line
+    assert "codex-cli" not in participants_line
     assert "Enqueued round 1 for claude-code" in result.stdout
+    assert "Enqueued round 1 for opencode" in result.stdout
     assert "Enqueued round 1 for gemini-cli" in result.stdout
     assert "codex-cli" not in result.stdout.split("Participants:")[1]
 
@@ -385,6 +390,7 @@ def test_discuss_start_exclude_owner(repo_root, tmp_path) -> None:
     ).fetchall()}
     db.close()
     assert "claude-code" in targets
+    assert "opencode" in targets
     assert "gemini-cli" in targets
     assert "codex-cli" not in targets
 
@@ -412,6 +418,10 @@ def test_discuss_start_filters_owner_from_participants(repo_root, tmp_path) -> N
     project = _setup_project_with_contract(
         tmp_path, owners=["claude-code", "codex-cli", "owner"]
     )
+    # opencode is now a PRIMARY_AGENT (always included by default); seed its heartbeat
+    from datetime import datetime, timezone
+    _now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    seed_sqlite_heartbeat(project, agent="opencode", status="alive", now=_now)
 
     result = _run_discuss_py(
         repo_root,
@@ -424,9 +434,12 @@ def test_discuss_start_filters_owner_from_participants(repo_root, tmp_path) -> N
     # Note about filtering must appear on stderr
     assert "owner" in result.stderr
     assert "not a registered AI agent" in result.stderr
-    # Only AI agents in participants
-    assert "Participants: claude-code codex-cli" in result.stdout
-    assert "owner" not in result.stdout.split("Participants:")[1].split("\n")[0]
+    # Only AI agents in participants; opencode included as primary reasoner
+    participants_line = result.stdout.split("Participants:")[1].split("\n")[0]
+    assert "claude-code" in participants_line
+    assert "opencode" in participants_line
+    assert "codex-cli" in participants_line
+    assert "owner" not in participants_line
 
     import sqlite3 as _sql
     db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
@@ -435,6 +448,7 @@ def test_discuss_start_filters_owner_from_participants(repo_root, tmp_path) -> N
     ).fetchall()}
     db.close()
     assert "claude-code" in targets
+    assert "opencode" in targets
     assert "codex-cli" in targets
     assert "owner" not in targets
 
