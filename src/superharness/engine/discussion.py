@@ -71,7 +71,7 @@ def cmd_start(
         discussions_dao.create(
             conn,
             id=disc_id, topic=topic, owners=participants,
-            task_id=task_id, now=now,
+            task_id=task_id, max_rounds=max_rounds, now=now,
         )
         conn.commit()
     finally:
@@ -168,7 +168,7 @@ def cmd_submit_round(
         )
 
         # Auto-transition to consensus if all participants submitted
-        _check_all_submitted_and_set_consensus(conn, disc, round_)
+        _check_all_submitted_and_set_consensus(conn, disc, round_, project_dir=project_dir)
 
         conn.commit()
     finally:
@@ -178,13 +178,29 @@ def cmd_submit_round(
     return 0
 
 
-def _check_all_submitted_and_set_consensus(conn, disc, round_: int) -> None:
+_CONSENSUS_VERDICTS = frozenset({"agree", "consensus", "abstain"})
+
+
+def compute_consensus(verdicts: dict[str, str], participants: list[str]) -> bool:
+    """Return True when the submitted verdicts constitute a quorum consensus.
+
+    Quorum rule: n≤2 requires all participants; n≥3 tolerates one abstaining
+    participant (n-1 suffices).  Any 'disagree' or 'partial' verdict blocks.
+    """
+    n = len(participants)
+    required = n if n <= 2 else n - 1
+    submitted = {a: v.lower() for a, v in verdicts.items() if a in participants}
+    if len(submitted) < required:
+        return False
+    return all(v in _CONSENSUS_VERDICTS for v in submitted.values())
+
+
+def _check_all_submitted_and_set_consensus(conn, disc, round_: int, project_dir: str = "/") -> None:
     """If all participants submitted this round AND all verdicts agree,
     auto-transition the discussion to consensus. If any participant
     disagrees we leave status=active so the dispatcher can advance to
     the next round."""
     rounds = discussions_dao.get_rounds(conn, disc.id)
-    submitted_agents = {r.agent for r in rounds if r.round_number == round_}
 
     # Only AI agents (those with registered adapters) are expected to submit
     # automatically. Human participants like "owner" are never dispatched via
@@ -196,21 +212,12 @@ def _check_all_submitted_and_set_consensus(conn, disc, round_: int) -> None:
         logger.warning("discussion.py unexpected error: %s", e, exc_info=True)
         ai_agents = set()
     agent_participants = [o for o in disc.owners if o in ai_agents] if ai_agents else list(disc.owners)
-    total_participants = len(agent_participants) if agent_participants else len(disc.owners)
-    # n=1 or n=2: all must submit; n≥3: n-1 suffices (one dissenter tolerated).
-    required_count = total_participants if total_participants <= 2 else total_participants - 1
 
-    if len(submitted_agents) < required_count:
+    verdicts_by_agent = {r.agent: (r.verdict or "").lower() for r in rounds if r.round_number == round_}
+    if not compute_consensus(verdicts_by_agent, agent_participants):
         return
 
-    # Auto-consensus requires every participant to not disagree.
-    # "partial" still means "not fully convinced" — advance to next round.
-    # "abstain" means "no objection" and closes the round via consensus.
-    verdicts = [(r.verdict or "").lower() for r in rounds if r.round_number == round_]
-    if not all(v in {"agree", "consensus", "abstain"} for v in verdicts):
-        return
-
-    now = _now_utc()
+    submitted_agents = {a for a in verdicts_by_agent if a in agent_participants}
     conn.execute(
         "UPDATE discussions SET status='consensus', consensus=? WHERE id=?",
         (f"consensus — all {len(submitted_agents)} participants submitted round {round_}", disc.id),
@@ -221,10 +228,12 @@ def _check_all_submitted_and_set_consensus(conn, disc, round_: int) -> None:
     )
 
     # Auto-create contract task from consensus points
-    _create_consensus_task(conn, disc, round_, submitted_agents)
+    _create_consensus_task(conn, disc, round_, submitted_agents, project_dir=project_dir)
 
 
-def _create_consensus_task(conn, disc, round_: int, submitted_agents: set[str]) -> None:
+def _create_consensus_task(
+    conn, disc, round_: int, submitted_agents: set[str], project_dir: str = "/"
+) -> None:
     """Auto-create a contract task from discussion consensus points (non-agree items)."""
     try:
         from superharness.engine import tasks_dao
@@ -236,14 +245,6 @@ def _create_consensus_task(conn, disc, round_: int, submitted_agents: set[str]) 
         # Initialise shared variables before any loop that references them
         topic = str(disc.topic)[:80]
         now = _now_utc()
-        project_dir = "/"  # fallback
-        try:
-            db_path = conn.execute("PRAGMA database_list").fetchone()
-            if db_path:
-                project_dir = os.path.dirname(os.path.dirname(db_path["file"]))
-        except Exception as e:
-            logger.warning("discussion.py unexpected error: %s", e, exc_info=True)
-            pass
 
         # Collect non-agree points from round submissions
         rounds = discussions_dao.get_rounds(conn, disc_id)
@@ -386,11 +387,12 @@ def cmd_check_consensus(discussion_dir: str) -> int:
                 if os.path.isfile(yaml_path):
                     verdicts[agent] = "file_on_disk"
 
-        # Require max(2, n-1) submissions — same formula as discuss.py
-        total = len(disc.owners)
-        required = max(2, total - 1) if total > 1 else 2
-        all_submitted = len(verdicts) >= required
-        consensus = all_submitted and "disagree" not in {v for v in verdicts.values() if v not in ("file_on_disk",)}
+        # file_on_disk entries are placeholders; exclude from verdict check
+        db_verdicts = {k: v for k, v in verdicts.items() if v != "file_on_disk"}
+        consensus = compute_consensus(db_verdicts, disc.owners)
+        all_submitted = consensus or len(verdicts) >= (
+            len(disc.owners) if len(disc.owners) <= 2 else len(disc.owners) - 1
+        )
 
         print(
             json.dumps(
@@ -483,9 +485,9 @@ def cmd_advance(discussion_dir: str) -> int:
             for r in rounds:
                 if r.round_number == current_round and r.agent != "_advance":
                     verdicts[r.agent] = str(r.verdict or "").lower()
-            consensus = all(v == "agree" for v in verdicts.values())
+            consensus = compute_consensus(verdicts, disc.owners)
 
-            max_rounds = 3
+            max_rounds = disc.max_rounds
 
             if consensus:
                 conn.execute(

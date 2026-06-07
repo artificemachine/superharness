@@ -55,7 +55,11 @@ def _seed_inbox(conn, item_id: str, task_id: str, agent: str, status: str,
 
 class TestGCDuplicateInbox:
     def test_merges_duplicate_pending(self, tmp_path):
-        """Two pending items for same task+agent → keep newest, cancel older."""
+        """Unique index on (task_id, target_agent) for active statuses prevents
+        duplicate pending rows from being created. The GC duplicate-merge path
+        is a no-op — it finds 0 duplicates because the index enforces uniqueness
+        at insert time. _seed_inbox uses INSERT OR IGNORE so the second insert
+        is silently discarded."""
         from superharness.commands.inbox_watch import _gc_duplicate_inbox
         conn = _setup_db(tmp_path)
         _seed_task(conn, "task-1")
@@ -64,12 +68,12 @@ class TestGCDuplicateInbox:
         conn.commit()
 
         result = _gc_duplicate_inbox(str(tmp_path))
-        assert result == 1  # one duplicate cleaned
+        assert result == 0  # unique index prevents duplicates — GC is a no-op
 
         r1 = conn.execute("SELECT status FROM inbox WHERE id='dup-1'").fetchone()
         r2 = conn.execute("SELECT status FROM inbox WHERE id='dup-2'").fetchone()
-        assert r1["status"] == "done"  # older canceled
-        assert r2["status"] == "pending"  # newest kept
+        assert r1["status"] == "pending"  # only row — unchanged
+        assert r2 is None  # unique index discarded the second insert
         conn.close()
 
     def test_no_duplicates_no_change(self, tmp_path):

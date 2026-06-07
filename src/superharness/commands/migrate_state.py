@@ -49,9 +49,26 @@ def run_migrate_state(
         return 0
 
     if xdg_exists:
-        print("WARNING: XDG state.db already exists. Migration aborted to avoid overwriting data.")
-        print(f"  If you want to replace it with the legacy db, delete {xdg_db} manually first.")
-        return 1
+        # Split-brain: both paths exist. Report the conflict and suggest resolution.
+        print("WARN split-brain detected: both XDG and legacy state DBs exist.")
+        print(f"  XDG (active):  {xdg_db}")
+        print(f"  Legacy:        {legacy_db}")
+        print()
+        print("The XDG db is the active source of truth. The legacy db is stale.")
+        if dry_run:
+            print("[dry-run] Would remove legacy db (no data loss — XDG is active).")
+            print("Dry run complete — no changes made.")
+            return 0
+        if not keep_legacy:
+            try:
+                os.remove(legacy_db)
+                print(f"Removed legacy db: {legacy_db}")
+            except OSError as e:
+                print(f"ERROR: could not remove legacy db: {e}", file=sys.stderr)
+                return 1
+        else:
+            print("Keeping legacy db (--keep-legacy). Remove it manually when ready.")
+        return 0
 
     xdg_dir = os.path.dirname(xdg_db)
     if dry_run:

@@ -169,14 +169,23 @@ def test_repeated_reset_does_not_create_infinite_retry_loop(tmp_path):
 # Pattern D — legacy autonomy aliases all normalize to ai_driven and dispatch
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("autonomy", ["supervised", "approval-gated", "full-auto", "autonomous"])
+@pytest.mark.parametrize("autonomy", ["approval-gated", "full-auto", "autonomous"])
 def test_legacy_autonomy_aliases_normalize_to_ai_driven_and_dispatch(
     tmp_path, autonomy
 ):
+    # "supervised" is excluded: it is a distinct mode that preserves human oversight
     project = _project(tmp_path, profile_extra={"autonomy": autonomy, "auto_dispatch": True})
     _task(project, "t-sup")
     count = auto_enqueue_approved(str(project))
     assert count == 1, f"autonomy={autonomy} should normalize to ai_driven and dispatch"
+
+
+def test_supervised_autonomy_does_not_auto_dispatch(tmp_path):
+    """supervised mode preserves human oversight — auto_enqueue must not dispatch."""
+    project = _project(tmp_path, profile_extra={"autonomy": "supervised", "auto_dispatch": True})
+    _task(project, "t-supervised")
+    count = auto_enqueue_approved(str(project))
+    assert count == 0, "supervised autonomy must not auto-dispatch"
 
 
 # ---------------------------------------------------------------------------

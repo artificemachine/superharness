@@ -41,10 +41,11 @@ def test_profile_reads_autonomy(repo_root, tmp_path) -> None:
 
 
 def test_profile_reads_supervised(repo_root, tmp_path) -> None:
+    # supervised is a distinct mode (not aliased to ai_driven) — it preserves human oversight
     _write_profile(tmp_path / ".superharness", autonomy="supervised")
     result = _run_profile(tmp_path, "--project", str(tmp_path), "autonomy")
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "ai_driven"
+    assert result.stdout.strip() == "supervised"
 
 
 def test_profile_reads_primary_agent(repo_root, tmp_path) -> None:

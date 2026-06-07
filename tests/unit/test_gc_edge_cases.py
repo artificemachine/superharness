@@ -34,27 +34,31 @@ class TestGCDuplicateEdgeCases:
     """Duplicate inbox edge cases."""
 
     def test_large_duplicate_batch(self, tmp_path):
+        # Unique index on (task_id, target_agent) for active statuses enforces
+        # at-most-one rule. _seed uses INSERT OR REPLACE, which deletes the
+        # previous row on conflict, leaving only the last insertion (dup-4).
+        # GC finds 0 duplicates — the index is the enforcement layer.
         from superharness.commands.inbox_watch import _gc_duplicate_inbox
         conn = _setup_db(tmp_path)
         _seed(conn, _table="tasks", id="t1", title="T", status="in_progress",
               project_path=str(tmp_path), created_at="2026-01-01T00:00:00Z")
-        # Create 5 duplicates
         for i in range(5):
             _seed(conn, _table="inbox", id=f"dup-{i}", task_id="t1", target_agent="claude-code",
                   status="pending", retry_count=0, max_retries=3,
                   created_at=f"2026-01-01T00:0{i}:00Z")
         conn.commit()
         cleaned = _gc_duplicate_inbox(str(tmp_path))
-        assert cleaned == 4  # 5 items, 1 kept, 4 canceled
+        assert cleaned == 0  # unique index enforces uniqueness; GC is a no-op
         conn.close()
 
     def test_multiple_tasks_with_duplicates(self, tmp_path):
+        # OR REPLACE evicts the earlier row on unique index conflict, leaving
+        # one active row per (task, agent) pair. GC finds 0 duplicates.
         from superharness.commands.inbox_watch import _gc_duplicate_inbox
         conn = _setup_db(tmp_path)
         for tid in ["t1", "t2"]:
             _seed(conn, _table="tasks", id=tid, title=tid, status="in_progress",
                   project_path=str(tmp_path), created_at="2026-01-01T00:00:00Z")
-        # Duplicates for two different tasks
         for tid in ["t1", "t2"]:
             _seed(conn, _table="inbox", id=f"{tid}-a", task_id=tid, target_agent="claude-code",
                   status="pending", retry_count=0, max_retries=3, created_at="2026-01-01T00:00:00Z")
@@ -62,7 +66,7 @@ class TestGCDuplicateEdgeCases:
                   status="pending", retry_count=0, max_retries=3, created_at="2026-01-01T00:01:00Z")
         conn.commit()
         cleaned = _gc_duplicate_inbox(str(tmp_path))
-        assert cleaned == 2  # one per task
+        assert cleaned == 0  # unique index enforces one active row per task+agent
         conn.close()
 
     def test_different_agents_not_duplicates(self, tmp_path):

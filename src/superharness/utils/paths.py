@@ -32,8 +32,13 @@ def resolve_project_dir(default: str) -> str:
 
 
 def resolve_state_db_path(project_dir: str) -> str:
-    """Return the conventional state DB path under project_dir."""
-    return os.path.join(project_dir.rstrip("/\\"), ".superharness", "state.sqlite3")
+    """Return the active state DB path for project_dir.
+
+    Delegates to resolve_active_state_db_path so there is one resolver of record.
+    Callers that previously assumed the legacy .superharness/state.sqlite3 path
+    should switch to resolve_active_state_db_path directly.
+    """
+    return resolve_active_state_db_path(project_dir)
 
 
 def resolve_state_dir() -> str:

@@ -121,3 +121,40 @@ def test_execute_agent_print_only_sets_rc_zero(tmp_path):
     _execute_agent(ctx)
 
     assert ctx.launcher_rc == 0
+
+
+# ---------------------------------------------------------------------------
+# Iter 7 RED: task completion + --for-review read from SQLite
+# ---------------------------------------------------------------------------
+
+def test_success_recorded_done_from_sqlite():
+    """_reconcile_state must read task completion from SQLite (state_reader) not contract.yaml subprocess."""
+    import inspect
+    from superharness.commands import inbox_dispatch as m
+    src = inspect.getsource(m._reconcile_state)
+    # After fix: the function uses state_reader.get_task or tasks_dao, not the legacy subprocess path
+    uses_sqlite = any(tok in src for tok in ("get_task", "tasks_dao", "state_reader.get"))
+    # The dead subprocess call for contract.task_status in the non-discussion branch must be gone
+    has_dead_contract_call = ("engine.contract" in src and "task_status" in src
+                              and "elif os.path.exists(ctx.contract_file)" in src)
+    assert uses_sqlite and not has_dead_contract_call, (
+        "_reconcile_state still reads task status via contract.yaml subprocess "
+        "(find 'engine.contract' + 'task_status' in the non-discussion branch). "
+        "Replace with state_reader.get_task() call."
+    )
+
+
+def test_for_review_from_sqlite():
+    """_prepare_execution must derive --for-review from SQLite task status, not contract.yaml subprocess."""
+    import inspect
+    from superharness.commands import inbox_dispatch as m
+    src = inspect.getsource(m._prepare_execution)
+    # After fix: --for-review derivation uses get_task / tasks_dao, not subprocess
+    uses_sqlite = any(tok in src for tok in ("get_task", "tasks_dao", "state_reader.get"))
+    # The dead subprocess call for task_status in _prepare_execution must be gone
+    has_dead_contract_call = ("engine.contract" in src and "task_status" in src)
+    assert uses_sqlite and not has_dead_contract_call, (
+        "_prepare_execution still reads task_status via contract.yaml subprocess "
+        "(find 'engine.contract' + 'task_status' in the function). "
+        "Replace with state_reader.get_task() call."
+    )
