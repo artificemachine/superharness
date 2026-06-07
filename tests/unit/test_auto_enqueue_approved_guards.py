@@ -112,12 +112,21 @@ def test_auto_enqueue_skipped_when_auto_dispatch_false(tmp_path):
 # Guard 2: legacy autonomy aliases normalize to ai_driven and dispatch
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("autonomy", ["supervised", "approval-gated", "full-auto", "autonomous"])
+@pytest.mark.parametrize("autonomy", ["approval-gated", "full-auto", "autonomous"])
 def test_legacy_autonomy_aliases_normalize_and_dispatch(tmp_path, autonomy):
+    # "supervised" is intentionally excluded: it is a distinct mode, not an alias for ai_driven
     project = _make_project(tmp_path, profile={"auto_dispatch": True, "autonomy": autonomy})
     _add_task(project, "t-test02", "plan_approved")
     count = auto_enqueue_approved(str(project))
     assert count == 1, f"autonomy={autonomy} should normalize to ai_driven and dispatch"
+
+
+def test_supervised_autonomy_does_not_auto_dispatch(tmp_path):
+    """supervised mode preserves human oversight — auto_enqueue must not dispatch."""
+    project = _make_project(tmp_path, profile={"auto_dispatch": True, "autonomy": "supervised"})
+    _add_task(project, "t-supervised", "plan_approved")
+    count = auto_enqueue_approved(str(project))
+    assert count == 0, "supervised autonomy must not auto-dispatch (distinct from ai_driven)"
 
 
 # ---------------------------------------------------------------------------

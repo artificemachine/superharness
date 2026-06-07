@@ -123,6 +123,43 @@ LIFECYCLE_RULES: list[LifecycleRule] = [
             "operator-halted task auto-archived"
         ),
     ),
+    # Plan-state timeouts: tasks that get stuck awaiting dispatch or operator response
+    LifecycleRule(
+        state="plan_approved",
+        timeout_minutes=240,  # 4 hours — approved but agent never picked up
+        on_timeout="fail",
+        source="contract",
+        timestamp_field="plan_approved_at",
+        profile_key="plan_approved_timeout_minutes",
+        fail_reason_template=(
+            "plan_approved timeout ({age_minutes}m >= {limit_minutes}m) — "
+            "task was approved but never dispatched"
+        ),
+    ),
+    LifecycleRule(
+        state="plan_proposed",
+        timeout_minutes=480,  # 8 hours — operator never responded to plan proposal
+        on_timeout="fail",
+        source="contract",
+        timestamp_field="plan_proposed_at",
+        profile_key="plan_proposed_timeout_minutes",
+        fail_reason_template=(
+            "plan_proposed timeout ({age_minutes}m >= {limit_minutes}m) — "
+            "no operator response to plan proposal"
+        ),
+    ),
+    LifecycleRule(
+        state="pending_user_approval",
+        timeout_minutes=480,  # 8 hours — operator never approved
+        on_timeout="fail",
+        source="contract",
+        timestamp_field="updated_at",
+        profile_key="pending_user_approval_timeout_minutes",
+        fail_reason_template=(
+            "pending_user_approval timeout ({age_minutes}m >= {limit_minutes}m) — "
+            "no operator approval received"
+        ),
+    ),
 ]
 
 # Non-terminal states that are eligible for deadline enforcement.

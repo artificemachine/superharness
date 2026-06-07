@@ -14,9 +14,9 @@ from superharness.commands.task import VALID_OWNERS
 import logging
 logger = logging.getLogger(__name__)
 
-# Primary reasoners always included in discussions by default (before contract-owner
-# additions). Mirrors the model-router bucketing in inbox_dispatch.py.
-PRIMARY_AGENTS = ["claude-code", "opencode"]
+# Primary agents always included in discussions by default (before contract-owner
+# additions). Consistent with KNOWN_AGENTS / VALID_TARGETS across the codebase.
+PRIMARY_AGENTS = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
 
 
 def _abort(msg: str, code: int = 1) -> None:
@@ -26,6 +26,26 @@ def _abort(msg: str, code: int = 1) -> None:
 
 def _now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _watcher_is_alive(project_dir: str) -> bool:
+    """Return True when the watcher has a live (non-zombie) heartbeat."""
+    try:
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import heartbeat_dao
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            hb = heartbeat_dao.get(conn, "watcher")
+            return hb is not None and hb.status not in ("zombie", None)
+        finally:
+            conn.close()
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -211,32 +231,39 @@ def cmd_start(
             )
 
     if len(available_agents) < 2 and not force:
-        print(
-            f"\nError: only {len(available_agents)} of {len(participants)} participants "
-            f"are running (have recent heartbeats).",
-            file=sys.stderr,
-        )
-        print(
-            f"At least 2 running agents are required for a valid discussion. "
-            f"Use --force to override.",
-            file=sys.stderr,
-        )
-        print(
-            f"\nTip: submit verdicts manually via CLI — no agent session needed:",
-            file=sys.stderr,
-        )
-        for agent in participants:
+        if len(participants) >= 2 and _watcher_is_alive(project_dir):
             print(
-                f"  shux discuss submit --project {project_dir} "
-                f"--discussion <id> --agent {agent} --round <N> "
-                f"--verdict <agree|disagree|partial|consensus|abstain>",
+                f"Note: {len(available_agents)}/{len(participants)} agents have heartbeats "
+                f"but the watcher is active — rounds will be dispatched via inbox.",
                 file=sys.stderr,
             )
-        print(
-            f"\nAvailable: {', '.join(available_agents) if available_agents else 'none'}",
-            file=sys.stderr,
-        )
-        return 1
+        else:
+            print(
+                f"\nError: only {len(available_agents)} of {len(participants)} participants "
+                f"are running (have recent heartbeats).",
+                file=sys.stderr,
+            )
+            print(
+                f"At least 2 running agents are required for a valid discussion. "
+                f"Use --force to override.",
+                file=sys.stderr,
+            )
+            print(
+                f"\nTip: submit verdicts manually via CLI — no agent session needed:",
+                file=sys.stderr,
+            )
+            for agent in participants:
+                print(
+                    f"  shux discuss submit --project {project_dir} "
+                    f"--discussion <id> --agent {agent} --round <N> "
+                    f"--verdict <agree|disagree|partial|consensus|abstain>",
+                    file=sys.stderr,
+                )
+            print(
+                f"\nAvailable: {', '.join(available_agents) if available_agents else 'none'}",
+                file=sys.stderr,
+            )
+            return 1
     elif len(available_agents) < len(participants):
         print(
             f"Note: {len(available_agents)}/{len(participants)} participants are running. "

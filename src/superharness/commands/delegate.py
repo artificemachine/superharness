@@ -702,6 +702,14 @@ def delegate(
     _task_status = task_obj.get("status", "") if task_obj else ""
     _workflow = _infer_workflow(task_id, task_obj)
     _DISPATCH_TERMINAL_STATUSES = {"done", "failed", "stopped"}
+    # Auto-route: todo+implementation → plan-only (soft-route, not a permanent block)
+    if _workflow == "implementation" and _task_status == "todo" and not plan_only:
+        plan_only = True
+        print(
+            f"Note: auto-applying --plan-only for '{task_id}' "
+            "(status: todo, workflow: implementation) — agent will propose a plan.",
+            file=sys.stderr,
+        )
     if plan_only:
         _DISPATCH_ALLOWED_STATUSES = _plan_only_allowed_statuses(_workflow)
     else:

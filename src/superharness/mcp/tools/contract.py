@@ -72,6 +72,16 @@ def update_status(
     project_path: str = "",
 ) -> dict:
     """Update task status and optionally fire lifecycle hooks."""
+    # Validate transition against the legal status graph before writing
+    try:
+        current = get_task(conn, task_id)
+        if current:
+            from superharness.engine.next_action import validate_status_transition
+            validate_status_transition(str(current.get("status", "")), status)
+    except ValueError as _e:
+        logger.warning("update_status rejected invalid transition for %s: %s", task_id, _e)
+        return {}
+
     now = _now()
     status_col = f"{status}_at"
     # Map well-known statuses to their timestamp columns

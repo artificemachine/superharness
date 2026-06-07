@@ -28,6 +28,10 @@ class TestTaskLifecycleE2E:
                   "--owner", "claude-code", "--criteria", "Works", cwd=str(project))
         assert r.returncode == 0, f"create: {r.stderr[:200]}"
 
+        r = _shux("task", "status", "--id", "e2e-1", "--status", "plan_proposed",
+                  "--actor", "claude-code", cwd=str(project))
+        assert r.returncode == 0, f"plan_proposed: {r.stderr[:200]}"
+
         r = _shux("task", "status", "--id", "e2e-1", "--status", "plan_approved",
                   "--actor", "claude-code", cwd=str(project))
         assert r.returncode == 0, f"approve: {r.stderr[:200]}"

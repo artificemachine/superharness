@@ -206,20 +206,21 @@ def test_migrate_worker_dir(db_conn, tmp_path):
     worker_sh = worker_dir / ".superharness"
     worker_sh.mkdir(parents=True)
     
-    # Worker has its own inbox item
+    # Worker has its own inbox item — use a distinct (task, agent) pair so the
+    # unique partial index on (task_id, target_agent) does not block the insert.
     worker_inbox = [
         {
             "id": "iw1",
             "task": "task-1",
-            "to": "claude-code",
+            "to": "gemini-cli",
             "status": "pending",
             "created_at": "2026-01-01T00:10:00Z"
         }
     ]
     (worker_sh / "inbox.yaml").write_text(yaml.dump(worker_inbox))
-    
+
     report = migrate_all_to_sqlite(db_conn, str(project), workers_root=str(workers_root))
-    
+
     assert report.inbox_imported == 3 # 2 from main + 1 from worker
     assert str(worker_dir) in report.worker_dirs_migrated
 

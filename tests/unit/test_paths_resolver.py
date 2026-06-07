@@ -38,18 +38,17 @@ def test_resolve_project_dir_ignores_empty_env(monkeypatch):
     assert resolve_project_dir("/tmp/default") == "/tmp/default"
 
 
-def test_state_db_path_under_project():
-    p = resolve_state_db_path("/tmp/proj")
-    expected = os.path.join("/tmp/proj", ".superharness", "state.sqlite3")
-    assert p == expected
+def test_state_db_path_delegates_to_active_resolver(tmp_path):
+    # resolve_state_db_path is now a thin wrapper around resolve_active_state_db_path.
+    # With no db on disk, both return the XDG path.
+    assert resolve_state_db_path(str(tmp_path)) == resolve_active_state_db_path(str(tmp_path))
 
 
-def test_state_db_path_trailing_slash_normalised():
-    # Trailing slash (or backslash on Windows) on the project dir should not
-    # produce a duplicated separator after the join.
-    p = resolve_state_db_path("/tmp/proj/")
-    expected = os.path.join("/tmp/proj", ".superharness", "state.sqlite3")
-    assert p == expected
+def test_state_db_path_trailing_slash_normalised(tmp_path):
+    # Trailing slash must not produce a different hash than without.
+    without = resolve_state_db_path(str(tmp_path))
+    with_slash = resolve_state_db_path(str(tmp_path) + "/")
+    assert without == with_slash
 
 
 def test_dashboard_port_default_when_env_unset(monkeypatch):
@@ -235,3 +234,28 @@ def test_resolve_active_state_db_path_returns_legacy_when_sh_dir_exists(monkeypa
     os.makedirs(os.path.join(project, ".superharness"))
     expected = os.path.join(project, ".superharness", "state.sqlite3")
     assert resolve_active_state_db_path(project) == expected
+
+
+# ── Iter 12 RED: resolve_state_db_path must delegate to resolve_active_state_db_path ─
+
+def test_single_resolver_of_record_footgun_redirected(tmp_path, monkeypatch):
+    """resolve_state_db_path must return the same result as resolve_active_state_db_path.
+
+    RED: currently resolve_state_db_path is a footgun that always returns the
+    legacy .superharness/state.sqlite3 path, ignoring XDG state and env overrides.
+    GREEN: redirect it to resolve_active_state_db_path so there is one resolver of record.
+    """
+    state_dir = str(tmp_path / "xdg_state")
+    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", state_dir)
+    project = str(tmp_path / "proj")
+    # XDG db exists — active resolver should return XDG, not legacy
+    xdg_path = resolve_xdg_state_db_path(project)
+    os.makedirs(os.path.dirname(xdg_path), exist_ok=True)
+    open(xdg_path, "w").close()
+
+    result = resolve_state_db_path(project)
+    assert result == xdg_path, (
+        f"resolve_state_db_path returned {result!r} (footgun legacy path) "
+        f"instead of the active XDG path {xdg_path!r}. "
+        "Redirect resolve_state_db_path → resolve_active_state_db_path."
+    )
