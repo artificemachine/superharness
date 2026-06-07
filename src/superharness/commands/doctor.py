@@ -252,7 +252,16 @@ def main(argv: list[str] | None = None) -> None:
     # PASS post-migration — SQLite is the sole source of truth — but we
     # still emit a parity: line so consumers and tests that grep for it
     # see the current contract.
-    from superharness.utils.paths import is_project_initialized
+    from superharness.utils.paths import is_project_initialized, resolve_xdg_state_db_path
+    legacy_db = os.path.join(project_dir, ".superharness", "state.sqlite3")
+    xdg_db = resolve_xdg_state_db_path(project_dir)
+    # Split-brain detection: both XDG and legacy DBs exist simultaneously.
+    if os.path.isfile(xdg_db) and os.path.isfile(legacy_db):
+        print("WARN state-db: split-brain — both XDG state.db and legacy .superharness/state.sqlite3 exist")
+        print(f"  XDG:    {xdg_db}")
+        print(f"  Legacy: {legacy_db}")
+        print(f"  Run: shux migrate-state --project {project_dir}")
+        warns += 1
     if is_project_initialized(project_dir):
         try:
             from superharness.engine.db import get_connection, init_db
@@ -269,7 +278,6 @@ def main(argv: list[str] | None = None) -> None:
             warns += 1
     else:
         # Check if the project has a legacy state.sqlite3 that hasn't been migrated
-        legacy_db = os.path.join(project_dir, ".superharness", "state.sqlite3")
         if os.path.isfile(legacy_db):
             print("WARN state-db: legacy .superharness/state.sqlite3 found — project not yet migrated to XDG path")
             print(f"  Run: shux migrate-state --project {project_dir}")

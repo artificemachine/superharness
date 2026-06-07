@@ -85,3 +85,32 @@ class TestBuildReviewPayload:
             locked_contract=None, diff="diff", handoff_report=None
         )
         assert payload["locked_contract"] is None
+
+
+# ── Iter 5 RED: autonomy gate consistency ─────────────────────────────────────
+
+class TestAutonomyGateConsistency:
+    """Verify normalize_autonomy preserves supervised and pipeline_check uses it."""
+
+    def test_normalize_autonomy_preserves_supervised(self):
+        """normalize_autonomy("supervised") must return "supervised", not "ai_driven"."""
+        from superharness.engine.profile import normalize_autonomy
+        result = normalize_autonomy("supervised")
+        assert result == "supervised", (
+            f"normalize_autonomy('supervised') returned {result!r}; "
+            "expected 'supervised' (should not collapse to ai_driven)"
+        )
+
+    def test_pipeline_check_matches_runtime(self):
+        """pipeline_check must call normalize_autonomy so aliases like 'full-auto' are accepted."""
+        from superharness.engine.profile import normalize_autonomy
+        import inspect
+        from superharness.commands import pipeline_check as pc
+        # Precondition: 'full-auto' normalizes to 'ai_driven'
+        assert normalize_autonomy("full-auto") == "ai_driven"
+        # pipeline_check must use normalize_autonomy — otherwise 'full-auto' passes the runtime
+        # gate but fails the pipeline_check (divergence)
+        src = inspect.getsource(pc)
+        assert "normalize_autonomy" in src, (
+            "pipeline_check must call normalize_autonomy for consistency with runtime dispatch gate"
+        )

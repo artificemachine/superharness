@@ -29,7 +29,7 @@ class InboxRow:
     reason: str | None = None
     type: str = "task"
 
-_ACTIVE_STATUSES = ("pending", "launched", "running", "paused", "dispatched")
+_ACTIVE_STATUSES = ("pending", "launched", "running", "paused")
 
 
 def enqueue(

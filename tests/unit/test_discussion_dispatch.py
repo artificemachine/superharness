@@ -301,17 +301,17 @@ def test_discuss_start_creates_contract_task_and_enqueues(repo_root, tmp_path) -
     assert "codex-cli" in targets
 
 
-def test_discuss_start_rejects_single_owner(repo_root, tmp_path) -> None:
-    """discuss start requires at least 2 distinct owners in the contract."""
+def test_discuss_start_proceeds_with_watcher_active(repo_root, tmp_path) -> None:
+    """With watcher active, start succeeds even when few agent heartbeats are present."""
     project = _setup_project_with_contract(tmp_path, owners=["codex-cli"])
 
     result = _run_discuss_py(
         repo_root,
-        args=["start", "--project", str(project), "--topic", "Should fail"],
+        args=["start", "--project", str(project), "--topic", "Watcher bypass test"],
     )
-    # v1.69.5: returns 1 because only 1 participant is running (availability check)
-    assert result.returncode == 1
-    assert "At least 2 running agents are required" in result.stderr
+    # Iter 4: watcher active + PRIMARY_AGENTS ≥ 2 → proceed with warning, not 1
+    assert result.returncode == 0, result.stderr
+    assert "watcher is active" in result.stderr
 
 
 def test_discuss_start_allows_explicit_owners_without_contract_owners(repo_root, tmp_path) -> None:
@@ -347,15 +347,20 @@ def test_discuss_start_allows_explicit_owners_without_contract_owners(repo_root,
     assert n >= 1
 
 
-def test_discuss_start_rejects_no_owners(repo_root, tmp_path) -> None:
-    """discuss start fails when contract has no tasks."""
+def test_discuss_start_rejects_no_owners_without_watcher(repo_root, tmp_path) -> None:
+    """Without watcher, start fails when no agent heartbeats are present."""
+    import sqlite3 as _sql
     project = _setup_project_with_contract(tmp_path, owners=[])
+    # Nullify the watcher heartbeat so _watcher_is_alive returns False
+    db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
+    db.execute("DELETE FROM agent_heartbeats WHERE agent = 'watcher'")
+    db.commit()
+    db.close()
 
     result = _run_discuss_py(
         repo_root,
         args=["start", "--project", str(project), "--topic", "Should fail"],
     )
-    # v1.69.5: returns 1 (no running participants)
     assert result.returncode == 1
     assert "At least 2 running agents are required" in result.stderr
 
@@ -395,9 +400,15 @@ def test_discuss_start_exclude_owner(repo_root, tmp_path) -> None:
     assert "codex-cli" not in targets
 
 
-def test_discuss_start_exclude_too_many_rejects(repo_root, tmp_path) -> None:
-    """discuss start --exclude fails if fewer than 2 owners remain."""
+def test_discuss_start_exclude_too_many_rejects_without_watcher(repo_root, tmp_path) -> None:
+    """Without watcher, --exclude fails if fewer than 2 running agents remain."""
+    import sqlite3 as _sql
     project = _setup_project_with_contract(tmp_path, owners=["claude-code", "codex-cli"])
+    # Nullify watcher heartbeat so the gate stays hard
+    db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
+    db.execute("DELETE FROM agent_heartbeats WHERE agent = 'watcher'")
+    db.commit()
+    db.close()
 
     result = _run_discuss_py(
         repo_root,
@@ -406,7 +417,7 @@ def test_discuss_start_exclude_too_many_rejects(repo_root, tmp_path) -> None:
             "--exclude", "codex-cli",
         ],
     )
-    # v1.69.5: returns 1 (only 1 running participant remains)
+    # watcher dead → hard reject when < 2 heartbeats
     assert result.returncode == 1
     assert "At least 2 running agents are required" in result.stderr
 
@@ -565,3 +576,205 @@ class TestRetryAgent:
         assert "permanent block" in (row["failed_reason"] or "")
         assert row["retry_count"] == 2
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Iter 1 — Route discussion rounds through delegate (kill forced session-inject)
+# ---------------------------------------------------------------------------
+
+class TestIter1SessionInjectGate:
+    """Iter 1 RED tests: discussion rounds must route through _execute_agent,
+    not through _write_discussion_prompt_file / _reconcile_session_inject."""
+
+    def _setup_sqlite(self, tmp_path, disc_task: str) -> None:
+        """Create minimal SQLite state with a pending discussion round inbox item."""
+        from superharness.engine.db import get_connection, init_db
+
+        conn = get_connection(str(tmp_path))
+        init_db(conn)
+        # Tasks must exist before inbox (FK constraint)
+        conn.execute(
+            "INSERT OR IGNORE INTO tasks (id, title, status, created_at) "
+            "VALUES (?,?,?,?)",
+            (disc_task, "Round 1", "in_progress", "2026-06-07T00:00:00Z"),
+        )
+        conn.execute(
+            "INSERT INTO inbox (id, task_id, target_agent, status, priority, "
+            "retry_count, max_retries, created_at, project_path) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            ("item-iter1", disc_task, "claude-code", "pending", 5, 0, 3,
+             "2026-06-07T00:00:00Z", str(tmp_path)),
+        )
+        conn.commit()
+        conn.close()
+
+    def test_round_dispatch_spawns_delegate(self, tmp_path, monkeypatch):
+        """Dispatching a discussion round must call _execute_agent (delegate path).
+        Session-injection path has been removed; _execute_agent is the only path."""
+        from unittest.mock import patch
+
+        monkeypatch.delenv("SUPERHARNESS_SESSION_INJECT_ENABLED", raising=False)
+
+        disc_task = "discuss-iter1test20260607T000000Z-1-111111111/round-1"
+        sh = tmp_path / ".superharness"
+        sh.mkdir()
+        self._setup_sqlite(tmp_path, disc_task)
+
+        execute_called = []
+
+        with patch("superharness.commands.inbox_dispatch._execute_agent",
+                   side_effect=lambda c: execute_called.append(True)), \
+             patch("superharness.commands.inbox_dispatch._prepare_launch_context"), \
+             patch("superharness.commands.inbox_dispatch._skip_already_done_discussion_round",
+                   return_value=False):
+            from superharness.commands.inbox_dispatch import dispatch
+            dispatch(
+                project_dir=str(tmp_path),
+                target_filter="claude-code",
+                non_interactive=True,
+            )
+
+        assert execute_called, "_execute_agent must be called for discussion round dispatch"
+
+    def test_session_inject_off_by_default(self, tmp_path, monkeypatch):
+        """inbox_watch._run_dispatch_cmd must not append --session-inject when
+        SUPERHARNESS_SESSION_INJECT_ENABLED is not set."""
+        from unittest.mock import patch, MagicMock
+
+        monkeypatch.delenv("SUPERHARNESS_SESSION_INJECT_ENABLED", raising=False)
+
+        captured = []
+
+        def _fake_popen(args, **kwargs):
+            captured.extend(args)
+            return MagicMock()
+
+        with patch("superharness.commands.inbox_watch.subprocess.Popen",
+                   side_effect=_fake_popen):
+            from superharness.commands.inbox_watch import _run_dispatch_cmd
+            _run_dispatch_cmd(
+                project_dir=str(tmp_path),
+                target="claude-code",
+                print_only=False,
+                non_interactive=True,
+                codex_bypass=False,
+                launcher_timeout=0,
+            )
+
+        assert "--session-inject" not in captured, (
+            "--session-inject must NOT be in dispatch args by default "
+            "(set SUPERHARNESS_SESSION_INJECT_ENABLED to enable)"
+        )
+
+    def test_dispatch_argv_shape_no_session_inject(self, tmp_path, monkeypatch):
+        """Spawned inbox_dispatch subprocess argv must not contain --session-inject."""
+        from unittest.mock import patch, MagicMock
+
+        monkeypatch.delenv("SUPERHARNESS_SESSION_INJECT_ENABLED", raising=False)
+
+        captured = []
+
+        def _fake_popen(args, **kwargs):
+            captured.extend(args)
+            return MagicMock()
+
+        with patch("superharness.commands.inbox_watch.subprocess.Popen",
+                   side_effect=_fake_popen):
+            from superharness.commands.inbox_watch import _run_dispatch_cmd
+            _run_dispatch_cmd(
+                project_dir=str(tmp_path),
+                target="gemini-cli",
+                print_only=False,
+                non_interactive=False,
+                codex_bypass=False,
+                launcher_timeout=0,
+            )
+
+        assert "--session-inject" not in captured
+        assert "--project" in captured
+        assert "--to" in captured
+
+    def test_is_discussion_routing_skips_session_inject_branch(self, tmp_path, monkeypatch):
+        """is_discussion=True items must route directly to _execute_agent.
+        Session-injection path has been fully removed."""
+        from unittest.mock import patch
+
+        monkeypatch.delenv("SUPERHARNESS_SESSION_INJECT_ENABLED", raising=False)
+
+        disc_task = "discuss-routingtest20260607T000000Z-2-222222222/round-1"
+        sh = tmp_path / ".superharness"
+        sh.mkdir()
+        self._setup_sqlite(tmp_path, disc_task)
+
+        execute_called = []
+
+        with patch("superharness.commands.inbox_dispatch._execute_agent",
+                   side_effect=lambda c: execute_called.append(True)), \
+             patch("superharness.commands.inbox_dispatch._prepare_launch_context"), \
+             patch("superharness.commands.inbox_dispatch._skip_already_done_discussion_round",
+                   return_value=False):
+            from superharness.commands.inbox_dispatch import dispatch
+            dispatch(
+                project_dir=str(tmp_path),
+                target_filter="claude-code",
+                non_interactive=True,
+            )
+
+        assert execute_called, "_execute_agent must be called"
+
+    def test_no_silent_dispatched_blackhole(self, tmp_path, monkeypatch):
+        """After dispatch, the inbox item must NOT be in 'dispatched' status.
+        The old session-inject path silently set items to 'dispatched' — a state
+        the watcher treats as active but never completes, creating a blackhole."""
+        import sqlite3
+        from unittest.mock import patch
+
+        monkeypatch.delenv("SUPERHARNESS_SESSION_INJECT_ENABLED", raising=False)
+
+        disc_task = "discuss-blackhole20260607T000000Z-3-333333333/round-1"
+        sh = tmp_path / ".superharness"
+        sh.mkdir()
+        self._setup_sqlite(tmp_path, disc_task)
+
+        with patch("superharness.commands.inbox_dispatch._execute_agent"), \
+             patch("superharness.commands.inbox_dispatch._prepare_launch_context"), \
+             patch("superharness.commands.inbox_dispatch._skip_already_done_discussion_round",
+                   return_value=False), \
+             patch("superharness.commands.inbox_dispatch._reconcile_state",
+                   return_value=0):
+            from superharness.commands.inbox_dispatch import dispatch
+            dispatch(
+                project_dir=str(tmp_path),
+                target_filter="claude-code",
+                non_interactive=True,
+            )
+
+        # Verify the item did NOT end up in 'dispatched' status
+        conn = sqlite3.connect(str(tmp_path / ".superharness" / "state.sqlite3"))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT status FROM inbox WHERE id = 'item-iter1'"
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        assert row["status"] != "dispatched", (
+            "Discussion round item must not end up in 'dispatched' status — "
+            "that is the silent blackhole created by the old session-inject path"
+        )
+
+
+# ── Iter 11 RED: session-injection dead code must be removed ──────────────────
+
+def test_no_prompt_md_produced_anywhere():
+    """_write_discussion_prompt_file must not exist in inbox_dispatch after removal.
+
+    RED: The function currently exists and produces .prompt.md files.
+    After deletion (GREEN), this structural check passes.
+    """
+    import inspect
+    from superharness.commands import inbox_dispatch as m
+    src = inspect.getsource(m)
+    assert "_write_discussion_prompt_file" not in src, (
+        "_write_discussion_prompt_file still exists in inbox_dispatch. "
+        "Delete the function and all its call sites as part of the session-injection removal."
+    )

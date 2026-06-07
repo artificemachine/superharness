@@ -108,3 +108,23 @@ def test_init_session_falls_back_to_legacy_when_xdg_absent(tmp_path, monkeypatch
     sm = SessionManager()
     conn_id = sm.init_session("legacy-1", str(proj), agent="claude-code")
     assert conn_id == "legacy-1"
+
+
+# ── Iter 13 RED: MCP session timeout must be seconds, not milliseconds ─────────
+
+def test_timeout_is_seconds():
+    """sqlite3.connect timeout in session.py must be seconds, not milliseconds.
+
+    RED: session.py:57 passes timeout=5000, which means a 5000-second wait.
+    sqlite3.connect's timeout is in seconds, not ms. Correct value is 5.0.
+    """
+    import inspect
+    import superharness.mcp.session as mod
+    src = inspect.getsource(mod)
+    # timeout=5000 is clearly wrong (5000 seconds). Find any bad value.
+    import re
+    bad = re.search(r"sqlite3\.connect\(.*?timeout\s*=\s*(\d{4,})", src)
+    assert bad is None, (
+        f"Found timeout={bad.group(1)} in mcp/session.py sqlite3.connect call. "
+        "sqlite3 timeout is in seconds, not milliseconds. Fix: timeout=5.0"
+    )

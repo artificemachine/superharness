@@ -27,7 +27,7 @@ def _run_delegate_py(cwd, args: list[str] | None = None, env: dict | None = None
     return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=merged, check=False)
 
 
-def _setup_project(tmp_path: Path) -> Path:
+def _setup_project(tmp_path: Path, status: str = "plan_approved") -> Path:
     project = tmp_path / "proj"
     project.mkdir()
     harness = project / ".superharness"
@@ -43,7 +43,7 @@ def _setup_project(tmp_path: Path) -> Path:
                 "  - id: existing-task",
                 "    title: Existing task",
                 "    owner: codex-cli",
-                "    status: plan_approved",
+                f"    status: {status}",
                 f"    project_path: '{project.as_posix()}'",
             ]
         )
@@ -206,7 +206,7 @@ def test_task_status_done_warns_about_criteria(repo_root, tmp_path) -> None:
 
 @_skip_win
 def test_task_status_done_no_warning_without_criteria(repo_root, tmp_path) -> None:
-    project = _setup_project(tmp_path)
+    project = _setup_project(tmp_path, status="review_passed")
     script = repo_root / "src" / "superharness" / "scripts" / "task.sh"
     result = run_bash(
         script,

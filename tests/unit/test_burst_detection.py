@@ -115,20 +115,25 @@ class TestBurstDetection:
         conn = _make_db(tmp_path)
         _ensure_task(conn, TASK_ID)
         now = _now()
-        # Seed 5 pending + 5 done rows via direct INSERT (bypass duplicate-active guard)
-        for i in range(5):
+        # Unique index allows only 1 active pending row per (task_id, target_agent).
+        # Use distinct target agents so 5 pending rows can coexist.
+        # Done rows are excluded from the partial unique index.
+        # Use uuid-based IDs to avoid collision with stale XDG state from prior runs.
+        import uuid
+        agents = ["agent-a", "agent-b", "agent-c", "agent-d", "agent-e"]
+        for agent in agents:
             conn.execute(
                 "INSERT INTO inbox (id, task_id, target_agent, status, priority, "
                 "max_retries, project_path, plan_only, created_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (f"pending-{i}", TASK_ID, "claude-code", "pending", 2, 3, "/tmp", 0, now),
+                (f"pending-{uuid.uuid4().hex[:8]}", TASK_ID, agent, "pending", 2, 3, "/tmp", 0, now),
             )
-        for i in range(5):
+        for _ in range(5):
             conn.execute(
                 "INSERT INTO inbox (id, task_id, target_agent, status, priority, "
                 "max_retries, project_path, plan_only, created_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (f"done-{i}", TASK_ID, "claude-code", "done", 2, 3, "/tmp", 0, now),
+                (f"done-{uuid.uuid4().hex[:8]}", TASK_ID, "claude-code", "done", 2, 3, "/tmp", 0, now),
             )
         conn.commit()
 

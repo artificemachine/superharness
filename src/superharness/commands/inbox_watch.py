@@ -476,11 +476,6 @@ def _run_dispatch_cmd(
     if launcher_timeout > 0:
         args += ["--launcher-timeout", str(launcher_timeout)]
 
-    # Session-inject: for discussion rounds, write prompt files the agent's
-    # session hooks can detect, instead of spawning a one-shot process.
-    # (Fix: PROPOSAL-session-injection-discussion-dispatch)
-    args.append("--session-inject")
-
     if print_only:
         subprocess.run(args, check=False, env=env)
         return
@@ -2662,8 +2657,11 @@ def _run_scripts(
     try:
         from superharness.commands import discussion_dispatch as _dd
         _dd.dispatch(project_dir)
-    except Exception:
-        pass
+    except Exception as _exc:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "inbox_watch: discussion_dispatch raised an exception: %s", _exc, exc_info=True
+        )
 
 
 _TASK_LOG_STALE_MINUTES = 15  # mark as failed if no activity for this long

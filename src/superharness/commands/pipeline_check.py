@@ -36,13 +36,15 @@ def run_pipeline_check(project_dir: str) -> int:
     _check("SQLite DB exists", os.path.isfile(db), f"missing: {db}")
 
     # 2. Profile config
+    from superharness.engine.profile import normalize_autonomy
     profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
     if os.path.isfile(profile_file):
         import yaml
         profile = yaml.safe_load(open(profile_file).read()) or {}
         _check("auto_dispatch enabled", profile.get("auto_dispatch"), "add auto_dispatch: true to profile.yaml")
-        _check("autonomy configured", profile.get("autonomy") in ("autonomous", "ai_driven"), "set autonomy: autonomous")
-        _check("auto_close enabled", profile.get("auto_close") or profile.get("autonomy") == "autonomous", "set auto_close: true")
+        effective_autonomy = normalize_autonomy(profile.get("autonomy", ""))
+        _check("autonomy configured", effective_autonomy == "ai_driven", "set autonomy: autonomous or ai_driven")
+        _check("auto_close enabled", profile.get("auto_close") or effective_autonomy == "ai_driven", "set auto_close: true")
     else:
         _check("profile.yaml exists", False, "missing profile.yaml")
 

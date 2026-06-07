@@ -240,22 +240,33 @@ def _migrate_inbox(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[str
                 report_data["errors"].append(f"Orphaned inbox item {item['id']} references missing task {task_id}")
                 continue
 
-            conn.execute("""
-                INSERT INTO inbox (
-                    id, task_id, target_agent, status, priority, retry_count,
-                    max_retries, pid, project_path, plan_only, failed_reason,
-                    created_at, launched_at, last_heartbeat, paused_at, failed_at, done_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    status=excluded.status, pid=excluded.pid, launched_at=excluded.launched_at
-            """, (
-                item["id"], task_id, item.get("to", "unknown"), item.get("status", "pending"),
-                item.get("priority", 2), item.get("retry_count", 0), item.get("max_retries", 3),
-                item.get("pid"), item.get("project"), 1 if item.get("plan_only") else 0,
-                item.get("failed_reason"), item.get("created_at", now), item.get("launched_at"),
-                item.get("last_heartbeat"), item.get("paused_at"), item.get("failed_at"), item.get("done_at")
-            ))
-            count += 1
+            try:
+                conn.execute("""
+                    INSERT INTO inbox (
+                        id, task_id, target_agent, status, priority, retry_count,
+                        max_retries, pid, project_path, plan_only, failed_reason,
+                        created_at, launched_at, last_heartbeat, paused_at, failed_at, done_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        status=excluded.status, pid=excluded.pid, launched_at=excluded.launched_at
+                """, (
+                    item["id"], task_id, item.get("to", "unknown"), item.get("status", "pending"),
+                    item.get("priority", 2), item.get("retry_count", 0), item.get("max_retries", 3),
+                    item.get("pid"), item.get("project"), 1 if item.get("plan_only") else 0,
+                    item.get("failed_reason"), item.get("created_at", now), item.get("launched_at"),
+                    item.get("last_heartbeat"), item.get("paused_at"), item.get("failed_at"), item.get("done_at")
+                ))
+                count += 1
+            except sqlite3.IntegrityError:
+                # Legacy YAML could contain duplicate active rows for the same
+                # task+agent. The unique index on (task_id, target_agent) for
+                # active statuses prevents them from being re-created. Skip the
+                # duplicate and record a warning — the existing SQLite row wins.
+                report_data["errors"].append(
+                    f"Skipped duplicate active inbox item {item['id']} "
+                    f"for task {task_id} → {item.get('to', 'unknown')} "
+                    f"(unique index: only one active row per task+agent allowed)"
+                )
     report_data["inbox_imported"] += count
 
 def _migrate_worker_inboxes(

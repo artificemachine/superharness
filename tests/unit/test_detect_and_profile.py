@@ -201,3 +201,26 @@ def test_init_detect_uses_detected_name(repo_root, tmp_path) -> None:
     assert result.returncode == 0, result.stderr
     contract = (project / ".superharness/contract.yaml").read_text()
     assert "mydetectproject" in contract
+
+
+# ── Iter 5 RED: auto_dispatch seeded at init ──────────────────────────────────
+
+def test_init_writes_auto_dispatch(repo_root, tmp_path) -> None:
+    """init --from-profile must seed auto_dispatch in the resulting profile.yaml."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    profile = tmp_path / "profile.yaml"
+    # Profile WITHOUT auto_dispatch — init must patch it in
+    _write_profile(profile)  # _write_profile does not include auto_dispatch
+    import yaml
+    raw = yaml.safe_load(profile.read_text()) or {}
+    assert "auto_dispatch" not in raw, "precondition: profile must not have auto_dispatch"
+
+    _run_init_py(project, args=["--from-profile", str(profile)])
+
+    result_profile = project / ".superharness" / "profile.yaml"
+    assert result_profile.exists(), ".superharness/profile.yaml was not created"
+    doc = yaml.safe_load(result_profile.read_text()) or {}
+    assert "auto_dispatch" in doc, (
+        "init must seed auto_dispatch in .superharness/profile.yaml; got keys: " + str(list(doc.keys()))
+    )

@@ -159,3 +159,26 @@ class TestConsensusThreshold:
         matches = [v for v in sorted(valid) if v in normalized]
         assert len(matches) == 3  # all three
         assert matches[0] == "agree"  # first alphabetical
+
+
+class TestConsensusUnification:
+    """Iter 3 RED: compute_consensus() does not exist yet — ImportError fails these."""
+
+    def test_three_paths_agree_on_3agree_1abstain(self):
+        """4 participants, 3 agree + 1 abstain: all 3 dispatch paths must agree = consensus."""
+        from superharness.engine.discussion import compute_consensus
+        participants = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
+        result = compute_consensus(
+            {"claude-code": "agree", "codex-cli": "agree", "gemini-cli": "agree", "opencode": "abstain"},
+            participants,
+        )
+        assert result is True
+
+    def test_no_premature_consensus_on_n_minus_1(self):
+        """n=2: 1 of 2 submitted — not consensus (both must submit for n≤2)."""
+        from superharness.engine.discussion import compute_consensus
+        result = compute_consensus(
+            {"claude-code": "agree"},
+            ["claude-code", "codex-cli"],
+        )
+        assert result is False

@@ -1313,3 +1313,223 @@ class TestDiscussionRetryBudget:
         assert row is not None
         assert row["retry_count"] == 0, f"retry_count must start at 0, got {row['retry_count']}"
         assert row["max_retries"] >= 3, f"max_retries must be >=3, got {row['max_retries']}"
+
+
+# ---------------------------------------------------------------------------
+# Iter 2 — Scope agent-availability block to task + recency window
+# ---------------------------------------------------------------------------
+
+class TestAgentAvailabilityScope:
+    """Iter 2 RED tests: a stale or unrelated-task block must not disqualify an
+    agent from new discussions."""
+
+    def _setup_db(self, tmp_path: Path) -> None:
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(str(tmp_path))
+        init_db(conn)
+        conn.commit()
+        conn.close()
+
+    def _seed_failed_inbox(
+        self, tmp_path: Path, task_id: str, agent: str,
+        failed_reason: str, created_at: str,
+    ) -> None:
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(str(tmp_path))
+        init_db(conn)
+        conn.execute(
+            "INSERT OR IGNORE INTO tasks (id, title, status, created_at) VALUES (?,?,?,?)",
+            (task_id, "old task", "failed", created_at),
+        )
+        conn.execute(
+            "INSERT INTO inbox (id, task_id, target_agent, status, priority, "
+            "retry_count, max_retries, created_at, failed_reason) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (f"fail-{task_id[:20]}", task_id, agent, "failed", 5, 3, 3,
+             created_at, failed_reason),
+        )
+        conn.commit()
+        conn.close()
+
+    def test_old_unrelated_block_does_not_disqualify(self, tmp_path):
+        """A permanent block on an unrelated task (different task_id) must not
+        prevent the agent from participating in a new discussion."""
+        from superharness.commands.discussion_dispatch import _agent_available
+
+        self._setup_db(tmp_path)
+        # Seed a permanent block from May 2026 on an unrelated task
+        self._seed_failed_inbox(
+            tmp_path,
+            task_id="discuss-old20260501T000000Z-1-999999999/round-1",
+            agent="gemini-cli",
+            failed_reason="permanent block (lifecycle gate): task closed",
+            created_at="2026-05-01T00:00:00Z",
+        )
+
+        # Check availability for a DIFFERENT discussion task in June
+        available, reason = _agent_available(
+            "gemini-cli", str(tmp_path),
+            task_id="discuss-new20260607T000000Z-1-111111111/round-1",
+        )
+        assert available, (
+            f"Old block on unrelated task must not disqualify agent; reason: {reason}"
+        )
+
+    def test_recent_same_round_block_still_disqualifies(self, tmp_path):
+        """A recent permanent block on the SAME task must still disqualify."""
+        from datetime import datetime, timezone
+        from superharness.commands.discussion_dispatch import _agent_available
+
+        self._setup_db(tmp_path)
+        disc_task = "discuss-current20260607T000000Z-2-222222222/round-1"
+        # Seed a recent block on the SAME task
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self._seed_failed_inbox(
+            tmp_path,
+            task_id=disc_task,
+            agent="gemini-cli",
+            failed_reason="permanent block (lifecycle gate): in_progress → done blocked",
+            created_at=now_str,
+        )
+
+        available, reason = _agent_available("gemini-cli", str(tmp_path), task_id=disc_task)
+        assert not available, "Recent same-round block must still disqualify the agent"
+        assert "permanent block" in reason
+
+    def test_window_boundary_old_same_task_ignored(self, tmp_path):
+        """A block on the same task but older than the recency window is ignored."""
+        from superharness.commands.discussion_dispatch import _agent_available
+
+        self._setup_db(tmp_path)
+        disc_task = "discuss-boundary20260607T000000Z-3-333333333/round-1"
+        # Seed a block from 48h ago on the SAME task — outside any reasonable window
+        self._seed_failed_inbox(
+            tmp_path,
+            task_id=disc_task,
+            agent="gemini-cli",
+            failed_reason="permanent block (lifecycle gate): old",
+            created_at="2026-05-01T00:00:00Z",
+        )
+
+        available, reason = _agent_available("gemini-cli", str(tmp_path), task_id=disc_task)
+        assert available, (
+            f"Old block even on same task should be ignored after recency window; reason: {reason}"
+        )
+
+    def test_four_owner_discussion_reaches_quorum_despite_stale_block(self, tmp_path):
+        """Integration: a 4-owner discussion where one owner has an old block on an
+        unrelated task still has all 4 agents marked available.
+
+        Patches shutil.which so the binary-presence check (step 3) does not
+        depend on which CLI tools are installed on the test runner.
+        """
+        from unittest.mock import patch
+        from superharness.commands.discussion_dispatch import _agent_available
+
+        self._setup_db(tmp_path)
+
+        # gemini-cli has an old block from an unrelated task
+        self._seed_failed_inbox(
+            tmp_path,
+            task_id="unrelated-task-old/round-1",
+            agent="gemini-cli",
+            failed_reason="permanent block (lifecycle gate): task abc closed",
+            created_at="2026-05-01T00:00:00Z",
+        )
+
+        # Current discussion task
+        current_task = "discuss-fourowner20260607T000000Z-4-444444444/round-1"
+
+        agents = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
+        available_count = 0
+        with patch("shutil.which", return_value="/usr/bin/fake-agent"):
+            for agent in agents:
+                ok, _ = _agent_available(agent, str(tmp_path), task_id=current_task)
+                if ok:
+                    available_count += 1
+
+        assert available_count == 4, (
+            f"All 4 agents should be available (no valid blocks on current task); "
+            f"got {available_count}/4"
+        )
+
+
+# ── Iter 10 RED: same-day orphan detection and deadline close ─────────────────
+
+def _setup_orphan_project(tmp_path: Path) -> tuple[Path, object]:
+    """Create a project with a launched inbox item that has a 'T'-format heartbeat."""
+    from datetime import datetime, timezone, timedelta
+    harness = tmp_path / ".superharness"
+    harness.mkdir(exist_ok=True)
+    from superharness.engine.db import get_connection, init_db
+    conn = get_connection(str(tmp_path))
+    init_db(conn)
+    # Task row needed for FK
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn.execute(
+        "INSERT INTO tasks (id, title, owner, status, created_at, updated_at, "
+        "acceptance_criteria, test_types, out_of_scope, definition_of_done) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        ("orphan-task", "Orphan", "claude-code", "in_progress", now, now, "[]", "[]", "[]", "[]"),
+    )
+    # Inbox item launched 20 min ago, heartbeat 16 min ago — both in ISO 'T' format
+    launched_at = (datetime.now(timezone.utc) - timedelta(minutes=20)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    last_heartbeat = (datetime.now(timezone.utc) - timedelta(minutes=16)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn.execute(
+        "INSERT INTO inbox (id, task_id, target_agent, status, retry_count, "
+        "max_retries, failed_reason, created_at, project_path, launched_at, last_heartbeat) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        ("orphan-inbox-1", "orphan-task", "claude-code", "launched",
+         0, 3, None, now, str(tmp_path), launched_at, last_heartbeat),
+    )
+    conn.commit()
+    return tmp_path, conn
+
+
+def test_same_day_orphan_detected(tmp_path):
+    """_recover_orphaned_dispatches must detect a launched item with 16-min-old ISO heartbeat.
+
+    RED: The query uses `last_heartbeat < datetime('now', '-15 minutes')` but last_heartbeat
+    is stored as 'YYYY-MM-DDTHH:MM:SSZ' (T-format). SQLite string comparison treats 'T' > ' ',
+    so a same-day orphan is never detected. Fix: use datetime(last_heartbeat) in the query.
+    """
+    project, conn = _setup_orphan_project(tmp_path)
+    conn.close()
+
+    from superharness.commands.discussion_dispatch import _recover_orphaned_dispatches
+    _recover_orphaned_dispatches(str(project))
+
+    from superharness.engine.db import get_connection, init_db
+    conn2 = get_connection(str(project))
+    init_db(conn2)
+    row = conn2.execute(
+        "SELECT status FROM inbox WHERE id='orphan-inbox-1'"
+    ).fetchone()
+    conn2.close()
+
+    assert row is not None
+    assert row["status"] == "failed", (
+        f"Expected orphaned inbox item to be marked 'failed', got {row['status']!r}. "
+        "Fix: use datetime(last_heartbeat) in the SQL query so ISO 'T'-format timestamps compare correctly."
+    )
+
+
+def test_deadline_close_does_not_pass_unknown_reason_flag(tmp_path):
+    """The deadline auto-close must not invoke _run_engine(['close', ..., '--reason', ...]).
+
+    RED: The current code calls _run_engine(['close', '--discussion-dir', ..., '--reason', '...'])
+    but discussion.py's CLI handler does not accept --reason → argparse returns exit 2.
+    Fix: call cmd_close() directly (or add --reason to the CLI handler).
+    """
+    import inspect
+    from superharness.commands import discussion_dispatch as dd
+    src = inspect.getsource(dd)
+    # Exact bad pattern: the deadline close passes "--reason", f"deadline_exceeded ..."
+    # to _run_engine, but discussion.py's CLI parser does not accept --reason → exit 2.
+    # After fix: cmd_close() is called directly (no subprocess), so this literal vanishes.
+    has_bad_pattern = '"--reason", f"deadline_exceeded' in src
+    assert not has_bad_pattern, (
+        'discussion_dispatch still calls _run_engine with "--reason", f"deadline_exceeded". '
+        "discussion.py's CLI handler does not accept --reason → exit 2. "
+        "Fix: call cmd_close() directly instead."
+    )

@@ -132,6 +132,12 @@ def set_task_status(
             changes["locked_contract"] = _json.dumps(snapshot)
             changes["contract_locked_at"] = now
 
+        # Contract lock release: review_failed sends the task back to rework —
+        # clear the lock so the plan can be revised before the next approval.
+        if status == "plan_proposed" and task_row.status == "review_failed":
+            changes["locked_contract"] = None
+            changes["contract_locked_at"] = None
+
         changes.update(fields)
         tasks_dao.update(conn, task_id, version=task_row.version, changes=changes)
         conn.commit()
