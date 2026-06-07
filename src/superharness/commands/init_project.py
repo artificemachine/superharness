@@ -519,9 +519,19 @@ def main(argv: list[str] | None = None) -> None:
         print("Done. Templates refreshed.")
         return
 
-    # Copy profile.yaml into .superharness/
+    # Copy profile.yaml into .superharness/ and ensure auto_dispatch is seeded
     if opts.from_profile and os.path.isfile(opts.from_profile):
         shutil.copy2(opts.from_profile, str(harness / "profile.yaml"))
+        profile_dest = harness / "profile.yaml"
+        try:
+            import yaml as _yaml
+            doc = _yaml.safe_load(profile_dest.read_text()) or {}
+            if "auto_dispatch" not in doc:
+                doc["auto_dispatch"] = True
+                with open(str(profile_dest), "w") as _f:
+                    _yaml.dump(doc, _f, default_flow_style=False, sort_keys=False)
+        except Exception:
+            pass
         print(f"Created: .superharness/profile.yaml (from {opts.from_profile})")
 
     # Patch contract goal for interactive mode — reads bootstrap scaffold, not live state

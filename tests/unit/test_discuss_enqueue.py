@@ -4,6 +4,7 @@ Tests via subprocess: python3 -m superharness.commands.discuss
 """
 from __future__ import annotations
 
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -184,3 +185,48 @@ class TestParticipantFloor:
         """1 available → required = max(2, 0) = 2 (discussions need at least 2)."""
         required = max(2, 1 - 1)
         assert required == 2
+
+
+class TestWatcherIsAlive:
+    """Iter 4 RED: _watcher_is_alive() does not exist yet — ImportError."""
+
+    def _setup_db(self, tmp_path: Path) -> sqlite3.Connection:
+        harness = tmp_path / ".superharness"
+        harness.mkdir(exist_ok=True)
+        db_path = harness / "state.sqlite3"
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        from superharness.engine.db import init_db
+        init_db(conn)
+        conn.commit()
+        return conn
+
+    def test_watcher_alive_with_recent_heartbeat(self, tmp_path):
+        """When watcher has a recent heartbeat, _watcher_is_alive returns True."""
+        from superharness.commands.discuss import _watcher_is_alive
+        conn = self._setup_db(tmp_path)
+        conn.execute(
+            "INSERT INTO agent_heartbeats (agent, status, written_at, updated_at, created_at) "
+            "VALUES ('watcher', 'running', datetime('now'), datetime('now'), datetime('now'))"
+        )
+        conn.commit()
+        conn.close()
+        assert _watcher_is_alive(str(tmp_path)) is True
+
+    def test_watcher_not_alive_without_heartbeat(self, tmp_path):
+        """No watcher heartbeat → _watcher_is_alive returns False."""
+        self._setup_db(tmp_path).close()
+        from superharness.commands.discuss import _watcher_is_alive
+        assert _watcher_is_alive(str(tmp_path)) is False
+
+    def test_watcher_not_alive_when_zombie(self, tmp_path):
+        """Zombie watcher heartbeat → _watcher_is_alive returns False."""
+        from superharness.commands.discuss import _watcher_is_alive
+        conn = self._setup_db(tmp_path)
+        conn.execute(
+            "INSERT INTO agent_heartbeats (agent, status, written_at, updated_at, created_at) "
+            "VALUES ('watcher', 'zombie', datetime('now'), datetime('now'), datetime('now'))"
+        )
+        conn.commit()
+        conn.close()
+        assert _watcher_is_alive(str(tmp_path)) is False

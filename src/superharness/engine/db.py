@@ -13,7 +13,7 @@ from superharness.utils.paths import resolve_xdg_state_db_path
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 26
+CURRENT_SCHEMA_VERSION = 27
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -259,7 +259,13 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_inbox_status_priority ON inbox(status, priority DESC, created_at)")
-    conn.execute("CREATE INDEX idx_inbox_heartbeat       ON inbox(status, last_heartbeat)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_inbox_heartbeat ON inbox(status, last_heartbeat)")
+    # Prevent duplicate dispatch: only one active item per (task_id, target_agent).
+    conn.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_inbox_unique_task_agent
+        ON inbox(task_id, target_agent)
+        WHERE status NOT IN ('failed', 'done', 'cancelled')
+    """)
 
     # Handoffs
     conn.execute("""
@@ -765,6 +771,17 @@ def _migration_v26(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_v27(conn: sqlite3.Connection) -> None:
+    """Add max_rounds to discussions so --max-rounds is persisted and honored."""
+    # Guard: discussions was created in v2, but hand-crafted test DBs seeded at
+    # an intermediate schema version may not have run the full chain from v0.
+    has_discussions = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='discussions'"
+    ).fetchone()
+    if has_discussions:
+        _add_column_if_missing(conn, "discussions", "max_rounds", "INTEGER NOT NULL DEFAULT 3")
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -792,4 +809,5 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v24,
     _migration_v25,
     _migration_v26,
+    _migration_v27,
 ]

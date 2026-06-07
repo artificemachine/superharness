@@ -66,6 +66,10 @@ def test_update_status_fires_hook(tmp_path):
     fired = []
     reg.register("task:completed", lambda p: fired.append(p), project_path=str(tmp_path))
     create_task(conn, id="t4", title="Four", owner="claude-code")
+    # Advance to review_passed (legal predecessor of done) via raw SQL to bypass the
+    # full lifecycle — this test only checks that the hook fires, not the transition path.
+    conn.execute("UPDATE tasks SET status='review_passed' WHERE id='t4'")
+    conn.commit()
     update_status(conn, task_id="t4", status="done", actor="claude-code", summary="done",
                   hook_registry=reg, project_path=str(tmp_path))
     assert fired != []

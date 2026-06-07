@@ -21,6 +21,7 @@ class DiscussionRow:
     consensus: str | None
     created_at: str
     closed_at: str | None
+    max_rounds: int = 3
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,7 @@ def create(
     topic: str,
     owners: list[str],
     task_id: str | None = None,
+    max_rounds: int = 3,
     now: str,
 ) -> DiscussionRow:
     # If a task_id is provided but the row doesn't exist, treat the FK as
@@ -55,10 +57,10 @@ def create(
     try:
         conn.execute(
             """
-            INSERT INTO discussions (id, task_id, topic, owners, status, created_at)
-            VALUES (?, ?, ?, ?, 'active', ?)
+            INSERT INTO discussions (id, task_id, topic, owners, status, max_rounds, created_at)
+            VALUES (?, ?, ?, ?, 'active', ?, ?)
             """,
-            (id, task_id, topic, json.dumps(owners), now),
+            (id, task_id, topic, json.dumps(owners), max_rounds, now),
         )
         row = conn.execute("SELECT * FROM discussions WHERE id = ?", (id,)).fetchone()
         return _row_to_discussion(row)
@@ -255,6 +257,10 @@ def register_yaml_submission(
 
 
 def _row_to_discussion(row: sqlite3.Row) -> DiscussionRow:
+    try:
+        max_rounds = int(row["max_rounds"])
+    except (IndexError, KeyError, TypeError):
+        max_rounds = 3
     return DiscussionRow(
         id=row["id"],
         task_id=row["task_id"],
@@ -264,6 +270,7 @@ def _row_to_discussion(row: sqlite3.Row) -> DiscussionRow:
         consensus=row["consensus"],
         created_at=row["created_at"],
         closed_at=row["closed_at"],
+        max_rounds=max_rounds,
     )
 
 

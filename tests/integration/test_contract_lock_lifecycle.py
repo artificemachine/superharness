@@ -109,3 +109,57 @@ class TestContractLockLifecycle:
         from superharness.engine import handoff_generator
         handoff = handoff_generator.generate_handoff(str(project), "t-lock")
         assert "validation_contract" not in handoff
+
+
+# ── Iter 14 RED: contract lock must be released on review_failed → plan_proposed ─
+
+def test_lock_released_on_revise(tmp_path):
+    """Contract lock must be cleared when a task transitions review_failed → plan_proposed.
+
+    RED: state_writer.set_task_status does not clear locked_contract/contract_locked_at
+    on this transition. The agent cannot revise AC or TDD because the lock remains.
+    GREEN: add a check: if status == 'plan_proposed' and prior == 'review_failed', clear lock.
+    """
+    import sqlite3
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine.state_writer import set_task_status
+    from superharness.engine import tasks_dao
+    from superharness.engine.tasks_dao import TaskRow
+
+    project = str(tmp_path / "proj")
+    import os
+    os.makedirs(os.path.join(project, ".superharness"))
+    conn = get_connection(project)
+    init_db(conn, project_dir=project)
+
+    now = "2026-06-07T00:00:00Z"
+    task_id = "t-lockrelease"
+    conn.execute(
+        "INSERT INTO tasks (id, title, status, owner, created_at, project_path) VALUES (?,?,?,?,?,?)",
+        (task_id, "Lock release test", "todo", "claude-code", now, project),
+    )
+    conn.commit()
+
+    # Advance through the lifecycle to review_failed
+    for status in ("plan_proposed", "plan_approved", "in_progress", "report_ready", "review_requested", "review_failed"):
+        ok = set_task_status(project_dir=project, task_id=task_id, status=status, force=True)
+        assert ok, f"set_task_status({status!r}) returned False"
+
+    # Verify the contract was locked at plan_approved
+    row = conn.execute("SELECT contract_locked_at, locked_contract FROM tasks WHERE id=?", (task_id,)).fetchone()
+    assert row["contract_locked_at"] is not None, "contract should be locked after plan_approved"
+
+    # Transition review_failed → plan_proposed (revise)
+    ok = set_task_status(project_dir=project, task_id=task_id, status="plan_proposed")
+    assert ok, "review_failed → plan_proposed must succeed"
+
+    # The contract lock must now be cleared
+    row = conn.execute("SELECT contract_locked_at, locked_contract FROM tasks WHERE id=?", (task_id,)).fetchone()
+    assert row["contract_locked_at"] is None, (
+        f"contract_locked_at is still {row['contract_locked_at']!r} after review_failed→plan_proposed. "
+        "The lock must be released so the agent can revise AC and TDD."
+    )
+    assert row["locked_contract"] is None, (
+        "locked_contract still set after review_failed→plan_proposed. Must be cleared."
+    )
+    conn.close()

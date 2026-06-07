@@ -31,10 +31,10 @@ FIELD_DEFAULTS: dict[str, str] = {
 }
 
 # Legacy / UI alias → canonical name.  Add new modes here as they are introduced.
+# "supervised" is intentionally NOT aliased — it is a distinct mode that preserves human oversight.
 _AUTONOMY_ALIASES: dict[str, str] = {
     "full-auto":      "ai_driven",
     "autonomous":     "ai_driven",
-    "supervised":     "ai_driven",
     "approval-gated": "ai_driven",
     "oversight":      "ai_driven",
     "hands_on":       "ai_driven",

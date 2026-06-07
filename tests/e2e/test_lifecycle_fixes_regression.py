@@ -563,16 +563,13 @@ def test_multi_agent_discussion_not_duplicate(clean_harness: Path) -> None:
 
 
 def test_same_agent_same_task_still_flagged_as_duplicate(clean_harness: Path) -> None:
-    """Positive control for BUG-10 fix: two pending items with the SAME task_id
-    AND the SAME target_agent must still be detected as a real duplicate
-    (the original intent of the dedup check).
-
-    Note: inbox_dao.enqueue has a DAO-level guard against this exact case
-    (raises StateError on (task_id, target_agent) collision). The status.py
-    dedup is a secondary scan for stale state where dups exist regardless
-    (e.g. via YAML mirror, manual SQL, pre-existing data). To test the scan,
-    we insert via raw SQL bypassing the DAO guard.
+    """Verify the unique partial index on (task_id, target_agent) prevents
+    duplicate active inbox rows at the DB layer (replaces the former GC-scan
+    approach). The index enforces at-most-one active row per task+agent, so
+    the DAO guard and _deep_inbox_health dedup scan both become redundant
+    backstops rather than the primary mechanism.
     """
+    import sqlite3 as _sqlite3
     _write_profile(clean_harness)
     _init_sqlite(clean_harness)
 
@@ -591,30 +588,41 @@ def test_same_agent_same_task_still_flagged_as_duplicate(clean_harness: Path) ->
             definition_of_done=[], context=None, tdd=None,
             version=1, created_at="2026-01-01T00:00:00Z",
         ))
-        # Bypass DAO guard: insert two pending rows with same (task_id, target_agent)
-        for inbox_id, ts in [("dup-1", "2026-01-01T00:00:00Z"), ("dup-2", "2026-01-01T00:00:01Z")]:
+        # First insert succeeds.
+        conn.execute(
+            "INSERT INTO inbox (id, task_id, target_agent, status, priority, "
+            "max_retries, project_path, plan_only, type, created_at) "
+            "VALUES (?, ?, 'claude-code', 'pending', 1, 3, ?, 0, 'task', ?)",
+            ("dup-1", "real-dup-task", str(clean_harness), "2026-01-01T00:00:00Z"),
+        )
+        conn.commit()
+        # Second insert must raise IntegrityError — unique index enforces uniqueness.
+        raised = False
+        try:
             conn.execute(
                 "INSERT INTO inbox (id, task_id, target_agent, status, priority, "
                 "max_retries, project_path, plan_only, type, created_at) "
                 "VALUES (?, ?, 'claude-code', 'pending', 1, 3, ?, 0, 'task', ?)",
-                (inbox_id, "real-dup-task", str(clean_harness), ts),
+                ("dup-2", "real-dup-task", str(clean_harness), "2026-01-01T00:00:01Z"),
             )
-        conn.commit()
+        except _sqlite3.IntegrityError:
+            raised = True
+        assert raised, (
+            "Unique partial index on (task_id, target_agent) must prevent a second "
+            "active pending row for the same task+agent."
+        )
+        # Only one row exists — no duplicates to detect.
+        count = conn.execute(
+            "SELECT COUNT(*) FROM inbox WHERE task_id='real-dup-task' AND target_agent='claude-code'"
+        ).fetchone()[0]
+        assert count == 1, f"Expected 1 inbox row, found {count}"
     finally:
         conn.close()
 
-    _write_inbox(clean_harness, [
-        {"id": "dup-1", "task": "real-dup-task", "to": "claude-code",
-         "status": "pending", "created_at": "2026-01-01T00:00:00Z"},
-        {"id": "dup-2", "task": "real-dup-task", "to": "claude-code",
-         "status": "pending", "created_at": "2026-01-01T00:00:01Z"},
-    ])
-
     from superharness.commands.status import _deep_inbox_health
     health = _deep_inbox_health(str(clean_harness))
-
-    assert health["duplicates"], (
-        "Real duplicates (same task_id + same agent) must still be detected"
+    assert not health["duplicates"], (
+        "No duplicates should exist — unique index prevents creation"
     )
 
 

@@ -2,9 +2,16 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import pytest
+
+
+def _recent_ts(hours_ago: float = 1.0) -> str:
+    """ISO timestamp within the 24-hour recency window."""
+    dt = datetime.now(timezone.utc) - timedelta(hours=hours_ago)
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _setup_db(tmp_path: Path) -> sqlite3.Connection:
@@ -35,7 +42,7 @@ class TestAgentAvailable:
         conn = _setup_db(tmp_path)
         conn.execute(
             "INSERT INTO inbox (id, task_id, target_agent, status, failed_reason, retry_count, max_retries, created_at) "
-            "VALUES ('rl-1', 't1', 'gemini-cli', 'failed', 'rate limit exceeded', 3, 3, '2026-01-01T00:00:00Z')"
+            f"VALUES ('rl-1', 't1', 'gemini-cli', 'failed', 'rate limit exceeded', 3, 3, '{_recent_ts()}')"
         )
         conn.commit()
 
@@ -50,7 +57,7 @@ class TestAgentAvailable:
         conn = _setup_db(tmp_path)
         conn.execute(
             "INSERT INTO inbox (id, task_id, target_agent, status, failed_reason, retry_count, max_retries, created_at) "
-            "VALUES ('q-1', 't1', 'codex-cli', 'failed', 'quota exceeded for gpt-5.5', 3, 3, '2026-01-01T00:00:00Z')"
+            f"VALUES ('q-1', 't1', 'codex-cli', 'failed', 'quota exceeded for gpt-5.5', 3, 3, '{_recent_ts()}')"
         )
         conn.commit()
 
@@ -65,7 +72,7 @@ class TestAgentAvailable:
         conn = _setup_db(tmp_path)
         conn.execute(
             "INSERT INTO inbox (id, task_id, target_agent, status, failed_reason, retry_count, max_retries, created_at) "
-            "VALUES ('pb-1', 't1', 'opencode', 'failed', 'permanent block: lifecycle gate', 3, 3, '2026-01-01T00:00:00Z')"
+            f"VALUES ('pb-1', 't1', 'opencode', 'failed', 'permanent block: lifecycle gate', 3, 3, '{_recent_ts()}')"
         )
         conn.commit()
 

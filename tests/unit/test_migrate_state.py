@@ -40,12 +40,15 @@ class TestNothingToMigrate:
 
 
 class TestAbortConditions:
-    def test_xdg_already_exists_aborts_with_1(self, project_dir, legacy_db):
+    def test_xdg_already_exists_warns_and_removes_legacy(self, project_dir, legacy_db):
+        # Iter 12: split-brain is now resolved gracefully (remove legacy, return 0)
+        # instead of aborting. The XDG db is the active source of truth.
         xdg = _xdg_db_path(project_dir)
         os.makedirs(os.path.dirname(xdg), exist_ok=True)
         with open(xdg, "wb") as f:
             f.write(b"existing")
-        assert run_migrate_state(project_dir) == 1
+        assert run_migrate_state(project_dir) == 0
+        assert not os.path.isfile(legacy_db), "legacy db must be removed in split-brain resolution"
 
     def test_xdg_not_overwritten_on_abort(self, project_dir, legacy_db):
         xdg = _xdg_db_path(project_dir)

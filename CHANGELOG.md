@@ -601,3 +601,19 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-06-04: chore(release): bump to v1.70.4 (fix circuit breaker for one-shot watcher)
 - 2026-06-06: fix(discuss): claude-code and opencode are now primary participants in all discussions by default; contract-owner logic adds further agents on top
 - 2026-06-06: chore(release): bump to v1.70.5 (fix discuss default participants)
+- 2026-06-07: fix(discuss): dispatch discussion rounds via delegate instead of no-op session-inject
+- 2026-06-07: fix(discuss): scope agent-availability block to task_id and recency window
+- 2026-06-07: fix(discuss): collapse three consensus definitions into one quorum rule
+- 2026-06-07: fix(discuss): make start gate satisfiable with a running watcher (no --force needed)
+- 2026-06-07: fix(core): seed auto_dispatch at init and make autonomy gate consistent
+- 2026-06-07: fix(dispatch): treat todo+implementation delegate as soft-routed, not permanent block
+- 2026-06-07: fix(dispatch): read task completion + review flag from SQLite, not dead contract.yaml
+- 2026-06-07: fix(observability): surface dispatch + discussion-dispatch failures to logs
+- 2026-06-07: fix(lifecycle): route all task-status writes through validated transition path
+- 2026-06-07: fix(lifecycle): add plan-state reconciler timeouts; fix deadline-close and orphan timestamp
+- 2026-06-07: refactor(discuss): remove dead session-injection dispatch path
+- 2026-06-07: fix(state): consolidate DB path resolvers; detect+merge split-brain shadow DB
+- 2026-06-07: fix(state): add unique indexes, fix consensus project_path, backup, PRAGMAs, MCP timeout
+- 2026-06-07: fix(discuss): honor max_rounds; release contract lock on review_failed → plan_proposed
+- 2026-06-07: chore(release): bump to v1.70.6 (discussion dispatch fixes, lifecycle hardening, unique indexes, path consolidation)
+- 2026-06-07: test(discuss): patch shutil.which in integration test so binary-presence check does not depend on CI toolchain
