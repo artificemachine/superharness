@@ -115,27 +115,49 @@ def _retry_agent(project_dir: str, agent: str, task_key: str, disc_id: str, roun
         return False
 
 
-def _agent_available(agent: str, project_dir: str) -> tuple[bool, str]:
+def _agent_available(
+    agent: str, project_dir: str, task_id: str | None = None
+) -> tuple[bool, str]:
     """Check if an agent is available for dispatch.
 
     Returns (available: bool, reason: str).
+    task_id: when provided, scope failure checks to this task and a recency window
+    so that old blocks or blocks on unrelated tasks do not disqualify the agent.
+
     Check order: quota/rate-limit first (most actionable), then binary presence,
-    then zombie heartbeat. Quota is checked first so callers get the real blocker
-    even in environments where the binary is not on PATH (e.g. CI).
+    then zombie heartbeat.
     """
-    # 1. Check if agent recently hit rate limit or quota exhaustion
+    # 1. Check if agent recently hit rate limit or quota exhaustion.
+    # Scoped to task_id (if given) + recency window so a stale block from a
+    # different discussion does not permanently disqualify the agent.
     try:
+        from datetime import datetime, timezone, timedelta
         from superharness.engine.db import get_connection, init_db
+
+        RECENCY_WINDOW_SECONDS = 24 * 3600
+        window_cutoff = (
+            datetime.now(timezone.utc) - timedelta(seconds=RECENCY_WINDOW_SECONDS)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
-            row = conn.execute(
-                "SELECT failed_reason, created_at FROM inbox "
-                "WHERE target_agent = ? AND status = 'failed' "
-                "AND failed_reason IS NOT NULL "
-                "ORDER BY created_at DESC LIMIT 1",
-                (agent,),
-            ).fetchone()
+            if task_id:
+                row = conn.execute(
+                    "SELECT failed_reason, created_at FROM inbox "
+                    "WHERE target_agent = ? AND task_id = ? AND status = 'failed' "
+                    "AND failed_reason IS NOT NULL AND created_at >= ? "
+                    "ORDER BY created_at DESC LIMIT 1",
+                    (agent, task_id, window_cutoff),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT failed_reason, created_at FROM inbox "
+                    "WHERE target_agent = ? AND status = 'failed' "
+                    "AND failed_reason IS NOT NULL AND created_at >= ? "
+                    "ORDER BY created_at DESC LIMIT 1",
+                    (agent, window_cutoff),
+                ).fetchone()
             if row:
                 reason = str(row["failed_reason"] or "").lower()
                 if "rate limit" in reason or "quota" in reason or "429" in reason:
@@ -198,7 +220,7 @@ def _recover_orphaned_dispatches(project_dir: str) -> None:
                 FROM inbox
                 WHERE status IN ('launched', 'running')
                   AND (last_heartbeat IS NULL
-                       OR last_heartbeat < datetime('now', '-15 minutes'))
+                       OR datetime(last_heartbeat) < datetime('now', '-15 minutes'))
                 """
             ).fetchall()
             for row in stuck:
@@ -366,10 +388,15 @@ def dispatch(project_dir: str) -> int:
                         f"(effort={effort}, {deadline_minutes}min, "
                         f"created={created_at}) — auto-closing"
                     )
-                    _run_engine([
-                        "close", "--discussion-dir", discussion_dir,
-                        "--reason", f"deadline_exceeded ({deadline_minutes}min, effort={effort})",
-                    ])
+                    try:
+                        from superharness.engine.discussion import cmd_close as _cmd_close
+                        _cmd_close(
+                            discussion_dir,
+                            outcome="cancelled",
+                            reason=f"deadline_exceeded ({deadline_minutes}min, effort={effort})",
+                        )
+                    except Exception as _ce:
+                        _log.warning("discussion_dispatch: cmd_close failed for %s: %s", disc_id, _ce)
                     continue
             except Exception as e:
                 _log.warning("discussion_dispatch.py deadline check error: %s", e, exc_info=True)
@@ -466,8 +493,10 @@ def dispatch(project_dir: str) -> int:
                 if already_active:
                     continue
 
-                # Check if the agent is actually available (binary installed, not rate-limited)
-                available, reason = _agent_available(agent, project_dir)
+                # Check if the agent is actually available (binary installed, not rate-limited).
+                # Scope block-check to this specific task + recency window so a stale
+                # block from a different discussion does not disqualify the agent.
+                available, reason = _agent_available(agent, project_dir, task_id=task_key)
                 if not available:
                     print(
                         f"  Skipping {agent} for round {current_round}: "

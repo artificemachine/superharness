@@ -538,6 +538,13 @@ def status_update(
         if actor != owner and not _recursion_guard:
             _abort(f"forbidden: actor '{actor}' cannot update task '{task_id}' owned by '{owner}'")  # shipguard:ignore PY-007
 
+        # Validate against the legal status transition graph
+        try:
+            from superharness.engine.next_action import validate_status_transition
+            validate_status_transition(str(task_row.status or ""), status)
+        except ValueError as _e:
+            _abort(f"status transition rejected: {_e}", 2)
+
         # Scope guard on plan_approved
         if status == "plan_approved":
             ac_count = len(task_row.acceptance_criteria or [])

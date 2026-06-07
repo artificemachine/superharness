@@ -238,3 +238,121 @@ def test_close_discussion(tmp_path: Path) -> None:
     r2 = _run_discussion("status", ["--discussion-dir", disc_dir])
     state = json.loads(r2.stdout)
     assert state["status"] == "cancelled"
+
+
+# ── Iter 13 RED: consensus task project_path must be the real project dir ─────
+
+def test_consensus_task_project_path_correct(tmp_path):
+    """_create_consensus_task must use the real project directory, not the XDG hash dir.
+
+    RED: project_dir is derived from PRAGMA database_list, which returns the
+    XDG path like ~/.local/state/superharness/<hash>/state.db. Taking dirname
+    twice gives ~/.local/state/superharness/<hash>, not the project directory.
+    GREEN: pass project_dir as a parameter to _create_consensus_task.
+    """
+    import sqlite3
+    import sys
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import discussions_dao, tasks_dao
+
+    project = str(tmp_path / "real_project")
+    import os
+    os.makedirs(os.path.join(project, ".superharness"), exist_ok=True)
+
+    conn = get_connection(project)
+    init_db(conn, project_dir=project)
+
+    # Insert a minimal discussion
+    disc_id = "discuss-projpath-test20260607T000000Z-1-111111111"
+    now = "2026-06-07T00:00:00Z"
+    conn.execute(
+        "INSERT INTO discussions (id, topic, status, owners, created_at) VALUES (?,?,?,?,?)",
+        (disc_id, "Refactor auth module", "open", '["claude-code"]', now),
+    )
+    # Insert a round with a non-agree verdict so _create_consensus_task creates tasks
+    conn.execute(
+        "INSERT INTO discussion_rounds (discussion_id, round_number, agent, verdict, created_at) "
+        "VALUES (?,?,?,?,?)",
+        (disc_id, 1, "claude-code", "partial", now),
+    )
+    conn.commit()
+
+    from superharness.engine.discussion import _create_consensus_task
+    disc_row = discussions_dao.DiscussionRow(
+        id=disc_id,
+        topic="Refactor auth module",
+        status="open",
+        owners=["claude-code"],
+        consensus=None,
+        created_at=now,
+        closed_at=None,
+        task_id=None,
+    )
+    _create_consensus_task(conn, disc_row, 1, {"claude-code"}, project_dir=project)
+
+    # The consensus task should have project_path = the real project dir
+    task_id = f"impl-{disc_id[:30]}"
+    row = conn.execute("SELECT project_path FROM tasks WHERE id = ?", (task_id,)).fetchone()
+    assert row is not None, f"Consensus task '{task_id}' was not created"
+    assert row["project_path"] == project, (
+        f"Consensus task project_path is {row['project_path']!r}, expected real project {project!r}. "
+        "Pass project_dir as a parameter to _create_consensus_task."
+    )
+    conn.close()
+
+
+# ── Iter 14 RED: max_rounds must be persisted and honored ─────────────────────
+
+def test_max_rounds_honored(tmp_path):
+    """cmd_advance must close the discussion after max_rounds rounds.
+
+    RED: max_rounds is hardcoded to 3 in cmd_advance; --max-rounds is accepted
+    but ignored. GREEN: store max_rounds in the discussions table and read it
+    in cmd_advance.
+    """
+    import json as _json
+    import sqlite3
+    import os as _os
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import discussions_dao
+
+    project = str(tmp_path / "proj")
+    _os.makedirs(_os.path.join(project, ".superharness"))
+    conn = get_connection(project)
+    init_db(conn, project_dir=project)
+
+    disc_id = "discuss-maxrounds-test20260607T000000Z-1-111111111"
+    now = "2026-06-07T00:00:00Z"
+
+    # Start discussion with max_rounds=2
+    disc_dir = _os.path.join(project, ".superharness", "discussions", disc_id)
+    _os.makedirs(disc_dir, exist_ok=True)
+
+    from superharness.engine.discussion import cmd_start
+    # cmd_start creates the discussion
+    rc = cmd_start(
+        discussions_dir=_os.path.join(project, ".superharness", "discussions"),
+        topic="Should we refactor auth?",
+        participants=["claude-code"],
+        max_rounds=2,
+        task_id=None,
+        project=project,
+        created_by="owner",
+    )
+    assert rc == 0
+
+    # Fetch the stored max_rounds
+    disc = discussions_dao.get(conn, disc_id if False else
+        conn.execute("SELECT id FROM discussions ORDER BY created_at DESC LIMIT 1").fetchone()[0])
+    stored_max = conn.execute(
+        "SELECT max_rounds FROM discussions ORDER BY created_at DESC LIMIT 1"
+    ).fetchone()
+    assert stored_max is not None, (
+        "No 'max_rounds' column found in discussions table. "
+        "Add max_rounds INTEGER NOT NULL DEFAULT 3 via migration."
+    )
+    assert stored_max[0] == 2, (
+        f"max_rounds stored as {stored_max[0]!r}, expected 2. "
+        "cmd_start must persist the --max-rounds value."
+    )
+    conn.close()

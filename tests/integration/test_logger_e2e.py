@@ -101,3 +101,30 @@ def test_audit_log_isolated_from_main_log(tmp_path):
     assert "audit-only-msg" in audit
     assert "audit-only-msg" not in main
     assert "main-channel-msg" in main
+
+
+# ── Iter 8 RED: discussion dispatch exception must be logged ──────────────────
+
+def test_discussion_dispatch_exception_logged():
+    """When discussion_dispatch.dispatch() raises, inbox_watch must log it (not swallow)."""
+    import inspect
+    from superharness.commands import inbox_watch as iw
+    # Find the call site of discussion_dispatch.dispatch in inbox_watch
+    src = inspect.getsource(iw)
+    # The bare "except Exception: pass" at the discussion dispatch call site must be replaced
+    # by a logged exception. After fix: 'except Exception' is followed by logging (not just 'pass').
+    # We check that the discussion_dispatch call site logs on exception:
+    # Search for the pattern: except Exception after _dd.dispatch call — must not be bare pass
+    import re as _re
+    # Find the specific bare-pass pattern for _dd.dispatch exceptions:
+    # "except Exception:" on its own line followed immediately by "        pass" (no logging)
+    # After fix: the except block logs via warning() — no bare pass remains
+    m = _re.search(
+        r'_dd\.dispatch\(project_dir\)\s+except Exception:\s+pass\b',
+        src,
+    )
+    assert m is None, (
+        "inbox_watch swallows discussion_dispatch exceptions without logging. "
+        "Replace 'except Exception: pass' with '_log.warning(..., exc_info=True)' "
+        "after the _dd.dispatch call."
+    )
