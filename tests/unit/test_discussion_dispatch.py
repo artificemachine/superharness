@@ -778,3 +778,146 @@ def test_no_prompt_md_produced_anywhere():
         "_write_discussion_prompt_file still exists in inbox_dispatch. "
         "Delete the function and all its call sites as part of the session-injection removal."
     )
+
+
+# ── Guard: sqlite-only _reconcile_state writes SQLite directly ────────────────
+
+class TestReconcileStateSqliteOnly:
+    """Guard: in sqlite-only mode, _reconcile_state must update SQLite even when
+    inbox.yaml does not contain the item (i.e. YAML write returns False)."""
+
+    def _setup_db(self, tmp_path, disc_task: str) -> None:
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(str(tmp_path))
+        init_db(conn)
+        conn.execute(
+            "INSERT OR IGNORE INTO tasks (id, title, status, created_at) VALUES (?,?,?,?)",
+            (disc_task, "Round guard", "in_progress", "2026-06-08T00:00:00Z"),
+        )
+        conn.execute(
+            "INSERT INTO inbox (id, task_id, target_agent, status, priority, "
+            "retry_count, max_retries, created_at, project_path) VALUES (?,?,?,?,?,?,?,?,?)",
+            ("item-guard1", disc_task, "claude-code", "launched", 5, 0, 3,
+             "2026-06-08T00:00:00Z", str(tmp_path)),
+        )
+        conn.commit()
+        conn.close()
+
+    def _read_status(self, tmp_path, item_id: str) -> str:
+        import sqlite3
+        conn = sqlite3.connect(str(tmp_path / ".superharness" / "state.sqlite3"))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT status FROM inbox WHERE id=?", (item_id,)).fetchone()
+        conn.close()
+        return str(row["status"]) if row else ""
+
+    def test_done_written_to_sqlite_when_yaml_absent(self, tmp_path):
+        """After agent rc=0 + submission present, item must be 'done' in SQLite
+        even when inbox.yaml does not exist (sqlite-only mode)."""
+        import os
+        from unittest.mock import patch, MagicMock
+        from superharness.commands.inbox_dispatch import DispatchContext, _reconcile_state
+
+        disc_task = "discuss-guardtest20260608T000000Z-2-222222222/round-1"
+        (tmp_path / ".superharness").mkdir()
+        (tmp_path / ".superharness" / "discussions" / "discuss-guardtest20260608T000000Z-2-222222222").mkdir(parents=True)
+        submission = (tmp_path / ".superharness" / "discussions" /
+                      "discuss-guardtest20260608T000000Z-2-222222222" / "round-1-claude-code.yaml")
+        submission.write_text("discussion_id: discuss-guardtest20260608T000000Z-2-222222222\nround: 1\nagent: claude-code\nverdict: consensus\n")
+
+        self._setup_db(tmp_path, disc_task)
+
+        ctx = MagicMock(spec=DispatchContext)
+        ctx.non_interactive = True
+        ctx.print_only = False
+        ctx.sqlite_primary = True
+        ctx.is_discussion = True
+        ctx.item_id = "item-guard1"
+        ctx.item_task = disc_task
+        ctx.item_to = "claude-code"
+        ctx.project_dir = str(tmp_path)
+        ctx.exec_project = str(tmp_path)
+        ctx.inbox_file = str(tmp_path / ".superharness" / "inbox.yaml")
+        ctx.task_log = None
+        ctx.launcher_rc = 0
+        ctx.launch_start = 0.0
+
+        rc = _reconcile_state(ctx)
+
+        status = self._read_status(tmp_path, "item-guard1")
+        assert status == "done", (
+            f"_reconcile_state must write 'done' to SQLite in sqlite-only mode; "
+            f"got '{status}'. The YAML gate was blocking the SQLite mirror write."
+        )
+        assert rc == 0
+
+    def test_failed_written_to_sqlite_when_submission_absent(self, tmp_path):
+        """When submission YAML is missing and no dirty worktree, item must be 'failed'
+        in SQLite (not stuck in 'launched') in sqlite-only mode."""
+        from unittest.mock import patch, MagicMock
+        from superharness.commands.inbox_dispatch import DispatchContext, _reconcile_state
+
+        disc_task = "discuss-guardfail20260608T000000Z-2-333333333/round-1"
+        (tmp_path / ".superharness").mkdir()
+        self._setup_db(tmp_path, disc_task)
+
+        ctx = MagicMock(spec=DispatchContext)
+        ctx.non_interactive = True
+        ctx.print_only = False
+        ctx.sqlite_primary = True
+        ctx.is_discussion = True
+        ctx.item_id = "item-guard1"
+        ctx.item_task = disc_task
+        ctx.item_to = "claude-code"
+        ctx.project_dir = str(tmp_path)
+        ctx.exec_project = str(tmp_path)
+        ctx.inbox_file = str(tmp_path / ".superharness" / "inbox.yaml")
+        ctx.task_log = None
+        ctx.launcher_rc = 0
+        ctx.launch_start = 0.0
+
+        with patch("superharness.commands.inbox_dispatch._has_dirty_worktree", return_value=False):
+            rc = _reconcile_state(ctx)
+
+        status = self._read_status(tmp_path, "item-guard1")
+        assert status == "failed", (
+            f"_reconcile_state must write 'failed' to SQLite when submission is absent "
+            f"in sqlite-only mode; got '{status}'."
+        )
+        assert rc == 1
+
+    def test_pending_user_approval_written_as_paused_in_sqlite(self, tmp_path):
+        """When final_state is 'pending_user_approval', item must be written as 'paused'
+        in SQLite in sqlite-only mode (reconciled=3 path)."""
+        from unittest.mock import patch, MagicMock
+        from superharness.commands.inbox_dispatch import DispatchContext, _reconcile_state
+
+        disc_task = "discuss-guardpause20260608T000000Z-2-444444444/round-1"
+        (tmp_path / ".superharness").mkdir()
+        self._setup_db(tmp_path, disc_task)
+
+        ctx = MagicMock(spec=DispatchContext)
+        ctx.non_interactive = True
+        ctx.print_only = False
+        ctx.sqlite_primary = True
+        ctx.is_discussion = False
+        ctx.item_id = "item-guard1"
+        ctx.item_task = disc_task
+        ctx.item_to = "claude-code"
+        ctx.project_dir = str(tmp_path)
+        ctx.exec_project = str(tmp_path)
+        ctx.inbox_file = str(tmp_path / ".superharness" / "inbox.yaml")
+        ctx.task_log = None
+        ctx.launcher_rc = 0
+        ctx.launch_start = 0.0
+
+        with patch("superharness.engine.state_reader.get_task",
+                   return_value={"status": "pending_user_approval"}):
+            rc = _reconcile_state(ctx)
+
+        status = self._read_status(tmp_path, "item-guard1")
+        assert status == "paused", (
+            f"_reconcile_state must write 'paused' to SQLite when final_state is "
+            f"'pending_user_approval' in sqlite-only mode; got '{status}'."
+        )
+        assert rc == 0

@@ -226,13 +226,16 @@ class TestModelMapCompleteness:
             assert tier in MODEL_MAP["opencode"], f"opencode missing tier {tier}"
 
     def test_gemini_models_updated_from_legacy(self):
-        """Gemini entries must use current model IDs, not legacy ones."""
+        """Gemini entries must use current model IDs, not legacy or non-existent ones."""
         gemini = MODEL_MAP["gemini-cli"]
         assert gemini["mini"] == "gemini-2.5-flash"
         assert gemini["standard"] == "gemini-2.5-pro"
-        assert gemini["max"] == "gemini-3.1-pro-preview"
-        # Legacy names must not appear
+        assert gemini["max"] == "gemini-2.5-pro"
+        # Legacy / non-existent names must not appear
         assert gemini["max"] != "gemini-ultra"
+        assert gemini["max"] != "gemini-3.1-pro-preview", (
+            "gemini-3.1-pro-preview does not exist — caused ModelNotFoundError in dispatch"
+        )
         assert "2.0" not in gemini["mini"]
         assert "2.0" not in gemini["standard"]
 
@@ -524,15 +527,23 @@ class TestChatgptAuthOverride:
         return tmp_path
 
     def test_no_override_when_model_not_in_map(self, tmp_path):
-        """No override applies when the resolved model is not a key in
-        chatgpt_account_overrides (here: codex-cli max → gpt-5.4)."""
-        proj = self._project_with_overrides(tmp_path, {})
+        """No override applies when the project explicitly maps to a model that
+        has no chatgpt_account_overrides entry."""
+        import yaml as _yaml
+        sh = tmp_path / ".superharness"
+        sh.mkdir(parents=True, exist_ok=True)
+        # Use a fictional model with an empty override map so the bundled
+        # overrides (which now cover gpt-5.4) do not interfere.
+        (sh / "models.yaml").write_text(_yaml.safe_dump({
+            "model_map": {"codex-cli": {"mini": "gpt-no-override", "standard": "gpt-no-override", "max": "gpt-no-override"}},
+            "chatgpt_account_overrides": {},
+        }))
         fake = subprocess.CompletedProcess(args=[], returncode=0,
                                            stdout="Logged in using ChatGPT", stderr="")
         with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake):
             from superharness.engine.model_router import resolve_model, _load_model_map
             _load_model_map.__globals__["_cached_project_maps"].clear()
-            assert resolve_model("codex-cli", "max", str(proj)) == "gpt-5.4"
+            assert resolve_model("codex-cli", "max", str(tmp_path)) == "gpt-no-override"
 
     def test_override_applied_on_chatgpt_auth(self, tmp_path):
         proj = self._project_with_overrides(
@@ -578,3 +589,124 @@ class TestChatgptAuthOverride:
             _load_model_map.__globals__["_cached_project_maps"].clear()
             # No project override — exercises the bundled models.yaml.
             assert resolve_model("codex-cli", "standard", str(tmp_path)) == "gpt-5-codex"
+
+
+class TestAuthStatePersistence:
+    """persist_agent_auth_state / get_agent_auth_state round-trip and reset_codex_auth_cache."""
+
+    def test_persist_and_read_auth_state(self, tmp_path):
+        from superharness.engine.model_router import persist_agent_auth_state, get_agent_auth_state
+        (tmp_path / ".superharness").mkdir()
+        persist_agent_auth_state(str(tmp_path), "codex-cli", "chatgpt")
+        assert get_agent_auth_state(str(tmp_path), "codex-cli") == "chatgpt"
+
+    def test_persist_multiple_agents(self, tmp_path):
+        from superharness.engine.model_router import persist_agent_auth_state, get_agent_auth_state
+        (tmp_path / ".superharness").mkdir()
+        persist_agent_auth_state(str(tmp_path), "codex-cli", "chatgpt")
+        persist_agent_auth_state(str(tmp_path), "gemini-cli", "apikey")
+        assert get_agent_auth_state(str(tmp_path), "codex-cli") == "chatgpt"
+        assert get_agent_auth_state(str(tmp_path), "gemini-cli") == "apikey"
+
+    def test_persist_overwrites_previous(self, tmp_path):
+        from superharness.engine.model_router import persist_agent_auth_state, get_agent_auth_state
+        (tmp_path / ".superharness").mkdir()
+        persist_agent_auth_state(str(tmp_path), "codex-cli", "chatgpt")
+        persist_agent_auth_state(str(tmp_path), "codex-cli", "apikey")
+        assert get_agent_auth_state(str(tmp_path), "codex-cli") == "apikey"
+
+    def test_get_returns_none_for_unknown_agent(self, tmp_path):
+        from superharness.engine.model_router import get_agent_auth_state
+        assert get_agent_auth_state(str(tmp_path), "codex-cli") is None
+
+    def test_reset_codex_auth_cache_is_public(self):
+        """reset_codex_auth_cache must be importable without underscore prefix."""
+        from superharness.engine.model_router import reset_codex_auth_cache
+        assert callable(reset_codex_auth_cache)
+
+    def test_reset_clears_cache_so_next_detect_runs_fresh(self):
+        from superharness.engine import model_router as mr
+        mr._CODEX_AUTH_MODE_CACHE = "chatgpt"
+        mr.reset_codex_auth_cache()
+        assert mr._CODEX_AUTH_MODE_CACHE is None
+
+    def test_private_alias_still_works_for_existing_tests(self):
+        """_reset_codex_auth_cache alias must not be removed (used in older tests)."""
+        from superharness.engine.model_router import _reset_codex_auth_cache
+        assert callable(_reset_codex_auth_cache)
+
+    def test_gpt54_chatgpt_override_applied(self, tmp_path):
+        """gpt-5.4 must be overridden to gpt-5-codex on ChatGPT auth accounts.
+        Regression: gpt-5.4 resolves internally to gpt-5.5 which ChatGPT rejects."""
+        import subprocess
+        from unittest import mock
+        fake = subprocess.CompletedProcess(args=[], returncode=0,
+                                           stdout="Logged in using ChatGPT", stderr="")
+        with mock.patch("superharness.engine.model_router.subprocess.run", return_value=fake):
+            from superharness.engine.model_router import resolve_model, _load_model_map, _reset_codex_auth_cache
+            _reset_codex_auth_cache()
+            _load_model_map.__globals__["_cached_project_maps"].clear()
+            result = resolve_model("codex-cli", "max", str(tmp_path))
+        assert result == "gpt-5-codex", f"expected gpt-5-codex, got {result}"
+
+    def test_persist_preserves_quota_limited_until_when_updating_auth_mode(self, tmp_path):
+        """persist_agent_auth_state must not clobber quota_limited_until."""
+        from superharness.engine.model_router import (
+            persist_agent_auth_state,
+            set_agent_quota_limited,
+            is_agent_quota_limited,
+        )
+        (tmp_path / ".superharness").mkdir()
+        set_agent_quota_limited(str(tmp_path), "gemini-cli", reset_minutes=120)
+        assert is_agent_quota_limited(str(tmp_path), "gemini-cli")
+        # Update auth mode — quota window must survive
+        persist_agent_auth_state(str(tmp_path), "gemini-cli", "apikey")
+        assert is_agent_quota_limited(str(tmp_path), "gemini-cli"), (
+            "quota_limited_until was clobbered by persist_agent_auth_state"
+        )
+
+
+class TestQuotaState:
+    """set_agent_quota_limited / is_agent_quota_limited quota cooldown tracking."""
+
+    def test_not_limited_when_no_state(self, tmp_path):
+        from superharness.engine.model_router import is_agent_quota_limited
+        (tmp_path / ".superharness").mkdir()
+        assert not is_agent_quota_limited(str(tmp_path), "gemini-cli")
+
+    def test_limited_after_set(self, tmp_path):
+        from superharness.engine.model_router import set_agent_quota_limited, is_agent_quota_limited
+        (tmp_path / ".superharness").mkdir()
+        set_agent_quota_limited(str(tmp_path), "gemini-cli", reset_minutes=60)
+        assert is_agent_quota_limited(str(tmp_path), "gemini-cli")
+
+    def test_different_agents_independent(self, tmp_path):
+        from superharness.engine.model_router import set_agent_quota_limited, is_agent_quota_limited
+        (tmp_path / ".superharness").mkdir()
+        set_agent_quota_limited(str(tmp_path), "gemini-cli", reset_minutes=60)
+        assert not is_agent_quota_limited(str(tmp_path), "codex-cli")
+        assert is_agent_quota_limited(str(tmp_path), "gemini-cli")
+
+    def test_expired_cooldown_returns_false(self, tmp_path):
+        """An expiry in the past must read as not limited."""
+        import json
+        from superharness.engine.model_router import is_agent_quota_limited
+        sh = tmp_path / ".superharness"
+        sh.mkdir()
+        # Write an already-expired quota timestamp
+        (sh / "agent-auth-state.json").write_text(
+            json.dumps({"opencode": {"quota_limited_until": "2000-01-01T00:00:00Z"}})
+        )
+        assert not is_agent_quota_limited(str(tmp_path), "opencode")
+
+    def test_corrupted_state_file_returns_false(self, tmp_path):
+        from superharness.engine.model_router import is_agent_quota_limited
+        sh = tmp_path / ".superharness"
+        sh.mkdir()
+        (sh / "agent-auth-state.json").write_text("not valid json{{{")
+        assert not is_agent_quota_limited(str(tmp_path), "codex-cli")
+
+    def test_quota_state_file_no_superharness_dir(self, tmp_path):
+        """Missing .superharness dir must not raise — returns False."""
+        from superharness.engine.model_router import is_agent_quota_limited
+        assert not is_agent_quota_limited(str(tmp_path), "gemini-cli")

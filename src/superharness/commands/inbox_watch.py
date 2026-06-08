@@ -1598,7 +1598,15 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                     logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                     pass
                 tried_agents.add(current_agent)
-                fallback_agents = [a for a in _FALLBACK_ORDER if a not in tried_agents]
+                try:
+                    from superharness.engine.model_router import is_agent_quota_limited as _is_quota
+                    fallback_agents = [
+                        a for a in _FALLBACK_ORDER
+                        if a not in tried_agents
+                        and not _is_quota(str(project_dir), a)
+                    ]
+                except Exception:
+                    fallback_agents = [a for a in _FALLBACK_ORDER if a not in tried_agents]
                 if not fallback_agents:
                     # All known owners exhausted — escalate with rich context
                     per_owner_summary = ", ".join(sorted(tried_agents))

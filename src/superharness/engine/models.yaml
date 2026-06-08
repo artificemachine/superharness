@@ -10,7 +10,7 @@ model_map:
   gemini-cli:
     mini: gemini-2.5-flash
     standard: gemini-2.5-pro
-    max: gemini-3.1-pro-preview
+    max: gemini-2.5-pro
 
 # Optional: per-project override applied only when codex-cli is authed via a
 # ChatGPT account (detected by `codex login status`). Use this when a model
@@ -19,6 +19,7 @@ model_map:
 #
 chatgpt_account_overrides:
   gpt-5.3-codex: gpt-5-codex        # API-only model → ChatGPT-compatible
+  gpt-5.4: gpt-5-codex              # resolves internally to gpt-5.5 — ChatGPT account rejects it
 
 pricing:
   claude-opus-4-8:

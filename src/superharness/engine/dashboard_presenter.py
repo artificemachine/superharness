@@ -120,6 +120,9 @@ def get_dashboard_status_snapshot(conn: sqlite3.Connection, project_dir: str) ->
     for t in tasks_as_dict:
         st = str(t.get("status", "todo"))
         col = _STATUS_TO_COL.get(st, "todo")
+        # Cap the done column — archived tasks accumulate to tens of thousands
+        if col == "done" and len(board_columns["done"]) >= 50:
+            continue
         board_columns[col].append(t)
         
     # Review queue
@@ -144,9 +147,15 @@ def get_dashboard_status_snapshot(conn: sqlite3.Connection, project_dir: str) ->
         if t.get("worktree_path") and _os.path.isdir(str(t.get("worktree_path", "")))
     ]
 
+    # Exclude archived/done tasks from the dashboard payload — they bloat the
+    # response to tens of MB when thousands accumulate. The board still tracks
+    # counts via board_columns; the full list is never needed in the UI.
+    _TERMINAL = {"done", "archived", "failed", "stopped"}
+    active_tasks = [t for t in tasks_as_dict if str(t.get("status", "")) not in _TERMINAL]
+
     snapshot = {
         "contract_id": contract_id,
-        "contract_tasks": tasks_as_dict,
+        "contract_tasks": active_tasks,
         "contract_owners": list(set(str(t.get("owner", "")) for t in tasks_as_dict if t.get("owner"))),
         "all_task_owners": all_task_owners,
         "active_inbox_tasks": active_inbox_tasks,
@@ -159,7 +168,7 @@ def get_dashboard_status_snapshot(conn: sqlite3.Connection, project_dir: str) ->
         "review_queue": review_queue,
         "board_columns": dict(board_columns),
         "activity_feed": activity,
-        "inbox_items": inbox_as_dict,
+        "inbox_items": [i for i in inbox_as_dict if i.get("status") in ("pending", "launched", "running", "paused", "failed", "stale")][:200],
         "active_discussions": active_discussions,
         "failures": failures,
         "decisions": decisions,

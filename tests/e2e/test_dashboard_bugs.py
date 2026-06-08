@@ -157,7 +157,8 @@ def test_e2e_owner_swap_affects_modal_initialization(repo_root, tmp_path):
 
 
 def test_e2e_archived_tasks_correctly_flagged(repo_root, tmp_path):
-    """E2E: Verify that archived tasks are correctly identified in the status API."""
+    """E2E: Archived tasks are excluded from contract_tasks (perf optimisation)
+    but are still counted in board_columns['done']."""
     module = _load_monitor_module(repo_root)
     project = _setup_test_project(tmp_path)
     server, thread, base_url = _start_server(module, repo_root, project)
@@ -165,9 +166,19 @@ def test_e2e_archived_tasks_correctly_flagged(repo_root, tmp_path):
     try:
         status, data = _request_json("GET", f"{base_url}/api/status", base_url=base_url)
         assert status == 200
-        tasks = data["contract_tasks"]
-        archived = next(t for t in tasks if t["id"] == "task-archived")
-        assert archived["status"] == "archived"
+        # Terminal tasks (archived / done / failed / stopped) are excluded from
+        # contract_tasks to keep the payload small — verify the archived task
+        # is NOT in that list.
+        active_ids = {t["id"] for t in data["contract_tasks"]}
+        assert "task-archived" not in active_ids, (
+            "Archived tasks must NOT appear in contract_tasks (they bloat the payload)"
+        )
+        # The board column counter must still reflect the archived task.
+        done_col = data.get("board_columns", {}).get("done", [])
+        done_ids = {t["id"] for t in done_col}
+        assert "task-archived" in done_ids, (
+            "Archived task must appear in board_columns['done'] for the board to show it"
+        )
 
     finally:
         server.shutdown()

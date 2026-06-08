@@ -7,13 +7,15 @@ an actionable classification that drives:
   - failure_patterns recording (already exists, this layer is structural)
 
 Categories:
-  permanent_block - retrying produces same failure (bash crash, missing task,
-                    syntax error). Surface to operator.
-  transient       - timeout, network blip. Retry with backoff.
-  quota           - rate limit, budget exhausted. Surface to operator.
-  agent_crash     - agent process died (Python traceback, segfault). Retry once.
-  no_op           - agent ran but produced no artifact. Surface (likely prompt bug).
-  unknown         - anything we cannot classify. Default: retry once.
+  permanent_block  - retrying produces same failure (bash crash, missing task,
+                     syntax error, bad model name). Surface to operator.
+  auth_mismatch    - agent model not authorized on current auth account (e.g.
+                     codex ChatGPT account switched). Retryable after cache reset.
+  transient        - timeout, network blip. Retry with backoff.
+  quota            - rate limit, budget exhausted. Surface to operator + pause.
+  agent_crash      - agent process died (Python traceback, segfault). Retry once.
+  no_op            - agent ran but produced no artifact. Surface (likely prompt bug).
+  unknown          - anything we cannot classify. Default: retry once.
 """
 from __future__ import annotations
 
@@ -23,6 +25,7 @@ from typing import Literal
 
 Category = Literal[
     "permanent_block",
+    "auth_mismatch",
     "transient",
     "quota",
     "agent_crash",
@@ -40,7 +43,7 @@ class FailureClassification:
 
 # Order matters: more specific patterns first.
 _PATTERNS: list[tuple[str, Category, bool, str]] = [
-    # permanent_block
+    # permanent_block — config / environment errors
     (
         r"unbound variable",
         "permanent_block",
@@ -71,18 +74,46 @@ _PATTERNS: list[tuple[str, Category, bool, str]] = [
         False,
         "permission denied (chmod or owner issue)",
     ),
-    # quota
+    # permanent_block — model name doesn't exist in the API at all (404)
     (
-        r"rate limit|quota exceeded|budget exhausted|429 Too Many",
+        r"ModelNotFoundError|Requested entity was not found",
+        "permanent_block",
+        False,
+        "agent model not found — update models.yaml with a valid model ID",
+    ),
+    # auth_mismatch — model exists but is rejected by current auth account (codex/ChatGPT)
+    # Retryable: cache is reset on detection so next dispatch re-evaluates auth.
+    (
+        r"model is not supported when using Codex with a ChatGPT account",
+        "auth_mismatch",
+        True,
+        "codex model not supported on current ChatGPT account — auth account may have changed; superharness will reset auth cache and retry with override model",
+    ),
+    # auth_mismatch — API key invalidated, revoked, or account switched (any agent)
+    # Gemini: API_KEY_INVALID / API key not valid; OpenCode: Invalid API key
+    # Retryable: once credentials are refreshed the next dispatch should succeed.
+    (
+        r"API_KEY_INVALID|api.key.not.valid|invalid.api.key|incorrect.api.key"
+        r"|authentication.failed|authentication_error"
+        r"|caller.does.not.have.permission",
+        "auth_mismatch",
+        True,
+        "API key invalid or account switched — update credentials and retry",
+    ),
+    # quota — all providers (rate limit, billing, budget)
+    (
+        r"rate.?limit|quota.?exceeded|budget.?exhausted|429.Too.Many"
+        r"|insufficient.quota|rate_limit_exceeded",
         "quota",
         False,
         "agent quota or rate limit exceeded",
     ),
+    # quota — Gemini / Google API usage limits
     (
-        r"model is not supported when using Codex with a ChatGPT account",
-        "permanent_block",
+        r"RESOURCE_EXHAUSTED|usage.?limit|you.ve reached your.*(usage|free|daily|monthly)|quota has been exceeded|free tier.*limit",
+        "quota",
         False,
-        "agent model not authorized (Codex with ChatGPT account does not support this model — change model or switch auth)",
+        "Gemini usage limit reached — resets on a daily/monthly schedule",
     ),
     # agent_crash
     (

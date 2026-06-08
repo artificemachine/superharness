@@ -2760,6 +2760,49 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"lines": content, "path": str(log_path), "audit": audit, "level": level})
             return
 
+        if p == "/api/discussions":
+            qs = parse_qs(parsed.query)
+            status_filter = qs.get("status", [""])[0] or None
+            conn = self._db_conn()
+            try:
+                from superharness.engine import discussions_dao as _ddao_list
+                from dataclasses import asdict as _asdict
+                rows = _ddao_list.get_all(conn, status=status_filter)
+                discs = []
+                for r in rows:
+                    d = _asdict(r)
+                    # current_round = highest round number submitted
+                    rounds = conn.execute(
+                        "SELECT MAX(round_number) as mx FROM discussion_rounds WHERE discussion_id=?",
+                        (r.id,),
+                    ).fetchone()
+                    d["current_round"] = int(rounds["mx"]) if rounds and rounds["mx"] else 0
+                    discs.append(d)
+            finally:
+                conn.close()
+            self._json({"discussions": discs, "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+            return
+
+        if p.startswith("/api/discussion/") and p.endswith("/rounds"):
+            disc_id = p[len("/api/discussion/"):-len("/rounds")]
+            conn = self._db_conn()
+            try:
+                from superharness.engine import discussions_dao as _ddao_rounds
+                from dataclasses import asdict as _asdict2
+                rounds = _ddao_rounds.get_rounds(conn, disc_id)
+                disc = _ddao_rounds.get(conn, disc_id)
+            finally:
+                conn.close()
+            self._json({
+                "discussion_id": disc_id,
+                "topic": disc.topic if disc else "",
+                "status": disc.status if disc else "",
+                "max_rounds": disc.max_rounds if disc else 3,
+                "consensus": disc.consensus if disc else None,
+                "rounds": [_asdict2(r) for r in rounds],
+            })
+            return
+
         if p == "/api/logs/stream":
             # Server-Sent Events: stream new log lines as they arrive.
             from superharness.logging_utils import _resolve_log_file
@@ -3109,6 +3152,57 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/health":
             health = _get_health(str(self.project_dir))
             self._json(health)
+            return
+
+        # Discussion operator actions
+        if p.startswith("/api/discussion/") and p.endswith("/close"):
+            from urllib.parse import unquote as _unquote_close
+            disc_id = _unquote_close(p[len("/api/discussion/"):-len("/close")])
+            if not disc_id:
+                self._json({"error": "missing discussion id"}, 400)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                body = self.rfile.read(length) if length > 0 else b"{}"
+                payload = json.loads(body.decode("utf-8"))
+            except Exception:
+                payload = {}
+            result = subprocess.run(
+                ["shux", "discuss", "close", "--project", str(self.project_dir), "--id", disc_id],
+                capture_output=True, text=True,
+            )
+            if result.returncode == 0:
+                self._json({"ok": True, "discussion_id": disc_id})
+            else:
+                self._json({"error": result.stderr.strip() or result.stdout.strip()}, 500)
+            return
+
+        if p.startswith("/api/discussion/") and p.endswith("/create-task"):
+            from urllib.parse import unquote as _unquote_ct
+            disc_id = _unquote_ct(p[len("/api/discussion/"):-len("/create-task")])
+            if not disc_id:
+                self._json({"error": "missing discussion id"}, 400)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                body = self.rfile.read(length) if length > 0 else b"{}"
+                payload = json.loads(body.decode("utf-8"))
+            except Exception:
+                payload = {}
+            title = str(payload.get("title", "")).strip() or f"Implement consensus from {disc_id}"
+            owner = str(payload.get("owner", "claude-code")).strip()
+            result = subprocess.run(
+                ["shux", "task", "create",
+                 "--project", str(self.project_dir),
+                 "--title", title,
+                 "--owner", owner,
+                 "--context", f"Consensus reached in discussion {disc_id}. Implement the agreed design."],
+                capture_output=True, text=True,
+            )
+            if result.returncode == 0:
+                self._json({"ok": True, "discussion_id": disc_id, "output": result.stdout.strip()})
+            else:
+                self._json({"error": result.stderr.strip() or result.stdout.strip()}, 500)
             return
 
         self._json({"error": "not found"}, 404)
