@@ -879,6 +879,18 @@ def _reconcile_state(ctx: DispatchContext) -> int:
         if reconciled > 0:
             _r_status = "paused" if reconciled in (2, 3) else ("done" if final_state == "done" else "failed")
             _sqlite_mirror_dispatch(ctx.project_dir, ctx.item_id, ctx.item_task, ctx.item_to, _r_status, reconcile_now)
+        elif ctx.sqlite_primary and final_state in ("done", "failed", "pending_user_approval"):
+            # sqlite-only mode: the item was claimed from SQLite, not inbox.yaml, so
+            # _set_inbox_status returned False and reconciled stayed 0. Mirror to
+            # SQLite directly so the item doesn't stay stuck in 'launched' forever.
+            _r_status = "paused" if final_state == "pending_user_approval" else final_state
+            _sqlite_mirror_dispatch(ctx.project_dir, ctx.item_id, ctx.item_task, ctx.item_to, _r_status, reconcile_now)
+            reconciled = 3 if final_state == "pending_user_approval" else 1
+        elif ctx.sqlite_primary and final_state not in ("done", "failed", "pending_user_approval") and final_state:
+            # sqlite-only: fallback state (dirty worktree → paused, else failed).
+            _r_status = "paused" if _has_dirty_worktree(ctx.exec_project) else "failed"
+            _sqlite_mirror_dispatch(ctx.project_dir, ctx.item_id, ctx.item_task, ctx.item_to, _r_status, reconcile_now)
+            reconciled = 2 if _r_status == "paused" else 1
 
         if reconciled == 2:
             print(f"Inbox item updated: {ctx.item_id} -> paused ({DIRTY_WORKTREE_REASON})")
@@ -1115,7 +1127,51 @@ def _handle_failure(ctx: DispatchContext) -> int:
     else:
         fail_reason = f"{failure_class}: {failure_explain}"
 
-    # Check if the agent's daemon was even running when it failed
+    # auth_mismatch: reset cached auth state so the next dispatch re-evaluates
+    # credentials and applies the correct model overrides.  For codex-cli we can
+    # actively re-detect the account type via `codex login status`.  For other
+    # agents (gemini-cli, opencode) we record the failure and let the retry use
+    # whatever credentials are currently configured.
+    if failure_class == "auth_mismatch":
+        try:
+            from superharness.engine.model_router import persist_agent_auth_state
+            if ctx.item_to == "codex-cli":
+                from superharness.engine.model_router import (
+                    reset_codex_auth_cache,
+                    detect_codex_auth_mode,
+                )
+                reset_codex_auth_cache()
+                new_auth_mode = detect_codex_auth_mode()
+                persist_agent_auth_state(str(ctx.project_dir), "codex-cli", new_auth_mode)
+                _log.warning(
+                    "inbox_dispatch: auth_mismatch for codex-cli — cache reset, "
+                    "re-detected auth_mode=%s, will retry with override model",
+                    new_auth_mode,
+                )
+            else:
+                persist_agent_auth_state(str(ctx.project_dir), ctx.item_to, "auth_failure")
+                _log.warning(
+                    "inbox_dispatch: auth_mismatch for %s — persisted failure state; "
+                    "ensure credentials are valid for this agent and retry",
+                    ctx.item_to,
+                )
+        except Exception as _auth_err:
+            _log.warning("inbox_dispatch: auth state reset failed: %s", _auth_err)
+
+    # quota: record a cooldown window so the watcher skips this agent during
+    # fallback routing until the quota resets.  Default cooldown is 60 minutes.
+    if failure_class == "quota":
+        try:
+            from superharness.engine.model_router import set_agent_quota_limited
+            set_agent_quota_limited(str(ctx.project_dir), ctx.item_to, reset_minutes=60)
+            _log.warning(
+                "inbox_dispatch: quota exceeded for %s — marked quota-limited for 60 min; "
+                "watcher will skip this agent in fallback routing until cooldown expires",
+                ctx.item_to,
+            )
+        except Exception as _quota_err:
+            _log.warning("inbox_dispatch: quota state write failed: %s", _quota_err)
+
     if failure_class == "unknown" and ctx.launcher_rc == 1:
         try:
             from superharness.engine.db import get_connection, init_db
@@ -1480,6 +1536,12 @@ def _classify_launch_failure(exit_code: int, log_tail: str) -> dict:
         "quota will reset",
         "terminalquotaerror",
         "exhausted your capacity",
+        # Gemini / Google API signals
+        "resource_exhausted",
+        "usage limit",
+        "you've reached your",
+        "quota has been exceeded",
+        "free tier",
     )
     log_lower = log_tail.lower()
     is_quota = exit_code == 1 and any(kw in log_lower for kw in _QUOTA_KEYWORDS)

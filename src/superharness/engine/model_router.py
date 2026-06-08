@@ -26,7 +26,7 @@ MODEL_MAP: dict[str, dict[str, str]] = {
     "gemini-cli": {
         "mini": "gemini-2.5-flash",
         "standard": "gemini-2.5-pro",
-        "max": "gemini-3.1-pro-preview"
+        "max": "gemini-2.5-pro"
     },
     "opencode": {
         "mini": "deepseek/deepseek-chat",
@@ -363,6 +363,10 @@ def classify_task(
 
 _CODEX_AUTH_MODE_CACHE: str | None = None
 
+# File written to .superharness/ so auth state survives across processes
+# and can be read by the dashboard to surface "⚠ auth changed" warnings.
+_AUTH_STATE_FILENAME = "agent-auth-state.json"
+
 
 def detect_codex_auth_mode() -> str:
     """Return codex auth mode: 'chatgpt' | 'apikey' | 'unknown'.
@@ -395,10 +399,105 @@ def detect_codex_auth_mode() -> str:
     return _CODEX_AUTH_MODE_CACHE
 
 
-def _reset_codex_auth_cache() -> None:
-    """Test-only hook to clear the auth-mode memoization."""
+def reset_codex_auth_cache() -> None:
+    """Invalidate the in-process auth-mode cache so the next call re-detects.
+
+    Called by the dispatch failure handler when an auth_mismatch failure is
+    observed (e.g. the operator switched ChatGPT accounts between sessions).
+    The next dispatch will re-run `codex login status` and pick up the new
+    account type, applying the correct chatgpt_account_overrides if needed.
+    """
     global _CODEX_AUTH_MODE_CACHE
     _CODEX_AUTH_MODE_CACHE = None
+
+
+# Keep the private alias so existing tests that import _reset_codex_auth_cache
+# continue to work without modification.
+_reset_codex_auth_cache = reset_codex_auth_cache
+
+
+def persist_agent_auth_state(project_dir: str, agent: str, auth_mode: str) -> None:
+    """Write detected auth mode for an agent to .superharness/agent-auth-state.json.
+
+    Survives across process restarts; read by get_agent_auth_state() and the
+    dashboard to surface auth-change warnings without re-running `codex login`.
+    Preserves other fields (e.g. quota_limited_until) when updating auth_mode.
+    """
+    state = _load_agent_state(project_dir)
+    agent_state = dict(state.get(agent) or {})
+    agent_state["auth_mode"] = auth_mode
+    state[agent] = agent_state
+    _save_agent_state(project_dir, state)
+
+
+def get_agent_auth_state(project_dir: str, agent: str) -> str | None:
+    """Read the last-persisted auth mode for an agent, or None if not recorded."""
+    import json
+    from pathlib import Path
+    path = Path(project_dir) / ".superharness" / _AUTH_STATE_FILENAME
+    try:
+        state = json.loads(path.read_text())
+        return state.get(agent, {}).get("auth_mode")
+    except Exception:
+        return None
+
+
+def _load_agent_state(project_dir: str) -> dict:
+    """Read agent-auth-state.json and return the full dict (or empty on error)."""
+    import json
+    from pathlib import Path
+    path = Path(project_dir) / ".superharness" / _AUTH_STATE_FILENAME
+    try:
+        if path.exists():
+            return json.loads(path.read_text()) or {}
+    except Exception:
+        pass
+    return {}
+
+
+def _save_agent_state(project_dir: str, state: dict) -> None:
+    """Write the full agent state dict back to disk. Best-effort."""
+    import json
+    from pathlib import Path
+    path = Path(project_dir) / ".superharness" / _AUTH_STATE_FILENAME
+    try:
+        path.write_text(json.dumps(state, indent=2))
+    except Exception:
+        pass
+
+
+def set_agent_quota_limited(project_dir: str, agent: str, reset_minutes: int = 60) -> None:
+    """Record that an agent is quota-limited until now + reset_minutes.
+
+    Written to agent-auth-state.json so the watcher can skip this agent
+    in fallback routing without re-discovering the quota limit every time.
+    Survives across process restarts.
+    """
+    from datetime import datetime, timezone, timedelta
+    state = _load_agent_state(project_dir)
+    agent_state = dict(state.get(agent) or {})
+    expiry = datetime.now(timezone.utc) + timedelta(minutes=reset_minutes)
+    agent_state["quota_limited_until"] = expiry.strftime("%Y-%m-%dT%H:%M:%SZ")
+    state[agent] = agent_state
+    _save_agent_state(project_dir, state)
+
+
+def is_agent_quota_limited(project_dir: str, agent: str) -> bool:
+    """Return True if the agent is currently within its quota cooldown window.
+
+    Returns False if no quota state is recorded or if the cooldown has expired
+    (so the watcher will attempt the agent again after the window passes).
+    """
+    from datetime import datetime, timezone
+    state = _load_agent_state(project_dir)
+    expiry_str = state.get(agent, {}).get("quota_limited_until")
+    if not expiry_str:
+        return False
+    try:
+        expiry = datetime.fromisoformat(expiry_str.replace("Z", "+00:00"))
+        return datetime.now(timezone.utc) < expiry
+    except Exception:
+        return False
 
 
 def _apply_chatgpt_auth_override(target: str, model: str, project_dir: str | None) -> str:
