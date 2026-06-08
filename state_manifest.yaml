@@ -154,6 +154,12 @@ patterns:
     backed_by: inbox
     reason: inbox YAML export; SQLite SoT via inbox_dao
 
+  # Export directory — read-only YAML snapshots for external-agent consumption
+  # SQLite is the authoritative SoT; these are derived views, not primary state.
+  - glob: .superharness/export/*.yaml
+    type: ignore
+    reason: export-dir YAML snapshots; derived from SQLite, read-only, not authoritative
+
   # Removed v10: discussion state.yaml pattern was vestigial. No code in src/
   # writes or reads .superharness/discussions/*/state.yaml. If old worktrees
   # still have such files on disk they're picked up by the worktree ignore

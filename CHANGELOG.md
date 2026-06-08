@@ -617,3 +617,12 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-06-07: fix(discuss): honor max_rounds; release contract lock on review_failed → plan_proposed
 - 2026-06-07: chore(release): bump to v1.70.6 (discussion dispatch fixes, lifecycle hardening, unique indexes, path consolidation)
 - 2026-06-07: test(discuss): patch shutil.which in integration test so binary-presence check does not depend on CI toolchain
+- 2026-06-08: fix(dispatch): _reconcile_state now writes SQLite directly in sqlite-only mode; guard tests added
+- 2026-06-08: fix(dispatch): remove else-0 dead arm in reconciled assignment; add pending_user_approval guard test (discussion verdict)
+- 2026-06-08: feat(dashboard): permanent discussions panel with filter pills, round detail, and start form
+- 2026-06-08: fix(dashboard): view button in discussions panel — remove topic from onclick arg to prevent HTML entity/JS quote collision
+- 2026-06-08: fix(dashboard): rounds API returns consensus field; operator action buttons show for closed+consensus discussions; remove duplicate display:none on actions span
+- 2026-06-08: fix(models): gemini max tier gemini-3.1-pro-preview→gemini-2.5-pro (model doesnt exist); add gpt-5.4 chatgpt_account_override (resolves to rejected gpt-5.5)
+- 2026-06-08: feat(dispatch): detect auth_mismatch failure class; reset codex auth cache + persist agent auth state on account switch; add Gemini quota + ModelNotFoundError patterns to failure classifier
+- 2026-06-08: fix(dispatch): generalize auth_mismatch handler to all agents (not just codex-cli); add quota cooldown state via set_agent_quota_limited/is_agent_quota_limited; watcher skips quota-limited agents in fallback routing; failure_classifier now detects API_KEY_INVALID + invalid_api_key for any agent (gemini, opencode) and rate_limit_exceeded/insufficient_quota for DeepSeek/OpenAI; MODEL_MAP gemini max fallback fixed; dashboard_presenter filters terminal tasks from contract_tasks + caps inbox_items at 200
+- 2026-06-08: chore(release): bump to v1.70.7 (auth_mismatch + quota detection for all agents, quota cooldown routing, gemini model fix, dashboard payload optimization)

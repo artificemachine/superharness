@@ -316,6 +316,62 @@
       </div>
     </div>
 
+    <div class="card" style="margin-top:10px;" id="discussionsPanel">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;margin-bottom:6px" onclick="togglePanel('discussionsPanelBody',this)">
+        <h2 style="margin:0">discussions <span id="discPanelBadge" style="font-size:11px;font-weight:normal;color:var(--muted)"></span></h2>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button onclick="event.stopPropagation();openNewDiscussionForm()" style="font-size:11px;padding:2px 8px">+ start</button>
+          <button onclick="event.stopPropagation();loadDiscussions()" style="font-size:11px;padding:2px 8px">↺</button>
+          <span style="color:var(--muted);font-size:11px">▾</span>
+        </div>
+      </div>
+      <div id="discussionsPanelBody">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;" id="discStatusFilter">
+          <span class="pill sel" onclick="discFilterStatus('')" data-status="">all</span>
+          <span class="pill" onclick="discFilterStatus('active')" data-status="active">active</span>
+          <span class="pill" onclick="discFilterStatus('consensus')" data-status="consensus">consensus</span>
+          <span class="pill" onclick="discFilterStatus('no_consensus')" data-status="no_consensus">no_consensus</span>
+          <span class="pill" onclick="discFilterStatus('failed_participant')" data-status="failed_participant">failed</span>
+          <span class="pill" onclick="discFilterStatus('closed')" data-status="closed">closed</span>
+        </div>
+        <div id="discRoundsPanel" style="display:none;margin-bottom:10px;border-bottom:1px solid var(--line);padding-bottom:10px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:12px;color:var(--muted)" id="discRoundsLabel">rounds</span>
+            <div style="display:flex;gap:6px;align-items:center">
+              <span id="discOperatorActions" style="display:none;gap:6px">
+                <button id="btnCreateTask" onclick="discCreateTask()" style="font-size:11px;padding:2px 10px;background:var(--ok);color:#fff;border:none;border-radius:4px;cursor:pointer">+ create task</button>
+                <button id="btnCloseDisc" onclick="discClose()" style="font-size:11px;padding:2px 10px;background:var(--warn);color:#000;border:none;border-radius:4px;cursor:pointer">close discussion</button>
+              </span>
+              <button onclick="document.getElementById('discRoundsPanel').style.display='none'" style="font-size:11px;padding:2px 8px">hide</button>
+            </div>
+          </div>
+          <div id="discRoundsBody" style="font-size:12px;"></div>
+          <div id="discOperatorStatus" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
+        </div>
+        <div class="inbox-detail">
+          <table id="discTable">
+            <thead><tr>
+              <th style="width:130px">id</th>
+              <th style="width:80px">status</th>
+              <th style="width:60px">round</th>
+              <th style="width:120px">participants</th>
+              <th>topic</th>
+              <th style="width:60px"></th>
+            </tr></thead>
+            <tbody id="discTableBody"><tr><td colspan="5" style="color:var(--muted)">loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:10px;display:none" id="discStartForm">
+          <input id="discTopicInput" type="text" placeholder="discussion topic…" style="flex:1;background:var(--btn);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;font-family:inherit;" />
+          <input id="discOwnersInput" type="text" placeholder="owners (comma-sep)" style="width:200px;background:var(--btn);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;font-family:inherit;" value="claude-code,opencode" />
+          <input id="discRoundsInput" type="number" placeholder="rounds" min="1" max="10" value="3" style="width:60px;background:var(--btn);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;font-family:inherit;" />
+          <button onclick="submitNewDiscussion()" style="font-size:12px;padding:5px 14px;background:var(--ok);color:#fff;border:none;border-radius:4px;cursor:pointer;">Start</button>
+          <button onclick="document.getElementById('discStartForm').style.display='none'" style="font-size:11px;padding:5px 10px">Cancel</button>
+        </div>
+        <div class="small" id="discActionStatus" style="margin-top:4px;color:var(--muted)"></div>
+      </div>
+    </div>
+
     <div class="card" style="margin-top:10px;" id="taskOverviewCard">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;user-select:none" onclick="toggleTaskOverview()">
         <h2 style="margin:0">task overview (nodes)</h2>
@@ -459,6 +515,213 @@ const LIVE_STATUSES = new Set(['in_progress', 'todo', 'plan_approved', 'report_r
 
 // Statuses that trigger the review-queue banner.
 const REVIEW_STATUSES = ['review_requested', 'review_passed', 'review_failed'];
+
+// ── Discussions panel ────────────────────────────────────────────────────────
+
+let _discStatusFilter = '';
+let _discRows = [];
+
+function discFilterStatus(status) {
+  _discStatusFilter = status;
+  document.querySelectorAll('#discStatusFilter .pill').forEach(p => {
+    p.classList.toggle('sel', p.dataset.status === status);
+  });
+  renderDiscTable(_discRows);
+}
+
+async function loadDiscussions() {
+  const qs = _discStatusFilter ? `?status=${encodeURIComponent(_discStatusFilter)}` : '';
+  try {
+    const r = await fetch('/api/discussions' + qs);
+    const d = await r.json();
+    _discRows = d.discussions || [];
+    renderDiscTable(_discRows);
+    const active = _discRows.filter(x => x.status === 'active').length;
+    const badge = document.getElementById('discPanelBadge');
+    if (badge) badge.textContent = active > 0 ? `${active} active · ${_discRows.length} total` : `${_discRows.length} total`;
+  } catch(e) {
+    document.getElementById('discTableBody').innerHTML = `<tr><td colspan="5" style="color:var(--bad)">error: ${e}</td></tr>`;
+  }
+}
+
+function renderDiscTable(rows) {
+  const tbody = document.getElementById('discTableBody');
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted)">no discussions</td></tr>'; return; }
+  const filtered = _discStatusFilter ? rows.filter(r => r.status === _discStatusFilter) : rows;
+  if (!filtered.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted)">none matching filter</td></tr>'; return; }
+  tbody.innerHTML = filtered.map(d => {
+    const statusColor = d.status === 'active' ? 'var(--ok)' : d.status === 'consensus' ? 'var(--ok)' : d.status === 'no_consensus' ? 'var(--warn)' : d.status.startsWith('failed') ? 'var(--bad)' : 'var(--muted)';
+    const owners = Array.isArray(d.owners) ? d.owners.join(', ') : (d.owners || '-');
+    const topic = d.topic.length > 80 ? d.topic.slice(0, 80) + '…' : d.topic;
+    const shortId = d.id.slice(-12);
+    const safeId = d.id.replace(/'/g, "\\'");
+    return `<tr>
+      <td class="col-id" title="${d.id}">${shortId}</td>
+      <td class="col-short" style="color:${statusColor}">${d.status}</td>
+      <td class="col-short">${d.current_round}/${d.max_rounds}</td>
+      <td class="col-to" style="font-size:11px">${owners}</td>
+      <td class="col-task" style="font-size:11px">${topic}</td>
+      <td class="col-short"><button onclick="loadDiscRounds('${safeId}')" style="font-size:11px;padding:2px 8px">view</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function _escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function _inlineFmt(s) {
+  return _escHtml(s)
+    .replace(/`([^`]+)`/g, '<code style="background:rgba(255,255,255,.08);padding:1px 4px;border-radius:3px;font-family:monospace;font-size:10px">$1</code>');
+}
+function _formatRoundContent(text) {
+  if (!text) return '<em style="color:var(--muted)">(no content)</em>';
+  // Insert blank line before Q-section headers and known labels so they split into own paragraphs
+  const normalized = text
+    .replace(/\n(Q\d[\s(])/g, '\n\n$1')
+    .replace(/\n(Updated per-question summary:|Summary:|Overall:|Note:)/g, '\n\n$1');
+  const paras = normalized.split(/\n{2,}/);
+  return paras.map(para => {
+    const lines = para.split('\n').map(l => l.trimEnd()).filter(l => l.trim());
+    if (!lines.length) return '';
+    // Bullet block: every line starts with - * or •
+    if (lines.every(l => /^[\s]*[-*•]/.test(l))) {
+      const items = lines.map(l => `<li>${_inlineFmt(l.replace(/^[\s]*[-*•]\s*/, ''))}</li>`).join('');
+      return `<ul style="margin:6px 0 6px 18px;padding:0;font-size:11px;line-height:1.6;color:var(--muted)">${items}</ul>`;
+    }
+    // Section with Q-label or known header on first line
+    const sectionMatch = lines[0].trim().match(/^(Q\d[^:]*:|Updated per-question summary:|Summary:|Overall:|Note:)/);
+    if (sectionMatch) {
+      const label = _escHtml(sectionMatch[1]);
+      const rest = _inlineFmt(lines[0].trim().slice(sectionMatch[1].length));
+      const body = lines.slice(1).map(l => _inlineFmt(l)).join('<br>');
+      return `<div style="margin:8px 0 4px;font-size:11px;line-height:1.6;color:var(--muted)"><strong style="color:var(--text)">${label}</strong>${rest}${body ? '<br>'+body : ''}</div>`;
+    }
+    // Normal paragraph
+    const formatted = lines.map(l => _inlineFmt(l)).join('<br>');
+    return `<p style="margin:4px 0;font-size:11px;line-height:1.6;color:var(--muted)">${formatted}</p>`;
+  }).join('');
+}
+
+let _activeDiscId = null;
+
+async function loadDiscRounds(discId) {
+  _activeDiscId = discId;
+  document.getElementById('discRoundsPanel').style.display = '';
+  document.getElementById('discRoundsLabel').textContent = `rounds — ${discId}`;
+  document.getElementById('discRoundsBody').innerHTML = '<span style="color:var(--muted)">loading…</span>';
+  document.getElementById('discOperatorStatus').textContent = '';
+  try {
+    const r = await fetch(`/api/discussion/${encodeURIComponent(discId)}/rounds`);
+    const d = await r.json();
+    // Operator buttons:
+    // - "close discussion": only for active/open discussions
+    // - "+ create task": for active discussions OR closed ones that reached consensus
+    const isClosed = ['closed','cancelled'].includes(d.status);
+    const hasConsensus = !!d.consensus && d.consensus.toLowerCase().includes('consensus');
+    const ops = document.getElementById('discOperatorActions');
+    ops.style.display = (!isClosed || hasConsensus) ? 'flex' : 'none';
+    document.getElementById('btnCloseDisc').style.display = isClosed ? 'none' : '';
+    document.getElementById('btnCreateTask').style.display = (!isClosed || hasConsensus) ? '' : 'none';
+    // Show consensus badge in label
+    const label = document.getElementById('discRoundsLabel');
+    label.innerHTML = `rounds — <span style="font-size:11px">${discId}</span>` +
+      (hasConsensus ? ' <span style="color:var(--ok);font-size:11px">✓ consensus</span>' : '');
+    const byRound = {};
+    (d.rounds || []).forEach(r => {
+      if (!byRound[r.round_number]) byRound[r.round_number] = [];
+      byRound[r.round_number].push(r);
+    });
+    let html = '';
+    Object.keys(byRound).sort((a,b)=>a-b).forEach(rn => {
+      html += `<div style="margin-bottom:8px;border-bottom:1px solid var(--line);padding-bottom:6px"><strong style="font-size:11px;color:var(--muted)">round ${rn}</strong>`;
+      byRound[rn].forEach(entry => {
+        const vcolor = entry.verdict === 'agree' || entry.verdict === 'consensus' ? 'var(--ok)' : entry.verdict === 'disagree' ? 'var(--bad)' : 'var(--warn)';
+        html += `<div style="margin-top:6px;padding:6px 8px;background:var(--bg);border-radius:6px;border:1px solid var(--line)">
+          <span style="font-size:11px;font-weight:bold">${entry.agent}</span>
+          <span style="font-size:11px;color:${vcolor};margin-left:8px">${entry.verdict || '—'}</span>
+          <div style="margin-top:4px">${_formatRoundContent(entry.content)}</div>
+        </div>`;
+      });
+      html += '</div>';
+    });
+    document.getElementById('discRoundsBody').innerHTML = html || '<span style="color:var(--muted)">no rounds yet</span>';
+  } catch(e) {
+    document.getElementById('discRoundsBody').innerHTML = `<span style="color:var(--bad)">error: ${e}</span>`;
+  }
+}
+
+async function discClose() {
+  if (!_activeDiscId) return;
+  document.getElementById('discOperatorStatus').textContent = 'closing…';
+  try {
+    const r = await fetch(`/api/discussion/${encodeURIComponent(_activeDiscId)}/close`, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    const d = await r.json();
+    if (d.ok) {
+      document.getElementById('discOperatorStatus').textContent = 'closed.';
+      document.getElementById('discOperatorActions').style.display = 'none';
+      loadDiscussions();
+    } else {
+      document.getElementById('discOperatorStatus').textContent = `error: ${d.error}`;
+    }
+  } catch(e) {
+    document.getElementById('discOperatorStatus').textContent = `error: ${e}`;
+  }
+}
+
+async function discCreateTask() {
+  if (!_activeDiscId) return;
+  const disc = _discRows.find(d => d.id === _activeDiscId);
+  const title = prompt('Task title:', disc ? `Implement: ${disc.topic.slice(0, 60)}` : 'Implement consensus');
+  if (!title) return;
+  document.getElementById('discOperatorStatus').textContent = 'creating task…';
+  try {
+    const r = await fetch(`/api/discussion/${encodeURIComponent(_activeDiscId)}/create-task`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({title, owner: 'claude-code'}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      document.getElementById('discOperatorStatus').textContent = 'task created.';
+    } else {
+      document.getElementById('discOperatorStatus').textContent = `error: ${d.error}`;
+    }
+  } catch(e) {
+    document.getElementById('discOperatorStatus').textContent = `error: ${e}`;
+  }
+}
+
+function openNewDiscussionForm() {
+  const f = document.getElementById('discStartForm');
+  f.style.display = f.style.display === 'none' || !f.style.display ? 'flex' : 'none';
+}
+
+async function submitNewDiscussion() {
+  const topic = document.getElementById('discTopicInput').value.trim();
+  const owners = document.getElementById('discOwnersInput').value.trim();
+  const rounds = document.getElementById('discRoundsInput').value.trim();
+  const status = document.getElementById('discActionStatus');
+  if (!topic) { status.textContent = 'topic required'; status.style.color = 'var(--bad)'; return; }
+  status.textContent = 'starting…'; status.style.color = 'var(--muted)';
+  try {
+    const r = await fetch('/api/action', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action: 'start_discussion', topic, owners, max_rounds: parseInt(rounds) || 3}),
+    });
+    const d = await r.json();
+    if (d.ok || d.status === 'ok') {
+      status.textContent = 'discussion started'; status.style.color = 'var(--ok)';
+      document.getElementById('discTopicInput').value = '';
+      document.getElementById('discStartForm').style.display = 'none';
+      setTimeout(loadDiscussions, 1000);
+    } else {
+      status.textContent = d.error || 'failed'; status.style.color = 'var(--bad)';
+    }
+  } catch(e) { status.textContent = String(e); status.style.color = 'var(--bad)'; }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function togglePanel(bodyId, header) {
   const body = document.getElementById(bodyId);
@@ -1391,7 +1654,6 @@ async function closeDiscussionConsensus(discId, btn) {
     btn.disabled = false;
   }
 }
-let _activeDiscId = null;
 let _activeDiscRound = 1;
 
 async function viewDiscussion(discId) {
@@ -2524,6 +2786,8 @@ setInterval(refresh, 3000);
 setInterval(refreshCosts, 30000);
 setInterval(refreshRecentFailures, 10000);
 setInterval(refreshOperatorMemory, 30000);
+loadDiscussions();
+setInterval(loadDiscussions, 15000);
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
