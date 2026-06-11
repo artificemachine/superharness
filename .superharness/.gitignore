@@ -1,4 +1,5 @@
 daemon-state.json
+.dashboard_auth_token
 events.jsonl
 launcher-logs/
 onboarding.yaml
@@ -7,3 +8,21 @@ state.sqlite3
 state.sqlite3-shm
 state.sqlite3-wal
 watcher-env.yaml
+# runtime state — never commit
+.launchagents_snapshot
+benchmark.jsonl
+loop_guard_state.json
+profile.yaml
+session-progress.md
+watcher.heartbeat
+watcher.heartbeat.yaml
+state.db
+trace.jsonl
+inbox.yaml
+ledger.md
+memory/
+notify.state
+persistent
+discussions/
+export/
+handoffs/
