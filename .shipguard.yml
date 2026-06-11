@@ -22,6 +22,14 @@ disable_rules:
   # PY-006: false positive in tests/e2e/test_dashboard_bugs.py — "test-token" is a
   # dummy fixture value used to initialize a test HTTP server, not a real credential
   - PY-006
+  # PY-012: false positive — all NamedTemporaryFile(delete=False) usages in tests
+  # are paired with explicit try/finally: os.unlink() cleanup; the rule does not
+  # look past the delete=False call to the surrounding cleanup block
+  - PY-012
+  # SC-004: false positive — scans .superharness/.gitignore (a subdirectory gitignore
+  # for runtime artifacts) and flags missing secret patterns; those patterns are
+  # already present in the root .gitignore
+  - SC-004
 
 custom_rules_dirs: []
 

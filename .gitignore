@@ -2,6 +2,7 @@
 *.swp
 .venv/
 .coverage
+.coverage.*
 .claude/
 htmlcov/
 shipguard.txt
@@ -54,9 +55,16 @@ json
 .superharness/events.jsonl
 .hablatone-project
 .ship-check-passed
+# ShipGuard runtime state
+.shipguard/state.db
 
 .env
 *.key
 *.pem
 *.p12
 *.pfx
+# Session working docs — handoffs, audits, plans, reports
+docs/HANDOFF-*.md
+docs/AUDIT-*.md
+docs/PLAN-*.md
+docs/bulletproof-report-*.md
