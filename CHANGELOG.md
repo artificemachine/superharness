@@ -626,3 +626,6 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-06-08: feat(dispatch): detect auth_mismatch failure class; reset codex auth cache + persist agent auth state on account switch; add Gemini quota + ModelNotFoundError patterns to failure classifier
 - 2026-06-08: fix(dispatch): generalize auth_mismatch handler to all agents (not just codex-cli); add quota cooldown state via set_agent_quota_limited/is_agent_quota_limited; watcher skips quota-limited agents in fallback routing; failure_classifier now detects API_KEY_INVALID + invalid_api_key for any agent (gemini, opencode) and rate_limit_exceeded/insufficient_quota for DeepSeek/OpenAI; MODEL_MAP gemini max fallback fixed; dashboard_presenter filters terminal tasks from contract_tasks + caps inbox_items at 200
 - 2026-06-08: chore(release): bump to v1.70.7 (auth_mismatch + quota detection for all agents, quota cooldown routing, gemini model fix, dashboard payload optimization)
+- 2026-06-11: chore(gitignore): untrack runtime state files from .superharness/ and .shipguard/; add comprehensive gitignore patterns for all runtime artifacts
+- 2026-06-11: chore(gitignore): suppress session working docs (HANDOFF-*, AUDIT-*, PLAN-*, bulletproof-report-*)
+- 2026-06-11: chore(shipguard): suppress PY-012 and SC-004 false positives in .shipguard.yml
