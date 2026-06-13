@@ -201,6 +201,139 @@ detect: {}
         mock_action1.assert_called_once()
         mock_action2.assert_called_once()
 
+    def _write_conditional_module(self, project, condition: str):
+        modules_dir = project / ".superharness" / "modules"
+        modules_dir.mkdir(parents=True)
+        (modules_dir / "cond.yaml").write_text(
+            f"""name: cond
+enabled: true
+hooks:
+  on_delegate:
+    action: cond_action
+    condition: "{condition}"
+settings: {{}}
+detect: {{}}
+"""
+        )
+
+    def test_condition_met_fires_hook(self, tmp_path):
+        """Hook with condition met → action runs."""
+        from superharness.modules.runner import run_hooks
+
+        project = tmp_path / "proj"
+        project.mkdir()
+        self._write_conditional_module(project, "target == 'openclaw'")
+
+        mock_action = Mock(return_value={"sent": True})
+        with patch("superharness.modules.runner._ACTION_REGISTRY", {"cond_action": mock_action}):
+            results = run_hooks("on_delegate", {"target": "openclaw"}, project)
+
+        assert len(results) == 1
+        mock_action.assert_called_once()
+
+    def test_condition_unmet_skips_hook(self, tmp_path):
+        """Hook with condition NOT met → action does not run, no result."""
+        from superharness.modules.runner import run_hooks
+
+        project = tmp_path / "proj"
+        project.mkdir()
+        self._write_conditional_module(project, "target == 'openclaw'")
+
+        mock_action = Mock(return_value={"sent": True})
+        with patch("superharness.modules.runner._ACTION_REGISTRY", {"cond_action": mock_action}):
+            results = run_hooks("on_delegate", {"target": "claude-code"}, project)
+
+        assert results == []
+        mock_action.assert_not_called()
+
+    def test_condition_not_equal_operator(self, tmp_path):
+        """`!=` condition fires only when values differ."""
+        from superharness.modules.runner import run_hooks
+
+        project = tmp_path / "proj"
+        project.mkdir()
+        self._write_conditional_module(project, "target != 'openclaw'")
+
+        mock_action = Mock(return_value={"ok": True})
+        with patch("superharness.modules.runner._ACTION_REGISTRY", {"cond_action": mock_action}):
+            fired = run_hooks("on_delegate", {"target": "claude-code"}, project)
+            skipped = run_hooks("on_delegate", {"target": "openclaw"}, project)
+
+        assert len(fired) == 1
+        assert skipped == []
+
+    def test_malformed_condition_fails_closed(self, tmp_path):
+        """An unparseable condition must NOT fire the hook (fail-closed)."""
+        from superharness.modules.runner import run_hooks
+
+        project = tmp_path / "proj"
+        project.mkdir()
+        self._write_conditional_module(project, "this is not a condition")
+
+        mock_action = Mock(return_value={"ok": True})
+        with patch("superharness.modules.runner._ACTION_REGISTRY", {"cond_action": mock_action}):
+            results = run_hooks("on_delegate", {"target": "openclaw"}, project)
+
+        assert results == []
+        mock_action.assert_not_called()
+
+    def test_block_on_honored_when_action_blocks(self, tmp_path):
+        """Hook declares block_on + action returns blocked → result flagged blocked."""
+        from superharness.modules.runner import run_hooks
+
+        project = tmp_path / "proj"
+        project.mkdir()
+        modules_dir = project / ".superharness" / "modules"
+        modules_dir.mkdir(parents=True)
+
+        (modules_dir / "sec.yaml").write_text(
+            """name: sec
+enabled: true
+hooks:
+  on_verify:
+    action: sec_action
+    block_on: critical
+settings: {}
+detect: {}
+"""
+        )
+
+        mock_action = Mock(return_value={"success": False, "blocked": True})
+        with patch("superharness.modules.runner._ACTION_REGISTRY", {"sec_action": mock_action}):
+            results = run_hooks("on_verify", {"task_id": "t1"}, project)
+
+        assert len(results) == 1
+        assert results[0]["blocked"] is True
+        assert results[0]["block_on"] == "critical"
+
+    def test_blocked_action_without_block_on_not_flagged(self, tmp_path):
+        """Action returns blocked but hook declares no block_on → not a blocking result."""
+        from superharness.modules.runner import run_hooks
+
+        project = tmp_path / "proj"
+        project.mkdir()
+        modules_dir = project / ".superharness" / "modules"
+        modules_dir.mkdir(parents=True)
+
+        (modules_dir / "nogate.yaml").write_text(
+            """name: nogate
+enabled: true
+hooks:
+  on_verify:
+    action: nogate_action
+settings: {}
+detect: {}
+"""
+        )
+
+        mock_action = Mock(return_value={"success": False, "blocked": True})
+        with patch("superharness.modules.runner._ACTION_REGISTRY", {"nogate_action": mock_action}):
+            results = run_hooks("on_verify", {"task_id": "t1"}, project)
+
+        assert len(results) == 1
+        # No declared gate → the action's blocked flag must not gate verification.
+        assert results[0].get("blocked") is False
+
     def test_hook_receives_context(self, tmp_path):
         """Hook action receives task_id, summary, project_dir, actor."""
         from superharness.modules.runner import run_hooks
