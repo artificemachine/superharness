@@ -615,6 +615,30 @@ def _cmd_exists(name: str) -> bool:
 # Main delegate logic
 # ---------------------------------------------------------------------------
 
+def _fire_on_delegate(project_dir: str, target: str, task_id: str) -> None:
+    """Fire on_delegate lifecycle hooks (openclaw routing, telegram notify, …).
+
+    Best-effort: a hook failure must never block a dispatch. Conditional hooks
+    (e.g. openclaw's ``target == 'openclaw'``) are gated inside run_hooks.
+    """
+    try:
+        from pathlib import Path
+        from superharness.modules.runner import run_hooks
+        run_hooks(
+            "on_delegate",
+            {
+                "task_id": task_id,
+                "target": target,
+                "task_title": _get_task_title(project_dir, task_id),
+                "task_description": _get_task_field(project_dir, task_id, "context") or "",
+                "event": "on_delegate",
+            },
+            Path(project_dir),
+        )
+    except Exception as e:
+        logger.warning("delegate.py on_delegate hooks failed: %s", e, exc_info=True)
+
+
 def delegate(
     project_dir: str,
     target: str,
@@ -1189,6 +1213,12 @@ def delegate(
     except Exception as e:
         logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
         pass  # budget check is best-effort — never block dispatch on error
+
+    # Dispatch is committed past this point. Fire on_delegate hooks before the
+    # launch — the CLI path execs and never returns, so hooks must run now.
+    # print_only returned above, so notifications/routing fire only on real
+    # dispatch.
+    _fire_on_delegate(project_dir, target, task_id)
 
     # SDK dispatch path
     if use_sdk:
