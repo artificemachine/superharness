@@ -227,13 +227,26 @@ def close_task(
     except Exception as e:
         logger.warning("close.py unexpected error: %s", e, exc_info=True)
         pass
-    # Vault integration
+    # Fire on_close lifecycle hooks (e.g. Obsidian vault sync via the obsidian
+    # module). Opt-in: no-op unless a module declaring an on_close hook is
+    # enabled for this project. Replaces a dead import of a never-defined
+    # _vault_write_task_done, which silently swallowed an ImportError on every
+    # close and meant vault sync never ran.
     try:
-        from superharness.commands.task import _vault_write_task_done
-        _vault_write_task_done(project_dir, task_id, {"id": task_id, "status": "done", "summary": summary}, summary)
+        from pathlib import Path
+        from superharness.modules.runner import run_hooks
+        run_hooks(
+            "on_close",
+            {
+                "task_id": task_id,
+                "summary": summary,
+                "project_name": os.path.basename(os.path.normpath(project_dir)),
+                "actor": actor,
+            },
+            Path(project_dir),
+        )
     except Exception as e:
-        logger.warning("close.py unexpected error: %s", e, exc_info=True)
-        pass
+        logger.warning("close.py on_close hooks failed: %s", e, exc_info=True)
     # Worktree cleanup — remove the dispatch worktree recorded for this task
     try:
         from superharness.engine.db import get_connection, init_db

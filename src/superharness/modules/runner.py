@@ -33,6 +33,26 @@ def register_action(name: str, func: Callable[[dict, dict], dict]) -> None:
     _ACTION_REGISTRY[name] = func
 
 
+def _evaluate_condition(condition: str, context: dict[str, Any]) -> bool:
+    """Evaluate a minimal hook condition against the context.
+
+    Supported grammar (only): ``<context_key> == '<value>'`` and
+    ``<context_key> != '<value>'``. A condition restricts when a hook fires
+    (e.g. openclaw routing only on ``target == 'openclaw'``), so anything we
+    cannot parse fails closed (returns False) and is logged — never fire a
+    restricted hook on a malformed condition.
+    """
+    for op in ("==", "!="):
+        if op in condition:
+            key, _, raw = condition.partition(op)
+            want = raw.strip().strip("'\"")
+            actual = str(context.get(key.strip()))
+            equal = actual == want
+            return equal if op == "==" else not equal
+    logger.warning(f"Unparseable hook condition: {condition!r} — skipping hook")
+    return False
+
+
 def run_hooks(
     event: str,
     context: dict[str, Any],
@@ -69,6 +89,14 @@ def run_hooks(
             logger.warning(f"Module {module.name} hook {event} missing 'action' field")
             continue
 
+        # Conditional hook — skip silently when the condition is not met.
+        condition = hook_config.get("condition")
+        if condition and not _evaluate_condition(condition, context):
+            logger.debug(
+                f"{module.name}.{event} skipped — condition not met: {condition}"
+            )
+            continue
+
         # Look up action in registry
         action_func = _ACTION_REGISTRY.get(action_name)
         if not action_func:
@@ -85,16 +113,26 @@ def run_hooks(
             continue
 
         # Execute the action
+        block_on = hook_config.get("block_on")
         try:
             logger.debug(f"Running {module.name}.{event} → {action_name}")
             result = action_func(context, module.settings)
 
-            results.append({
+            # A result gates the lifecycle step only when the hook explicitly
+            # declares `block_on` AND the action reports a block. Without a
+            # declared gate, an action's `blocked` flag is advisory and must
+            # not stop the caller (e.g. verification).
+            is_blocking = bool(block_on) and bool(result.get("blocked"))
+            entry = {
                 "module": module.name,
                 "event": event,
                 "success": True,
                 **result,
-            })
+                "blocked": is_blocking,
+            }
+            if block_on:
+                entry["block_on"] = block_on
+            results.append(entry)
 
         except Exception as e:
             logger.warning(
