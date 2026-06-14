@@ -134,6 +134,7 @@ def cmd_contract(args):
     # Drop legacy 'today' subcommand token for backward compatibility
     filtered = tuple(a for a in args if a not in ("today", "help"))
     _run_module("superharness.commands.contract_today", filtered)
+_cmd("continue",        "Resume the active contract: next resumable task + recommended action.", module="superharness.commands.continue_cmd")
 _cmd("task",            "Create/delete contract tasks.",              module="superharness.commands.task")
 _cmd("dispatch",        "Dispatch next inbox item.",                  module="superharness.commands.inbox_dispatch")
 _cmd("watch",           "Run one watch cycle or foreground loop.",    module="superharness.commands.inbox_watch")
