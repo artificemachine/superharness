@@ -12,7 +12,7 @@ Type these directly into Claude Code or Codex CLI — no terminal needed after f
 | `shux init` | Bootstrap `.superharness/` for this project (interactive) |
 | `shux doctor` | Check prerequisites and protocol health |
 | `shux contract` | Show all tasks with status, owner, and next-task suggestion |
-| `shux continue` | Resume active contract and run full session lifecycle |
+| `shux continue` | Resume active contract: print the next resumable task + recommended next action (read-only; fires on_continue hooks) |
 | `shux delegate <task-id>` | Create task + enqueue in one step for watcher dispatch. Add `--force` to bypass budget block. |
 | `shux test-type <task-id>` | Set mandatory test types for a task (interactive prompt) |
 | `shux verify <task-id>` | Record verification result (pass/fail) before close |
