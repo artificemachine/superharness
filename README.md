@@ -91,7 +91,7 @@ shux onboard           # guided 7-step setup wizard (non-interactive: --non-inte
 shux init              # bootstrap .superharness/ for this project
 shux doctor            # check prerequisites and protocol health
 shux contract          # show all tasks with status and next-task suggestion
-shux continue          # resume active contract automatically
+shux continue          # resume active contract: next resumable task + recommended action
 shux delegate <id>     # create task + enqueue in one step (task must be plan_approved or later)
 shux test-type <id>    # set mandatory test types for a task
 shux verify <id>       # record verification result (pass/fail)
