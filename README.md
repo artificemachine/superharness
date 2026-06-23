@@ -100,7 +100,8 @@ shux subtask-cancel    # cancel a single subtask with a mandatory reason (--task
 shux task create       # create a task with --blocked-by, --tdd-red/green/refactor, --criteria flags
 shux task status       # update task lifecycle status (todo → plan_proposed → plan_approved → in_progress → report_ready → done)
 shux status            # dashboard: tasks, watcher, profile
-shux recall <keywords> # search past handoffs and ledger
+shux recall <keywords> # search past handoffs and ledger (hits >14d old get a staleness caveat; tune with --max-fresh-days)
+shux distill           # distill recent handoffs+ledger into curated project lessons (--dry-run/--apply/--schedule)
 shux uninstall         # remove watcher and system artifacts for this project
 shux hygiene           # validate protocol compliance (contract, handoffs, ledger)
 shux hygiene --repair  # auto-fix missing handoffs, ledger entries, and stuck statuses
