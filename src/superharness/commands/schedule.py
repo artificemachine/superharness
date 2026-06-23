@@ -112,8 +112,12 @@ def _next_run(cron_expr: str, after: datetime) -> datetime:
 # ---------------------------------------------------------------------------
 
 
-def cmd_add(project_dir: str, task_id: str, cron_expr: str, agent: Optional[str] = None) -> int:
-    """Register a scheduled dispatch for task_id."""
+DISTILL_JOB_ID = "__distill__"
+
+
+def cmd_add(project_dir: str, task_id: str, cron_expr: str,
+            agent: Optional[str] = None, kind: str = "task") -> int:
+    """Register a scheduled job (a task dispatch, or an internal job like distill)."""
     try:
         _parse_cron(cron_expr)
     except ValueError as e:
@@ -128,6 +132,7 @@ def cmd_add(project_dir: str, task_id: str, cron_expr: str, agent: Optional[str]
         if s.get("task_id") == task_id:
             s["cron"] = cron_expr
             s["agent"] = agent
+            s["kind"] = kind
             s["next_run"] = _next_run(cron_expr, _now_utc()).strftime("%Y-%m-%dT%H:%M:%SZ")
             s["updated_at"] = _now_str()
             _save_schedules(path, schedules)
@@ -137,6 +142,7 @@ def cmd_add(project_dir: str, task_id: str, cron_expr: str, agent: Optional[str]
     next_run = _next_run(cron_expr, _now_utc()).strftime("%Y-%m-%dT%H:%M:%SZ")
     schedules.append({
         "task_id": task_id,
+        "kind": kind,
         "cron": cron_expr,
         "agent": agent,
         "next_run": next_run,
@@ -144,8 +150,13 @@ def cmd_add(project_dir: str, task_id: str, cron_expr: str, agent: Optional[str]
         "enqueue_count": 0,
     })
     _save_schedules(path, schedules)
-    print(f"Scheduled {task_id}: {cron_expr}  next={next_run}")
+    print(f"Scheduled {task_id} ({kind}): {cron_expr}  next={next_run}")
     return 0
+
+
+def add_distill_schedule(project_dir: str, cron_expr: str = "0 3 * * *") -> int:
+    """Register the nightly memory-distillation job."""
+    return cmd_add(project_dir, DISTILL_JOB_ID, cron_expr, agent=None, kind="distill")
 
 
 def cmd_list(project_dir: str) -> int:
@@ -218,11 +229,56 @@ def _in_quiet_window(now: datetime, quiet_hours: list[dict] | None) -> bool:
     return False
 
 
+def _run_distill_job(project_dir: str) -> bool:
+    """Run one distillation pass: gather → distill → apply → promote.
+
+    Imported lazily so the schedule module stays light and tests can patch.
+    Returns True when the job ran (regardless of how many lessons it produced).
+    """
+    from superharness.engine import distiller, agent_memory
+    from superharness.commands.distill import default_llm_fn
+
+    transcript = distiller.gather_candidates(project_dir, since_days=None)
+    lessons = distiller.distill(transcript, llm_fn=default_llm_fn)
+    agent_memory.apply_lessons(lessons, project_dir)
+    agent_memory.promote_all_project_memory(project_dir)
+    return True
+
+
+def _fire(s: dict, project_dir: str, dry_run: bool) -> bool:
+    """Execute one due schedule entry. Returns True if it fired (non-dry-run)."""
+    kind = s.get("kind", "task")
+    if kind == "distill":
+        if dry_run:
+            print("[dry-run] would run memory distillation")
+            return False
+        if _run_distill_job(project_dir):
+            print("Ran scheduled distillation")
+            return True
+        return False
+
+    # Default: task dispatch.
+    task_id = s.get("task_id")
+    agent = s.get("agent")
+    if dry_run:
+        print(f"[dry-run] would enqueue: {task_id} (agent={agent or 'auto'})")
+        return False
+    rc = inbox_enqueue.main(
+        ["--project", project_dir, "--task", task_id] + (["--to", agent] if agent else [])
+    )
+    if rc == 0:
+        print(f"Enqueued scheduled task: {task_id}")
+        return True
+    return False
+
+
 def cmd_run(project_dir: str, dry_run: bool = False,
             quiet_hours: list[dict] | None = None) -> int:
-    """Evaluate all schedules; enqueue any whose next_run has passed.
+    """Evaluate all schedules; fire any whose next_run has passed.
 
-    Called by the watcher (or manually) to fire due dispatches.
+    Called by the watcher (or manually). Each due entry fires by kind
+    (task dispatch or internal job). A firing failure is logged but never
+    wedges the watcher — next_run still advances so the job retries next cycle.
     """
     path = _scheduled_path(project_dir)
     schedules = _load_schedules(path)
@@ -231,7 +287,7 @@ def cmd_run(project_dir: str, dry_run: bool = False,
         return 0
 
     now = _now_utc()
-    enqueued = 0
+    fired_count = 0
     updated = False
 
     if _in_quiet_window(now, quiet_hours):
@@ -242,7 +298,6 @@ def cmd_run(project_dir: str, dry_run: bool = False,
         task_id = s.get("task_id")
         cron_expr = s.get("cron")
         next_run_str = s.get("next_run")
-        agent = s.get("agent")
 
         if not task_id or not cron_expr or not next_run_str:
             continue
@@ -255,30 +310,29 @@ def cmd_run(project_dir: str, dry_run: bool = False,
         if next_run > now:
             continue  # not due yet
 
-        if dry_run:
-            print(f"[dry-run] would enqueue: {task_id} (agent={agent or 'auto'})")
-        else:
-            rc = inbox_enqueue.main([
-                "--project", project_dir,
-                "--task", task_id,
-            ] + (["--to", agent] if agent else []))
-            if rc == 0:
-                print(f"Enqueued scheduled task: {task_id}")
-                enqueued += 1
-
-        # Advance next_run to next occurrence
         try:
-            s["next_run"] = _next_run(cron_expr, now).strftime("%Y-%m-%dT%H:%M:%SZ")
-            s["enqueue_count"] = int(s.get("enqueue_count", 0)) + 1
-            s["last_enqueued_at"] = _now_str()
-            updated = True
-        except ValueError:
-            pass
+            if _fire(s, project_dir, dry_run):
+                fired_count += 1
+        except Exception as e:  # never let one job wedge the watcher
+            import logging
+            logging.getLogger(__name__).warning(
+                "scheduled job %s failed: %s", task_id, e
+            )
+
+        # Advance next_run regardless of fire outcome (failures retry next cycle).
+        if not dry_run:
+            try:
+                s["next_run"] = _next_run(cron_expr, now).strftime("%Y-%m-%dT%H:%M:%SZ")
+                s["enqueue_count"] = int(s.get("enqueue_count", 0)) + 1
+                s["last_enqueued_at"] = _now_str()
+                updated = True
+            except ValueError:
+                pass
 
     if updated and not dry_run:
         _save_schedules(path, schedules)
 
-    print(f"Scheduled run complete: {enqueued} enqueued, {len(schedules)} total schedules")
+    print(f"Scheduled run complete: {fired_count} fired, {len(schedules)} total schedules")
     return 0
 
 
