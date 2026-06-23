@@ -18,7 +18,8 @@ Type these directly into Claude Code or Codex CLI — no terminal needed after f
 | `shux verify <task-id>` | Record verification result (pass/fail) before close |
 | `shux close <task-id>` | Mark task done (requires verify), append ledger, write handoff |
 | `shux status` | Dashboard: contract, tasks, watcher state, profile |
-| `shux recall <keywords>` | Search past handoffs and ledger entries |
+| `shux recall <keywords>` | Search past handoffs and ledger entries (hits older than `--max-fresh-days`, default 14, carry a staleness caveat) |
+| `shux distill` | Distill recent handoffs+ledger into curated project lessons (`--dry-run`/`--apply`/`--schedule`) |
 | `shux demo` | Zero-config task lifecycle walkthrough in a temp directory — explains what superharness is and shows all 5 core commands before running |
 | `shux uninstall` | Remove watcher and system artifacts for this project |
 | `shux hygiene` | Validate protocol compliance (contract, handoffs, ledger) |
@@ -646,7 +647,43 @@ shux schedule run --dry-run                  # preview without enqueuing
 
 Schedules are stored in `.superharness/scheduled.yaml`. The watcher calls
 `schedule run` on each tick. `enqueue_count` and `last_enqueued_at` are updated
-after each firing.
+after each firing. Entries carry a `kind` field (`task` by default, `distill`
+for the nightly memory job — see below); a failing job is logged and its
+`next_run` still advances so the watcher never wedges.
+
+### Memory Distillation (`shux distill`)
+
+Turns the high-volume, cheap session record (handoffs + ledger) into a small,
+curated set of lessons in the project memory tier. The write path (handoffs and
+ledger) is unchanged; distillation is the curate path.
+
+```bash
+shux distill --dry-run            # extract <=3 candidate lessons, print, write nothing (default)
+shux distill --apply              # persist lessons to .superharness/memory/pitfalls.md
+shux distill --since 30d          # only consider the last 30 days of handoffs/ledger
+shux distill --max-lessons 3      # cap lessons extracted per run (default 3)
+shux distill --schedule "0 3 * * *"   # register a nightly distill job (default cron if value omitted)
+```
+
+How it works:
+
+- **Extract** — recent handoffs+ledger are condensed and sent to a cheap model
+  (resolved via `model_router`); the model returns structured lessons. Any LLM
+  fault degrades to an empty result (never blocks).
+- **Apply (confidence-gated)** — each lesson is written as a tagged bullet
+  `- [c=0.80 src=distill YYYY-MM-DD] <text>` to `pitfalls.md`. Lessons are
+  deduped by normalized text; a manual (untagged) line is authoritative and is
+  never overwritten; a distilled line is overwritten only by strictly higher
+  confidence.
+- **Capped index** — `pitfalls.md` is held to 200 lines / 25 KB by evicting
+  lowest-confidence/oldest distilled lines first; manual lines are never evicted.
+- **Promotion** — the nightly job runs `promote_all_project_memory`, elevating
+  recurring lessons to the machine-wide global tier per the existing threshold.
+
+Distilled lessons inject into agent dispatch context alongside other project
+memory. Pair with `shux recall`, whose hits older than `--max-fresh-days`
+(default 14) carry a staleness caveat so stale `file:line` claims are not
+asserted as live fact.
 
 ### Readiness Audits
 
