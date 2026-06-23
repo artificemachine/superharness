@@ -342,6 +342,57 @@ class ClaudeCodeSummarizer(_CLISummarizer):
 
 
 # ---------------------------------------------------------------------------
+# Generalized one-shot completion (batch / non-interactive callers)
+# ---------------------------------------------------------------------------
+
+def complete(
+    system: str,
+    user: str,
+    *,
+    model: str | None = None,
+    max_tokens: int = 1024,
+    timeout: int = _DEFAULT_TIMEOUT_S,
+) -> str | None:
+    """One-shot system+user completion, Anthropic-backed, cheap tier by default.
+
+    Unlike the `summarize(context)` providers (which build a fixed prompt),
+    this takes arbitrary system/user text — for batch jobs like memory
+    distillation. Returns None on any fault (missing key, network, parse),
+    matching the "provider fault silently skips" contract the callers expect.
+    """
+    key = os.environ.get(AnthropicSummarizer.API_KEY_ENV)
+    if not key:
+        return None
+    if model is None:
+        try:
+            from superharness.engine.model_router import cheap_model
+            model = cheap_model()
+        except Exception:
+            model = AnthropicSummarizer.DEFAULT_MODEL
+    body = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "system": system,
+        "messages": [{"role": "user", "content": user}],
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+    }
+    try:
+        payload = _http_post_json(AnthropicSummarizer.API_URL, body, headers, timeout=timeout)
+    except SummarizerError as e:
+        logger.warning("complete() provider fault: %s", e)
+        return None
+    content = payload.get("content") or []
+    if content and isinstance(content, list) and isinstance(content[0], dict):
+        text = content[0].get("text") or ""
+        return strip_private_tags(text) or None
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
 
