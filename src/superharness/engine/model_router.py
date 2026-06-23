@@ -55,6 +55,15 @@ _EFFORT_NORMALIZE: dict[str, str] = {
 }
 
 
+def cheap_model(agent: str = "claude-code") -> str:
+    """Return the cheap (mini) tier model for an agent.
+
+    Used by batch / non-interactive callers (e.g. memory distillation) that
+    want the lowest-cost model without running the full classifier chain.
+    """
+    return MODEL_MAP.get(agent, MODEL_MAP["claude-code"])["mini"]
+
+
 def _normalize_classification(tier: str, effort: str) -> tuple[str, str]:
     """Normalize classification output for consistent behavior across models."""
     tier = _TIER_NORMALIZE.get(tier.lower(), tier.lower())

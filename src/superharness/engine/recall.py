@@ -43,6 +43,46 @@ def _file_date(path: Path, data: object) -> date | None:
     return None
 
 
+DEFAULT_MAX_FRESH_DAYS = 14
+
+
+def _resolve_max_fresh_days(cli_value: int | None) -> int:
+    """Resolve the staleness threshold: explicit CLI value > env > default."""
+    if cli_value is not None:
+        return cli_value
+    env = os.environ.get("SHUX_RECALL_FRESH_DAYS")
+    if env:
+        try:
+            return int(env)
+        except ValueError:
+            logger.warning("Ignoring non-integer SHUX_RECALL_FRESH_DAYS=%r", env)
+    return DEFAULT_MAX_FRESH_DAYS
+
+
+def _age_days(d: date | None) -> int | None:
+    """Whole days between `d` and today, or None when undated. Never negative."""
+    if d is None:
+        return None
+    return max(0, (date.today() - d).days)
+
+
+def _freshness_caveat(age_days: int | None, max_fresh_days: int) -> str:
+    """Staleness caveat for a hit older than the threshold.
+
+    Returns '' for undated or fresh (age <= threshold) hits — a caveat there
+    is noise. Memories are point-in-time observations, not live state; an
+    authoritative-looking file:line citation makes a stale claim sound more
+    credible, not less, so old hits get an explicit verify-first warning.
+    """
+    if age_days is None or age_days <= max_fresh_days:
+        return ""
+    return (
+        f"    ⚠ This hit is {age_days} days old — a point-in-time "
+        f"observation, not live state. Verify file:line citations against "
+        f"current code before asserting as fact."
+    )
+
+
 def _file_meta(path: Path, data: object) -> tuple[str, str]:
     agent = "unknown"
     task_id = path.stem.lstrip("0123456789-")
@@ -169,6 +209,22 @@ def search(project_dir: Path, terms: list[str], since_days: int | None = None) -
     return results
 
 
+def format_results(results: list[dict], max_fresh_days: int = DEFAULT_MAX_FRESH_DAYS) -> str:
+    """Render search results as text, appending a staleness caveat to old hits."""
+    blocks: list[str] = []
+    for r in results:
+        d = r.get("date")
+        date_str = d.strftime("%Y-%m-%d") if d else "unknown"
+        lines = [f"{date_str}  {r['agent']}  {r['task_id']}"]
+        for s in r["snippets"]:
+            lines.append(f'  "{s}"')
+        caveat = _freshness_caveat(_age_days(d), max_fresh_days)
+        if caveat:
+            lines.append(caveat)
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
 def main(argv: list[str] | None = None) -> None:
     import argparse
 
@@ -181,6 +237,9 @@ def main(argv: list[str] | None = None) -> None:
     )
     p.add_argument("-p", "--project", default=os.getcwd(), help="Project directory (default: cwd)")
     p.add_argument("--since", metavar="Nd", default=None, help="Limit to last N days (e.g. 7d)")
+    p.add_argument("--max-fresh-days", type=int, default=None,
+                   help="Hits older than this many days get a staleness caveat "
+                        "(default 14, or $SHUX_RECALL_FRESH_DAYS)")
     p.add_argument("terms", nargs="*", help="Search terms (OR logic)")
     opts = p.parse_args(argv)
 
@@ -210,12 +269,8 @@ def main(argv: list[str] | None = None) -> None:
         print(f"(no results for: {quoted})")
         sys.exit(0)
 
-    for r in results:
-        date_str = r["date"].strftime("%Y-%m-%d") if r["date"] else "unknown"
-        print(f"{date_str}  {r['agent']}  {r['task_id']}")
-        for s in r["snippets"]:
-            print(f'  "{s}"')
-        print()
+    max_fresh_days = _resolve_max_fresh_days(opts.max_fresh_days)
+    print(format_results(results, max_fresh_days))
 
 
 if __name__ == "__main__":

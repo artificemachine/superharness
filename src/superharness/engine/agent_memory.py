@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -26,8 +27,13 @@ PROJECT_ROOTS_FILE = os.path.join(
 )
 
 GLOBAL_MEMORY_FILES = ("patterns.md", "pitfalls.md", "conventions.md")
-PROJECT_MEMORY_FILES = ("conventions.md", "decisions.md")
+PROJECT_MEMORY_FILES = ("conventions.md", "decisions.md", "pitfalls.md")
 MEMORY_FILE_MAX_CHARS = 5_000  # FIFO prune oldest lines when exceeded
+
+# Confidence-aware cap for the distilled index (pitfalls.md). Distilled lines
+# are evicted lowest-confidence/oldest first; manual lines are never evicted.
+MAX_INDEX_LINES = 200
+MAX_INDEX_BYTES = 25_000
 
 
 def _prune_if_over_limit(filepath: str) -> None:
@@ -111,7 +117,10 @@ def append(project_dir: str, filename: str, content: str) -> None:
     entry = _prepend_timestamp(content.strip()) + "\n"
     with open(fpath, "a") as f:
         f.write(entry)
-    _prune_if_over_limit(fpath)
+    if os.path.basename(filename) == DISTILL_TARGET_FILE:
+        _cap_index(fpath)
+    else:
+        _prune_if_over_limit(fpath)
     logger.info("Agent memory appended to %s/%s", os.path.basename(project_dir), filename)
 
 
@@ -124,7 +133,10 @@ def append_global_override(override_dir: str, filename: str, content: str) -> No
     entry = _prepend_timestamp(content.strip()) + "\n"
     with open(fpath, "a") as f:
         f.write(entry)
-    _prune_if_over_limit(fpath)
+    if os.path.basename(filename) == DISTILL_TARGET_FILE:
+        _cap_index(fpath)
+    else:
+        _prune_if_over_limit(fpath)
 
 
 def _read_memory_file(filepath: str) -> str:
@@ -138,6 +150,168 @@ def _read_memory_file(filepath: str) -> str:
     # Skip header lines (starting with #)
     content_lines = [l for l in lines if not l.startswith("#") and l.strip()]
     return "\n".join(content_lines)
+
+
+# ---------------------------------------------------------------------------
+# Distilled lessons — confidence-tagged, deduped, conflict-aware (Iteration 3)
+# ---------------------------------------------------------------------------
+
+DISTILL_TARGET_FILE = "pitfalls.md"
+
+# - [c=0.80 src=distill 2026-06-23] <lesson text>
+_LESSON_RE = re.compile(
+    r"^- \[c=(?P<conf>[0-9.]+) src=(?P<src>\S+) (?P<date>\d{4}-\d{2}-\d{2})\] (?P<text>.+)$"
+)
+
+
+def format_lesson_line(entry) -> str:
+    """Render a distilled lesson as a confidence-tagged bullet line.
+
+    `entry` is duck-typed: needs .text, .confidence, .source, and (optional) .date.
+    """
+    d = getattr(entry, "date", "") or datetime.now().strftime("%Y-%m-%d")
+    return f"- [c={float(entry.confidence):.2f} src={entry.source} {d}] {entry.text.strip()}"
+
+
+def parse_lesson_line(line: str) -> tuple[str, float | None]:
+    """Parse a memory line into (text, confidence).
+
+    Tagged distilled lines yield their confidence; untagged manual lines (and
+    anything unparseable) yield confidence None, marking them authoritative —
+    apply never overwrites them.
+    """
+    m = _LESSON_RE.match(line.strip())
+    if m:
+        try:
+            return m.group("text").strip(), float(m.group("conf"))
+        except ValueError:
+            pass
+    return line.strip(), None
+
+
+def _normalize_key(text: str) -> str:
+    """Dedup key: strip bullet/date prefixes, lowercase, collapse whitespace."""
+    t = text.strip()
+    t = re.sub(r"^-\s+", "", t)
+    t = re.sub(r"^\d{4}-\d{2}-\d{2}:\s*", "", t)
+    return re.sub(r"\s+", " ", t.lower())
+
+
+def apply_lessons(lessons, project_dir: str, *, target_dir: str | None = None) -> int:
+    """Persist distilled lessons to the project pitfalls.md, confidence-gated.
+
+    Rules:
+    - dedup by normalized text
+    - never overwrite a manual (untagged) line — it is authoritative
+    - overwrite an existing distilled line only with strictly higher confidence
+    Returns the number of lines written (new or replaced). Does not create the
+    file when nothing is written.
+    """
+    if not lessons:
+        return 0
+
+    mem_dir = target_dir or project_memory_dir(project_dir)
+    os.makedirs(mem_dir, exist_ok=True)
+    fpath = os.path.join(mem_dir, DISTILL_TARGET_FILE)
+
+    header_lines: list[str] = ["# Pitfalls", ""]
+    # entries: [raw_line, normalized_key, confidence|None]
+    entries: list[list] = []
+    if os.path.isfile(fpath):
+        all_lines = Path(fpath).read_text().splitlines()
+        hdr = [l for l in all_lines if l.startswith("#")]
+        if hdr:
+            header_lines = hdr + [""]
+        for raw in all_lines:
+            if not raw.strip() or raw.startswith("#"):
+                continue
+            text, conf = parse_lesson_line(raw)
+            entries.append([raw, _normalize_key(text), conf])
+
+    written = 0
+    for lesson in lessons:
+        key = _normalize_key(lesson.text)
+        match = next((e for e in entries if e[1] == key), None)
+        if match is None:
+            entries.append([format_lesson_line(lesson), key, float(lesson.confidence)])
+            written += 1
+        elif match[2] is None:
+            continue  # manual line — preserve, skip incoming
+        elif float(lesson.confidence) > match[2]:
+            match[0] = format_lesson_line(lesson)
+            match[2] = float(lesson.confidence)
+            written += 1
+        # else: existing confidence >= incoming → skip
+
+    if written == 0:
+        return 0
+
+    body = "\n".join(e[0] for e in entries)
+    Path(fpath).write_text("\n".join(header_lines) + body + "\n")
+    _cap_index(fpath)
+    logger.info("Distilled %d lesson(s) into %s", written, fpath)
+    return written
+
+
+def _cap_index(filepath: str) -> None:
+    """Confidence-aware cap for the distilled index (pitfalls.md).
+
+    Holds the file to MAX_INDEX_LINES / MAX_INDEX_BYTES by evicting distilled
+    lines lowest-confidence/oldest first. Manual (untagged) lines are never
+    evicted — if they alone exceed the cap they are kept (and logged), not
+    silently truncated. No-op when already under both caps.
+    """
+    if not os.path.isfile(filepath):
+        return
+    try:
+        all_lines = Path(filepath).read_text().splitlines()
+    except Exception:
+        return
+
+    header = [l for l in all_lines if l.startswith("#")]
+    body = [l for l in all_lines if l.strip() and not l.startswith("#")]
+    if not header:
+        header = ["# Pitfalls"]
+    header_block = header + [""]
+
+    base_bytes = len(("\n".join(header_block)).encode()) + 1  # trailing newline
+    total_bytes = base_bytes + sum(len(l.encode()) + 1 for l in body)
+    if len(body) <= MAX_INDEX_LINES and total_bytes <= MAX_INDEX_BYTES:
+        return  # under both caps — leave untouched
+
+    manual: list[str] = []
+    distilled: list[tuple[str, float, str]] = []
+    for raw in body:
+        _text, conf = parse_lesson_line(raw)
+        if conf is None:
+            manual.append(raw)
+        else:
+            m = _LESSON_RE.match(raw.strip())
+            distilled.append((raw, conf, m.group("date") if m else ""))
+
+    # Keep best first: highest confidence, then most recent.
+    distilled.sort(key=lambda x: (x[1], x[2]), reverse=True)
+
+    final = list(manual)
+    cur_lines = len(final)
+    cur_bytes = base_bytes + sum(len(l.encode()) + 1 for l in final)
+    manual_over = cur_lines > MAX_INDEX_LINES or cur_bytes > MAX_INDEX_BYTES
+    if manual_over:
+        logger.warning(
+            "pitfalls index exceeds cap on manual lines alone (%d lines); "
+            "keeping manual, dropping all distilled", cur_lines
+        )
+    else:
+        for raw, _conf, _date in distilled:
+            add_bytes = len(raw.encode()) + 1
+            if cur_lines + 1 <= MAX_INDEX_LINES and cur_bytes + add_bytes <= MAX_INDEX_BYTES:
+                final.append(raw)
+                cur_lines += 1
+                cur_bytes += add_bytes
+            else:
+                break  # sorted best-first; everything after is worse
+
+    Path(filepath).write_text("\n".join(header_block) + "\n".join(final) + "\n")
 
 
 def _deduplicate_content(content: str) -> str:
