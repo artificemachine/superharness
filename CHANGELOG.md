@@ -645,3 +645,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-06-23: chore(gitignore): ignore .ship-check-passed (session-local ship-check proof marker).
 
 - 2026-06-25: chore: remove personal workspace path from tracked files
+- 2026-06-25: chore: remove personal workspace path from tracked files
