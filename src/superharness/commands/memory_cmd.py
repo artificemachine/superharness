@@ -24,7 +24,7 @@ def cmd_memory_roots(args: list[str]) -> None:
                 print(f"  {r}")
         else:
             print("No project roots configured.")
-            print("Add one:  shux memory roots add ~/DevOpsSec")
+            print("Add one:  shux memory roots add ~/projects")
         return
 
     subcmd = args[0]

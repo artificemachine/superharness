@@ -45,7 +45,7 @@ Only `KeyboardInterrupt` is caught. **Any other exception** (during `proc.poll()
 ### 3. SQLite state database never initialized
 
 ```
-/Users/airm2max/DevOpsSec/trayzury/.superharness/state.sqlite3: 0 bytes, 0 tables
+trayzury/.superharness/state.sqlite3: 0 bytes, 0 tables
 ```
 
 The database that is the **source of truth for heartbeats** was never created. All `write_heartbeat()` calls to SQLite failed silently (caught by bare `except Exception: pass` in `heartbeat_contract.py` line 103). The only surviving heartbeat was a legacy plain-text file at `.superharness/watcher.heartbeat`, which froze at the last successful write before the daemon died.

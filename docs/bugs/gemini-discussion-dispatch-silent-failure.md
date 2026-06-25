@@ -36,7 +36,7 @@ The audit log (`superharness-audit.log`) confirms gemini-cli was launched:
 ```
 2026-05-27T17:12:40+0200 INFO superharness.audit dispatch:
   target=gemini-cli
-  project=/Users/airm2max/DevOpsSec/nemorad
+  project=nemorad
   non_interactive=True
   model=gemini-2.5-pro
 ```

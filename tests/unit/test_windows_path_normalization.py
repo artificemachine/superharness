@@ -137,7 +137,7 @@ def test_platform_detection_does_not_crash():
 # ---------------------------------------------------------------------------
 
 def test_pure_windows_path_segments():
-    p = PureWindowsPath(r"C:\Users\newblacc\DevOpsSec\superharness")
+    p = PureWindowsPath(r"C:\Users\testuser\projects\superharness")
     assert p.parts[0] == "C:\\"
     assert "superharness" in p.parts
 

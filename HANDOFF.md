@@ -733,7 +733,7 @@ scripts. The same problem affects three projects. This session diagnosed the
 root cause and wrote the cross-cutting plan but did NOT execute on superharness.
 
 Specifically, `~/.claude/settings.json` lines 209/245/277/287/308 reference
-`bash ~/DevOpsSec/superharness/src/superharness/adapters/claude-code/hooks/<hook>.sh`
+`bash src/superharness/adapters/claude-code/hooks/<hook>.sh`
 which breaks under (a) repo moves, (b) release installs (`pip install
 superharness`), (c) temp worktrees (a stale worktree path was already found and
 fixed in `settings.json` earlier this session).

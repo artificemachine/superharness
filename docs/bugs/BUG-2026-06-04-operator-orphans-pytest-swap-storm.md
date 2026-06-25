@@ -10,7 +10,7 @@
 - Machine swap at 34.5 GB / 35 GB (96%), up from 13.8 GB 1h earlier
 - `memory_pressure` reported only 36% free memory
 - One `python3 -m pytest tests/unit/` process (PID 3997) consuming 10.7 GB RSS,
-  PPID=1 (orphaned), running in `/Users/airm2max/DevOpsSec/trayzury`
+  PPID=1 (orphaned), running in `trayzury`
 - Child process: `node bridge_worker.js` (PID 4301, 50 MB)
 - Superharness log flooded with circuit breaker errors (see below)
 
