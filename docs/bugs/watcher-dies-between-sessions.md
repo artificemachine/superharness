@@ -101,7 +101,7 @@ But the implementation contradicts the comment: `monitor_and_recover()` is calle
 ### Immediate (one-shot)
 
 ```bash
-shux operator install --project /Users/user/DevOpsSec/nemorad
+shux operator install --project nemorad
 ```
 
 This creates + loads:

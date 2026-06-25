@@ -78,7 +78,7 @@ Since `nemorad` is a live project at a valid path, 418 workers survive indefinit
 | nemorad | 430 | 418 | ~430 |
 | synod | 2 | 1 | - |
 | scalping_bot | 2 | - | - |
-| DevOpsSec (root) | 2 | - | - |
+| workspace root | 2 | - | - |
 | trayzury | 1 | - | - |
 | superharness | 1 | - | - |
 | open-generative-ai | 1 | - | - |
@@ -143,7 +143,7 @@ launchctl list | grep -i superharness
 crontab -l | grep -i nemorad
 
 # Check if nemorad has a daemon-monitor or watcher that auto-restarts
-ls ~/DevOpsSec/nemorad/.superharness/
+ls nemorad/.superharness/
 ```
 
 The operator loop must be idempotent: if an instance is already running, refuse to start
@@ -197,5 +197,5 @@ fi
 
 - `~/scripts/claude-session-reaper.sh` — existing reaper (needs extension)
 - `~/scripts/auto-cleanup.sh` — disk cleanup (does not touch processes)
-- Vault: `notes/devops/DevOpsSec-2026-04-06-Docker-OrbStack-RAM-Cleanup.md` — prior RAM incident
+- Vault: `notes/devops/2026-04-06-Docker-OrbStack-RAM-Cleanup.md` — prior RAM incident
 - `/orphan-guard` skill — machine-scoped orphan audit

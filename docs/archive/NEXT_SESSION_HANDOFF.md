@@ -138,7 +138,7 @@ bumping the version and updating morpheme's adapter.js simultaneously.
 ## start next session with
 
 ```bash
-cd ~/DevOpsSec/superharness
+cd <path/to/superharness>
 
 # check current state
 shux contract

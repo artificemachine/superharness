@@ -353,7 +353,7 @@ def find_all_superharness_projects(
 ) -> list[Path]:
     """Discover project directories containing a `.superharness/` directory.
 
-    Searches `search_roots` (defaults to ``$HOME/DevOpsSec`` if not provided)
+    Searches `search_roots` (defaults to ``$HOME`` if not provided)
     up to `max_depth` levels deep. Returns a list of resolved project paths.
 
     When `require_marker` is True (the default), only projects that contain
@@ -367,8 +367,7 @@ def find_all_superharness_projects(
     """
     _log.debug("launchd_health: scanning for .superharness/ dirs (require_marker=%s)", require_marker)
     if search_roots is None:
-        devops = Path.home() / "DevOpsSec"
-        search_roots = [devops] if devops.is_dir() else [Path.home()]
+        search_roots = [Path.home()]
 
     found: list[Path] = []
     seen: set[Path] = set()
