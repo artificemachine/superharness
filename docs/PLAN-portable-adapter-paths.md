@@ -7,18 +7,17 @@ Agent configs (`~/.claude/settings.json`, `~/.claude.json`, `~/.opencode.json`,
 hook scripts:
 
 ```
-~/.claude/settings.json:209  bash /Users/airm2max/DevOpsSec/superharness/src/superharness/adapters/claude-code/hooks/session-stop.sh
-~/.claude/settings.json:245  bash /Users/airm2max/DevOpsSec/superharness/src/superharness/adapters/claude-code/hooks/session-start.sh
-~/.claude/settings.json:277  bash /Users/airm2max/DevOpsSec/superharness/src/superharness/adapters/claude-code/hooks/scope-guard.sh
-~/.claude/settings.json:287  bash /Users/airm2max/DevOpsSec/superharness/src/superharness/adapters/claude-code/hooks/branch-guard.sh
-~/.claude/settings.json:308  bash /Users/airm2max/DevOpsSec/superharness/src/superharness/adapters/claude-code/hooks/ledger-append.sh
+~/.claude/settings.json:209  bash src/superharness/adapters/claude-code/hooks/session-stop.sh
+~/.claude/settings.json:245  bash src/superharness/adapters/claude-code/hooks/session-start.sh
+~/.claude/settings.json:277  bash src/superharness/adapters/claude-code/hooks/scope-guard.sh
+~/.claude/settings.json:287  bash src/superharness/adapters/claude-code/hooks/branch-guard.sh
+~/.claude/settings.json:308  bash src/superharness/adapters/claude-code/hooks/ledger-append.sh
 ```
 
 This breaks for:
-- Anyone who moves the repo (rename `DevOpsSec`, restructure tree, etc.)
+- Anyone who moves the repo (rename the workspace directory, restructure tree, etc.)
 - Anyone who installs via a release artifact (`pip install superharness`,
-  Homebrew, uv tool install) — they have no `~/DevOpsSec/superharness` to
-  point at.
+  Homebrew, uv tool install) — they have no source checkout to point at.
 - Worktrees: a temp worktree path (e.g.
   `/private/var/folders/.../superharness-worktrees/<branch>/...`) gets baked
   into settings.json and persists after the worktree is cleaned up,
@@ -40,7 +39,7 @@ superharness adapter-path <host> <hook>
 Examples:
 ```
 $ superharness adapter-path claude-code session-stop
-/Users/airm2max/DevOpsSec/superharness/src/superharness/adapters/claude-code/hooks/session-stop.sh
+src/superharness/adapters/claude-code/hooks/session-stop.sh
 
 $ pip install --upgrade superharness && superharness adapter-path claude-code session-stop
 /Users/airm2max/.local/pipx/venvs/superharness/lib/python3.13/site-packages/superharness/adapters/claude-code/hooks/session-stop.sh
@@ -55,7 +54,7 @@ installs.
 
 ```bash
 # Move the repo, reinstall via different methods, verify resolution still works.
-mv ~/DevOpsSec/superharness ~/elsewhere/superharness
+mv ~/superharness ~/elsewhere/superharness
 cd ~/elsewhere/superharness && pip install -e .
 superharness adapter-path claude-code session-stop
 # Must print the new path. NOT the old path. NOT empty.

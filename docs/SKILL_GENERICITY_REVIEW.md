@@ -1,6 +1,6 @@
 # Skill Genericity Review — 2026-05-26
 
-**Location:** `~/DevOpsSec/superharness/docs/SKILL_GENERICITY_REVIEW.md`
+**Location:** `docs/SKILL_GENERICITY_REVIEW.md`
 
 ## Context
 

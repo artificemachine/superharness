@@ -643,3 +643,5 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-06-23 (v1.72.0): chore(release): bump to v1.72.0 (memory distillation — age-stamped recall, read-only distiller, confidence-gated apply to project pitfalls.md, confidence-aware cap, schedulable nightly distill with promotion to global).
 - 2026-06-23: docs(distill): document shux distill (README + GUIDE command table + Memory Distillation section) and recall --max-fresh-days staleness caveat. Closes the doc-sync gate for the new CLI command.
 - 2026-06-23: chore(gitignore): ignore .ship-check-passed (session-local ship-check proof marker).
+
+- 2026-06-25: chore: remove personal workspace path from tracked files

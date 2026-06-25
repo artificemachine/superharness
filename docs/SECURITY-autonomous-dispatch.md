@@ -181,7 +181,7 @@ For projects where the threat model requires more than this, additional layers a
 - **Filesystem-level hooks**: pre-commit / pre-push guards that catch destructive operations downstream
 - **Network-level isolation**: deny outbound traffic from the agent's process group
 
-Existing examples in the wider DevOpsSec workspace:
+Existing examples in the wider workspace:
 - NemoClaw sandbox for OpenClaw agent — full process isolation + MCP-only tool surface
 - `~/.githooks/pre-commit` — filesystem-level enforcement that applies to every agent
 - `~/.git-push-allowlist` — push gating regardless of which agent staged the commit

@@ -148,7 +148,7 @@ conn.close()
 
 ```bash
 # 1. Unit tests
-cd ~/DevOpsSec/superharness
+cd <path/to/superharness>
 python -m pytest tests/unit/dashboard/ -v
 
 # 2. Manual: dashboard renders without tombstone files

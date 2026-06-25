@@ -10,11 +10,11 @@ Agent configs (`~/.claude/settings.json`, `~/.claude.json`, `~/.opencode.json`,
 this repo's hook scripts, MCP server scripts, and project directories. These
 paths break under three scenarios:
 
-1. **Repo moves** — rename `DevOpsSec`, restructure tree, move to a different
+1. **Repo moves** — rename the workspace directory, restructure tree, move to a different
    home directory.
 2. **Release installs** — `pip install superharness`, `uv tool install
    obsidian-semantic-mcp`, Homebrew, etc. The release artifact does not live
-   under `~/DevOpsSec/`.
+   under the workspace directory.
 3. **Worktrees** — temp worktree paths (e.g.
    `/private/var/folders/.../superharness-worktrees/<branch>/...`) get baked
    into settings.json by tooling and silently break after worktree cleanup.
@@ -262,9 +262,9 @@ After all four phases:
 ```bash
 # Move every project to a new location.
 mkdir -p ~/sandbox && \
-  mv ~/DevOpsSec/superharness ~/sandbox/ && \
-  mv ~/DevOpsSec/obsidian-semantic-mcp ~/sandbox/ && \
-  mv ~/DevOpsSec/voice-toolkit ~/sandbox/
+  mv ~/superharness ~/sandbox/ && \
+  mv ~/obsidian-semantic-mcp ~/sandbox/ && \
+  mv ~/voice-toolkit ~/sandbox/
 
 # Reinstall each via pip / uv (release-style).
 pip install -e ~/sandbox/superharness
