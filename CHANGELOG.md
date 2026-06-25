@@ -646,3 +646,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 
 - 2026-06-25: chore: remove personal workspace path from tracked files
 - 2026-06-25: chore: remove personal workspace path from tracked files
+- 2026-06-25 (v1.72.1): fix(launchd): auto-discovery no longer walks TCC-protected home dirs (Library, Desktop, Documents, Downloads, Movies, Music, Pictures, Applications, .Trash) during the default $HOME scan. Stops the repeated "python3.14 would like to access data from other apps" macOS prompt triggered every 5 min by the operator-watchdog under the ad-hoc-signed Homebrew interpreter. Explicit search_roots are still honored. 2 new tests in TestDiscoverySkipsProtectedDirs.
