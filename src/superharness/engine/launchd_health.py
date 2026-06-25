@@ -345,6 +345,27 @@ def _render_watchdog_plist(label: str, python_bin: str, interval: int, log_dir: 
 
 PERSISTENT_MARKER = "persistent"
 
+# macOS TCC-protected (and otherwise irrelevant) top-level home
+# subdirectories that the default $HOME auto-discovery walk must not
+# descend into. Walking these under an ad-hoc-signed Python interpreter
+# trips the "<app> would like to access data from other apps" TCC prompt
+# on every scan (every 5 min via the watchdog), and they never contain
+# superharness projects. Skipping them removes the prompt loop and makes
+# the scan cheaper. Only applied to the default $HOME scan — callers that
+# pass search_roots explicitly are honored as-is.
+# (Fix: TCC-prompt-loop-auto-discover.)
+_HOME_TCC_PROTECTED_DIRNAMES = frozenset({
+    "Library",
+    "Desktop",
+    "Documents",
+    "Downloads",
+    "Movies",
+    "Music",
+    "Pictures",
+    "Applications",
+    ".Trash",
+})
+
 
 def find_all_superharness_projects(
     search_roots: list[Path] | None = None,
@@ -366,8 +387,16 @@ def find_all_superharness_projects(
     (Fix: BUGREPORT watcher-silent-death-no-recovery, root cause #4.)
     """
     _log.debug("launchd_health: scanning for .superharness/ dirs (require_marker=%s)", require_marker)
+    # Default $HOME scan prunes TCC-protected home subdirs; explicit
+    # search_roots are honored verbatim so callers can target them.
+    default_home_scan = search_roots is None
     if search_roots is None:
         search_roots = [Path.home()]
+
+    skip_paths: set[str] = set()
+    if default_home_scan:
+        home = Path.home()
+        skip_paths = {os.path.join(str(home), name) for name in _HOME_TCC_PROTECTED_DIRNAMES}
 
     found: list[Path] = []
     seen: set[Path] = set()
@@ -389,8 +418,12 @@ def find_all_superharness_projects(
                     if project not in seen:
                         seen.add(project)
                         found.append(project)
-            # Skip hidden dirs to avoid noise
-            dirnames[:] = [d for d in dirnames if not d.startswith(".") or d == ".superharness"]
+            # Skip hidden dirs (noise) and TCC-protected home subdirs (prompt loop).
+            dirnames[:] = [
+                d for d in dirnames
+                if (not d.startswith(".") or d == ".superharness")
+                and os.path.join(dirpath, d) not in skip_paths
+            ]
 
     _log.debug("launchd_health: discovered %d project(s) with .superharness/", len(found))
     return found
