@@ -248,3 +248,68 @@ class TestWatchdogPlist:
         from superharness.engine import launchd_health
         wp = launchd_health.write_watchdog_plist(interval_seconds=120)
         assert "<integer>120</integer>" in wp.read_text()
+
+
+# ---------------------------------------------------------------------------
+# find_all_superharness_projects — TCC-protected directory pruning
+# ---------------------------------------------------------------------------
+
+
+class TestDiscoverySkipsProtectedDirs:
+    """Auto-discovery walks $HOME. It must NOT descend into macOS
+    TCC-protected home subdirectories (Library, Desktop, Documents,
+    Downloads, ...). Entering them trips the "would like to access data
+    from other apps" prompt on every 5-min watchdog scan, and they never
+    hold legitimate dev projects. (Fix: TCC-prompt-loop-auto-discover.)
+    """
+
+    def _make_project(self, home: Path, rel: str) -> Path:
+        proj = home / rel
+        marker_dir = proj / ".superharness"
+        marker_dir.mkdir(parents=True)
+        (marker_dir / "persistent").touch()
+        return proj.resolve()
+
+    def test_default_home_scan_skips_protected_dirs(self, tmp_path, monkeypatch):
+        from superharness.engine import launchd_health
+
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr(
+            "superharness.engine.launchd_health.Path.home",
+            classmethod(lambda cls: home),
+        )
+
+        wanted = self._make_project(home, "DevOpsSec/proj")
+        # These live under TCC-protected roots and must be pruned.
+        self._make_project(home, "Library/Application Support/proj")
+        self._make_project(home, "Documents/proj")
+        self._make_project(home, "Desktop/proj")
+        self._make_project(home, "Downloads/proj")
+
+        found = launchd_health.find_all_superharness_projects()
+
+        assert wanted in found
+        assert all("/Library/" not in str(p) for p in found)
+        assert all("/Documents/" not in str(p) for p in found)
+        assert all("/Desktop/" not in str(p) for p in found)
+        assert all("/Downloads/" not in str(p) for p in found)
+
+    def test_explicit_search_root_is_honored(self, tmp_path, monkeypatch):
+        """Pruning applies only to the default $HOME scan. When a caller
+        passes search_roots explicitly, respect their intent fully."""
+        from superharness.engine import launchd_health
+
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr(
+            "superharness.engine.launchd_health.Path.home",
+            classmethod(lambda cls: home),
+        )
+        proj = self._make_project(home, "Documents/proj")
+
+        found = launchd_health.find_all_superharness_projects(
+            search_roots=[home / "Documents"],
+        )
+
+        assert proj in found
