@@ -1,8 +1,67 @@
 # Handoff — superharness
 
-> Latest: 2026-05-27, 3 bug reports from nemorad session + v1.68.0 fixes
-> Previous: 2026-05-26, discussion engine overhaul + agent availability (v1.66.0 live, PR #292)
-> PyPI latest: **v1.68.0** (released)
+> Latest: 2026-06-23, memory distillation feature — SHIPPED v1.72.0 (age-stamped recall, distiller, confidence-gated lessons, nightly distill + promotion). PyPI live.
+> Previous: 2026-06-14, lifecycle-hooks arc complete — SHIPPED v1.70.8 + v1.71.0 (shux continue / on_continue). Both PyPI live.
+> PyPI: **v1.72.0** live (memory distillation; released this session via /ship god)
+
+# Session Handoff — 2026-06-23 (Memory distillation — recall staleness, distiller, nightly job → ship v1.72.0)
+Agent: Claude Code (Opus 4.8, 1M) | Branch: main (PR #316 squash-merged as d3d2e62, feat/memory-distillation deleted) | Tests: 4647 pass, 580 skip, 2 xfail (full repo); 52 new feature tests | SHIPPED — v1.72.0 on PyPI, GitHub release live, pipx upgraded
+
+## What happened this session
+- **Reviewed `chauncygu/collection-claude-code-source-code` vs superharness**, then designed + built a memory-distillation layer (independent re-derivation of Claude Code's `memdir/` append-cheap → distill-batch → cap → age-flag pattern; no leaked code copied). Plan at `docs/PLAN-memory-distillation.md` (via /plan-iter), executed via /plan-implement. 5 iterations, each RED→GREEN→REFACTOR, committed independently:
+  - **Iter 1** `src/superharness/engine/recall.py` — `_freshness_caveat`/`_age_days`/`_resolve_max_fresh_days` + `format_results` seam + `--max-fresh-days` flag (default 14, or `$SHUX_RECALL_FRESH_DAYS`). Hits older than threshold get a verify-first staleness caveat.
+  - **Iter 2** new `engine/distiller.py` + `commands/distill.py` (`shux distill --dry-run`) — gathers recent handoffs+ledger (state_reader, since-filtered) → ≤3 `LessonEntry` via injected `llm_fn`; degrades to [] on empty/unavailable/malformed/raising LLM. Added `summarizer_providers.complete()` (Anthropic one-shot) + `model_router.cheap_model()`. Registered in `cli.py`.
+  - **Iter 3** `engine/agent_memory.py` — `format_lesson_line`/`parse_lesson_line`/`_normalize_key`/`apply_lessons` (`shux distill --apply`). Tag format `- [c=0.80 src=distill DATE] text`; dedup by normalized text; never overwrite manual lines; overwrite distilled only with strictly higher confidence. Added `pitfalls.md` to `PROJECT_MEMORY_FILES` (injects into dispatch context).
+  - **Iter 4** `agent_memory._cap_index` — confidence-aware cap (MAX_INDEX_LINES=200 / MAX_INDEX_BYTES=25000); evicts lowest-confidence/oldest distilled first, never manual; <100ms on 10k lines. pitfalls.md routes through cap; other memory files keep FIFO `_prune_if_over_limit`.
+  - **Iter 5** `commands/schedule.py` — `kind=distill` job (`DISTILL_JOB_ID`, `add_distill_schedule`, `_run_distill_job` = gather→distill→apply→`promote_all_project_memory`) fired via new `_fire` dispatcher; failures logged, `next_run` still advances. `shux distill --schedule [CRON]` (default `0 3 * * *`).
+- **Docs** (closed /ship-check doc-gate): README + `docs/GUIDE.md` command table + new "Memory Distillation" section + recall `--max-fresh-days`.
+- **Shipped via /ship god**: feat→minor bump 1.71.0→**1.72.0** (pyproject + CHANGELOG), PR #316, CI 28 checks green, squash-merged, tag `v1.72.0` pushed → release.yml auto-created GitHub release → publish.yml → PyPI 1.72.0 live (HTTP 200). `pipx upgrade` → `shux --version` 1.72.0. Pruned releases to 10 newest (deleted v1.69.5 release, tag kept).
+- **Legal note**: confirmed implementing the *pattern* (not copying leaked source) is fine — ideas/methods aren't copyrightable; built on superharness's own primitives as independent derivation.
+
+## Next session — first moves
+1. **`M HANDOFF.md` pre-existing change**: a HANDOFF.md modification predated this session and was deliberately left out of the v1.72.0 release. Decide whether to keep/discard it (now superseded by this prepend).
+2. **Distill in real use**: `shux distill --dry-run` on a project with real handoffs to sanity-check lesson quality from the live model (so far only tested with injected/stub LLM — Rule 18: not yet verified against a real LLM response).
+3. **Wire the nightly job for real**: `shux distill --schedule "0 3 * * *"` on active projects, confirm the watcher fires `_run_distill_job` and promotion elevates recurring lessons.
+4. Deferred (out of scope in plan): LLM relevance selector at recall time; per-context daily-log files; embeddings/semantic dedup; global-direct distillation.
+
+### Operational notes
+- pipx install is **editable → repo src** (source edits live immediately); `shux`/`superharness` symlink into the pipx venv.
+- Push to this repo needs `ALLOW_PUSH=1` (the global pre-push guard). Release-gate cmds (`gh pr create/merge`, `git tag`, `git push --tags`, `gh release create`) need a fresh `.ship-check-passed` marker (<30 min, gitignored) — written by /ship-check.
+- Release is tag-triggered: push `vX.Y.Z` → release.yml creates GitHub release → publish.yml publishes PyPI. Merging a PR alone does NOT publish.
+- New feature test files: test_recall_freshness, test_distiller_extract, test_distill_cli_dryrun, test_distill_apply, test_memory_cap, test_distill_schedule, test_distill_e2e.
+
+---
+
+> Previous entries below.
+
+# Session Handoff — 2026-06-14 (Wire dead module lifecycle hooks + ship v1.70.8)
+Agent: Claude Code (Opus 4.8, 1M) | Branch: main (PR #314 squash-merged as e066923, fix/lifecycle-hooks deleted) | Tests: 3234 pass, 534 skip, 2 xfail | SHIPPED — v1.70.8 on PyPI, GitHub release live, pipx upgraded
+
+## What happened this session
+- **Root-caused two real bugs flagged in a prior handoff, then fixed all of the module lifecycle wiring.** Three lifecycle events were declared in module templates but **never fired** (no command called `run_hooks` for them):
+  - `src/superharness/commands/close.py` — was importing a **never-defined** `_vault_write_task_done` (ImportError swallowed on every close → Obsidian/ntfy/ship/telegram on-close hooks never ran). Now fires `run_hooks("on_close", ...)`.
+  - `src/superharness/commands/verify.py` — wired `on_verify` + **hard `block_on` gate**: a hook-blocked `pass` is recorded not-verified, ledgered `VERIFY BLOCKED`, exits non-zero. Hook errors never mask verification. (User chose "hard gate" over warn-only.) `_abort` annotated `NoReturn`.
+  - `src/superharness/commands/delegate.py` — added `_fire_on_delegate()` helper, called at the committed-dispatch point (before launch; CLI path execs).
+  - `src/superharness/modules/runner.py` — `block_on` honored ONLY when the hook declares it; added `_evaluate_condition` (minimal `key == / != 'value'`, **fail-closed** on parse error) so openclaw routing gates on `target`.
+- **14 new tests** across test_close_on_close_hook / test_verify_on_verify_gate / test_delegate_on_delegate_hook + test_module_runner additions. Full unit suite green: 3234 pass.
+- **CI caught a real failure** (god hard-stop worked): `Unit Tests (windows-latest)` failed — my delegate test asserted `str(pdir) == "/tmp/proj"`, but Windows renders `\tmp\proj`. Test-only bug, product correct. Fixed in `ef60acd` (compare `Path` objects). CI re-running.
+- Branch `chore/fix-runtime-gitignore` was already merged (PR #313); rebased lifecycle work onto fresh `fix/lifecycle-hooks` off `origin/main`. Version 1.70.7 → **1.70.8** (fix=patch) + 4 CHANGELOG lines.
+- Corrected stale memory: the pipx install is **editable → repo src** (not a frozen wheel), so source edits are live immediately. Backlog updated (`_backlog_index.md`) with on_continue + priority + delegate.py pyright follow-ups.
+
+## Next session — first moves
+1. ~~Release prune~~ DONE this session: pruned 15→10 (deleted v1.69.3/.2/.1/.0, v1.68.3; tags kept).
+2. ~~pyenv shadow cleanup~~ DONE this session: uninstalled stale 1.70.6 from pyenv 3.11.6; pipx 1.70.8 is now the only install.
+3. `on_continue` is the **last dead lifecycle event** — blocked on the non-existent `shux continue` command (advertised in cli.py help only). Build that command as its own task (backlog).
+4. CI note: `security.yml` pins `shipguard==0.3.2` (latest 0.4.3) — bump when convenient.
+
+### Operational notes
+- Push requires `ALLOW_PUSH=1` (the global pre-push guard, layer 2).
+- `ship-gate` PreToolUse hook blocks `gh pr merge`, `git tag`, `git push --tags`, `gh release create` unless `.ship-check-passed` is < 30 min old. Re-run the marker write before merging.
+- CI matrix ~15–20 min; **Windows is always the slowest** runner. Background watch IDs this session: `bbt3ke5i4` (current).
+- pipx editable install points at the repo `src/` directory — no reinstall needed to test source edits.
+- Pre-existing, recorded: `security.yml` pins `shipguard==0.3.2` (latest 0.4.3); several pre-existing Pyright issues in `delegate.py` (unrelated to this work).
+
+---
 
 ## 2026-05-27 session: 3 bugs found during nemorad integration
 
