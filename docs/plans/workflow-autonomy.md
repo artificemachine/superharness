@@ -5,7 +5,7 @@
 **Task ID:** `superharness-workflow-cmd`
 **Target release:** v1.28.0
 **Method:** TDD (RED → GREEN → REFACTOR per iteration)
-**Consumer plan:** `~/DevOpsSec/morpheme/docs/plans/workflow-consume.md`
+**Consumer plan:** `morpheme/docs/plans/workflow-consume.md`
 
 ---
 

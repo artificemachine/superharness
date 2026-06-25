@@ -158,7 +158,7 @@ When all five land, document the activation flag (e.g. `gateway.inbound.enabled:
 
 ## References
 
-- `~/DevOpsSec/hermes-agent/` (Nous Research, MIT)
+- `hermes-agent/` (Nous Research, MIT)
 - `gateway/run.py:1247-4112` — auth, approval, rate-limit posture in hermes
 - `gateway/pairing.py` — pairing-code design worth borrowing
 - `src/superharness/modules/gateway/telegram_gateway.py` — current `GatewayListener` (inbound, not enabled in Phase 1)

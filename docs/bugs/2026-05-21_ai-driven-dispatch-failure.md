@@ -5,7 +5,7 @@
 **Severity:** high — `ai_driven` projects silently stop dispatching; enqueue crashes fatally
 **Affected:** autonomy daemon (`shux daemon` / `shux operator`), `engine/inbox.py` enqueue path, `shux discuss start`
 **Status:** fully resolved in 1.62.19 (2026-05-21). See § Resolution History below.
-**Project investigated:** `/Users/airm2max/DevOpsSec/morpheme` (`autonomy: ai_driven`, `require_tdd: true`)
+**Project investigated:** `morpheme` (`autonomy: ai_driven`, `require_tdd: true`)
 **Related:** `bugs/2026-05-11_discuss_dispatch_bugs.md` (Bug G — runaway round-1 re-dispatch), `BUG-set-owner-inbox-cleanup.md` (same class: refactor moved a helper, import site not updated)
 
 ---
