@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-22 (revised after FTS verification)
 **Status:** proposed (iteration plan, not yet approved)
-**Origin:** `~/DevOpsSec/docs/ARCH-memory-architecture-extractions-2026-05-22.md` (extraction B)
+**Origin:** ARCH-memory-architecture-extractions-2026-05-22.md (extraction B)
 **Driver:** A memory that records only successes is a useless showcase. Failures, bad decisions, and abandoned approaches are the reusable knowledge that stops future sessions re-litigating dead ends.
 
 ---

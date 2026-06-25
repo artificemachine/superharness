@@ -769,7 +769,7 @@ def operator_heal(project, auto_discover, quiet):
     services and plists, and bootstrap the operator if its plist is on
     disk but not loaded.
 
-    With --auto-discover, scans $HOME/DevOpsSec (or $HOME) for all
+    With --auto-discover, scans $HOME for all
     projects containing a .superharness/ directory and heals each one.
     This is the mode the watchdog plist uses to catch every project.
     (Fix: BUGREPORT watcher-silent-death-no-recovery, root cause #4.)

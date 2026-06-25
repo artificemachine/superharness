@@ -21,7 +21,7 @@ See `docs/plan-module-system.md` for the active module system plan (12 iteration
 
 ## Planned: always-on-agent Merge
 
-Merge `~/DevOpsSec/always-on-agent` (~1800 LOC) into superharness. The module system makes this possible — each always-on-agent feature maps to an existing module or a new one.
+Merge `always-on-agent` (~1800 LOC) into superharness. The module system makes this possible — each always-on-agent feature maps to an existing module or a new one.
 
 ### What overlaps (already in superharness)
 
@@ -93,7 +93,7 @@ Merge `~/DevOpsSec/always-on-agent` (~1800 LOC) into superharness. The module sy
 
 **Total:** ~27 tests, ~10 hr across 7 iterations.
 **Build order:** 0 → 1 → 2 → 3 → 4 → 5 → 6 (sequential, each builds on prior)
-**After merge:** archive `~/DevOpsSec/always-on-agent` and `celstnblacc/always-on-agent` on GitHub.
+**After merge:** archive `always-on-agent` and `celstnblacc/always-on-agent` on GitHub.
 
 ## Deferred
 

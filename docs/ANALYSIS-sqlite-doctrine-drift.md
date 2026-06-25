@@ -153,7 +153,7 @@ Guards can be false too — a test that passes regardless protects nothing. Muta
 ### The knowledge / false-information layer (ties to the memory thread)
 Code invariants are only half. For *stored knowledge* (memory files, vault notes, docs asserting facts about deployments) the world-truth limit (#2 above) applies, so the mechanism is different: **provenance + verification expiry.**
 - Every stored claim carries **provenance** (where it came from) and a **last-verified timestamp**.
-- Claims re-verify against reality on a schedule or **expire** (this is exactly the active-forgetting design from `~/DevOpsSec/docs/ARCH-memory-architecture-extractions-2026-05-22.md`, generalized).
+- Claims re-verify against reality on a schedule or **expire** (this is exactly the active-forgetting design from the ARCH-memory-architecture-extractions-2026-05-22.md design doc, generalized).
 - A claim with no source or stale verification is **flagged, not trusted**.
 - "Verify before recommend" becomes mechanical, not a habit.
 

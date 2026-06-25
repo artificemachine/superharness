@@ -67,7 +67,7 @@ or automation.
 ### 1. Create the same checkpoint tag
 
 ```bash
-cd ~/DevOpsSec/superharness
+cd <path/to/superharness>
 git tag adapter-payload-verified
 ```
 
