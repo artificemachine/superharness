@@ -677,6 +677,117 @@ def status_update(
 
 
 # ---------------------------------------------------------------------------
+# Capability requirements (requires: block) — set/show on a task's extras_json
+# ---------------------------------------------------------------------------
+
+def set_requires(
+    project_dir: str,
+    task_id: str,
+    cli_add: list[str] | None = None,
+    cli_remove: list[str] | None = None,
+    env_add: list[str] | None = None,
+    env_remove: list[str] | None = None,
+    skill_add: list[str] | None = None,
+    skill_remove: list[str] | None = None,
+    mcp_add: list[str] | None = None,
+    mcp_remove: list[str] | None = None,
+    fail_mode: str | None = None,
+    clear: bool = False,
+    show: bool = False,
+) -> int:
+    """Read/write the `requires:` block on a task's extras_json (SQLite source of truth)."""
+    import json as _j
+
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import tasks_dao
+
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        row = tasks_dao.get(conn, task_id)
+        if row is None:
+            _abort(f"task '{task_id}' not found")
+            return 1
+
+        extras: dict = _j.loads(row.extras_json) if row.extras_json else {}
+        req: dict = dict(extras.get("requires") or {})
+
+        if show:
+            if req:
+                import yaml as _yaml
+                print(f"requires: for '{task_id}':")
+                print(_yaml.safe_dump(req, default_flow_style=False).rstrip())
+            else:
+                print(f"No requires: block set for '{task_id}'")
+            return 0
+
+        if clear:
+            extras.pop("requires", None)
+            conn.execute(
+                "UPDATE tasks SET extras_json = ?, version = version + 1 WHERE id = ?",
+                (_j.dumps(extras), task_id),
+            )
+            conn.commit()
+            print(f"requires: cleared for '{task_id}'")
+            return 0
+
+        # Apply fail_mode
+        if fail_mode:
+            if fail_mode not in ("block", "warn"):
+                _abort("--fail-mode must be 'block' or 'warn'", 2)
+            req["fail_mode"] = fail_mode
+
+        # Mutation helpers — each category stores list[str | dict]
+        def _add_items(key: str, ids: list[str] | None) -> None:
+            if not ids:
+                return
+            existing = list(req.get(key) or [])
+            existing_ids = {
+                (i.get("id") or i.get("name") or i.get("server") or "") if isinstance(i, dict) else str(i)
+                for i in existing
+            }
+            for item_id in ids:
+                if item_id not in existing_ids:
+                    existing.append({"id": item_id})
+                    existing_ids.add(item_id)
+            req[key] = existing
+
+        def _remove_items(key: str, ids: list[str] | None) -> None:
+            if not ids:
+                return
+            remove_set = set(ids)
+            req[key] = [
+                i for i in (req.get(key) or [])
+                if (i.get("id") or i.get("name") or i.get("server") or str(i)) not in remove_set
+            ]
+            if not req[key]:
+                del req[key]
+
+        _add_items("cli", cli_add)
+        _remove_items("cli", cli_remove)
+        _add_items("env", env_add)
+        _remove_items("env", env_remove)
+        _add_items("skills", skill_add)
+        _remove_items("skills", skill_remove)
+        _add_items("mcp", mcp_add)
+        _remove_items("mcp", mcp_remove)
+
+        extras["requires"] = req
+        conn.execute(
+            "UPDATE tasks SET extras_json = ?, version = version + 1 WHERE id = ?",
+            (_j.dumps(extras), task_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    import yaml as _yaml
+    print(f"requires: for '{task_id}':")
+    print(_yaml.safe_dump(req, default_flow_style=False).rstrip())
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -774,6 +885,37 @@ def main(argv: list[str] | None = None) -> None:
     p_owner.add_argument("--project", "-p", default=None)
     p_owner.add_argument("--id", dest="task_id", required=True)
     p_owner.add_argument("--owner", required=True, choices=list(VALID_OWNERS))
+
+    # requires
+    p_req = sub.add_parser(
+        "requires",
+        help="Read/write the requires: block on a task (skills / CLIs / env / MCP).",
+    )
+    p_req.add_argument("--project", "-p", default=None)
+    p_req.add_argument("--id", dest="task_id", required=True)
+    p_req.add_argument("--show", action="store_true", default=False,
+                       help="Print current requires: block and exit")
+    p_req.add_argument("--clear", action="store_true", default=False,
+                       help="Remove the entire requires: block")
+    p_req.add_argument("--fail-mode", dest="fail_mode", default=None,
+                       choices=["block", "warn"],
+                       help="Dispatch behaviour on unmet deps: block (default) or warn")
+    p_req.add_argument("--cli", dest="cli_add", action="append", default=None,
+                       metavar="ID", help="Require CLI binary on PATH (repeatable)")
+    p_req.add_argument("--rm-cli", dest="cli_remove", action="append", default=None,
+                       metavar="ID", help="Remove CLI requirement (repeatable)")
+    p_req.add_argument("--env", dest="env_add", action="append", default=None,
+                       metavar="NAME", help="Require env var to be set (repeatable)")
+    p_req.add_argument("--rm-env", dest="env_remove", action="append", default=None,
+                       metavar="NAME", help="Remove env var requirement (repeatable)")
+    p_req.add_argument("--skill", dest="skill_add", action="append", default=None,
+                       metavar="ID", help="Require skill/command to be installed (repeatable)")
+    p_req.add_argument("--rm-skill", dest="skill_remove", action="append", default=None,
+                       metavar="ID", help="Remove skill requirement (repeatable)")
+    p_req.add_argument("--mcp", dest="mcp_add", action="append", default=None,
+                       metavar="SERVER", help="Require MCP server to be registered (repeatable)")
+    p_req.add_argument("--rm-mcp", dest="mcp_remove", action="append", default=None,
+                       metavar="SERVER", help="Remove MCP server requirement (repeatable)")
 
     opts = parser.parse_args(argv)
     if not opts.subcmd:
@@ -929,6 +1071,24 @@ def main(argv: list[str] | None = None) -> None:
 
     elif opts.subcmd == "set-owner":
         rc = set_owner(project_dir, opts.task_id, opts.owner)
+        sys.exit(rc)
+
+    elif opts.subcmd == "requires":
+        rc = set_requires(
+            project_dir,
+            task_id=opts.task_id,
+            cli_add=opts.cli_add,
+            cli_remove=opts.cli_remove,
+            env_add=opts.env_add,
+            env_remove=opts.env_remove,
+            skill_add=opts.skill_add,
+            skill_remove=opts.skill_remove,
+            mcp_add=opts.mcp_add,
+            mcp_remove=opts.mcp_remove,
+            fail_mode=opts.fail_mode,
+            clear=opts.clear,
+            show=opts.show,
+        )
         sys.exit(rc)
 
 
