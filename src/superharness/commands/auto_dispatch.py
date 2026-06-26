@@ -15,6 +15,7 @@ import uuid
 from typing import Optional
 
 from superharness.engine.taxonomy import VALID_EFFORTS, EFFORT_ORDER
+from superharness.engine.orchestrator import Orchestrator
 from superharness.utils.paths import is_project_initialized
 
 import logging
@@ -146,11 +147,80 @@ def _should_decompose(task: dict, effort_gate: str) -> bool:
         return False
 
 
+def _register_subtasks(
+    project_dir: str,
+    parent_task: dict,
+    subtasks: list[dict],
+    agent: str,
+) -> int:
+    """Register subtasks in SQLite and enqueue each. Returns count of enqueued subtasks."""
+    from datetime import datetime, timezone
+    from dataclasses import replace
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import tasks_dao
+    from superharness.engine.tasks_dao import TaskRow
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    parent_id = str(parent_task.get("id", ""))
+    enqueued = 0
+
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+
+        for sub in subtasks:
+            sub_id = str(sub.get("id", "")).strip()
+            if not sub_id:
+                continue
+            row = TaskRow(
+                id=sub_id,
+                title=str(sub.get("title", f"Subtask of {parent_id}")),
+                owner=str(sub.get("owner", agent)),
+                status="todo",
+                effort=str(sub.get("effort", "medium")),
+                project_path=project_dir,
+                parent_id=parent_id,
+                development_method="tdd",
+                acceptance_criteria=[],
+                test_types=[],
+                out_of_scope=[],
+                definition_of_done=[],
+                context=None,
+                tdd=None,
+                version=1,
+                created_at=now,
+                model_tier=str(sub.get("model_tier", "standard")),
+            )
+            tasks_dao.upsert(conn, row)
+
+        # Set parent to in_progress
+        parent_row = tasks_dao.get(conn, parent_id)
+        if parent_row is not None:
+            updated = replace(parent_row, status="in_progress", in_progress_at=now)
+            tasks_dao.upsert(conn, updated)
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    for sub in subtasks:
+        sub_id = str(sub.get("id", "")).strip()
+        if not sub_id:
+            continue
+        sub_agent = str(sub.get("owner", agent))
+        ok = _enqueue(project_dir, sub_id, sub_agent, plan_only=True)
+        if ok:
+            enqueued += 1
+
+    return enqueued
+
+
 def run_auto_dispatch(
     project_dir: str,
     dry_run: bool = False,
     effort_gate: str = "high",
     agent_override: Optional[str] = None,
+    orchestrate: bool = False,
 ) -> int:
     if not is_project_initialized(project_dir):
         print(f"auto-dispatch: project state not found at {project_dir}. Run 'shux init' first.", file=sys.stderr)
@@ -190,8 +260,26 @@ def run_auto_dispatch(
 
         workflow = str(task.get("workflow") or "implementation")
         decompose = _should_decompose(task, effort_gate)
-        decompose_note = " [→ orchestrate]" if decompose else ""
 
+        if decompose and orchestrate:
+            result = Orchestrator(project_dir).decompose(task)
+            if result.subtasks:
+                decompose_flagged += 1
+                if dry_run:
+                    print(f"  orchestrate {task_id}  subtasks={len(result.subtasks)} (dry-run, no writes)")
+                    for sub in result.subtasks:
+                        print(f"    subtask {sub.get('id')}  effort={sub.get('effort')}  tier={sub.get('model_tier')}")
+                    enqueued += len(result.subtasks)
+                else:
+                    n = _register_subtasks(project_dir, task, result.subtasks, agent)
+                    print(f"  orchestrate {task_id}  subtasks={len(result.subtasks)}  enqueued={n}")
+                    enqueued += n
+                continue
+            else:
+                # Empty decomposition — fall back to normal enqueue
+                logger.warning("Orchestrator returned 0 subtasks for %s; falling back to direct enqueue", task_id)
+
+        decompose_note = " [→ orchestrate]" if (decompose and not orchestrate) else ""
         print(f"  queue {task_id}  agent={agent}  tier={tier}{decompose_note}")
 
         if not dry_run:
@@ -204,12 +292,15 @@ def run_auto_dispatch(
         else:
             enqueued += 1  # count as "would enqueue" in dry-run
 
-        if decompose:
+        if decompose and not orchestrate:
             decompose_flagged += 1
 
     label = "would enqueue" if dry_run else "enqueued"
-    print(f"\nauto-dispatch: {label} {enqueued} task(s), skipped {skipped}")
+    summary = f"\nauto-dispatch: {label} {enqueued} task(s), skipped {skipped}"
     if decompose_flagged:
+        summary += f", orchestrated {decompose_flagged} task(s)"
+    print(summary)
+    if decompose_flagged and not orchestrate:
         print(f"auto-dispatch: {decompose_flagged} task(s) flagged for orchestrator decomposition "
               f"(effort >= {effort_gate}) — re-dispatch with --orchestrate to decompose")
 
@@ -233,6 +324,8 @@ def main(argv: list[str] | None = None) -> None:
                              "(default: high)")
     parser.add_argument("--agent", default=None, choices=list(_VALID_AGENTS),
                         help="Override agent for all tasks (skip auto-classification)")
+    parser.add_argument("--orchestrate", action="store_true", default=False,
+                        help="Decompose high-effort tasks via Orchestrator and register subtasks")
     opts = parser.parse_args(argv)
 
     project = os.path.realpath(opts.project or os.getcwd())
@@ -241,6 +334,7 @@ def main(argv: list[str] | None = None) -> None:
         dry_run=opts.dry_run,
         effort_gate=opts.effort_gate,
         agent_override=opts.agent,
+        orchestrate=opts.orchestrate,
     )
     sys.exit(rc)
 
