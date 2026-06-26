@@ -271,3 +271,219 @@ class TestRunPreflight:
         report = run_preflight(str(tmp_path), task, skip_git=True)
         assert report.suggested_mode == "swarm"
         assert report.suggested_fanout_n == 3
+
+
+_UNSET_ENV = "SHUX_DEFINITELY_UNSET_VAR_XYZ_98765"
+_FAKE_CLI = "definitely-not-a-real-binary-xyz-98765"
+
+
+class TestRequiresCheck:
+    def test_no_requires_block_is_noop(self) -> None:
+        from superharness.engine.preflight import _check_requires
+        assert _check_requires({"id": "t"}) == []
+
+    def test_missing_env_blocks_by_default(self, monkeypatch) -> None:
+        from superharness.engine.preflight import _check_requires
+        monkeypatch.delenv(_UNSET_ENV, raising=False)
+        task = {"id": "t", "requires": {"env": [{"name": _UNSET_ENV, "reason": "needed for X"}]}}
+        checks = _check_requires(task)
+        assert any(c.id == "requires_env_missing" and c.level == "block" for c in checks)
+
+    def test_missing_cli_blocks_by_default(self) -> None:
+        from superharness.engine.preflight import _check_requires
+        task = {"id": "t", "requires": {"cli": [{"id": _FAKE_CLI}]}}
+        checks = _check_requires(task)
+        assert any(c.id == "requires_cli_missing" and c.level == "block" for c in checks)
+
+    def test_warn_mode_does_not_block(self) -> None:
+        from superharness.engine.preflight import _check_requires
+        task = {"id": "t", "requires": {"fail_mode": "warn", "cli": [{"id": _FAKE_CLI}]}}
+        checks = _check_requires(task)
+        assert any(c.id == "requires_cli_missing" and c.level == "warn" for c in checks)
+
+    def test_satisfied_requires_is_info(self, monkeypatch) -> None:
+        from superharness.engine.preflight import _check_requires
+        monkeypatch.setenv("SHUX_TEST_REQ_PRESENT", "1")
+        task = {"id": "t", "requires": {"env": [{"name": "SHUX_TEST_REQ_PRESENT"}]}}
+        checks = _check_requires(task)
+        assert any(c.id == "requires_ok" and c.level == "info" for c in checks)
+
+    def test_run_preflight_blocks_on_unmet_requires(self, tmp_path: Path, monkeypatch) -> None:
+        from superharness.engine.preflight import run_preflight
+        monkeypatch.delenv(_UNSET_ENV, raising=False)
+        (tmp_path / ".superharness").mkdir()
+        task = _make_task(requires={"env": [{"name": _UNSET_ENV}]})
+        report = run_preflight(str(tmp_path), task, skip_git=True)
+        assert report.can_dispatch is False
+        assert report.status == "block"
+        assert any(c.id == "requires_env_missing" for c in report.blockers)
+
+
+class TestProfileBaseline:
+    """Profile-level baseline requires: is merged into every dispatch check."""
+
+    def _write_profile(self, tmp_path: Path, requires: dict) -> None:
+        import yaml as _yaml
+        sh = tmp_path / ".superharness"
+        sh.mkdir(exist_ok=True)
+        (sh / "profile.yaml").write_text(_yaml.safe_dump({"requires": requires}))
+
+    def test_baseline_cli_blocks_when_missing(self, tmp_path: Path) -> None:
+        from superharness.engine.preflight import _check_requires
+        self._write_profile(tmp_path, {"cli": [{"id": _FAKE_CLI}]})
+        checks = _check_requires({"id": "t"}, project_dir=str(tmp_path))
+        assert any(c.id == "requires_cli_missing" and c.level == "block" for c in checks)
+
+    def test_no_profile_is_backward_compatible(self, tmp_path: Path) -> None:
+        from superharness.engine.preflight import _check_requires
+        (tmp_path / ".superharness").mkdir(exist_ok=True)
+        checks = _check_requires({"id": "t"}, project_dir=str(tmp_path))
+        assert checks == []
+
+    def test_per_task_fail_mode_overrides_baseline(self, tmp_path: Path) -> None:
+        from superharness.engine.preflight import _check_requires
+        self._write_profile(tmp_path, {"fail_mode": "block", "cli": [{"id": _FAKE_CLI}]})
+        task = {"id": "t", "requires": {"fail_mode": "warn"}}
+        checks = _check_requires(task, project_dir=str(tmp_path))
+        assert any(c.id == "requires_cli_missing" and c.level == "warn" for c in checks)
+
+    def test_baseline_and_per_task_are_unioned(self, tmp_path: Path, monkeypatch) -> None:
+        from superharness.engine.preflight import _check_requires
+        monkeypatch.delenv(_UNSET_ENV, raising=False)
+        self._write_profile(tmp_path, {"cli": [{"id": _FAKE_CLI}]})
+        task = {"id": "t", "requires": {"env": [{"name": _UNSET_ENV}]}}
+        checks = _check_requires(task, project_dir=str(tmp_path))
+        ids = {c.id for c in checks}
+        assert "requires_cli_missing" in ids
+        assert "requires_env_missing" in ids
+
+    def test_run_preflight_picks_up_baseline(self, tmp_path: Path) -> None:
+        from superharness.engine.preflight import run_preflight
+        self._write_profile(tmp_path, {"cli": [{"id": _FAKE_CLI}]})
+        task = _make_task()
+        report = run_preflight(str(tmp_path), task, skip_git=True)
+        assert report.can_dispatch is False
+        assert any(c.id == "requires_cli_missing" for c in report.blockers)
+
+
+class TestSignalDerive:
+    """Auto-derived requirements from task signals (test_types)."""
+
+    def test_security_test_type_derives_gitleaks(self) -> None:
+        from superharness.engine.preflight import _derive_signal_requires
+        derived = _derive_signal_requires({"test_types": ["security"]})
+        assert derived is not None
+        cli_ids = [i["id"] for i in derived.get("cli", [])]
+        assert "gitleaks" in cli_ids
+
+    def test_security_test_type_derives_shipguard(self) -> None:
+        from superharness.engine.preflight import _derive_signal_requires
+        derived = _derive_signal_requires({"test_types": ["security"]})
+        assert derived is not None
+        cli_ids = [i["id"] for i in derived.get("cli", [])]
+        assert "shipguard" in cli_ids
+
+    def test_sast_test_type_derives_shipguard(self) -> None:
+        from superharness.engine.preflight import _derive_signal_requires
+        derived = _derive_signal_requires({"test_types": ["sast"]})
+        assert derived is not None
+        cli_ids = [i["id"] for i in derived.get("cli", [])]
+        assert "shipguard" in cli_ids
+
+    def test_no_signal_no_derive(self) -> None:
+        from superharness.engine.preflight import _derive_signal_requires
+        assert _derive_signal_requires({"test_types": ["unit", "integration"]}) is None
+        assert _derive_signal_requires({}) is None
+
+    def test_signal_blocks_dispatch_when_tool_missing(self, tmp_path: Path) -> None:
+        from superharness.engine.preflight import run_preflight
+        (tmp_path / ".superharness").mkdir()
+        task = _make_task(test_types=["security"])
+        report = run_preflight(str(tmp_path), task, skip_git=True)
+        # gitleaks / shipguard are unlikely to be on PATH in test env
+        # If they happen to be installed this check is info/pass — skip rather than fail
+        import shutil
+        gitleaks_present = shutil.which("gitleaks") is not None
+        shipguard_present = shutil.which("shipguard") is not None
+        if not gitleaks_present or not shipguard_present:
+            assert not report.can_dispatch
+
+
+class TestMandatePolicy:
+    """Project-level mandate: high-risk tasks must have an explicit requires: block."""
+
+    def _write_profile(self, tmp_path: Path, mandate: dict) -> None:
+        import yaml as _yaml
+        sh = tmp_path / ".superharness"
+        sh.mkdir(exist_ok=True)
+        (sh / "profile.yaml").write_text(_yaml.safe_dump({"mandate_requires_for": mandate}))
+
+    def test_no_profile_is_noop(self, tmp_path: Path) -> None:
+        from superharness.engine.preflight import _check_mandate_policy
+        (tmp_path / ".superharness").mkdir(exist_ok=True)
+        checks = _check_mandate_policy({"id": "t", "effort": "high"}, str(tmp_path))
+        assert checks == []
+
+    def test_no_mandate_key_is_noop(self, tmp_path: Path) -> None:
+        import yaml as _yaml
+        sh = tmp_path / ".superharness"
+        sh.mkdir(exist_ok=True)
+        (sh / "profile.yaml").write_text(_yaml.safe_dump({"autonomy": "ai_driven"}))
+        from superharness.engine.preflight import _check_mandate_policy
+        checks = _check_mandate_policy({"id": "t", "effort": "high"}, str(tmp_path))
+        assert checks == []
+
+    def test_effort_match_without_requires_blocks(self, tmp_path: Path) -> None:
+        from superharness.engine.preflight import _check_mandate_policy
+        self._write_profile(tmp_path, {"effort": ["high", "max"]})
+        checks = _check_mandate_policy({"id": "t", "effort": "high"}, str(tmp_path))
+        assert any(c.id == "mandate_requires_missing" and c.level == "block" for c in checks)
+
+    def test_effort_match_with_requires_is_info(self, tmp_path: Path) -> None:
+        from superharness.engine.preflight import _check_mandate_policy
+        self._write_profile(tmp_path, {"effort": ["high"]})
+        task = {"id": "t", "effort": "high", "requires": {"cli": [{"id": "gitleaks"}]}}
+        checks = _check_mandate_policy(task, str(tmp_path))
+        assert any(c.id == "mandate_requires_satisfied" and c.level == "info" for c in checks)
+
+    def test_effort_not_in_mandate_no_block(self, tmp_path: Path) -> None:
+        from superharness.engine.preflight import _check_mandate_policy
+        self._write_profile(tmp_path, {"effort": ["max"]})
+        checks = _check_mandate_policy({"id": "t", "effort": "medium"}, str(tmp_path))
+        assert checks == []
+
+    def test_test_types_match_blocks(self, tmp_path: Path) -> None:
+        from superharness.engine.preflight import _check_mandate_policy
+        self._write_profile(tmp_path, {"test_types": ["security", "sast"]})
+        checks = _check_mandate_policy({"id": "t", "test_types": ["unit", "security"]}, str(tmp_path))
+        assert any(c.id == "mandate_requires_missing" and c.level == "block" for c in checks)
+        assert "test_types=[security]" in checks[0].message
+
+    def test_test_types_no_overlap_no_block(self, tmp_path: Path) -> None:
+        from superharness.engine.preflight import _check_mandate_policy
+        self._write_profile(tmp_path, {"test_types": ["security"]})
+        checks = _check_mandate_policy({"id": "t", "test_types": ["unit", "e2e"]}, str(tmp_path))
+        assert checks == []
+
+    def test_ship_on_complete_match_blocks(self, tmp_path: Path) -> None:
+        from superharness.engine.preflight import _check_mandate_policy
+        self._write_profile(tmp_path, {"ship_on_complete": True})
+        checks = _check_mandate_policy({"id": "t", "ship_on_complete": True}, str(tmp_path))
+        assert any(c.id == "mandate_requires_missing" and c.level == "block" for c in checks)
+
+    def test_run_preflight_mandate_blocks_dispatch(self, tmp_path: Path) -> None:
+        from superharness.engine.preflight import run_preflight
+        self._write_profile(tmp_path, {"effort": ["high", "max"]})
+        task = _make_task(effort="high")
+        report = run_preflight(str(tmp_path), task, skip_git=True)
+        assert report.can_dispatch is False
+        assert any(c.id == "mandate_requires_missing" for c in report.blockers)
+
+    def test_run_preflight_mandate_passes_with_explicit_requires(self, tmp_path: Path) -> None:
+        from superharness.engine.preflight import run_preflight
+        self._write_profile(tmp_path, {"effort": ["high"]})
+        task = _make_task(effort="high", requires={"cli": [{"id": "gitleaks"}]})
+        # gitleaks may or may not be on PATH; we only care about mandate (not requires_cli_missing)
+        report = run_preflight(str(tmp_path), task, skip_git=True)
+        mandate_blocks = any(c.id == "mandate_requires_missing" for c in report.blockers)
+        assert not mandate_blocks
