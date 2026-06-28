@@ -210,7 +210,9 @@ class Operator:
                     return port
                 except OSError:
                     port += 1
-        return start_port
+        raise RuntimeError(
+            f"no free TCP port in range [{start_port}, {start_port + 100})"
+        )
 
     def _write_daemon_info(self, port: int):
         """Record the active operator/dashboard state to disk."""
