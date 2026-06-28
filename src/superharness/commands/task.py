@@ -451,7 +451,7 @@ def set_owner(project_dir: str, task_id: str, new_owner: str) -> int:
                 # Cancel (don't delete) — preserves audit trail in the inbox table.
                 now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                 conn.executemany(
-                    "UPDATE inbox SET status='canceled', failed_at=? WHERE id=?",
+                    "UPDATE inbox SET status='cancelled', failed_at=? WHERE id=?",
                     [(now, rid) for rid in removed_ids],
                 )
                 conn.commit()

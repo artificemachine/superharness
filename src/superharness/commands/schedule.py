@@ -99,7 +99,7 @@ def _next_run(cron_expr: str, after: datetime) -> datetime:
             (parsed["hour"]   is None or candidate.hour   == parsed["hour"])   and
             (parsed["dom"]    is None or candidate.day    == parsed["dom"])     and
             (parsed["month"]  is None or candidate.month  == parsed["month"])  and
-            (parsed["dow"]    is None or candidate.weekday() % 7 == parsed["dow"])
+            (parsed["dow"]    is None or (candidate.weekday() + 1) % 7 == parsed["dow"])
         )
         if match:
             return candidate
