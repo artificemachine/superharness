@@ -85,7 +85,7 @@ def _offer_systemd(project_dir: Path, non_interactive: bool) -> None:
         "After=default.target\n\n"
         "[Service]\n"
         "Type=simple\n"
-        f"ExecStart={python_bin} -m superharness.commands.operator start --port 8787\n"
+        f"ExecStart={python_bin} -m superharness operator start --port 8787\n"
         "Restart=on-failure\n"
         "RestartSec=10\n\n"
         "[Install]\n"
