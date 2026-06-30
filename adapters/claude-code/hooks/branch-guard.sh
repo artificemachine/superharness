@@ -15,8 +15,8 @@ if [ -z "$COMMAND" ] && [ -n "$INPUT" ]; then
   exit 0
 fi
 
-# Block push to main/master
-if echo "$COMMAND" | grep -qE 'git\s+push.*\b(main|master)\b'; then
+# Block push to main/master (require whitespace before name to avoid matching feat/main-entry etc.)
+if echo "$COMMAND" | grep -qE 'git\s+push.*\s(main|master)\b'; then
   cat <<EOF
 {
   "hookSpecificOutput": {
