@@ -15,8 +15,14 @@ if [ -z "$COMMAND" ] && [ -n "$INPUT" ]; then
   exit 0
 fi
 
-# Block push to main/master
-if echo "$COMMAND" | grep -qE 'git\s+push.*\b(main|master)\b'; then
+# Allow LAN mirror remote (gitlab.gs — private, never internet-facing)
+if echo "$COMMAND" | grep -qE 'git\s+push\s+gitlab\b'; then
+  echo '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}'
+  exit 0
+fi
+
+# Block push to main/master (require whitespace before name to avoid matching feat/main-entry etc.)
+if echo "$COMMAND" | grep -qE 'git\s+push.*\s(main|master)\b'; then
   cat <<EOF
 {
   "hookSpecificOutput": {
