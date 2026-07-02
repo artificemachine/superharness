@@ -130,7 +130,7 @@ def _get_task_budget(project_dir: str, task_id: str, effort: str) -> float | Non
     return EFFORT_BUDGET_MAP.get(effort)
 
 
-def _save_context_snapshot(project_dir: str, task_id: str, result: dict) -> None:
+def _save_context_snapshot(project_dir: str, task_id: str, result: dict, model: str | None = None) -> None:
     """Save a context snapshot after dispatch for future warm-start reference."""
     import subprocess
     snapshot_dir = os.path.join(project_dir, ".superharness", "context-cache")
@@ -153,12 +153,30 @@ def _save_context_snapshot(project_dir: str, task_id: str, result: dict) -> None
         logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
         snapshot["files_touched"] = []
     try:
-        from superharness.engine.yaml_helpers import safe_dump
-        with open(os.path.join(snapshot_dir, f"{task_id}.yaml"), "w") as f:
-            safe_dump(snapshot, f)
+        from superharness.engine.yaml_helpers import round_trip_dump
+        round_trip_dump(snapshot, os.path.join(snapshot_dir, f"{task_id}.yaml"))
     except Exception as e:
         logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
         pass
+
+    # Persist measured usage to the durable task_usage table (additive to the
+    # YAML sidecar above). A DB write failure must never break dispatch.
+    try:
+        from superharness.engine.db import managed_connection
+        from superharness.engine import usage_dao
+        with managed_connection(project_dir) as conn:
+            usage_dao.record(
+                conn,
+                task_id=task_id,
+                agent="claude-code",
+                source="sdk",
+                model=model,
+                input_tokens=result.get("input_tokens"),
+                output_tokens=result.get("output_tokens"),
+                cost_usd=result.get("cost_usd"),
+            )
+    except Exception as e:
+        logger.warning("delegate.py failed to record task_usage: %s", e, exc_info=True)
 def _get_task_previously_failed(project_dir: str, task_id: str) -> bool:
     status = _get_task_field(project_dir, task_id, "status")
     return status == "failed"
@@ -1253,7 +1271,7 @@ def delegate(
             print(f"\nLauncher log: {log_file}")
 
             # Save context snapshot for warm-start on related future tasks
-            _save_context_snapshot(project_dir, task_id, result)
+            _save_context_snapshot(project_dir, task_id, result, model=resolved_model)
             return 0
         except Exception as e:
             print(f"⚠️  SDK execution failed: {e}", file=sys.stderr)
