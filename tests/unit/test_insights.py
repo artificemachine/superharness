@@ -40,6 +40,18 @@ def _setup_db(tmp_path: Path) -> str:
         INSERT INTO ledger VALUES (3,'t3','claude-code','dispatch_failed',NULL,'2026-01-03T00:01:00Z');
         INSERT INTO ledger VALUES (4,'t3','claude-code','dispatch_failed',NULL,'2026-01-03T00:02:00Z');
         INSERT INTO ledger VALUES (5,'t3','claude-code','dispatch_failed',NULL,'2026-01-03T00:03:00Z');
+        CREATE TABLE task_usage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, agent TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'manual', model TEXT,
+            input_tokens INTEGER, output_tokens INTEGER, cost_usd REAL,
+            recorded_at TEXT NOT NULL
+        );
+        INSERT INTO task_usage (task_id, agent, source, model, input_tokens, output_tokens, cost_usd, recorded_at)
+            VALUES ('t1','claude-code','sdk','claude-sonnet-5',200,80,0.02,'2026-01-01T00:05:00Z');
+        INSERT INTO task_usage (task_id, agent, source, model, input_tokens, output_tokens, cost_usd, recorded_at)
+            VALUES ('t3','claude-code','sdk','claude-sonnet-5',100,50,0.01,'2026-01-03T00:05:00Z');
+        INSERT INTO task_usage (task_id, agent, source, model, input_tokens, output_tokens, cost_usd, recorded_at)
+            VALUES ('t2','codex-cli','handoff','codex-cli',400,150,0.03,'2026-01-02T00:05:00Z');
     """)
     conn.commit()
     conn.close()
@@ -97,6 +109,73 @@ class TestInsightsModule:
         assert result["tasks"] == {}
         assert result["agents"] == {}
 
+    def test_cost_breakdown_aggregates_by_agent(self, tmp_path):
+        from superharness.engine.insights import get_insights
+        result = get_insights(_setup_db(tmp_path))
+        cost = result["cost_breakdown"]
+
+        assert cost["claude-code"]["total_input_tokens"] == 300
+        assert cost["claude-code"]["total_output_tokens"] == 130
+        assert cost["claude-code"]["total_cost_usd"] == pytest.approx(0.03)
+        assert cost["claude-code"]["task_count"] == 2
+
+        assert cost["codex-cli"]["total_input_tokens"] == 400
+        assert cost["codex-cli"]["total_output_tokens"] == 150
+        assert cost["codex-cli"]["total_cost_usd"] == pytest.approx(0.03)
+        assert cost["codex-cli"]["task_count"] == 1
+
+    def test_cost_breakdown_empty_when_no_usage_data(self, tmp_path):
+        from superharness.engine.insights import get_insights
+        project_dir = str(tmp_path)
+        sh = tmp_path / ".superharness"
+        sh.mkdir()
+        db = sh / "state.sqlite3"
+        conn = sqlite3.connect(str(db))
+        conn.executescript("""
+            CREATE TABLE tasks (
+                id TEXT PRIMARY KEY, title TEXT NOT NULL, owner TEXT,
+                status TEXT NOT NULL, created_at TEXT NOT NULL
+            );
+            INSERT INTO tasks VALUES ('t1','Task 1','claude-code','done','2026-01-01T00:00:00Z');
+        """)
+        conn.commit()
+        conn.close()
+
+        result = get_insights(project_dir)
+        assert result["cost_breakdown"] == {}
+
+    def test_cost_breakdown_handles_null_cost_gracefully(self, tmp_path):
+        from superharness.engine.insights import get_insights
+        project_dir = str(tmp_path)
+        sh = tmp_path / ".superharness"
+        sh.mkdir()
+        db = sh / "state.sqlite3"
+        conn = sqlite3.connect(str(db))
+        conn.executescript("""
+            CREATE TABLE tasks (
+                id TEXT PRIMARY KEY, title TEXT NOT NULL, owner TEXT,
+                status TEXT NOT NULL, created_at TEXT NOT NULL
+            );
+            CREATE TABLE task_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, agent TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'manual', model TEXT,
+                input_tokens INTEGER, output_tokens INTEGER, cost_usd REAL,
+                recorded_at TEXT NOT NULL
+            );
+            INSERT INTO tasks VALUES ('t1','Task 1','codex-cli','done','2026-01-01T00:00:00Z');
+            INSERT INTO task_usage (task_id, agent, source, model, input_tokens, output_tokens, cost_usd, recorded_at)
+                VALUES ('t1','codex-cli','handoff',NULL,300,120,NULL,'2026-01-01T00:05:00Z');
+        """)
+        conn.commit()
+        conn.close()
+
+        result = get_insights(project_dir)
+        cost = result["cost_breakdown"]
+        assert cost["codex-cli"]["total_input_tokens"] == 300
+        assert cost["codex-cli"]["total_output_tokens"] == 120
+        assert cost["codex-cli"]["total_cost_usd"] == 0
+        assert cost["codex-cli"]["task_count"] == 1
+
 
 class TestInsightsCLI:
     def test_cli_runs_without_error(self, tmp_path, capsys):
@@ -114,3 +193,14 @@ class TestInsightsCLI:
         out = capsys.readouterr().out
         data = json.loads(out)
         assert "tasks" in data
+
+    def test_cli_output_includes_cost_breakdown(self, tmp_path, capsys):
+        import json
+        from superharness.commands.insights import main
+        _setup_db(tmp_path)
+        main(["--project", str(tmp_path), "--json"])
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert "cost_breakdown" in data
+        assert "claude-code" in data["cost_breakdown"]
+        assert "total_cost_usd" in data["cost_breakdown"]["claude-code"]

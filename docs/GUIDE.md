@@ -490,6 +490,22 @@ shux benchmark --project . --models   # per-model 7-day cost breakdown table
 
 `--models` output shows: model name, call count, total tokens, total cost, % of weekly budget (if `budget.weekly_limit` is set in `profile.yaml`).
 
+#### Per-task token/cost accounting (`task_usage` table)
+
+Durable, queryable per-task usage — separate from the `shux benchmark` JSONL sidecar above. Sourced two ways:
+
+- **`source="sdk"`** — automatic. Every Claude Code SDK dispatch records its measured `input_tokens`/`output_tokens`/`cost_usd` to the `task_usage` table (in addition to the existing YAML context-cache snapshot).
+- **`source="handoff"`** — self-reported. Agents with no programmatic usage data (Codex CLI, Gemini CLI, OpenCode) report usage via optional flags on the handoff they already write at every phase transition:
+
+```bash
+shux handoff-write --task <id> --phase report --from codex-cli --to owner \
+  --outcome "..." --input-tokens 500 --output-tokens 200 --cost-usd 0.05 --model codex-cli
+```
+
+All four flags are optional and independent — report only what you have (e.g. `--cost-usd` alone).
+
+View the aggregate via `shux insights` (`--json` includes a `cost_breakdown` key): per-agent `total_cost_usd`, `total_input_tokens`, `total_output_tokens`, `task_count`, answering "which agent/model was most cost-effective for this kind of task."
+
 ### Doctor Checks
 
 ```bash
