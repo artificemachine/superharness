@@ -652,3 +652,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-06-26: feat(auto-dispatch): add --orchestrate flag — Orchestrator.decompose() fan-out, subtask registration in SQLite, parent set to in_progress; fallback to normal enqueue on empty decomposition; 8 new tests
 - 2026-06-26: chore: bump version to 1.74.0 (feat/orchestrate minor release)
 - 2026-06-30: fix(hooks): branch-guard regex now requires whitespace before main/master to avoid false-positives on branch names containing the substring (e.g. feat/main-entry); src copy synced with adapters copy (adds gitlab.gs LAN mirror allowlist)
+- 2026-07-02: feat(usage): add task_usage table and DAO for per-task token/cost tracking
