@@ -92,3 +92,44 @@ def test_set_task_status_handles_unknown_task_gracefully(state_writer, clean_har
 def test_set_inbox_status_handles_unknown_id_gracefully(state_writer, clean_harness: Path) -> None:
     ok = state_writer.set_inbox_status(str(clean_harness), "nonexistent", "paused")
     assert ok is False
+
+
+def test_write_handoff_to_db_forwards_usage_to_dao(state_writer, clean_harness: Path) -> None:
+    """write_handoff_to_db calls usage_dao.record() when usage data is present
+    in the handoff content, and does NOT call it when absent."""
+    from superharness.engine import usage_dao
+    from superharness.engine.db import get_connection, init_db
+
+    content_with_usage = {
+        "task": "feat.foo", "phase": "report", "status": "report_ready",
+        "from": "codex-cli", "to": "owner", "date": "2026-04-27T12:00:00Z",
+        "outcome": "done", "input_tokens": 400, "output_tokens": 150, "cost_usd": 0.03,
+        "model": "codex-cli",
+    }
+    ok = state_writer.write_handoff_to_db(str(clean_harness), content_with_usage,
+                                           task_id="feat.foo", phase="report")
+    assert ok is True
+
+    conn = get_connection(str(clean_harness))
+    init_db(conn)
+    rows = usage_dao.list_for_task(conn, "feat.foo")
+    conn.close()
+    assert len(rows) == 1
+    assert rows[0].source == "handoff"
+    assert rows[0].agent == "codex-cli"
+    assert rows[0].cost_usd == 0.03
+
+    content_without_usage = {
+        "task": "feat.bar", "phase": "report", "status": "report_ready",
+        "from": "codex-cli", "to": "owner", "date": "2026-04-27T12:00:00Z",
+        "outcome": "done",
+    }
+    ok = state_writer.write_handoff_to_db(str(clean_harness), content_without_usage,
+                                           task_id="feat.bar", phase="report")
+    assert ok is True
+
+    conn = get_connection(str(clean_harness))
+    init_db(conn)
+    rows = usage_dao.list_for_task(conn, "feat.bar")
+    conn.close()
+    assert rows == []
