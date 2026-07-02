@@ -79,6 +79,18 @@ def _print_insights(data: dict) -> None:
     else:
         print("  no summarizer calls recorded")
 
+    print("\n── cost breakdown ─────────────────────")
+    cost_breakdown = data.get("cost_breakdown", {})
+    if cost_breakdown:
+        for agent, totals in sorted(cost_breakdown.items()):
+            cost = totals.get("total_cost_usd", 0) or 0
+            in_tok = totals.get("total_input_tokens", 0)
+            out_tok = totals.get("total_output_tokens", 0)
+            tasks = totals.get("task_count", 0)
+            print(f"  {agent:<20} tasks={tasks}  in={in_tok}  out={out_tok}  cost=${cost:.4f}")
+    else:
+        print("  no usage data recorded")
+
 
 if __name__ == "__main__":
     main()

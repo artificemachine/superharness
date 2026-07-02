@@ -13,7 +13,7 @@ from superharness.utils.paths import resolve_xdg_state_db_path
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 27
+CURRENT_SCHEMA_VERSION = 28
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -782,6 +782,28 @@ def _migration_v27(conn: sqlite3.Connection) -> None:
         _add_column_if_missing(conn, "discussions", "max_rounds", "INTEGER NOT NULL DEFAULT 3")
 
 
+def _migration_v28(conn: sqlite3.Connection) -> None:
+    """task_usage table: per-task token/cost accounting, sourced from the
+    Claude Code SDK dispatch path (source='sdk') and self-reported handoff
+    payloads (source='handoff') for agents with no programmatic usage data."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS task_usage (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id       TEXT    NOT NULL,
+            agent         TEXT    NOT NULL,
+            source        TEXT    NOT NULL DEFAULT 'manual',
+            model         TEXT,
+            input_tokens  INTEGER,
+            output_tokens INTEGER,
+            cost_usd      REAL,
+            recorded_at   TEXT    NOT NULL
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_task_usage_task_id ON task_usage(task_id)")
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -810,4 +832,5 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v25,
     _migration_v26,
     _migration_v27,
+    _migration_v28,
 ]

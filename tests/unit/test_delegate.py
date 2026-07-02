@@ -629,3 +629,78 @@ def test_delegate_ship_on_complete_flag_overrides_contract(tmp_path):
     )
     assert r.returncode == 0, r.stderr
     assert "SHIP-ON-COMPLETE" in r.stdout
+
+
+class TestSaveContextSnapshotTaskUsage:
+    """_save_context_snapshot must persist SDK dispatch cost/tokens to task_usage
+    (source='sdk') in addition to the existing YAML sidecar cache."""
+
+    def _setup(self, tmp_path: Path) -> Path:
+        project = tmp_path / "proj"
+        project.mkdir()
+        (project / ".superharness").mkdir()
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(str(project))
+        init_db(conn)
+        conn.execute(
+            "INSERT INTO tasks (id, title, status, version, created_at) "
+            "VALUES ('t1', 'T', 'in_progress', 1, '2026-01-01T00:00:00Z')"
+        )
+        conn.commit()
+        conn.close()
+        return project
+
+    def test_save_context_snapshot_writes_task_usage_row(self, tmp_path: Path) -> None:
+        from superharness.commands.delegate import _save_context_snapshot
+        from superharness.engine import usage_dao
+        from superharness.engine.db import get_connection, init_db
+
+        project = self._setup(tmp_path)
+        result = {"output": "done", "input_tokens": 200, "output_tokens": 80, "cost_usd": 0.02}
+        _save_context_snapshot(str(project), "t1", result, model="claude-sonnet-5")
+
+        conn = get_connection(str(project))
+        init_db(conn)
+        rows = usage_dao.list_for_task(conn, "t1")
+        conn.close()
+
+        assert len(rows) == 1
+        assert rows[0].source == "sdk"
+        assert rows[0].agent == "claude-code"
+        assert rows[0].model == "claude-sonnet-5"
+        assert rows[0].input_tokens == 200
+        assert rows[0].output_tokens == 80
+        assert rows[0].cost_usd == 0.02
+
+    def test_save_context_snapshot_still_writes_yaml_cache(self, tmp_path: Path) -> None:
+        from superharness.commands.delegate import _save_context_snapshot
+        import yaml
+
+        project = self._setup(tmp_path)
+        result = {"output": "done", "input_tokens": 200, "output_tokens": 80, "cost_usd": 0.02}
+        _save_context_snapshot(str(project), "t1", result, model="claude-sonnet-5")
+
+        cache_file = project / ".superharness" / "context-cache" / "t1.yaml"
+        assert cache_file.exists()
+        snapshot = yaml.safe_load(cache_file.read_text())
+        assert snapshot["task_id"] == "t1"
+        assert snapshot["input_tokens"] == 200
+        assert snapshot["output_tokens"] == 80
+        assert snapshot["cost_usd"] == 0.02
+
+    def test_save_context_snapshot_handles_missing_cost_data_gracefully(self, tmp_path: Path) -> None:
+        from superharness.commands.delegate import _save_context_snapshot
+        from superharness.engine import usage_dao
+        from superharness.engine.db import get_connection, init_db
+
+        project = self._setup(tmp_path)
+        result = {"output": "done", "input_tokens": 0, "output_tokens": 0, "cost_usd": None}
+        _save_context_snapshot(str(project), "t1", result, model="unknown-model")
+
+        conn = get_connection(str(project))
+        init_db(conn)
+        rows = usage_dao.list_for_task(conn, "t1")
+        conn.close()
+
+        assert len(rows) == 1
+        assert rows[0].cost_usd is None

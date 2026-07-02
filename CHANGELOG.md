@@ -652,3 +652,9 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-06-26: feat(auto-dispatch): add --orchestrate flag — Orchestrator.decompose() fan-out, subtask registration in SQLite, parent set to in_progress; fallback to normal enqueue on empty decomposition; 8 new tests
 - 2026-06-26: chore: bump version to 1.74.0 (feat/orchestrate minor release)
 - 2026-06-30: fix(hooks): branch-guard regex now requires whitespace before main/master to avoid false-positives on branch names containing the substring (e.g. feat/main-entry); src copy synced with adapters copy (adds gitlab.gs LAN mirror allowlist)
+- 2026-07-02: feat(usage): add task_usage table and DAO for per-task token/cost tracking
+- 2026-07-02: feat(usage): persist Claude Code SDK dispatch cost/tokens to task_usage table; fix pre-existing bug where _save_context_snapshot's YAML sidecar write silently failed (yaml_helpers had no safe_dump function)
+- 2026-07-02: feat(usage): accept self-reported token/cost fields in shux handoff-write (--input-tokens/--output-tokens/--cost-usd/--model), forwarded to task_usage as source=handoff
+- 2026-07-02: feat(usage): add cost/agent breakdown to shux insights — new cost_breakdown section aggregates task_usage by agent (total_cost_usd, total_input_tokens, total_output_tokens, task_count)
+- 2026-07-02: docs(guide): document per-task token/cost accounting (task_usage table, handoff-write usage flags, insights cost_breakdown) in docs/GUIDE.md Cost Tracking section
+- 2026-07-02 (v1.75.0): chore(release): bump version to 1.75.0 — per-task token/cost accounting feature (task_usage table, SDK dispatch cost capture, self-reported handoff usage, shux insights cost_breakdown)
