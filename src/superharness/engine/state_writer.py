@@ -314,6 +314,24 @@ def write_handoff_to_db(
                 from_agent=frm, to_agent=to, content=body,
                 metadata=content, now=str(created),
             )
+
+            # Self-reported usage (optional): agents with no programmatic usage
+            # data (Codex CLI, Gemini CLI, OpenCode) report tokens/cost via the
+            # handoff payload. Only record when at least one field is present.
+            has_usage = any(
+                content.get(k) is not None
+                for k in ("input_tokens", "output_tokens", "cost_usd")
+            )
+            if has_usage:
+                from superharness.engine import usage_dao
+                usage_dao.record(
+                    conn, task_id=str(tid), agent=str(frm) if frm else "unknown",
+                    source="handoff", model=content.get("model"),
+                    input_tokens=content.get("input_tokens"),
+                    output_tokens=content.get("output_tokens"),
+                    cost_usd=content.get("cost_usd"),
+                    now=str(created),
+                )
         return True
     except Exception as e:
         logger.warning("write_handoff_to_db failed (non-fatal): %s", e, exc_info=True)

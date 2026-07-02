@@ -243,6 +243,15 @@ def write_handoff(
     else:
         _abort(f"invalid --phase: {args.phase} (expected plan or report)", 2)
 
+    if args.input_tokens is not None:
+        payload["input_tokens"] = args.input_tokens
+    if args.output_tokens is not None:
+        payload["output_tokens"] = args.output_tokens
+    if args.cost_usd is not None:
+        payload["cost_usd"] = args.cost_usd
+    if args.model:
+        payload["model"] = args.model
+
     # ── SQLite is the source of truth (mandatory). YAML is export-only. ──
     from superharness.engine.state_writer import write_handoff_to_db
     write_handoff_to_db(str(project_dir), payload,
@@ -305,6 +314,18 @@ def _build_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction, default=None,
         help="Set tests_passed: true|false on report handoff",
     )
+
+    # Self-reported token/cost usage (optional, any phase) — best-effort
+    # substitute for agents with no programmatic usage data (Codex CLI,
+    # Gemini CLI, OpenCode). See src/superharness/engine/usage_dao.py.
+    p.add_argument("--input-tokens", dest="input_tokens", type=int, default=None,
+                   help="Self-reported input token count")
+    p.add_argument("--output-tokens", dest="output_tokens", type=int, default=None,
+                   help="Self-reported output token count")
+    p.add_argument("--cost-usd", dest="cost_usd", type=float, default=None,
+                   help="Self-reported cost in USD")
+    p.add_argument("--model", dest="model", default=None,
+                   help="Model used for this dispatch (e.g. codex-cli, claude-sonnet-5)")
 
     p.add_argument("--out", default=None,
                    help="Override output filename (default: <task>-<phase>-<date>-<from>.yaml)")
