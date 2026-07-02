@@ -16,7 +16,7 @@ def get_insights(project_dir: str) -> dict:
     if not os.path.isfile(db_path):
         return {
             "tasks": {}, "agents": {}, "dispatch": {},
-            "failures": [], "summarizer": [],
+            "failures": [], "summarizer": [], "cost_breakdown": {},
         }
 
     conn = sqlite3.connect(db_path)
@@ -28,6 +28,7 @@ def get_insights(project_dir: str) -> dict:
             "dispatch": _dispatch_counts(conn),
             "failures": _top_failures(conn),
             "summarizer": _summarizer_breakdown(conn),
+            "cost_breakdown": _cost_breakdown(conn),
         }
     finally:
         conn.close()
@@ -71,6 +72,45 @@ def _summarizer_breakdown(conn: sqlite3.Connection) -> list[dict]:
         }
         for r in rows
     ]
+
+
+def _cost_breakdown(conn: sqlite3.Connection) -> dict:
+    """Per-agent token/cost totals from task_usage, answering "which agent/model
+    was most cost-effective for this task type."
+
+    Returns one entry per agent with: total_cost_usd, total_input_tokens,
+    total_output_tokens, task_count (distinct task_id). cost_usd is summed
+    with NULLs excluded (rows that only reported tokens); token sums likewise
+    exclude NULLs. Empty dict when the task_usage table is missing (older DBs)
+    or has no rows.
+    """
+    tables = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()}
+    if "task_usage" not in tables:
+        return {}
+
+    rows = conn.execute(
+        """
+        SELECT
+            agent,
+            COALESCE(SUM(input_tokens), 0)  AS input_tokens,
+            COALESCE(SUM(output_tokens), 0) AS output_tokens,
+            COALESCE(SUM(cost_usd), 0.0)    AS cost_usd,
+            COUNT(DISTINCT task_id)         AS task_count
+        FROM task_usage
+        GROUP BY agent
+        """
+    ).fetchall()
+    return {
+        r["agent"]: {
+            "total_input_tokens": int(r["input_tokens"]),
+            "total_output_tokens": int(r["output_tokens"]),
+            "total_cost_usd": r["cost_usd"],
+            "task_count": int(r["task_count"]),
+        }
+        for r in rows
+    }
 
 
 def _task_counts(conn: sqlite3.Connection) -> dict:
