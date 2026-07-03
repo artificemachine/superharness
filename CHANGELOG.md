@@ -658,3 +658,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-07-02: feat(usage): add cost/agent breakdown to shux insights — new cost_breakdown section aggregates task_usage by agent (total_cost_usd, total_input_tokens, total_output_tokens, task_count)
 - 2026-07-02: docs(guide): document per-task token/cost accounting (task_usage table, handoff-write usage flags, insights cost_breakdown) in docs/GUIDE.md Cost Tracking section
 - 2026-07-02 (v1.75.0): chore(release): bump version to 1.75.0 — per-task token/cost accounting feature (task_usage table, SDK dispatch cost capture, self-reported handoff usage, shux insights cost_breakdown)
+- 2026-07-03: fix(hooks): scope-guard.sh no longer blocks editing *.env.example — it's a checked-in template with placeholder var names, never real secrets. Real .env/.env.local files remain hard-blocked. Found while documenting new video-backend env vars in semblar's .env.example.
