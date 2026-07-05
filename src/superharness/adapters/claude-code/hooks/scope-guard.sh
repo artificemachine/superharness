@@ -20,8 +20,13 @@ if [ -z "$FILE_PATH" ] && [ -n "$INPUT" ]; then
   exit 0
 fi
 
-# Block writes to sensitive files — ALWAYS, regardless of contract
+# Block writes to sensitive files — ALWAYS, regardless of contract.
+# Exception: *.env.example is a checked-in template (placeholder var names,
+# no real values) — never a secret. Excluded before the sensitive-file case
+# below so editing it isn't blocked alongside real .env / .env.local files.
 case "$FILE_PATH" in
+  *.env.example)
+    ;;
   *.env|*.env.*|*credentials*|*secrets.json|*secrets.yaml|*secrets.yml|*secrets.toml|*.pem|*.key|*/.ssh/*|*/.kube/config|*terraform.tfvars|*.tfvars|*.tfvars.json)
     cat <<EOF
 {
