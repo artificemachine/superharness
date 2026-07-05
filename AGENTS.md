@@ -22,6 +22,16 @@ uv run python -m superharness demo     # zero-config walkthrough
 
 The full suite has 4 pre-existing failures (dashboard-port detection — ignores these).
 
+## Global Install Hygiene
+- Never run `pipx install --editable` / `pipx install -e .` against the global `superharness`
+  pipx venv (`~/.local/pipx/venvs/superharness`). Regressed twice already (2026-06-13,
+  2026-07-05) — it makes the live `shux`/`superharness` CLI and all 5 Claude Code hook scripts
+  in `~/.claude/settings.json` resolve straight into this dev checkout, so any repo breakage
+  cascades to hooks globally.
+- Dev-test repo changes in a repo-local venv instead: `python -m venv .venv && .venv/bin/pip install -e .`.
+- If found editable again: `pipx uninstall superharness && pipx install <wheel-or-pypi>`
+  (non-editable), then `shux install-hooks` to repoint the hooks.
+
 ## Project Rules
 Run `shux rules` to list all project constraints. Rules in `.superharness/rules/` are
 the authoritative source for policies, conventions, and architecture facts.
