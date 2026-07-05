@@ -49,6 +49,17 @@ See also: `SOUL.md.template` for the separate soul file approach (preferred for 
 - **Lint/scan:** `shipguard scan .`
 - **Run CLI:** `superharness <cmd>` or via `shux <cmd>`
 
+## Global pipx Install — Do Not Edit-Install Globally
+- Never run `pipx install --editable` / `pipx install -e .` against the global `superharness`
+  pipx venv (`~/.local/pipx/venvs/superharness`). This has regressed twice (2026-06-13,
+  2026-07-05): it makes the live CLI and all 5 Claude Code hook scripts in
+  `~/.claude/settings.json` resolve directly into this dev repo, so deleting/moving/breaking
+  this checkout breaks hooks globally across every project.
+- For dev-testing repo changes, use a repo-local venv instead:
+  `python -m venv .venv && .venv/bin/pip install -e .`.
+- If it regresses again: `pipx uninstall superharness && pipx install <wheel-or-pypi>`
+  (non-editable), then `shux install-hooks` to fix the hook paths in `~/.claude/settings.json`.
+
 ## Before Starting Work
 - Run `superharness recall --project . "KEYWORDS"` with terms related to your task
 - Check for prior decisions, failures, or context from earlier sessions

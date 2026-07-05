@@ -1,6 +1,9 @@
 .DS_Store
 *.swp
 .venv/
+
+# /to-agents instruction-file backups — git history already preserves prior versions
+*.bak-to-agents-*
 .coverage
 .coverage.*
 .claude/
