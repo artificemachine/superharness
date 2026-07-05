@@ -105,6 +105,19 @@ todo → plan_proposed → plan_approved → in_progress → report_ready → do
 
 ---
 
+## 5a. Global Install Hygiene (Critical)
+
+- Never run `pipx install --editable` / `pipx install -e .` against the global `superharness`
+  pipx venv (`~/.local/pipx/venvs/superharness`). This has regressed twice (2026-06-13,
+  2026-07-05): it makes the live CLI and all 5 Claude Code hook scripts in
+  `~/.claude/settings.json` resolve directly into this dev repo — deleting or breaking this
+  checkout then breaks hooks globally.
+- For local dev-testing, use a repo-local venv: `python -m venv .venv && .venv/bin/pip install -e .`.
+- If this regresses: `pipx uninstall superharness && pipx install <wheel-or-pypi>` (non-editable),
+  then `shux install-hooks`.
+
+---
+
 ## 6. Commands Reference
 
 | Command | Purpose |
