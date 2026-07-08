@@ -5,9 +5,9 @@ description: >
   status, wants to see the task contract, wants to delegate/dispatch work to an agent,
   wants to check tool health, or wants to close a completed task. Routes to
   /shux-contract (show tasks + next-task suggestion), /shux-status (health dashboard),
-  /shux-delegate (create + enqueue a task), /shux-doctor (prerequisite check), and
-  /shux-close (close a report_ready/review_passed task). For anything else, /shux
-  <args> runs the CLI directly.
+  /shux-delegate (create + enqueue a task), /shux-doctor (prerequisite check),
+  /shux-close (close a report_ready/review_passed task), and /shux-help (full CLI
+  command reference). For anything else, /shux <args> runs the CLI directly.
 ---
 
 ## When to use which command
@@ -19,6 +19,7 @@ description: >
 | "dispatch this task", "delegate <id>" | `/shux-delegate <id>` |
 | "check prerequisites", "is superharness set up right" | `/shux-doctor` |
 | "close task <id>", "mark done" | `/shux-close <id>` (only if status is report_ready or review_passed) |
+| "what shux commands exist", "help", "usage" | `/shux-help` |
 | anything else shux-related | `/shux <subcommand> [args]` |
 
 ## Rules

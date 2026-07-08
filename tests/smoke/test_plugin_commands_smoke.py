@@ -40,5 +40,5 @@ def test_every_command_file_has_argument_hint_or_none(path):
         assert isinstance(fm["argument-hint"], str)
 
 
-def test_command_count_matches_six():
-    assert len(list(COMMANDS_DIR.glob("*.md"))) == 6
+def test_command_count_matches_seven():
+    assert len(list(COMMANDS_DIR.glob("*.md"))) == 7
