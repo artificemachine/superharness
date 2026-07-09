@@ -4,6 +4,15 @@
 
 superharness lets AI coding assistants work on the same project without stepping on each other. It provides a shared contract (SQLite-backed), queue-based delegation, lifecycle rules, and handoff/ledger state so tasks survive across sessions and auto-manage themselves.
 
+## Install as Claude Code Plugin
+
+```
+/plugin marketplace add artificemachine/superharness
+/plugin install superharness
+```
+
+Gives you `/shux` (raw CLI passthrough), `/shux-contract`, `/shux-status`, `/shux-delegate`, `/shux-doctor`, `/shux-close`, plus a skill that auto-routes plain-English task/status questions to the right command.
+
 ## What's New in v1.44.21
 
 - **Auto-mode**: 6 lifecycle rules (in_progress 3h, waiting_input 8h, report_ready 24h, todo 2h, deadline, review) auto-manage tasks without human intervention

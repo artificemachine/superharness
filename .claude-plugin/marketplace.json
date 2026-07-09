@@ -1,0 +1,9 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "superharness",
+  "description": "Multi-agent task coordination (shux) for Claude Code, Codex CLI, Gemini CLI, and OpenCode.",
+  "owner": { "name": "artificemachine", "url": "https://github.com/artificemachine" },
+  "plugins": [
+    { "name": "superharness", "description": "shux slash commands: contract, delegate, status, doctor, close.", "source": "./plugin", "category": "productivity" }
+  ]
+}

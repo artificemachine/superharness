@@ -1,0 +1,7 @@
+{
+  "name": "superharness",
+  "description": "Multi-agent task coordination (shux) — slash commands for the superharness CLI.",
+  "author": { "name": "artificemachine", "url": "https://github.com/artificemachine" },
+  "homepage": "https://github.com/artificemachine/superharness",
+  "repository": "https://github.com/artificemachine/superharness"
+}
