@@ -104,7 +104,6 @@ def cmd_submit_round(
     agent: str,
     verdict: str,
     position: str,
-    points_file: str | None,
 ) -> int:
     project_dir = _get_project_dir(discussion_dir)
     disc_id = _get_disc_id(discussion_dir)
@@ -146,17 +145,6 @@ def cmd_submit_round(
             if r.round_number == round_ and r.agent == agent:
                 sys.exit(f"Round {round_} already submitted by {agent}")
 
-        # Parse points file if provided
-        points: list = []
-        if points_file and os.path.exists(points_file):
-            try:
-                from superharness.engine.yaml_helpers import safe_load
-                raw = safe_load(points_file, list)
-                if isinstance(raw, list):
-                    points = raw
-            except Exception as e:
-                logger.warning("discussion.py unexpected error: %s", e, exc_info=True)
-                pass
         discussions_dao.add_round(
             conn,
             discussion_id=disc_id,
@@ -234,7 +222,7 @@ def _check_all_submitted_and_set_consensus(conn, disc, round_: int, project_dir:
 def _create_consensus_task(
     conn, disc, round_: int, submitted_agents: set[str], project_dir: str = "/"
 ) -> None:
-    """Auto-create a contract task from discussion consensus points (non-agree items)."""
+    """Auto-create a contract task from discussion points that block consensus."""
     try:
         from superharness.engine import tasks_dao
         from superharness.engine.tasks_dao import TaskRow
@@ -246,7 +234,9 @@ def _create_consensus_task(
         topic = str(disc.topic)[:80]
         now = _now_utc()
 
-        # Collect non-agree points from round submissions
+        # Collect points from round submissions. This gate governs whether the
+        # `impl-*` summary task is created at all; a unanimous 'agree' round
+        # produces no follow-up work.
         rounds = discussions_dao.get_rounds(conn, disc_id)
         all_points = []
         has_actionable = False
@@ -264,14 +254,17 @@ def _create_consensus_task(
             return
 
         # Extract individual action items from round submissions.
-        # Each agent's non-agree verdict becomes a separate task with
-        # the agent's content as the acceptance criteria.
+        #
+        # Only a verdict that *blocks* consensus is an action item. 'abstain'
+        # and 'consensus' permit a close exactly as 'agree' does, so a bare
+        # `== "agree"` skip fabricated `[abstain]`/`[consensus]` implementation
+        # tasks for agents who had agreed or explicitly declined to weigh in.
         created = 0
         for r in rounds:
             if r.round_number != round_ or not r.verdict:
                 continue
             v = r.verdict.lower()
-            if v == "agree":
+            if v in _CONSENSUS_VERDICTS:
                 continue
             # Create a task per non-agree verdict
             action_id = f"action-{disc_id[:20]}-{r.agent}-{round_}"
@@ -782,7 +775,6 @@ def main(argv: list[str] | None = None) -> None:
         parser.add_argument("--agent")
         parser.add_argument("--verdict")
         parser.add_argument("--position")
-        parser.add_argument("--points-file", dest="points_file")
         opts = parser.parse_args(rest)
         for attr in ("discussion_dir", "round_", "agent", "verdict", "position"):
             if getattr(opts, attr, None) is None:
@@ -791,7 +783,7 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(
             cmd_submit_round(
                 opts.discussion_dir, opts.round_, opts.agent,
-                opts.verdict, opts.position, opts.points_file,
+                opts.verdict, opts.position,
             )
         )
 
