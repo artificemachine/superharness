@@ -605,7 +605,10 @@ def test_all_statuses_in_next_action() -> None:
 
 def test_discussion_auto_consensus_on_all_submissions():
     """When all participants submit, discussion must auto-transition to consensus.
-    If any point is non-agree, an auto-task is created."""
+    If any round-level verdict is not 'agree', the impl-* auto-task is created.
+
+    (This previously claimed per-point verdicts drove task creation. They never
+    did — --points-file was parsed and discarded, and was removed 2026-07-09.)"""
     import tempfile, yaml, os
     from pathlib import Path
 
@@ -626,10 +629,9 @@ def test_discussion_auto_consensus_on_all_submissions():
 
         from superharness.engine.discussion import cmd_submit_round
 
-        # Submit agent 1 with one non-agree point
-        points_file = disc_dir / "points.yaml"
-        points_file.write_text(yaml.dump([{"id": "fix-1", "verdict": "disagree", "rationale": "Must fix"}]))
-        rc = cmd_submit_round(str(disc_dir), 1, "claude-code", "consensus", "Position 1", str(points_file))
+        # Submit agent 1. The round-level verdict 'consensus' permits a close
+        # but is not 'agree', which is what drives impl-* task creation.
+        rc = cmd_submit_round(str(disc_dir), 1, "claude-code", "consensus", "Position 1")
         assert rc == 0
 
         # State should still be active (not all submitted)
@@ -641,10 +643,8 @@ def test_discussion_auto_consensus_on_all_submissions():
         finally:
             _c.close()
 
-        # Submit agent 2 with another non-agree point
-        points_file2 = disc_dir / "points2.yaml"
-        points_file2.write_text(yaml.dump([{"id": "fix-1", "verdict": "disagree", "rationale": "Must fix"}]))
-        rc = cmd_submit_round(str(disc_dir), 1, "codex-cli", "consensus", "Position 2", str(points_file2))
+        # Submit agent 2 with the same round-level verdict
+        rc = cmd_submit_round(str(disc_dir), 1, "codex-cli", "consensus", "Position 2")
         assert rc == 0
 
         # State should now be consensus
@@ -690,8 +690,8 @@ def test_discussion_not_consensus_on_partial_submission():
         from superharness.engine.discussion import cmd_submit_round
 
         # Submit only 2 of 4 (need 3 to reach consensus)
-        cmd_submit_round(str(disc_dir), 1, "claude-code", "consensus", "P1", None)
-        cmd_submit_round(str(disc_dir), 1, "codex-cli", "consensus", "P2", None)
+        cmd_submit_round(str(disc_dir), 1, "claude-code", "consensus", "P1")
+        cmd_submit_round(str(disc_dir), 1, "codex-cli", "consensus", "P2")
 
         # State should NOT be consensus (2 < threshold of 3)
         _c = _gc(str(d))
@@ -726,10 +726,8 @@ def test_all_agree_discussion_skips_auto_task():
 
         from superharness.engine.discussion import cmd_submit_round
 
-        points_file = disc_dir / "points.yaml"
-        points_file.write_text(yaml.dump([{"id": "ok-1", "verdict": "agree", "rationale": "Good"}]))
-        cmd_submit_round(str(disc_dir), 1, "claude-code", "agree", "P1", str(points_file))
-        cmd_submit_round(str(disc_dir), 1, "codex-cli", "agree", "P2", str(points_file))
+        cmd_submit_round(str(disc_dir), 1, "claude-code", "agree", "P1")
+        cmd_submit_round(str(disc_dir), 1, "codex-cli", "agree", "P2")
 
         # Should auto-consensus but NOT create task
         from superharness.engine.db import get_connection
