@@ -224,6 +224,14 @@ def inbox_owner_counts(inbox_file: Path) -> dict[str, int]:
     return dict(counts)
 
 
+def _safe_int(value: object, default: int) -> int:
+    """Parse an int from a query-string value; fall back on bad input."""
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+
+
 def task_instructions(project_dir: Path, task_id: str) -> str:
     """Build personalized TDD instructions for a task by reading plan docs and contract."""
     import re as _re
@@ -237,7 +245,7 @@ def task_instructions(project_dir: Path, task_id: str) -> str:
     try:
         data = dashboard_presenter.get_task_instructions_data(conn, task_id, str(project_dir))
         if not data:
-            return {"error": "task not found"}
+            return "Task not found."
         task_title = data["title"]
         criteria = data["acceptance_criteria"]
     finally:
@@ -2678,7 +2686,7 @@ class Handler(BaseHTTPRequestHandler):
             qs = parse_qs(parsed.query)
             task_id = qs.get("task", [""])[0]
             agent = qs.get("agent", [""])[0]
-            lines = int(qs.get("lines", ["200"])[0])
+            lines = _safe_int(qs.get("lines", ["200"])[0], 200)
             if not task_id:
                 self._json({"error": "task parameter required"}, 400)
                 return
@@ -2719,7 +2727,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if p == "/api/watcher-errors":
-            lines = int(parse_qs(parsed.query).get("lines", ["30"])[0])
+            lines = _safe_int(parse_qs(parsed.query).get("lines", ["30"])[0], 30)
             errors_path = self.project_dir / ".superharness" / "watcher-errors.log"
             content = ""
             if errors_path.exists():
@@ -2737,7 +2745,7 @@ class Handler(BaseHTTPRequestHandler):
             from superharness.logging_utils import _resolve_log_file
             qs = parse_qs(parsed.query)
             audit = qs.get("audit", ["0"])[0] in ("1", "true")
-            n = int(qs.get("n", ["200"])[0])
+            n = _safe_int(qs.get("n", ["200"])[0], 200)
             level = qs.get("level", [""])[0].upper()
             log_path = _resolve_log_file(
                 "SUPERHARNESS_AUDIT_LOG_FILE" if audit else "SUPERHARNESS_LOG_FILE",
@@ -3023,7 +3031,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": "benchmark module not available"}, 500)
                 return
             qs = parse_qs(parsed.query)
-            top_n = int(qs.get("top", ["20"])[0])
+            top_n = _safe_int(qs.get("top", ["20"])[0], 20)
             records = load_records(self.project_dir)
             stats = aggregate(records)[:top_n]
             total_cost = sum(r.get("cost_usd", 0.0) for r in records)
@@ -3531,9 +3539,6 @@ def main() -> int:
     return 0
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
-
 def _get_health(project_dir: str) -> dict:
     """Return per-agent health stats for the dashboard."""
     try:
@@ -3568,3 +3573,7 @@ def _get_health(project_dir: str) -> dict:
             conn.close()
     except Exception as e:
         return {"error": str(e)}
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
