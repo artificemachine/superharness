@@ -17,15 +17,17 @@ def cmd_mcp():
 @cmd_mcp.command(name="start")
 @click.option("--port", "-p", type=int, default=7474, show_default=True,
               help="Port to listen on.")
+@click.option("--host", "-H", default="127.0.0.1", show_default=True,
+              help="Address to bind. Use 0.0.0.0 to accept LAN connections from other hosts.")
 @click.option("--project", "project_path", default=None,
               help="Project directory (default: cwd).")
 @click.option("--transport", default="streamable-http", show_default=True,
               help="FastMCP transport: streamable-http or sse.")
-def cmd_mcp_start(port: int, project_path: str | None, transport: str) -> None:
+def cmd_mcp_start(port: int, host: str, project_path: str | None, transport: str) -> None:
     """Start the superharness MCP server."""
     project_dir = os.path.realpath(project_path or os.getcwd())
     from superharness.mcp.server import run_server
-    run_server(project_dir, port=port, transport=transport)
+    run_server(project_dir, port=port, transport=transport, host=host)
 
 
 @cmd_mcp.command(name="status")
@@ -43,12 +45,13 @@ def cmd_mcp_status(project_path: str | None) -> None:
             data = json.load(f)
         pid = data.get("pid")
         port = data.get("port", 7474)
+        host = data.get("host", "127.0.0.1")
         # Check if process is alive
         try:
             os.kill(pid, 0)
             click.echo(f"MCP server: running  pid={pid}  port={port}")
             click.echo(f"  project: {project_dir}")
-            click.echo(f"  url: http://127.0.0.1:{port}/mcp")
+            click.echo(f"  url: http://{host}:{port}/mcp")
         except (ProcessLookupError, OSError):
             click.echo("MCP server: stopped (stale state file)")
             os.unlink(state_path)

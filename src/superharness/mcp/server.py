@@ -172,7 +172,8 @@ def _make_app(project_path: str, port: int = 7474):
     return mcp
 
 
-def run_server(project_path: str, port: int = 7474, transport: str = "streamable-http") -> None:
+def run_server(project_path: str, port: int = 7474, transport: str = "streamable-http",
+               host: str = "127.0.0.1") -> None:
     """Start the MCP server and block until stopped."""
     if not _FASTMCP_AVAILABLE:
         print("fastmcp is required. Install with: pip install fastmcp", file=sys.stderr)
@@ -188,7 +189,7 @@ def run_server(project_path: str, port: int = 7474, transport: str = "streamable
     # Write PID + port for status checks
     state_path = os.path.join(harness_dir, "mcp.json")
     with open(state_path, "w") as f:
-        json.dump({"pid": os.getpid(), "port": port, "project": project_path}, f)
+        json.dump({"pid": os.getpid(), "port": port, "host": host, "project": project_path}, f)
 
     def _cleanup(*_):
         try:
@@ -201,11 +202,11 @@ def run_server(project_path: str, port: int = 7474, transport: str = "streamable
     signal.signal(signal.SIGTERM, _cleanup)
     signal.signal(signal.SIGINT, _cleanup)
 
-    print(f"superharness MCP server starting on port {port}")
+    print(f"superharness MCP server starting on {host}:{port}")
     print(f"project: {project_path}")
     print("Press Ctrl+C to stop.")
 
     try:
-        mcp.run(transport=transport, host="127.0.0.1", port=port)
+        mcp.run(transport=transport, host=host, port=port)
     finally:
         _cleanup()
