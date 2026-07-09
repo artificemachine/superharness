@@ -123,7 +123,15 @@ def test_complete_trial_reinforces_improvement(tmp_path: Path) -> None:
 
 
 def test_complete_trial_reverts_degradation(tmp_path: Path) -> None:
-    """complete_trial should revert degraded changes."""
+    """complete_trial should revert degraded changes.
+
+    Regression: complete_trial previously set reverted=1 and logged
+    "Reverting..." but never called _update_profile_field, so a degraded
+    profile change stayed applied forever — the flag lied about the actual
+    state. This test previously only asserted the flag, which would have
+    passed either way; it now also asserts the profile.yaml value itself.
+    """
+    import yaml
     from superharness.engine.behavioral import start_trial, complete_trial
     import time
 
@@ -140,6 +148,15 @@ def test_complete_trial_reverts_degradation(tmp_path: Path) -> None:
     assert result["outcome"] == "degraded"
     assert result["reverted"] is True
     assert result["reinforced"] is False
+
+    profile_path = os.path.join(project_dir, ".superharness", "profile.yaml")
+    with open(profile_path) as f:
+        profile = yaml.safe_load(f) or {}
+    assert profile.get("model_prefs") == "standard", (
+        f"degraded trial must restore old_value 'standard' in profile.yaml, "
+        f"got {profile.get('model_prefs')!r} — reverted=True is a lie if the "
+        f"field was never actually written back"
+    )
 
 
 # ── Helper ───────────────────────────────────────────────────────────────────
