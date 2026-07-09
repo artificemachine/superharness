@@ -203,10 +203,15 @@ def _age_minutes(ts_str: str) -> float | None:
         return None
     try:
         ts = datetime.fromisoformat(str(ts_str).replace("Z", "+00:00"))
+        # A tz-naive timestamp (no offset) raises TypeError when subtracted
+        # from an aware datetime, which would crash the entire reconcile pass.
+        # Treat naive timestamps as UTC.
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        return (now - ts).total_seconds() / 60
     except (ValueError, TypeError):
         return None
-    now = datetime.now(timezone.utc)
-    return (now - ts).total_seconds() / 60
 
 
 def _apply_action(item: dict, rule: LifecycleRule, age: float, limit: int) -> bool:

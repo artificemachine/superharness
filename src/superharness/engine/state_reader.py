@@ -27,9 +27,12 @@ logger = logging.getLogger(__name__)
 
 def _has_sqlite_db(project_dir: str) -> bool:
     """Return True if a state db exists at the XDG path or the legacy path."""
+    # Honor the worktree-dispatch override so reads from an ephemeral worktree
+    # still find the original project's DB — db.get_connection uses the same env.
+    effective = os.environ.get("SUPERHARNESS_STATE_PROJECT", "").strip() or project_dir
     return (
-        os.path.exists(resolve_xdg_state_db_path(project_dir))
-        or os.path.exists(os.path.join(project_dir, ".superharness", "state.sqlite3"))
+        os.path.exists(resolve_xdg_state_db_path(effective))
+        or os.path.exists(os.path.join(effective, ".superharness", "state.sqlite3"))
     )
 
 
@@ -403,7 +406,8 @@ def get_ledger_entries(project_dir: str, *, hours: int | None = None, limit: int
                 cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
                 entries = [
                     e for e in entries
-                    if _parse_iso_utc(str(e.get("created_at", ""))) >= cutoff
+                    if (_dt := _parse_iso_utc(str(e.get("created_at", "")))) is not None
+                    and _dt >= cutoff
                 ]
             return entries
         finally:
