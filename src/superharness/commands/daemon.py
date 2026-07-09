@@ -246,29 +246,50 @@ def _start_daemon(project_dir: Path, interval: int) -> None:
 
     # Monitor script writes its own PID to state file on start
 
-    # First fork
-    _monitor_pid = os.fork()
-    if _monitor_pid == 0:
-        # Child: second fork to create grandchild (reparented to init)
-        if os.fork() > 0:
-            os._exit(0)  # First child exits immediately
-        # Grandchild: the actual monitor
-        os.setsid()
-        os.chdir(str(project_dir))
-        os.umask(0)
-        # Close inherited fds, open devnull for standard streams
-        os.closerange(0, 3)
-        os.open(os.devnull, os.O_RDONLY)  # stdin
-        os.open(os.devnull, os.O_WRONLY)  # stdout
-        os.open(os.devnull, os.O_WRONLY)  # stderr
-        # Execute monitor script
-        os.execvpe(_find_superharness_python(),
-                   [_find_superharness_python(), str(_monitor_script),
-                    str(project_dir), str(interval),
-                    str(out_log), str(err_log), str(proc.pid)],
-                   _monitor_env)
-    # Parent: wait for first child to exit
-    os.waitpid(_monitor_pid, 0)
+    _monitor_argv = [
+        _find_superharness_python(), str(_monitor_script),
+        str(project_dir), str(interval),
+        str(out_log), str(err_log), str(proc.pid),
+    ]
+    if hasattr(os, "fork"):
+        # POSIX: double-fork so the grandchild reparents to init/launchd
+        # and survives CLI exit.
+        # First fork
+        _monitor_pid = os.fork()
+        if _monitor_pid == 0:
+            # Child: second fork to create grandchild (reparented to init)
+            if os.fork() > 0:
+                os._exit(0)  # First child exits immediately
+            # Grandchild: the actual monitor
+            os.setsid()
+            os.chdir(str(project_dir))
+            os.umask(0)
+            # Close inherited fds, open devnull for standard streams
+            os.closerange(0, 3)
+            os.open(os.devnull, os.O_RDONLY)  # stdin
+            os.open(os.devnull, os.O_WRONLY)  # stdout
+            os.open(os.devnull, os.O_WRONLY)  # stderr
+            # Execute monitor script
+            os.execvpe(_monitor_argv[0], _monitor_argv, _monitor_env)
+        # Parent: wait for first child to exit
+        os.waitpid(_monitor_pid, 0)
+    else:
+        # Windows: os.fork/os.setsid do not exist. Without this branch
+        # `shux daemon start` raised AttributeError after printing "started"
+        # and the monitor/auto-restart process was never created. Spawn the
+        # monitor as a detached background process instead.
+        DETACHED_PROCESS = 0x00000008
+        CREATE_NEW_PROCESS_GROUP = 0x00000200
+        subprocess.Popen(
+            _monitor_argv,
+            creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+            cwd=str(project_dir),
+            env=_monitor_env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+        )
     # Monitor script writes its own PID to state file on start
 
 

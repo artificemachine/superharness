@@ -628,6 +628,13 @@ def operator_start(project, port, no_open, use_dashboard, no_daemon):
 
     # Daemonize: fork+detach so the watcher survives the invoking shell.
     # The parent returns immediately; the child runs the monitor loop.
+    if not hasattr(os, "fork"):
+        # Windows: no os.fork/os.setsid. Run the monitor loop in the
+        # foreground rather than crashing with AttributeError; the caller
+        # can background the process if desired.
+        click.echo("  (no fork on this platform — running in foreground; Ctrl-C to stop)")
+        op.monitor_and_recover()
+        return
     pid = os.fork()
     if pid:
         click.echo(f"  daemon pid: {pid}")

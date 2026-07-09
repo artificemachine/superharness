@@ -1374,7 +1374,8 @@ def _execute_agent(ctx: DispatchContext) -> None:
             ctx.launcher_rc = _run_with_timeout(ctx.effective_timeout, ctx.wrapped_args, inbox_file=ctx.inbox_file, item_id=ctx.item_id,
                                             env=ctx.spawn_env)
         else:
-            proc = subprocess.Popen(ctx.wrapped_args, preexec_fn=os.setsid, env=ctx.spawn_env)
+            _preexec = os.setsid if hasattr(os, "setsid") else None
+            proc = subprocess.Popen(ctx.wrapped_args, preexec_fn=_preexec, env=ctx.spawn_env)
             _inbox_cmd(["set_field", "--file", ctx.inbox_file, "--id", ctx.item_id, "--key", "pid", "--value", str(proc.pid)])
             ctx.launcher_rc = proc.wait()
         _inbox_cmd(["set_field", "--file", ctx.inbox_file, "--id", ctx.item_id, "--key", "pid", "--value", ""])
