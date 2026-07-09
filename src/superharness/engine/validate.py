@@ -114,7 +114,7 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
         finally:
             conn.close()
     except Exception as e:
-        logger.warning("validate.py unexpected error: %s", e, exc_info=True)
+        _log.warning("validate.py unexpected error: %s", e, exc_info=True)
         all_tasks = []
 
     done_tasks = [t for t in all_tasks if t.status == "done" and t.id.strip()]
@@ -205,7 +205,7 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
                 if sub_id and not is_subtask_resolved(sub_status):
                     open_subtask_map.setdefault(task.id, []).append(sub_id)
         except Exception as e:
-            logger.warning("validate.py unexpected error: %s", e, exc_info=True)
+            _log.warning("validate.py unexpected error: %s", e, exc_info=True)
             pass
     for parent_id, open_subs in open_subtask_map.items():
         print(
@@ -226,7 +226,7 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
                 try:
                     state_writer.set_task_status(project, id_, "done")
                 except Exception as e:
-                    logger.warning("validate.py unexpected error: %s", e, exc_info=True)
+                    _log.warning("validate.py unexpected error: %s", e, exc_info=True)
                     pass
                 _repair_append_ledger(ledger_file, f"fixed stuck status for {id_}: {status} → done")
                 print(f"[repair] Fixed stuck status for: {id_} ({status} → done)")
@@ -287,7 +287,7 @@ def run_validate(project: str, strict: bool = False, repair: bool = False) -> in
             from superharness.commands.worktree_gc import run_worktree_gc
             gc = run_worktree_gc(project)
             if gc["removed"] > 0:
-                _repair_log(ledger_file, f"worktree-gc removed {gc['removed']} orphaned worktree(s)")
+                _repair_append_ledger(ledger_file, f"worktree-gc removed {gc['removed']} orphaned worktree(s)")
         except Exception as e:
             print(f"Warning: worktree-gc failed: {e}", file=sys.stderr)
 
