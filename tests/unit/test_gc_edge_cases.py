@@ -199,3 +199,37 @@ class TestGCStuckEdgeCases:
         result = _gc_stuck_waiting_input(str(tmp_path))
         assert result == 0  # too recent
         conn.close()
+
+    def test_old_todo_never_dispatched_not_touched(self, tmp_path):
+        """Precedence bug regression: the WHERE clause's second OR-branch
+        (created_at old AND in_progress_at IS NULL) has no status filter due
+        to missing parens around the two AND-groups, so it silently archives
+        ANY old task that's never entered in_progress — todo, plan_approved,
+        anything — not just waiting_input. This is exactly the shape of a
+        freshly created, not-yet-dispatched task.
+        """
+        from superharness.commands.inbox_watch import _gc_stuck_waiting_input
+        conn = _setup_db(tmp_path)
+        old = (datetime.now(timezone.utc) - timedelta(minutes=45)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        _seed(conn, _table="tasks", id="t-todo", title="T", status="todo",
+              project_path=str(tmp_path), created_at=old, in_progress_at=None)
+        conn.commit()
+        result = _gc_stuck_waiting_input(str(tmp_path))
+        assert result == 0  # not waiting_input — must not be touched
+        row = conn.execute("SELECT status FROM tasks WHERE id='t-todo'").fetchone()
+        assert row["status"] == "todo"
+        conn.close()
+
+    def test_old_plan_approved_never_dispatched_not_touched(self, tmp_path):
+        """Same precedence bug, different non-waiting_input status."""
+        from superharness.commands.inbox_watch import _gc_stuck_waiting_input
+        conn = _setup_db(tmp_path)
+        old = (datetime.now(timezone.utc) - timedelta(minutes=45)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        _seed(conn, _table="tasks", id="t-approved", title="T", status="plan_approved",
+              project_path=str(tmp_path), created_at=old, in_progress_at=None)
+        conn.commit()
+        result = _gc_stuck_waiting_input(str(tmp_path))
+        assert result == 0
+        row = conn.execute("SELECT status FROM tasks WHERE id='t-approved'").fetchone()
+        assert row["status"] == "plan_approved"
+        conn.close()
