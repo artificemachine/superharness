@@ -189,7 +189,6 @@ class TestBugFRuntime:
                     agent=agent,
                     verdict="abstain",
                     position=f"{agent} abstains for bug-F repro",
-                    points_file=None,
                 )
             assert rc == 0
             payload = json.loads(buf.getvalue())
@@ -231,7 +230,6 @@ class TestBugFRuntime:
                     agent=agent,
                     verdict="abstain",
                     position=f"{agent} abstains",
-                    points_file=None,
                 )
 
         conn = get_connection(str(project))
@@ -255,9 +253,9 @@ class TestBugFRuntime:
 
         with redirect_stdout(io.StringIO()):
             cmd_submit_round(str(disc_dir), 1, "codex-cli",
-                             "disagree", "codex disagrees", None)
+                             "disagree", "codex disagrees")
             cmd_submit_round(str(disc_dir), 1, "claude-code",
-                             "abstain", "claude abstains", None)
+                             "abstain", "claude abstains")
 
         buf = io.StringIO()
         with redirect_stdout(buf):
@@ -280,9 +278,9 @@ class TestBugFRuntime:
 
         with redirect_stdout(io.StringIO()):
             cmd_submit_round(str(disc_dir), 1, "codex-cli",
-                             "agree", "codex agrees", None)
+                             "agree", "codex agrees")
             cmd_submit_round(str(disc_dir), 1, "claude-code",
-                             "abstain", "claude abstains", None)
+                             "abstain", "claude abstains")
 
         buf = io.StringIO()
         with redirect_stdout(buf):

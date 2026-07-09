@@ -739,7 +739,6 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--round", type=int, required=True)
     p.add_argument("--verdict", required=True, help="agree|disagree|partial|consensus|abstain")
     p.add_argument("--position", required=True, help="Your position statement")
-    p.add_argument("--points-file", default=None, help="YAML file with point-by-point responses")
 
     # close — first-class way to terminate an active discussion AND cancel
     # any pending inbox items for its rounds. Bug G follow-up
@@ -823,7 +822,6 @@ def main(argv: list[str] | None = None) -> None:
             agent=opts.agent,
             verdict=opts.verdict,
             position=opts.position,
-            points_file=opts.points_file,
         )
 
     elif opts.subcmd == "close":

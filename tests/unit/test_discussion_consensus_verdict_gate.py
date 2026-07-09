@@ -106,7 +106,6 @@ class TestSubmitRejectsPromptCopyVerdict:
                     agent="codex-cli",
                     verdict="agree or disagree or partial",
                     position="test",
-                    points_file=None,
                 )
             assert exc_info.value.code != 0, "must exit non-zero for prompt-copy verdict"
         finally:
@@ -126,7 +125,6 @@ class TestSubmitRejectsPromptCopyVerdict:
             agent="codex-cli",
             verdict="abstain",
             position="test",
-            points_file=None,
         )
         assert rc == 0
 
