@@ -258,34 +258,25 @@ def _install_winsvc(
     return True
 
 
-def _uninstall_winsvc(project_dir: Path, **_kwargs: object) -> bool:
-    """Delete all Task Scheduler tasks for the given project."""
-    import hashlib
+def _uninstall_winsvc(project_dir: Path, worker_dir: Path | None = None,
+                      **_kwargs: object) -> bool:
+    """Delete THIS project's Task Scheduler watcher task.
 
-    # Best-effort: enumerate tasks with our prefix and delete any that match
-    list_result = subprocess.run(
-        ["schtasks", "/Query", "/FO", "CSV", "/NH"],
+    Scoped to the single task name derived from the worker dir. The previous
+    implementation deleted every task whose name started with
+    ``SuperharnessWatcher``, which removed *other* projects' watchers on a
+    shared machine.
+    """
+    if worker_dir is None:
+        # Default worker layout used by `watcher-worker` when --worker is omitted.
+        worker_dir = Path.home() / ".superharness-workers" / Path(project_dir).name
+    target_name = _schtasks_task_name(Path(worker_dir))
+
+    del_result = subprocess.run(
+        ["schtasks", "/Delete", "/TN", target_name, "/F"],
         capture_output=True, text=True, check=False,
     )
-    if list_result.returncode != 0:
-        return False
-
-    deleted = 0
-    for line in list_result.stdout.splitlines():
-        # CSV format: "TaskName","Next Run Time","Status"
-        parts = line.strip('"').split('","')
-        if not parts:
-            continue
-        name = parts[0].lstrip("\\")
-        if name.startswith(_TASK_NAME_PREFIX):
-            del_result = subprocess.run(
-                ["schtasks", "/Delete", "/TN", name, "/F"],
-                capture_output=True, text=True, check=False,
-            )
-            if del_result.returncode == 0:
-                deleted += 1
-
-    return deleted > 0
+    return del_result.returncode == 0
 
 
 # ---------------------------------------------------------------------------
@@ -350,12 +341,16 @@ def install(
     return False
 
 
-def uninstall(project_dir: Path, scripts_dir: Path) -> bool:
+def uninstall(project_dir: Path, scripts_dir: Path,
+              worker_dir: Path | None = None) -> bool:
     """Uninstall the watcher service for *project_dir*.
 
     Args:
         project_dir: Source project directory.
         scripts_dir: Path to the superharness scripts/ directory.
+        worker_dir: Worker directory used at install time (Windows only). When
+            omitted, the default ``~/.superharness-workers/<project>`` layout
+            is assumed so the correct Task Scheduler task is scoped.
 
     Returns:
         ``True`` if something was removed, ``False`` if nothing found or error.
@@ -366,5 +361,5 @@ def uninstall(project_dir: Path, scripts_dir: Path) -> bool:
     if backend == "systemd":
         return _uninstall_systemd(project_dir, scripts_dir)
     if backend == "winsvc":
-        return _uninstall_winsvc(project_dir)
+        return _uninstall_winsvc(project_dir, worker_dir)
     return False
