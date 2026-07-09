@@ -194,6 +194,7 @@ _cmd("handoff",         "Handoff subcommand group (write).",                    
 _cmd("subtask-cancel",  "Mark a subtask cancelled with a mandatory reason.",        module="superharness.commands.subtask_cancel")
 _cmd("approve",         "Approve a task's pending plan (writes operator_command row; idempotent).", module="superharness.commands.approve")
 _cmd("reject",          "Reject a task's pending plan (writes operator_command row; idempotent).",  module="superharness.commands.approve")
+_cmd("recipe",          "List/switch the RMDI delegation recipe, live + DDAP-gated (list | <name> [--consent] | events).", module="superharness.commands.recipe")
 
 # profile runs in-process (no subprocess) so output is captured correctly
 def _register_profile():
