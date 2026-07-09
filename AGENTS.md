@@ -136,3 +136,7 @@ cat .superharness/memory/pitfalls.md       # project learnings
 ```
 
 If any system is empty or down, report it to the operator with: what's missing, what should be there, and the fix command (e.g. `shux daemon start`).
+
+## Strict Installation Decoupling
+
+Once installed (e.g., to ~/.local/bin), the project binary must NEVER depend on the local repository path (~/DevOpsSec) for execution, configuration, or data. All paths must be relative to the installation root or use standard system config paths (~/.config).
