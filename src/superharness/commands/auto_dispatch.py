@@ -54,7 +54,15 @@ def _classify_task(task: dict, project_dir: str) -> tuple[str, str]:
     """
     try:
         from superharness.engine.model_router import classify_task
-        tier, effort = classify_task(task, project_dir=project_dir)
+        # classify_task expects (title, criteria, ...) — passing the whole task
+        # dict bound it to `title`, so the deterministic heuristic did
+        # `title.lower()` on a dict and every task silently fell back.
+        tier, effort = classify_task(
+            str(task.get("title") or task.get("id", "")),
+            criteria=task.get("acceptance_criteria") or None,
+            previously_failed=str(task.get("status", "")) == "failed",
+            project_dir=project_dir,
+        )
         # Heuristic default: mini tasks go to codex-cli, heavier tasks to claude-code.
         agent = "codex-cli" if tier == "mini" else "claude-code"
         return agent, tier

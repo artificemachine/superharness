@@ -478,8 +478,16 @@ def dispatch(project_dir: str) -> int:
                 # we still catch already-submitted agents here.
                 try:
                     from superharness.engine import discussions_dao as _ddao
-                    if _ddao.is_submitted(conn, disc_id, current_round, agent):
-                        continue
+                    # Fresh connection — the one opened above was closed after the
+                    # active-discussion scan, so reusing it raised ProgrammingError
+                    # (swallowed) and this guard never actually ran.
+                    _check_conn = get_connection(project_dir)
+                    try:
+                        init_db(_check_conn)
+                        if _ddao.is_submitted(_check_conn, disc_id, current_round, agent):
+                            continue
+                    finally:
+                        _check_conn.close()
                 except Exception:
                     pass  # don't block on DAO failure
 
