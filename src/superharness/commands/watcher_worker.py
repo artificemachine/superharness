@@ -97,8 +97,11 @@ def main(argv: list[str] | None = None) -> None:
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     watcher_cfg = project_dir / ".superharness" / "watcher.yaml"
+    # Forward-slash the path so a Windows worker_dir (backslashes) is not
+    # mangled by YAML double-quoted-scalar escape processing (\U, \t, ...).
+    worker_project = str(worker_dir).replace("\\", "/")
     watcher_cfg.write_text(
-        f'watcher_project: "{worker_dir}"\n'
+        f'watcher_project: "{worker_project}"\n'
         f'updated_at: "{now}"\n'
         f"interval_seconds: {opts.interval}\n"
         f"recover_timeout_minutes: {opts.recover_timeout}\n"

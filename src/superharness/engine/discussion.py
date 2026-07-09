@@ -627,7 +627,9 @@ def cmd_status(discussion_dir: str) -> int:
 
 
 def cmd_list(discussions_dir: str) -> int:
-    project_dir = discussions_dir.replace("/.superharness/discussions", "")
+    # Normalize Windows backslashes first; otherwise the suffix strip below
+    # misses and is_project_initialized() fails, so `discuss list` returns [].
+    project_dir = discussions_dir.replace("\\", "/").replace("/.superharness/discussions", "")
     from superharness.utils.paths import is_project_initialized
     if not is_project_initialized(project_dir):
         print("[]")
