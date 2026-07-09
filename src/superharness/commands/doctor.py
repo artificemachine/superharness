@@ -14,6 +14,26 @@ logger = logging.getLogger(__name__)
 _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 
 
+def _operator_running_for_project(project_dir: str) -> bool:
+    """Detect a live `superharness operator` process for this project.
+
+    operator.py spawns its own internal watcher loop, so a project can have
+    working watcher functionality without the dedicated inbox-watcher
+    launchd job being loaded. Checked via `ps aux` rather than the launchd
+    label because operator's ad-hoc/foreground label hash scheme differs
+    from the inbox-watcher one, and this also covers non-launchd invocation.
+    """
+    try:
+        r = subprocess.run(["ps", "aux"], capture_output=True, text=True, timeout=5)
+    except Exception:
+        return False
+    abspath = os.path.abspath(project_dir)
+    for line in r.stdout.splitlines():
+        if "superharness.cli operator" in line and "--project" in line and abspath in line:
+            return True
+    return False
+
+
 def _install_hint(dep: str) -> str:
     is_mac = platform.system() == "Darwin"
     hints = {
@@ -192,6 +212,8 @@ def main(argv: list[str] | None = None) -> None:
         r = subprocess.run(["launchctl", "list"], capture_output=True, text=True)
         if label in r.stdout:
             print(f"PASS watcher:{label} loaded")
+        elif _operator_running_for_project(project_dir):
+            print("PASS watcher: live operator process detected for this project (provides watcher functionality)")
         else:
             print(f"WARN watcher:{label} not loaded")
             print("       The background watcher is required — install it with: shux watcher-worker -p .")
