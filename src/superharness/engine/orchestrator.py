@@ -42,6 +42,25 @@ _ORCHESTRATOR_CHAIN: list[tuple[str, str, str]] = [
     ("opencode", "deepseek/deepseek-v4-pro", "DeepSeek V4 Pro (max)"),
 ]
 
+
+def _build_agent_argv(binary: str, model: str, prompt: str) -> list[str]:
+    """Build the correct CLI invocation for each agent binary.
+
+    Each vendor CLI uses different flags (codex/opencode also require a
+    subcommand). Using Claude's ``--model/-p`` form for all of them made the
+    codex, gemini, and opencode chain entries fail on every call — silently
+    collapsing the orchestrator to Claude-only. Mirrors model_router's
+    _CLASSIFIER_AGENTS invocations.
+    """
+    if binary == "codex":
+        return [binary, "exec", "-m", model, prompt]
+    if binary == "opencode":
+        return [binary, "run", "-m", model, prompt]
+    if binary == "gemini":
+        return [binary, "-m", model, "-p", prompt]
+    # claude (and any unknown binary): Claude-style flags
+    return [binary, "--model", model, "-p", prompt]
+
 # Quality scores per model: {model_id: {successes: int, failures: int, last_used: iso}}
 # Higher success rate = higher selection weight for future decompositions.
 # Initialized with neutral scores so new models get a fair chance.
@@ -423,7 +442,7 @@ class Orchestrator:
         for binary, model, label in chain:
             try:
                 result = subprocess.run(
-                    [binary, "--model", model, "-p", prompt],
+                    _build_agent_argv(binary, model, prompt),
                     capture_output=True,
                     text=True,
                     timeout=_ORCHESTRATOR_TIMEOUT,
@@ -473,6 +492,11 @@ class Orchestrator:
             return self._fallback_subtask(task)
 
         subtasks = data.get("subtasks", [])
+        if not isinstance(subtasks, list):
+            return self._fallback_subtask(task)
+        # Drop any non-dict elements — the model occasionally emits bare
+        # strings, which would crash the field-normalization loop below.
+        subtasks = [st for st in subtasks if isinstance(st, dict)]
         if not subtasks:
             return self._fallback_subtask(task)
 
