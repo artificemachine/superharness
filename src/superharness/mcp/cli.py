@@ -9,6 +9,36 @@ import signal
 import click
 
 
+def _pid_alive(pid: int | None) -> bool:
+    """Non-destructive liveness probe. On Windows, os.kill(pid, 0) maps to
+    CTRL_C_EVENT (signal 0) and signals the process group instead of probing,
+    so use OpenProcess there."""
+    if not pid or pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        handle = ctypes.windll.kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+        if not handle:
+            return False
+        try:
+            code = ctypes.c_ulong(0)
+            if not ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return False
+            return code.value == STILL_ACTIVE
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+
+
 @click.group(name="mcp")
 def cmd_mcp():
     """Manage the superharness MCP server (start / stop / status)."""

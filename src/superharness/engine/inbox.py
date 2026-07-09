@@ -55,8 +55,9 @@ def _process_alive(pid_str: object) -> bool:
         if not handle:
             return False  # process not found or no access → treat as dead
         try:
-            exit_code = ctypes.c_ulong(STILL_ACTIVE)
-            ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
+            exit_code = ctypes.c_ulong(0)
+            if not ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                return False  # query failed → treat as dead, not alive
             return exit_code.value == STILL_ACTIVE
         finally:
             ctypes.windll.kernel32.CloseHandle(handle)
