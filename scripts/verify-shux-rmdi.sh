@@ -9,7 +9,12 @@
 #                             the router (prints "RMDI routing: seat ...")
 #   4. binding_crosscheck   — the printed bindingVersion matches GET /bindings
 #   5. model_override_blocked — --model under routing_strategy:rmdi exits 2
-#   6. router_down_fail_loud — with the router dead, delegate exits non-zero
+#   6. subtask_edge_from_seat — a subtask (parent_id set) dispatches FROM the
+#                             orchestrator seat; the recipe edge allows it
+#   7. orchestrator_brain_http — Orchestrator._call_orchestrator_model drives
+#                             the orchestrator seat's binding over HTTP
+#                             (LIVE inference on the bound fleet model)
+#   8. router_down_fail_loud — with the router dead, delegate exits non-zero
 #                             naming the router URL (no silent native fallback)
 #
 # Emits a fixed-schema JSON (shux-rmdi-verification/v1) to docs/trials/<date>/,
@@ -33,7 +38,7 @@ export PYTHONPATH="$REPO/src${PYTHONPATH:+:$PYTHONPATH}"
 export SUPERHARNESS_STATE_DIR="$STATE/shux-state"
 export RMDI_ROUTER_URL="$ROUTER"
 
-C_HEALTH=false C_SWITCH=false C_DELEGATE=false C_XCHECK=false C_OVERRIDE=false C_DOWN=false
+C_HEALTH=false C_SWITCH=false C_DELEGATE=false C_XCHECK=false C_OVERRIDE=false C_SUBTASK=false C_BRAIN=false C_DOWN=false
 PID=""
 
 cleanup() {
@@ -56,6 +61,8 @@ json.dump({
         "delegate_resolves": "$C_DELEGATE" == "true",
         "binding_crosscheck": "$C_XCHECK" == "true",
         "model_override_blocked": "$C_OVERRIDE" == "true",
+        "subtask_edge_from_seat": "$C_SUBTASK" == "true",
+        "orchestrator_brain_http": "$C_BRAIN" == "true",
         "router_down_fail_loud": "$C_DOWN" == "true",
     },
     "ok": "${1}" == "true",
@@ -92,24 +99,28 @@ conn.execute(
     "INSERT INTO tasks (id, title, owner, status, created_at) "
     "VALUES ('T-RMDI', 'verify rmdi routing', 'opencode', 'plan_approved', '2026-07-09T00:00:00Z')"
 )
+conn.execute(
+    "INSERT INTO tasks (id, title, owner, status, created_at, parent_id) "
+    "VALUES ('T-RMDI.st1', 'subtask via orchestrator seat', 'opencode', 'plan_approved', '2026-07-09T00:00:00Z', 'T-RMDI')"
+)
 conn.commit()
 conn.close()
 PY
 
-echo "== 2/6 shux recipe shux-orchestrator =="
+echo "== 2/8 shux recipe shux-orchestrator =="
 python3 -m superharness.commands.recipe shux-orchestrator </dev/null >"$STATE/switch.out" 2>&1 \
   || fail "recipe switch failed: $(cat "$STATE/switch.out")"
 grep -q "Activated recipe: shux-orchestrator" "$STATE/switch.out" || fail "switch output missing activation line"
 C_SWITCH=true
 
-echo "== 3/6 shux delegate --print-only resolves via router =="
+echo "== 3/8 shux delegate --print-only resolves via router =="
 python3 -m superharness.commands.delegate --project "$PROJ" --task T-RMDI --to opencode \
   --print-only --non-interactive >"$STATE/delegate.out" 2>&1 \
   || fail "delegate --print-only failed: $(tail -5 "$STATE/delegate.out")"
 grep -q "RMDI routing: seat worker@shux" "$STATE/delegate.out" || fail "no RMDI routing line: $(head -5 "$STATE/delegate.out")"
 C_DELEGATE=true
 
-echo "== 4/6 binding cross-check (printed version == router table) =="
+echo "== 4/8 binding cross-check (printed version == router table) =="
 python3 - "$ROUTER" "$STATE/delegate.out" <<'PY' || fail "binding cross-check failed"
 import json, re, sys, urllib.request
 router, out_path = sys.argv[1], sys.argv[2]
@@ -126,7 +137,7 @@ assert row["binding"]["regime"] == "ddap"
 PY
 C_XCHECK=true
 
-echo "== 5/6 --model override is rejected under rmdi (exit 2) =="
+echo "== 5/8 --model override is rejected under rmdi (exit 2) =="
 set +e
 python3 -m superharness.commands.delegate --project "$PROJ" --task T-RMDI --to opencode \
   --print-only --non-interactive --model sonnet >"$STATE/override.out" 2>&1
@@ -136,7 +147,42 @@ set -e
 grep -q "seat rebinds" "$STATE/override.out" || fail "override error message missing"
 C_OVERRIDE=true
 
-echo "== 6/6 router down ⇒ delegate fails loud =="
+echo "== 6/8 subtask dispatch carries from=orchestrator@shux (edge allow) =="
+python3 -m superharness.commands.delegate --project "$PROJ" --task T-RMDI.st1 --to opencode \
+  --print-only --non-interactive >"$STATE/subtask.out" 2>&1 \
+  || fail "subtask delegate failed: $(tail -5 "$STATE/subtask.out")"
+grep -q "RMDI routing: seat worker@shux" "$STATE/subtask.out" || fail "subtask missing RMDI routing line"
+C_SUBTASK=true
+
+echo "== 7/8 orchestrator brain over HTTP (LIVE inference on the bound model) =="
+# Point the orchestrator role at scout@shux: its binding is a local fleet model
+# WITH a baseUrl (the frontier orchestrator default has none configured yet),
+# so this exercises the real chat/completions path end-to-end.
+cat > "$PROJ/.superharness/profile.yaml" <<'YAML'
+routing_strategy: rmdi
+autonomy: supervised
+rmdi:
+  seat_map:
+    orchestrator: scout@shux
+YAML
+python3 - "$PROJ" <<'PY' >"$STATE/brain.out" 2>&1 || fail "orchestrator brain call failed: $(tail -5 "$STATE/brain.out")"
+import sys
+from superharness.engine.orchestrator import Orchestrator
+out = Orchestrator(project_dir=sys.argv[1])._call_orchestrator_model(
+    'Reply with exactly this JSON and nothing else: {"owner":"opencode","tier":"standard","effort":"low","decompose":false}'
+)
+assert out, "empty orchestrator response (binding has no baseUrl or inference failed)"
+print("brain replied:", out[:200])
+assert "decompose" in out, out[:200]
+PY
+C_BRAIN=true
+# restore the plain profile for the remaining checks
+cat > "$PROJ/.superharness/profile.yaml" <<'YAML'
+routing_strategy: rmdi
+autonomy: supervised
+YAML
+
+echo "== 8/8 router down ⇒ delegate fails loud =="
 kill "$PID" 2>/dev/null || true
 PID=""
 sleep 0.5
