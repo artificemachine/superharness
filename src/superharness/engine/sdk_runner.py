@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 def _find_latest_session(project_dir: str) -> str | None:
     """Find the most recent Claude session ID for a project directory."""
     import glob
-    safe_path = project_dir.replace("/", "-")
+    safe_path = project_dir.replace("/", "-").replace("\\", "-").replace(":", "-")
     session_dir = os.path.join(
         os.path.expanduser("~"), ".claude", "projects", safe_path,
     )
@@ -55,7 +55,7 @@ def _start_jsonl_tailer(
 
     def _tail() -> None:
         # Find Claude project session dir
-        safe_path = project_dir.replace("/", "-")
+        safe_path = project_dir.replace("/", "-").replace("\\", "-").replace(":", "-")
         session_dir = os.path.join(
             os.path.expanduser("~"), ".claude", "projects", safe_path,
         )
