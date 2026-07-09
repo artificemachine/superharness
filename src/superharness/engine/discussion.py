@@ -184,6 +184,10 @@ def compute_consensus(verdicts: dict[str, str], participants: list[str]) -> bool
     Quorum rule: n≤2 requires all participants; n≥3 tolerates one abstaining
     participant (n-1 suffices).  Any 'disagree' or 'partial' verdict blocks.
     """
+    if not participants:
+        # No participants → no quorum. Without this guard required=0 and
+        # all([]) is vacuously True, declaring spurious consensus.
+        return False
     n = len(participants)
     required = n if n <= 2 else n - 1
     submitted = {a: v.lower() for a, v in verdicts.items() if a in participants}
@@ -615,7 +619,7 @@ def cmd_status(discussion_dir: str) -> int:
             "status": disc.status,
             "participants": disc.owners,
             "current_round": current_round,
-            "max_rounds": 3,  # not stored in SQLite yet
+            "max_rounds": disc.max_rounds,
             "created_at": disc.created_at,
             "closed_at": disc.closed_at,
             "rounds": rounds_info,
@@ -651,7 +655,7 @@ def cmd_list(discussions_dir: str) -> int:
                 "topic": row.topic,
                 "status": row.status,
                 "current_round": current_round,
-                "max_rounds": 3,
+                "max_rounds": row.max_rounds,
                 "participants": row.owners,
                 "dir": os.path.join(discussions_dir, row.id),
             })
@@ -865,7 +869,7 @@ def cmd_round_context(discussion_dir: str, round_: int, agent: str) -> int:
             "discussion_id": disc.id,
             "topic": disc.topic,
             "round": round_,
-            "max_rounds": 3,
+            "max_rounds": disc.max_rounds,
             "agent": agent,
             "other_agents": other_agents,
             "prior_rounds": [],

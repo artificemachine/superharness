@@ -609,7 +609,10 @@ def complete_trial(project_dir: str, trial_id: int) -> dict:
             conn.commit()
 
             if reverted:
-                # Revert the change
+                # Actually restore the prior value. Previously this only logged
+                # and set reverted=1, leaving the degraded profile change applied
+                # forever — the A/B verification loop never closed.
+                _update_profile_field(project_dir, trial["profile_key"], trial["old_value"])
                 logger.info("Reverting trial %s: %s → %s (degraded)",
                            trial_id, trial["new_value"], trial["old_value"])
             elif reinforced:

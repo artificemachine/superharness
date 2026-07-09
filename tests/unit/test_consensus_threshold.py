@@ -182,3 +182,14 @@ class TestConsensusUnification:
             ["claude-code", "codex-cli"],
         )
         assert result is False
+
+    def test_empty_participants_is_not_consensus(self):
+        """Regression: with participants=[], required=n-1... wait n=0 so required=0,
+        and all([]) over an empty submitted set is vacuously True — compute_consensus
+        declared spurious consensus for a discussion whose owners include no
+        registered adapters (agent_participants filters to AI agents only, see
+        _check_all_submitted_and_set_consensus). Must return False, not vacuously True."""
+        from superharness.engine.discussion import compute_consensus
+        assert compute_consensus({}, []) is False
+        # Also with stray verdicts present but no real participants to match them.
+        assert compute_consensus({"claude-code": "agree"}, []) is False
