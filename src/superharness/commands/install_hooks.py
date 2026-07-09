@@ -139,8 +139,12 @@ def merge_hooks(settings: dict, hook_defs: dict, hooks_dir: str) -> tuple[dict, 
     if "hooks" not in settings:
         settings["hooks"] = {}
 
-    # CLAUDE_PLUGIN_ROOT = parent of the hooks/ dir (e.g. adapters/claude-code/)
-    plugin_root = str(Path(hooks_dir).parent)
+    # CLAUDE_PLUGIN_ROOT = parent of the hooks/ dir (e.g. adapters/claude-code/).
+    # Use POSIX separators: the resolved command is written verbatim into
+    # settings.json and run by Claude Code via `sh -c`. On Windows, str(WindowsPath)
+    # yields backslashes, which bash eats as escape chars (C:\Users -> C:Users),
+    # breaking the hook path. as_posix() == str() on POSIX, so this is a no-op there.
+    plugin_root = Path(hooks_dir).parent.as_posix()
     changes: list[str] = []
 
     for event, template_entries in hook_defs.get("hooks", {}).items():
