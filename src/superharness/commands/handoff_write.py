@@ -228,8 +228,9 @@ def write_handoff(
         _abort("PyYAML not installed — required for handoff write", 1)
 
     contract_file = project_dir / ".superharness" / "contract.yaml"
-    if not contract_file.is_file():
-        _abort(f"missing contract file: {contract_file}", 1)
+    # No contract.yaml gate: SQLite-only `shux init` never writes that file, and
+    # _task_exists/_load_task_policy resolve tasks from SQLite (via the derived
+    # project_dir), so a physical contract file is not required here.
 
     if not _task_exists(contract_file, args.task_id):
         _abort(f"task '{args.task_id}' not found in contract", 1)
