@@ -6,7 +6,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import signal
+import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 
 from superharness.engine.db import get_connection, init_db
@@ -14,6 +17,11 @@ from superharness.engine import discussions_dao
 
 import logging
 logger = logging.getLogger(__name__)
+
+# How long `discussion close` waits for a SIGTERM'd agent process to exit
+# before escalating to SIGKILL. POSIX only — Windows' taskkill /F is already
+# forceful, no escalation tier needed there.
+_CLOSE_KILL_GRACE_SECONDS = 3.0
 
 
 # ---------------------------------------------------------------------------
@@ -652,6 +660,108 @@ def cmd_list(discussions_dir: str) -> int:
     return 0
 
 
+def _pid_alive(pid: int) -> bool:
+    """Cross-platform liveness check. Mirrors daemon.py's _is_pid_alive."""
+    if sys.platform == "win32":
+        import ctypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        handle = ctypes.windll.kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, pid
+        )
+        if not handle:
+            return False
+        try:
+            exit_code = ctypes.c_ulong(STILL_ACTIVE)
+            ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
+            return exit_code.value == STILL_ACTIVE
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
+def _terminate_process_tree(pid: int, force: bool = False) -> None:
+    """Best-effort termination of *pid* and its children. Never raises.
+
+    POSIX: `inbox_dispatch.py` always spawns the delegate.py wrapper with
+    `preexec_fn=os.setsid`, so *pid* is a process-group leader — the same
+    pattern `_run_with_timeout`'s SIGALRM handler already relies on
+    (`os.killpg(proc.pid, signal.SIGTERM)`) to kill both the wrapper and the
+    agent CLI it spawned in one shot.
+
+    Windows: `preexec_fn` is POSIX-only, so there is no process group.
+    `taskkill /T` walks the tree instead.
+    """
+    if sys.platform == "win32":
+        try:
+            subprocess.run(
+                ["taskkill", "/T", "/F", "/PID", str(pid)],
+                capture_output=True, check=False, timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            pass
+        return
+    sig = signal.SIGKILL if force else signal.SIGTERM
+    try:
+        os.killpg(pid, sig)
+    except (ProcessLookupError, PermissionError):
+        pass
+    except OSError:
+        try:
+            os.kill(pid, sig)
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
+
+
+def _terminate_launched_agents(conn, disc_id: str) -> int:
+    """SIGTERM (then SIGKILL after a grace window) any process still recorded
+    against this discussion's round inbox rows. Best-effort — never raises.
+    Returns the count of pids signaled.
+
+    `inbox.pid` is non-empty exactly while a round's launcher subprocess is
+    running (set on spawn, cleared to '' on completion — see
+    inbox_dispatch.py's `_run_with_timeout` / non-timeout Popen paths), so a
+    round that already finished has nothing to kill here.
+    """
+    rows = conn.execute(
+        "SELECT pid FROM inbox WHERE task_id LIKE ?",
+        (f"{disc_id}/round-%",),
+    ).fetchall()
+    pids: list[int] = []
+    for row in rows:
+        try:
+            pid = int(row["pid"])
+        except (TypeError, ValueError):
+            continue
+        if pid > 0:
+            pids.append(pid)
+    if not pids:
+        return 0
+
+    for pid in pids:
+        _terminate_process_tree(pid, force=False)
+
+    if sys.platform != "win32":
+        deadline = time.time() + _CLOSE_KILL_GRACE_SECONDS
+        remaining = set(pids)
+        while remaining and time.time() < deadline:
+            remaining = {p for p in remaining if _pid_alive(p)}
+            if remaining:
+                time.sleep(0.1)
+        for pid in remaining:
+            _terminate_process_tree(pid, force=True)
+
+    return len(pids)
+
+
 def cmd_close(discussion_dir: str, outcome: str, reason: str = "") -> int:
     """Close a discussion and cancel any pending inbox items for it.
 
@@ -667,6 +777,7 @@ def cmd_close(discussion_dir: str, outcome: str, reason: str = "") -> int:
     now = _now_utc()
 
     cancelled_count = 0
+    terminated_count = 0
     conn = _connect(project_dir)
     try:
         disc = discussions_dao.get(conn, disc_id)
@@ -702,11 +813,34 @@ def cmd_close(discussion_dir: str, outcome: str, reason: str = "") -> int:
         )
         cancelled_count = cur.rowcount or 0
         conn.commit()
+
+        # Cancelling the inbox rows above stops the watcher from claiming new
+        # work for this discussion, but it does NOT stop an agent process
+        # already launched for it — that process keeps running, writes its
+        # round-N-<agent>.yaml on its own schedule, and the CLI has no way to
+        # show it (see docs/AUDIT-2026-07-09-discussion-close-data-loss.md
+        # §1). Terminate it, then reconcile whatever it managed to write
+        # before dying.
+        terminated_count = _terminate_launched_agents(conn, disc_id)
+
+        known_round = max(
+            (r.round_number for r in discussions_dao.get_rounds(conn, disc_id) if r.round_number > 0),
+            default=1,
+        )
+        _reconcile_orphaned_submissions(
+            conn, disc, discussion_dir,
+            max(known_round, _max_round_on_disk(discussion_dir)),
+        )
     finally:
         conn.close()
 
     print(json.dumps(
-        {"closed": True, "outcome": outcome, "cancelled_inbox_items": cancelled_count},
+        {
+            "closed": True,
+            "outcome": outcome,
+            "cancelled_inbox_items": cancelled_count,
+            "terminated_processes": terminated_count,
+        },
         separators=(", ", ": "),
     ))
     return 0
