@@ -234,7 +234,7 @@ def _check_all_submitted_and_set_consensus(conn, disc, round_: int, project_dir:
 def _create_consensus_task(
     conn, disc, round_: int, submitted_agents: set[str], project_dir: str = "/"
 ) -> None:
-    """Auto-create a contract task from discussion consensus points (non-agree items)."""
+    """Auto-create a contract task from discussion points that block consensus."""
     try:
         from superharness.engine import tasks_dao
         from superharness.engine.tasks_dao import TaskRow
@@ -246,7 +246,9 @@ def _create_consensus_task(
         topic = str(disc.topic)[:80]
         now = _now_utc()
 
-        # Collect non-agree points from round submissions
+        # Collect points from round submissions. This gate governs whether the
+        # `impl-*` summary task is created at all; a unanimous 'agree' round
+        # produces no follow-up work.
         rounds = discussions_dao.get_rounds(conn, disc_id)
         all_points = []
         has_actionable = False
@@ -264,14 +266,17 @@ def _create_consensus_task(
             return
 
         # Extract individual action items from round submissions.
-        # Each agent's non-agree verdict becomes a separate task with
-        # the agent's content as the acceptance criteria.
+        #
+        # Only a verdict that *blocks* consensus is an action item. 'abstain'
+        # and 'consensus' permit a close exactly as 'agree' does, so a bare
+        # `== "agree"` skip fabricated `[abstain]`/`[consensus]` implementation
+        # tasks for agents who had agreed or explicitly declined to weigh in.
         created = 0
         for r in rounds:
             if r.round_number != round_ or not r.verdict:
                 continue
             v = r.verdict.lower()
-            if v == "agree":
+            if v in _CONSENSUS_VERDICTS:
                 continue
             # Create a task per non-agree verdict
             action_id = f"action-{disc_id[:20]}-{r.agent}-{round_}"
