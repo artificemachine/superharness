@@ -1,5 +1,6 @@
 daemon-state.json
 .dashboard_auth_token
+circuit-breaker.json
 events.jsonl
 launcher-logs/
 onboarding.yaml
