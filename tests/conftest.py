@@ -24,6 +24,30 @@ os.environ.setdefault("SUPERHARNESS_PYTHON", sys.executable)
 os.environ["SUPERHARNESS_NO_AUTO_INSTALL"] = "1"
 
 
+@pytest.fixture(autouse=True)
+def isolated_state_dir(tmp_path_factory, monkeypatch):
+    """Point SUPERHARNESS_STATE_DIR at a per-test directory.
+
+    `get_connection(project_dir)` resolves the db to
+    `<state_dir>/<sha256(abspath(project_dir))[:12]>/state.db`. `state_dir`
+    defaults to `~/.local/state/superharness`, which lives outside `tmp_path`
+    and persists indefinitely.
+
+    `tmp_path` sits under the OS temp root, which macOS purges periodically.
+    After a purge pytest's `pytest-N` counter restarts, so a later run can hand
+    a test the same `tmp_path` string it used before. The state dir keyed on
+    that path still exists, so a "fresh" `tmp_path` silently reopens a stale
+    database — producing `UNIQUE constraint failed: inbox.id` on any test that
+    inserts a fixed primary key. It also leaked 30k+ directories into $HOME.
+
+    Set via the environment (not just in-process) because many tests spawn
+    `python -m superharness...` subprocesses that inherit os.environ.
+    """
+    state_dir = tmp_path_factory.mktemp("superharness-state")
+    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", str(state_dir))
+    yield state_dir
+
+
 @pytest.fixture
 def repo_root() -> Path:
     return REPO_ROOT
