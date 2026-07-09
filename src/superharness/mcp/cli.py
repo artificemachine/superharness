@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import signal
 
 import click
+
+logger = logging.getLogger(__name__)
 
 
 def _pid_alive(pid: int | None) -> bool:
