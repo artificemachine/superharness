@@ -4193,9 +4193,10 @@ def _gc_stuck_waiting_input(project_dir: str) -> int:
             )
             cursor = conn.execute(
                 "UPDATE tasks SET status='archived', archived_reason='gc: waiting_input timeout (>30min)' "
-                "WHERE status='waiting_input' AND "
+                "WHERE status='waiting_input' AND ("
                 "(in_progress_at IS NOT NULL AND in_progress_at < ?) "
-                "OR (created_at IS NOT NULL AND created_at < ? AND in_progress_at IS NULL)",
+                "OR (created_at IS NOT NULL AND created_at < ? AND in_progress_at IS NULL)"
+                ")",
                 (cutoff, cutoff),
             )
             cleaned = cursor.rowcount or 0
