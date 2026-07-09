@@ -534,6 +534,7 @@ def _launch_agent(
     label: str = "",
     model: str = "",
     effort: str = "",
+    task_id: str = "",
     print_only: bool = False,
     yolo: bool = False,
 ) -> None:
@@ -1213,7 +1214,7 @@ def delegate(
         _launch_agent(
             target, prompt, project_dir, non_interactive, codex_bypass,
             label=label, model=resolved_model, effort=resolved_effort,
-            print_only=True, yolo=yolo,
+            task_id=task_id, print_only=True, yolo=yolo,
         )
         return 0
 
@@ -1285,7 +1286,7 @@ def delegate(
     _launch_agent(
         target, prompt, project_dir, non_interactive, codex_bypass,
         label=label, model=resolved_model, effort=resolved_effort,
-        yolo=yolo,
+        task_id=task_id, yolo=yolo,
     )
     return 0  # unreachable after exec, but satisfies type checker
 
