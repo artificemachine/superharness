@@ -666,3 +666,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-07-08: feat(plugin): add superharness skill for automatic /shux-* command routing
 - 2026-07-08: feat(plugin): finish superharness Claude Code plugin — structural e2e test, README install docs, v1.76.0
 - 2026-07-08: feat(plugin): add /shux-help command — full CLI reference via shux help
+- 2026-07-09: docs(handoff): update HANDOFF.md for v1.76.0 — plugin scaffold + dispatch PATH-override fix, both merged/released/published/installed
