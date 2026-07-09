@@ -322,23 +322,29 @@ def _migrate_handoffs(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[
             try:
                 with open(h_file, "r", encoding="utf-8") as f:
                     h = yaml.safe_load(f)
-                if not h or not isinstance(h, dict) or "task_id" not in h:
+                if not h or not isinstance(h, dict):
+                    continue
+                # Canonical handoff docs use `task`/`from`/`to`/`date`; older
+                # rows used `task_id`/`from_agent`/etc. Accept both, else every
+                # real handoff is dropped on YAML->SQLite migration.
+                task_id = h.get("task") or h.get("task_id")
+                if not task_id:
                     continue
                 
                 # Check task exists
-                cursor = conn.execute("SELECT 1 FROM tasks WHERE id = ?", (h["task_id"],))
+                cursor = conn.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,))
                 if not cursor.fetchone():
-                    report_data["errors"].append(f"Orphaned handoff in {h_file.name} references missing task {h['task_id']}")
+                    report_data["errors"].append(f"Orphaned handoff in {h_file.name} references missing task {task_id}")
                     continue
                 
                 metadata = json.dumps(h.get("metadata", {}))
                 
                 # We don't have a unique ID in YAML for handoffs, so just insert if not exists
                 # Based on task_id + created_at
-                created_at = h.get("created_at") or now
+                created_at = h.get("created_at") or h.get("date") or h.get("generated_at") or now
                 cursor = conn.execute(
                     "SELECT 1 FROM handoffs WHERE task_id = ? AND created_at = ?",
-                    (h["task_id"], created_at)
+                    (task_id, created_at)
                 )
                 if cursor.fetchone():
                     continue
@@ -348,8 +354,8 @@ def _migrate_handoffs(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[
                         task_id, phase, status, from_agent, to_agent, content, metadata, created_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    h["task_id"], h.get("phase", "unknown"), h.get("status", "unknown"),
-                    h.get("from_agent"), h.get("to_agent"), h.get("content"),
+                    task_id, h.get("phase", "unknown"), h.get("status", "unknown"),
+                    h.get("from_agent") or h.get("from"), h.get("to_agent") or h.get("to"), h.get("content"),
                     metadata, created_at
                 ))
                 count += 1

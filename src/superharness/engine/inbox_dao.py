@@ -211,7 +211,7 @@ def get_stale(
         """
         SELECT * FROM inbox
         WHERE status IN ('launched', 'running')
-          AND last_heartbeat < ?
+          AND COALESCE(last_heartbeat, launched_at, created_at) < ?
         """,
         (cutoff,),
     )
