@@ -713,12 +713,12 @@ def main(argv: list[str] | None = None) -> None:
     # rounds
     p = sub.add_parser("rounds", add_help=True)
     p.add_argument("--project", "-p", default=None)
-    p.add_argument("--id", required=True, dest="disc_id")
+    p.add_argument("--id", "--discussion", required=True, dest="disc_id")
 
     # consensus
     p = sub.add_parser("consensus", add_help=True)
     p.add_argument("--project", "-p", default=None)
-    p.add_argument("--id", required=True, dest="disc_id")
+    p.add_argument("--id", "--discussion", required=True, dest="disc_id")
 
     # list
     p = sub.add_parser("list", add_help=True)
@@ -728,16 +728,16 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("summary", add_help=True,
                        help="Write a handoff YAML from a concluded discussion")
     p.add_argument("--project", "-p", default=None)
-    p.add_argument("--id", required=True, dest="disc_id")
+    p.add_argument("--id", "--discussion", required=True, dest="disc_id")
 
     # submit
     p = sub.add_parser("submit", add_help=True,
                        help="Submit a discussion round response")
     p.add_argument("--project", "-p", default=None)
-    p.add_argument("--discussion", required=True, dest="disc_id")
+    p.add_argument("--discussion", "--id", required=True, dest="disc_id")
     p.add_argument("--agent", required=True)
     p.add_argument("--round", type=int, required=True)
-    p.add_argument("--verdict", required=True, help="consensus|disagree|abstain")
+    p.add_argument("--verdict", required=True, help="agree|disagree|partial|consensus|abstain")
     p.add_argument("--position", required=True, help="Your position statement")
     p.add_argument("--points-file", default=None, help="YAML file with point-by-point responses")
 
@@ -747,7 +747,7 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("close", add_help=True,
                        help="Close an active discussion and cancel its pending rounds")
     p.add_argument("--project", "-p", default=None)
-    p.add_argument("--id", required=True, dest="disc_id")
+    p.add_argument("--id", "--discussion", required=True, dest="disc_id")
     p.add_argument("--outcome", default="closed",
                    help="Status to set: closed|cancelled|failed|consensus (default: closed)")
     p.add_argument("--reason", default="",
