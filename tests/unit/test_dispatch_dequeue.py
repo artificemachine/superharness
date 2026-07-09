@@ -90,6 +90,10 @@ def _run_dispatch(project: Path, args: list[str] | None = None, bin_dir: Path | 
         text=True,
         check=False,
         env=env,
+        # A launcher script that ignores a caller-provided PATH override (see
+        # delegate-to-*.sh) can fall through to a real, non-mocked agent CLI
+        # and hang indefinitely on a live API call instead of failing fast.
+        timeout=30,
     )
 
 
