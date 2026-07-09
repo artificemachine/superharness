@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -513,6 +514,51 @@ def cmd_advance(discussion_dir: str) -> int:
     return 0
 
 
+def _max_round_on_disk(discussion_dir: str) -> int:
+    """Highest round number with a `round-N-<agent>.yaml` file present.
+
+    An agent that outlived its discussion may have written a round the DB never
+    recorded, so the round count cannot be derived from SQLite alone.
+    """
+    # `round-N-<agent>.yaml` are the agents' two-phase submission artifacts, not
+    # state-of-record: the harness is responsible for registering them INTO
+    # SQLite (discussions_dao.register_yaml_submission already reads these same
+    # files). Discovering which rounds exist on disk is the first half of that
+    # contract. SQLite remains the source of truth.
+    highest = 0
+    try:
+        for name in os.listdir(discussion_dir):  # noqa: state-read — agent submission artifacts, registered into SQLite below
+            m = re.match(r"^round-(\d+)-.+\.yaml$", name)
+            if m:
+                highest = max(highest, int(m.group(1)))
+    except OSError:
+        pass
+    return highest
+
+
+def _reconcile_orphaned_submissions(conn, disc, discussion_dir: str, through_round: int) -> None:
+    """Register on-disk submissions that SQLite never recorded.
+
+    `cmd_close` cancels a discussion's inbox rows but does not signal the agent
+    processes already launched for it. Those agents run to completion and write
+    `round-N-<agent>.yaml`. Neither caller of `register_yaml_submission` can pick
+    them up afterwards: `_reconcile_yaml_submissions` runs only from
+    `cmd_advance`, and the watcher's reconciler filters `status="active"` —
+    which closing is precisely what stops. The files were reachable only by
+    listing the directory.
+
+    Registration is idempotent, skips corrupt YAML, and never touches
+    `discussions.status`, so a closed discussion stays closed.
+    """
+    now = _now_utc()
+    for round_ in range(1, through_round + 1):
+        for agent in disc.owners:
+            discussions_dao.register_yaml_submission(
+                conn, disc.id, round_, agent, discussion_dir, now
+            )
+    conn.commit()
+
+
 def cmd_status(discussion_dir: str) -> int:
     project_dir = _get_project_dir(discussion_dir)
     disc_id = _get_disc_id(discussion_dir)
@@ -522,6 +568,18 @@ def cmd_status(discussion_dir: str) -> int:
         disc = discussions_dao.get(conn, disc_id)
         if not disc:
             sys.exit(f"Discussion not found: {disc_id}")
+
+        # Surface agent output written to disk but never registered — otherwise
+        # a round with completed submissions renders as "(no submissions yet)".
+        _known = max(
+            (r.round_number for r in discussions_dao.get_rounds(conn, disc_id)
+             if r.round_number > 0),
+            default=1,
+        )
+        _reconcile_orphaned_submissions(
+            conn, disc, discussion_dir,
+            max(_known, _max_round_on_disk(discussion_dir)),
+        )
 
         rounds = discussions_dao.get_rounds(conn, disc_id)
         max_round = max((r.round_number for r in rounds if r.round_number > 0 and r.agent != "_advance"), default=1)
