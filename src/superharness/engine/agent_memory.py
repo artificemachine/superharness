@@ -41,7 +41,7 @@ def _prune_if_over_limit(filepath: str) -> None:
     if not os.path.isfile(filepath):
         return
     try:
-        content = Path(filepath).read_text()
+        content = Path(filepath).read_text(encoding="utf-8")
     except Exception:
         return
     if len(content) <= MEMORY_FILE_MAX_CHARS:
@@ -57,7 +57,7 @@ def _prune_if_over_limit(filepath: str) -> None:
         body.pop(0)
 
     result = "\n".join(header + [""] + body) + "\n"
-    Path(filepath).write_text(result)
+    Path(filepath).write_text(result, encoding="utf-8")
     if len(body) < len([l for l in lines if not l.startswith("#") and l.strip()]):
         logger.info("Pruned memory file %s: %d → %d chars",
                      os.path.basename(filepath), len(content), len(result))
@@ -81,7 +81,7 @@ def _ensure_default_files(dirpath: str, filenames: tuple[str, ...]) -> None:
     for fname in filenames:
         fpath = os.path.join(dirpath, fname)
         if not os.path.isfile(fpath):
-            Path(fpath).write_text(f"# {fname.replace('.md', '').replace('_', ' ').title()}\n\n")
+            Path(fpath).write_text(f"# {fname.replace('.md', '').replace('_', ' ').title()}\n\n", encoding="utf-8")
 
 
 def ensure_global_memory() -> str:
@@ -115,7 +115,7 @@ def append(project_dir: str, filename: str, content: str) -> None:
     ensure_project_memory(project_dir)
     fpath = os.path.join(project_memory_dir(project_dir), filename)
     entry = _prepend_timestamp(content.strip()) + "\n"
-    with open(fpath, "a") as f:
+    with open(fpath, "a", encoding="utf-8") as f:
         f.write(entry)
     if os.path.basename(filename) == DISTILL_TARGET_FILE:
         _cap_index(fpath)
@@ -129,9 +129,9 @@ def append_global_override(override_dir: str, filename: str, content: str) -> No
     os.makedirs(override_dir, exist_ok=True)
     fpath = os.path.join(override_dir, filename)
     if not os.path.isfile(fpath):
-        Path(fpath).write_text(f"# {filename.replace('.md', '').title()}\n\n")
+        Path(fpath).write_text(f"# {filename.replace('.md', '').title()}\n\n", encoding="utf-8")
     entry = _prepend_timestamp(content.strip()) + "\n"
-    with open(fpath, "a") as f:
+    with open(fpath, "a", encoding="utf-8") as f:
         f.write(entry)
     if os.path.basename(filename) == DISTILL_TARGET_FILE:
         _cap_index(fpath)
@@ -144,7 +144,7 @@ def _read_memory_file(filepath: str) -> str:
     if not os.path.isfile(filepath):
         return ""
     try:
-        lines = Path(filepath).read_text().splitlines()
+        lines = Path(filepath).read_text(encoding="utf-8").splitlines()
     except Exception:
         return ""
     # Skip header lines (starting with #)
@@ -218,7 +218,7 @@ def apply_lessons(lessons, project_dir: str, *, target_dir: str | None = None) -
     # entries: [raw_line, normalized_key, confidence|None]
     entries: list[list] = []
     if os.path.isfile(fpath):
-        all_lines = Path(fpath).read_text().splitlines()
+        all_lines = Path(fpath).read_text(encoding="utf-8").splitlines()
         hdr = [l for l in all_lines if l.startswith("#")]
         if hdr:
             header_lines = hdr + [""]
@@ -247,7 +247,7 @@ def apply_lessons(lessons, project_dir: str, *, target_dir: str | None = None) -
         return 0
 
     body = "\n".join(e[0] for e in entries)
-    Path(fpath).write_text("\n".join(header_lines) + body + "\n")
+    Path(fpath).write_text("\n".join(header_lines) + body + "\n", encoding="utf-8")
     _cap_index(fpath)
     logger.info("Distilled %d lesson(s) into %s", written, fpath)
     return written
@@ -264,7 +264,7 @@ def _cap_index(filepath: str) -> None:
     if not os.path.isfile(filepath):
         return
     try:
-        all_lines = Path(filepath).read_text().splitlines()
+        all_lines = Path(filepath).read_text(encoding="utf-8").splitlines()
     except Exception:
         return
 
@@ -311,7 +311,7 @@ def _cap_index(filepath: str) -> None:
             else:
                 break  # sorted best-first; everything after is worse
 
-    Path(filepath).write_text("\n".join(header_block) + "\n".join(final) + "\n")
+    Path(filepath).write_text("\n".join(header_block) + "\n".join(final) + "\n", encoding="utf-8")
 
 
 def _deduplicate_content(content: str) -> str:
@@ -386,7 +386,7 @@ def _count_pattern_occurrences(memory_dir: str, filename: str, pattern: str) -> 
     if not os.path.isfile(fpath):
         return 0
     try:
-        content = Path(fpath).read_text()
+        content = Path(fpath).read_text(encoding="utf-8")
     except Exception:
         return 0
     # Count lines that contain the pattern (case-insensitive, stripped)
@@ -403,7 +403,7 @@ def _load_project_roots() -> list[str]:
     if not os.path.isfile(PROJECT_ROOTS_FILE):
         return []
     try:
-        data = json.loads(Path(PROJECT_ROOTS_FILE).read_text())
+        data = json.loads(Path(PROJECT_ROOTS_FILE).read_text(encoding="utf-8"))
         roots = data.get("scan_roots", [])
         return [os.path.expanduser(r) for r in roots if isinstance(r, str)]
     except (json.JSONDecodeError, KeyError, OSError):
@@ -492,12 +492,12 @@ def promote_to_global(
     os.makedirs(gdir, exist_ok=True)
     gpath = os.path.join(gdir, filename)
     if not os.path.isfile(gpath):
-        Path(gpath).write_text(f"# {filename.replace('.md', '').title()}\n\n")
+        Path(gpath).write_text(f"# {filename.replace('.md', '').title()}\n\n", encoding="utf-8")
 
     promoted_any = False
 
     try:
-        lines = [l for l in Path(fpath).read_text().splitlines()
+        lines = [l for l in Path(fpath).read_text(encoding="utf-8").splitlines()
                  if l.strip() and not l.startswith("#")]
     except Exception:
         return False
@@ -519,11 +519,11 @@ def promote_to_global(
         if _is_project_specific(pattern, project_dir):
             continue
         # Check if already in global
-        existing = Path(gpath).read_text()
+        existing = Path(gpath).read_text(encoding="utf-8")
         if pattern.strip().lower() in existing.lower():
             continue
         # Promote
-        with open(gpath, "a") as f:
+        with open(gpath, "a", encoding="utf-8") as f:
             f.write(pattern + "\n")
         _prune_if_over_limit(gpath)
         logger.info("Promoted pattern to global memory (count=%d across %d): %s",
@@ -582,5 +582,6 @@ def _save_project_roots(roots: list[str]) -> None:
     """Persist project roots to the config file."""
     os.makedirs(os.path.dirname(PROJECT_ROOTS_FILE), exist_ok=True)
     Path(PROJECT_ROOTS_FILE).write_text(
-        json.dumps({"scan_roots": roots}, indent=2) + "\n"
+        json.dumps({"scan_roots": roots}, indent=2) + "\n",
+        encoding="utf-8",
     )

@@ -280,10 +280,12 @@ def _migrate_worker_inboxes(
     if workers_root:
         root = Path(workers_root)
     else:
-        home = os.environ.get("HOME")
-        if not home:
+        # Path.home() honors USERPROFILE on Windows; os.environ["HOME"] is
+        # normally unset there, which silently skipped worker migration.
+        try:
+            root = Path.home() / ".superharness-workers"
+        except (RuntimeError, KeyError):
             return
-        root = Path(home) / ".superharness-workers"
         
     if not root.exists():
         return
