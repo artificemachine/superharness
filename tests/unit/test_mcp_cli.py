@@ -30,3 +30,10 @@ def test_shux_mcp_stop_subcommand_exists():
     runner = CliRunner()
     result = runner.invoke(main, ["mcp", "stop", "--help"])
     assert result.exit_code == 0
+
+
+def test_shux_mcp_start_accepts_host_flag():
+    runner = CliRunner()
+    result = runner.invoke(main, ["mcp", "start", "--help"])
+    assert result.exit_code == 0
+    assert "--host" in result.output
