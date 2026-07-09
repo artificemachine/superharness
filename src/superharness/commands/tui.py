@@ -255,6 +255,7 @@ def action_pause(task: dict, project_dir: str) -> str:
     if not _can_pause(task):
         return f"Cannot pause task in status '{task.get('status')}'"
     rc, out = _run_shux(["task", "status", "--id", task["id"], "--status", "stopped",
+                          "--reason", "Paused via TUI",
                           "--actor", "operator", "--summary", "Paused via TUI"], project_dir)
     return out if out else ("Paused" if rc == 0 else "Failed to pause")
 

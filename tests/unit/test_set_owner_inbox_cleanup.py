@@ -7,8 +7,13 @@ The ImportError surfaces at runtime, the "Reassigned" line still prints,
 and inbox rows for the old owner stay orphaned.
 
 Fix: replace the YAML-based cleanup with a SQLite-backed equivalent
-using inbox_dao. Mark active rows for the old owner as 'canceled'
+using inbox_dao. Mark active rows for the old owner as 'cancelled'
 (preserve audit trail; do not delete) and SIGTERM live pids.
+
+Status value is 'cancelled' (double L) to match the partial unique index
+and every other module's spelling — see celstnblacc/superharness#328,
+cherry-picked as artificemachine#25, which fixed a 'canceled' (one L)
+production bug that this test had been asserting as correct behavior.
 """
 from __future__ import annotations
 
@@ -114,8 +119,8 @@ class TestSetOwnerInboxCleanup:
         rc = set_owner(str(proj), TASK_ID, "codex-cli")
 
         assert rc == 0
-        assert _inbox_status_for(proj, item_id) == "canceled", (
-            "the pending row for the old owner must be canceled, not left active"
+        assert _inbox_status_for(proj, item_id) == "cancelled", (
+            "the pending row for the old owner must be cancelled, not left active"
         )
 
     def test_does_not_touch_unrelated_rows(self, tmp_path):
