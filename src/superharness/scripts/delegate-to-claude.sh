@@ -5,8 +5,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 export PYTHONPATH="${SRC_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 
-# Ensure agent binaries are findable under launchd's stripped PATH
-export PATH="/Applications/cmux.app/Contents/Resources/bin:${HOME}/.local/bin:${HOME}/.nvm/versions/node/v25.2.1/bin:${HOME}/.pyenv/shims:${HOME}/.pyenv/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
+# Ensure agent binaries are findable under launchd's stripped PATH.
+# Inherited PATH goes first so a caller-provided override (tests, CI, custom
+# installs) always wins; these are fallback dirs for when PATH is empty/minimal.
+export PATH="${PATH:-}:/Applications/cmux.app/Contents/Resources/bin:${HOME}/.local/bin:${HOME}/.nvm/versions/node/v25.2.1/bin:${HOME}/.pyenv/shims:${HOME}/.pyenv/bin:/usr/local/bin:/usr/bin:/bin"
 
 # Build Claude CLI command
 CLAUDE_ARGS=()
