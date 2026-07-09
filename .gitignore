@@ -58,8 +58,9 @@ json
 .superharness/events.jsonl
 .hablatone-project
 .ship-check-passed
-# ShipGuard runtime state
-.shipguard/state.db
+# ShipGuard runtime state — written relative to the scan cwd, so it appears in
+# any subdirectory that has been scanned, not just the repo root.
+.shipguard/
 
 .env
 *.key
@@ -71,3 +72,5 @@ docs/HANDOFF-*.md
 docs/AUDIT-*.md
 docs/PLAN-*.md
 docs/bulletproof-report-*.md
+# Evidence backing the ignored audits above (agent transcripts, captured state)
+docs/discussions/
