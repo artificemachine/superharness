@@ -999,9 +999,20 @@ def delegate(
             )
             return 2
         from superharness.engine.rmdi_client import RmdiRouterDown
+        # A subtask dispatch is a delegation FROM the orchestrator seat — the
+        # recipe's edges then govern the fan-out (orchestrator@shux → worker@shux
+        # allow, worker@shux → orchestrator@shux deny, ...). Top-level user
+        # dispatches carry no `from` and match only wildcard edges.
+        _rmdi_from_seat = None
+        if task_obj is not None and task_obj.get("parent_id"):
+            _rmdi_cfg = _read_profile_dict(project_dir, "rmdi")
+            _rmdi_from_seat = (_rmdi_cfg.get("seat_map") or {}).get(
+                "orchestrator", _RMDI_DEFAULT_SEAT_MAP["orchestrator"]
+            )
         try:
             rmdi_resolution = _resolve_via_rmdi(
-                project_dir, role or "worker", task_id, non_interactive=non_interactive
+                project_dir, role or "worker", task_id,
+                from_seat=_rmdi_from_seat, non_interactive=non_interactive,
             )
         except RmdiRouterDown as e:
             print(str(e), file=sys.stderr)

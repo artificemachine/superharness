@@ -429,14 +429,102 @@ class Orchestrator:
             context=task.get("context") or "none",
         )
 
+    def _rmdi_orchestrator_call(self, prompt: str) -> str | None:
+        """Under routing_strategy: rmdi, the decompose brain is the
+        orchestrator seat's BINDING — not the native shuffled CLI chain.
+
+        Returns the model's raw response, "" when the seat can't be driven
+        (no baseUrl and no CLI for its endpoint — decomposition is skipped,
+        which never compromises model authority: delegate() already resolved
+        the executing model through the router), or None when routing_strategy
+        is not rmdi (caller falls through to the native chain).
+        """
+        from superharness.commands.delegate import _read_profile_dict, _read_profile_field
+
+        if _read_profile_field(self.project_dir, "routing_strategy", "native") != "rmdi":
+            return None
+
+        import os
+        import urllib.request
+
+        from superharness.engine import rmdi_client
+        from superharness.engine.rmdi_client import RmdiError, RmdiRouterDown
+
+        cfg = _read_profile_dict(self.project_dir, "rmdi")
+        seat = (cfg.get("seat_map") or {}).get("orchestrator", "orchestrator@shux")
+        try:
+            res = rmdi_client.dispatch(seat)
+        except (RmdiError, RmdiRouterDown) as e:
+            # Decompose is auxiliary under rmdi — skip it loudly, never
+            # re-enter the native chain (that would hand routing back to shux).
+            logger.warning("rmdi orchestrator seat %s unavailable, skipping decomposition: %s", seat, e)
+            return ""
+
+        model_ref = str(res.get("modelRef") or "")
+        provider_id, _, model_id = model_ref.partition("/")
+        base_url = res.get("baseUrl")
+
+        if base_url:
+            try:
+                payload = json.dumps({
+                    "model": model_id,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 4000,
+                    "temperature": 0,
+                }).encode()
+                headers = {"Content-Type": "application/json"}
+                key = os.environ.get(f"SHUX_RMDI_API_KEY_{provider_id.upper().replace('-', '_')}")
+                if key:
+                    headers["Authorization"] = f"Bearer {key}"
+                req = urllib.request.Request(
+                    f"{str(base_url).rstrip('/')}/chat/completions", data=payload, headers=headers
+                )
+                with urllib.request.urlopen(req, timeout=_ORCHESTRATOR_TIMEOUT) as resp:
+                    data = json.loads(resp.read())
+                out = data["choices"][0]["message"]["content"].strip()
+                _record_orchestrator_score(model_ref, bool(out))
+                return out
+            except Exception as e:
+                logger.warning("rmdi orchestrator HTTP call failed (%s): %s", model_ref, e)
+                _record_orchestrator_score(model_ref, False)
+                return ""
+
+        if provider_id == "claude":
+            try:
+                result = subprocess.run(
+                    _build_agent_argv("claude", model_id, prompt),
+                    capture_output=True, text=True, timeout=_ORCHESTRATOR_TIMEOUT, check=False,
+                )
+                ok = result.returncode == 0 and bool(result.stdout.strip())
+                _record_orchestrator_score(model_ref, ok)
+                return result.stdout.strip() if ok else ""
+            except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as e:
+                logger.warning("rmdi orchestrator claude CLI failed: %s", e)
+                _record_orchestrator_score(model_ref, False)
+                return ""
+
+        logger.warning(
+            "rmdi orchestrator binding %s has no baseUrl and no CLI — decomposition skipped "
+            "(add a baseUrl for endpoint %s in x-fleet-routing.json to enable it)",
+            model_ref, provider_id,
+        )
+        return ""
+
     def _call_orchestrator_model(self, prompt: str) -> str:
         """Call the best available model across all agents for decomposition.
 
-        Shuffles the orchestrator chain randomly (biased by quality scores)
+        Under routing_strategy: rmdi the orchestrator seat's binding is the
+        only brain consulted (scores recorded for observability, never for
+        selection — selection is the router's DDAP solver). Otherwise:
+        shuffles the orchestrator chain randomly (biased by quality scores)
         and tries each model in order. First successful response wins.
         Quality scores are recorded for future selection weighting.
         """
         from datetime import datetime, timezone
+
+        rmdi_out = self._rmdi_orchestrator_call(prompt)
+        if rmdi_out is not None:
+            return rmdi_out
 
         chain = _shuffle_chain()
         for binary, model, label in chain:
