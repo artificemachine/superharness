@@ -272,10 +272,20 @@ def import_pack(
                     f"Import aborted: {len(collisions)} collision(s) found: {collisions[:5]}"
                 )
 
+        dest_root = dest_dir.resolve()
         for member in members:
             if member.name == "superharness-pack.yaml":
                 continue
             dest_file = dest_dir / member.name
+            # Containment guard: a crafted pack member named "../x" or an
+            # absolute path ("/etc/x") escapes dest_dir (pathlib lets the
+            # absolute right-hand operand win). Refuse anything outside dest_dir.
+            try:
+                dest_file.resolve().relative_to(dest_root)
+            except (ValueError, OSError):
+                raise RuntimeError(
+                    f"Pack member escapes destination directory: {member.name!r}"
+                )
             if dest_file.exists():
                 if collision == "skip":
                     result["skipped"].append(member.name)
