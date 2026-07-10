@@ -74,6 +74,149 @@ def _read_profile_field(project_dir: str, field: str, default: str) -> str:
         return default
 
 
+def _read_profile_dict(project_dir: str, field: str) -> dict:
+    """Read a nested mapping from profile.yaml (e.g. the `rmdi:` block)."""
+    profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
+    if not os.path.isfile(profile_file):
+        return {}
+    try:
+        import yaml
+        with open(profile_file) as f:
+            doc = yaml.safe_load(f) or {}
+        val = doc.get(field)
+        return dict(val) if isinstance(val, dict) else {}
+    except Exception as e:
+        logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
+        return {}
+
+
+# ---------------------------------------------------------------------------
+# RMDI routing (routing_strategy: rmdi) — model authority lives in the router
+# ---------------------------------------------------------------------------
+
+def _resolve_via_rmdi(
+    project_dir: str,
+    role: str,
+    task_id: str,
+    from_seat: str | None = None,
+    non_interactive: bool = False,
+) -> dict:
+    """Resolve (adapter, model) for a delegation through the RMDI router.
+
+    Returns {seat, bindingVersion, modelRef, model, adapter, baseUrl, recipe}.
+    Fail-loud on a down router (RmdiRouterDown propagates); edge denials are a
+    permanent block; consent gates confirm interactively or block.
+    """
+    from superharness.engine import rmdi_client, routing
+    from superharness.engine.ledger_dao import decision_log
+    from superharness.engine.rmdi_client import RmdiError
+
+    cfg = routing.rmdi_config(project_dir)
+    seat = routing.seat_for(role, cfg)
+
+    consent = False
+    while True:
+        try:
+            res = rmdi_client.dispatch(seat, from_seat=from_seat, consent=consent)
+            break
+        except RmdiError as e:
+            if e.status == 409 and e.code == "EDGE_DENIED":
+                decision_log(project_dir, "gate_block", task_id=task_id, agent=seat,
+                             reason=f"rmdi edge denied: {e.payload}")
+                print(f"blocked: recipe edge denies delegation to {seat} ({e.payload})", file=sys.stderr)
+                raise SystemExit(EXIT_PERMANENT_BLOCK)
+            if e.status == 428 and not consent:
+                if non_interactive or not sys.stdin.isatty():
+                    decision_log(project_dir, "gate_block", task_id=task_id, agent=seat,
+                                 reason=f"rmdi consent required (non-interactive): {e.code}")
+                    print(f"blocked: {e.code} for seat {seat} — consent needed and no TTY.", file=sys.stderr)
+                    raise SystemExit(EXIT_PERMANENT_BLOCK)
+                sys.stderr.write(f"RMDI gate {e.code} for seat {seat} ({e.payload}). Proceed? [y/N]: ")
+                sys.stderr.flush()
+                if sys.stdin.readline().strip() not in ("y", "Y", "yes", "YES"):
+                    print("Declined: delegation aborted.", file=sys.stderr)
+                    raise SystemExit(1)
+                consent = True
+                continue
+            # 409 REBIND_REJECTED / BINDING_INVALID, 503 FRONTIER_DARK, ...
+            print(f"rmdi dispatch failed for seat {seat}: {e}", file=sys.stderr)
+            raise SystemExit(1)
+
+    binding = res.get("binding") or {}
+    model_ref = str(res.get("modelRef") or "")
+    provider_id, _, model_id = model_ref.partition("/")
+    adapter = routing.adapter_for(provider_id, cfg)
+    return {
+        "seat": seat,
+        "bindingVersion": binding.get("version"),
+        "modelRef": model_ref,
+        # claude CLI takes a bare model id; other adapters receive the full
+        # provider/model ref and must define the provider in their own config
+        # (documented in rmdi/docs/shux-merge.md — endpoint threading is a
+        # tracked follow-up, NOT an env var: nothing consumes one).
+        "model": model_id if adapter == "claude-code" else model_ref,
+        "adapter": adapter,
+        "baseUrl": res.get("baseUrl"),
+        "recipe": res.get("activeRecipe"),
+        "regime": binding.get("regime", "ddap"),
+        "by": binding.get("by"),
+    }
+
+
+def _record_rmdi_provenance(project_dir: str, task_id: str, resolution: dict) -> None:
+    """Stamp (seat, bindingVersion, modelRef) into tasks.extras_json + the
+    ledger. Best-effort — provenance failure never blocks a dispatch."""
+    import json as _json
+    import time as _time
+    entry = {
+        "seat": resolution.get("seat"),
+        "bindingVersion": resolution.get("bindingVersion"),
+        "modelRef": resolution.get("modelRef"),
+        "adapter": resolution.get("adapter"),
+        "recipe": resolution.get("recipe"),
+        "regime": resolution.get("regime", "ddap"),
+        "at": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
+    }
+    try:
+        from superharness.engine import tasks_dao
+        from superharness.engine.db import get_connection, init_db
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            # Optimistic-concurrency write through the dao (version check +
+            # bump) so a concurrent writer raises ConcurrencyError instead of
+            # silently clobbering the stamp; one retry absorbs a benign race.
+            for _attempt in (0, 1):
+                task = tasks_dao.get(conn, task_id)
+                if task is None:
+                    break
+                try:
+                    extras = _json.loads(task.extras_json) if task.extras_json else {}
+                except Exception:
+                    extras = {}
+                extras["rmdi"] = entry
+                try:
+                    tasks_dao.update(conn, task_id, task.version, {"extras_json": _json.dumps(extras)})
+                    conn.commit()
+                    break
+                except Exception:
+                    if _attempt:
+                        raise
+                    continue
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("delegate.py rmdi provenance (extras_json) failed: %s", e, exc_info=True)
+    try:
+        from superharness.engine.ledger_dao import decision_log
+        decision_log(project_dir, "rmdi_dispatch", task_id=task_id,
+                     agent=str(resolution.get("adapter") or ""),
+                     reason=f"seat {entry['seat']} v{entry['bindingVersion']} -> {entry['modelRef']}",
+                     details=entry)
+    except Exception as e:
+        logger.warning("delegate.py rmdi provenance (ledger) failed: %s", e, exc_info=True)
+
+
 # ---------------------------------------------------------------------------
 # Contract helpers (direct YAML reads — avoids subprocess for simple fields)
 # ---------------------------------------------------------------------------
@@ -820,13 +963,53 @@ def delegate(
     # -----------------------------------------------------------------------
     # Model / effort resolution
     # Order: CLI flag > task field > classifier > profile default > standard/medium
+    # Under routing_strategy: rmdi the ROUTER is the model authority — the
+    # native ladder is skipped for the model (effort stays native: effort is
+    # not a model identity).
     # -----------------------------------------------------------------------
     resolved_model = ""
     resolved_effort = ""
     model_source = "fallback"
 
+    from superharness.engine import routing as _routing
+    routing_strategy = _routing.resolve_routing_strategy(project_dir)
+    rmdi_resolution: dict | None = None
+    if routing_strategy == "rmdi":
+        if model_override:
+            print(
+                "error: --model is not honored under routing_strategy: rmdi — "
+                "model overrides are seat rebinds. Use `shux recipe <name>` or the router's /bind.",
+                file=sys.stderr,
+            )
+            return 2
+        from superharness.engine.rmdi_client import RmdiRouterDown
+        # A subtask dispatch is a delegation FROM the orchestrator seat — the
+        # recipe's edges then govern the fan-out (orchestrator@shux → worker@shux
+        # allow, worker@shux → orchestrator@shux deny, ...). Top-level user
+        # dispatches carry no `from` and match only wildcard edges.
+        _rmdi_from_seat = None
+        if task_obj is not None and task_obj.get("parent_id"):
+            _rmdi_from_seat = _routing.seat_for("orchestrator", _routing.rmdi_config(project_dir))
+        try:
+            rmdi_resolution = _resolve_via_rmdi(
+                project_dir, role or "worker", task_id,
+                from_seat=_rmdi_from_seat, non_interactive=non_interactive,
+            )
+        except RmdiRouterDown as e:
+            print(str(e), file=sys.stderr)
+            return 1
+        target = rmdi_resolution["adapter"]
+        resolved_model = rmdi_resolution["model"]
+        model_source = f"rmdi:{rmdi_resolution['seat']}#v{rmdi_resolution['bindingVersion']}"
+        print(
+            f"RMDI routing: seat {rmdi_resolution['seat']} -> {rmdi_resolution['modelRef']} "
+            f"(v{rmdi_resolution['bindingVersion']}, adapter {target}"
+            + (f", recipe {rmdi_resolution['recipe']}" if rmdi_resolution.get("recipe") else "")
+            + ")"
+        )
+
     # 0. Role-based routing (lower priority than explicit CLI flag)
-    if role and role != "worker" and not model_override:
+    if rmdi_resolution is None and role and role != "worker" and not model_override:
         try:
             from superharness.engine.model_router_roles import ModelRouter
             _router = ModelRouter.from_project(project_dir)
@@ -854,7 +1037,10 @@ def delegate(
             resolved_effort = task_effort
 
     # 3. Auto-classification (skip if print_only — don't call Claude for a preview)
-    if not print_only and not no_auto_model and (not resolved_model or not resolved_effort):
+    # Skipped under rmdi: the binding is the model authority and the classifier
+    # costs up to ~50s of network/CLI probes just to derive effort — effort
+    # falls to task field / profile default / medium instead.
+    if rmdi_resolution is None and not print_only and not no_auto_model and (not resolved_model or not resolved_effort):
         try:
             from superharness.engine.adapter_registry import (
                 clear_manifest_cache,
@@ -913,28 +1099,32 @@ def delegate(
             logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
             resolved_model = "sonnet"
         model_source = "fallback"
-    if not resolved_effort:
-        resolved_effort = "medium"
+    # (the effort 'medium' fallback moves BELOW the orchestrator block so the
+    # orchestrator's effort recommendation is not dead-on-arrival — review
+    # finding 8)
 
-    # If model_override was a tier name, resolve to agent-specific model
-    try:
-        from superharness.engine.model_router import resolve_tier, resolve_model as _resolve_model
-        tier = resolve_tier(resolved_model)
-        if tier:
-            resolved_model = _resolve_model(target, tier)
-    except Exception as e:
-        logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
-        pass
-    # Apply ChatGPT-account overrides last so every resolution path
-    # (CLI, task field, auto-classify via adapter_registry, profile,
-    # fallback, tier-reroute) gets remapped when codex is signed in via
-    # ChatGPT. Without this, gpt-5.3-codex reaches the codex CLI and 400s.
-    try:
-        from superharness.engine.model_router import _apply_chatgpt_auth_override
-        resolved_model = _apply_chatgpt_auth_override(target, resolved_model, project_dir)
-    except Exception as e:
-        logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
-        pass
+    # If model_override was a tier name, resolve to agent-specific model.
+    # (Skipped under rmdi: the binding's modelRef is authoritative — a tier
+    # reroute or account override would leak model identity back into shux.)
+    if rmdi_resolution is None:
+        try:
+            from superharness.engine.model_router import resolve_tier, resolve_model as _resolve_model
+            tier = resolve_tier(resolved_model)
+            if tier:
+                resolved_model = _resolve_model(target, tier)
+        except Exception as e:
+            logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
+            pass
+        # Apply ChatGPT-account overrides last so every resolution path
+        # (CLI, task field, auto-classify via adapter_registry, profile,
+        # fallback, tier-reroute) gets remapped when codex is signed in via
+        # ChatGPT. Without this, gpt-5.3-codex reaches the codex CLI and 400s.
+        try:
+            from superharness.engine.model_router import _apply_chatgpt_auth_override
+            resolved_model = _apply_chatgpt_auth_override(target, resolved_model, project_dir)
+        except Exception as e:
+            logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
+            pass
     # -----------------------------------------------------------------------
     # Auto-orchestrate: let the best model decide owner+tier+effort+decompose.
     # Default path. Skip with --no-orchestrate for trivial tasks.
@@ -974,23 +1164,40 @@ def delegate(
                 if print_only:
                     return 0
 
-                # Override target/model/effort from routing plan
-                target = routing.owner
-                if not resolved_model:
-                    resolved_model = _resolve_model(target, routing.tier)
-                if not resolved_effort:
-                    resolved_effort = routing.effort
-                model_source = "orchestrator"
+                # Override target/model/effort from routing plan. Under rmdi
+                # the orchestrator keeps ONLY decompose/subtasks — owner/tier
+                # would re-inject model authority shux no longer holds.
+                if rmdi_resolution is None:
+                    target = routing.owner
+                    if not resolved_model:
+                        resolved_model = _resolve_model(target, routing.tier)
+                    if not resolved_effort:
+                        resolved_effort = routing.effort
+                    model_source = "orchestrator"
+                else:
+                    if not resolved_effort:
+                        resolved_effort = routing.effort
+                    print("  (rmdi: orchestrator owner/tier ignored — binding is authoritative)")
             else:
                 print(f"  Plan:     direct dispatch (no decomposition)")
-                # Apply routing: override target/model/effort
-                target = routing.owner
-                resolved_model = _resolve_model(target, routing.tier)
-                resolved_effort = routing.effort
-                model_source = "orchestrator"
+                if rmdi_resolution is None:
+                    # Apply routing: override target/model/effort
+                    target = routing.owner
+                    resolved_model = _resolve_model(target, routing.tier)
+                    resolved_effort = routing.effort
+                    model_source = "orchestrator"
+                else:
+                    if not resolved_effort:
+                        resolved_effort = routing.effort
+                    print("  (rmdi: orchestrator owner/tier ignored — binding is authoritative)")
         except Exception as e:
             logger.warning("delegate.py orchestrator failed, falling back to standard dispatch: %s", e, exc_info=True)
             # Fall through to existing dispatch path
+
+    # Effort fallback lands AFTER the orchestrator so routing.effort is honored
+    # on every path (native and rmdi) when nothing more specific was set.
+    if not resolved_effort:
+        resolved_effort = "medium"
 
     # Acceptance criteria
     ac_lines = _get_task_acceptance_criteria(project_dir, task_id)
@@ -1237,6 +1444,8 @@ def delegate(
     # launch — the CLI path execs and never returns, so hooks must run now.
     # print_only returned above, so notifications/routing fire only on real
     # dispatch.
+    if rmdi_resolution is not None:
+        _record_rmdi_provenance(project_dir, task_id, rmdi_resolution)
     _fire_on_delegate(project_dir, target, task_id)
 
     # SDK dispatch path
@@ -1456,6 +1665,17 @@ def main(argv: list[str] | None = None) -> None:
                 yolo=opts.yolo,
             )
             captured = sys.stdout.getvalue()
+        except SystemExit as e:
+            # Gate raises (rmdi edge-denial, non-TTY consent, RmdiError) must
+            # still honor the --json contract: emit the envelope, then exit
+            # with the same code — never empty stdout for a machine caller.
+            captured = sys.stdout.getvalue()
+            sys.stdout = _orig_stdout
+            code = e.code if isinstance(e.code, int) else 1
+            from superharness.utils.json_output import emit_error
+            emit_error(f"delegation blocked (exit {code}); see stderr for the gate reason", exit_code=code,
+                       task_id=opts.task, to=opts.target)
+            raise
         finally:
             sys.stdout = _orig_stdout
         prompt_text = ""
