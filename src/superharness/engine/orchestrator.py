@@ -439,19 +439,18 @@ class Orchestrator:
         the executing model through the router), or None when routing_strategy
         is not rmdi (caller falls through to the native chain).
         """
-        from superharness.commands.delegate import _read_profile_dict, _read_profile_field
+        from superharness.engine import routing
 
-        if _read_profile_field(self.project_dir, "routing_strategy", "native") != "rmdi":
+        if routing.resolve_routing_strategy(self.project_dir) != "rmdi":
             return None
 
         import os
-        import urllib.request
 
         from superharness.engine import rmdi_client
         from superharness.engine.rmdi_client import RmdiError, RmdiRouterDown
 
-        cfg = _read_profile_dict(self.project_dir, "rmdi")
-        seat = (cfg.get("seat_map") or {}).get("orchestrator", "orchestrator@shux")
+        cfg = routing.rmdi_config(self.project_dir)
+        seat = routing.seat_for("orchestrator", cfg)
         try:
             res = rmdi_client.dispatch(seat)
         except (RmdiError, RmdiRouterDown) as e:
@@ -466,22 +465,10 @@ class Orchestrator:
 
         if base_url:
             try:
-                payload = json.dumps({
-                    "model": model_id,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 4000,
-                    "temperature": 0,
-                }).encode()
-                headers = {"Content-Type": "application/json"}
                 key = os.environ.get(f"SHUX_RMDI_API_KEY_{provider_id.upper().replace('-', '_')}")
-                if key:
-                    headers["Authorization"] = f"Bearer {key}"
-                req = urllib.request.Request(
-                    f"{str(base_url).rstrip('/')}/chat/completions", data=payload, headers=headers
+                out = rmdi_client.chat_completions(
+                    str(base_url), model_id, prompt, timeout=_ORCHESTRATOR_TIMEOUT, api_key=key
                 )
-                with urllib.request.urlopen(req, timeout=_ORCHESTRATOR_TIMEOUT) as resp:
-                    data = json.loads(resp.read())
-                out = data["choices"][0]["message"]["content"].strip()
                 _record_orchestrator_score(model_ref, bool(out))
                 return out
             except Exception as e:

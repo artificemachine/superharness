@@ -45,9 +45,10 @@ class RmdiRouterDown(Exception):
     def __init__(self, detail: str):
         super().__init__(
             f"RMDI router unreachable at {router_url()} ({detail}). "
-            "Delegation is halted: routing_strategy is 'rmdi' and model authority lives in the router. "
+            "Delegation is halted: model authority lives in the router (RMDI prevails by default). "
             "Fix the router (systemctl status rmdi-router on vm740, or RMDI_ROUTER_URL), "
-            "or explicitly set routing_strategy: native in .superharness/profile.yaml."
+            "or opt out for THIS SESSION only with SUPERHARNESS_ROUTING_STRATEGY=native "
+            "(ephemeral — never edit routing_strategy into profile.yaml to escape an outage)."
         )
 
 
@@ -113,3 +114,30 @@ def dispatch(seat: str, from_seat: str | None = None, consent: bool = False) -> 
 
 def bindings() -> list[dict[str, Any]]:
     return _request("GET", "/bindings")
+
+
+def chat_completions(
+    base_url: str,
+    model_id: str,
+    prompt: str,
+    *,
+    max_tokens: int = 4000,
+    timeout: int = 60,
+    api_key: str | None = None,
+) -> str:
+    """One OpenAI-compatible chat call against a binding's baseUrl. The single
+    chat implementation for engine callers (orchestrator decompose etc.) —
+    raises on any failure (callers decide their own degrade policy)."""
+    payload = json.dumps({
+        "model": model_id,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+        "temperature": 0,
+    }).encode()
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    req = urllib.request.Request(f"{base_url.rstrip('/')}/chat/completions", data=payload, headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read())
+    return str(data["choices"][0]["message"]["content"]).strip()

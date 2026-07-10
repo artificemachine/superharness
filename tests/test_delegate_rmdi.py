@@ -132,7 +132,7 @@ def test_provenance_lands_in_extras_json_and_ledger(project):
     conn = get_connection(project)
     init_db(conn)
     conn.execute(
-        "INSERT INTO tasks (id, title, owner, status, created_at) VALUES ('T-9', 'rmdi provenance', 'opencode', 'todo', '2026-07-09T00:00:00Z')"
+        "INSERT INTO tasks (id, title, owner, status, version, created_at) VALUES ('T-9', 'rmdi provenance', 'opencode', 'todo', 1, '2026-07-09T00:00:00Z')"
     )
     conn.commit()
     conn.close()
@@ -164,3 +164,43 @@ def test_provenance_lands_in_extras_json_and_ledger(project):
     assert "worker@shux v7" in details["reason"]
     assert details["bindingVersion"] == 7
     assert details["seat"] == "worker@shux"
+
+
+# ---------------------------------------------------------------------------
+# Polarity contract (2026-07-10): RMDI prevails by default; native is an
+# EPHEMERAL env-var opt-out; profile is the durable per-project choice.
+# ---------------------------------------------------------------------------
+
+
+def test_default_routing_strategy_is_rmdi(tmp_path, monkeypatch):
+    from superharness.engine import routing
+
+    monkeypatch.delenv(routing.ENV_VAR, raising=False)
+    assert routing.resolve_routing_strategy(str(tmp_path)) == "rmdi"
+
+
+def test_env_var_is_the_ephemeral_session_override(tmp_path, monkeypatch):
+    from superharness.engine import routing
+
+    sh = tmp_path / ".superharness"
+    sh.mkdir()
+    (sh / "profile.yaml").write_text("routing_strategy: rmdi\n")
+    monkeypatch.setenv(routing.ENV_VAR, "native")
+    assert routing.resolve_routing_strategy(str(tmp_path)) == "native"
+    monkeypatch.delenv(routing.ENV_VAR)
+    assert routing.resolve_routing_strategy(str(tmp_path)) == "rmdi"
+
+
+def test_profile_native_is_honored_and_invalid_values_fall_to_rmdi(tmp_path, monkeypatch):
+    from superharness.engine import routing
+
+    monkeypatch.delenv(routing.ENV_VAR, raising=False)
+    sh = tmp_path / ".superharness"
+    sh.mkdir()
+    (sh / "profile.yaml").write_text("routing_strategy: native\n")
+    assert routing.resolve_routing_strategy(str(tmp_path)) == "native"
+    (sh / "profile.yaml").write_text("routing_strategy: banana\n")
+    assert routing.resolve_routing_strategy(str(tmp_path)) == "rmdi"
+    # Corrupt YAML lands on the SAFE side: rmdi (router authority), not native.
+    (sh / "profile.yaml").write_text("routing_strategy: [unclosed\n")
+    assert routing.resolve_routing_strategy(str(tmp_path)) == "rmdi"

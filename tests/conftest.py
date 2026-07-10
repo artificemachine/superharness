@@ -25,6 +25,12 @@ os.environ.setdefault("SUPERHARNESS_PYTHON", sys.executable)
 # session-start.sh and friends honor this flag and skip ensure-launchd-inbox-watcher.sh.
 os.environ["SUPERHARNESS_NO_AUTO_INSTALL"] = "1"
 
+# RMDI prevails by default (2026-07-10 polarity) — but the test suite has no
+# router. Opt the whole suite out via the EPHEMERAL session mechanism (the
+# same one a user without a router uses); rmdi-path tests mock the client or
+# monkeypatch this env var away explicitly.
+os.environ.setdefault("SUPERHARNESS_ROUTING_STRATEGY", "native")
+
 
 @pytest.fixture(autouse=True)
 def _superharness_logger_propagates(monkeypatch):
