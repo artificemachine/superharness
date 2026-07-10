@@ -1,0 +1,18 @@
+{
+  "schema": "shux-rmdi-verification/v2",
+  "at": "2026-07-10T11:23:48-0400",
+  "router": "http://127.0.0.1:8211 (ephemeral)",
+  "checks": {
+    "router_health": true,
+    "recipe_switched": true,
+    "delegate_resolves": true,
+    "binding_crosscheck": true,
+    "model_override_blocked": true,
+    "subtask_edge_from_seat": true,
+    "orchestrator_brain_http": true,
+    "polarity_default_rmdi": true,
+    "polarity_env_override": true,
+    "router_down_fail_loud": true
+  },
+  "ok": true
+}
