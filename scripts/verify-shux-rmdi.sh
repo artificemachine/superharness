@@ -14,7 +14,12 @@
 #   7. orchestrator_brain_http — Orchestrator._call_orchestrator_model drives
 #                             the orchestrator seat's binding over HTTP
 #                             (LIVE inference on the bound fleet model)
-#   8. router_down_fail_loud — with the router dead, delegate exits non-zero
+#   8. polarity_default_rmdi — with NO routing_strategy in the profile, the
+#                             router is still the model authority (RMDI
+#                             prevails by default)
+#   9. polarity_env_override — SUPERHARNESS_ROUTING_STRATEGY=native flips ONE
+#                             session to the native ladder (no RMDI line)
+#  10. router_down_fail_loud — with the router dead, delegate exits non-zero
 #                             naming the router URL (no silent native fallback)
 #
 # Emits a fixed-schema JSON (shux-rmdi-verification/v1) to docs/trials/<date>/,
@@ -38,7 +43,7 @@ export PYTHONPATH="$REPO/src${PYTHONPATH:+:$PYTHONPATH}"
 export SUPERHARNESS_STATE_DIR="$STATE/shux-state"
 export RMDI_ROUTER_URL="$ROUTER"
 
-C_HEALTH=false C_SWITCH=false C_DELEGATE=false C_XCHECK=false C_OVERRIDE=false C_SUBTASK=false C_BRAIN=false C_DOWN=false
+C_HEALTH=false C_SWITCH=false C_DELEGATE=false C_XCHECK=false C_OVERRIDE=false C_SUBTASK=false C_BRAIN=false C_POLARITY=false C_ENVNATIVE=false C_DOWN=false
 PID=""
 
 cleanup() {
@@ -52,7 +57,7 @@ emit() {
   python3 - "$OUT" <<PYEOF
 import json, sys, time
 json.dump({
-    "schema": "shux-rmdi-verification/v1",
+    "schema": "shux-rmdi-verification/v2",
     "at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
     "router": "$ROUTER (ephemeral)",
     "checks": {
@@ -63,6 +68,8 @@ json.dump({
         "model_override_blocked": "$C_OVERRIDE" == "true",
         "subtask_edge_from_seat": "$C_SUBTASK" == "true",
         "orchestrator_brain_http": "$C_BRAIN" == "true",
+        "polarity_default_rmdi": "$C_POLARITY" == "true",
+        "polarity_env_override": "$C_ENVNATIVE" == "true",
         "router_down_fail_loud": "$C_DOWN" == "true",
     },
     "ok": "${1}" == "true",
@@ -182,7 +189,29 @@ routing_strategy: rmdi
 autonomy: supervised
 YAML
 
-echo "== 8/8 router down ⇒ delegate fails loud =="
+echo "== 8/10 polarity: NO routing_strategy in profile ⇒ RMDI is still the authority =="
+cat > "$PROJ/.superharness/profile.yaml" <<'YAML'
+autonomy: supervised
+YAML
+python3 -m superharness.commands.delegate --project "$PROJ" --task T-RMDI --to opencode \
+  --print-only --non-interactive >"$STATE/polarity.out" 2>&1 \
+  || fail "default-rmdi delegate failed: $(tail -5 "$STATE/polarity.out")"
+grep -q "RMDI routing: seat worker@shux" "$STATE/polarity.out" || fail "default is not rmdi: $(head -5 "$STATE/polarity.out")"
+C_POLARITY=true
+
+echo "== 9/10 polarity: SUPERHARNESS_ROUTING_STRATEGY=native is an ephemeral session opt-out =="
+SUPERHARNESS_ROUTING_STRATEGY=native python3 -m superharness.commands.delegate --project "$PROJ" \
+  --task T-RMDI --to opencode --print-only --non-interactive >"$STATE/native.out" 2>&1 \
+  || fail "env-native delegate failed: $(tail -5 "$STATE/native.out")"
+grep -q "RMDI routing:" "$STATE/native.out" && fail "env-native still routed via RMDI"
+C_ENVNATIVE=true
+# restore the rmdi profile for the router-down check
+cat > "$PROJ/.superharness/profile.yaml" <<'YAML'
+routing_strategy: rmdi
+autonomy: supervised
+YAML
+
+echo "== 10/10 router down ⇒ delegate fails loud =="
 kill "$PID" 2>/dev/null || true
 PID=""
 sleep 0.5

@@ -58,7 +58,9 @@ def _switch(name: str, consent: bool, json_mode: bool) -> int:
     try:
         res = rmdi_client.recipe_switch(name, user=user, consent=consent)
     except RmdiError as e:
-        if e.status == 428 and e.code == "RECIPE_CONSENT_REQUIRED":
+        if e.status == 428 and e.code == "RECIPE_CONSENT_REQUIRED" and not consent:
+            # (guarded on `not consent`: a router that still 428s AFTER consent
+            # is a fault, not a re-prompt — falls to the generic error below.)
             crossings = e.payload.get("crossings", [])
             summary = ", ".join(
                 f"{c.get('seat')}: {c.get('from') or '?'}->{c.get('to') or 'frontier'} ({c.get('model')})"
@@ -162,6 +164,11 @@ def main(argv: list[str] | None = None) -> None:
             sys.exit(_switch(sub, consent=consent, json_mode=json_mode))
     except RmdiRouterDown as e:
         print(str(e), file=sys.stderr)
+        sys.exit(1)
+    except RmdiError as e:
+        # e.g. a pre-merge router without GET /recipes/switch-events (404) —
+        # one clean line, never a traceback.
+        print(f"rmdi router error: {e.status} {e.code}", file=sys.stderr)
         sys.exit(1)
 
 

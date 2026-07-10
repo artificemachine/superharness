@@ -94,24 +94,6 @@ def _read_profile_dict(project_dir: str, field: str) -> dict:
 # RMDI routing (routing_strategy: rmdi) — model authority lives in the router
 # ---------------------------------------------------------------------------
 
-_RMDI_DEFAULT_SEAT_MAP = {
-    "worker": "worker@shux",
-    "reviewer": "reviewer@shux",
-    "code_reviewer": "reviewer@shux",
-    "validator": "reviewer@shux",
-    "planner": "planner@main",
-    "orchestrator": "orchestrator@shux",
-    "scout": "scout@shux",
-}
-# Binding endpoint (providerID) → superharness adapter. Endpoint identity is
-# transport, not model semantics — no model name enters task state through this.
-_RMDI_DEFAULT_ADAPTER_MAP = {
-    "claude": "claude-code",
-    "codex": "codex-cli",
-    "*": "opencode",
-}
-
-
 def _resolve_via_rmdi(
     project_dir: str,
     role: str,
@@ -125,14 +107,12 @@ def _resolve_via_rmdi(
     Fail-loud on a down router (RmdiRouterDown propagates); edge denials are a
     permanent block; consent gates confirm interactively or block.
     """
-    from superharness.engine import rmdi_client
+    from superharness.engine import rmdi_client, routing
     from superharness.engine.ledger_dao import decision_log
     from superharness.engine.rmdi_client import RmdiError
 
-    cfg = _read_profile_dict(project_dir, "rmdi")
-    seat_map = {**_RMDI_DEFAULT_SEAT_MAP, **(cfg.get("seat_map") or {})}
-    adapter_map = {**_RMDI_DEFAULT_ADAPTER_MAP, **(cfg.get("adapter_map") or {})}
-    seat = seat_map.get(role) or f"{role}@shux"
+    cfg = routing.rmdi_config(project_dir)
+    seat = routing.seat_for(role, cfg)
 
     consent = False
     while True:
@@ -165,13 +145,15 @@ def _resolve_via_rmdi(
     binding = res.get("binding") or {}
     model_ref = str(res.get("modelRef") or "")
     provider_id, _, model_id = model_ref.partition("/")
-    adapter = adapter_map.get(provider_id) or adapter_map.get("*", "opencode")
+    adapter = routing.adapter_for(provider_id, cfg)
     return {
         "seat": seat,
         "bindingVersion": binding.get("version"),
         "modelRef": model_ref,
-        # claude CLI takes a bare model id; other adapters get the full ref and
-        # SHUX_MODEL_BASE_URL from the binding's endpoint.
+        # claude CLI takes a bare model id; other adapters receive the full
+        # provider/model ref and must define the provider in their own config
+        # (documented in rmdi/docs/shux-merge.md — endpoint threading is a
+        # tracked follow-up, NOT an env var: nothing consumes one).
         "model": model_id if adapter == "claude-code" else model_ref,
         "adapter": adapter,
         "baseUrl": res.get("baseUrl"),
@@ -196,19 +178,31 @@ def _record_rmdi_provenance(project_dir: str, task_id: str, resolution: dict) ->
         "at": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
     }
     try:
+        from superharness.engine import tasks_dao
         from superharness.engine.db import get_connection, init_db
         conn = get_connection(project_dir)
         try:
             init_db(conn)
-            row = conn.execute("SELECT extras_json FROM tasks WHERE id = ?", (task_id,)).fetchone()
-            if row is not None:
+            # Optimistic-concurrency write through the dao (version check +
+            # bump) so a concurrent writer raises ConcurrencyError instead of
+            # silently clobbering the stamp; one retry absorbs a benign race.
+            for _attempt in (0, 1):
+                task = tasks_dao.get(conn, task_id)
+                if task is None:
+                    break
                 try:
-                    extras = _json.loads(row[0]) if row[0] else {}
+                    extras = _json.loads(task.extras_json) if task.extras_json else {}
                 except Exception:
                     extras = {}
                 extras["rmdi"] = entry
-                conn.execute("UPDATE tasks SET extras_json = ? WHERE id = ?", (_json.dumps(extras), task_id))
-                conn.commit()
+                try:
+                    tasks_dao.update(conn, task_id, task.version, {"extras_json": _json.dumps(extras)})
+                    conn.commit()
+                    break
+                except Exception:
+                    if _attempt:
+                        raise
+                    continue
         finally:
             conn.close()
     except Exception as e:
@@ -977,7 +971,8 @@ def delegate(
     resolved_effort = ""
     model_source = "fallback"
 
-    routing_strategy = _read_profile_field(project_dir, "routing_strategy", "native")
+    from superharness.engine import routing as _routing
+    routing_strategy = _routing.resolve_routing_strategy(project_dir)
     rmdi_resolution: dict | None = None
     if routing_strategy == "rmdi":
         if model_override:
@@ -994,10 +989,7 @@ def delegate(
         # dispatches carry no `from` and match only wildcard edges.
         _rmdi_from_seat = None
         if task_obj is not None and task_obj.get("parent_id"):
-            _rmdi_cfg = _read_profile_dict(project_dir, "rmdi")
-            _rmdi_from_seat = (_rmdi_cfg.get("seat_map") or {}).get(
-                "orchestrator", _RMDI_DEFAULT_SEAT_MAP["orchestrator"]
-            )
+            _rmdi_from_seat = _routing.seat_for("orchestrator", _routing.rmdi_config(project_dir))
         try:
             rmdi_resolution = _resolve_via_rmdi(
                 project_dir, role or "worker", task_id,
@@ -1009,8 +1001,6 @@ def delegate(
         target = rmdi_resolution["adapter"]
         resolved_model = rmdi_resolution["model"]
         model_source = f"rmdi:{rmdi_resolution['seat']}#v{rmdi_resolution['bindingVersion']}"
-        if rmdi_resolution.get("baseUrl"):
-            os.environ["SHUX_MODEL_BASE_URL"] = str(rmdi_resolution["baseUrl"])
         print(
             f"RMDI routing: seat {rmdi_resolution['seat']} -> {rmdi_resolution['modelRef']} "
             f"(v{rmdi_resolution['bindingVersion']}, adapter {target}"
@@ -1047,7 +1037,10 @@ def delegate(
             resolved_effort = task_effort
 
     # 3. Auto-classification (skip if print_only — don't call Claude for a preview)
-    if not print_only and not no_auto_model and (not resolved_model or not resolved_effort):
+    # Skipped under rmdi: the binding is the model authority and the classifier
+    # costs up to ~50s of network/CLI probes just to derive effort — effort
+    # falls to task field / profile default / medium instead.
+    if rmdi_resolution is None and not print_only and not no_auto_model and (not resolved_model or not resolved_effort):
         try:
             from superharness.engine.adapter_registry import (
                 clear_manifest_cache,
@@ -1106,8 +1099,9 @@ def delegate(
             logger.warning("delegate.py unexpected error: %s", e, exc_info=True)
             resolved_model = "sonnet"
         model_source = "fallback"
-    if not resolved_effort:
-        resolved_effort = "medium"
+    # (the effort 'medium' fallback moves BELOW the orchestrator block so the
+    # orchestrator's effort recommendation is not dead-on-arrival — review
+    # finding 8)
 
     # If model_override was a tier name, resolve to agent-specific model.
     # (Skipped under rmdi: the binding's modelRef is authoritative — a tier
@@ -1199,6 +1193,11 @@ def delegate(
         except Exception as e:
             logger.warning("delegate.py orchestrator failed, falling back to standard dispatch: %s", e, exc_info=True)
             # Fall through to existing dispatch path
+
+    # Effort fallback lands AFTER the orchestrator so routing.effort is honored
+    # on every path (native and rmdi) when nothing more specific was set.
+    if not resolved_effort:
+        resolved_effort = "medium"
 
     # Acceptance criteria
     ac_lines = _get_task_acceptance_criteria(project_dir, task_id)
@@ -1666,6 +1665,17 @@ def main(argv: list[str] | None = None) -> None:
                 yolo=opts.yolo,
             )
             captured = sys.stdout.getvalue()
+        except SystemExit as e:
+            # Gate raises (rmdi edge-denial, non-TTY consent, RmdiError) must
+            # still honor the --json contract: emit the envelope, then exit
+            # with the same code — never empty stdout for a machine caller.
+            captured = sys.stdout.getvalue()
+            sys.stdout = _orig_stdout
+            code = e.code if isinstance(e.code, int) else 1
+            from superharness.utils.json_output import emit_error
+            emit_error(f"delegation blocked (exit {code}); see stderr for the gate reason", exit_code=code,
+                       task_id=opts.task, to=opts.target)
+            raise
         finally:
             sys.stdout = _orig_stdout
         prompt_text = ""
