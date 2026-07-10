@@ -1332,6 +1332,27 @@ _AGENT_FALLBACK: dict[str, list[str]] = {
 # Ordered preference for fallback when tried_agents is derived from inbox history
 _FALLBACK_ORDER = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
 
+# Owner id -> CLI binary name, for live reachability checks (shutil.which).
+# Agents not listed here are checked by their own id (e.g. "opencode").
+_AGENT_CLI_BINARY = {
+    "claude-code": "claude",
+    "codex-cli": "codex",
+    "gemini-cli": "gemini",
+}
+
+
+def _agent_cli_reachable(agent: str) -> bool:
+    """True if the agent's CLI binary is present on PATH right now.
+
+    Availability-only signal — does not check auth/quota (see
+    is_agent_quota_limited for that). Used to keep the exhausted-retry
+    fallback path from re-routing a task to an agent that can't even run.
+    """
+    import shutil
+    binary = _AGENT_CLI_BINARY.get(agent, agent)
+    return shutil.which(binary) is not None
+
+
 _RECOVERY_MAX = 2  # max recovery attempts before escalating to operator
 _ABSOLUTE_MAX_RETRIES = 12  # hard cap on inbox.max_retries to prevent runaway loops
 _IDENTICAL_FAILURE_THRESHOLD = 4  # N identical error_snippets in a row → escalate
@@ -1604,6 +1625,7 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                         a for a in _FALLBACK_ORDER
                         if a not in tried_agents
                         and not _is_quota(str(project_dir), a)
+                        and _agent_cli_reachable(a)
                     ]
                 except Exception:
                     fallback_agents = [a for a in _FALLBACK_ORDER if a not in tried_agents]
@@ -2004,9 +2026,8 @@ def _self_diagnosis(project_dir: str) -> list[str]:
         warnings.append(f"PERMISSION: {db_path} is not writable")
 
     # Check agent binaries exist
-    for agent, binary in [("claude-code", "claude"), ("codex-cli", "codex"), ("gemini-cli", "gemini")]:
-        import shutil
-        if not shutil.which(binary):
+    for agent, binary in _AGENT_CLI_BINARY.items():
+        if not _agent_cli_reachable(agent):
             warnings.append(f"MISSING: {agent} binary '{binary}' not on PATH")
 
     # Check profile.yaml exists and has required fields
