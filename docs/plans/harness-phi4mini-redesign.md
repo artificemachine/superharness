@@ -102,45 +102,63 @@ separately feeds agent-pause decisions. A third (phi4-mini) classifier needs a
 clearly non-overlapping role, or it's redundant with two systems that already
 do this.
 
+## Update (same day): item A is already done
+
+Checked `~/.config/superharness/fleet.yaml` directly rather than leaving this
+as an open question. It already reads:
+
+```yaml
+fleet:
+  # Primary: local Ollama (always available, no network dependency).
+  # Used for: failure analysis, self-healing classification.
+  endpoints:
+    all: "http://localhost:11434/v1"
+  models:
+    all: "qwen2.5:7b"
+```
+
+Local Ollama is **already the primary fleet backend**, already wired to
+`_call_fleet()`/`analyze_failure()`, already used for exactly "failure
+analysis, self-healing classification" per its own comment. Item A (below)
+is not a build task — it's a one-line model swap in an existing config file
+if `phi4-mini` is preferred over `qwen2.5:7b`, nothing else.
+
+This also weakens item B's case: if fleet-backed "self-healing
+classification" already exists and feeds `_maybe_pause_agent()`, whoever
+scopes real work here first needs to read what `_reinforce_loop()` actually
+does with that classification today, before assuming a `WatcherHealthAdvisor`
+gap exists at all. Not confirmed either way in this pass — flagged for
+whoever picks up watcher-side work, not assumed.
+
 ## Redesigned scope
 
-Given the above, the actual deliverable is **integration, not new modules**:
+Given the above, the actual deliverable is **integration, not new modules**,
+and most of it turns out to already exist:
 
-### A. phi4-mini/Ollama as a fleet backend option, not a parallel system
+### A. phi4-mini/Ollama as a fleet backend — already done
 
-Extend `fleet.yaml` config to support a local Ollama endpoint
-(`http://localhost:11434`) as one more fleet backend alongside remote GPU VMs.
-Reuses `_call_fleet()`'s existing HTTP-call plumbing — no new HTTP client
-module. `HarnessConfig`/`OllamaHarnessClient` from the old PR are **not
-needed**; this is a fleet.yaml entry plus (if response-shape differs)
-provider branching inside `_call_fleet()`.
+No work. Fleet already runs local Ollama. Swap `models.yaml`'s `qwen2.5:7b`
+to `phi4-mini` only if there's a concrete reason to prefer it — not required
+to unblock anything else here.
 
-Open question for whoever picks up `harness-02`: does Ollama's `/api/chat`
-response shape match the existing OpenAI-compatible assumption closely enough
-to reuse `_call_fleet()` directly, or does it need a thin adapter? Check
-before writing code.
+### B. WatcherHealthAdvisor — likely mostly covered, not confirmed
 
-### B. WatcherHealthAdvisor — a decision layer above `operator.py`, not a replacement
+`operator.py` owns crash-detect/respawn/circuit-breaking (confirmed, stays
+out of scope). Fleet-backed failure classification already exists and feeds
+`_maybe_pause_agent()` (confirmed existence, consumption not audited in this
+pass). Whether `break_lock`/`escalate` verdicts specifically are missing from
+that existing path is genuinely unknown — not scoping speculative new code
+without reading `_reinforce_loop()`/`_maybe_pause_agent()` first.
 
-New, narrow scope: given signals `operator.py` doesn't currently synthesize
-(heartbeat staleness *trend* not just threshold, lock age, GC backlog size,
-repeated non-zero-exit reason patterns from recent cycles), produce a
-richer verdict than binary alive/respawn — specifically `break_lock` and
-`escalate` actions `monitor_and_recover()` doesn't have today. Falls back to
-rule-based (mirroring the old PR's `RuleBasedFallback` intent) when the fleet
-backend is unreachable — never blocks the watcher cycle.
+### C. Availability-aware pre-dispatch check — the one confirmed real gap
 
-Explicitly NOT in scope: crash detection, process respawn, circuit-breaking —
-`operator.py` owns those and works.
-
-### C. Availability-aware pre-dispatch check — feeds `_FALLBACK_ORDER`, doesn't replace it
-
-New: a lightweight `OwnerRegistry`-equivalent that checks live CLI
-reachability (not just quota-limited/already-tried) *before* initial routing,
-not only after retry exhaustion. Output should modify which agent gets
-`target_agent` at enqueue/reassignment time — integrating with
-`_auto_fallback_owner_reassign()` and `_FALLBACK_ORDER`, not adding a second
-reassignment mechanism that can race with it.
+Everything else in the original proposal is either done (item A) or unaudited
+(item B). This is the one piece with a concrete, confirmed gap: nothing
+checks live CLI reachability *before* initial routing — only after retry
+exhaustion, and only via "quota-limited"/"already-tried" flags, never a real
+reachability probe. Must integrate with `_auto_fallback_owner_reassign()` /
+`_FALLBACK_ORDER` (`inbox_watch.py:1333`), not add a second reassignment path
+racing over the same inbox row's `target_agent`.
 
 ### D. ReviewStore — reuse existing, do not rebuild
 
@@ -149,39 +167,31 @@ Any new harness outcome-tracking needs go through `review_dao.py` /
 
 ### E. Failure classification — do not add a third classifier
 
-If phi4-mini offers anything here, it should be a second opinion scoped
-narrowly to cases `failure_classifier.classify()` returns `unknown` for —
-not a parallel classification of every failure.
+Two classification paths already exist (`failure_classifier.classify()`,
+fleet-backed `analyze_failure()`). Nothing here needs a third.
 
 ## Explicitly out of scope (from the old PR, dropped)
 
 - `harness/config.py`, `harness/model_client.py`, `harness/fallback.py`,
-  `harness/review_store.py` — superseded by fleet.yaml + review_dao.py.
-- `install-launchd-ollama.sh` — only needed once fleet.yaml's local-endpoint
-  support (item A) is real and someone actually wants Ollama specifically
-  vs. any other fleet backend. Not blocking for the advisor logic itself.
+  `harness/review_store.py` — superseded by fleet.yaml (already live) +
+  review_dao.py (already live).
+- `install-launchd-ollama.sh` — fleet already runs against local Ollama with
+  no launchd wiring beyond whatever the user already has `ollama serve`
+  running under. Not needed.
 - Iteration 11's `advise_failover()` as a standalone function — folds into
   item C's integration with `_auto_fallback_owner_reassign()`.
+- Item B (`WatcherHealthAdvisor`) as new code — deferred pending an audit of
+  what the existing fleet-backed classification path already covers.
 
 ## Revised subtask mapping
 
 - `harness-01-design-doc` — this document. Done.
-- `harness-02-owner-registry` → becomes: fleet.yaml local-endpoint support
-  (item A) + live-reachability `OwnerRegistry` (item C's registry half, no
-  Ollama dependency required for the reachability-check part).
-- `harness-03-watcher-advisor` → item B, built on top of fleet backend from
-  harness-02.
-- `harness-04-dispatch-failover` → item C's integration into
-  `_auto_fallback_owner_reassign()`/`_FALLBACK_ORDER`, built on harness-02.
-- `harness-05-launchd-install` → only if item A's Ollama-specific setup is
-  still wanted after harness-02 lands; otherwise this subtask may be dropped
-  entirely (any fleet backend already has its own setup story).
-
-## Open decision for the operator
-
-Before `harness-02` starts: confirm whether local Ollama/phi4-mini is still
-the preferred backend, given the fleet mechanism already supports arbitrary
-OpenAI-compatible endpoints (remote GPU VMs are already in use per
-`model_router.py:133-137`'s own comment). If an existing fleet GPU node
-already runs an OpenAI-compatible model, items B and C may need zero new
-backend work — only the advisor logic itself.
+- `harness-02-dispatch-availability` — item C, the one confirmed real gap:
+  live CLI reachability check feeding `_FALLBACK_ORDER` /
+  `_auto_fallback_owner_reassign()`. No Ollama/fleet dependency.
+- Everything else from the original 5-subtask plan (owner-registry-as-fleet-
+  config, watcher-advisor, launchd-install) is either already done (item A)
+  or not yet justified by evidence (item B) — not carrying forward as
+  separate tracked tasks. If item B turns out to have a real gap after
+  auditing `_reinforce_loop()`/`_maybe_pause_agent()`, scope it fresh then
+  rather than resurrecting the old plan's assumptions.
