@@ -2380,7 +2380,7 @@ def _run_scripts(
 
     # Operator memory: check known failure patterns before retry/recovery
     try:
-        if _should_run("operator_memory", cooldown=15):
+        if _should_run(project_dir, "operator_memory", cooldown=15):
             _check_operator_memory(project_dir)
             _learn_from_recovery(project_dir)
             if _watcher_cycle_count[0] % 20 == 0:
@@ -2416,28 +2416,28 @@ def _run_scripts(
 
     # Auto-retry failed inbox items that still have retries remaining
     try:
-        if _should_run("auto_retry", cooldown=10):
+        if _should_run(project_dir, "auto_retry", cooldown=10):
             _auto_retry_failed(project_dir)
     except Exception as e:
         _log_watcher_error(project_dir, "watcher", str(e))
 
     # Auto-fallback-owner: reassign exhausted tasks to profile-configured owner
     try:
-        if _should_run("auto_fallback_owner", cooldown=15):
+        if _should_run(project_dir, "auto_fallback_owner", cooldown=15):
             _auto_fallback_owner_reassign(project_dir)
     except Exception as e:
         print(f"Warning: auto_fallback_owner_reassign failed: {e}", file=sys.stderr)
 
     # Auto-recover exhausted failures: re-route to a different agent
     try:
-        if _should_run("auto_recover", cooldown=15):
+        if _should_run(project_dir, "auto_recover", cooldown=15):
             _auto_recover_exhausted_failures_sqlite(project_dir)
     except Exception as e:
         print(f"Warning: auto_recover_exhausted_failures failed: {e}", file=sys.stderr)
 
     # Auto-bootstrap: dispatch AC-proposal for tasks escalated with empty content
     try:
-        if _should_run("auto_bootstrap", cooldown=30) and not _circuit_breaker_tripped(project_dir):
+        if _should_run(project_dir, "auto_bootstrap", cooldown=30) and not _circuit_breaker_tripped(project_dir):
             _auto_bootstrap_empty_tasks(project_dir)
     except Exception as e:
         print(f"Warning: auto_bootstrap_empty_tasks failed: {e}", file=sys.stderr)
@@ -2483,21 +2483,21 @@ def _run_scripts(
 
     # Auto-enqueue todo tasks for planning when auto_dispatch=True and autonomy=autonomous
     try:
-        if _should_run("auto_enqueue_todo", cooldown=15) and not _circuit_breaker_tripped(project_dir):
+        if _should_run(project_dir, "auto_enqueue_todo", cooldown=15) and not _circuit_breaker_tripped(project_dir):
             auto_enqueue_todo(project_dir)
     except Exception as e:
         print(f"Warning: auto_enqueue_todo failed: {e}", file=sys.stderr)
 
     # Auto peer-approve plan_proposed tasks: dispatch to a different max-tier agent for review
     try:
-        if _should_run("auto_peer_approve", cooldown=30) and not _circuit_breaker_tripped(project_dir):
+        if _should_run(project_dir, "auto_peer_approve", cooldown=30) and not _circuit_breaker_tripped(project_dir):
             _auto_peer_approve_plans(project_dir)
     except Exception as e:
         print(f"Warning: peer_approve_plans failed: {e}", file=sys.stderr)
 
     # Auto-enqueue plan_approved tasks when auto_dispatch=True in profile.yaml
     try:
-        if _should_run("auto_enqueue_approved", cooldown=15) and not _circuit_breaker_tripped(project_dir):
+        if _should_run(project_dir, "auto_enqueue_approved", cooldown=15) and not _circuit_breaker_tripped(project_dir):
             auto_enqueue_approved(project_dir)
     except Exception as e:
         print(f"Warning: auto_enqueue_approved failed: {e}", file=sys.stderr)
@@ -2599,7 +2599,7 @@ def _run_scripts(
     # Runs every 5 minutes (cooldown-gated). Reads trace, failures, and
     # discussions to detect patterns and take corrective action.
     try:
-        if _should_run("reinforce", cooldown=300):
+        if _should_run(project_dir, "reinforce", cooldown=300):
             _reinforce_loop(project_dir)
     except Exception as e:
         print(f"Warning: reinforce loop failed: {e}", file=sys.stderr)
@@ -3236,19 +3236,53 @@ _CIRCUIT_BREAKER_WINDOW_MINUTES = 5
 # === Auto-action cooldown tracking ===
 # Each auto_* function has a minimum interval between runs.
 # Prevents cascading loops when action A triggers action B.
-_AUTO_COOLDOWNS: dict[str, float] = {}
+#
+# Persisted per (project, action) in SQLite (watcher_cooldowns, migration
+# v29), not process memory. The watcher is by design a fresh Python process
+# every tick (one-shot, respawned by the operator — see watch(): `if once
+# or not foreground: _run_scripts(...)`). An in-memory dict is empty on
+# every call from every process, so every cooldown gate silently no-oped on
+# every tick regardless of the argument passed in. Confirmed live
+# 2026-07-11: reinforce's claimed 300s cooldown fired on every ~5-7s tick,
+# driving a full 181 MB trace.jsonl re-parse per tick instead of per 5
+# minutes. time.time() (wall clock), not time.monotonic() — monotonic's
+# epoch is arbitrary per-process and is not comparable across processes.
 _AUTO_DEFAULT_COOLDOWN = 10  # seconds — most auto-actions need at least this
 
-def _should_run(action: str, cooldown: int = 0) -> bool:
-    """Return True if enough time has passed since last run of this action."""
+def _should_run(project_dir: str, action: str, cooldown: int = 0) -> bool:
+    """Return True if enough time has passed since last run of this action
+    for this project. On any DB error, returns False (skip this tick) rather
+    than True — a auto-action that misses a tick is recoverable; one that
+    runs unthrottled because its gate broke is the exact bug this exists to
+    prevent."""
     import time as _time
-    now = _time.monotonic()
+    from superharness.engine.db import get_connection, init_db
+
+    now = _time.time()
     threshold = cooldown or _AUTO_DEFAULT_COOLDOWN
-    last = _AUTO_COOLDOWNS.get(action, 0)
-    if now - last < threshold:
+    try:
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            row = conn.execute(
+                "SELECT last_run_epoch FROM watcher_cooldowns WHERE action = ?",
+                (action,),
+            ).fetchone()
+            last = row[0] if row else 0.0
+            if now - last < threshold:
+                return False
+            conn.execute(
+                "INSERT INTO watcher_cooldowns (action, last_run_epoch) VALUES (?, ?) "
+                "ON CONFLICT(action) DO UPDATE SET last_run_epoch = excluded.last_run_epoch",
+                (action, now),
+            )
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+    except Exception:
+        logger.warning("_should_run(%s) cooldown check failed; skipping this tick", action, exc_info=True)
         return False
-    _AUTO_COOLDOWNS[action] = now
-    return True
 
 
 
@@ -3566,6 +3600,7 @@ def _auto_delete_stale_inbox(project_dir: str) -> int:
 
 _REINFORCE_WINDOW_MINUTES = 30  # scan last 30 min of failures
 _REINFORCE_FAILURE_THRESHOLD = 3  # auto-pause agent after N failures in window
+_REINFORCE_TRACE_TAIL_LINES = 5000  # cap on trace.jsonl history scanned per tick
 
 
 def _maybe_pause_agent(conn, agent: str, failure_count: int, now, project_dir: str) -> None:
@@ -3597,6 +3632,51 @@ def _maybe_pause_agent(conn, agent: str, failure_count: int, now, project_dir: s
             "classification": "permanent_block",
         })
         print(f"reinforce: paused {agent} — fleet classified as permanent_block", file=sys.stderr)
+
+
+def _tail_lines(path, n: int) -> list[str]:
+    """Return up to the last `n` non-empty lines of a text file, without
+    loading the whole file into memory.
+
+    Replaces `path.read_text().splitlines()` in _reinforce_loop, which
+    loaded and JSON-parsed the ENTIRE trace.jsonl on every call — profiled
+    at 1,379,991 json.loads calls in a single tick against a 181 MB file
+    (live, 2026-07-11). trace.jsonl is append-only, so that cost only grows
+    with the project's lifetime, forever.
+
+    Reads backward from EOF in fixed-size chunks until at least `n` newlines
+    are found or the start of the file is reached — bounded work regardless
+    of how much history precedes the tail.
+    """
+    from pathlib import Path
+    p = Path(path)
+    if not p.exists():
+        return []
+
+    chunk_size = 65536
+    with p.open("rb") as fh:
+        fh.seek(0, os.SEEK_END)
+        file_size = fh.tell()
+        if file_size == 0:
+            return []
+
+        data = b""
+        pos = file_size
+        # +1: a file ending in a trailing newline splits into one extra
+        # empty trailing element; look for one more line than needed so
+        # that dropping it still leaves n real lines.
+        newlines_needed = n + 1
+        while pos > 0 and data.count(b"\n") <= newlines_needed:
+            read_size = min(chunk_size, pos)
+            pos -= read_size
+            fh.seek(pos)
+            data = fh.read(read_size) + data
+
+    lines = data.decode("utf-8", errors="replace").split("\n")
+    if lines and lines[-1] == "":
+        lines = lines[:-1]  # trailing newline produces a trailing empty element
+    lines = [line for line in lines if line.strip()]
+    return lines[-n:]
 
 
 def _reinforce_loop(project_dir: str) -> None:
@@ -3700,15 +3780,28 @@ def _reinforce_loop(project_dir: str) -> None:
                     )
 
             # ── 2. Learn from trace.jsonl ──────────────────────────────
+            # Reads only the tail (_REINFORCE_TRACE_TAIL_LINES), not the whole
+            # file. Previously this read + JSON-parsed the ENTIRE file, TWICE
+            # (once for the pause scan, once again for the dedup check) —
+            # 1,379,991 json.loads calls in a single tick against a 181 MB
+            # file (live, 2026-07-11). trace.jsonl is append-only, so that
+            # cost only grows with the project's lifetime.
+            #
+            # Behavior change, deliberate: pause counting is now scoped to
+            # the tail window instead of all-time history. All-time counting
+            # meant an agent paused 3 times months ago and never since would
+            # be flagged "chronically paused" forever — the tail window is
+            # more correct, not just cheaper, and matches the time-windowed
+            # design already used elsewhere in this function (see
+            # _REINFORCE_WINDOW_MINUTES above).
             try:
                 import json as _json
                 from pathlib import Path
                 trace_file = Path(project_dir) / ".superharness" / "trace.jsonl"
-                if trace_file.exists():
+                tail = _tail_lines(trace_file, _REINFORCE_TRACE_TAIL_LINES)
+                if tail:
                     agent_pause_counts: dict[str, int] = {}
-                    for line in trace_file.read_text().splitlines():
-                        if not line.strip():
-                            continue
+                    for line in tail:
                         try:
                             event = _json.loads(line)
                             if event.get("type") == "reinforce_agent_pause":
@@ -3717,12 +3810,13 @@ def _reinforce_loop(project_dir: str) -> None:
                                     agent_pause_counts[agent] = agent_pause_counts.get(agent, 0) + 1
                         except _json.JSONDecodeError:
                             continue
+                    recent_tail = tail[-50:]
                     for agent, count in agent_pause_counts.items():
                         if count >= 3:
                             already_logged = any(
                                 f'"agent":"{agent}"' in line and '"learning":"agent_deprioritized"' in line
-                                for line in trace_file.read_text().splitlines()[-50:]
-                            ) if trace_file.exists() else False
+                                for line in recent_tail
+                            )
                             if not already_logged:
                                 trace_event(project_dir, "reinforce_learning", {
                                     "learning": "agent_deprioritized",
