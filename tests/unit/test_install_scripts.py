@@ -273,25 +273,41 @@ def test_install_launchd_state_project_resolves_symlink_to_source(repo_root, tmp
     <worker dir>) resolves its own XDG hash from the worker path, finds
     nothing there, and falls back to writing a *second* state.sqlite3 into
     the shared .superharness/ dir via the symlink — recreating a split-brain
-    every tick regardless of how many times it's manually resolved."""
+    every tick regardless of how many times it's manually resolved.
+
+    Exercises the launchd script directly (not the full watcher_worker.py ->
+    service_installer.py -> OS-dispatch pipeline) — this test is only about
+    the script's own symlink resolution, and going through the full pipeline
+    means fighting unrelated confirmation-flow/OS-detection state that
+    belongs to other tests."""
+    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
     source = tmp_path / "source-proj"
     (source / ".superharness").mkdir(parents=True, exist_ok=True)
-    (source / "README.md").write_text("source\n")
-    (source / ".superharness" / "contract.yaml").write_text("id: demo\n")
+    seed_sqlite_from_yaml(source)
+
+    worker = tmp_path / "worker-proj"
+    worker.mkdir()
+    os.symlink(source / ".superharness", worker / ".superharness")
 
     home = tmp_path / "home"
     home.mkdir()
-    worker = tmp_path / "worker-proj"
+    fake_bin = _fake_launchd_bin(tmp_path)
 
-    result = _run_watcher_worker_py(
-        repo_root,
-        args=["--project", str(source), "--worker", str(worker), "--interval", "15", "--to", "both"],
-        env={"HOME": str(home)},
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project", str(worker), "--to", "both",
+            "--confirm-non-interactive", "yes",
+            "--confirm-skip-permissions", "yes",
+        ],
+        env={
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+        },
     )
 
     assert result.returncode == 0, result.stderr
-    assert (worker / ".superharness").is_symlink()
-
     label = f"com.superharness.inbox.{worker.name}"
     plist_path = home / "Library" / "LaunchAgents" / f"{label}.plist"
     assert plist_path.exists(), result.stdout + result.stderr
