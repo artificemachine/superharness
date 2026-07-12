@@ -38,16 +38,16 @@ Probed all three GPU-lab tiers from this machine:
 
 | Tier | Host | Result |
 |---|---|---|
-| mini | `10.255.150.10:8100` | Reachable — `qwen25-7b`, `qwen25-coder-7b`, `qwen25-15b`, `granite31-8b`, `qwen2.5-vl-7b` |
-| standard | `10.255.150.16:8100` | Reachable — `qwen3.6-27b-awq`, `gemma4-31b-awq`, `qwen3.5-9b`, `qwen3-32b-awq` |
-| max | `10.255.150.36:8100` | **Unreachable** — `curl` connection refused (verified, not assumed; box appears down, not merely idle/unloaded) |
+| mini | `<LAN-mini-endpoint>:8100` | Reachable — `qwen25-7b`, `qwen25-coder-7b`, `qwen25-15b`, `granite31-8b`, `qwen2.5-vl-7b` |
+| standard | `<LAN-standard-endpoint>:8100` | Reachable — `qwen3.6-27b-awq`, `gemma4-31b-awq`, `qwen3.5-9b`, `qwen3-32b-awq` |
+| max | `<LAN-max-endpoint>:8100` | **Unreachable** — `curl` connection refused (verified, not assumed; box appears down, not merely idle/unloaded) |
 
 Enabled `mini` (`qwen25-7b`) and `standard` (`qwen3-32b-awq`) in the live user fleet config. `max` left commented with the exact re-check command, per the config's own comment — do not guess a model id for it once it comes back; re-probe.
 
 Post-enablement `shux doctor` (dev repo):
 ```
-PASS fleet/mini: qwen25-7b @ http://10.255.150.10:8100/v1
-PASS fleet/standard: qwen3-32b-awq @ http://10.255.150.16:8100/v1
+PASS fleet/mini: qwen25-7b @ http://<LAN-mini-endpoint>:8100/v1
+PASS fleet/standard: qwen3-32b-awq @ http://<LAN-standard-endpoint>:8100/v1
 PASS fleet/all: qwen2.5:7b @ http://127.0.0.1:11434/v1
 ```
 
