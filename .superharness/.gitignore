@@ -9,6 +9,7 @@ state.sqlite3
 state.sqlite3-shm
 state.sqlite3-wal
 watcher-env.yaml
+watcher.yaml
 # runtime state — never commit
 .launchagents_snapshot
 benchmark.jsonl

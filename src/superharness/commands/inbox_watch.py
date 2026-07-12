@@ -4321,6 +4321,13 @@ def watch(
     *,
     target: str = "both",
     foreground: bool = False,
+    # In one-shot mode (once or not foreground — the launchd/systemd path)
+    # this only feeds heartbeat_stale_seconds=max(interval*2, 60) below; it
+    # does NOT control tick cadence there (that's the caller's respawn
+    # interval — launchd's StartInterval or operator.py's spawn loop). For
+    # any interval <= 30 (the launchd/systemd default is 15) the max(...,60)
+    # floor makes this value a no-op in practice. Only the foreground loop
+    # below uses it as an actual poll interval.
     interval: int = 30,
     print_only: bool = False,
     non_interactive: bool = True,  # default non-interactive for auto-mode
