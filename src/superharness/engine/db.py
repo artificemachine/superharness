@@ -13,7 +13,7 @@ from superharness.utils.paths import resolve_xdg_state_db_path
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 28
+CURRENT_SCHEMA_VERSION = 29
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -804,6 +804,27 @@ def _migration_v28(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_task_usage_task_id ON task_usage(task_id)")
 
 
+def _migration_v29(conn: sqlite3.Connection) -> None:
+    """watcher_cooldowns: persisted last-run timestamps for _should_run()
+    in inbox_watch.py. Previously an in-memory dict keyed by action name,
+    using time.monotonic() — meaningless across process boundaries. The
+    watcher is by design a fresh Python process every tick (one-shot,
+    respawned by the operator), so any in-memory cooldown state is empty on
+    every call and every gate silently no-ops on every tick regardless of
+    the cooldown argument passed in. Confirmed live 2026-07-11: reinforce's
+    claimed 300s cooldown fired on every ~5-7s tick instead, driving a full
+    181 MB trace.jsonl re-parse per tick. One row per action, last write
+    wins."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS watcher_cooldowns (
+            action          TEXT    PRIMARY KEY,
+            last_run_epoch  REAL    NOT NULL
+        )
+        """
+    )
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -833,4 +854,5 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v26,
     _migration_v27,
     _migration_v28,
+    _migration_v29,
 ]
