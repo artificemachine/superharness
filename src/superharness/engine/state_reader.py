@@ -202,16 +202,10 @@ def _enrich_task(conn: sqlite3.Connection, row: Any) -> dict:
     d = asdict(row)
     
     # 1. Dependencies (blocked_by)
-    # The dashboard expects `blocked_by` / `depends_on`.
-    deps_strict = []
-    try:
-        for r in conn.execute(
-            "SELECT prerequisite_task_id FROM task_dependencies WHERE dependent_task_id = ?",
-            (row.id,)
-        ):
-            deps_strict.append(r["prerequisite_task_id"])
-    except Exception as e:
-        logger.warning("Failed to read task dependencies for task %s: %s", row.id, e)
+    # The dashboard expects `blocked_by` / `depends_on`. tasks_dao already
+    # resolved this (get() queries it directly, get_all() batch-fetches it
+    # for every row) — reuse it instead of re-querying per row here.
+    deps_strict = list(getattr(row, "blocked_by", None) or [])
 
     # 2. Soft (informational) blocked_by storage — JSON-encoded list
     soft = None
