@@ -29,7 +29,14 @@ def _sandbox(tmp_path: Path) -> Path:
 
 
 def _now_iso() -> str:
-    return "2026-07-12T12:00:00Z"
+    """Real current UTC time, not a fixed literal — _reinforce_loop's window
+    query filters on failed_at >= (real now - _REINFORCE_WINDOW_MINUTES), so
+    a hardcoded timestamp only passes when the test happens to run within
+    that window of the literal; on a CI runner executing at a different
+    wall-clock time it silently falls outside the window and the loop finds
+    nothing to analyze (confirmed failure mode, not hypothetical)."""
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _seed_task(conn, task_id: str, owner: str, project_dir: str) -> None:

@@ -88,16 +88,22 @@ def test_fleet_health_no_config_returns_empty():
 def test_doctor_warns_on_unhealthy_fleet():
     from superharness.commands import doctor
 
-    with patch(
-        "superharness.engine.model_router.fleet_health",
-        return_value=[("all", "qwen2.5:7b", "model-missing")],
-    ):
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            try:
-                doctor.main(["--project", str(REPO_ROOT)])
-            except SystemExit:
-                pass
+    # doctor only calls fleet_health() inside `if fleet:` — a machine with no
+    # fleet.yaml at all (e.g. a bare CI runner) never reaches that branch, so
+    # mocking fleet_health() alone is not enough; _load_fleet_config() must
+    # also be mocked truthy regardless of what's actually on disk.
+    fake_fleet = {"endpoints": {"all": "http://127.0.0.1:11434/v1"}, "models": {"all": "qwen2.5:7b"}}
+    with patch("superharness.engine.model_router._load_fleet_config", return_value=fake_fleet):
+        with patch(
+            "superharness.engine.model_router.fleet_health",
+            return_value=[("all", "qwen2.5:7b", "model-missing")],
+        ):
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                try:
+                    doctor.main(["--project", str(REPO_ROOT)])
+                except SystemExit:
+                    pass
     output = buf.getvalue()
     assert "WARN fleet/" in output
     summary_line = [l for l in output.splitlines() if l.startswith("summary:")][0]
