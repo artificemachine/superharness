@@ -1,4 +1,5 @@
-"""TDD tests for 3 bugs that left orphaned LaunchAgents and misleading logs:
+"""TDD tests for 3 bugs that left orphaned LaunchAgents and misleading logs,
+plus (PLAN-superharness-L5.md iteration 5) a session-scoped leak guard:
 
 Bug A: session-start.sh auto-installs a LaunchAgent whenever a .superharness/
        dir exists. Tests that exercise session-start.sh against a pytest
@@ -14,6 +15,14 @@ Bug C: service_installer._install_launchd swallows install-script failures
        silently — it returns False but prints nothing, so users see
        "Watcher worker is ready" with no indication the install failed.
        The installer must surface install-script failures on stderr.
+
+TestNoLaunchdLabelLeaks: a real leak was found live on 2026-07-12 — a
+`com.superharness.inbox.worker-proj` job pointing at a deleted pytest
+tmp dir, left behind by a pre-rewrite watcher-install test that ran the
+real install script without the fake-launchctl pattern (Bug A's own
+guard didn't cover this specific test-writing mistake). This class
+generalizes the check: no test run may leave a NEW com.superharness.*
+label behind, whatever the cause.
 """
 from __future__ import annotations
 
@@ -154,3 +163,94 @@ def test_install_launchd_prints_error_on_failure(tmp_path, capsys, monkeypatch):
         f"Users get 'Watcher worker is ready' but no actual install. "
         f"stderr was: {captured.err!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# TestNoLaunchdLabelLeaks — PLAN-superharness-L5.md iteration 5
+# ---------------------------------------------------------------------------
+
+class TestNoLaunchdLabelLeaks:
+    def test_leaked_label_detected(self):
+        before = {"com.superharness.inbox.myproject", "com.apple.something"}
+        after = before | {"com.superharness.inbox.tmpXYZ"}
+        assert find_leaked_labels(before, after) == {"com.superharness.inbox.tmpXYZ"}
+
+    def test_preexisting_labels_ignored(self):
+        before = {"com.superharness.inbox.myproject", "com.apple.something"}
+        after = set(before)
+        assert find_leaked_labels(before, after) == set()
+
+    def test_all_watcher_install_tests_use_fake_launchctl(self):
+        """Static audit: every test in test_install_scripts.py that runs the
+        real launchd/systemd install script or watcher_worker must route
+        launchctl through a fake PATH entry (the _fake_launchd_bin pattern)
+        or mock the service installer — never invoke the real launchctl."""
+        install_tests = REPO_ROOT / "tests" / "unit" / "test_install_scripts.py"
+        src = install_tests.read_text()
+        import re
+        # Split into individual test function bodies.
+        funcs = re.split(r"\ndef (test_\w+)", src)[1:]
+        offenders = []
+        for name, body in zip(funcs[0::2], funcs[1::2]):
+            invokes_install = (
+                "install-launchd-inbox-watcher.sh" in body
+                or "watcher_worker" in body
+                or "_run_watcher_worker_py" in body
+            )
+            if not invokes_install:
+                continue
+            safe = (
+                "_fake_launchd_bin" in body
+                or "fakebin" in body
+                or "fake_bin" in body
+                or "mock" in body.lower()
+                or "patch(" in body
+            )
+            if not safe:
+                offenders.append(name)
+        assert not offenders, (
+            f"these tests invoke the real install script/watcher_worker without "
+            f"faking launchctl, risking a leaked com.superharness.* launchd job: "
+            f"{offenders}"
+        )
+
+
+def find_leaked_labels(before: set[str], after: set[str]) -> set[str]:
+    """Return superharness launchd labels present in `after` but not `before`."""
+    return {label for label in (after - before) if label.startswith("com.superharness.")}
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _launchd_label_snapshot():
+    """Session-scoped guard: fail the module if any test leaves a NEW
+    com.superharness.* launchd label behind. Real regression test for the
+    'worker-proj' leak found and removed live on 2026-07-12."""
+    if sys.platform != "darwin" or not _has_launchctl():
+        yield
+        return
+    before = _current_labels()
+    yield
+    after = _current_labels()
+    leaked = find_leaked_labels(before, after)
+    assert not leaked, (
+        f"test run leaked launchd label(s): {leaked}. Check the newest test in "
+        f"this file or test_install_scripts.py for a missing fake-launchctl PATH."
+    )
+
+
+def _has_launchctl() -> bool:
+    import shutil
+    return shutil.which("launchctl") is not None
+
+
+def _current_labels() -> set[str]:
+    try:
+        result = subprocess.run(["launchctl", "list"], capture_output=True, text=True, timeout=10)
+    except Exception:
+        return set()
+    labels = set()
+    for line in result.stdout.splitlines()[1:]:
+        parts = line.split()
+        if parts:
+            labels.add(parts[-1])
+    return labels
