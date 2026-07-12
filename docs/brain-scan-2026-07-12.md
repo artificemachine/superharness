@@ -72,3 +72,15 @@ The brains inventory above is incomplete: **opencode is a 4th live agent brain**
 The "BROKEN" fleet row is now FIXED, and the root cause was deeper than the scan concluded. Not just a missing model: **two different Ollama servers shared port 11434** — native Ollama bound `127.0.0.1` (IPv4 only) while a container-platform VM bound `*:11434` including IPv6. The fleet endpoint said `localhost`, which resolves `::1` first → every fleet call for months hit the container VM's *separate* Ollama with its own model store. Even the model list the scan inspected was the wrong instance's.
 
 Fix: pulled `qwen2.5:7b` into native Ollama + pinned the fleet endpoint to explicit `127.0.0.1`. Verified end-to-end, real inference: `analyze_failure` classifies a missing-module error as `dependency` (correct); `_classify_via_fleet` routes a trivial README task to `(mini, low)` and a twice-failed cross-system migration to `(max, high)` (correct discrimination). G5b now fully live; **G5c closes when the first `reinforce_analysis` event lands in trace.jsonl** — requires a real ≥2-failure cluster in a reinforce window, deliberately not forced. Re-scan then; expected verdict: L5.
+
+
+## Re-scan (same day, 09:47 UTC)
+
+Delta re-scan after the fleet fix. G1-G4c unchanged (only fleet config + docs changed since the morning scan). Findings:
+
+- **Reinforce loop confirmed live in production**: watcher_cooldowns shows `reinforce` last ran 09:45:27 UTC (~90s before the re-scan), all 13 auto-actions ticking with fresh timestamps — which also live-verifies the v1.77.1 cooldown-persistence fix end to end.
+- **G5c still unobserved, for the honest reason**: zero failures recorded today (failures table + failed inbox rows both 0 since 09:00), so the fleet analyze step has had no ≥2-failure cluster to fire on. The loop is armed and scheduled; the triggering condition simply has not occurred since the fix landed. Not fabricating one.
+- **Verdict unchanged: L4.5** — but G5b is now stronger than at scan time (fleet verified with real inference, loop scheduling observed live, only the final firing event outstanding).
+- Housekeeping: found and removed a leaked launchd watcher job pointing at a deleted pytest tmp dir (`worker-proj`, exit 1) — pollution from a pre-rewrite test variant that ran the real install script during a full-suite run. The rewritten test fakes launchctl; pollution class already has a guard test file, worth extending to this label pattern.
+
+Next re-scan trigger: first `reinforce_analysis` event in trace.jsonl → close G5c → L5.
