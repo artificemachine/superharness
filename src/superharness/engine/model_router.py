@@ -212,6 +212,37 @@ _CLASSIFIER_AGENTS: list[tuple[str, list[str]]] = [
 _CLASSIFY_TIMEOUT_SECONDS = 5
 
 
+def fleet_health(timeout: float = 3.0) -> list[tuple[str, str, str]]:
+    """Check each configured fleet tier against its endpoint's /models list.
+
+    Returns one (tier, model, status) row per configured tier, status in
+    {"ok", "endpoint-unreachable", "model-missing"}. Empty list if no fleet
+    is configured. Never raises.
+    """
+    fleet = _load_fleet_config()
+    if not fleet:
+        return []
+    endpoints = fleet.get("endpoints", {})
+    models = fleet.get("models", {})
+    results: list[tuple[str, str, str]] = []
+    for tier, model in models.items():
+        endpoint = endpoints.get(tier) or endpoints.get("all")
+        if not endpoint or not model:
+            continue
+        try:
+            import urllib.request
+            import json as _json
+            req = urllib.request.Request(f"{endpoint.rstrip('/')}/models")
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = _json.loads(resp.read())
+                available = {m.get("id") for m in data.get("data", [])}
+            status = "ok" if model in available else "model-missing"
+        except Exception:
+            status = "endpoint-unreachable"
+        results.append((tier, model, status))
+    return results
+
+
 def _call_fleet(prompt: str, expect_tokens: int = 10) -> str | None:
     """Call the fleet API and return the response text. Returns None on failure."""
     fleet = _load_fleet_config()
