@@ -93,11 +93,16 @@ def test_seed_failures_creates_window_rows(tmp_path):
     project = _sandbox(tmp_path)
     conn = get_connection(str(project))
     init_db(conn)
-    _seed_failures(conn, "codex-cli", 2, _now_iso())
+    # Capture once and reuse — two independent _now_iso() calls a fraction
+    # of a second apart can return different strings if the wall-clock
+    # second ticks over between them (confirmed failure mode, not
+    # hypothetical: seen live on a CI run).
+    seeded_at = _now_iso()
+    _seed_failures(conn, "codex-cli", 2, seeded_at)
     rows = conn.execute("SELECT * FROM inbox WHERE status='failed' AND target_agent='codex-cli'").fetchall()
     conn.close()
     assert len(rows) == 2
-    assert all(r["failed_at"] == _now_iso() for r in rows)
+    assert all(r["failed_at"] == seeded_at for r in rows)
 
 
 def test_read_reinforce_events_parses_trace_lines(tmp_path):
