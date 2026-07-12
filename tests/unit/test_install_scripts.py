@@ -548,6 +548,7 @@ def test_setup_watcher_worker_creates_clean_worker_and_watcher_config(repo_root,
     home = tmp_path / "home"
     home.mkdir()
     worker = tmp_path / "worker-proj"
+    fake_bin = _fake_launchd_bin(tmp_path)
 
     result = _run_watcher_worker_py(
         repo_root,
@@ -557,7 +558,7 @@ def test_setup_watcher_worker_creates_clean_worker_and_watcher_config(repo_root,
             "--interval", "15",
             "--to", "both",
         ],
-        env={"HOME": str(home)},
+        env={"HOME": str(home), "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}"},
     )
 
     assert result.returncode == 0, result.stderr
@@ -763,6 +764,7 @@ def test_setup_watcher_worker_persists_custom_recover_values(repo_root, tmp_path
     home = tmp_path / "home-custom"
     home.mkdir()
     worker = tmp_path / "worker-proj-custom"
+    fake_bin = _fake_launchd_bin(tmp_path)
 
     result = _run_watcher_worker_py(
         repo_root,
@@ -775,7 +777,7 @@ def test_setup_watcher_worker_persists_custom_recover_values(repo_root, tmp_path
             "--launcher-timeout", "45",
             "--to", "both",
         ],
-        env={"HOME": str(home)},
+        env={"HOME": str(home), "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}"},
     )
 
     assert result.returncode == 0, result.stderr
