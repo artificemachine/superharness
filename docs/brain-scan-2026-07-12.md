@@ -1,6 +1,6 @@
 # Brain Scan — superharness — 2026-07-12
 
-**Verdict: L4.5 — Stateful, with one verified self-improvement loop** — run shape: installed pipx CLI (v1.77.2) + launchd background watcher (the production shape; verdict applies to it).
+**Verdict: L4.5 — Stateful, with one verified self-improvement loop** — run shape: installed pipx CLI (v1.77.2) + launchd background watcher (the production shape; verdict applies to it). **Superseded 2026-07-12 by the G5c closure below — see "G5c closed" addendum for the updated verdict.**
 L4 passes on every gate with live data; L5 is half-credited: one closed learning loop (behavioral prompt adaptation) is autonomous and live-evidenced, but the headline L5 mechanisms (fleet failure-analysis→pause, outcome-based routing, A/B trials) are dormant or broken in production, and the one closed loop's final composed artifact (a dispatched prompt containing profile text) was not directly captured.
 
 ## Evidence packet
@@ -84,3 +84,26 @@ Delta re-scan after the fleet fix. G1-G4c unchanged (only fleet config + docs ch
 - Housekeeping: found and removed a leaked launchd watcher job pointing at a deleted pytest tmp dir (`worker-proj`, exit 1) — pollution from a pre-rewrite test variant that ran the real install script during a full-suite run. The rewritten test fakes launchctl; pollution class already has a guard test file, worth extending to this label pattern.
 
 Next re-scan trigger: first `reinforce_analysis` event in trace.jsonl → close G5c → L5.
+
+## G5c closed (2026-07-12, PLAN-superharness-L5.md iteration 6)
+
+`scripts/verify-l5-loop.sh` injected a real 2-failure cluster for `codex-cli` (a `ModuleNotFoundError` for a genuinely-missing module, `verify-l5 injected fault` tag) through the actual inbox/failure path in a throwaway sandbox project, then invoked the real `_reinforce_loop()` — no mocks, real local fleet call against Ollama at `127.0.0.1:11434`. Captured event:
+
+```json
+{
+  "timestamp": "2026-07-12T11:40:33Z",
+  "type": "reinforce_analysis",
+  "agent": "codex-cli",
+  "failures": 2,
+  "classification": "dependency",
+  "self_heal_attempted": true,
+  "self_heal_result": "pip install 'yaml' failed: ERROR: Could not find a version that satisfies the requirement yaml (from versions: none)\n\n[notice] ",
+  "latest_error": "ModuleNotFoundError: No module named 'yaml' (verify-l5 injected fault)"
+}
+```
+
+Classification is correct (`dependency` for a missing-module error). G5a-c and G5b-c all now pass with live evidence — the fleet's outcome not only exists but demonstrably fired and drove a real decision (attempted self-heal before considering a pause). Bonus finding, not in scope to fix here: `_self_heal`'s pip-install heuristic tried `pip install yaml` (the import name) instead of `pip install pyyaml` (the actual PyPI package name) — a real, minor bug in the self-heal path, worth its own small fix later.
+
+Combined with iteration 4's quality-ranked fallback routing (a second, structurally independent closed loop — `review_store` outcomes now demonstrably reorder fallback agent selection, live-proven in that iteration's integration test), both G5b and G5c are satisfied by more than one path.
+
+**Updated verdict: L5 — Self-improving.** Run shape unchanged (installed pipx CLI + launchd watcher, production shape). Two independent closed loops now evidenced live: (1) behavioral profile extraction → dispatch prompt injection (autonomous, scheduled, populated), (2) fleet failure-analysis → real classification → self-heal/pause decision (this closure) and (3) review-outcome → fallback-routing reorder (iteration 4). The adversarial refutations from the original scan (fleet dead, `rank_owners` uncalled) are both resolved with evidence, not assumption.
