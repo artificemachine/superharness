@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import pytest
 from unittest.mock import patch
 
@@ -127,6 +128,60 @@ class TestDryRun:
     def test_dry_run_does_not_remove_legacy(self, project_dir, legacy_db):
         run_migrate_state(project_dir, dry_run=True)
         assert os.path.isfile(legacy_db)
+
+
+def _make_sqlite_with_columns(path: str, columns: list[str]) -> None:
+    if os.path.exists(path):
+        os.remove(path)  # overwrite any placeholder (e.g. the legacy_db fixture's fake header)
+    conn = sqlite3.connect(path)
+    try:
+        cols_sql = ", ".join(f"{c} TEXT" for c in ["id"] + columns)
+        conn.execute(f"CREATE TABLE agent_heartbeats ({cols_sql})")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+class TestSplitBrainSchemaComparison:
+    """A DB can claim every migration applied (schema_migrations + user_version)
+    while missing columns a migration was supposed to add — see
+    db._heal_known_migration_drift. Blindly trusting "XDG is always ahead"
+    and deleting the legacy copy would make that corruption permanent."""
+
+    def test_refuses_when_xdg_missing_columns_legacy_has(self, project_dir, legacy_db):
+        _make_sqlite_with_columns(legacy_db, ["runtime", "active_task"])
+        xdg = _xdg_db_path(project_dir)
+        os.makedirs(os.path.dirname(xdg), exist_ok=True)
+        _make_sqlite_with_columns(xdg, [])  # xdg is schema-behind
+
+        result = run_migrate_state(project_dir)
+
+        assert result == 1
+        assert os.path.isfile(legacy_db), "must not delete the schema-ahead legacy db"
+        assert os.path.isfile(xdg), "must not touch the xdg db either"
+
+    def test_proceeds_when_xdg_not_behind(self, project_dir, legacy_db):
+        _make_sqlite_with_columns(legacy_db, ["runtime"])
+        xdg = _xdg_db_path(project_dir)
+        os.makedirs(os.path.dirname(xdg), exist_ok=True)
+        _make_sqlite_with_columns(xdg, ["runtime", "active_task"])  # xdg equal-or-ahead
+
+        result = run_migrate_state(project_dir)
+
+        assert result == 0
+        assert not os.path.isfile(legacy_db), "legacy should still be removed when xdg isn't behind"
+
+    def test_dry_run_does_not_touch_files_when_xdg_behind(self, project_dir, legacy_db):
+        _make_sqlite_with_columns(legacy_db, ["runtime"])
+        xdg = _xdg_db_path(project_dir)
+        os.makedirs(os.path.dirname(xdg), exist_ok=True)
+        _make_sqlite_with_columns(xdg, [])
+
+        result = run_migrate_state(project_dir, dry_run=True)
+
+        assert result == 1
+        assert os.path.isfile(legacy_db)
+        assert os.path.isfile(xdg)
 
 
 class TestSizeMismatchRollback:

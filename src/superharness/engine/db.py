@@ -160,6 +160,37 @@ def init_db(conn: sqlite3.Connection, project_dir: str | None = None) -> None:
     if version < CURRENT_SCHEMA_VERSION:
         _run_migrations(conn, version, project_dir)
 
+    _heal_known_migration_drift(conn)
+
+
+def _heal_known_migration_drift(conn: sqlite3.Connection) -> None:
+    """Repair DBs where user_version/schema_migrations claim a migration ran
+    but its DDL never actually landed.
+
+    Real, observed failure mode (not hypothetical): before _column_exists was
+    fixed to handle row_factory=None (see its docstring), a migration could
+    ALTER TABLE against a column-existence check that silently returned the
+    wrong answer, skip the ALTER, and still record the migration as applied
+    and bump user_version — permanently, since a later init_db() only reruns
+    migrations with version > the recorded one. A DB migrated through that
+    window is stuck claiming e.g. v25 applied while agent_heartbeats is
+    missing every column v25 was supposed to add.
+
+    Cheap (two PRAGMA table_info calls) and safe to run on every init_db()
+    call: re-invokes only already-idempotent DDL (_add_column_if_missing),
+    never touches schema_migrations or user_version, and no-ops once healed.
+    """
+    if _column_exists(conn, "agent_heartbeats", "id") and not _column_exists(conn, "agent_heartbeats", "runtime"):
+        logger.warning("Healing migration drift: agent_heartbeats missing v25 columns despite user_version >= 25")
+        _add_column_if_missing(conn, "agent_heartbeats", "runtime", "TEXT")
+        _add_column_if_missing(conn, "agent_heartbeats", "active_task", "TEXT")
+        _add_column_if_missing(conn, "agent_heartbeats", "next_wake_at", "TEXT")
+        _add_column_if_missing(conn, "agent_heartbeats", "written_at", "TEXT")
+        _add_column_if_missing(conn, "agent_heartbeats", "tokens_used", "INTEGER")
+        _add_column_if_missing(conn, "agent_heartbeats", "tokens_limit", "INTEGER")
+        _add_column_if_missing(conn, "agent_heartbeats", "cost_usd", "REAL")
+        conn.commit()
+
 def _run_migrations(conn: sqlite3.Connection, current_version: int, project_dir: str | None = None) -> None:
     """Apply pending migrations in order."""
     for v in range(current_version + 1, CURRENT_SCHEMA_VERSION + 1):
