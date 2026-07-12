@@ -3590,7 +3590,10 @@ def _tail_lines(path, n: int) -> list[str]:
             fh.seek(pos)
             data = fh.read(read_size) + data
 
-    lines = data.decode("utf-8", errors="replace").split("\n")
+    # rstrip \r before the emptiness check: files with CRLF line endings
+    # (written in text mode on Windows) would otherwise leave every line
+    # carrying a trailing \r into the caller's json.loads/string comparisons.
+    lines = [line.rstrip("\r") for line in data.decode("utf-8", errors="replace").split("\n")]
     if lines and lines[-1] == "":
         lines = lines[:-1]  # trailing newline produces a trailing empty element
     lines = [line for line in lines if line.strip()]
