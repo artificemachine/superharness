@@ -1246,6 +1246,31 @@ _AGENT_FALLBACK: dict[str, list[str]] = {
 # Ordered preference for fallback when tried_agents is derived from inbox history
 _FALLBACK_ORDER = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
 
+
+def _rank_fallback_agents(conn, candidates: list[str]) -> list[str]:
+    """Reorder fallback candidates by recorded outcome quality.
+
+    Uses review_dao.rank_owners (fail_rate ASC, then avg_duration_s ASC) to
+    put agents with a good track record first. Candidates with too little
+    review_store history to rank (< min_task_count rows) keep their
+    original relative order, placed after every ranked candidate. Falls
+    back to the input order unchanged on any error or when nothing is
+    ranked yet (cold-start projects) — never blocks recovery.
+    """
+    try:
+        from superharness.engine import review_dao
+        ranked = review_dao.rank_owners(conn)
+        rank_index = {stats.owner: i for i, stats in enumerate(ranked)}
+    except Exception:
+        return candidates
+    if not rank_index:
+        return candidates
+    return sorted(
+        candidates,
+        key=lambda agent: (rank_index.get(agent, len(rank_index)), candidates.index(agent)),
+    )
+
+
 # Owner id -> CLI binary name, for live reachability checks (shutil.which).
 # Agents not listed here are checked by their own id (e.g. "opencode").
 _AGENT_CLI_BINARY = {
@@ -1543,6 +1568,7 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                     ]
                 except Exception:
                     fallback_agents = [a for a in _FALLBACK_ORDER if a not in tried_agents]
+                fallback_agents = _rank_fallback_agents(conn, fallback_agents)
                 if not fallback_agents:
                     # All known owners exhausted — escalate with rich context
                     per_owner_summary = ", ".join(sorted(tried_agents))

@@ -212,17 +212,76 @@ _CLASSIFIER_AGENTS: list[tuple[str, list[str]]] = [
 _CLASSIFY_TIMEOUT_SECONDS = 5
 
 
+def fleet_health(timeout: float = 3.0) -> list[tuple[str, str, str]]:
+    """Check each configured fleet tier against its endpoint's /models list.
+
+    Returns one (tier, model, status) row per configured tier, status in
+    {"ok", "endpoint-unreachable", "model-missing"}. Empty list if no fleet
+    is configured. Never raises.
+    """
+    fleet = _load_fleet_config()
+    if not fleet:
+        return []
+    endpoints = fleet.get("endpoints", {})
+    models = fleet.get("models", {})
+    results: list[tuple[str, str, str]] = []
+    for tier, model in models.items():
+        endpoint = endpoints.get(tier) or endpoints.get("all")
+        if not endpoint or not model:
+            continue
+        try:
+            import urllib.request
+            import json as _json
+            req = urllib.request.Request(f"{endpoint.rstrip('/')}/models")
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = _json.loads(resp.read())
+                available = {m.get("id") for m in data.get("data", [])}
+            status = "ok" if model in available else "model-missing"
+        except Exception:
+            status = "endpoint-unreachable"
+        results.append((tier, model, status))
+    return results
+
+
+def _fleet_candidates(fleet: dict) -> list[tuple[str, str]]:
+    """Return ordered, deduplicated (endpoint, model) pairs for a fleet config.
+
+    Each tier's endpoint is paired with that SAME tier's model (falling back
+    to the "all" model when the tier has no model of its own) — unlike the
+    old precedence chain, which could pick tier N's endpoint but tier M's
+    model if they didn't line up. Order: mini, standard, all.
+    """
+    endpoints = fleet.get("endpoints", {})
+    models = fleet.get("models", {})
+    fallback_model = models.get("all")
+    candidates: list[tuple[str, str]] = []
+    for tier in ("mini", "standard", "all"):
+        endpoint = endpoints.get(tier)
+        model = models.get(tier) or fallback_model
+        if not endpoint or not model:
+            continue
+        pair = (endpoint, model)
+        if pair not in candidates:
+            candidates.append(pair)
+    return candidates
+
+
 def _call_fleet(prompt: str, expect_tokens: int = 10) -> str | None:
-    """Call the fleet API and return the response text. Returns None on failure."""
+    """Call the fleet API and return the response text. Tries every configured
+    endpoint in tier order (mini, standard, all) until one succeeds. Returns
+    None if none respond."""
     fleet = _load_fleet_config()
     if not fleet:
         return None
-    endpoints = fleet.get("endpoints", {})
-    models = fleet.get("models", {})
-    endpoint = endpoints.get("mini") or endpoints.get("standard") or endpoints.get("all")
-    model_id = models.get("mini") or models.get("standard") or models.get("all")
-    if not endpoint or not model_id:
-        return None
+    for endpoint, model_id in _fleet_candidates(fleet):
+        result = _call_fleet_endpoint(endpoint, model_id, prompt, expect_tokens)
+        if result is not None:
+            return result
+    return None
+
+
+def _call_fleet_endpoint(endpoint: str, model_id: str, prompt: str, expect_tokens: int) -> str | None:
+    """Call one fleet endpoint. Returns None on any failure."""
     try:
         import urllib.request
         import json as _json
