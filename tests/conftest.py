@@ -89,6 +89,38 @@ def clean_harness(tmp_path: Path) -> Path:
     return project
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _launchd_leak_guard():
+    """Fail the whole suite if any test leaves a NEW com.superharness.*
+    launchd label behind (PLAN-superharness-L5.md iteration 5).
+
+    Real, observed regression: a `com.superharness.inbox.worker-proj` job
+    pointing at a deleted pytest tmp dir was found live on 2026-07-12, left
+    by a pre-rewrite watcher-install test that ran the real install script
+    without faking launchctl. Darwin-only; opt-in strict mode via
+    SUPERHARNESS_STRICT_LAUNCHD_GUARD=1 so CI on non-darwin runners (which
+    have no launchctl at all) is unaffected either way.
+    """
+    if sys.platform != "darwin":
+        yield
+        return
+    import shutil
+    if not shutil.which("launchctl"):
+        yield
+        return
+
+    from tests.unit.test_launchd_test_pollution import find_leaked_labels, _current_labels
+
+    before = _current_labels()
+    yield
+    after = _current_labels()
+    leaked = find_leaked_labels(before, after)
+    if leaked and os.environ.get("SUPERHARNESS_STRICT_LAUNCHD_GUARD") == "1":
+        raise AssertionError(f"test suite leaked launchd label(s): {leaked}")
+    elif leaked:
+        print(f"\nWARN: test suite leaked launchd label(s): {leaked}", file=sys.stderr)
+
+
 def past_iso(minutes_ago: int) -> str:
     """Return an ISO-8601 UTC timestamp `minutes_ago` minutes before now.
 

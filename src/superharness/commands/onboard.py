@@ -661,6 +661,14 @@ def _section_fleet(project: Path, config: dict, non_interactive: bool) -> None:
 
     from superharness.ui.prompts import print_header, print_info, print_success, print_warning
 
+    # Always use the explicit IPv4 loopback address here, never the ambiguous
+    # hostname form: on machines running a second OpenAI-compatible server on
+    # the same port (e.g. a container platform), the ambiguous form can
+    # resolve IPv6-first straight to the wrong server's model store — this
+    # silently broke the fleet brain for months (see
+    # docs/brain-multi-agent-tiers-fleet.md).
+    _OLLAMA_BASE = "http://127.0.0.1:11434"
+
     print_header("AI model providers")
     fleet_config: dict = {"fleet": {"endpoints": {}, "models": {}}}
     fleet_dir = Path.home() / ".config" / "superharness"
@@ -685,7 +693,7 @@ def _section_fleet(project: Path, config: dict, non_interactive: bool) -> None:
     # 1. Auto-detect Ollama
     ollama_found = False
     try:
-        req = urllib.request.Request("http://localhost:11434/api/tags")
+        req = urllib.request.Request(f"{_OLLAMA_BASE}/api/tags")
         with urllib.request.urlopen(req, timeout=2) as resp:
             tags = _json.loads(resp.read())
             models = [m["name"] for m in tags.get("models", [])]
@@ -693,7 +701,7 @@ def _section_fleet(project: Path, config: dict, non_interactive: bool) -> None:
                 ollama_found = True
                 print_success(f"Ollama detected ({len(models)} models): {', '.join(models[:5])}")
                 # Map largest available model to max tier, smallest to mini
-                fleet_config["fleet"]["endpoints"]["all"] = "http://localhost:11434/v1"
+                fleet_config["fleet"]["endpoints"]["all"] = f"{_OLLAMA_BASE}/v1"
                 if any("70b" in m or "32b" in m for m in models):
                     fleet_config["fleet"]["models"]["max"] = next(m for m in models if "70b" in m or "32b" in m)
                 elif any("14b" in m or "13b" in m for m in models):
@@ -712,8 +720,8 @@ def _section_fleet(project: Path, config: dict, non_interactive: bool) -> None:
     if not non_interactive and not ollama_found:
         choice = input("  Provider type [ollama/vllm/cloud/skip]: ").strip().lower()
         if choice == "ollama":
-            endpoint = input("  Ollama URL [http://localhost:11434/v1]: ").strip()
-            fleet_config["fleet"]["endpoints"]["all"] = endpoint or "http://localhost:11434/v1"
+            endpoint = input(f"  Ollama URL [{_OLLAMA_BASE}/v1]: ").strip()
+            fleet_config["fleet"]["endpoints"]["all"] = endpoint or f"{_OLLAMA_BASE}/v1"
             fleet_config["fleet"]["models"]["max"] = input("  Model for max tier [llama3:70b]: ").strip() or "llama3:70b"
             fleet_config["fleet"]["models"]["standard"] = input("  Model for standard tier [llama3:8b]: ").strip() or "llama3:8b"
             fleet_config["fleet"]["models"]["mini"] = input("  Model for mini tier [llama3:8b]: ").strip() or "llama3:8b"
