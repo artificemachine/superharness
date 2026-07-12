@@ -309,17 +309,21 @@ def main(argv: list[str] | None = None) -> None:
         print("INFO parity: skipped (no state.sqlite3)")
 
     # Fleet check: user-specific local GPU inference endpoints
-    from superharness.engine.model_router import _load_fleet_config
+    from superharness.engine.model_router import _load_fleet_config, fleet_health
     fleet = _load_fleet_config()
     if fleet:
         endpoints = fleet.get("endpoints", {})
-        models = fleet.get("models", {})
-        tiers = [t for t in ("max", "standard", "mini", "tiny") if t in models]
-        print(f"PASS fleet: {len(tiers)} GPU tier(s) configured ({', '.join(tiers)})")
-        for t in tiers:
-            ep = endpoints.get(t, "?")
-            model = models.get(t, "?")
-            print(f"  fleet/{t}: {model} @ {ep}")
+        health_rows = fleet_health()
+        for t, model, status in health_rows:
+            ep = endpoints.get(t) or endpoints.get("all", "?")
+            if status == "ok":
+                print(f"PASS fleet/{t}: {model} @ {ep}")
+            elif status == "model-missing":
+                print(f"WARN fleet/{t}: model {model!r} not found at {ep} — pull it or fix fleet.yaml")
+                warns += 1
+            else:
+                print(f"WARN fleet/{t}: endpoint {ep} unreachable — is the server running?")
+                warns += 1
         print(f"  Agent: opencode tiers mapped to fleet models")
     else:
         print("INFO fleet: no fleet.yaml found — local GPU inference not configured")
