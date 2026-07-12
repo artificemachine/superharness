@@ -53,6 +53,9 @@ files:
   - path: .superharness/profile.yaml
     type: config
     reason: per-project autonomy + dispatch settings (state_backend, model defaults)
+  - path: .superharness/watcher.yaml
+    type: config
+    reason: watcher-worker install config (interval, recover settings, worker/interpreter paths) — machine-specific, gitignored
   - path: .superharness/onboarding.yaml
     type: state
     backed_by: onboarding_state          # migration v26 — SQLite SoT
@@ -136,6 +139,15 @@ patterns:
     type: boundary
     ingest_function: discussions_dao.register_yaml_submission
     reason: external-agent round submissions; SQLite SoT via discussion_rounds table
+
+  # docs/discussions/ is gitignored — local-only design-review scratch space
+  # (e.g. docs/discussions/pii-detection-review/round-*-*.yaml), never reaches
+  # CI or version control. Same round-N-agent.yaml shape as the boundary
+  # pattern above, but a different, non-standard, non-ingested location —
+  # not relational state.
+  - glob: docs/discussions/*/*.yaml
+    type: ignore
+    reason: local-only gitignored design-review scratch artifacts, not relational state
 
   # Discussion summary handoffs written by the discuss command after consensus
   - glob: .superharness/handoffs/discuss.*.yaml

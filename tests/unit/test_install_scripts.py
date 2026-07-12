@@ -236,6 +236,94 @@ def test_install_launchd_escapes_plist_values_and_writes_confirmation_envs(repo_
     assert "<key>SUPERHARNESS_CONFIRM_CODEX_BYPASS</key>" in plist_text
 
 
+def test_install_launchd_state_project_defaults_to_project_dir_without_symlink(repo_root, tmp_path) -> None:
+    """When .superharness is a real directory (not the watcher-worker symlink
+    pattern), SUPERHARNESS_STATE_PROJECT must equal --project — a no-op that
+    preserves existing single-project (non-worker) installs."""
+    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
+    project = _setup_launchd_project(tmp_path)
+    home = tmp_path / "home"
+    home.mkdir()
+    fake_bin = _fake_launchd_bin(tmp_path)
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=["--project", str(project), "--to", "codex-cli", "--confirm-non-interactive", "yes"],
+        env={
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    label = "com.superharness.inbox.proj-demo"
+    plist_text = (home / "Library" / "LaunchAgents" / f"{label}.plist").read_text()
+    assert "<key>SUPERHARNESS_STATE_PROJECT</key>" in plist_text
+    idx = plist_text.index("<key>SUPERHARNESS_STATE_PROJECT</key>")
+    value_line = plist_text[idx:idx + 200].splitlines()[1]
+    expected = str(project.resolve()).replace("&", "&amp;")
+    assert expected in value_line
+
+
+def test_install_launchd_state_project_resolves_symlink_to_source(repo_root, tmp_path) -> None:
+    """watcher-worker.py symlinks the worker's .superharness/ back to the
+    source project so both share one state DB. Without SUPERHARNESS_STATE_PROJECT
+    pointing at the source, the watcher process (running with --project
+    <worker dir>) resolves its own XDG hash from the worker path, finds
+    nothing there, and falls back to writing a *second* state.sqlite3 into
+    the shared .superharness/ dir via the symlink — recreating a split-brain
+    every tick regardless of how many times it's manually resolved.
+
+    Exercises the launchd script directly (not the full watcher_worker.py ->
+    service_installer.py -> OS-dispatch pipeline) — this test is only about
+    the script's own symlink resolution, and going through the full pipeline
+    means fighting unrelated confirmation-flow/OS-detection state that
+    belongs to other tests."""
+    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
+    source = tmp_path / "source-proj"
+    (source / ".superharness").mkdir(parents=True, exist_ok=True)
+    seed_sqlite_from_yaml(source)
+
+    worker = tmp_path / "worker-proj"
+    worker.mkdir()
+    os.symlink(source / ".superharness", worker / ".superharness")
+
+    home = tmp_path / "home"
+    home.mkdir()
+    fake_bin = _fake_launchd_bin(tmp_path)
+
+    result = run_bash(
+        script,
+        cwd=repo_root,
+        args=[
+            "--project", str(worker), "--to", "both",
+            "--confirm-non-interactive", "yes",
+            "--confirm-skip-permissions", "yes",
+        ],
+        env={
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    label = f"com.superharness.inbox.{worker.name}"
+    plist_path = home / "Library" / "LaunchAgents" / f"{label}.plist"
+    assert plist_path.exists(), result.stdout + result.stderr
+    plist_text = plist_path.read_text()
+
+    assert "<key>SUPERHARNESS_STATE_PROJECT</key>" in plist_text
+    idx = plist_text.index("<key>SUPERHARNESS_STATE_PROJECT</key>")
+    value_line = plist_text[idx:idx + 200].splitlines()[1]
+    assert str(source.resolve()) in value_line, (
+        f"SUPERHARNESS_STATE_PROJECT must resolve through the .superharness "
+        f"symlink to the source project ({source.resolve()}), not the worker "
+        f"dir ({worker.resolve()}): {value_line}"
+    )
+    assert str(worker.resolve()) not in value_line
+
+
 def test_install_launchd_plist_keepalive_only_restarts_on_crash(repo_root, tmp_path) -> None:
     """KeepAlive must use SuccessfulExit=false so launchd only restarts on crash,
     not after a normal single-cycle exit."""
