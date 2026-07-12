@@ -591,92 +591,6 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
     if archived:
         print(f"auto-clean: archived {archived} stale task(s)")
     return archived
-    """Scan contract.yaml for todo tasks and enqueue them for planning.
-
-    Only runs when auto_dispatch=True and autonomy=autonomous in profile.yaml.
-    Enqueues with --plan-only logic in mind (handled by dispatcher).
-    """
-    import uuid
-    from datetime import datetime, timezone
-
-    profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
-    if not os.path.exists(profile_file):
-        return 0
-    try:
-        import yaml as _yaml
-        profile = _yaml.safe_load(open(profile_file, encoding="utf-8").read()) or {}
-    except Exception as e:
-        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
-        return 0
-    
-    if not profile.get("auto_dispatch") or _profile_autonomy(profile) != "ai_driven":
-        return 0
-
-    tasks = _load_tasks(project_dir)
-    if not tasks:
-        return 0
-
-    inbox_items: list[dict] = []
-    try:
-        from superharness.engine.state_reader import get_inbox_items
-        inbox_items = get_inbox_items(project_dir)
-    except Exception as e:
-        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
-        inbox_items = []
-
-    added = 0
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    new_item_ids: set[str] = set()
-
-    # Build a set of archived parent task IDs so subtasks can be skipped.
-    archived_ids = {str(t.get("id", "")) for t in tasks if isinstance(t, dict) and t.get("status") == "archived"}
-
-    for task in tasks:
-        if not isinstance(task, dict):
-            continue
-        if task.get("status") != "todo":
-            continue
-
-        task_id = str(task.get("id", ""))
-        if not task_id:
-            continue
-
-        # Skip subtasks whose parent is archived (e.g. verify.foo.1 when verify.foo is archived).
-        parent_id = ".".join(task_id.rsplit(".", 1)[:-1]) if "." in task_id else ""
-        if parent_id and parent_id in archived_ids:
-            continue
-
-        if task_id in active_tasks:
-            continue
-
-        if not _deps_satisfied_from_tasks(tasks, task_id):
-            continue
-
-        owner = str(task.get("owner", "claude-code"))
-        item_id = f"auto-plan-{uuid.uuid4().hex[:6]}"
-        new_item: dict = {
-            "id": item_id,
-            "task": task_id,
-            "to": owner,
-            "status": "pending",
-            "priority": 2,
-            "retry_count": 0,
-            "max_retries": 3,
-            "created_at": now,
-            "project": project_dir,
-            "plan_only": True,
-        }
-        inbox_items.append(new_item)
-        active_tasks.add(task_id)
-        new_item_ids.add(item_id)
-        added += 1
-        print(f"auto-dispatch: enqueued todo {task_id} for planning → {owner} (item {item_id})")
-
-    if added > 0:
-        new_items = [i for i in inbox_items if i.get("id") in new_item_ids]
-        _sqlite_mirror_inbox_enqueue(project_dir, new_items, now)
-
-    return added
 
 
 _PEER_AGENTS: dict[str, str] = {
@@ -2444,13 +2358,15 @@ def _run_scripts(
 
     # Auto-close report_ready tasks with tests_passed: true in their handoff
     try:
-        _auto_close_report_ready(project_dir)
+        if _should_run(project_dir, "auto_close_report_ready", cooldown=15):
+            _auto_close_report_ready(project_dir)
     except Exception as e:
         _log_watcher_error(project_dir, "watcher", str(e))
 
     # Auto-close review_requested tasks when a reviewer submits a verdict report
     try:
-        _auto_close_review_passed(project_dir)
+        if _should_run(project_dir, "auto_close_review_passed", cooldown=15):
+            _auto_close_review_passed(project_dir)
     except Exception as e:
         _log_watcher_error(project_dir, "watcher", str(e))
 
@@ -2469,7 +2385,8 @@ def _run_scripts(
 
     # Sync cancelled/closed discussions back to contract task status + clean inbox
     try:
-        _reconcile_discussion_contract(project_dir)
+        if _should_run(project_dir, "reconcile_discussion_contract", cooldown=15):
+            _reconcile_discussion_contract(project_dir)
     except Exception as e:
         print(f"Warning: discussion contract reconciliation failed: {e}", file=sys.stderr)
 
@@ -2477,7 +2394,8 @@ def _run_scripts(
 
     # ship_on_complete guard: mark failed when report_ready has no PR URL
     try:
-        _check_ship_on_complete_tasks(project_dir)
+        if _should_run(project_dir, "check_ship_on_complete", cooldown=15):
+            _check_ship_on_complete_tasks(project_dir)
     except Exception as e:
         print(f"Warning: _check_ship_on_complete_tasks failed: {e}", file=sys.stderr)
 
