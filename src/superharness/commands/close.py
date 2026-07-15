@@ -276,6 +276,11 @@ def close_task(
         print(f"Warning: failed to clean up worktree for '{task_id}': {e}", file=sys.stderr)
 
     print(f"Closed task '{task_id}' (actor={actor})")
+    if task_row.issue_url:
+        from superharness.commands.issue_import import _detect_platform
+        close_bin = "gh" if _detect_platform(task_row.issue_url) == "github" else "glab"
+        print(f"Linked issue still open: {task_row.issue_url}")
+        print(f"  close it: {close_bin} issue close {task_row.issue_url}")
     return 0
 
 
