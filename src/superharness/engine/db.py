@@ -13,7 +13,7 @@ from superharness.utils.paths import resolve_xdg_state_db_path
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 29
+CURRENT_SCHEMA_VERSION = 30
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -856,6 +856,13 @@ def _migration_v29(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_v30(conn: sqlite3.Connection) -> None:
+    """Add issue_url column to tasks: stores a linked GitHub/GitLab issue URL
+    (one-way snapshot pointer, set via `shux task create --issue` or
+    `shux task link`; never written back to by shux)."""
+    _add_column_if_missing(conn, "tasks", "issue_url", "TEXT")
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -886,4 +893,5 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v27,
     _migration_v28,
     _migration_v29,
+    _migration_v30,
 ]

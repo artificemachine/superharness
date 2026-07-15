@@ -60,6 +60,17 @@ def _validate_token(name: str, value: str) -> None:
         _abort(f"{name} must match ^[A-Za-z0-9._/-]+$", 2)
 
 
+def _validate_issue_url(url: str) -> str:
+    """Validate a GitHub/GitLab issue URL. Returns the URL unchanged on
+    success; raises ValueError on an unusable scheme or missing host."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ValueError(f"issue url must be an http(s) URL: {url!r}")
+    return url
+
+
 _JSON_MODE = False
 _JSON_CTX: dict = {}
 
@@ -113,10 +124,16 @@ def create(
     plan: Optional[dict] = None,
     ship_on_complete: bool = False,
     require_tdd: Optional[bool] = None,
+    issue_url: Optional[str] = None,
 ) -> int:
     _validate_token("task id", task_id)
     if dependency:
         _validate_token("dependency id", dependency)
+    if issue_url:
+        try:
+            issue_url = _validate_issue_url(issue_url)
+        except ValueError as e:
+            _abort(str(e), 2)
 
     if owner not in VALID_OWNERS:
         _abort(f"owner must be one of: {', '.join(sorted(VALID_OWNERS))}", 2)
@@ -201,6 +218,7 @@ def create(
             workflow=workflow or None,
             require_tdd=bool(require_tdd),
             extras_json=_json.dumps(extras) if extras else None,
+            issue_url=issue_url or None,
         )
         tasks_dao.upsert(conn, row)
 
@@ -787,6 +805,53 @@ def set_requires(
     return 0
 
 
+def link(
+    project_dir: str,
+    task_id: str,
+    url: str | None = None,
+    clear: bool = False,
+) -> int:
+    """Set or clear the issue_url on an existing task (one-way pointer;
+    never written back to by shux)."""
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import tasks_dao
+
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        row = tasks_dao.get(conn, task_id)
+        if row is None:
+            _abort(f"task '{task_id}' not found")
+            return 1
+
+        if clear:
+            new_url = None
+        elif url:
+            try:
+                new_url = _validate_issue_url(url)
+            except ValueError as e:
+                _abort(str(e), 2)
+                return 2
+        else:
+            _abort("--url or --clear is required", 2)
+            return 2
+
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        updated = tasks_dao.update(conn, task_id, row.version, {
+            "issue_url": new_url,
+            "updated_at": now,
+        })
+        conn.commit()
+    finally:
+        conn.close()
+
+    if clear:
+        print(f"issue_url cleared for '{task_id}'")
+    else:
+        print(f"issue_url set for '{task_id}': {updated.issue_url}")
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -809,7 +874,8 @@ def main(argv: list[str] | None = None) -> None:
     p_create.add_argument("--project", "-p", default=None)
     p_create.add_argument("--id", dest="task_id", default=None,
                           help="Task ID (auto-generated as t-XXXXXX if omitted)")
-    p_create.add_argument("--title", required=True)
+    p_create.add_argument("--title", default=None,
+                          help="Required unless --from-issue supplies a title")
     p_create.add_argument("--owner", default=None)
     p_create.add_argument("--status", default="todo")
     p_create.add_argument("--dependency", default="")
@@ -854,6 +920,11 @@ def main(argv: list[str] | None = None) -> None:
     p_create.add_argument("--no-require-tdd", dest="require_tdd",
                           action="store_false", default=None,
                           help="Force require_tdd=false on this task")
+    p_create.add_argument("--issue", dest="issue_url", default=None,
+                          help="Linked GitHub/GitLab issue URL (one-way snapshot pointer)")
+    p_create.add_argument("--from-issue", dest="from_issue", default=None,
+                          help="Import title/context/acceptance_criteria from a GitHub/GitLab "
+                               "issue URL via gh/glab (one-way snapshot; explicit flags override)")
 
     # delete
     p_delete = sub.add_parser("delete", add_help=True)
@@ -917,6 +988,17 @@ def main(argv: list[str] | None = None) -> None:
     p_req.add_argument("--rm-mcp", dest="mcp_remove", action="append", default=None,
                        metavar="SERVER", help="Remove MCP server requirement (repeatable)")
 
+    # link
+    p_link = sub.add_parser(
+        "link",
+        help="Set or clear the linked GitHub/GitLab issue URL on an existing task.",
+    )
+    p_link.add_argument("--project", "-p", default=None)
+    p_link.add_argument("--id", dest="task_id", required=True)
+    p_link.add_argument("--url", default=None, help="Issue URL to attach")
+    p_link.add_argument("--clear", action="store_true", default=False,
+                        help="Remove the linked issue URL")
+
     opts = parser.parse_args(argv)
     if not opts.subcmd:
         parser.print_help(sys.stderr)
@@ -952,6 +1034,31 @@ def main(argv: list[str] | None = None) -> None:
         if not owner:
             _abort("--owner is required (or set in profile.yaml)", 2)
         task_id = opts.task_id or f"t-{uuid.uuid4().hex[:6]}"
+
+        # --from-issue pre-fill: fetch once, seed defaults, explicit flags override.
+        imported_title = None
+        imported_context = None
+        imported_criteria: list[str] = []
+        imported_issue_url = None
+        if opts.from_issue:
+            from superharness.commands.issue_import import _fetch_issue, _issue_to_task_fields
+            try:
+                issue = _fetch_issue(opts.from_issue)
+            except RuntimeError as e:
+                _abort(str(e), 1)
+            fields = _issue_to_task_fields(issue, opts.from_issue)
+            imported_title = fields["title"]
+            imported_context = fields["context"]
+            imported_criteria = fields["acceptance_criteria"]
+            imported_issue_url = fields["issue_url"]
+
+        title = opts.title or imported_title
+        if not title:
+            _abort("--title is required (or use --from-issue to import one)", 2)
+        criteria = opts.criteria or imported_criteria
+        context = opts.context if opts.context is not None else imported_context
+        issue_url = opts.issue_url or imported_issue_url
+
         # Build plan dict from method-specific flags
         plan = None
         if opts.bdd_given or opts.bdd_when or opts.bdd_then:
@@ -969,12 +1076,12 @@ def main(argv: list[str] | None = None) -> None:
         rc = create(
             project_dir,
             task_id=task_id,
-            title=opts.title,
+            title=title,
             owner=owner,
             status=opts.status,
             project_path=project_dir,
             dependency=opts.dependency or None,
-            criteria=opts.criteria or None,
+            criteria=criteria or None,
             blocked_by=opts.blocked_by,
             tdd_red=opts.tdd_red,
             tdd_green=opts.tdd_green,
@@ -985,11 +1092,12 @@ def main(argv: list[str] | None = None) -> None:
             test_types=test_types,
             out_of_scope=opts.out_of_scope or None,
             definition_of_done=opts.definition_of_done or None,
-            context=opts.context,
+            context=context,
             timeout_minutes=opts.timeout_minutes,
             plan=plan,
             ship_on_complete=opts.ship_on_complete,
             require_tdd=opts.require_tdd,
+            issue_url=issue_url,
         )
         sys.exit(rc)
 
@@ -1089,6 +1197,10 @@ def main(argv: list[str] | None = None) -> None:
             clear=opts.clear,
             show=opts.show,
         )
+        sys.exit(rc)
+
+    elif opts.subcmd == "link":
+        rc = link(project_dir, task_id=opts.task_id, url=opts.url, clear=opts.clear)
         sys.exit(rc)
 
 
