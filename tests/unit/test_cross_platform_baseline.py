@@ -307,3 +307,27 @@ class TestInboxLockCrossPlatform:
 
         with _inbox_lock(str(inbox_file)):
             assert (tmp_path / "inbox.yaml.flock").exists()
+
+
+# ---------------------------------------------------------------------------
+# Claude Code hook assets — static validation on all supported OSes
+# ---------------------------------------------------------------------------
+
+
+class TestClaudeCodeHookAssets:
+    """Packaged Bash hooks must retain syntax needed by Git Bash and Unix Bash."""
+
+    def test_session_start_command_examples_are_shell_escaped(self):
+        """Literal backticks and nested quotes must survive Bash context assembly."""
+        script = REPO_ROOT / "src/superharness/adapters/claude-code/hooks/session-start.sh"
+        source = script.read_text(encoding="utf-8")
+
+        for command in (
+            r"\`shux contract\`",
+            r"\`shux context <id>\`",
+            r"\`shux recall KEYWORDS\`",
+            r"\`shux task status --id <id> --status report_ready\`",
+            r"\`shux close <id>\`",
+            r'\`shux verify --id <id> --result fail --method \"...\"\`',
+        ):
+            assert command in source
