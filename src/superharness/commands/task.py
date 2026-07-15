@@ -874,7 +874,8 @@ def main(argv: list[str] | None = None) -> None:
     p_create.add_argument("--project", "-p", default=None)
     p_create.add_argument("--id", dest="task_id", default=None,
                           help="Task ID (auto-generated as t-XXXXXX if omitted)")
-    p_create.add_argument("--title", required=True)
+    p_create.add_argument("--title", default=None,
+                          help="Required unless --from-issue supplies a title")
     p_create.add_argument("--owner", default=None)
     p_create.add_argument("--status", default="todo")
     p_create.add_argument("--dependency", default="")
@@ -921,6 +922,9 @@ def main(argv: list[str] | None = None) -> None:
                           help="Force require_tdd=false on this task")
     p_create.add_argument("--issue", dest="issue_url", default=None,
                           help="Linked GitHub/GitLab issue URL (one-way snapshot pointer)")
+    p_create.add_argument("--from-issue", dest="from_issue", default=None,
+                          help="Import title/context/acceptance_criteria from a GitHub/GitLab "
+                               "issue URL via gh/glab (one-way snapshot; explicit flags override)")
 
     # delete
     p_delete = sub.add_parser("delete", add_help=True)
@@ -1030,6 +1034,31 @@ def main(argv: list[str] | None = None) -> None:
         if not owner:
             _abort("--owner is required (or set in profile.yaml)", 2)
         task_id = opts.task_id or f"t-{uuid.uuid4().hex[:6]}"
+
+        # --from-issue pre-fill: fetch once, seed defaults, explicit flags override.
+        imported_title = None
+        imported_context = None
+        imported_criteria: list[str] = []
+        imported_issue_url = None
+        if opts.from_issue:
+            from superharness.commands.issue_import import _fetch_issue, _issue_to_task_fields
+            try:
+                issue = _fetch_issue(opts.from_issue)
+            except RuntimeError as e:
+                _abort(str(e), 1)
+            fields = _issue_to_task_fields(issue, opts.from_issue)
+            imported_title = fields["title"]
+            imported_context = fields["context"]
+            imported_criteria = fields["acceptance_criteria"]
+            imported_issue_url = fields["issue_url"]
+
+        title = opts.title or imported_title
+        if not title:
+            _abort("--title is required (or use --from-issue to import one)", 2)
+        criteria = opts.criteria or imported_criteria
+        context = opts.context if opts.context is not None else imported_context
+        issue_url = opts.issue_url or imported_issue_url
+
         # Build plan dict from method-specific flags
         plan = None
         if opts.bdd_given or opts.bdd_when or opts.bdd_then:
@@ -1047,12 +1076,12 @@ def main(argv: list[str] | None = None) -> None:
         rc = create(
             project_dir,
             task_id=task_id,
-            title=opts.title,
+            title=title,
             owner=owner,
             status=opts.status,
             project_path=project_dir,
             dependency=opts.dependency or None,
-            criteria=opts.criteria or None,
+            criteria=criteria or None,
             blocked_by=opts.blocked_by,
             tdd_red=opts.tdd_red,
             tdd_green=opts.tdd_green,
@@ -1063,12 +1092,12 @@ def main(argv: list[str] | None = None) -> None:
             test_types=test_types,
             out_of_scope=opts.out_of_scope or None,
             definition_of_done=opts.definition_of_done or None,
-            context=opts.context,
+            context=context,
             timeout_minutes=opts.timeout_minutes,
             plan=plan,
             ship_on_complete=opts.ship_on_complete,
             require_tdd=opts.require_tdd,
-            issue_url=opts.issue_url,
+            issue_url=issue_url,
         )
         sys.exit(rc)
 
