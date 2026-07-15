@@ -190,12 +190,12 @@ When reviewing Codex's work: check for naive implementations, missed edge cases,
 When Codex reviews YOUR work: expect challenges on over-abstraction and unnecessary complexity. Take them seriously.
 
 Protocol files live in .superharness/ (state.sqlite3, handoffs/, ledger.md).
-- Before starting: run `shux contract` to see all tasks. Run `shux context <id>` for full task context.
-- Use `shux recall KEYWORDS` to search past handoffs and failures.
-- Before implementing: check `shux context <id>` for past failures with this technology/approach.
-- When done with a task: run `shux task status --id <id> --status report_ready`. Run `shux close <id>` when verified.
+- Before starting: run \`shux contract\` to see all tasks. Run \`shux context <id>\` for full task context.
+- Use \`shux recall KEYWORDS\` to search past handoffs and failures.
+- Before implementing: check \`shux context <id>\` for past failures with this technology/approach.
+- When done with a task: run \`shux task status --id <id> --status report_ready\`. Run \`shux close <id>\` when verified.
 - When you make a decision between alternatives: write a handoff and append to ledger.
-- When something fails: run `shux verify --id <id> --result fail --method "..."` to record it.
+- When something fails: run \`shux verify --id <id> --result fail --method \"...\"\` to record it.
 - When reviewing: use the review lenses assigned in the contract (security, architecture, performance, tests, error-handling, devops, api-contract). Read the diff, challenge decisions, log findings. Never rubber-stamp.
 
 ## Enforcement hooks active:

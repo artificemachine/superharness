@@ -70,3 +70,25 @@ def test_session_start_vault_search_uses_stdin_not_argv(repo_root: Path) -> None
     assert "sys.stdin.read()" in src, (
         "session-start.sh must read SEARCH_RESULT from sys.stdin.read()"
     )
+
+
+def test_packaged_session_start_preserves_literal_shux_commands(repo_root: Path, tmp_path: Path) -> None:
+    """Command examples in injected context must never execute as shell substitutions."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    script = repo_root / "src/superharness/adapters/claude-code/hooks/session-start.sh"
+
+    result = run_bash(script, cwd=project)
+
+    assert result.returncode == 0
+    assert result.stderr == ""
+    context = json.loads(result.stdout)["additionalContext"]
+    for command in (
+        "`shux contract`",
+        "`shux context <id>`",
+        "`shux recall KEYWORDS`",
+        "`shux task status --id <id> --status report_ready`",
+        "`shux close <id>`",
+        '`shux verify --id <id> --result fail --method "..."`',
+    ):
+        assert command in context
