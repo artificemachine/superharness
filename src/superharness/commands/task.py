@@ -60,6 +60,17 @@ def _validate_token(name: str, value: str) -> None:
         _abort(f"{name} must match ^[A-Za-z0-9._/-]+$", 2)
 
 
+def _validate_issue_url(url: str) -> str:
+    """Validate a GitHub/GitLab issue URL. Returns the URL unchanged on
+    success; raises ValueError on an unusable scheme or missing host."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ValueError(f"issue url must be an http(s) URL: {url!r}")
+    return url
+
+
 _JSON_MODE = False
 _JSON_CTX: dict = {}
 
@@ -113,10 +124,16 @@ def create(
     plan: Optional[dict] = None,
     ship_on_complete: bool = False,
     require_tdd: Optional[bool] = None,
+    issue_url: Optional[str] = None,
 ) -> int:
     _validate_token("task id", task_id)
     if dependency:
         _validate_token("dependency id", dependency)
+    if issue_url:
+        try:
+            issue_url = _validate_issue_url(issue_url)
+        except ValueError as e:
+            _abort(str(e), 2)
 
     if owner not in VALID_OWNERS:
         _abort(f"owner must be one of: {', '.join(sorted(VALID_OWNERS))}", 2)
@@ -201,6 +218,7 @@ def create(
             workflow=workflow or None,
             require_tdd=bool(require_tdd),
             extras_json=_json.dumps(extras) if extras else None,
+            issue_url=issue_url or None,
         )
         tasks_dao.upsert(conn, row)
 
@@ -854,6 +872,8 @@ def main(argv: list[str] | None = None) -> None:
     p_create.add_argument("--no-require-tdd", dest="require_tdd",
                           action="store_false", default=None,
                           help="Force require_tdd=false on this task")
+    p_create.add_argument("--issue", dest="issue_url", default=None,
+                          help="Linked GitHub/GitLab issue URL (one-way snapshot pointer)")
 
     # delete
     p_delete = sub.add_parser("delete", add_help=True)
@@ -990,6 +1010,7 @@ def main(argv: list[str] | None = None) -> None:
             plan=plan,
             ship_on_complete=opts.ship_on_complete,
             require_tdd=opts.require_tdd,
+            issue_url=opts.issue_url,
         )
         sys.exit(rc)
 
