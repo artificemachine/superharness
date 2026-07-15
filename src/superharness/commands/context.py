@@ -195,6 +195,8 @@ def task_context(
     else:
         lines.append(f"Status: {task.get('status', 'unknown')}")
     lines.append(f"Title:  {task.get('title', '')}")
+    if task.get("issue_url"):
+        lines.append(f"Issue: {task.get('issue_url')}")
 
     # Handoffs/decisions/failures/ledger lookups use the parent id for subtasks
     # (subtasks don't have their own handoffs; they inherit the parent's).

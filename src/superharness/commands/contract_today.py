@@ -98,6 +98,13 @@ def contract_today(
             filtered.append(t)
         tasks = filtered
 
+    # Only add the Issue column when at least one visible task has a linked
+    # issue — keeps render byte-identical to the pre-Iteration-2 table when
+    # no task carries a URL.
+    show_issue_col = any(
+        isinstance(t, dict) and t.get("issue_url") for t in tasks
+    )
+
     rows_raw: list[list[str]] = []
     if include_subtasks:
         from superharness.engine.subtask import resolve_subtask_status
@@ -105,38 +112,47 @@ def contract_today(
         for t in tasks:
             if not isinstance(t, dict):
                 continue
-            rows_raw.append([
+            row = [
                 str(t.get("id", "")),
                 str(t.get("title", "")),
                 _status_label(str(t.get("status", ""))),
                 str(t.get("owner", "")),
-            ])
+            ]
+            if show_issue_col:
+                row.append(str(t.get("issue_url") or ""))
+            rows_raw.append(row)
             parent_status = str(t.get("status", ""))
             for s in (t.get("subtasks") or []):
                 if not isinstance(s, dict):
                     continue
                 eff = resolve_subtask_status(s, parent_status)
-                rows_raw.append([
+                sub_row = [
                     "  └ " + str(s.get("id", "")),
                     str(s.get("title", "")),
                     _status_label(eff),
                     str(s.get("owner", "")),
-                ])
+                ]
+                if show_issue_col:
+                    sub_row.append(str(s.get("issue_url") or ""))
+                rows_raw.append(sub_row)
     else:
-        rows_raw = [
-            [
+        for t in tasks:
+            row = [
                 str(t.get("id", "")) if isinstance(t, dict) else "",
                 str(t.get("title", "")) if isinstance(t, dict) else "",
                 _status_label(str(t.get("status", "")) if isinstance(t, dict) else ""),
                 str(t.get("owner", "")) if isinstance(t, dict) else "",
             ]
-            for t in tasks
-        ]
+            if show_issue_col:
+                row.append(str(t.get("issue_url") or "") if isinstance(t, dict) else "")
+            rows_raw.append(row)
 
     headers = ["ID", "Title", "Status", "Owner"]
+    if show_issue_col:
+        headers.append("Issue")
     widths = [
         max(len(headers[i]), *(len(r[i]) for r in rows_raw) if rows_raw else [0])
-        for i in range(4)
+        for i in range(len(headers))
     ]
 
     print(f"Contract {doc.get('id') or 'unknown'} — {doc.get('created') or 'unknown'}")
