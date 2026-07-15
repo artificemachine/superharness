@@ -805,6 +805,53 @@ def set_requires(
     return 0
 
 
+def link(
+    project_dir: str,
+    task_id: str,
+    url: str | None = None,
+    clear: bool = False,
+) -> int:
+    """Set or clear the issue_url on an existing task (one-way pointer;
+    never written back to by shux)."""
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import tasks_dao
+
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        row = tasks_dao.get(conn, task_id)
+        if row is None:
+            _abort(f"task '{task_id}' not found")
+            return 1
+
+        if clear:
+            new_url = None
+        elif url:
+            try:
+                new_url = _validate_issue_url(url)
+            except ValueError as e:
+                _abort(str(e), 2)
+                return 2
+        else:
+            _abort("--url or --clear is required", 2)
+            return 2
+
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        updated = tasks_dao.update(conn, task_id, row.version, {
+            "issue_url": new_url,
+            "updated_at": now,
+        })
+        conn.commit()
+    finally:
+        conn.close()
+
+    if clear:
+        print(f"issue_url cleared for '{task_id}'")
+    else:
+        print(f"issue_url set for '{task_id}': {updated.issue_url}")
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -936,6 +983,17 @@ def main(argv: list[str] | None = None) -> None:
                        metavar="SERVER", help="Require MCP server to be registered (repeatable)")
     p_req.add_argument("--rm-mcp", dest="mcp_remove", action="append", default=None,
                        metavar="SERVER", help="Remove MCP server requirement (repeatable)")
+
+    # link
+    p_link = sub.add_parser(
+        "link",
+        help="Set or clear the linked GitHub/GitLab issue URL on an existing task.",
+    )
+    p_link.add_argument("--project", "-p", default=None)
+    p_link.add_argument("--id", dest="task_id", required=True)
+    p_link.add_argument("--url", default=None, help="Issue URL to attach")
+    p_link.add_argument("--clear", action="store_true", default=False,
+                        help="Remove the linked issue URL")
 
     opts = parser.parse_args(argv)
     if not opts.subcmd:
@@ -1110,6 +1168,10 @@ def main(argv: list[str] | None = None) -> None:
             clear=opts.clear,
             show=opts.show,
         )
+        sys.exit(rc)
+
+    elif opts.subcmd == "link":
+        rc = link(project_dir, task_id=opts.task_id, url=opts.url, clear=opts.clear)
         sys.exit(rc)
 
 
