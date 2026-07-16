@@ -12,10 +12,31 @@ from __future__ import annotations
 
 import os
 import shutil
+import sqlite3
 import sys
 
 import logging
 logger = logging.getLogger(__name__)
+
+
+def _table_columns(db_path: str, table: str) -> set[str]:
+    """Return the column names of `table` in the sqlite db at `db_path`.
+
+    Empty set if the file doesn't exist, the table doesn't exist, or the
+    file can't be opened as sqlite — callers treat that as "nothing to
+    compare" rather than a hard error.
+    """
+    if not os.path.isfile(db_path):
+        return set()
+    try:
+        conn = sqlite3.connect(db_path)
+        try:
+            rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+            return {r[1] for r in rows}
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return set()
 
 
 def run_migrate_state(
@@ -49,14 +70,36 @@ def run_migrate_state(
         return 0
 
     if xdg_exists:
-        # Split-brain: both paths exist. Report the conflict and suggest resolution.
+        # Split-brain: both paths exist. get_connection() always prefers the
+        # XDG path, so it's the one actually in use — but "in use" doesn't
+        # mean "more complete". A DB can claim every migration applied
+        # (schema_migrations + PRAGMA user_version) while missing columns a
+        # migration was supposed to add, if it was last migrated through a
+        # historical window where that drift could happen silently (see
+        # db._heal_known_migration_drift). Deleting the "stale" copy without
+        # checking would silently make that corruption permanent. Compare
+        # schemas before assuming which one to keep.
         print("WARN split-brain detected: both XDG and legacy state DBs exist.")
         print(f"  XDG (active):  {xdg_db}")
         print(f"  Legacy:        {legacy_db}")
         print()
-        print("The XDG db is the active source of truth. The legacy db is stale.")
+
+        xdg_cols = _table_columns(xdg_db, "agent_heartbeats")
+        legacy_cols = _table_columns(legacy_db, "agent_heartbeats")
+        xdg_behind = bool(legacy_cols - xdg_cols)
+
+        if xdg_behind:
+            print("WARN XDG db's agent_heartbeats is missing columns the legacy db has:")
+            print(f"  Missing: {sorted(legacy_cols - xdg_cols)}")
+            print("Refusing to auto-resolve — the 'active' copy is schema-behind the 'stale' one.")
+            print("Manual resolution required. Options:")
+            print(f"  - Keep legacy, discard XDG: rm {xdg_db} && shux migrate-state --project {project_dir}")
+            print(f"  - Inspect both and merge manually before removing either.")
+            return 1
+
+        print("The XDG db is the active source of truth and is not schema-behind the legacy db.")
         if dry_run:
-            print("[dry-run] Would remove legacy db (no data loss — XDG is active).")
+            print("[dry-run] Would remove legacy db (no data loss — XDG is active and not behind).")
             print("Dry run complete — no changes made.")
             return 0
         if not keep_legacy:

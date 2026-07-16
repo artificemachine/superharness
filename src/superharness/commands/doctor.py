@@ -14,6 +14,26 @@ logger = logging.getLogger(__name__)
 _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 
 
+def _operator_running_for_project(project_dir: str) -> bool:
+    """Detect a live `superharness operator` process for this project.
+
+    operator.py spawns its own internal watcher loop, so a project can have
+    working watcher functionality without the dedicated inbox-watcher
+    launchd job being loaded. Checked via `ps aux` rather than the launchd
+    label because operator's ad-hoc/foreground label hash scheme differs
+    from the inbox-watcher one, and this also covers non-launchd invocation.
+    """
+    try:
+        r = subprocess.run(["ps", "aux"], capture_output=True, text=True, timeout=5)
+    except Exception:
+        return False
+    abspath = os.path.abspath(project_dir)
+    for line in r.stdout.splitlines():
+        if "superharness.cli operator" in line and "--project" in line and abspath in line:
+            return True
+    return False
+
+
 def _install_hint(dep: str) -> str:
     is_mac = platform.system() == "Darwin"
     hints = {
@@ -192,6 +212,8 @@ def main(argv: list[str] | None = None) -> None:
         r = subprocess.run(["launchctl", "list"], capture_output=True, text=True)
         if label in r.stdout:
             print(f"PASS watcher:{label} loaded")
+        elif _operator_running_for_project(project_dir):
+            print("PASS watcher: live operator process detected for this project (provides watcher functionality)")
         else:
             print(f"WARN watcher:{label} not loaded")
             print("       The background watcher is required — install it with: shux watcher-worker -p .")
@@ -287,17 +309,21 @@ def main(argv: list[str] | None = None) -> None:
         print("INFO parity: skipped (no state.sqlite3)")
 
     # Fleet check: user-specific local GPU inference endpoints
-    from superharness.engine.model_router import _load_fleet_config
+    from superharness.engine.model_router import _load_fleet_config, fleet_health
     fleet = _load_fleet_config()
     if fleet:
         endpoints = fleet.get("endpoints", {})
-        models = fleet.get("models", {})
-        tiers = [t for t in ("max", "standard", "mini", "tiny") if t in models]
-        print(f"PASS fleet: {len(tiers)} GPU tier(s) configured ({', '.join(tiers)})")
-        for t in tiers:
-            ep = endpoints.get(t, "?")
-            model = models.get(t, "?")
-            print(f"  fleet/{t}: {model} @ {ep}")
+        health_rows = fleet_health()
+        for t, model, status in health_rows:
+            ep = endpoints.get(t) or endpoints.get("all", "?")
+            if status == "ok":
+                print(f"PASS fleet/{t}: {model} @ {ep}")
+            elif status == "model-missing":
+                print(f"WARN fleet/{t}: model {model!r} not found at {ep} — pull it or fix fleet.yaml")
+                warns += 1
+            else:
+                print(f"WARN fleet/{t}: endpoint {ep} unreachable — is the server running?")
+                warns += 1
         print(f"  Agent: opencode tiers mapped to fleet models")
     else:
         print("INFO fleet: no fleet.yaml found — local GPU inference not configured")

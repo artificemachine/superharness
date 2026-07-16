@@ -127,6 +127,10 @@ class ContractTask(BaseModel):
     # Ship step: agent runs /ship commit before report_ready; watcher validates PR URL
     ship_on_complete: bool = False
 
+    # Linked GitHub/GitLab issue URL — one-way snapshot pointer, never
+    # written back to by shux (see shux task link / --from-issue).
+    issue_url: Optional[str] = None
+
 
 class Contract(BaseModel):
     model_config = ConfigDict(extra="allow")
