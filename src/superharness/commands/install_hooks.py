@@ -122,29 +122,48 @@ def _write_settings(settings_file: Path, data: dict) -> None:
             os.unlink(tmp)
 
 
-def _script_basename(command: str) -> str:
-    """Extract the script filename from a hook command string."""
-    return os.path.basename(command.strip().split()[-1]) if command.strip() else ""
+def _hook_name(command: str) -> str:
+    """Normalize a hook command to its bare hook name for identity matching.
+
+    Handles both the legacy form (``bash /abs/path/session-start.sh``) and the
+    stable form (``shux hook session-start``) — both normalize to
+    ``session-start`` so re-running install-hooks upgrades old entries in place.
+    """
+    if not command.strip():
+        return ""
+    return os.path.basename(command.strip().split()[-1]).removesuffix(".sh")
+
+
+# Back-compat alias (older callers/tests referenced this name).
+_script_basename = _hook_name
+
+
+def _shux_invocation() -> str:
+    """Return a stable ``shux`` invocation for hook commands.
+
+    Prefers the absolute path to the installed ``shux`` binary. The binary lives
+    at the venv *root* (``…/uv/tools/superharness/bin/shux``), which is stable
+    across Python minor-version bumps — unlike ``…/lib/pythonX.Y/site-packages``,
+    whose version component uv rewrites on upgrade (breaking baked-in hook paths
+    on Linux). Falls back to the bare name ``shux`` if not resolvable on PATH.
+    """
+    import shutil
+    return shutil.which("shux") or "shux"
 
 
 def merge_hooks(settings: dict, hook_defs: dict, hooks_dir: str) -> tuple[dict, list[str]]:
     """Upsert hook entries from hook_defs into settings.
 
-    hooks_dir is the hooks/ subdirectory (where the .sh files live).
-    ${CLAUDE_PLUGIN_ROOT} in the template refers to the parent (plugin root),
-    so we substitute with the parent of hooks_dir.
+    Emits version-independent ``shux hook <name>`` commands rather than baking an
+    absolute versioned venv path into the config. ``hooks_dir`` is retained for
+    signature compatibility but no longer determines the written command.
 
     Returns (updated_settings, list_of_change_descriptions).
     """
     if "hooks" not in settings:
         settings["hooks"] = {}
 
-    # CLAUDE_PLUGIN_ROOT = parent of the hooks/ dir (e.g. adapters/claude-code/).
-    # Use POSIX separators: the resolved command is written verbatim into
-    # settings.json and run by Claude Code via `sh -c`. On Windows, str(WindowsPath)
-    # yields backslashes, which bash eats as escape chars (C:\Users -> C:Users),
-    # breaking the hook path. as_posix() == str() on POSIX, so this is a no-op there.
-    plugin_root = Path(hooks_dir).parent.as_posix()
+    shux = _shux_invocation()
     changes: list[str] = []
 
     for event, template_entries in hook_defs.get("hooks", {}).items():
@@ -153,21 +172,22 @@ def merge_hooks(settings: dict, hook_defs: dict, hooks_dir: str) -> tuple[dict, 
 
         for template_entry in template_entries:
             for template_hook in template_entry.get("hooks", []):
-                raw_cmd = template_hook.get("command", "")
-                resolved_cmd = raw_cmd.replace("${CLAUDE_PLUGIN_ROOT}", plugin_root)
-                script_name = _script_basename(resolved_cmd)
+                name = _hook_name(template_hook.get("command", ""))
+                if not name:
+                    continue
+                resolved_cmd = f"{shux} hook {name}"
 
-                # Find existing hook entry by script name
+                # Find existing hook entry by normalized name (upgrades legacy paths).
                 found = False
                 for existing_entry in settings["hooks"][event]:
                     for existing_hook in existing_entry.get("hooks", []):
-                        if script_name and script_name in _script_basename(existing_hook.get("command", "")):
+                        if name == _hook_name(existing_hook.get("command", "")):
                             old_cmd = existing_hook["command"]
                             existing_hook["command"] = resolved_cmd
                             existing_hook["timeout"] = template_hook.get("timeout", existing_hook.get("timeout", 5))
                             found = True
                             if old_cmd != resolved_cmd:
-                                changes.append(f"  updated {event}/{script_name}: {old_cmd!r} → {resolved_cmd!r}")
+                                changes.append(f"  updated {event}/{name}: {old_cmd!r} → {resolved_cmd!r}")
                             break
                     if found:
                         break
@@ -181,18 +201,32 @@ def merge_hooks(settings: dict, hook_defs: dict, hooks_dir: str) -> tuple[dict, 
                             "timeout": template_hook.get("timeout", 5),
                         }],
                     })
-                    changes.append(f"  added {event}/{script_name}: {resolved_cmd!r}")
+                    changes.append(f"  added {event}/{name}: {resolved_cmd!r}")
 
     return settings, changes
+
+
+def _home_dir() -> Path:
+    return Path(os.environ["HOME"]) if "HOME" in os.environ else Path.home()
+
+
+# Target host → default hook-config file (relative to $HOME).
+_TARGET_FILES: dict[str, tuple[str, ...]] = {
+    "claude": (".claude", "settings.json"),
+    "codex": (".codex", "hooks.json"),
+}
 
 
 def install_hooks(
     settings_file: Path | None = None,
     hooks_dir: Path | None = None,
+    targets: list[str] | None = None,
 ) -> int:
-    if settings_file is None:
-        _home = Path(os.environ["HOME"]) if "HOME" in os.environ else Path.home()
-        settings_file = _home / ".claude" / "settings.json"
+    """Install/refresh superharness hooks into one or more agent hook configs.
+
+    ``targets`` selects which agents to write (``claude`` and/or ``codex``).
+    When ``settings_file`` is given it overrides the target file (single target).
+    """
     if hooks_dir is None:
         try:
             hooks_dir = _find_hooks_dir()
@@ -206,17 +240,22 @@ def install_hooks(
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    settings = _load_settings(settings_file)
-    updated, changes = merge_hooks(settings, hook_defs, str(hooks_dir))
-
-    _write_settings(settings_file, updated)
-
-    if changes:
-        print(f"install-hooks: updated {settings_file}")
-        for line in changes:
-            print(line)
+    # Resolve the list of target files to write.
+    if settings_file is not None:
+        files = [settings_file]
     else:
-        print(f"install-hooks: {settings_file} already up to date")
+        files = [_home_dir().joinpath(*_TARGET_FILES[t]) for t in (targets or ["claude"])]
+
+    for target_file in files:
+        settings = _load_settings(target_file)
+        updated, changes = merge_hooks(settings, hook_defs, str(hooks_dir))
+        _write_settings(target_file, updated)
+        if changes:
+            print(f"install-hooks: updated {target_file}")
+            for line in changes:
+                print(line)
+        else:
+            print(f"install-hooks: {target_file} already up to date")
 
     return 0
 
@@ -228,8 +267,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--settings-file",
         type=Path,
-        default=Path(os.environ["HOME"]) / ".claude" / "settings.json" if "HOME" in os.environ else Path.home() / ".claude" / "settings.json",
-        help="Target settings file (default: ~/.claude/settings.json)",
+        default=None,
+        help="Explicit target file (overrides --target). Default: ~/.claude/settings.json",
+    )
+    parser.add_argument(
+        "--target",
+        choices=("claude", "codex", "all"),
+        default="claude",
+        help="Which agent hook config to write: claude (default), codex, or all.",
+    )
+    parser.add_argument(
+        "--codex",
+        action="store_true",
+        help="Shortcut for --target codex.",
     )
     parser.add_argument(
         "--hooks-dir",
@@ -238,7 +288,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Override the adapter hooks directory (default: auto-detected from install path)",
     )
     opts = parser.parse_args(argv)
-    return install_hooks(settings_file=opts.settings_file, hooks_dir=opts.hooks_dir)
+    target = "codex" if opts.codex else opts.target
+    targets = ["claude", "codex"] if target == "all" else [target]
+    return install_hooks(
+        settings_file=opts.settings_file,
+        hooks_dir=opts.hooks_dir,
+        targets=targets,
+    )
 
 
 if __name__ == "__main__":
