@@ -181,6 +181,26 @@ done
 PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd -P)"
 # Validation: 'both' is always valid; others are validated by the watcher-worker command at runtime.
 
+# watcher-worker.py installs against a worker COPY of the project, with
+# .superharness/ symlinked back to the real source project (so ticks share
+# one contract/state directory instead of forking it). Without this, the
+# watcher process resolves its XDG state.db path from the worker dir's own
+# (different) absolute path, finds nothing there, and falls back through
+# get_connection()'s legacy-path branch — which, via the symlink, writes a
+# *second* state.sqlite3 into the SAME .superharness/ dir as the source
+# project's XDG db, recreating a split-brain every tick. Resolve the real
+# source dir here and pass it through SUPERHARNESS_STATE_PROJECT so every
+# tick's state read/write targets the one XDG db the source project uses
+# (the same mechanism worktree dispatch already relies on — see db.py's
+# get_connection() docstring). No-op (STATE_PROJECT_DIR == PROJECT_DIR) when
+# .superharness isn't a symlink, e.g. installing directly against a real
+# project without going through watcher-worker.
+if [ -L "$PROJECT_DIR/.superharness" ]; then
+  STATE_PROJECT_DIR="$(python3 -c "import os,sys; print(os.path.dirname(os.path.realpath(sys.argv[1])))" "$PROJECT_DIR/.superharness")"
+else
+  STATE_PROJECT_DIR="$PROJECT_DIR"
+fi
+
 case "$CONFIRM_NON_INTERACTIVE" in
   ""|yes|no) ;;
   *)
@@ -413,6 +433,8 @@ fi
   echo "    <dict>"
   plist_key "PATH"
   plist_string "$LAUNCHD_PATH"
+  plist_key "SUPERHARNESS_STATE_PROJECT"
+  plist_string "$STATE_PROJECT_DIR"
   plist_key "SUPERHARNESS_CONFIRM_NON_INTERACTIVE"
   if [ "$CONFIRM_NON_INTERACTIVE" = "yes" ]; then
     plist_string "YES"

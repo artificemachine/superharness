@@ -8,6 +8,7 @@ Two escalation triggers:
 from __future__ import annotations
 
 import os
+from unittest.mock import patch
 
 from superharness.engine.db import get_connection, init_db
 from superharness.commands.inbox_watch import (
@@ -150,7 +151,12 @@ def test_auto_recover_escalates_on_identical_error_loop(tmp_path):
 
 def test_auto_recover_writes_recovery_count_to_column_not_failed_reason(tmp_path):
     """Regression for Fix A: the recovery counter must be persisted in
-    its own column so subsequent failures cannot wipe it."""
+    its own column so subsequent failures cannot wipe it.
+
+    Mocks CLI reachability rather than relying on the test machine having
+    the fallback agents' binaries on PATH (not true on CI runners) — this
+    test is about recovery_count persistence, not real CLI availability.
+    """
     project, conn = _setup(tmp_path)
     _seed_inbox(
         conn,
@@ -161,7 +167,8 @@ def test_auto_recover_writes_recovery_count_to_column_not_failed_reason(tmp_path
     # No identical-error loop seeded → should re-route normally.
     conn.close()
 
-    _auto_recover_exhausted_failures_sqlite(project)
+    with patch("superharness.commands.inbox_watch._agent_cli_reachable", return_value=True):
+        _auto_recover_exhausted_failures_sqlite(project)
 
     conn = get_connection(project)
     try:

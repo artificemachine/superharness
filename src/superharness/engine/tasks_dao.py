@@ -66,6 +66,9 @@ class TaskRow:
     contract_locked_at: str | None = None
     # v16: explicit timeout override (stored as string of minutes, e.g. "45")
     estimated_minutes: str | None = None
+    # v30: linked GitHub/GitLab issue URL — one-way snapshot pointer, never
+    # written back to by shux (see shux task link / --from-issue).
+    issue_url: str | None = None
 
 def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
     """Insert or update a task. Bumps version on update."""
@@ -88,8 +91,9 @@ def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
                 failed_at, stopped_at, failed_reason, archived_at, archived_reason,
                 model_tier, pause_reason, worktree_path, blocked_by_raw,
                 locked_contract, contract_locked_at,
-                workflow, autonomy, require_tdd, estimated_minutes, extras_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                workflow, autonomy, require_tdd, estimated_minutes, extras_json,
+                issue_url
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 title=excluded.title, owner=excluded.owner, status=excluded.status,
                 effort=excluded.effort, project_path=excluded.project_path,
@@ -127,6 +131,7 @@ def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
                 require_tdd=excluded.require_tdd,
                 estimated_minutes=excluded.estimated_minutes,
                 extras_json=excluded.extras_json,
+                issue_url=excluded.issue_url,
                 version=tasks.version + 1
             RETURNING *
         """, (
@@ -143,6 +148,7 @@ def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
             task.model_tier, task.pause_reason, task.worktree_path, task.blocked_by_raw,
             task.locked_contract, task.contract_locked_at,
             task.workflow, task.autonomy, require_tdd_val, task.estimated_minutes, task.extras_json,
+            task.issue_url,
         ))
         row = cursor.fetchone()
         if not row:
@@ -386,4 +392,5 @@ def _row_to_task(conn: sqlite3.Connection, row: sqlite3.Row, blocked_by: list[st
         locked_contract=_safe_get(row, "locked_contract"),
         contract_locked_at=_safe_get(row, "contract_locked_at"),
         estimated_minutes=_safe_get(row, "estimated_minutes"),
+        issue_url=_safe_get(row, "issue_url"),
     )
