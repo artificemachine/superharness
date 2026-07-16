@@ -33,7 +33,7 @@ class TestInstallHooks:
         data = json.loads(settings.read_text())
         assert "hooks" in data
 
-    def test_stop_hook_written_with_real_path(self, tmp_path: Path, repo_root: Path) -> None:
+    def test_stop_hook_written_in_stable_form(self, tmp_path: Path, repo_root: Path) -> None:
         hooks_dir = repo_root / "adapters" / "claude-code" / "hooks"
         settings = tmp_path / "settings.json"
         _run_install_hooks(settings, hooks_dir)
@@ -43,11 +43,14 @@ class TestInstallHooks:
             for entry in data["hooks"].get("Stop", [])
             for h in entry.get("hooks", [])
         ]
-        assert any("session-stop.sh" in cmd for cmd in stop_cmds), stop_cmds
-        # Must not contain ${CLAUDE_PLUGIN_ROOT} — must be resolved
-        assert all("${CLAUDE_PLUGIN_ROOT}" not in cmd for cmd in stop_cmds), stop_cmds
-        # Must not contain hardcoded user home path (no /Users/<name>/ or /home/<name>/)
-        assert all(str(hooks_dir) in cmd or "session-stop" not in cmd for cmd in stop_cmds)
+        # Written as a stable `shux hook <name>` command, not a baked script path.
+        assert any(cmd.strip().endswith("hook session-stop") for cmd in stop_cmds), stop_cmds
+        # Must not contain the template variable, a version-baked venv path, or a
+        # trailing .sh — those are exactly the fragilities the stable form removes.
+        for cmd in stop_cmds:
+            assert "${CLAUDE_PLUGIN_ROOT}" not in cmd, cmd
+            assert "/lib/python3." not in cmd, cmd
+            assert ".sh" not in cmd, cmd
 
     def test_no_hardcoded_user_path_in_written_commands(self, tmp_path: Path, repo_root: Path) -> None:
         """All written hook commands must use the provided hooks_dir, not CLAUDE_PLUGIN_ROOT."""
@@ -73,7 +76,7 @@ class TestInstallHooks:
             for entry in data["hooks"].get("Stop", [])
             for h in entry.get("hooks", [])
         ]
-        session_stop_count = sum(1 for c in stop_cmds if "session-stop.sh" in c)
+        session_stop_count = sum(1 for c in stop_cmds if c.strip().endswith("hook session-stop"))
         assert session_stop_count == 1, f"Expected 1 session-stop entry, got {session_stop_count}: {stop_cmds}"
 
     def test_updates_stale_hardcoded_path(self, tmp_path: Path, repo_root: Path) -> None:
@@ -102,8 +105,9 @@ class TestInstallHooks:
         ]
         assert all("otheruser" not in cmd for cmd in stop_cmds), \
             f"Stale path not updated: {stop_cmds}"
-        assert any(str(hooks_dir) in cmd for cmd in stop_cmds), \
-            f"Expected updated path {hooks_dir} in: {stop_cmds}"
+        # Upgraded in place to the stable command form (no baked path at all).
+        assert any(cmd.strip().endswith("hook session-stop") for cmd in stop_cmds), \
+            f"Expected stable `hook session-stop` command in: {stop_cmds}"
 
     def test_preserves_unrelated_hooks(self, tmp_path: Path, repo_root: Path) -> None:
         hooks_dir = repo_root / "adapters" / "claude-code" / "hooks"
@@ -129,6 +133,29 @@ class TestInstallHooks:
         ]
         assert any("clear-task.sh" in cmd for cmd in stop_cmds), \
             f"Unrelated hook was removed: {stop_cmds}"
+
+    def test_codex_target_writes_codex_hooks_json(
+        self, tmp_path: Path, repo_root: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--target codex writes ~/.codex/hooks.json with stable commands."""
+        from superharness.commands.install_hooks import install_hooks
+        hooks_dir = repo_root / "adapters" / "claude-code" / "hooks"
+        monkeypatch.setenv("HOME", str(tmp_path))
+        rc = install_hooks(hooks_dir=hooks_dir, targets=["codex"])
+        assert rc == 0
+        codex_hooks = tmp_path / ".codex" / "hooks.json"
+        assert codex_hooks.exists(), "codex hooks.json not written"
+        data = json.loads(codex_hooks.read_text())
+        cmds = [
+            h["command"]
+            for entries in data["hooks"].values()
+            for entry in entries
+            for h in entry.get("hooks", [])
+        ]
+        assert cmds, "no hook commands written"
+        for cmd in cmds:
+            assert " hook " in cmd and ".sh" not in cmd, cmd
+            assert "/lib/python3." not in cmd, cmd
 
 
 class TestEphemeralGuard:
