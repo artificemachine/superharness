@@ -182,7 +182,7 @@ _cmd("test-type",       "Set mandatory test types on a task.",       module="sup
 _cmd("verify",          "Record verification result for a task.",   module="superharness.commands.verify")
 _cmd("close",           "Close a verified task (done + ledger).",   module="superharness.commands.close")
 _cmd("context",         "Show full context for a task (handoff, decisions, failures, ledger, git).", module="superharness.commands.context")
-_cmd("install-hooks",   "Merge adapter hooks into ~/.claude/settings.json (portable, no hardcoded paths).", module="superharness.commands.install_hooks")
+_cmd("install-hooks",   "Merge adapter hooks into agent configs (--target claude|codex|all; stable `shux hook` commands, no versioned paths).", module="superharness.commands.install_hooks")
 _cmd("enhance",         "Module marketplace — enable, disable, list integrations.", module="superharness.commands.enhance")
 _cmd("adapters",        "List, inspect, and validate agent runtime adapters.",      module="superharness.commands.adapters")
 _cmd("pack",            "Export and import portable project state.",               module="superharness.commands.pack")
@@ -483,6 +483,29 @@ def cmd_update(args):
         _run_module("superharness.commands.init_project", ("--refresh", "--from-profile", profile) + args)
     else:
         _run_module("superharness.commands.init_project", ("--refresh", "--detect") + args)
+
+
+@main.command(name="hook", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
+@click.argument("name")
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def cmd_hook(name, args):
+    """Run an adapter hook script by NAME (e.g. 'shux hook ledger-append').
+
+    Resolves the hook script from the installed package at runtime, so hook
+    configs (~/.claude/settings.json, ~/.codex/hooks.json) reference a stable
+    `shux hook <name>` command instead of a versioned venv path that breaks
+    whenever the tool's Python minor version changes (a uv-on-Linux reality).
+    stdin/stdout/stderr pass straight through to the script.
+    """
+    import superharness as _sh
+    hooks_dir = os.path.join(os.path.dirname(os.path.abspath(_sh.__file__)),
+                             "adapters", "claude-code", "hooks")
+    fname = name if name.endswith(".sh") else f"{name}.sh"
+    script = os.path.join(hooks_dir, fname)
+    if not os.path.isfile(script):
+        sys.exit(f"hook script not found: {script}")
+    result = subprocess.run(["bash", script, *args])
+    sys.exit(result.returncode)
 
 
 @main.command(name="shux")
