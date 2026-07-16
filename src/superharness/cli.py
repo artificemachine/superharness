@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib.resources as _importlib_resources
 import os
+import shutil
 import subprocess
 import sys
 
@@ -418,6 +419,23 @@ def _is_git_repo(path: str) -> bool:
     return r.returncode == 0
 
 
+def _detect_installer() -> str:
+    """How superharness was installed: 'uv' | 'pipx' | 'pip'.
+
+    Inferred from the interpreter prefix path. uv-tool and pipx each install
+    into a well-known venv location:
+      uv:   ~/.local/share/uv/tools/superharness
+      pipx: ~/.local/pipx/venvs/superharness
+    Anything else (system Python, plain venv) is treated as a pip install.
+    """
+    prefix = os.path.realpath(sys.prefix) + os.sep
+    if os.sep + os.path.join("uv", "tools") + os.sep in prefix:
+        return "uv"
+    if os.sep + os.path.join("pipx", "venvs") + os.sep in prefix:
+        return "pipx"
+    return "pip"
+
+
 @main.command(name="update", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def cmd_update(args):
@@ -434,17 +452,30 @@ def cmd_update(args):
         if r.returncode != 0:
             sys.exit("git pull failed")
     else:
-        # pipx / pip install — upgrade via package manager
+        # Package-manager install — upgrade via whatever tool installed us.
         print("Step 1: upgrading superharness package...")
-        # Try pipx first, fall back to pip
-        pipx_r = subprocess.run(["pipx", "upgrade", "superharness"],
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if pipx_r.returncode != 0:
+        installer = _detect_installer()
+        if installer == "uv":
+            if shutil.which("uv") is None:
+                sys.exit("uv-tool install detected but `uv` is not on PATH.\n"
+                         "  Fix: install uv, or run manually: uv tool upgrade superharness")
+            r = subprocess.run(["uv", "tool", "upgrade", "superharness"])
+            if r.returncode != 0:
+                sys.exit("uv tool upgrade failed")
+            print("uv tool upgrade superharness — done")
+        elif installer == "pipx":
+            if shutil.which("pipx") is None:
+                sys.exit("pipx install detected but `pipx` is not on PATH.\n"
+                         "  Fix: install pipx, or run manually: pipx upgrade superharness")
+            r = subprocess.run(["pipx", "upgrade", "superharness"])
+            if r.returncode != 0:
+                sys.exit("pipx upgrade failed")
+            print("pipx upgrade superharness — done")
+        else:
             r = subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "superharness"])
             if r.returncode != 0:
-                sys.exit("upgrade failed")
-        else:
-            print("pipx upgrade superharness — done")
+                sys.exit("pip upgrade failed")
+            print("pip install --upgrade superharness — done")
     print()
     print("Step 2: refreshing templates...")
     profile = os.path.join(".superharness", "profile.yaml")
