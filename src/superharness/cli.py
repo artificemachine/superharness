@@ -5,6 +5,7 @@ Cross-platform: macOS, Linux, Windows.
 from __future__ import annotations
 
 import importlib.resources as _importlib_resources
+import json
 import os
 import shutil
 import subprocess
@@ -485,18 +486,55 @@ def cmd_update(args):
         _run_module("superharness.commands.init_project", ("--refresh", "--detect") + args)
 
 
+def _codex_hook_stdout(name: str, stdout: str) -> str:
+    """Translate Claude adapter output into the Codex hook wire format."""
+    if not stdout.strip():
+        return ""
+
+    try:
+        payload = json.loads(stdout)
+    except json.JSONDecodeError:
+        return stdout
+
+    hook_name = name.removesuffix(".sh")
+    if hook_name == "session-start":
+        context = payload.get("additionalContext")
+        if context is not None:
+            return json.dumps({
+                "hookSpecificOutput": {
+                    "hookEventName": "SessionStart",
+                    "additionalContext": context,
+                }
+            }) + "\n"
+
+    if hook_name in {"scope-guard", "branch-guard"}:
+        hook_output = payload.get("hookSpecificOutput", {})
+        decision = hook_output.get("permissionDecision")
+        reason = hook_output.get("permissionDecisionReason", "")
+        if decision == "allow":
+            # Codex treats successful empty output as allow. It rejects the
+            # explicit Claude value with "unsupported permissionDecision:allow".
+            return ""
+        if decision == "ask":
+            # PreToolUse has no ask decision in Codex. Preserve the warning as
+            # a supported systemMessage and let Codex's own permission mode ask.
+            return json.dumps({"systemMessage": reason}) + "\n"
+
+    return stdout
+
+
 @main.command(name="hook", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
+@click.option(
+    "--target",
+    type=click.Choice(("claude", "codex")),
+    default="claude",
+    envvar="SUPERHARNESS_HOOK_TARGET",
+    show_default=True,
+)
 @click.argument("name")
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
-def cmd_hook(name, args):
-    """Run an adapter hook script by NAME (e.g. 'shux hook ledger-append').
-
-    Resolves the hook script from the installed package at runtime, so hook
-    configs (~/.claude/settings.json, ~/.codex/hooks.json) reference a stable
-    `shux hook <name>` command instead of a versioned venv path that breaks
-    whenever the tool's Python minor version changes (a uv-on-Linux reality).
-    stdin/stdout/stderr pass straight through to the script.
-    """
+def cmd_hook(target, name, args):
+    """Run an adapter hook script by NAME using the selected agent schema."""
     import superharness as _sh
     hooks_dir = os.path.join(os.path.dirname(os.path.abspath(_sh.__file__)),
                              "adapters", "claude-code", "hooks")
@@ -504,7 +542,21 @@ def cmd_hook(name, args):
     script = os.path.join(hooks_dir, fname)
     if not os.path.isfile(script):
         sys.exit(f"hook script not found: {script}")
-    result = subprocess.run(["bash", script, *args])
+
+    if target == "codex":
+        result = subprocess.run(
+            ["bash", script, *args],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        translated = _codex_hook_stdout(name, result.stdout)
+        if translated:
+            click.echo(translated, nl=False)
+        if result.stderr:
+            click.echo(result.stderr, err=True, nl=False)
+    else:
+        result = subprocess.run(["bash", script, *args])
     sys.exit(result.returncode)
 
 
