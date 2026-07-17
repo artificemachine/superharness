@@ -1,8 +1,8 @@
-"""shux install-hooks — merge adapter hook entries into ~/.claude/settings.json.
+"""Install stable, agent-specific hooks for Claude Code and Codex CLI.
 
-Reads hooks.json from the adapter directory, resolves ${CLAUDE_PLUGIN_ROOT}
-to the actual hooks directory on this machine, and upserts the entries into
-the target settings file (default: ~/.claude/settings.json).
+The adapter scripts use Claude Code's wire format. Codex commands therefore run
+through ``shux hook --target codex`` so the launcher can translate hook output
+to Codex's schema without weakening the Claude integration.
 
 Safe to run multiple times — idempotent.
 """
@@ -151,14 +151,17 @@ def _shux_invocation() -> str:
     return shutil.which("shux") or "shux"
 
 
-def merge_hooks(settings: dict, hook_defs: dict, hooks_dir: str) -> tuple[dict, list[str]]:
-    """Upsert hook entries from hook_defs into settings.
+def merge_hooks(
+    settings: dict,
+    hook_defs: dict,
+    hooks_dir: str,
+    target: str = "claude",
+) -> tuple[dict, list[str]]:
+    """Upsert hook entries from *hook_defs* using the target agent's schema.
 
-    Emits version-independent ``shux hook <name>`` commands rather than baking an
-    absolute versioned venv path into the config. ``hooks_dir`` is retained for
-    signature compatibility but no longer determines the written command.
-
-    Returns (updated_settings, list_of_change_descriptions).
+    Commands stay version-independent. Codex entries explicitly select the
+    Codex output translator; Claude entries retain the historical command form.
+    ``hooks_dir`` remains for signature compatibility.
     """
     if "hooks" not in settings:
         settings["hooks"] = {}
@@ -175,7 +178,8 @@ def merge_hooks(settings: dict, hook_defs: dict, hooks_dir: str) -> tuple[dict, 
                 name = _hook_name(template_hook.get("command", ""))
                 if not name:
                     continue
-                resolved_cmd = f"{shux} hook {name}"
+                target_arg = " --target codex" if target == "codex" else ""
+                resolved_cmd = f"{shux} hook{target_arg} {name}"
 
                 # Find existing hook entry by normalized name (upgrades legacy paths).
                 found = False
@@ -240,15 +244,24 @@ def install_hooks(
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    # Resolve the list of target files to write.
+    # Keep the target beside its file so each command gets the correct schema.
+    selected_targets = targets or ["claude"]
     if settings_file is not None:
-        files = [settings_file]
+        if len(selected_targets) != 1:
+            print("error: --settings-file requires exactly one target", file=sys.stderr)
+            return 1
+        files = [(selected_targets[0], settings_file)]
     else:
-        files = [_home_dir().joinpath(*_TARGET_FILES[t]) for t in (targets or ["claude"])]
+        files = [
+            (target, _home_dir().joinpath(*_TARGET_FILES[target]))
+            for target in selected_targets
+        ]
 
-    for target_file in files:
+    for target, target_file in files:
         settings = _load_settings(target_file)
-        updated, changes = merge_hooks(settings, hook_defs, str(hooks_dir))
+        updated, changes = merge_hooks(
+            settings, hook_defs, str(hooks_dir), target=target
+        )
         _write_settings(target_file, updated)
         if changes:
             print(f"install-hooks: updated {target_file}")
