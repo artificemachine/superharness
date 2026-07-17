@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from superharness.commands.install_hooks import _find_hooks_dir, _is_ephemeral
-from tests.helpers import run_cmd
+from tests.helpers import run_bash, run_cmd
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="uses bash hooks")
 
@@ -154,8 +154,76 @@ class TestInstallHooks:
         ]
         assert cmds, "no hook commands written"
         for cmd in cmds:
-            assert " hook " in cmd and ".sh" not in cmd, cmd
+            assert " hook --target codex " in cmd and ".sh" not in cmd, cmd
             assert "/lib/python3." not in cmd, cmd
+
+
+class TestCodexHookTranslation:
+    def test_session_start_uses_codex_context_shape(self) -> None:
+        from superharness.cli import _codex_hook_stdout
+
+        output = _codex_hook_stdout(
+            "session-start", json.dumps({"additionalContext": "contract context"})
+        )
+        assert json.loads(output) == {
+            "hookSpecificOutput": {
+                "hookEventName": "SessionStart",
+                "additionalContext": "contract context",
+            }
+        }
+
+    def test_packaged_session_start_preserves_literal_commands(
+        self, repo_root: Path, tmp_path: Path
+    ) -> None:
+        script = (
+            repo_root
+            / "src/superharness/adapters/claude-code/hooks/session-start.sh"
+        )
+        result = run_bash(script, cwd=tmp_path)
+
+        assert result.returncode == 0
+        assert result.stderr == ""
+        context = json.loads(result.stdout)["additionalContext"]
+        assert "`shux contract`" in context
+        assert "`shux context <id>`" in context
+        assert '"..."' in context
+
+    def test_pretool_allow_is_successful_empty_output(self) -> None:
+        from superharness.cli import _codex_hook_stdout
+
+        payload = {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "allow",
+            }
+        }
+        assert _codex_hook_stdout("branch-guard", json.dumps(payload)) == ""
+
+    def test_pretool_ask_becomes_supported_warning(self) -> None:
+        from superharness.cli import _codex_hook_stdout
+
+        payload = {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "ask",
+                "permissionDecisionReason": "check this command",
+            }
+        }
+        output = _codex_hook_stdout("branch-guard", json.dumps(payload))
+        assert json.loads(output) == {"systemMessage": "check this command"}
+
+    def test_pretool_deny_remains_enforced(self) -> None:
+        from superharness.cli import _codex_hook_stdout
+
+        payload = {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": "blocked",
+            }
+        }
+        output = _codex_hook_stdout("scope-guard", json.dumps(payload))
+        assert json.loads(output) == payload
 
 
 class TestEphemeralGuard:
