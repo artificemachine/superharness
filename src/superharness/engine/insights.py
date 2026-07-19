@@ -11,6 +11,7 @@ def get_insights(project_dir: str) -> dict:
     Returns:
         dict with keys: tasks, agents, dispatch, failures, summarizer
     """
+    from superharness.engine import db as db_module
     from superharness.utils.paths import resolve_active_state_db_path
     db_path = resolve_active_state_db_path(project_dir)
     if not os.path.isfile(db_path):
@@ -19,8 +20,9 @@ def get_insights(project_dir: str) -> dict:
             "failures": [], "summarizer": [], "cost_breakdown": {},
         }
 
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    # Route through the shared get_connection so this reader picks up the same
+    # WAL/foreign_keys/busy_timeout pragmas as every writer (arch A3 finding).
+    conn = db_module.get_connection(project_dir)
     try:
         return {
             "tasks": _task_counts(conn),
