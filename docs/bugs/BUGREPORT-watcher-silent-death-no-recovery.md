@@ -94,5 +94,5 @@ Additionally, `KeepAlive=false` means launchd won't retry after the first failur
 
 ## Related
 
-- `docs/bulletproof-report-2026-05-24-sqlite-sot.md` — prior report about SQLite source-of-truth issues
+- `docs/archive/bulletproof-report-2026-05-24-sqlite-sot.md` — prior report about SQLite source-of-truth issues
 - `docs/REPORT-process-leak-2026-05-28.md` — prior watcher/process leak report

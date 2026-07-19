@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "superharness"
-version = "1.80.0"
+version = "1.80.1"
 description = "Multi-agent session handoff framework for Claude Code and Codex CLI"
 readme = "README.md"
 license = "Apache-2.0"
@@ -34,9 +34,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/celstnblacc/superharness"
-Repository = "https://github.com/celstnblacc/superharness"
-Issues = "https://github.com/celstnblacc/superharness/issues"
+Homepage = "https://github.com/artificemachine/superharness"
+Repository = "https://github.com/artificemachine/superharness"
+Issues = "https://github.com/artificemachine/superharness/issues"
 
 [project.scripts]
 superharness = "superharness.cli:main"
