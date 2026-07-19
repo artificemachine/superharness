@@ -42,7 +42,7 @@ $ superharness adapter-path claude-code session-stop
 src/superharness/adapters/claude-code/hooks/session-stop.sh
 
 $ pip install --upgrade superharness && superharness adapter-path claude-code session-stop
-/Users/airm2max/.local/pipx/venvs/superharness/lib/python3.13/site-packages/superharness/adapters/claude-code/hooks/session-stop.sh
+$HOME/.local/pipx/venvs/superharness/lib/python3.13/site-packages/superharness/adapters/claude-code/hooks/session-stop.sh
 ```
 
 Implementation: `from importlib.resources import files; print(files("superharness") / f"adapters/{host}/hooks/{hook}.sh")`.

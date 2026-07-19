@@ -344,7 +344,8 @@ def _scan_contract(project_dir: str, rules: list[LifecycleRule], profile: dict) 
 def _check_deadlines(project_dir: str, profile: dict) -> int:
     """Enforce per-task deadline_minutes on non-terminal tasks.
 
-    Checks if a task's created_at exceeds its deadline_minutes value.
+    Age is measured from in_progress_at (when work started) when present, else
+    from created_at — so a long-queued task is not failed the moment it starts.
     Tasks with deadline_minutes unset or <= 0 are skipped.
 
     Returns count of tasks failed due to deadline expiry.
@@ -385,7 +386,13 @@ def _check_deadlines(project_dir: str, profile: dict) -> int:
         if not deadline or deadline <= 0:
             continue
 
-        age = _age_minutes(task.get("created_at", ""))
+        # Budget the deadline from when work actually started (in_progress_at),
+        # not from task creation — a task that queued in the backlog for hours
+        # must not be force-failed the moment it is dispatched. Pre-work states
+        # (no in_progress_at) fall back to created_at so backlog staleness is
+        # still caught.
+        ref_ts = task.get("in_progress_at") or task.get("created_at", "")
+        age = _age_minutes(ref_ts)
         if age is None:
             continue
         if age < deadline:
