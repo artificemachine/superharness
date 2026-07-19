@@ -48,10 +48,10 @@ class TestSaveLoadCredentials:
     def test_credentials_written_to_machine_level_file(self, isolated_credentials: Path) -> None:
         from superharness.engine.relay_client import save_credentials, load_credentials
 
-        save_credentials("user@10.255.86.217", "secret-token")
+        save_credentials("user@10.0.0.10", "secret-token")
         creds = load_credentials()
 
-        assert creds["relay_ssh_host"] == "user@10.255.86.217"
+        assert creds["relay_ssh_host"] == "user@10.0.0.10"
         assert creds["relay_token"] == "secret-token"
         assert creds["relay_dest"] == "telegram"
 
@@ -113,13 +113,13 @@ class TestSetupGatewayCredentials:
 
         setup_gateway(
             project_dir,
-            relay_ssh_host="user@10.255.86.217",
+            relay_ssh_host="user@10.0.0.10",
             relay_token="my-relay-token",
             events=["plan_proposed"],
         )
 
         creds = load_credentials()
-        assert creds["relay_ssh_host"] == "user@10.255.86.217"
+        assert creds["relay_ssh_host"] == "user@10.0.0.10"
         assert creds["relay_token"] == "my-relay-token"
 
     def test_credentials_not_written_to_project_profile(

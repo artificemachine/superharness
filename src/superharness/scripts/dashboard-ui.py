@@ -1621,8 +1621,7 @@ def _profile_data(project_dir: Path) -> dict:
 
     trials = []
     try:
-        conn = sqlite3.connect(os.path.join(str(project_dir), ".superharness", "state.sqlite3"))
-        conn.row_factory = sqlite3.Row
+        conn = db.get_connection(str(project_dir))
         try:
             for row in conn.execute(
                 "SELECT * FROM profile_trials ORDER BY trial_started_at DESC LIMIT 10"

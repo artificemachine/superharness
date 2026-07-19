@@ -478,9 +478,9 @@ Now `shdb 'SELECT id,status FROM tasks'` works from any directory inside any sup
 ```
 $ shux state info
 Project:        superharness
-Path:           /Users/airm2max/DevOpsSec/superharness
+Path:           $HOME/DevOpsSec/superharness
 Hash:           a1b2c3d4e5f6
-State dir:      /Users/airm2max/.local/state/superharness/projects/a1b2c3d4e5f6/
+State dir:      $HOME/.local/state/superharness/projects/a1b2c3d4e5f6/
 State db:       /Users/.../state.db  (2.4 MB, 1247 tasks)
 Last backup:    2026-05-17 03:00 (380 KB)
 Watcher:        running (PID 78234, port 8787)
