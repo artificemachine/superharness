@@ -114,7 +114,7 @@ def set_task_status(
                 from superharness.engine.next_action import validate_status_transition
                 validate_status_transition(task_row.status, status)
             except ValueError as e:
-                print(f"status transition rejected: {task_id}: {e}", file=sys.stderr)
+                logger.warning("status transition rejected: %s: %s", task_id, e)
                 return False
 
         changes = {"status": status, "updated_at": now}

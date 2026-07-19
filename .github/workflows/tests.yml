@@ -6,6 +6,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   shell-tests:
     name: Shell Test Suite
@@ -96,7 +99,7 @@ jobs:
 
       - name: Run unit tests (Linux / macOS)
         if: runner.os != 'Windows'
-        run: python3 -m pytest tests/unit -q --timeout=120 --full-trace
+        run: python3 -m pytest tests/unit -q --timeout=120 --full-trace --cov=superharness --cov-fail-under=53
         env:
           PYTHONPATH: src
           PYTHONUTF8: "1"
@@ -108,7 +111,7 @@ jobs:
         # and Timer.start() blocks at _started.wait() for the full timeout interval
         # before firing — causing a spurious KeyboardInterrupt in a later test.
         # The job-level timeout-minutes: 20 still catches any genuinely hung test.
-        run: python3 -m pytest tests/unit -q --full-trace
+        run: python3 -m pytest tests/unit -q --full-trace --cov=superharness --cov-fail-under=53
         env:
           PYTHONPATH: src
           PYTHONUTF8: "1"

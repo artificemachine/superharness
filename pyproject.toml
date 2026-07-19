@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "superharness"
-version = "1.80.1"
+version = "1.80.2"
 description = "Multi-agent session handoff framework for Claude Code and Codex CLI"
 readme = "README.md"
 license = "Apache-2.0"
@@ -69,4 +69,15 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 markers = [
     "requires_bash: test requires bash shell (skipped on Windows)",
+]
+
+[tool.coverage.run]
+source = ["superharness"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
 ]
