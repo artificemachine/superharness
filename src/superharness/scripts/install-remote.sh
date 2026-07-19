@@ -88,7 +88,7 @@ echo ""
 # ---------------------------------------------------------------------------
 # Install wrapper symlink
 # ---------------------------------------------------------------------------
-bash "$CLONE_DIR/scripts/install-wrapper.sh" --target-dir "$TARGET_DIR"
+PYTHONPATH="$CLONE_DIR/src" python3 -m superharness.commands.install_wrapper --target-dir "$TARGET_DIR"
 
 echo ""
 echo "Done. Run 'superharness version' to verify."
