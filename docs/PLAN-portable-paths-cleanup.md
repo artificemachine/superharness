@@ -249,7 +249,7 @@ The right answer is (1) upstream fix; (2) is a stable interim wrapper.
 - `~/.gemini/`, `~/.hermes/` session log files containing hardcoded paths
   in past tool-call arguments — these are historical and don't affect
   runtime behavior.
-- `~/.claude/commands/*.md` references to `/Users/airm2max/Documents/
+- `~/.claude/commands/*.md` references to `$HOME/Documents/
   DevOpsCelstn/` — these are documented examples in user-authored slash
   commands; the user can update them as part of their own command
   maintenance.

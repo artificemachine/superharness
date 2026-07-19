@@ -74,7 +74,7 @@ Gemini was launched by PID 69721 of the operator's watcher. Fifteen seconds late
 
 ### Gemini CLI is functional
 
-- Binary: `/Users/airm2max/.nvm/versions/node/v25.2.1/bin/gemini` (v0.43.0)
+- Binary: `$HOME/.nvm/versions/node/v25.2.1/bin/gemini` (v0.43.0)
 - Round 1 submission succeeded (submitted at 2026-05-27T11:20:00Z)
 - The binary was available on PATH throughout
 

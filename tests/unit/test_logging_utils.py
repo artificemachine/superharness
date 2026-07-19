@@ -135,10 +135,10 @@ def test_redact_masks_anthropic_api_key():
 
 def test_redact_masks_user_home_path():
     from superharness.logging_utils import redact
-    msg = "wrote file /Users/airm2max/secret/file.txt"
+    msg = "wrote file /Users/testuser/secret/file.txt"
     out = redact(msg)
     # Either masked or stripped to ~/
-    assert "airm2max" not in out
+    assert "testuser" not in out
 
 
 def test_get_logger_idempotent():
