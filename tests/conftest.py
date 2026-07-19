@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import tempfile
@@ -23,6 +24,36 @@ os.environ.setdefault("SUPERHARNESS_PYTHON", sys.executable)
 # Block tests from auto-installing real LaunchAgents on the user's system.
 # session-start.sh and friends honor this flag and skip ensure-launchd-inbox-watcher.sh.
 os.environ["SUPERHARNESS_NO_AUTO_INSTALL"] = "1"
+
+
+@pytest.fixture(autouse=True)
+def _superharness_logger_propagates(monkeypatch):
+    """Keep logging.getLogger("superharness").propagate True for every test.
+
+    logging_utils.get_logger() unconditionally sets
+    logging.getLogger("superharness").propagate = False on every call
+    (process-wide, cached on the Logger singleton, no idempotency guard,
+    no reset anywhere in production code). cli.py calls it once at module
+    import time (`_bootstrap_logger("superharness").debug(...)` at
+    cli.py:25), so the very first test file that imports superharness.cli
+    poisons this for the rest of the pytest process. Every subsequent test
+    that logs through a "superharness.*" logger and asserts on it via
+    caplog (which attaches its handler at the root logger) silently sees
+    nothing, unless the test manually resets propagate for its own
+    duration — three files (test_transcript_tail.py, test_events.py,
+    test_live_state.py) independently discovered and worked around this
+    before this fixture existed. Applying the same reset here, once, for
+    every test closes the hole generally instead of file-by-file.
+
+    Not airtight: a get_logger() call made *mid-test*, after this fixture
+    already ran, re-poisons propagate=False for the remainder of that
+    test. No test in this suite currently does that in a way that matters
+    (the same limitation existed in the manual per-file workarounds this
+    fixture replaces), but a future test combining watcher/delegate/daemon
+    code with a caplog assertion in the same test body could reintroduce
+    the symptom and would need to re-apply the reset locally.
+    """
+    monkeypatch.setattr(logging.getLogger("superharness"), "propagate", True)
 
 
 @pytest.fixture(autouse=True)

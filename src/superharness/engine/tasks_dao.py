@@ -7,6 +7,16 @@ from typing import Any, cast
 from collections import defaultdict
 
 from superharness.engine.state_errors import StateError, ConcurrencyError
+from superharness.engine.next_action import ALL_STATUSES
+
+# arch A2: canonical status enum, derived from next_action.ALL_STATUSES (the
+# existing single source of truth for the lifecycle graph) rather than
+# duplicated here. update() uses this as a hard guard so a typo'd or
+# otherwise garbage status value can never reach the tasks.status column —
+# state_writer.validate_status_transition() already blocks illegal *edges*
+# between known statuses, but force=True callers (the lifecycle reconciler)
+# bypass that graph entirely and previously had no floor at all.
+VALID_STATUSES: frozenset[str] = frozenset(ALL_STATUSES)
 
 @dataclass(frozen=True)
 class TaskRow:
@@ -214,6 +224,11 @@ def update(
 ) -> TaskRow:
     """Update specific fields of a task with optimistic concurrency check."""
     from superharness.engine.state_errors import ContractLockError
+    if "status" in changes and changes["status"] not in VALID_STATUSES:
+        raise ValueError(
+            f"Invalid status {changes['status']!r} for task '{id}'. "
+            f"Valid statuses: {', '.join(sorted(VALID_STATUSES))}"
+        )
     locked_fields = _CONTRACT_LOCKED_FIELDS & changes.keys()
     if locked_fields:
         row = conn.execute(
@@ -313,15 +328,29 @@ def get_unblocked(
 
     return [_row_to_task(conn, row, deps_map[row["id"]]) for row in rows]
 
-def _safe_json_load(raw: str | None, default: Any = None) -> Any:
-    """Parse JSON without crashing on malformed data. Returns default on failure."""
+def _safe_json_load(
+    raw: str | None,
+    default: Any = None,
+    *,
+    task_id: str | None = None,
+    column: str | None = None,
+) -> Any:
+    """Parse JSON without crashing on malformed data. Returns default on failure.
+
+    One malformed row must not break bulk reads like `shux contract`
+    (arch A4). task_id/column are included in the warning so an operator
+    can find and repair the offending row instead of just seeing "some
+    JSON somewhere failed to parse".
+    """
     if not raw:
         return default
     try:
         return json.loads(raw)
     except (json.JSONDecodeError, TypeError) as e:
         logger = __import__("logging").getLogger(__name__)
-        logger.warning("Failed to parse JSON field: %s", e)
+        logger.warning(
+            "Failed to parse JSON field %r on task %r: %s", column, task_id, e
+        )
         return default
 
 
@@ -354,12 +383,20 @@ def _row_to_task(conn: sqlite3.Connection, row: sqlite3.Row, blocked_by: list[st
         effort=row["effort"],
         project_path=row["project_path"],
         development_method=row["development_method"],
-        acceptance_criteria=_safe_json_load(row["acceptance_criteria"], []),
-        test_types=_safe_json_load(row["test_types"], []),
-        out_of_scope=_safe_json_load(row["out_of_scope"], []),
-        definition_of_done=_safe_json_load(row["definition_of_done"], []),
+        acceptance_criteria=_safe_json_load(
+            row["acceptance_criteria"], [], task_id=row["id"], column="acceptance_criteria"
+        ),
+        test_types=_safe_json_load(
+            row["test_types"], [], task_id=row["id"], column="test_types"
+        ),
+        out_of_scope=_safe_json_load(
+            row["out_of_scope"], [], task_id=row["id"], column="out_of_scope"
+        ),
+        definition_of_done=_safe_json_load(
+            row["definition_of_done"], [], task_id=row["id"], column="definition_of_done"
+        ),
         context=row["context"],
-        tdd=_safe_json_load(row["tdd"]),
+        tdd=_safe_json_load(row["tdd"], task_id=row["id"], column="tdd"),
         version=row["version"],
         created_at=row["created_at"],
         updated_at=_safe_get(row, "updated_at"),
