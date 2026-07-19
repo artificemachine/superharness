@@ -90,24 +90,12 @@ def test_partial_last_line_not_consumed(tmp_path):
     conn.close()
 
 
-def _force_superharness_logger_propagation(monkeypatch) -> None:
-    """logging_utils.get_logger() sets logging.getLogger("superharness")
-    .propagate = False the first time ANY superharness.* logger is used
-    (process-wide, cached on the Logger singleton). If an earlier test in
-    the same pytest process triggered that (e.g. test_harness_adapters.py
-    calling delegate._launch_agent -> get_logger), records from
-    superharness.engine.transcript_tail stop reaching caplog's root-attached
-    handler even though they're still logged (to the file handler). Force
-    propagation back on for the duration of tests that assert via caplog.
-    """
-    import logging
-    monkeypatch.setattr(logging.getLogger("superharness"), "propagate", True)
-
-
-def test_truncated_file_resets_cursor(tmp_path, caplog, monkeypatch):
+def test_truncated_file_resets_cursor(tmp_path, caplog):
     import logging
 
-    _force_superharness_logger_propagation(monkeypatch)
+    # The logging.getLogger("superharness").propagate poisoning this used to
+    # work around per-test is now fixed globally by the autouse
+    # _superharness_logger_propagates fixture in tests/conftest.py.
     conn = get_connection(str(tmp_path))
     init_db(conn)
 
@@ -127,10 +115,9 @@ def test_truncated_file_resets_cursor(tmp_path, caplog, monkeypatch):
     conn.close()
 
 
-def test_malformed_json_line_skipped(tmp_path, caplog, monkeypatch):
+def test_malformed_json_line_skipped(tmp_path, caplog):
     import logging
 
-    _force_superharness_logger_propagation(monkeypatch)
     conn = get_connection(str(tmp_path))
     init_db(conn)
 

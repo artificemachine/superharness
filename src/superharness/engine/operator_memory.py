@@ -48,10 +48,18 @@ class OperatorMemory:
 
     def _get_conn(self) -> sqlite3.Connection:
         if self._conn is None:
+            # Raw connect (not engine.db.get_connection) because this class only
+            # receives a resolved db_path, not the project_dir get_connection
+            # needs to redo path resolution. Callers always pass
+            # resolve_active_state_db_path(project_dir), i.e. the same file
+            # get_connection would open, so the mandatory pragmas below are
+            # kept in lockstep with get_connection's set (arch A3).
             Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
             self._conn = sqlite3.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
             self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA foreign_keys=ON")
+            self._conn.execute("PRAGMA busy_timeout=5000")
         return self._conn
 
     def close(self) -> None:
