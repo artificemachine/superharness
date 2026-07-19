@@ -30,22 +30,37 @@ class TestStructural_YoloInLaunchAgent:
         )
 
     def test_launch_agent_appends_yolo_to_launch_args(self):
-        """`_launch_agent` must add `--yolo` to launch_args when yolo=True."""
-        import superharness.commands.delegate as _mod
-        src = inspect.getsource(_mod._launch_agent)
-        tree = ast.parse(src)
+        """`--yolo` must be added to argv when yolo=True.
 
-        # Look for: if yolo: launch_args.append("--yolo")
-        found = False
-        for node in ast.walk(tree):
-            if isinstance(node, ast.If):
-                test = node.test
-                if isinstance(test, ast.Name) and test.id == "yolo":
-                    for body_node in ast.walk(ast.Module(body=node.body, type_ignores=[])):
-                        if isinstance(body_node, ast.Constant) and body_node.value == "--yolo":
-                            found = True
+        Updated by docs/PLAN-steal-omnigent.md iteration 6: `_launch_agent`
+        now delegates argv construction to the harness registry
+        (superharness.harnesses) instead of building it inline, so the
+        `if yolo: argv.append("--yolo")` shape now lives in
+        harnesses.base.build_generic_invocation (codex/gemini/opencode) and
+        harnesses.claude.ClaudeHarness.build_invocation (claude-code) rather
+        than in `_launch_agent` itself. The forwarding behavior itself is
+        unchanged and still covered end-to-end by
+        TestBehavioural_LaunchArgsContainYolo below and by
+        tests/unit/test_harness_adapters.py's golden parity tests.
+        """
+        import superharness.harnesses.base as _base_mod
+        import superharness.harnesses.claude as _claude_mod
+
+        def _has_yolo_append(src: str) -> bool:
+            tree = ast.parse(src)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.If):
+                    test = node.test
+                    if isinstance(test, ast.Name) and test.id == "yolo":
+                        for body_node in ast.walk(ast.Module(body=node.body, type_ignores=[])):
+                            if isinstance(body_node, ast.Constant) and body_node.value == "--yolo":
+                                return True
+            return False
+
+        found = _has_yolo_append(inspect.getsource(_base_mod.build_generic_invocation)) or \
+            _has_yolo_append(inspect.getsource(_claude_mod.ClaudeHarness.build_invocation))
         assert found, (
-            "_launch_agent() does not append '--yolo' to launch_args when yolo=True"
+            "no harness adapter appends '--yolo' to argv when yolo=True"
         )
 
     def test_delegate_function_has_yolo_parameter(self):
