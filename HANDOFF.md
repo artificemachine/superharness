@@ -1,8 +1,33 @@
 # Handoff — superharness
 
-> Latest: 2026-07-15, shipped GitHub/GitLab issue linking for shux tasks (4-iteration TDD plan via `/plan-implement`) — one-way snapshot pointer by design, never a second source of truth. `issue_url` column + `--issue`/`--from-issue`/`shux task link` + render in contract/context + close-time nudge. Investigated a full-suite CI failure, proved it pre-existing/unrelated via baseline-commit comparison before shipping. **v1.79.0 is live on PyPI.**
-> Previous: 2026-07-12, ran a `/brain-scan` intelligence audit (L4.5, one blocker: G5c unobserved), root-caused the fleet brain's six-month silent death (two Ollama servers sharing port 11434, `localhost` resolving to the wrong one), fixed it live, then executed a 7-iteration plan closing G5c with real fault-injection evidence and wiring a second dormant learning loop. Brain-scan verdict L4.5 → L5. v1.78.0 shipped.
+> Latest: 2026-07-19, ran `/job-ready --quick` portfolio audit (stages 1-3) — verdict **NOT READY**, hard gate: LAN IPs + home paths in tracked files of this public repo. Scorecard + top-5 fixes in `docs/audits/2026-07-19-job-ready.md` (uncommitted). Also: authored the `/job-ready` command itself and flushed/mirrored the `~/.claude` repo (separate repo).
+> Previous: 2026-07-15, shipped GitHub/GitLab issue linking for shux tasks (4-iteration TDD plan via `/plan-implement`) — one-way snapshot pointer by design, never a second source of truth. `issue_url` column + `--issue`/`--from-issue`/`shux task link` + render in contract/context + close-time nudge. **v1.79.0 is live on PyPI.**
 > PyPI: **v1.79.0** is live and current. Trusted Publisher pipeline confirmed working end-to-end again (tag push → release.yml → GitHub Release → publish.yml → PyPI, all green).
+
+# Session Handoff — 2026-07-19 (/job-ready portfolio audit — superharness NOT READY, cleanup plan drafted)
+Agent: Claude Code (Fable 5) | Branch: docs/handoff-2026-07-15 | Tests: not run (zero code changes this session) | UNCOMMITTED (docs/audits/ only)
+
+## What happened this session
+- Authored `/job-ready` (lives in `~/.claude/commands/job-ready.md`, not this repo): 9-stage employer-facing readiness pipeline — first-impression gate, git/release hygiene cleanup plan, readme/docs, fresh-clone + dependency CVE verification, gauntlet, arch-audit, ci-gate, bulletproof, HIRE-READY/NEEDS POLISH/NOT READY scorecard.
+- Cleaned the `~/.claude` repo (separate repo): 51 dirty files → 6 themed commits, master fast-forwarded, branches deleted, mirrored to LAN GitLab `mirrors/claude-config` for backup.
+- Ran `/job-ready --quick` on THIS repo (stages 1, 2, 3 + scorecard). Verdict **NOT READY** — hard gate is personal-data leakage in tracked files: real homelab LAN IPs in `HANDOFF.md` (lines ~50/56/405 of the 2026-07-15 blocks) and `$HOME` paths in 8 files (docs/bugs/*, docs/PLAN-portable-*, docs/CONCEPT-notifications-*, tests/unit/test_logging_utils.py). No real secrets: gitleaks over 1124 commits found only fake fixtures in `tests/unit/test_module_obsidian.py:211`.
+- Wrote full findings to `docs/audits/job-ready-progress.md` and scorecard to `docs/audits/2026-07-19-job-ready.md` (both uncommitted).
+- Strong signals confirmed: 727 conventional commits, 83 semver tags with pyproject=tag=release perfectly synced, README quickstart commands all verified to exist in `cli.py`.
+
+## Next session — first moves
+1. **Scrub personal data from HEAD** (kills the NOT READY gate): placeholder the LAN IPs in HANDOFF.md history blocks, genericize `$HOME` in the 8 flagged files. No history rewrite — docs, not secrets.
+2. **README refresh PR**: add CI/PyPI/license badges (currently zero); fix stale "v1.44.21"/"151 tests" claims (README:16, 356) → v1.79.0; fix 4 broken script paths (README:83, 90, 320, 329 — scripts live in `src/superharness/scripts/`); fix 2 archive links (README:342, 346); rewrite README:284-292 around `state.db`; add dashboard screenshot.
+3. **Branch cleanup**: 228 remote branches → target <20. 32 merged into main = safe delete; bulk-delete `chore/bump-*`/`chore/release-*`; triage rest. Then docs index regen (claims 61 docs, actual 125, 63 orphans) + archive sweep.
+4. Backfill release notes (all 83 say "See CHANGELOG.md"), add CODE_OF_CONDUCT + issue/PR templates, canonical Apache-2.0 text (GitHub shows license "other").
+5. Then run full `/job-ready` (stages 4-8: fresh-clone, dep CVEs, gauntlet, arch-audit, ci-gate, bulletproof) — Sonnet for mechanical stages, Fable/Opus second opinion on arch-audit + senior-review.
+
+### Operational notes
+- Local branch `docs/handoff-2026-07-15` is 1 ahead / 2 behind origin/main — merge or rebase before new work.
+- `docs/audits/` is new and untracked; commit it or keep as local working notes (contains the leak inventory — review before pushing publicly).
+- `~/.claude` repo: master default (no main), no GitHub remote, LAN GitLab mirror `mirrors/claude-config`; local push-to-master blocked by hook — use `git fetch . <branch>:master`.
+
+---
+
 
 # Session Handoff — 2026-07-15 (GitHub/GitLab issue linking for shux tasks — v1.79.0 shipped)
 Agent: Claude Code (Sonnet 5) | Branch: main | Tests: 34/34 pass (feature set); full CI 27/27 green across 3 platforms on PR #40 | SHIPPED — v1.79.0 merged, tagged, released, published
@@ -47,13 +72,13 @@ Agent: Claude Code (Sonnet 5) | Branch: main | Tests: 4845 pass, 580 skip, 2 xfa
   6. **The verdict-mover**: 6 CI-safe e2e tests (fleet mocked) proving the reinforce loop's mechanics, plus `scripts/verify-l5-loop.sh` — a live script injecting a real fault through the real inbox path and calling the real local fleet. One real run produced a genuine `reinforce_analysis` event (`classification: "dependency"`, correct) — the actual G5c closure evidence, not fabricated.
   7. vLLM per-tier fleet endpoints — probed the GPU lab live (not assumed): 2 of 3 tiers reachable, enabled with real model IDs; found a real dead-code bug in the old commented config sketch (wrong key name, `fleet_endpoints:` instead of the actual `endpoints:`/`models:`).
 - Shipped as **PR #39**, which took 3 CI rounds to go green — every failure was a real bug the CI itself caught, not a flake: missing shell-entrypoint allowlist entry for the new script; a doctor test that only mocked `fleet_health()` and not `_load_fleet_config()` (silently no-op'd on any CI runner without a real `fleet.yaml`); and a genuine timing race in the e2e tests — first a hardcoded-timestamp bug, then (after fixing that) two independent `_now_iso()` calls compared for equality straddling a wall-clock second tick.
-- Sanitized `docs/fleet-vllm-enablement.md` before pushing — it recorded real homelab LAN IPs (10.255.150.x) for a **public** GitHub repo; replaced with placeholders, matching the pattern the sibling doc already used for the same infra.
+- Sanitized `docs/fleet-vllm-enablement.md` before pushing — it recorded real homelab LAN IPs (`<LAN-gpu-subnet>`) for a **public** GitHub repo; replaced with placeholders, matching the pattern the sibling doc already used for the same infra.
 - Version bumped 1.77.2 → 1.78.0 (minor, feat commits present per Rule 13). Full pipeline: merge, tag, release, PyPI publish (verified live), pipx reinstall. The pipx upgrade killed the running watcher process (same pattern seen on the two prior installs this session) — cleaned the resulting split-brain and reinstalled with the now-published fix; `shux doctor` final state: 0 failures, 0 warnings, all 3 fleet tiers PASS.
 
 ## Next session — first moves
 1. **Re-scan with `/brain-scan .`** once a real failure cluster occurs organically (not fabricated) to confirm G5c holds under real production conditions, not just the one injected verification run.
 2. `docs/plans/PLAN-openprose-hardening.md` is written and gate-passed but **not implemented** — prose-lint validator, CI wiring, recipe SSOT fix (currently 2 disjoint libraries), `on_error`/`eval` retrofit across 17 of 18 recipes, 2 new recipes (rlm-conformance judge, golden-session deconstructor). Ready for `/plan-implement` in the openprose repo.
-3. GPU-lab `max` tier (10.255.150.36:8100) was verified unreachable (connection refused, not just idle) during iteration 7 — re-probe when convenient; do not guess a model id for it, re-read `/models` once it's back.
+3. GPU-lab `max` tier (`<LAN-max-endpoint>:8100`) was verified unreachable (connection refused, not just idle) during iteration 7 — re-probe when convenient; do not guess a model id for it, re-read `/models` once it's back.
 4. Bonus bug found but not fixed (out of scope for the L5 plan): `_self_heal`'s pip-install heuristic tries `pip install yaml` (the import name) instead of `pip install pyyaml` (the real PyPI package) — a real, minor bug in the self-heal path, visible in the G5c evidence event's `self_heal_result` field.
 5. `shux doctor`'s state-db split-brain + watcher-not-loaded warnings recur predictably after every `pipx upgrade superharness` (the upgrade kills the running watcher). Not yet worth automating a fix for — pattern is now well understood (see Operational notes) but happened a 3rd time this session.
 
@@ -156,7 +181,7 @@ Agent: Claude Code (Sonnet 5) | Branch: main (PR #6 squash-merged as 0f6b198; fi
 
 ## What happened this session
 - **Explained** why `scope-guard.sh` (global PreToolUse hook) hard-blocks editing `~/.ssh/config`: the sensitive-file `case` block has no carve-out for it (unlike `*.env.example`, which got one in the prior session's commit `a446061`). No fix applied — user hasn't decided whether `.ssh/config` (host aliases, no key material) should get the same treatment. Flagged as a future decision, not acted on.
-- **Root-caused a real install-topology bug** while investigating "what breaks if we remove this repo": the global `superharness` pipx venv was installed as `pipx install --editable /Users/airm2max/DevOpsSec/superharness`, not a real wheel install. This is the **second regression** of this exact issue (previously fixed 2026-05-31, silently reverted by 2026-06-13 — someone ran a bare `pipx install -e .` against the global venv for dev convenience and never reverted). Consequence: both the live `shux`/`superharness` CLI and all 5 Claude Code global hook commands in `~/.claude/settings.json` (session-start, scope-guard, branch-guard, ledger-append, session-turn-end) resolved directly into this dev checkout — deleting/breaking the repo would have broken hooks globally across every project.
+- **Root-caused a real install-topology bug** while investigating "what breaks if we remove this repo": the global `superharness` pipx venv was installed as `pipx install --editable $HOME/DevOpsSec/superharness`, not a real wheel install. This is the **second regression** of this exact issue (previously fixed 2026-05-31, silently reverted by 2026-06-13 — someone ran a bare `pipx install -e .` against the global venv for dev convenience and never reverted). Consequence: both the live `shux`/`superharness` CLI and all 5 Claude Code global hook commands in `~/.claude/settings.json` (session-start, scope-guard, branch-guard, ledger-append, session-turn-end) resolved directly into this dev checkout — deleting/breaking the repo would have broken hooks globally across every project.
 - **Fixed**: `uv build` → wheel at current HEAD (not PyPI — PyPI was stale at 1.69.3, would've been a downgrade) → `pipx uninstall superharness && pipx install dist/superharness-1.75.0-py3-none-any.whl` (non-editable) → `shux install-hooks` (rewrote all 5 hook paths in `~/.claude/settings.json` to the real installed `site-packages` path). Verified: `pipx_metadata.json` shows `pip_args: []`, real copied package tree in site-packages, zero `DevOpsSec/superharness` references left in `~/.claude/settings.json`, hook script executes correctly from the new path.
 - **Propagated a standing rule** via `/to-agents` (project scope) into `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`: never run `pipx install --editable`/`-e .` against the global venv again; use a repo-local `.venv` for dev testing instead. Backed up all three files (`*.bak-to-agents-<ts>`) and added `*.bak-to-agents-*` to `.gitignore` (was not previously covered).
 - **Ran `/ship god`** end to end on the accumulated working-tree state (the install-hygiene doc changes plus pre-existing uncommitted `HANDOFF.md` catch-up and two old analysis docs that had been sitting uncommitted across sessions): ship-check clean (privacy: public repo not on the local-only list; shipguard 0 findings/985 files; ci-gate — no workflow files touched since last clean audit; full test suite 4691 pass/584 skip/2 xfail, `test_dashboard_timeout.py` excluded as a pre-existing environment issue — missing `requests` module, unrelated to this diff; no hardcoded paths/binaries). Determined this diff is docs/chore-only — no version bump needed per this repo's own release policy (chore/docs = merge-only). Committed as `87012a4`, opened PR #6, watched CI (27/27 green including the slow `Unit Tests (windows-latest)` at ~9m45s), squash-merged as `0f6b198`, branch deleted (local + remote, pruned stale tracking ref).
@@ -198,7 +223,7 @@ Agent: Claude Code (Sonnet 5) | Branch: main (PR #5 squash-merged as 423ae50; fe
 ### Operational notes
 - **ship-gate hook** (`~/.claude/hooks/ship-gate.sh`) blocks `gh pr create/merge` + `git tag`/`git push` of tags when `.ship-check-passed` is stale (>30 min). This session ran the ship-check gates directly (not via a `/ship-check` subagent) since the invocation started as `/ship gog` (a typo that didn't bind to any mode) before the user corrected to `/ship god`; the marker was written manually to reflect the equivalent manual verification.
 - **Release is tag-triggered**: push `vX.Y.Z` → `release.yml` creates the GitHub release → `publish.yml` publishes PyPI (both `testpypi` and `pypi` jobs, OIDC trusted publishing, no secrets). Confirmed both environments' trusted-publisher entries are now correct.
-- **pipx install topology**: `pipx upgrade superharness` pulls from a local repo path spec (`/Users/airm2max/DevOpsSec/superharness`), not the PyPI index — that's why the local `shux` CLI reached 1.75.0 immediately on merge, independent of whether the PyPI publish itself was fixed yet.
+- **pipx install topology**: `pipx upgrade superharness` pulls from a local repo path spec (`$HOME/DevOpsSec/superharness`), not the PyPI index — that's why the local `shux` CLI reached 1.75.0 immediately on merge, independent of whether the PyPI publish itself was fixed yet.
 - **ship.prose.md god mode caveat**: the top-level `ship.prose.md` doc comment implies god mode skips confirmation gates, but the actual Execution section has no `if mode == "god"` branch (falls through to the default full pipeline), and the delegate recipe `ship-release.prose.md` has its own unconditional "requires explicit confirmation" Invariants with no god-mode carve-out written in. Treated the stricter, more specific spec as authoritative — asked for confirmation at merge/tag/release gates even under `/ship god`.
 
 ---
@@ -402,7 +427,7 @@ Agent: Claude Code (Opus 4.8, 1M) | Branch: main (PR #314 squash-merged as e0669
 - Performance benchmarks: inbox query <100ms, status count <50ms
 
 **Vidistiller integration:**
-- SSH tunnel: `localhost:8000` → vidistiller VM (`10.255.181.20`)
+- SSH tunnel: `localhost:8000` → vidistiller VM (`<LAN-vidistiller-host>`)
 - API key configured. Submit video URLs → get transcripts via `/api/jobs`.
 
 ### Where to pick up

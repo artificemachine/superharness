@@ -85,13 +85,13 @@ node, etc.) are abandoned as orphans. The operator should:
 ### D. Operator plist still has fragile Python path
 `com.superharness.operator.35dd89d8.plist` uses:
 ```
-/Users/airm2max/.pyenv/shims/python3
+$HOME/.pyenv/shims/python3
 ```
 It works by accident (the shim resolves) but will break after any
 `pipx reinstall superharness` — same bug as June 1 (vault note:
 `2026-06-01-superharness-operator-storm.md`). Should be:
 ```
-/Users/airm2max/.local/pipx/venvs/superharness/bin/python
+$HOME/.local/pipx/venvs/superharness/bin/python
 ```
 
 ## Reproduction
