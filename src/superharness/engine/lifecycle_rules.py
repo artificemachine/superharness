@@ -341,12 +341,46 @@ def _scan_contract(project_dir: str, rules: list[LifecycleRule], profile: dict) 
     return changed
 
 
-def _check_deadlines(project_dir: str, profile: dict) -> int:
-    """Enforce per-task deadline_minutes on non-terminal tasks.
+def _last_event_age_minutes(conn, task_id: str) -> float | None:
+    """Minutes since the most recent `events` row (engine/events.py,
+    migration v31) for task_id, or None if no events exist for it.
 
-    Age is measured from in_progress_at (when work started) when present, else
-    from created_at — so a long-queued task is not failed the moment it starts.
-    Tasks with deadline_minutes unset or <= 0 are skipped.
+    See docs/PLAN-steal-omnigent.md iteration 8.
+    """
+    try:
+        row = conn.execute(
+            "SELECT MAX(ts) AS last_ts FROM events WHERE task_id = ?", (task_id,)
+        ).fetchone()
+    except Exception as e:
+        logger.warning("lifecycle_rules.py unexpected error: %s", e, exc_info=True)
+        return None
+    if row is None or row["last_ts"] is None:
+        return None
+    return _age_minutes(row["last_ts"])
+
+
+def _check_deadlines(project_dir: str, profile: dict) -> int:
+    """Enforce deadlines on non-terminal tasks: dual watchdog (idle timeout +
+    absolute ceiling) when the task has event history, PR #43's
+    in_progress_at-budgeted deadline_minutes check otherwise.
+
+    Dual watchdog (docs/PLAN-steal-omnigent.md iteration 8), opt-in via
+    profile keys `idle_timeout_minutes` and `absolute_ceiling_minutes`
+    (both default 0 = disabled — with both unset, behavior is byte-identical
+    to the PR #43 fix this extends). When enabled AND the task has at least
+    one row in the `events` table (engine/events.py, migration v31):
+      - age >= absolute_ceiling_minutes  -> fail (reason contains "ceiling")
+      - else, minutes-since-last-event >= idle_timeout_minutes -> fail
+        (reason contains "idle")
+      - else -> survives, even past its own (legacy) deadline_minutes —
+        fresh events prove the task isn't wedged.
+    Tasks with no event history (or when both keys are disabled) fall
+    through to the exact legacy deadline_minutes / default_deadline_minutes
+    check, unmodified.
+
+    Age is measured from in_progress_at (when work started) when present,
+    else from created_at, in both paths — so a long-queued task is not
+    failed the moment it starts.
 
     Returns count of tasks failed due to deadline expiry.
     """
@@ -359,62 +393,136 @@ def _check_deadlines(project_dir: str, profile: dict) -> int:
     except (ValueError, TypeError):
         pass
 
+    idle_timeout = 0
+    try:
+        idle_timeout = int(profile.get("idle_timeout_minutes", 0) or 0)
+    except (ValueError, TypeError):
+        pass
+    absolute_ceiling = 0
+    try:
+        absolute_ceiling = int(profile.get("absolute_ceiling_minutes", 0) or 0)
+    except (ValueError, TypeError):
+        pass
+    watchdog_active = idle_timeout > 0 or absolute_ceiling > 0
+
+    events_conn = None
+    if watchdog_active:
+        try:
+            from superharness.engine.db import get_connection, init_db
+            events_conn = get_connection(project_dir)
+            init_db(events_conn)
+        except Exception as e:
+            logger.warning("lifecycle_rules.py unexpected error: %s", e, exc_info=True)
+            events_conn = None
+
     try:
         tasks = state_reader.get_tasks(project_dir)
     except Exception as e:
         logger.warning("lifecycle_rules.py unexpected error: %s", e, exc_info=True)
+        if events_conn is not None:
+            events_conn.close()
         return 0
 
     changed = 0
-    for task in tasks:
-        if not isinstance(task, dict):
-            continue
-        status = str(task.get("status", ""))
-        if status not in _DEADLINE_ELIGIBLE_STATES:
-            continue
+    try:
+        for task in tasks:
+            if not isinstance(task, dict):
+                continue
+            status = str(task.get("status", ""))
+            if status not in _DEADLINE_ELIGIBLE_STATES:
+                continue
 
-        # Per-task deadline takes precedence over project default
-        deadline = None
-        raw_deadline = task.get("deadline_minutes")
-        if raw_deadline is not None:
-            try:
-                deadline = int(raw_deadline)
-            except (ValueError, TypeError):
-                pass
-        if not deadline:
-            deadline = default_deadline
-        if not deadline or deadline <= 0:
-            continue
+            task_id = str(task.get("id", ""))
 
-        # Budget the deadline from when work actually started (in_progress_at),
-        # not from task creation — a task that queued in the backlog for hours
-        # must not be force-failed the moment it is dispatched. Pre-work states
-        # (no in_progress_at) fall back to created_at so backlog staleness is
-        # still caught.
-        ref_ts = task.get("in_progress_at") or task.get("created_at", "")
-        age = _age_minutes(ref_ts)
-        if age is None:
-            continue
-        if age < deadline:
-            continue
+            # Budget from when work actually started (in_progress_at), not
+            # from task creation — a task that queued in the backlog for
+            # hours must not be force-failed the moment it is dispatched.
+            # Pre-work states (no in_progress_at) fall back to created_at.
+            ref_ts = task.get("in_progress_at") or task.get("created_at", "")
+            age = _age_minutes(ref_ts)
+            if age is None:
+                continue
 
-        task_id = str(task.get("id", ""))
-        reason = (
-            f"deadline exceeded ({int(age)}m elapsed >= {deadline}m limit) — "
-            f"task was in status '{status}'"
-        )
-        print(
-            f"lifecycle: task {task_id} "
-            f"deadline exceeded ({int(age)}m >= {deadline}m) → failed"
-        )
+            if watchdog_active and events_conn is not None:
+                last_event_age = _last_event_age_minutes(events_conn, task_id)
+                if last_event_age is not None:
+                    # Event history exists: idle/ceiling semantics fully
+                    # replace the legacy deadline_minutes check below for
+                    # this task.
+                    if absolute_ceiling > 0 and age >= absolute_ceiling:
+                        reason = (
+                            f"absolute ceiling exceeded ({int(age)}m elapsed >= "
+                            f"{absolute_ceiling}m ceiling) — task was in status '{status}'"
+                        )
+                        print(
+                            f"lifecycle: task {task_id} absolute ceiling exceeded "
+                            f"({int(age)}m >= {absolute_ceiling}m) → failed"
+                        )
+                        state_writer.set_task_status(
+                            project_dir, task_id, "failed",
+                            from_status=status, force=True,
+                            failed_reason=reason,
+                            failed_at=_now_utc_str(),
+                        )
+                        changed += 1
+                        continue
+                    if idle_timeout > 0 and last_event_age >= idle_timeout:
+                        reason = (
+                            f"idle timeout exceeded (no events for {int(last_event_age)}m >= "
+                            f"{idle_timeout}m idle limit) — task was in status '{status}'"
+                        )
+                        print(
+                            f"lifecycle: task {task_id} idle timeout exceeded "
+                            f"({int(last_event_age)}m >= {idle_timeout}m) → failed"
+                        )
+                        state_writer.set_task_status(
+                            project_dir, task_id, "failed",
+                            from_status=status, force=True,
+                            failed_reason=reason,
+                            failed_at=_now_utc_str(),
+                        )
+                        changed += 1
+                        continue
+                    # Events fresh and within ceiling: survives regardless
+                    # of the legacy deadline_minutes field.
+                    continue
 
-        state_writer.set_task_status(
-            project_dir, task_id, "failed",
-            from_status=status, force=True,
-            failed_reason=reason,
-            failed_at=_now_utc_str(),
-        )
-        changed += 1
+            # Legacy PR #43 path (unmodified): per-task/profile deadline_minutes,
+            # only reached when the watchdog is disabled or this task has no
+            # event history yet.
+            deadline = None
+            raw_deadline = task.get("deadline_minutes")
+            if raw_deadline is not None:
+                try:
+                    deadline = int(raw_deadline)
+                except (ValueError, TypeError):
+                    pass
+            if not deadline:
+                deadline = default_deadline
+            if not deadline or deadline <= 0:
+                continue
+            if age < deadline:
+                continue
+
+            reason = (
+                f"deadline exceeded ({int(age)}m elapsed >= {deadline}m limit) — "
+                f"task was in status '{status}'"
+            )
+            print(
+                f"lifecycle: task {task_id} "
+                f"deadline exceeded ({int(age)}m >= {deadline}m) → failed"
+            )
+
+            state_writer.set_task_status(
+                project_dir, task_id, "failed",
+                from_status=status, force=True,
+                failed_reason=reason,
+                failed_at=_now_utc_str(),
+            )
+            changed += 1
+    finally:
+        if events_conn is not None:
+            events_conn.close()
 
     return changed
 

@@ -150,6 +150,16 @@ def set_task_status(
                         from_status=task_row.status, to_status=status)
         except Exception as e:
             logger.warning("state_writer unexpected error: %s", e, exc_info=True)
+        # Typed telemetry event (additive, SQLite-backed; see engine/events.py).
+        # No-op unless events.configure(project_dir) was already called for
+        # this process — never spawns a background thread on its own.
+        try:
+            from superharness.engine import events
+            events.emit(events.TaskTransition(
+                task_id=task_id, from_status=task_row.status, to_status=status,
+            ))
+        except Exception as e:
+            logger.warning("state_writer unexpected error: %s", e, exc_info=True)
         # Auto-capture observation snapshot on report_ready transition.
         # Defensive: capture_observation never raises, but the import
         # could fail in unusual environments. project_dir is threaded

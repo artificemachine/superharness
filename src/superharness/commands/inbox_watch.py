@@ -92,56 +92,108 @@ def _sqlite_mirror_inbox_enqueue(project_dir: str, items: list[dict], now: str) 
     except Exception as e:
         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
+_INBOX_RETRY_WRITERS: dict[str, "live_state.LiveStateWriter"] = {}
+_TASK_STATUS_WRITERS: dict[str, "live_state.LiveStateWriter"] = {}
+
+
+def _get_inbox_retry_writer(project_dir: str):
+    """Return (creating if needed) the ordered live-state writer for inbox
+    retry mirrors in this project. Cached per project_dir for the life of the
+    process so ordering/dedupe apply across calls, not just within one."""
+    from superharness.engine import live_state
+
+    writer = _INBOX_RETRY_WRITERS.get(project_dir)
+    if writer is None:
+        def _write_fn(key: str, value: str) -> None:
+            import json
+            from superharness.engine.db import get_connection, init_db, transaction
+            from superharness.engine import inbox_dao, ledger_dao
+            payload = json.loads(value)
+            conn = get_connection(project_dir)
+            try:
+                init_db(conn)
+                with transaction(conn):
+                    for item in payload["items"]:
+                        inbox_dao.set_retry(conn, str(item["id"]), int(item["retry_count"]), None, payload["now"])
+                    ledger_dao.record(
+                        conn, agent="watcher", action="auto_retry",
+                        details={"ids": [i["id"] for i in payload["items"]]}, now=payload["now"],
+                    )
+            finally:
+                conn.close()
+
+        writer = live_state.LiveStateWriter(_write_fn)
+        _INBOX_RETRY_WRITERS[project_dir] = writer
+    return writer
+
+
 def _sqlite_mirror_inbox_retry(project_dir: str, retried_items: list[dict], now: str) -> None:
-    """Mirror inbox retry resets to SQLite. Never raises.
+    """Mirror inbox retry resets to SQLite via the ordered live-state
+    chokepoint (engine/live_state.py). Never raises — write failures are
+    logged inside the chokepoint, not propagated here.
 
     Each entry in retried_items must have 'id' and 'retry_count'.
     """
-    try:
-        from superharness.engine.db import get_connection, init_db, transaction
-        from superharness.engine import inbox_dao, ledger_dao
-        conn = get_connection(project_dir)
-        try:
-            init_db(conn)
-            with transaction(conn):
-                for item in retried_items:
-                    item_id = str(item["id"])
-                    retry_count = int(item.get("retry_count", 0))
-                    inbox_dao.set_retry(conn, item_id, retry_count, None, now)
-                ledger_dao.record(
-                    conn, agent="watcher", action="auto_retry",
-                    details={"ids": [i["id"] for i in retried_items]}, now=now,
-                )
-        finally:
-            conn.close()
-    except Exception as e:
-        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
-        pass
+    import json
+    if not retried_items:
+        return
+    writer = _get_inbox_retry_writer(project_dir)
+    key = "inbox_retry:" + ",".join(sorted(str(i["id"]) for i in retried_items))
+    value = json.dumps(
+        {
+            "items": [{"id": str(i["id"]), "retry_count": int(i.get("retry_count", 0))} for i in retried_items],
+            "now": now,
+        },
+        sort_keys=True,
+    )
+    writer.publish(key, value)
+    writer.flush(timeout=5.0)
+
+
+def _get_task_status_writer(project_dir: str):
+    """Return (creating if needed) the ordered live-state writer for task
+    status mirrors in this project."""
+    from superharness.engine import live_state
+
+    writer = _TASK_STATUS_WRITERS.get(project_dir)
+    if writer is None:
+        def _write_fn(key: str, value: str) -> None:
+            import json
+            from superharness.engine.db import get_connection, init_db, transaction
+            from superharness.engine import tasks_dao, ledger_dao
+            payload = json.loads(value)
+            conn = get_connection(project_dir)
+            try:
+                init_db(conn)
+                with transaction(conn):
+                    task = tasks_dao.get(conn, key)
+                    if task is None:
+                        return
+                    changes: dict = {"status": payload["status"], **(payload.get("extra") or {})}
+                    tasks_dao.update(conn, key, task.version, changes=changes)
+                    ledger_dao.record(
+                        conn, agent="watcher", action="task_status_change",
+                        task_id=key, details={"status": payload["status"]}, now=payload["now"],
+                    )
+            finally:
+                conn.close()
+
+        writer = live_state.LiveStateWriter(_write_fn)
+        _TASK_STATUS_WRITERS[project_dir] = writer
+    return writer
+
+
 def _sqlite_mirror_task_status(
     project_dir: str, task_id: str, status: str, now: str, extra: dict | None = None
 ) -> None:
-    """Mirror a task status change to SQLite. Never raises."""
-    try:
-        from superharness.engine.db import get_connection, init_db, transaction
-        from superharness.engine import tasks_dao, ledger_dao
-        conn = get_connection(project_dir)
-        try:
-            init_db(conn)
-            with transaction(conn):
-                task = tasks_dao.get(conn, task_id)
-                if task is None:
-                    return
-                changes: dict = {"status": status, **(extra or {})}
-                tasks_dao.update(conn, task_id, task.version, changes=changes)
-                ledger_dao.record(
-                    conn, agent="watcher", action="task_status_change",
-                    task_id=task_id, details={"status": status}, now=now,
-                )
-        finally:
-            conn.close()
-    except Exception as e:
-        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
-        pass
+    """Mirror a task status change to SQLite via the ordered live-state
+    chokepoint (engine/live_state.py). Never raises — write failures are
+    logged inside the chokepoint, not propagated here."""
+    import json
+    writer = _get_task_status_writer(project_dir)
+    value = json.dumps({"status": status, "now": now, "extra": extra or {}}, sort_keys=True)
+    writer.publish(task_id, value)
+    writer.flush(timeout=5.0)
 def _poll_operator_commands(project_dir: str) -> None:
     """Drain pending operator_commands rows and apply approve/reject transitions.
 
@@ -1936,11 +1988,13 @@ def _sqlite_tick(project_dir: str, now: str) -> None:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import watcher_singleton
         from superharness.engine import heartbeat_dao
+        from superharness.engine import liveness
         conn = get_connection(project_dir)
         try:
             init_db(conn)
             watcher_singleton.heartbeat(conn, os.getpid(), now)
             heartbeat_dao.mark_stale(conn, now=now)
+            liveness.touch_watcher(conn, project_dir)
             conn.commit()
         finally:
             conn.close()
@@ -2464,6 +2518,14 @@ def _run_scripts(
     except Exception as e:
         _log_watcher_error(project_dir, "watcher", str(e))
 
+    # Transcript tailing for live dispatch progress (feature-flagged off by
+    # default; docs/PLAN-steal-omnigent.md iteration 7). No-op, no DB
+    # connection opened, unless profile.yaml sets transcript_tail: true.
+    try:
+        _run_transcript_tail_if_enabled(project_dir)
+    except Exception as e:
+        _log_watcher_error(project_dir, "watcher", str(e))
+
     # Reconcile paused dead-pid items — read from SQLite, write to SQLite
     try:
         from dataclasses import asdict
@@ -2912,6 +2974,69 @@ def _analyze_task_logs(project_dir: str) -> None:
             conn.commit()
     finally:
         conn.close()
+
+
+def _claude_transcript_dir(project_dir: str) -> str:
+    """Resolve the Claude Code session-transcript directory for project_dir.
+
+    Assumption (unverified against a live directory — SIDE-EFFECT FENCE
+    forbids reading ~/.claude/projects/ from this codebase): Claude Code
+    mirrors `~/.claude/projects/<project-path-with-/-replaced-by-->/`
+    (leading path separator becomes a leading dash). If this convention is
+    wrong, select_transcript() simply finds no matching directory and
+    _run_transcript_tail_if_enabled() no-ops — it never raises either way.
+    """
+    munged = os.path.realpath(project_dir).replace(os.sep, "-")
+    return os.path.join(os.path.expanduser("~/.claude/projects"), munged)
+
+
+def _run_transcript_tail_if_enabled(project_dir: str) -> None:
+    """Tail each launched dispatch's Claude Code transcript by persisted
+    byte offset, emitting telemetry events (engine/transcript_tail.py).
+
+    Feature-flagged OFF by default via profile.yaml `transcript_tail: true`
+    (docs/PLAN-steal-omnigent.md iteration 7 default; iteration 8 flips the
+    project default on). When disabled/unset, this is a true no-op — no DB
+    connection is even opened — so existing watcher behavior and tests are
+    byte-identical. Never raises.
+    """
+    try:
+        profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
+        enabled = False
+        if os.path.isfile(profile_file):
+            import yaml as _yaml
+            with open(profile_file) as f:
+                profile = _yaml.safe_load(f) or {}
+            enabled = bool(profile.get("transcript_tail", False))
+        if not enabled:
+            return
+
+        from dataclasses import asdict
+
+        from superharness.engine.db import get_connection, init_db
+        from superharness.engine import inbox_dao
+        from superharness.engine.transcript_tail import select_transcript, tail_step
+
+        conn = get_connection(project_dir)
+        try:
+            init_db(conn)
+            launched = inbox_dao.get_all(conn, status="launched")
+            transcript_dir = _claude_transcript_dir(project_dir)
+            for item in launched:
+                d = asdict(item)
+                dispatch_id = d.get("task_id") or d.get("id")
+                launched_at = d.get("launched_at") or ""
+                if not dispatch_id or not launched_at:
+                    continue
+                transcript = select_transcript(transcript_dir, launched_at)
+                if transcript is None:
+                    continue
+                tail_step(conn, dispatch_id, transcript)
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
+        pass
 def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
     """Reconcile launched inbox items that have no running process.
 

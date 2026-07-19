@@ -140,6 +140,19 @@ Repo: <https://github.com/thedotmack/claude-mem>
 
 ---
 
+## omnigent-ai — omnigent
+
+Repo: <https://github.com/omnigent-ai/omnigent>
+
+**Adopted**
+- Test-environment guardrail, DB heartbeat-timestamp liveness (`is_fresh(ttl)`), ordered live-state write chokepoint, typed telemetry events, harness registry, transcript tailing, and idle+absolute dual watchdog patterns. Ideas only, reimplemented from scratch (Apache-2.0 both sides) — no code copied.
+
+**Comparison docs**
+- [docs/STEAL-LIST-omnigent-2026-07-19.md](docs/STEAL-LIST-omnigent-2026-07-19.md)
+- [docs/PLAN-steal-omnigent.md](docs/PLAN-steal-omnigent.md)
+
+---
+
 ## How to add a new attribution
 
 When extracting from a new source:
