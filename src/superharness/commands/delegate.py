@@ -540,8 +540,6 @@ def _launch_agent(
 ) -> None:
     from superharness.engine.platform_runtime import launch_agent, expand_agent_path
     from superharness.logging_utils import get_logger, get_audit_logger, redact
-    from superharness.engine.adapter_registry import resolve_launcher
-    from superharness.utils.model_routing import apply_model_prefix
 
     log = get_logger("delegate")
     audit = get_audit_logger()
@@ -554,28 +552,32 @@ def _launch_agent(
     log.info("launch_agent target=%s prompt_len=%d", target, len(prompt))
     log.debug("prompt redacted=%s", redact(prompt[:300]))
 
-    scripts_dir = str(Path(__file__).parent.parent / "scripts")
+    # Harness registry (docs/PLAN-steal-omnigent.md iterations 5-6): every
+    # agent's invocation is built by its Harness adapter, proven
+    # byte-identical to the legacy inline construction by
+    # tests/unit/test_harness_registry.py and test_harness_adapters.py.
+    # An unrecognized target fails cleanly here (KeyError-with-known-list)
+    # instead of a dispatch that hangs or gets stuck 'launched'.
+    from superharness.harnesses import get_harness
+
     try:
-        launcher = resolve_launcher(target, scripts_dir)
-    except Exception as e:
-        _abort(f"Failed to resolve launcher for '{target}': {e}")
+        harness = get_harness(target)
+    except KeyError as e:
+        _abort(str(e))
 
-    # Model prefixing: only for adapters that expect provider/model format (e.g. opencode).
-    # Claude CLI rejects anthropic/ prefix — pass bare model names for claude-code.
-    if model and target != "claude-code":
-        model = apply_model_prefix(model)
-
-    launch_args = ["bash", launcher, "--project", project_dir, "--prompt", prompt]
-    if non_interactive:
-        launch_args.append("--non-interactive")
-    if yolo:
-        launch_args.append("--yolo")
-    if codex_bypass:
-        launch_args.append("--codex-bypass")
-    if model:
-        launch_args += ["--model", model]
-    if effort:
-        launch_args += ["--effort", effort]
+    invocation = harness.build_invocation(
+        task={
+            "prompt": prompt,
+            "model": model,
+            "effort": effort,
+            "yolo": yolo,
+            "codex_bypass": codex_bypass,
+        },
+        project_dir=project_dir,
+        non_interactive=non_interactive,
+    )
+    launch_args = list(invocation.argv)
+    launcher = invocation.argv[1]
 
     if print_only:
         print(f"would launch: {launcher}")
