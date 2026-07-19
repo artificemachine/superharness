@@ -326,8 +326,8 @@ def _migration_v1(conn: sqlite3.Connection) -> None:
             created_at     TEXT NOT NULL
         )
     """)
-    conn.execute("CREATE INDEX idx_failures_task           ON failures(task_id)")
-    conn.execute("CREATE INDEX idx_failures_agent_pattern  ON failures(agent, pattern)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_failures_task           ON failures(task_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_failures_agent_pattern  ON failures(agent, pattern)")
 
     # Decisions
     conn.execute("""
