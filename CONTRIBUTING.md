@@ -3,7 +3,7 @@
 ## Quick start
 
 ```bash
-git clone https://github.com/celstnblacc/superharness.git
+git clone https://github.com/artificemachine/superharness.git
 cd superharness
 pip install -e ".[dev]"   # or: uv sync --dev
 pytest tests/ -q          # all tests must pass

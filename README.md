@@ -1,5 +1,10 @@
 # superharness
 
+[![CI](https://github.com/artificemachine/superharness/actions/workflows/tests.yml/badge.svg)](https://github.com/artificemachine/superharness/actions/workflows/tests.yml)
+[![PyPI version](https://badge.fury.io/py/superharness.svg)](https://badge.fury.io/py/superharness)
+[![Python versions](https://img.shields.io/pypi/pyversions/superharness.svg)](https://pypi.org/project/superharness/)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 **Multi-agent task coordination for Claude Code, Codex CLI, Gemini CLI, and OpenCode**
 
 superharness lets AI coding assistants work on the same project without stepping on each other. It provides a shared contract (SQLite-backed), queue-based delegation, lifecycle rules, and handoff/ledger state so tasks survive across sessions and auto-manage themselves.
@@ -13,14 +18,14 @@ superharness lets AI coding assistants work on the same project without stepping
 
 Gives you `/shux` (raw CLI passthrough), `/shux-contract`, `/shux-status`, `/shux-delegate`, `/shux-doctor`, `/shux-close`, plus a skill that auto-routes plain-English task/status questions to the right command.
 
-## What's New in v1.44.21
+## What's New in v1.80.0
 
-- **Auto-mode**: 6 lifecycle rules (in_progress 3h, waiting_input 8h, report_ready 24h, todo 2h, deadline, review) auto-manage tasks without human intervention
-- **`shux status`**: Comprehensive health dashboard with 10 issue types, `--fix` auto-clean, and `--check` CI mode
-- **Discussion panel**: Agent submissions, chronological timeline, live agents, auto-consensus → auto-task pipeline
-- **Split-brain closed**: SQLite is the sole runtime data path. YAML is export-only. CI-enforced.
-- **6 plan iterations**: Loop detector, handoff generator, FTS5 recall, JSONL event stream, policy gates, skill metrics
-- **151 tests** preventing 9 bug classes from recurring
+- **Harness adapter registry**: claude/codex/gemini/opencode dispatch routed through a single `Harness` protocol, with golden-parity tests proving byte-identical invocations
+- **Transcript tailing + dual watchdog**: byte-offset live dispatch progress with persisted cursors, backed by idle-timeout + absolute-ceiling deadline enforcement from the event stream
+- **Typed telemetry events**: dedicated events table (migration v31) with a background emitter and DB-heartbeat liveness (`is_fresh`)
+- **Dependency hygiene**: CVE floors on `starlette`/`python-multipart`, a previously-undeclared `requests` dependency now declared, and `.github/dependabot.yml` for ongoing drift
+- **Dashboard/CLI DB-path fix**: `dashboard-ui.py` now resolves `state.db` through the same XDG-aware `get_connection` as the CLI, closing a silent divergence bug between the two
+- **3400+ tests** preventing regressions across lifecycle, dispatch, and protocol state
 
 ---
 
@@ -80,14 +85,14 @@ pipx install superharness
 <summary>Alternative: install from source</summary>
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/celstnblacc/superharness/main/scripts/install-remote.sh | bash
+curl -fsSL https://raw.githubusercontent.com/artificemachine/superharness/main/src/superharness/scripts/install-remote.sh | bash
 # export PATH="$HOME/.local/bin:$PATH"  # add to ~/.zshrc or ~/.bashrc if needed
 ```
 
 Or clone manually:
 ```bash
-git clone https://github.com/celstnblacc/superharness.git ~/.local/share/superharness
-bash ~/.local/share/superharness/scripts/install-wrapper.sh
+git clone https://github.com/artificemachine/superharness.git ~/.local/share/superharness
+cd ~/.local/share/superharness && pip install -e .
 ```
 </details>
 
@@ -269,7 +274,7 @@ You probably **don't need** superharness if you only ever run a single agent int
 
 ## Prerequisites
 
-- `python3` 3.11+ + `pyyaml` — `uv sync --dev` (or `pip install pyyaml click ruamel.yaml`)
+- `python3` 3.11+ — `pip install superharness` (or `uv sync --dev` for a dev checkout). Runtime deps: `click`, `pyyaml`, `ruamel.yaml`, `pydantic`, `fastmcp`, `requests` — installed automatically.
 - `bash` — only needed for macOS/Linux watcher service install scripts; not required on Windows or for any core commands
 - `claude` CLI (for Claude delegation commands): `npm install -g @anthropic-ai/claude-code`
 - `codex` CLI (for Codex delegation commands): `npm install -g @openai/codex`
@@ -279,16 +284,25 @@ You probably **don't need** superharness if you only ever run a single agent int
 
 ## Project Runtime State
 
-Per-project state lives in `.superharness/`:
+**SQLite is the sole runtime source of truth.** All task, discussion, handoff, ledger, and dispatch state lives in one `state.db` file:
+
+```text
+~/.local/state/superharness/<project-hash>/state.db   # XDG path (new projects)
+.superharness/state.sqlite3                            # legacy path (pre-XDG projects)
+```
+
+Every read and write goes through `shux`/`superharness` — never hand-edit the database or its exports directly.
+
+`.superharness/` itself holds project config plus **export-only** YAML artifacts, regenerated from SQLite on demand and safe to delete:
 
 ```text
 .superharness/
-├── contract.yaml          # tasks, decisions, failures
-├── handoffs/              # session handoff state
-├── ledger.md              # append-only event log
-├── decisions.yaml         # cross-agent ADRs
-├── failures.yaml          # failure memory
-└── inbox.yaml             # dispatch queue
+├── contract.yaml          # exported snapshot of tasks, decisions, failures
+├── handoffs/              # exported session handoff notes
+├── ledger.md              # exported append-only event log
+├── decisions.yaml         # exported cross-agent ADRs
+├── failures.yaml          # exported failure memory
+└── inbox.yaml             # exported dispatch queue snapshot
 ```
 
 **Architecture details:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
@@ -303,7 +317,8 @@ superharness/
 ├── src/superharness/       # Python CLI + engine + command modules
 ├── protocol/              # protocol spec + templates
 ├── adapters/              # Claude/Codex adapter assets
-├── scripts/               # launchd installer + CI guard scripts
+├── src/superharness/scripts/  # installers (launchd/systemd/remote), delegate/watcher shell scripts, dashboard UI
+├── scripts/               # dev-reinstall + L5 verification loop scripts
 ├── docs/                  # architecture and user guide
 ├── tests/                 # unit/integration/e2e tests
 └── CHANGELOG.md
@@ -317,7 +332,7 @@ The background watcher enables **unattended execution** (agents run without huma
 
 **macOS (launchd):**
 ```bash
-bash scripts/install-launchd-inbox-watcher.sh \
+bash src/superharness/scripts/install-launchd-inbox-watcher.sh \
   --project /path/to/project \
   --interval 30 \
   --confirm-non-interactive yes \
@@ -326,7 +341,7 @@ bash scripts/install-launchd-inbox-watcher.sh \
 
 **Linux (systemd):**
 ```bash
-CONFIRM_NON_INTERACTIVE=yes bash scripts/install-systemd-inbox-watcher.sh \
+CONFIRM_NON_INTERACTIVE=yes bash src/superharness/scripts/install-systemd-inbox-watcher.sh \
   --project /path/to/project \
   --interval 30
 ```
@@ -339,11 +354,11 @@ CONFIRM_NON_INTERACTIVE=yes bash scripts/install-systemd-inbox-watcher.sh \
 
 superharness draws on ideas from several open agent harnesses and patterns. Each link points to the specific extraction or comparison doc.
 
-- [Nous Research / hermes-agent](https://github.com/nousresearch/hermes-agent) — agent lifecycle and tool-use shape. See [docs/AUDIT-pi-hermes-adaptation.md](docs/AUDIT-pi-hermes-adaptation.md), [docs/COMPARISON-superharness-vs-pi-hermes.md](docs/COMPARISON-superharness-vs-pi-hermes.md), [docs/hermes-integration-tdd-plan.md](docs/hermes-integration-tdd-plan.md)
+- [Nous Research / hermes-agent](https://github.com/nousresearch/hermes-agent) — agent lifecycle and tool-use shape. See [docs/AUDIT-pi-hermes-adaptation.md](docs/AUDIT-pi-hermes-adaptation.md), [docs/archive/COMPARISON-superharness-vs-pi-hermes.md](docs/archive/COMPARISON-superharness-vs-pi-hermes.md), [docs/hermes-integration-tdd-plan.md](docs/hermes-integration-tdd-plan.md)
 - [earendil-works/pi](https://github.com/earendil-works/pi) — multi-agent coordination patterns
 - [obra/superpowers](https://github.com/obra/superpowers) — composable `SKILL.md` files, two-stage review (spec compliance, then code quality), TDD enforcement. See [docs/CONCEPT-superpowers-extraction.md](docs/CONCEPT-superpowers-extraction.md)
 - [paperclipai/paperclip](https://github.com/paperclipai/paperclip) — adapter breadth, plugin SDK shape, dashboard control plane. See [docs/AUDIT-paperclip-gap-analysis.md](docs/AUDIT-paperclip-gap-analysis.md)
-- [Charlie85270/Dorothy](https://github.com/Charlie85270/Dorothy) — parallel-agent Kanban UI, SQLite FTS5 knowledge store. See [docs/comparison-dorothy.md](docs/comparison-dorothy.md)
+- [Charlie85270/Dorothy](https://github.com/Charlie85270/Dorothy) — parallel-agent Kanban UI, SQLite FTS5 knowledge store. See [docs/archive/comparison-dorothy.md](docs/archive/comparison-dorothy.md)
 - [thedotmack/claude-mem](https://github.com/thedotmack/claude-mem) — per-agent persistent memory plugin for Claude Code. Inspired our privacy-tag write boundary, env-driven multi-profile isolation, observation snapshot table, and citation URL pattern (not auto-prompt-injection, which fights operator gating). See [docs/AUDIT-claude-mem-adaptation.md](docs/AUDIT-claude-mem-adaptation.md), [docs/CONCEPT-claude-mem-integration.md](docs/CONCEPT-claude-mem-integration.md), [docs/PLAN-claude-mem-integration.md](docs/PLAN-claude-mem-integration.md)
 - **Ralph Loops** ([Chris Parsons workshop](https://youtu.be/2TLXsxkz0zI), [Jeffrey Huntley](https://ghuntley.com/)) — "next most important task" dispatch, sub-agent validation against confirmation bias, fresh-context discipline
 
@@ -353,6 +368,12 @@ See [ATTRIBUTIONS.md](ATTRIBUTIONS.md) for the full extract list — what each s
 
 ## Current Version
 
-Current version: **v1.44.21** — 151 tests, 9 bugs fixed, 6 plan iterations, split-brain closed.
+Current version: **v1.80.0** — 3400+ tests, harness adapter registry, transcript tailing, dual watchdog, typed telemetry events.
 
 See [CHANGELOG.md](CHANGELOG.md) for the full iteration log.
+
+---
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE).
