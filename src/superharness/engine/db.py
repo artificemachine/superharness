@@ -13,7 +13,7 @@ from superharness.utils.paths import resolve_xdg_state_db_path
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 30
+CURRENT_SCHEMA_VERSION = 32
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -863,6 +863,36 @@ def _migration_v30(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "tasks", "issue_url", "TEXT")
 
 
+def _migration_v31(conn: sqlite3.Connection) -> None:
+    """Typed telemetry events table (engine/events.py): task transitions and
+    dispatch lifecycle events, written by a background emitter. Additive and
+    distinct from the free-form JSONL stream in engine/event_stream.py."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS events (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts           TEXT    NOT NULL,
+            kind         TEXT    NOT NULL,
+            task_id      TEXT,
+            payload_json TEXT    NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_events_kind_ts ON events(kind, ts)")
+
+
+def _migration_v32(conn: sqlite3.Connection) -> None:
+    """Byte-offset cursor per dispatch for transcript tailing
+    (engine/transcript_tail.py). Feature-flagged off by default; see
+    docs/PLAN-steal-omnigent.md iteration 7."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS dispatch_cursors (
+            dispatch_id  TEXT    PRIMARY KEY,
+            path         TEXT,
+            byte_offset  INTEGER NOT NULL DEFAULT 0,
+            updated_at   TEXT
+        )
+    """)
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -894,4 +924,6 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v28,
     _migration_v29,
     _migration_v30,
+    _migration_v31,
+    _migration_v32,
 ]

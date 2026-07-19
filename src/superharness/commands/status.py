@@ -89,11 +89,13 @@ def _read_project_heartbeat(check_dir: str, via_worker: bool, stale_seconds: int
             if os.path.isfile(structured_path):
                 hb = read_heartbeat(structured_path)
         if hb is not None:
+            from superharness.engine.liveness import is_fresh
+
             age = hb_age_seconds(hb)
             if age < 0:
                 return "missing", "invalid heartbeat timestamp"
             age_min = age // 60
-            if age >= stale_seconds:
+            if not is_fresh(hb.written_at, ttl_seconds=stale_seconds):
                 return "stale", f"last heartbeat {age_min}m ago{suffix}"
             return "ok", f"last heartbeat {age}s ago{suffix}"
     except Exception as e:
@@ -107,11 +109,13 @@ def _read_project_heartbeat(check_dir: str, via_worker: bool, stale_seconds: int
     if not hb_ts:
         return "missing", "empty heartbeat file"
     try:
+        from superharness.engine.liveness import is_fresh
+
         hb_dt = datetime.fromisoformat(hb_ts.replace("Z", "+00:00"))
         now_dt = datetime.now(timezone.utc)
         age = int((now_dt - hb_dt).total_seconds())
         age_min = age // 60
-        if age >= stale_seconds:
+        if not is_fresh(hb_ts, ttl_seconds=stale_seconds):
             return "stale", f"last heartbeat {age_min}m ago{suffix}"
         return "ok", f"last heartbeat {age}s ago{suffix}"
     except Exception as e:
