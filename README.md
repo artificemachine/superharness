@@ -18,7 +18,7 @@ superharness lets AI coding assistants work on the same project without stepping
 
 Gives you `/shux` (raw CLI passthrough), `/shux-contract`, `/shux-status`, `/shux-delegate`, `/shux-doctor`, `/shux-close`, plus a skill that auto-routes plain-English task/status questions to the right command.
 
-## What's New in v1.80.0
+## What's New in the v1.80.x line
 
 - **Harness adapter registry**: claude/codex/gemini/opencode dispatch routed through a single `Harness` protocol, with golden-parity tests proving byte-identical invocations
 - **Transcript tailing + dual watchdog**: byte-offset live dispatch progress with persisted cursors, backed by idle-timeout + absolute-ceiling deadline enforcement from the event stream
@@ -368,7 +368,7 @@ See [ATTRIBUTIONS.md](ATTRIBUTIONS.md) for the full extract list — what each s
 
 ## Current Version
 
-Current version: **v1.80.0** — 3400+ tests, harness adapter registry, transcript tailing, dual watchdog, typed telemetry events.
+Current version: see the [PyPI badge](https://pypi.org/project/superharness/) above — 3400+ tests, harness adapter registry, transcript tailing, dual watchdog, typed telemetry events.
 
 See [CHANGELOG.md](CHANGELOG.md) for the full iteration log.
 
