@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -46,6 +47,51 @@ def isolated_state_dir(tmp_path_factory, monkeypatch):
     state_dir = tmp_path_factory.mktemp("superharness-state")
     monkeypatch.setenv("SUPERHARNESS_STATE_DIR", str(state_dir))
     yield state_dir
+
+
+def _assert_ephemeral_state_dir() -> None:
+    """Fail fast if SUPERHARNESS_STATE_DIR does not point at an ephemeral tmp path.
+
+    Defense-in-depth against the PR #12 bug class (test state leaking into
+    $HOME / a real ~/.local/state/superharness). `isolated_state_dir` above
+    already pins every test to a `tmp_path_factory` directory; this guard
+    exists so a test that deliberately (or accidentally) overrides
+    SUPERHARNESS_STATE_DIR to a non-ephemeral path fails loudly before any
+    DB write, instead of silently mutating real state.
+    """
+    raw = os.environ.get("SUPERHARNESS_STATE_DIR")
+    if not raw:
+        raise RuntimeError(
+            "SUPERHARNESS_STATE_DIR is unset — tests must pin state dir to an "
+            "ephemeral tmp path (see isolated_state_dir fixture in conftest.py)"
+        )
+    resolved = Path(raw).resolve()
+    resolved_str = str(resolved)
+    tmp_root = str(Path(tempfile.gettempdir()).resolve())
+    is_ephemeral = (
+        resolved_str.startswith(tmp_root)
+        or resolved_str.startswith("/tmp")
+        or resolved_str.startswith("/private/tmp")
+        or any(part.startswith("pytest-") for part in resolved.parts)
+    )
+    if not is_ephemeral:
+        raise RuntimeError(
+            f"SUPERHARNESS_STATE_DIR resolves to a non-ephemeral path: "
+            f"{resolved_str!r}. Tests must target a tmp_path-derived "
+            "directory, never a real state directory."
+        )
+
+
+@pytest.fixture(autouse=True)
+def _state_dir_guardrail(isolated_state_dir):
+    """Autouse guard run after isolated_state_dir sets an ephemeral env var.
+
+    Function-scoped (not session-scoped): it must run after per-test env
+    setup, and must observe overrides individual tests make to
+    SUPERHARNESS_STATE_DIR via monkeypatch.
+    """
+    _assert_ephemeral_state_dir()
+    yield
 
 
 @pytest.fixture
