@@ -70,16 +70,10 @@ def test_flush_drains_queue():
     assert order == ["a"]
 
 
-def test_writer_exception_is_logged_not_raised(caplog, monkeypatch):
-    # logging_utils.get_logger() sets logging.getLogger("superharness")
-    # .propagate = False the first time ANY superharness.* logger is used
-    # (process-wide, cached on the Logger singleton). If an earlier test in
-    # the same pytest process triggered that, records from
-    # superharness.engine.live_state stop reaching caplog's root-attached
-    # handler even though they're still logged. Force propagation back on
-    # for the duration of this assertion.
-    monkeypatch.setattr(logging.getLogger("superharness"), "propagate", True)
-
+def test_writer_exception_is_logged_not_raised(caplog):
+    # The logging.getLogger("superharness").propagate poisoning this used to
+    # work around per-test is now fixed globally by the autouse
+    # _superharness_logger_propagates fixture in tests/conftest.py.
     def write_fn(key: str, value: str) -> None:
         raise ValueError("boom")
 

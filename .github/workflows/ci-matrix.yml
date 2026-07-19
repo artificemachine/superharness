@@ -13,6 +13,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   # ---------------------------------------------------------------------------
   # Cross-platform unit tests (Iterations 0–5 coverage)
