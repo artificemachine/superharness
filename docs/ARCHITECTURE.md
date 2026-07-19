@@ -26,8 +26,8 @@ AI coding assistants are powerful within a session but lose context when you swi
 
 | Principle | Why |
 |-----------|-----|
-| **Files on disk, not a server** | Works offline, git-compatible, human-readable |
-| **Explicit handoffs, not shared memory** | No invisible state, no race conditions, auditable |
+| **Local SQLite, not a server** | Works offline; state.db is the single runtime source of truth (WAL, busy_timeout); YAML exports stay git-compatible and human-readable |
+| **Explicit handoffs, not shared memory** | Every agent transition is a recorded handoff — auditable, resumable |
 | **Contract-first** | Single source of truth for tasks, owners, dependencies |
 | **Queue-based dispatch** | Priority support, retry logic, status tracking |
 | **Append-only ledger** | Immutable history, grep-friendly, git-native |
