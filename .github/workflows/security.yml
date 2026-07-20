@@ -22,7 +22,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install ShipGuard
-        run: pip install "shipguard==0.3.2"
+        run: pip install "shipguard==0.5.2"
 
       - name: Run ShipGuard
         run: |
