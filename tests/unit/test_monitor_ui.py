@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import threading
 import urllib.error
@@ -86,13 +87,21 @@ def _start_server(module, repo_root: Path, project: Path):
     return server, thread, base_url
 
 
+# Local HTTP round-trip against a server in this same process. 2s is ample on a
+# developer machine but not on a saturated shared runner — this timed out on
+# Windows CI in a job that took ~15 minutes overall, failing the build on
+# scheduler contention rather than on anything the server did. The file already
+# documents Windows thread-scheduler saturation in _stop_server below.
+_HTTP_TIMEOUT = 20 if os.environ.get("CI") else 2
+
+
 def _request_json(method: str, url: str, payload: dict | None = None, headers: dict[str, str] | None = None):
     body = None
     if payload is not None:
         body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=body, method=method, headers=headers or {})
     try:
-        with urllib.request.urlopen(req, timeout=2) as resp:
+        with urllib.request.urlopen(req, timeout=_HTTP_TIMEOUT) as resp:
             return resp.status, json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         return exc.code, json.loads(exc.read().decode("utf-8"))
