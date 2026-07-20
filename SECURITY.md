@@ -11,13 +11,39 @@ These modes disable the normal permission and sandbox checks of the target CLI. 
 
 ## Required confirmations
 
-`cli/delegate.sh` and the launchd watcher require explicit confirmation for unattended execution:
+**Exactly one variable gates unattended dispatch:**
 
 - `SUPERHARNESS_CONFIRM_NON_INTERACTIVE=YES`
+
+`shux delegate` refuses to launch non-interactively without it when stdin is not
+a TTY (`src/superharness/commands/delegate.py`, `_confirm_non_interactive_risk`).
+
+Two further variables exist:
+
 - `SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS=YES`
 - `SUPERHARNESS_CONFIRM_CODEX_BYPASS=YES`
 
-The generic non-interactive confirmation is not enough to enable the dangerous Claude or Codex bypass flags. Each bypass has its own confirmation gate.
+**These are consumed only by the service installers**
+(`install-launchd-inbox-watcher.sh`, `install-systemd-inbox-watcher.sh`), which
+prompt for them and bake the result into the generated plist/unit file. They are
+**not** re-checked at dispatch time. Once a dispatch is non-interactive,
+`delegate-to-claude.sh` appends `-p --dangerously-skip-permissions` and
+`delegate-to-codex.sh` appends `--dangerously-bypass-approvals-and-sandbox`
+based on the `--non-interactive` / `--codex-bypass` flags alone.
+
+Additionally, a project profile with `autonomy: autonomous` causes
+`delegate.py` to set both `SUPERHARNESS_CONFIRM_NON_INTERACTIVE` and
+`SUPERHARNESS_CONFIRM_SKIP_PERMISSIONS` to `YES` on your behalf.
+
+**What this means in practice:** treat `SUPERHARNESS_CONFIRM_NON_INTERACTIVE=YES`
+— or `autonomy: autonomous` in `profile.yaml` — as sufficient on its own to allow
+Claude to run with permission checks disabled. There is no independent second
+gate protecting the bypass flags at dispatch time. Grant unattended mode only for
+projects whose contract, handoff, and inbox content you trust.
+
+> Prior versions of this document claimed each bypass had its own confirmation
+> gate. That was inaccurate and is corrected here; see
+> `docs/audits/2026-07-20-job-ready-v2.md`.
 
 ## launchd watcher guidance
 
@@ -30,7 +56,7 @@ For macOS watcher installs:
 Recommended default:
 
 ```bash
-bash scripts/install-launchd-inbox-watcher.sh \
+bash src/superharness/scripts/install-launchd-inbox-watcher.sh \
   --project /path/to/project \
   --interval 30 \
   --to codex-cli \
@@ -40,7 +66,7 @@ bash scripts/install-launchd-inbox-watcher.sh \
 Higher-risk Claude watcher:
 
 ```bash
-bash scripts/install-launchd-inbox-watcher.sh \
+bash src/superharness/scripts/install-launchd-inbox-watcher.sh \
   --project /path/to/project \
   --interval 30 \
   --to claude-code \
@@ -51,7 +77,7 @@ bash scripts/install-launchd-inbox-watcher.sh \
 Highest-risk Codex bypass watcher:
 
 ```bash
-bash scripts/install-launchd-inbox-watcher.sh \
+bash src/superharness/scripts/install-launchd-inbox-watcher.sh \
   --project /path/to/project \
   --interval 30 \
   --to codex-cli \
