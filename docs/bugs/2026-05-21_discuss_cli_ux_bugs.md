@@ -1,6 +1,6 @@
 # Superharness `shux discuss` — UX and retry-alert bugs (v1.62.20)
 
-**Reporter:** airm2max  
+**Reporter:** maintainer  
 **Date:** 2026-05-21  
 **Version:** v1.62.20  
 **Environment:** macOS Darwin 25.5.0, Python 3.11.6 (editable install), pipx 1.7.0  

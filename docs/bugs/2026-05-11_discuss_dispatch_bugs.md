@@ -1,6 +1,6 @@
 # Superharness `shux discuss` — full bug report through 1.56.2
 
-**Reporter:** airm2max
+**Reporter:** maintainer
 **Date:** 2026-05-11
 **Versions exercised:** 1.56.0 → 1.56.1 → 1.56.2 (live on the same project, same day)
 **Environment:** macOS 14 (Darwin 25.3), Python 3.14.3 pipx install, codex-cli 0.130.0 logged in via ChatGPT account, Gemini CLI on Node 25.2.1

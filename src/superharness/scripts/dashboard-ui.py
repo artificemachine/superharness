@@ -1754,12 +1754,45 @@ class Handler(BaseHTTPRequestHandler):
         host, port = self._bound_address()
         return f"http://{host}:{port}"
 
+    def _token_ok(self, token: str) -> bool:
+        return bool(token) and secrets.compare_digest(token, self.auth_token or "")
+
+    def _verify_read_auth(self) -> tuple[dict, int] | None:
+        """Gate read-only GET /api/* routes behind the same token as mutations.
+
+        No Origin/Referer check here (unlike `_verify_mutation_auth`): GETs
+        don't mutate state, so they carry no CSRF risk, and non-browser
+        clients (curl, scripts, this dashboard's own same-origin fetch calls)
+        hold the token but may not send Origin/Referer at all.
+
+        The token is normally read from the `X-Superharness-Token` header.
+        `EventSource` (used by `/api/logs/stream`) cannot set custom request
+        headers, so a `token` query parameter is accepted as a fallback for
+        GETs only — never for the mutation path above.
+
+        The Host check is not optional here. `GET /` is unauthenticated and
+        injects the auth token into the page it serves, so a DNS-rebound page
+        can read the token out of the DOM; without this check it could then
+        replay it against the read routes and exfiltrate logs, handoffs, task
+        reports and discussion content. Gating mutations alone leaves that
+        half of the chain open.
+        """
+        if not self._host_is_allowed():
+            return ({"error": "forbidden"}, 403)
+
+        token = self.headers.get("X-Superharness-Token", "")
+        if not token:
+            token = parse_qs(urlparse(self.path).query).get("token", [""])[0]
+        if not self._token_ok(token):
+            return ({"error": "forbidden"}, 403)
+        return None
+
     def _verify_mutation_auth(self) -> tuple[dict, int] | None:
         if not self._host_is_allowed():
             return ({"error": "forbidden"}, 403)
 
         token = self.headers.get("X-Superharness-Token", "")
-        if not token or not secrets.compare_digest(token, self.auth_token or ""):
+        if not self._token_ok(token):
             return ({"error": "forbidden"}, 403)
 
         expected_origin = self._expected_origin()
@@ -2535,11 +2568,30 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         Handler.last_ping = time.time()
+
+        # Refuse a rebound Host before serving anything at all — including the
+        # unauthenticated `/`, which injects the auth token into the page. A
+        # DNS-rebound page that can fetch `/` can read that token and replay it
+        # against every other route, so the cheapest place to break the chain
+        # is the front door rather than each route behind it.
+        if not self._host_is_allowed():
+            self._json({"error": "forbidden"}, 403)
+            return
+
         parsed = urlparse(self.path)
         p = parsed.path
         if p in {"/", "/index.html"}:
             self._html(HTML)
             return
+
+        # Every /api/* GET is read-only but still discloses task reports,
+        # logs, handoffs, and discussion content — gate all of them here,
+        # once, so a future route can't be added ungated by accident.
+        if p.startswith("/api/"):
+            auth_error = self._verify_read_auth()
+            if auth_error:
+                self._json(*auth_error)
+                return
 
         if p == "/api/ping":
             self._json({"status": "ok", "idle_seconds": int(time.time() - Handler.last_ping)})

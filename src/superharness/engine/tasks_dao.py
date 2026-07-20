@@ -276,6 +276,28 @@ def update(
     except sqlite3.Error as e:
         raise StateError(f"Failed to update task '{id}': {e}") from e
 
+
+def set_status(
+    conn: sqlite3.Connection,
+    task_id: str,
+    new_status: str,
+    expected_version: int,
+    **fields: Any,
+) -> TaskRow:
+    """Set a task's status (plus any additional columns) through the
+    version-checked `update()`.
+
+    Thin wrapper for the common status-transition call shape used by the
+    watcher's auto-recovery/reconciliation paths (see
+    commands/inbox_watch.py's `_with_task_lock`) — those seven sites used to
+    write `status` via raw `UPDATE tasks ...` statements with no version
+    check at all, so a concurrent writer could silently clobber another
+    agent's change. Raises `ConcurrencyError` on a stale `expected_version`,
+    same as `update()`.
+    """
+    changes = {"status": new_status, **fields}
+    return update(conn, task_id, expected_version, changes)
+
 def set_dependencies(
     conn: sqlite3.Connection,
     task_id: str,
