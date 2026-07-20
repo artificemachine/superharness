@@ -75,13 +75,24 @@ def test_onboard_non_interactive_prints_guidance(tmp_path):
 
 
 def test_onboard_non_interactive_does_not_hang(tmp_path):
-    """Must exit quickly without waiting for input."""
+    """Must exit without waiting for input."""
+    import os
     import time
     start = time.monotonic()
     result = _run_onboard(tmp_path, ["--non-interactive"])
     elapsed = time.monotonic() - start
     assert result.returncode == 0
-    assert elapsed < 5.0, f"onboard --non-interactive took {elapsed:.1f}s (too slow)"
+    # This detects a hang — a build blocked on stdin never returns at all — so
+    # the threshold only has to separate "returned" from "blocked forever". A
+    # 5s budget does not do that on a shared runner: it measured 5.1s on
+    # Windows CI, where the suite as a whole took ~15 minutes, and failed the
+    # build for one tenth of a second of contention while the command had in
+    # fact exited correctly.
+    budget = 30.0 if os.environ.get("CI") else 5.0
+    assert elapsed < budget, (
+        f"onboard --non-interactive took {elapsed:.1f}s (budget {budget:.0f}s) — "
+        "it should return immediately, never block on stdin"
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -13,7 +13,7 @@ from superharness.utils.paths import resolve_xdg_state_db_path
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 33
+CURRENT_SCHEMA_VERSION = 34
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -271,7 +271,17 @@ def _run_migrations(conn: sqlite3.Connection, current_version: int, project_dir:
 # foreign_keys is also a no-op when toggled mid-transaction, so it must be
 # flipped here, before the SAVEPOINT below opens one, not inside the
 # migration function itself.
-_MIGRATIONS_REQUIRING_FK_OFF: frozenset[int] = frozenset({33})
+_MIGRATIONS_REQUIRING_FK_OFF: dict[int, tuple[str, ...]] = {
+    # version -> tables the migration rebuilds, and therefore the tables whose
+    # FK integrity it is responsible for verifying afterwards. Scoped per-table
+    # deliberately: a bare `PRAGMA foreign_key_check` walks the WHOLE database
+    # and fails on any unrelated pre-existing defect elsewhere (verified: a
+    # hand-rolled test fixture whose `discussions` table lacks the PK that
+    # `discussion_rounds` references raises "foreign key mismatch" — a schema
+    # error in a table this migration never touches). A migration must answer
+    # for what it changed, not assert the entire DB is pristine.
+    33: ("tasks", "failures", "decisions", "ledger"),
+}
 
 
 def _run_single_migration(conn: sqlite3.Connection, v: int, project_dir: str | None = None) -> None:
@@ -295,6 +305,25 @@ def _run_single_migration(conn: sqlite3.Connection, v: int, project_dir: str | N
             try:
                 migration_fn = _MIGRATIONS[v - 1]
                 migration_fn(conn)
+                # Verify BEFORE releasing the savepoint. Running this after the
+                # enclosing transaction commits (the original bug) meant a
+                # violation was detected but could not be undone — user_version
+                # had already advanced, leaving the DB migrated, constraint-
+                # bearing, and violating: exactly the state this guard exists
+                # to prevent.
+                if needs_fk_off:
+                    violations = []
+                    for tbl in _MIGRATIONS_REQUIRING_FK_OFF[v]:
+                        if not _table_exists(conn, tbl):
+                            continue
+                        violations.extend(
+                            conn.execute(f"PRAGMA foreign_key_check({tbl})").fetchall()
+                        )
+                    if violations:
+                        raise SchemaError(
+                            f"Migration v{v} left {len(violations)} foreign key "
+                            f"violation(s): {[tuple(r) for r in violations]}"
+                        )
                 conn.execute(
                     "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
                     (v, now_iso())
@@ -308,12 +337,7 @@ def _run_single_migration(conn: sqlite3.Connection, v: int, project_dir: str | N
                 raise
     finally:
         if needs_fk_off:
-            violations = conn.execute("PRAGMA foreign_key_check").fetchall()
             conn.execute(f"PRAGMA foreign_keys={'ON' if prior_fk_state else 'OFF'}")
-            if violations:
-                raise SchemaError(
-                    f"Migration v{v} left {len(violations)} foreign key violation(s): {violations}"
-                )
 
 
 def _rebuild_table_with_new_ddl(
@@ -323,6 +347,7 @@ def _rebuild_table_with_new_ddl(
     columns: list[str],
     indexes: list[str],
     column_fallbacks: dict[str, str] | None = None,
+    null_orphans: dict[str, str] | None = None,
 ) -> None:
     """Rebuild `table` under new DDL (e.g. an added/changed FK constraint),
     preserving all rows.
@@ -351,9 +376,19 @@ def _rebuild_table_with_new_ddl(
     would have created — verified: failures/decisions/ledger genuinely
     absent despite user_version=7), there's nothing to migrate — just
     promote the freshly-created tmp table into place.
+
+    `null_orphans` maps a column to the table it now references. Any source
+    row whose value in that column doesn't exist in the referenced table is
+    copied with the column set to NULL. Adding an FK to a table that already
+    holds dangling references would otherwise install a constraint the
+    existing data immediately violates — and since a rebuild runs with
+    foreign_keys=OFF, SQLite accepts the bad rows silently. NULLing them is
+    the same outcome ON DELETE SET NULL would have produced had the
+    constraint existed when the referenced row disappeared.
     """
     tmp = f"{table}__rebuild_tmp"
     column_fallbacks = column_fallbacks or {}
+    null_orphans = null_orphans or {}
     conn.execute(f"DROP TABLE IF EXISTS {tmp}")
     conn.execute(create_sql_template.format(tmp=tmp))
     if not _table_exists(conn, table):
@@ -366,7 +401,15 @@ def _rebuild_table_with_new_ddl(
     for c in columns:
         if c in existing:
             insert_cols.append(c)
-            select_exprs.append(c)
+            if c in null_orphans:
+                ref = null_orphans[c]
+                # NULL any value with no matching row in the referenced table.
+                select_exprs.append(
+                    f"CASE WHEN {c} IS NOT NULL "
+                    f"AND {c} NOT IN (SELECT id FROM {ref}) THEN NULL ELSE {c} END"
+                )
+            else:
+                select_exprs.append(c)
         elif c in column_fallbacks:
             insert_cols.append(c)
             select_exprs.append(column_fallbacks[c])
@@ -1143,6 +1186,9 @@ def _migration_v33(conn: sqlite3.Connection) -> None:
         # tasks table missing the columns entirely (e.g. only id/status)
         # would otherwise violate NOT NULL on rebuild.
         column_fallbacks={"title": "id", "created_at": "'1970-01-01T00:00:00Z'"},
+        # A subtask whose parent was deleted before this FK existed keeps a
+        # parent_id pointing at nothing — NULL it, matching ON DELETE SET NULL.
+        null_orphans={"parent_id": "tasks"},
     )
 
     _rebuild_table_with_new_ddl(
@@ -1163,6 +1209,7 @@ def _migration_v33(conn: sqlite3.Connection) -> None:
             "CREATE INDEX IF NOT EXISTS idx_failures_task           ON failures(task_id)",
             "CREATE INDEX IF NOT EXISTS idx_failures_agent_pattern  ON failures(agent, pattern)",
         ],
+        null_orphans={"task_id": "tasks"},
     )
 
     _rebuild_table_with_new_ddl(
@@ -1183,6 +1230,7 @@ def _migration_v33(conn: sqlite3.Connection) -> None:
         indexes=[
             "CREATE INDEX IF NOT EXISTS idx_decisions_agent_time ON decisions(agent, created_at)",
         ],
+        null_orphans={"task_id": "tasks"},
     )
 
     _rebuild_table_with_new_ddl(
@@ -1203,7 +1251,40 @@ def _migration_v33(conn: sqlite3.Connection) -> None:
             "CREATE INDEX IF NOT EXISTS idx_ledger_time ON ledger(created_at)",
             "CREATE INDEX IF NOT EXISTS idx_ledger_task ON ledger(task_id, created_at)",
         ],
+        null_orphans={"task_id": "tasks"},
     )
+
+
+def _migration_v34(conn: sqlite3.Connection) -> None:
+    """Repair DBs that applied the original v33.
+
+    The first cut of v33 added the FK constraints but copied dangling task_id /
+    parent_id values verbatim, so a DB that already held orphaned audit rows
+    came out of the migration permanently violating its own new constraints
+    (observed live: 3 ledger rows referencing a task deleted months earlier).
+    v33 has since been fixed to NULL orphans during the rebuild, but a DB that
+    already recorded v33 as applied never re-runs it — hence this migration.
+
+    Idempotent and cheap on a clean DB: four correlated NOT IN scans that
+    update nothing when there are no orphans.
+    """
+    for table, column in (
+        ("tasks", "parent_id"),
+        ("failures", "task_id"),
+        ("decisions", "task_id"),
+        ("ledger", "task_id"),
+    ):
+        if not _table_exists(conn, table) or not _column_exists(conn, table, column):
+            continue
+        cur = conn.execute(
+            f"UPDATE {table} SET {column} = NULL "
+            f"WHERE {column} IS NOT NULL AND {column} NOT IN (SELECT id FROM tasks)"
+        )
+        if cur.rowcount:
+            logger.warning(
+                "Repaired %d orphaned %s.%s reference(s) left by the original v33",
+                cur.rowcount, table, column,
+            )
 
 
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
@@ -1240,4 +1321,5 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v31,
     _migration_v32,
     _migration_v33,
+    _migration_v34,
 ]

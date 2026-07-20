@@ -25,7 +25,7 @@ Gives you `/shux` (raw CLI passthrough), `/shux-contract`, `/shux-status`, `/shu
 - **Typed telemetry events**: dedicated events table (migration v31) with a background emitter and DB-heartbeat liveness (`is_fresh`)
 - **Dependency hygiene**: CVE floors on `starlette`/`python-multipart`, a previously-undeclared `requests` dependency now declared, and `.github/dependabot.yml` for ongoing drift
 - **Dashboard/CLI DB-path fix**: `dashboard-ui.py` now resolves `state.db` through the same XDG-aware `get_connection` as the CLI, closing a silent divergence bug between the two
-- **3400+ tests** preventing regressions across lifecycle, dispatch, and protocol state
+- **5,000+ tests** preventing regressions across lifecycle, dispatch, and protocol state
 
 ---
 
@@ -156,7 +156,7 @@ shux help              # show all shux shortcuts in the terminal
 
 ---
 
-### Intelligence layer (v1.7.0)
+### Intelligence layer
 
 Dispatch is now smarter. These features activate automatically — no extra setup needed.
 
@@ -222,6 +222,32 @@ pytest tests/ -q
 📘 **[User Guide](docs/GUIDE.md)** — Commands, background watcher, troubleshooting
 🏗️ **[Architecture](docs/ARCHITECTURE.md)** — Why it exists, how it works, design decisions
 🔒 **[Security](SECURITY.md)** — Threat model and operational safety notes
+📚 **[Docs index](docs/README.md)** — Every active doc, by topic
+🔍 **[Audit trail](docs/audits/)** — Self-audit reports, including findings against this repo
+
+---
+
+## Auditing itself
+
+superharness is used to audit superharness. Reports live in
+[`docs/audits/`](docs/audits/) and are kept whether or not they are flattering —
+an audit trail that only records passes is not an audit trail.
+
+Findings from the [2026-07-20 pass](docs/audits/2026-07-20-job-ready-v2.md), all
+since fixed, give a sense of what these catch:
+
+- **The CI security scan had silently stopped running.** `shipguard` was pinned to
+  a version that raised `SyntaxError` at import on the pinned Python, and the step
+  piped through `tee` under `bash -e` — no `pipefail` — so the job took `tee`'s
+  exit status and reported success while scanning nothing.
+- **A DNS-rebinding path to the dashboard.** The CSRF check derived its expected
+  origin from the request's own `Host` header, so the comparison always matched.
+- **A path-traversal id could reach `shutil.rmtree`** via the dispatch worktree path.
+- **A migration guard that could detect corruption but never prevent it** — it ran
+  its integrity check after the transaction had already committed.
+
+Each was reproduced with a failing test before being fixed. The `/job-ready`
+pipeline that produced the report is a slash command, not part of this package.
 
 ---
 
@@ -368,7 +394,7 @@ See [ATTRIBUTIONS.md](ATTRIBUTIONS.md) for the full extract list — what each s
 
 ## Current Version
 
-Current version: see the [PyPI badge](https://pypi.org/project/superharness/) above — 3400+ tests, harness adapter registry, transcript tailing, dual watchdog, typed telemetry events.
+Current version: see the [PyPI badge](https://pypi.org/project/superharness/) above — 5,000+ tests, harness adapter registry, transcript tailing, dual watchdog, typed telemetry events.
 
 See [CHANGELOG.md](CHANGELOG.md) for the full iteration log.
 

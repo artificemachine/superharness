@@ -5,7 +5,7 @@
 ```bash
 git clone https://github.com/artificemachine/superharness.git
 cd superharness
-pip install -e ".[dev]"   # or: uv sync --dev
+uv sync --dev             # dev deps live in [dependency-groups] (PEP 735)
 pytest tests/ -q          # all tests must pass
 ```
 
@@ -32,6 +32,6 @@ Files under `.superharness/` are operational state — do not modify them in PRs
 
 ```bash
 shipguard scan .           # SAST + secrets
-pytest tests/ -q           # 942 tests
+pytest tests/ -q           # full suite
 superharness demo          # smoke test
 ```
