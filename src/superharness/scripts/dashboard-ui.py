@@ -1699,18 +1699,59 @@ class Handler(BaseHTTPRequestHandler):
             "cmd": " ".join(shlex.quote(a) for a in args),
         }
 
+    # Set from the real bind address at server startup. Deriving the expected
+    # origin from the request's own Host header (the original implementation)
+    # made the comparison circular — it always matched, so it was no defence
+    # at all against DNS rebinding.
+    bind_host: str = "127.0.0.1"
+    bind_port: int = 8787
+
+    _ALLOWED_HOSTNAMES = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
+
+    def _host_is_allowed(self) -> bool:
+        """Reject requests whose Host header is not the loopback address we bound.
+
+        This is the anti-DNS-rebinding control. The server is already
+        loopback-bind-enforced, but that does not help when the attacker owns
+        the browser: they point evil.com at 127.0.0.1 and the browser happily
+        connects, sending `Host: evil.com`. Pinning Host to the real bind
+        address breaks that, and it protects unauthenticated GETs too — which
+        matters because `GET /` embeds the auth token in the page it serves.
+        """
+        host = (self.headers.get("Host") or "").strip()
+        if not host:
+            return False
+        # Strip the port: rsplit avoids mangling a bracketed IPv6 literal.
+        hostname = host
+        if host.startswith("["):
+            hostname = host.split("]")[0] + "]"
+        elif ":" in host:
+            hostname, _, port = host.rpartition(":")
+            if port and port != str(self.bind_port):
+                return False
+        return hostname.lower() in self._ALLOWED_HOSTNAMES
+
     def _expected_origin(self) -> str:
-        return f"http://{self.headers.get('Host', '')}"
+        return f"http://{self.bind_host}:{self.bind_port}"
 
     def _verify_mutation_auth(self) -> tuple[dict, int] | None:
+        if not self._host_is_allowed():
+            return ({"error": "forbidden"}, 403)
+
         token = self.headers.get("X-Superharness-Token", "")
-        if not token or token != self.auth_token:
+        if not token or not secrets.compare_digest(token, self.auth_token or ""):
             return ({"error": "forbidden"}, 403)
 
         expected_origin = self._expected_origin()
         origin = self.headers.get("Origin", "")
         referer = self.headers.get("Referer", "")
 
+        # Require one of them. The original `if origin and ...` let a request
+        # with neither header skip the check entirely — and a simple
+        # (no-preflight) cross-origin POST is exactly the case that can omit
+        # Referer while a same-origin fetch always sends Origin.
+        if not origin and not referer:
+            return ({"error": "forbidden"}, 403)
         if origin and origin != expected_origin:
             return ({"error": "forbidden"}, 403)
         if referer and not (referer == expected_origin or referer.startswith(expected_origin + "/")):
@@ -3163,6 +3204,10 @@ class Handler(BaseHTTPRequestHandler):
 
         # Discussion operator actions
         if p.startswith("/api/discussion/") and p.endswith("/close"):
+            auth_error = self._verify_mutation_auth()
+            if auth_error:
+                self._json(*auth_error)
+                return
             from urllib.parse import unquote as _unquote_close
             disc_id = _unquote_close(p[len("/api/discussion/"):-len("/close")])
             if not disc_id:
@@ -3185,6 +3230,10 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if p.startswith("/api/discussion/") and p.endswith("/create-task"):
+            auth_error = self._verify_mutation_auth()
+            if auth_error:
+                self._json(*auth_error)
+                return
             from urllib.parse import unquote as _unquote_ct
             disc_id = _unquote_ct(p[len("/api/discussion/"):-len("/create-task")])
             if not disc_id:
@@ -3515,6 +3564,10 @@ def main() -> int:
             if exc.errno in (48, 98, 10048, _errno_mod.EADDRINUSE) or "address already in use" in str(exc).lower():
                 raise SystemExit(f"Port {port} is already in use") from None
             raise
+    # Pin the guards to the address actually bound, so _expected_origin and
+    # _host_is_allowed compare against reality rather than the request.
+    Handler.bind_host = args.host
+    Handler.bind_port = port
     url = f"http://{args.host}:{port}"
     print(f"dashboard: {url}")
     print(f"project: {project_dir}")

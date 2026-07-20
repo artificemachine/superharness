@@ -58,6 +58,15 @@ def _validate_token(name: str, value: str) -> None:
         _abort(f"{name} contains control characters", 2)
     if not TOKEN_RE.match(value):
         _abort(f"{name} must match ^[A-Za-z0-9._/-]+$", 2)
+    # TOKEN_RE has to permit "." and "/" because real discussion round ids look
+    # like "disc-fresh/round-1" — but that also admits ".." components, and a
+    # task id reaches os.path.join() when a worktree path is built for dispatch
+    # (inbox_dispatch._git_worktree_add), then shutil.rmtree() when the task is
+    # closed. Reject traversal explicitly rather than relying on the charset.
+    if value.startswith("/"):
+        _abort(f"{name} must not be an absolute path", 2)
+    if ".." in value.split("/"):
+        _abort(f"{name} must not contain '..' path components", 2)
 
 
 def _validate_issue_url(url: str) -> str:

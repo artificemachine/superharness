@@ -213,9 +213,17 @@ def _git_worktree_add(project_dir: str, task_id: str) -> str | None:
     """Create a temporary git worktree for isolated dispatch. Returns worktree path or None."""
     import tempfile
     import uuid
+    from superharness.engine.worktree_ops import sanitize_task_id
+
+    # Sanitize at the sink, not just at the CLI boundary: mcp/tools/contract.py
+    # create_task() INSERTs an arbitrary id straight into tasks with no
+    # validation, and rows predating the _validate_token traversal guard may
+    # already be in the DB. sanitize_task_id collapses path separators and ".."
+    # so the join below cannot escape the worktree root.
+    safe_task_id = sanitize_task_id(task_id)
     worktree_dir = os.path.join(
         tempfile.gettempdir(), "superharness-worktrees",
-        f"{task_id}-{uuid.uuid4().hex[:8]}",
+        f"{safe_task_id}-{uuid.uuid4().hex[:8]}",
     )
     os.makedirs(os.path.dirname(worktree_dir), exist_ok=True)
     r = subprocess.run(
