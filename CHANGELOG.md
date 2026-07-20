@@ -737,3 +737,4 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-07-19: chore(audit): genericize residual LAN fixture IP reference in audit report; backfill v1.80.x release notes; prune merged branches (71 remote remain)
 - 2026-07-20: chore(docs): de-hardcode README version footer (PyPI badge is the version source); reconcile ARCHITECTURE.md design-principles rows with SQLite reality
 - 2026-07-20: docs(audit): final job-ready scorecard — verdict HIRE-READY at v1.80.2; open debt register (FK MEDIUMs, watcher split, 49 judgment branches, /reset semantics, env-sensitive tests, license-detection cache)
+- 2026-07-20: docs(handoff): session handoff for the /job-ready loop (NOT READY → HIRE-READY, v1.79.1-v1.80.2)
