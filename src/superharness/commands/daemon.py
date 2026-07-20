@@ -64,7 +64,14 @@ def _write_state(project_dir: Path, state: dict) -> None:
 
 def _write_monitor_script(project_dir: Path, interval: int,
                           out_log: Path, err_log: Path, watcher_pid: int) -> Path:
-    """Write a standalone monitor script that auto-restarts the watcher."""
+    """Write a standalone monitor script that auto-restarts the watcher.
+
+    The caller (`_start_daemon`) already spawned the first watcher and hands
+    us its pid as `watcher_pid` — this script must *adopt* that process, not
+    spawn a second one. Because the monitor runs as a detached grandchild
+    (double-forked, reparented to init/launchd), the adopted watcher is not
+    its child, so it cannot `Popen.wait()` on it; it polls liveness instead.
+    """
     script = project_dir / ".superharness" / "daemon-monitor.py"
     script.write_text(f'''"""Auto-generated daemon monitor — do not edit."""
 import os, sys, time, json, subprocess, signal
@@ -92,22 +99,50 @@ def spawn():
                             stderr=open(err_log, "a"),
                             start_new_session=True, cwd=project_dir, env=env)
 
-def write_state(watcher_proc):
+def write_state(pid):
     sf = os.path.join(project_dir, ".superharness", "daemon-state.json")
     os.makedirs(os.path.dirname(sf), exist_ok=True)
     with open(sf, "w") as f:
-        json.dump({{"pid": os.getpid(), "watcher_pid": watcher_proc.pid,
+        json.dump({{"pid": os.getpid(), "watcher_pid": pid,
                      "project": project_dir, "interval": interval,
                      "log_out": out_log, "log_err": err_log}}, f)
 
-proc = spawn()
-write_state(proc)
+def pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+def wait_for_exit(pid, poll_s=1.0):
+    # Not our child (spawned by the parent CLI process before the
+    # double-fork), so we cannot Popen.wait() on it — poll liveness instead.
+    while pid_alive(pid):
+        time.sleep(poll_s)
+
+# Adopt the already-running watcher instead of spawning a second one.
+# `proc` stays None until the first respawn — only then are we the real
+# parent and can read a real exit code via Popen.wait().
+current_pid = watcher_pid
+proc = None
+write_state(current_pid)
 
 while True:
-    exit_code = proc.wait()
+    if proc is None:
+        wait_for_exit(current_pid)
+        exit_code = None
+    else:
+        exit_code = proc.wait()
+
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     log_path = os.path.join(project_dir, ".superharness", "watcher-errors.log")
-    if exit_code == 0:
+    if exit_code is None:
+        msg = f"watcher (pid={{current_pid}}) exited, restarting in 5s"
+    elif exit_code == 0:
         msg = "watcher exited cleanly (rc=0), restarting in 5s"
     else:
         msg = f"watcher crashed (rc={{exit_code}}), restarting in 5s"
@@ -119,7 +154,8 @@ while True:
         pass
     time.sleep(5)
     proc = spawn()
-    write_state(proc)
+    current_pid = proc.pid
+    write_state(current_pid)
 ''')
     return script
 
@@ -293,34 +329,66 @@ def _start_daemon(project_dir: Path, interval: int) -> None:
     # Monitor script writes its own PID to state file on start
 
 
+# Confirmed-death poll after signalling, used by _stop_daemon. Module-level
+# so tests can shrink them instead of sleeping for real.
+_STOP_POLL_TIMEOUT_S = 5.0
+_STOP_POLL_INTERVAL_S = 0.2
+
+
 def _stop_daemon(project_dir: Path) -> None:
     import signal as _signal
+    import time as _time
 
     state = _read_state(project_dir)
     pid = state.get("pid")
+    watcher_pid = state.get("watcher_pid")
     if not pid:
         click.echo("daemon: no state found — not running (or state was lost)")
         return
-    if not _is_pid_alive(pid):
+
+    monitor_alive = _is_pid_alive(pid)
+    watcher_alive = bool(watcher_pid) and _is_pid_alive(watcher_pid)
+    if not monitor_alive and not watcher_alive:
         click.echo(f"daemon: process {pid} is not running (cleaning up state)")
         _state_file(project_dir).unlink(missing_ok=True)
         return
-    try:
-        if hasattr(os, "killpg"):
-            try:
-                pgid = os.getpgid(pid)
-                os.killpg(pgid, _signal.SIGTERM)
-                click.echo(f"daemon: sent SIGTERM to process group {pgid}")
-            except OSError:
-                # Fallback to single PID if PGID lookup fails
+
+    if monitor_alive:
+        try:
+            if hasattr(os, "killpg"):
+                try:
+                    pgid = os.getpgid(pid)
+                    os.killpg(pgid, _signal.SIGTERM)
+                    click.echo(f"daemon: sent SIGTERM to process group {pgid}")
+                except OSError:
+                    # Fallback to single PID if PGID lookup fails
+                    os.kill(pid, _signal.SIGTERM)
+                    click.echo(f"daemon: sent SIGTERM to pid={pid} (pgid lookup failed)")
+            else:
                 os.kill(pid, _signal.SIGTERM)
-                click.echo(f"daemon: sent SIGTERM to pid={pid} (pgid lookup failed)")
-        else:
-            os.kill(pid, _signal.SIGTERM)
-            click.echo(f"daemon: sent SIGTERM to pid={pid}")
-    except Exception as exc:
-        click.echo(f"daemon: could not stop pid={pid}: {exc}", err=True)
-        sys.exit(1)
+                click.echo(f"daemon: sent SIGTERM to pid={pid}")
+        except Exception as exc:
+            click.echo(f"daemon: could not stop pid={pid}: {exc}", err=True)
+
+    # The watcher is spawned with start_new_session=True, so it lives in its
+    # own process group and the killpg above never reaches it — signal it
+    # directly or it survives as a permanent orphan holding the lock.
+    if watcher_alive:
+        try:
+            os.kill(watcher_pid, _signal.SIGTERM)
+            click.echo(f"daemon: sent SIGTERM to watcher pid={watcher_pid}")
+        except Exception as exc:
+            click.echo(f"daemon: could not stop watcher pid={watcher_pid}: {exc}", err=True)
+
+    # Don't remove the state file — and let `status` report "not running" —
+    # until both pids are actually gone, or an orphan can hold the lock
+    # while the CLI already believes the daemon is stopped.
+    deadline = _time.time() + _STOP_POLL_TIMEOUT_S
+    while _time.time() < deadline:
+        if not _is_pid_alive(pid) and not (watcher_pid and _is_pid_alive(watcher_pid)):
+            break
+        _time.sleep(_STOP_POLL_INTERVAL_S)
+
     _state_file(project_dir).unlink(missing_ok=True)
 
 

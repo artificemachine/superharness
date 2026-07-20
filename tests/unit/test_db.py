@@ -417,7 +417,14 @@ def test_v34_repairs_orphans_left_by_original_v33(tmp_path):
     conn.execute("PRAGMA foreign_keys=ON")
     assert len(conn.execute("PRAGMA foreign_key_check").fetchall()) == 1, "setup must reproduce the damage"
 
-    _db.init_db(conn, project_dir=project)  # upgrade 33 -> 34
+    # Pin to 34 so this only exercises v34's repair, not every migration up
+    # to the real CURRENT_SCHEMA_VERSION (35+, see _migration_v35).
+    original = _db.CURRENT_SCHEMA_VERSION
+    try:
+        _db.CURRENT_SCHEMA_VERSION = 34
+        _db.init_db(conn, project_dir=project)  # upgrade 33 -> 34
+    finally:
+        _db.CURRENT_SCHEMA_VERSION = original
 
     violations = conn.execute("PRAGMA foreign_key_check").fetchall()
     row = conn.execute("SELECT task_id FROM ledger WHERE action='gate_block'").fetchone()

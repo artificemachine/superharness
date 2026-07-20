@@ -148,10 +148,13 @@ def server(tmp_path):
 
 # ── request helpers ───────────────────────────────────────────────────────────
 
-def _get(base: str, path: str) -> tuple[int, dict]:
+def _get(base: str, path: str, token: str | None = None) -> tuple[int, dict]:
     url = base + path
+    req = urllib.request.Request(url, method="GET")
+    if token is not None:
+        req.add_header("X-Superharness-Token", token)
     try:
-        with urllib.request.urlopen(url, timeout=5) as r:
+        with urllib.request.urlopen(req, timeout=5) as r:
             return r.status, json.loads(r.read())
     except urllib.error.HTTPError as e:
         return e.code, json.loads(e.read())
@@ -209,47 +212,47 @@ class TestGetEndpoints:
             assert "text/html" in ct
 
     def test_api_status_200_with_required_keys(self, server):
-        base, _ = server
-        status, body = _get(base, "/api/status")
+        base, token = server
+        status, body = _get(base, "/api/status", token)
         assert status == 200
         for key in ("version", "contract_tasks", "inbox_items", "activity_feed"):
             assert key in body, f"/api/status missing key '{key}'"
 
     def test_api_status_contract_tasks_is_list(self, server):
-        base, _ = server
-        _, body = _get(base, "/api/status")
+        base, token = server
+        _, body = _get(base, "/api/status", token)
         assert isinstance(body["contract_tasks"], list)
 
     def test_api_inbox_no_filter(self, server):
-        base, _ = server
-        status, body = _get(base, "/api/inbox")
+        base, token = server
+        status, body = _get(base, "/api/inbox", token)
         assert status == 200
         assert "items" in body
         assert isinstance(body["items"], list)
 
     def test_api_inbox_status_filter_field_returned(self, server):
-        base, _ = server
-        _, body = _get(base, "/api/inbox?status=paused")
+        base, token = server
+        _, body = _get(base, "/api/inbox?status=paused", token)
         assert body.get("status") == "paused"
 
     def test_api_board_shape(self, server):
-        base, _ = server
-        status, body = _get(base, "/api/board")
+        base, token = server
+        status, body = _get(base, "/api/board", token)
         assert status == 200
         assert "board" in body
         assert "review_queue" in body
         assert "columns" in body
 
     def test_api_review_queue_shape(self, server):
-        base, _ = server
-        status, body = _get(base, "/api/review-queue")
+        base, token = server
+        status, body = _get(base, "/api/review-queue", token)
         assert status == 200
         assert "queue" in body
         assert isinstance(body["queue"], list)
 
     def test_api_costs_shape(self, server):
-        base, _ = server
-        status, body = _get(base, "/api/costs")
+        base, token = server
+        status, body = _get(base, "/api/costs", token)
         assert status == 200
         assert "leaderboard" in body
         assert "summary" in body
@@ -257,39 +260,52 @@ class TestGetEndpoints:
 
     def test_api_task_report_unknown_task_returns_200_with_data(self, server):
         """task-report always returns 200 — unknown tasks get a best-effort response."""
-        base, _ = server
-        status, body = _get(base, "/api/task-report?task=ghost-id")
+        base, token = server
+        status, body = _get(base, "/api/task-report?task=ghost-id", token)
         assert status == 200
         # No task found — body may contain an error key or empty fields
         assert isinstance(body, dict)
 
     def test_api_task_instructions_unknown_task_returns_200(self, server):
         """task-instructions always returns 200 — generates best-effort instructions."""
-        base, _ = server
-        status, body = _get(base, "/api/task-instructions?task=ghost-id")
+        base, token = server
+        status, body = _get(base, "/api/task-instructions?task=ghost-id", token)
         assert status == 200
         assert "instructions" in body
 
     def test_unknown_path_404(self, server):
-        base, _ = server
-        status, _ = _get(base, "/api/does-not-exist")
+        base, token = server
+        status, _ = _get(base, "/api/does-not-exist", token)
         assert status == 404
 
     def test_api_task_report_known_task_200(self, server, tmp_path):
-        base, _ = server
+        base, token = server
         _insert_task(tmp_path, "t-report", "in_progress")
-        status, body = _get(base, "/api/task-report?task=t-report")
+        status, body = _get(base, "/api/task-report?task=t-report", token)
         assert status == 200
         assert body.get("contract_status") == "in_progress"
 
     def test_api_task_instructions_known_task_200(self, server, tmp_path):
-        base, _ = server
+        base, token = server
         _insert_task(tmp_path, "t-instr", "todo")
-        status, body = _get(base, "/api/task-instructions?task=t-instr")
+        status, body = _get(base, "/api/task-instructions?task=t-instr", token)
         assert status == 200
         assert "instructions" in body
         assert "task_meta" in body
         assert body["task_meta"].get("title") == "t-instr"
+
+
+# ── GET auth tests (I2: read-only /api/* routes require the token) ───────────
+
+class TestReadOnlyAuth:
+    def test_logs_endpoint_requires_token(self, server):
+        base, token = server
+        status, _ = _get(base, "/api/logs")
+        assert status == 403
+
+        status, body = _get(base, "/api/logs", token)
+        assert status == 200
+        assert "lines" in body
 
 
 # ── POST auth tests ───────────────────────────────────────────────────────────

@@ -182,3 +182,36 @@ class TestOrphanedRoutesAreAuthenticated:
             f"POST {route} does not call _verify_mutation_auth within its handler "
             f"body — it spawns a shux subprocess unauthenticated"
         )
+
+
+class TestRebindingCannotReadEither:
+    """The read path must refuse a rebound Host, exactly like the mutation path.
+
+    Closing mutations alone leaves the chain half-open: `GET /` is
+    unauthenticated and injects the auth token into the page it serves, so a
+    rebound page can still read the token out of the DOM and then use it on
+    `GET /api/logs`, `/api/handoffs`, `/api/status` — exfiltrating logs, task
+    reports and discussion content. It cannot mutate, but the disclosure is
+    real, and it is the same chain the Host pin was introduced to close.
+    """
+
+    def test_read_auth_refuses_rebound_host_even_with_valid_token(self, dash):
+        h = _handler(dash, {
+            "Host": "evil.com",
+            "X-Superharness-Token": "correct-token",
+        })
+        assert _bind(dash, h, "_verify_read_auth")() is not None
+
+    def test_read_auth_allows_loopback_with_valid_token(self, dash):
+        h = _handler(dash, {
+            "Host": "127.0.0.1:8787",
+            "X-Superharness-Token": "correct-token",
+        })
+        assert _bind(dash, h, "_verify_read_auth")() is None
+
+    def test_read_auth_still_accepts_the_eventsource_query_param(self, dash):
+        """EventSource cannot set headers; the token= fallback must survive
+        the Host check being added."""
+        h = _handler(dash, {"Host": "127.0.0.1:8787"})
+        h.path = "/api/logs/stream?token=correct-token"
+        assert _bind(dash, h, "_verify_read_auth")() is None

@@ -543,6 +543,7 @@ def _repair_missing_agents(project_dir: str, agents: list[str]) -> tuple[list[st
                 if is_loaded(label):
                     report.append(f"  ✅ operator plist {label} already loaded")
                     found_loaded = True
+                    repaired.append(agent)
                     break
             except Exception:
                 pass
