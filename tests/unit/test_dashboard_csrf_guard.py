@@ -90,12 +90,31 @@ class TestHostHeaderIsValidated:
 
 
 class TestMutationAuth:
-    def test_missing_origin_and_referer_is_rejected(self, dash):
-        """`if origin and ...` let a header-less request through. A browser
-        always sends Origin on a cross-origin POST, so requiring it costs
-        nothing and closes the bypass."""
+    def test_tokened_client_without_origin_is_allowed(self, dash):
+        """A request with a valid token but no Origin/Referer must be allowed.
+
+        CSRF is a browser-only attack, and browsers always send Origin on a
+        cross-origin POST — so a request with neither header did not come from
+        a page. It came from a client that already holds the token (curl, the
+        e2e suite, scripts). Rejecting these buys no security and breaks
+        legitimate automation; an earlier revision of this guard did exactly
+        that and turned every e2e dashboard test into a 403.
+
+        Rebinding is closed by _host_is_allowed() and by deriving the expected
+        origin from the real bind address, not by demanding the header.
+        """
         h = _handler(dash, {
             "Host": "127.0.0.1:8787",
+            "X-Superharness-Token": "correct-token",
+        })
+        assert _bind(dash, h, "_verify_mutation_auth")() is None
+
+    def test_rebound_request_is_still_rejected_without_origin(self, dash):
+        """The permissive path above must not become a bypass: a rebound
+        request carries the attacker's hostname in Host and is refused even
+        with a valid token and no Origin header."""
+        h = _handler(dash, {
+            "Host": "evil.com",
             "X-Superharness-Token": "correct-token",
         })
         assert _bind(dash, h, "_verify_mutation_auth")() is not None

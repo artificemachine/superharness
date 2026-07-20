@@ -1746,12 +1746,17 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin", "")
         referer = self.headers.get("Referer", "")
 
-        # Require one of them. The original `if origin and ...` let a request
-        # with neither header skip the check entirely — and a simple
-        # (no-preflight) cross-origin POST is exactly the case that can omit
-        # Referer while a same-origin fetch always sends Origin.
-        if not origin and not referer:
-            return ({"error": "forbidden"}, 403)
+        # Absent Origin/Referer is deliberately allowed. CSRF is a browser-only
+        # attack and browsers always send Origin on a cross-origin POST, so a
+        # request with neither header did not come from a page — it came from a
+        # client that already holds the token (curl, the test suite, scripts).
+        # Rejecting those buys no security and breaks legitimate automation.
+        #
+        # What actually closes the rebinding chain is _host_is_allowed() plus
+        # deriving expected_origin from the real bind address: a rebound request
+        # carries Host: evil.com and is refused before reaching here, and a
+        # direct cross-origin fetch carries Origin: http://evil.com and fails
+        # the comparison below.
         if origin and origin != expected_origin:
             return ({"error": "forbidden"}, 403)
         if referer and not (referer == expected_origin or referer.startswith(expected_origin + "/")):
