@@ -186,18 +186,38 @@ def seed_sqlite_from_yaml(project_path):
         except Exception:
             pass
 
-    # Failures
+    # Failures — task_id is FK'd to tasks(id) since migration v33, so auto-stub
+    # any referenced task not already seeded from contract.yaml (test fixtures
+    # often reference a task deliberately absent from the contract, e.g. to
+    # exercise "unrelated failure" filtering). Mirrors the inbox auto-stub
+    # block below.
     failures = project / '.superharness' / 'failures.yaml'
     if failures.exists():
         try:
+            from superharness.engine.tasks_dao import TaskRow as _TaskRowF, upsert as _upsertF
             with open(failures) as f:
                 fdoc = yaml.safe_load(f) or {}
             for entry in (fdoc.get('failures') or []):
                 if not isinstance(entry, dict):
                     continue
+                tid = entry.get('task')
+                if tid and not conn.execute("SELECT 1 FROM tasks WHERE id = ?", (tid,)).fetchone():
+                    try:
+                        _upsertF(conn, _TaskRowF(
+                            id=str(tid), title=str(tid), owner=None,
+                            status='todo', effort=None,
+                            project_path=str(project),
+                            development_method=None,
+                            acceptance_criteria=[], test_types=[],
+                            out_of_scope=[], definition_of_done=[],
+                            context=None, tdd=None, version=1,
+                            created_at='2026-01-01T00:00:00Z',
+                        ))
+                    except Exception:
+                        pass
                 conn.execute(
                     "INSERT INTO failures (task_id, agent, pattern, error_snippet, created_at) VALUES (?, ?, ?, ?, ?)",
-                    (entry.get('task'), entry.get('agent', 'claude-code'),
+                    (tid, entry.get('agent', 'claude-code'),
                      entry.get('patterns', 'unknown') if not isinstance(entry.get('patterns'), list)
                        else ','.join(entry.get('patterns', []) or []),
                      entry.get('failure', '') or entry.get('error_snippet', ''),

@@ -194,15 +194,16 @@ def test_refresh_runs_install_hooks(repo_root, tmp_path) -> None:
     fake_home.mkdir()
     (fake_home / ".claude").mkdir()
 
+    env = {"HOME": str(fake_home)}
     # Fresh init first
-    _run_init_py(project, args=["Demo", "Python", "active"], env={"HOME": str(fake_home)})
+    _run_init_py(project, args=["Demo", "Python", "active"], env=env)
     # Remove settings to verify refresh re-creates it
     settings_file = fake_home / ".claude" / "settings.json"
     if settings_file.exists():
         settings_file.unlink()
 
     # Now run --refresh (simulates shux update)
-    result = _run_init_py(project, args=["--refresh", "--detect"], env={"HOME": str(fake_home)})
+    result = _run_init_py(project, args=["--refresh", "--detect"], env=env)
     assert result.returncode == 0, result.stderr
     assert settings_file.exists(), "--refresh must run install-hooks and create settings.json"
     data = json.loads(settings_file.read_text())
@@ -211,8 +212,11 @@ def test_refresh_runs_install_hooks(repo_root, tmp_path) -> None:
         for entry in data.get("hooks", {}).get("Stop", [])
         for h in entry.get("hooks", [])
     ]
-    assert any("session-turn-end.sh" in cmd for cmd in stop_cmds), \
-        f"--refresh must write session-turn-end.sh hook: {stop_cmds}"
+    # install_hooks.merge_hooks emits stable `shux hook <name>` invocations,
+    # not a baked-in script path (see its docstring) — session-turn-end.sh
+    # (no .sh, hyphen not underscore) is the hook name after normalization.
+    assert any("hook session-turn-end" in cmd for cmd in stop_cmds), \
+        f"--refresh must write the session-turn-end hook: {stop_cmds}"
 
 
 def test_init_skip_hooks_flag(repo_root, tmp_path) -> None:
@@ -252,8 +256,10 @@ def test_init_runs_install_hooks(repo_root, tmp_path) -> None:
         for entry in data["hooks"].get("Stop", [])
         for h in entry.get("hooks", [])
     ]
-    assert any("session-turn-end.sh" in cmd for cmd in stop_cmds), \
-        f"session-turn-end.sh not found in Stop hooks: {stop_cmds}"
+    # install_hooks.merge_hooks emits stable `shux hook <name>` invocations,
+    # not a baked-in script path (see its docstring).
+    assert any("hook session-turn-end" in cmd for cmd in stop_cmds), \
+        f"session-turn-end hook not found in Stop hooks: {stop_cmds}"
 
 
 def test_init_install_hooks_does_not_fail_init(repo_root, tmp_path) -> None:

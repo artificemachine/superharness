@@ -13,7 +13,7 @@ from superharness.utils.paths import resolve_xdg_state_db_path
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 32
+CURRENT_SCHEMA_VERSION = 33
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -163,6 +163,61 @@ def init_db(conn: sqlite3.Connection, project_dir: str | None = None) -> None:
     _heal_known_migration_drift(conn)
 
 
+# Every (table, column, ddl_clause) ever added via _add_column_if_missing
+# across all migrations. Drift can in principle affect any of these, not
+# just the historically-observed agent_heartbeats/v25 case, since the root
+# cause (_column_exists silently misreporting under row_factory=None) applied
+# to every call site equally. Table CREATEs are excluded — those use
+# `CREATE TABLE IF NOT EXISTS` directly and aren't vulnerable to this bug.
+# (version, table, column, ddl_clause) — `version` is the migration that
+# introduced the column, so heal only fires once user_version claims that
+# migration (or later) already applied. Missing a column because its
+# migration simply hasn't run yet is normal, not drift — gating on version
+# is what distinguishes the two (see _heal_known_migration_drift).
+_ADDITIVE_COLUMN_MANIFEST: tuple[tuple[int, str, str, str], ...] = (
+    (2, "tasks", "parent_id", "TEXT REFERENCES tasks(id)"),
+    (3, "tasks", "verified", "INTEGER NOT NULL DEFAULT 0"),
+    (3, "tasks", "verified_at", "TEXT"),
+    (3, "tasks", "verified_by", "TEXT"),
+    (4, "tasks", "updated_at", "TEXT"),
+    (4, "tasks", "failed_at", "TEXT"),
+    (4, "tasks", "stopped_at", "TEXT"),
+    (4, "tasks", "failed_reason", "TEXT"),
+    (4, "tasks", "pause_reason", "TEXT"),
+    (4, "tasks", "archived_at", "TEXT"),
+    (4, "tasks", "archived_reason", "TEXT"),
+    (4, "tasks", "model_tier", "TEXT"),
+    (5, "tasks", "deadline_minutes", "INTEGER"),
+    (8, "inbox", "recovery_count", "INTEGER NOT NULL DEFAULT 0"),
+    (9, "tasks", "blocked_by_raw", "TEXT"),
+    (10, "tasks", "workflow", "TEXT"),
+    (10, "tasks", "autonomy", "TEXT"),
+    (10, "tasks", "require_tdd", "INTEGER"),
+    (11, "tasks", "extras_json", "TEXT"),
+    (12, "tasks", "locked_contract", "TEXT"),
+    (12, "tasks", "contract_locked_at", "TEXT"),
+    (16, "tasks", "estimated_minutes", "TEXT"),
+    (17, "inbox", "reason", "TEXT"),
+    (20, "inbox", "type", "TEXT NOT NULL DEFAULT 'task'"),
+    (25, "agent_heartbeats", "runtime", "TEXT"),
+    (25, "agent_heartbeats", "active_task", "TEXT"),
+    (25, "agent_heartbeats", "next_wake_at", "TEXT"),
+    (25, "agent_heartbeats", "written_at", "TEXT"),
+    (25, "agent_heartbeats", "tokens_used", "INTEGER"),
+    (25, "agent_heartbeats", "tokens_limit", "INTEGER"),
+    (25, "agent_heartbeats", "cost_usd", "REAL"),
+    (27, "discussions", "max_rounds", "INTEGER NOT NULL DEFAULT 3"),
+    (30, "tasks", "issue_url", "TEXT"),
+)
+
+
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone()
+    return row is not None
+
+
 def _heal_known_migration_drift(conn: sqlite3.Connection) -> None:
     """Repair DBs where user_version/schema_migrations claim a migration ran
     but its DDL never actually landed.
@@ -176,19 +231,33 @@ def _heal_known_migration_drift(conn: sqlite3.Connection) -> None:
     window is stuck claiming e.g. v25 applied while agent_heartbeats is
     missing every column v25 was supposed to add.
 
-    Cheap (two PRAGMA table_info calls) and safe to run on every init_db()
-    call: re-invokes only already-idempotent DDL (_add_column_if_missing),
-    never touches schema_migrations or user_version, and no-ops once healed.
+    Driven by _ADDITIVE_COLUMN_MANIFEST (every _add_column_if_missing call
+    site across all migrations), not hardcoded to the one historically
+    observed table — the same bug could have skipped any of them. Gated on
+    user_version >= the manifest entry's version: a column missing because
+    its migration simply hasn't run yet is normal progress, not drift — only
+    a column missing *despite* user_version already claiming that migration
+    applied is the actual bug this repairs. Cheap (one PRAGMA table_info per
+    distinct table) and safe to run on every init_db() call: re-invokes only
+    already-idempotent DDL, never touches schema_migrations or user_version,
+    and no-ops once healed.
     """
-    if _column_exists(conn, "agent_heartbeats", "id") and not _column_exists(conn, "agent_heartbeats", "runtime"):
-        logger.warning("Healing migration drift: agent_heartbeats missing v25 columns despite user_version >= 25")
-        _add_column_if_missing(conn, "agent_heartbeats", "runtime", "TEXT")
-        _add_column_if_missing(conn, "agent_heartbeats", "active_task", "TEXT")
-        _add_column_if_missing(conn, "agent_heartbeats", "next_wake_at", "TEXT")
-        _add_column_if_missing(conn, "agent_heartbeats", "written_at", "TEXT")
-        _add_column_if_missing(conn, "agent_heartbeats", "tokens_used", "INTEGER")
-        _add_column_if_missing(conn, "agent_heartbeats", "tokens_limit", "INTEGER")
-        _add_column_if_missing(conn, "agent_heartbeats", "cost_usd", "REAL")
+    user_version = conn.execute("PRAGMA user_version").fetchone()[0]
+    healed = False
+    for version, table, column, ddl_clause in _ADDITIVE_COLUMN_MANIFEST:
+        if user_version < version:
+            continue  # migration hasn't run yet — missing column is expected, not drift
+        if not _table_exists(conn, table):
+            continue  # table itself predates this DB's schema — nothing to heal yet
+        if _column_exists(conn, table, column):
+            continue
+        logger.warning(
+            "Healing migration drift: %s missing column %r despite user_version=%d claiming v%d applied",
+            table, column, user_version, version,
+        )
+        _add_column_if_missing(conn, table, column, ddl_clause)
+        healed = True
+    if healed:
         conn.commit()
 
 def _run_migrations(conn: sqlite3.Connection, current_version: int, project_dir: str | None = None) -> None:
@@ -196,27 +265,119 @@ def _run_migrations(conn: sqlite3.Connection, current_version: int, project_dir:
     for v in range(current_version + 1, CURRENT_SCHEMA_VERSION + 1):
         _run_single_migration(conn, v, project_dir)
 
+# Migrations that rebuild a table referenced by other tables' foreign keys
+# (DROP TABLE fails under foreign_keys=ON if other rows reference it, even
+# though no data actually violates anything — verified empirically). PRAGMA
+# foreign_keys is also a no-op when toggled mid-transaction, so it must be
+# flipped here, before the SAVEPOINT below opens one, not inside the
+# migration function itself.
+_MIGRATIONS_REQUIRING_FK_OFF: frozenset[int] = frozenset({33})
+
+
 def _run_single_migration(conn: sqlite3.Connection, v: int, project_dir: str | None = None) -> None:
     """Run a single schema migration with backup and rollback."""
     if project_dir:
         _backup_db(project_dir, v - 1)
-        
-    with transaction(conn):
-        conn.execute(f"SAVEPOINT migrate_v{v}")
-        try:
-            migration_fn = _MIGRATIONS[v - 1]
-            migration_fn(conn)
-            conn.execute(
-                "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
-                (v, now_iso())
-            )
-            conn.execute(f"PRAGMA user_version = {v}")
-            conn.execute(f"RELEASE SAVEPOINT migrate_v{v}")
-            logger.info(f"Applied schema migration v{v}")
-        except Exception as e:
-            logger.error("Migration v%d failed: %s — rolling back", v, e)
-            conn.execute(f"ROLLBACK TO SAVEPOINT migrate_v{v}")
-            raise
+
+    needs_fk_off = v in _MIGRATIONS_REQUIRING_FK_OFF
+    prior_fk_state = None
+    if needs_fk_off:
+        # Restore whatever this connection's FK enforcement was before, not
+        # force it ON — some callers (chaos/test harnesses) intentionally
+        # run with foreign_keys=OFF (SQLite's own default) and never touch
+        # this pragma themselves.
+        prior_fk_state = conn.execute("PRAGMA foreign_keys").fetchone()[0]
+        conn.execute("PRAGMA foreign_keys=OFF")
+
+    try:
+        with transaction(conn):
+            conn.execute(f"SAVEPOINT migrate_v{v}")
+            try:
+                migration_fn = _MIGRATIONS[v - 1]
+                migration_fn(conn)
+                conn.execute(
+                    "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
+                    (v, now_iso())
+                )
+                conn.execute(f"PRAGMA user_version = {v}")
+                conn.execute(f"RELEASE SAVEPOINT migrate_v{v}")
+                logger.info(f"Applied schema migration v{v}")
+            except Exception as e:
+                logger.error("Migration v%d failed: %s — rolling back", v, e)
+                conn.execute(f"ROLLBACK TO SAVEPOINT migrate_v{v}")
+                raise
+    finally:
+        if needs_fk_off:
+            violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+            conn.execute(f"PRAGMA foreign_keys={'ON' if prior_fk_state else 'OFF'}")
+            if violations:
+                raise SchemaError(
+                    f"Migration v{v} left {len(violations)} foreign key violation(s): {violations}"
+                )
+
+
+def _rebuild_table_with_new_ddl(
+    conn: sqlite3.Connection,
+    table: str,
+    create_sql_template: str,
+    columns: list[str],
+    indexes: list[str],
+    column_fallbacks: dict[str, str] | None = None,
+) -> None:
+    """Rebuild `table` under new DDL (e.g. an added/changed FK constraint),
+    preserving all rows.
+
+    SQLite cannot ALTER a column's FOREIGN KEY in place — this is the
+    documented workaround: create a new table, copy data across an explicit
+    column list, drop the old table, rename the new one into place, then
+    recreate indexes (dropped along with the old table). `create_sql_template`
+    must contain a `{tmp}` placeholder for the temporary table name.
+
+    `columns` may list columns the *source* table doesn't actually have yet:
+    a column that's part of a migration's original CREATE TABLE (as opposed
+    to one backfilled later via _add_column_if_missing) never gets added to
+    a hand-rolled/legacy table that predates it, because CREATE TABLE IF NOT
+    EXISTS no-ops against an existing table (verified: a test fixture that
+    hand-creates a minimal `tasks` table missing e.g. development_method hits
+    exactly this). Columns present on the source are copied as-is; columns
+    absent from the source fall back to the new table's own DEFAULT/NULL,
+    *unless* `column_fallbacks` supplies a SQL expression for that column
+    (needed for NOT NULL columns with no DEFAULT — e.g. tasks.title — where
+    a legacy source table is missing the column entirely; verified against a
+    test fixture with only `id, status` in its hand-rolled tasks table).
+
+    If the source table doesn't exist at all (a test fixture can claim
+    user_version=N without replicating every table an earlier migration
+    would have created — verified: failures/decisions/ledger genuinely
+    absent despite user_version=7), there's nothing to migrate — just
+    promote the freshly-created tmp table into place.
+    """
+    tmp = f"{table}__rebuild_tmp"
+    column_fallbacks = column_fallbacks or {}
+    conn.execute(f"DROP TABLE IF EXISTS {tmp}")
+    conn.execute(create_sql_template.format(tmp=tmp))
+    if not _table_exists(conn, table):
+        conn.execute(f"ALTER TABLE {tmp} RENAME TO {table}")
+        for stmt in indexes:
+            conn.execute(stmt)
+        return
+    existing = {r["name"] if hasattr(r, "keys") else r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    insert_cols, select_exprs = [], []
+    for c in columns:
+        if c in existing:
+            insert_cols.append(c)
+            select_exprs.append(c)
+        elif c in column_fallbacks:
+            insert_cols.append(c)
+            select_exprs.append(column_fallbacks[c])
+        # else: omit entirely — let the new table's own DEFAULT/NULL apply.
+    insert_col_list = ", ".join(insert_cols)
+    select_expr_list = ", ".join(select_exprs)
+    conn.execute(f"INSERT INTO {tmp} ({insert_col_list}) SELECT {select_expr_list} FROM {table}")
+    conn.execute(f"DROP TABLE {table}")
+    conn.execute(f"ALTER TABLE {tmp} RENAME TO {table}")
+    for stmt in indexes:
+        conn.execute(stmt)
 
 # --- Migration Functions ---
 
@@ -893,6 +1054,158 @@ def _migration_v32(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migration_v33(conn: sqlite3.Connection) -> None:
+    """FK integrity hardening.
+
+    tasks.parent_id has referenced tasks(id) since v2 with no ON DELETE
+    clause, so with foreign_keys=ON (set on every connection) SQLite's
+    default action (NO ACTION) blocks deleting a parent task that still has
+    subtasks — `shux task delete` (commands/task.py) does not catch this and
+    crashes with IntegrityError. failures/decisions/ledger.task_id have no FK
+    at all, so deleting a task instead leaves those audit tables with a
+    dangling task_id (no crash, silent data debt).
+
+    Rebuilds all four tables (see _rebuild_table_with_new_ddl) adding
+    FOREIGN KEY(...) REFERENCES tasks(id) ON DELETE SET NULL — a task delete
+    now orphans/nulls out the references instead of blocking or leaving them
+    dangling. See _MIGRATIONS_REQUIRING_FK_OFF for why rebuilding `tasks`
+    itself needs foreign_keys toggled off around the whole migration.
+    """
+    _rebuild_table_with_new_ddl(
+        conn, "tasks",
+        create_sql_template="""
+            CREATE TABLE {tmp} (
+                id                   TEXT    PRIMARY KEY,
+                title                TEXT    NOT NULL,
+                owner                TEXT,
+                status               TEXT    NOT NULL,
+                effort               TEXT,
+                project_path         TEXT,
+                development_method   TEXT,
+                acceptance_criteria  TEXT,
+                test_types           TEXT,
+                out_of_scope         TEXT,
+                definition_of_done   TEXT,
+                context              TEXT,
+                tdd                  TEXT,
+                version              INTEGER NOT NULL DEFAULT 1,
+                created_at           TEXT    NOT NULL,
+                plan_proposed_at     TEXT,
+                plan_approved_at     TEXT,
+                in_progress_at       TEXT,
+                report_ready_at      TEXT,
+                review_requested_at  TEXT,
+                done_at              TEXT,
+                cancelled_at         TEXT,
+                parent_id            TEXT,
+                verified             INTEGER NOT NULL DEFAULT 0,
+                verified_at          TEXT,
+                verified_by          TEXT,
+                updated_at           TEXT,
+                failed_at            TEXT,
+                stopped_at           TEXT,
+                failed_reason        TEXT,
+                pause_reason         TEXT,
+                archived_at          TEXT,
+                archived_reason      TEXT,
+                model_tier           TEXT,
+                deadline_minutes     INTEGER,
+                worktree_path        TEXT,
+                blocked_by_raw       TEXT,
+                workflow             TEXT,
+                autonomy             TEXT,
+                require_tdd          INTEGER,
+                extras_json          TEXT,
+                locked_contract      TEXT,
+                contract_locked_at   TEXT,
+                estimated_minutes    TEXT,
+                issue_url            TEXT,
+                FOREIGN KEY (parent_id) REFERENCES tasks(id) ON DELETE SET NULL
+            )
+        """,
+        columns=[
+            "id", "title", "owner", "status", "effort", "project_path", "development_method",
+            "acceptance_criteria", "test_types", "out_of_scope", "definition_of_done", "context", "tdd",
+            "version", "created_at", "plan_proposed_at", "plan_approved_at", "in_progress_at",
+            "report_ready_at", "review_requested_at", "done_at", "cancelled_at", "parent_id",
+            "verified", "verified_at", "verified_by", "updated_at", "failed_at", "stopped_at",
+            "failed_reason", "pause_reason", "archived_at", "archived_reason", "model_tier",
+            "deadline_minutes", "worktree_path", "blocked_by_raw", "workflow", "autonomy",
+            "require_tdd", "extras_json", "locked_contract", "contract_locked_at",
+            "estimated_minutes", "issue_url",
+        ],
+        indexes=[
+            "CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)",
+            "CREATE INDEX IF NOT EXISTS idx_tasks_owner  ON tasks(owner)",
+            "CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id)",
+        ],
+        # title/created_at are NOT NULL with no DEFAULT; a legacy hand-rolled
+        # tasks table missing the columns entirely (e.g. only id/status)
+        # would otherwise violate NOT NULL on rebuild.
+        column_fallbacks={"title": "id", "created_at": "'1970-01-01T00:00:00Z'"},
+    )
+
+    _rebuild_table_with_new_ddl(
+        conn, "failures",
+        create_sql_template="""
+            CREATE TABLE {tmp} (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id        TEXT,
+                agent          TEXT,
+                pattern        TEXT,
+                error_snippet  TEXT,
+                created_at     TEXT NOT NULL,
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
+            )
+        """,
+        columns=["id", "task_id", "agent", "pattern", "error_snippet", "created_at"],
+        indexes=[
+            "CREATE INDEX IF NOT EXISTS idx_failures_task           ON failures(task_id)",
+            "CREATE INDEX IF NOT EXISTS idx_failures_agent_pattern  ON failures(agent, pattern)",
+        ],
+    )
+
+    _rebuild_table_with_new_ddl(
+        conn, "decisions",
+        create_sql_template="""
+            CREATE TABLE {tmp} (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent         TEXT,
+                task_id       TEXT,
+                decision      TEXT    NOT NULL,
+                reason        TEXT,
+                alternatives  TEXT,
+                created_at    TEXT    NOT NULL,
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
+            )
+        """,
+        columns=["id", "agent", "task_id", "decision", "reason", "alternatives", "created_at"],
+        indexes=[
+            "CREATE INDEX IF NOT EXISTS idx_decisions_agent_time ON decisions(agent, created_at)",
+        ],
+    )
+
+    _rebuild_table_with_new_ddl(
+        conn, "ledger",
+        create_sql_template="""
+            CREATE TABLE {tmp} (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id     TEXT,
+                agent       TEXT,
+                action      TEXT NOT NULL,
+                details     TEXT,
+                created_at  TEXT NOT NULL,
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
+            )
+        """,
+        columns=["id", "task_id", "agent", "action", "details", "created_at"],
+        indexes=[
+            "CREATE INDEX IF NOT EXISTS idx_ledger_time ON ledger(created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_ledger_task ON ledger(task_id, created_at)",
+        ],
+    )
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -926,4 +1239,5 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v30,
     _migration_v31,
     _migration_v32,
+    _migration_v33,
 ]

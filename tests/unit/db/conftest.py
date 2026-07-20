@@ -7,6 +7,17 @@ from pathlib import Path
 
 import pytest
 
+
+def seed_task(conn: sqlite3.Connection, task_id: str) -> None:
+    """Insert a minimal tasks row so FK-constrained child inserts
+    (failures/decisions/ledger.task_id) don't need a full TaskRow."""
+    conn.execute(
+        "INSERT INTO tasks (id, title, status, version, created_at) "
+        "VALUES (?, ?, 'todo', 1, '2026-01-01T00:00:00Z')",
+        (task_id, task_id),
+    )
+
+
 @pytest.fixture
 def db_conn(tmp_path: Path) -> Iterator[sqlite3.Connection]:
     from superharness.engine.db import get_connection, init_db

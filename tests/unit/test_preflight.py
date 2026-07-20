@@ -160,6 +160,10 @@ class TestPriorFailuresCheck:
         sh.mkdir()
         conn = get_connection(str(tmp_path))
         init_db(conn)
+        conn.execute(
+            "INSERT INTO tasks (id, title, status, version, created_at) "
+            "VALUES ('task-x', 'X', 'todo', 1, '2026-01-01T00:00:00Z')"
+        )
         failures_dao.record(conn, task_id="task-x", agent="claude-code",
                             pattern="timeout", error_snippet="timed out", now="2026-01-01T00:00:00Z")
         conn.commit()
@@ -175,6 +179,10 @@ class TestPriorFailuresCheck:
         sh.mkdir()
         conn = get_connection(str(tmp_path))
         init_db(conn)
+        conn.execute(
+            "INSERT INTO tasks (id, title, status, version, created_at) "
+            "VALUES ('task-y', 'Y', 'todo', 1, '2026-01-01T00:00:00Z')"
+        )
         failures_dao.record(conn, task_id="task-y", agent="claude-code",
                             pattern="api_auth", error_snippet="auth failed", now="2026-01-01T00:00:00Z")
         conn.commit()
