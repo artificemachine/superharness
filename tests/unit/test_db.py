@@ -4,6 +4,8 @@ from __future__ import annotations
 import os
 import sqlite3
 
+import pytest
+
 
 def _make_legacy_db(project_dir: str) -> str:
     """Create a legacy .superharness/state.sqlite3 at the project path."""
@@ -264,3 +266,165 @@ def test_heal_drift_generalizes_beyond_v25_agent_heartbeats(tmp_path):
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(tasks)").fetchall()}
     conn.close()
     assert "issue_url" in cols, f"generalized heal did not repair tasks.issue_url: {cols}"
+
+
+def _seed_v32_db_with_orphan(db_path: str, task_id: str = "ghost.task") -> None:
+    """Build a v32-schema DB carrying a dangling ledger.task_id.
+
+    Reproduces the real-world state found on a live install: rows written
+    before v33 whose task was later deleted, leaving a task_id that
+    references nothing (observed: ledger ids 32/33/34, task_id='smoke.b1',
+    dated 2026-05-15)."""
+    from superharness.engine import db as _db
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    original = _db.CURRENT_SCHEMA_VERSION
+    try:
+        _db.CURRENT_SCHEMA_VERSION = 32
+        _db.init_db(conn)
+    finally:
+        _db.CURRENT_SCHEMA_VERSION = original
+    conn.execute(
+        "INSERT INTO ledger (task_id, agent, action, created_at) VALUES (?, ?, ?, ?)",
+        (task_id, "claude-code", "gate_block", "2026-05-15T11:54:41Z"),
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_v33_upgrade_with_preexisting_orphan_completes_cleanly(tmp_path):
+    """RED (regression from v1.81.0/PR #55): upgrading a v32 DB that already
+    contains a dangling task_id must succeed and leave zero FK violations.
+
+    v33 adds FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE SET NULL to
+    ledger, but the table rebuild copies every task_id verbatim — so rows that
+    already dangled get carried across and instantly violate the constraint
+    the migration just installed. Since the ON DELETE action for a vanished
+    task is SET NULL, the migration must apply exactly that to pre-existing
+    orphans rather than preserving a reference to a task that isn't there."""
+    from superharness.engine.db import init_db
+
+    project = str(tmp_path / "proj")
+    db_path = _make_legacy_db(project)
+    _seed_v32_db_with_orphan(db_path)
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    init_db(conn, project_dir=project)  # must not raise
+
+    conn.execute("PRAGMA foreign_keys=ON")
+    violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    orphan_rows = conn.execute(
+        "SELECT task_id FROM ledger WHERE action='gate_block'"
+    ).fetchall()
+    conn.close()
+
+    from superharness.engine.db import CURRENT_SCHEMA_VERSION
+    assert version == CURRENT_SCHEMA_VERSION, f"migration did not complete: user_version={version}"
+    assert not violations, f"v33 left {len(violations)} FK violation(s): {violations}"
+    assert len(orphan_rows) == 1, "the audit row itself must be preserved, not deleted"
+    assert orphan_rows[0]["task_id"] is None, (
+        "pre-existing orphaned task_id must be NULLed to match ON DELETE SET NULL "
+        f"semantics, got {orphan_rows[0]['task_id']!r}"
+    )
+
+
+def test_fk_violating_migration_rolls_back_instead_of_committing(tmp_path):
+    """RED (regression from v1.81.0/PR #55): the foreign_key_check guard runs in
+    _run_single_migration's `finally` block — after `with transaction(conn)` has
+    already committed and bumped user_version. Raising SchemaError there rolls
+    back nothing, so a failing check leaves the DB in exactly the state the
+    guard exists to prevent: migrated, constraint-bearing, and violating.
+
+    The check must run inside the transaction (before RELEASE SAVEPOINT) so a
+    violation aborts the migration and leaves user_version untouched."""
+    from superharness.engine import db as _db
+    from superharness.engine.state_errors import SchemaError
+
+    project = str(tmp_path / "proj")
+    db_path = _make_legacy_db(project)
+    _seed_v32_db_with_orphan(db_path)
+
+    def _leaky_v33(conn: sqlite3.Connection) -> None:
+        """A v33 that installs the FK but (unlike the real one) leaves the
+        orphan in place — simulating any future migration whose rebuild
+        forgets to reconcile dangling references."""
+        _db._rebuild_table_with_new_ddl(
+            conn, "ledger",
+            create_sql_template="""
+                CREATE TABLE {tmp} (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_id     TEXT,
+                    agent       TEXT,
+                    action      TEXT NOT NULL,
+                    details     TEXT,
+                    created_at  TEXT NOT NULL,
+                    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
+                )
+            """,
+            columns=["id", "task_id", "agent", "action", "details", "created_at"],
+            indexes=[],
+        )
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    patched = list(_db._MIGRATIONS)
+    patched[32] = _leaky_v33
+    original = _db._MIGRATIONS
+    try:
+        _db._MIGRATIONS = patched
+        with pytest.raises(SchemaError, match="foreign key violation"):
+            _db.init_db(conn, project_dir=project)
+    finally:
+        _db._MIGRATIONS = original
+
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    conn.close()
+    assert version == 32, (
+        "a migration that leaves FK violations must roll back, not commit — "
+        f"user_version advanced to {version}"
+    )
+
+
+def test_v34_repairs_orphans_left_by_original_v33(tmp_path):
+    """A DB that already applied the ORIGINAL v33 sits at user_version=33 with
+    live FK violations, and never re-runs v33 to pick up its fix. v34 must
+    repair those rows in place — NULLing the dangling reference while keeping
+    the audit row itself."""
+    from superharness.engine import db as _db
+
+    project = str(tmp_path / "proj")
+    db_path = _make_legacy_db(project)
+
+    # Reach v33 the normal way, then re-introduce the exact damage the
+    # original v33 left behind (FKs installed, orphan reference intact).
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    original = _db.CURRENT_SCHEMA_VERSION
+    try:
+        _db.CURRENT_SCHEMA_VERSION = 33
+        _db.init_db(conn, project_dir=project)
+    finally:
+        _db.CURRENT_SCHEMA_VERSION = original
+    conn.execute("PRAGMA foreign_keys=OFF")  # how the broken rows got in
+    conn.execute(
+        "INSERT INTO ledger (task_id, agent, action, created_at) "
+        "VALUES ('smoke.b1', 'claude-code', 'gate_block', '2026-05-15T11:54:41Z')"
+    )
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys=ON")
+    assert len(conn.execute("PRAGMA foreign_key_check").fetchall()) == 1, "setup must reproduce the damage"
+
+    _db.init_db(conn, project_dir=project)  # upgrade 33 -> 34
+
+    violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+    row = conn.execute("SELECT task_id FROM ledger WHERE action='gate_block'").fetchone()
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    conn.close()
+
+    assert version == 34
+    assert not violations, f"v34 did not repair the orphan: {violations}"
+    assert row is not None, "v34 must repair the reference, not delete the audit row"
+    assert row["task_id"] is None

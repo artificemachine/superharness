@@ -22,10 +22,14 @@ jobs:
           python-version: "3.11"
 
       - name: Install ShipGuard
-        run: pip install "shipguard==0.3.2"
+        run: pip install "shipguard==0.5.2"
 
       - name: Run ShipGuard
         run: |
+          # pipefail is required: GitHub's default shell is `bash -e {0}`, so a
+          # pipeline exits with tee's status (always 0) and a scan that finds
+          # CRITICAL issues would pass the build silently.
+          set -o pipefail
           shipguard scan . --format terminal | tee shipguard.txt
           sed -n '1,260p' shipguard.txt
 

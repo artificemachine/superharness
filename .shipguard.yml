@@ -30,6 +30,11 @@ disable_rules:
   # for runtime artifacts) and flags missing secret patterns; those patterns are
   # already present in the root .gitignore
   - SC-004
+  # PII-004: false positive — the only matches are "t@t.com", a throwaway
+  # git config user.email used to make commits inside temp repos in
+  # tests/unit/test_checkpoint.py, test_onboard_quicksetup.py and
+  # test_sections_git.py. Not customer PII.
+  - PII-004
 
 custom_rules_dirs: []
 
