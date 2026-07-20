@@ -17,6 +17,28 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _worktree_path_is_safe(wt_path: str) -> bool:
+    """True only if wt_path resolves inside <tempdir>/superharness-worktrees.
+
+    Dispatch worktrees are always created under that root
+    (inbox_dispatch._git_worktree_add). This is the containment check that
+    makes removal safe: `tasks.worktree_path` is read back from the database
+    and passed to shutil.rmtree, so a value that traversed out of the root —
+    or was written by a code path that does not validate task ids — must not
+    be honoured. realpath() is used so symlinks cannot be used to escape.
+    """
+    import tempfile
+
+    root = os.path.realpath(
+        os.path.join(tempfile.gettempdir(), "superharness-worktrees")
+    )
+    try:
+        candidate = os.path.realpath(wt_path)
+    except (OSError, ValueError):
+        return False
+    return candidate == root or candidate.startswith(root + os.sep)
+
+
 _JSON_MODE = False
 _JSON_CTX: dict = {}
 
@@ -257,6 +279,16 @@ def close_task(
         ).fetchone()
         wt_path = row["worktree_path"] if row and row["worktree_path"] else None
         conn.close()
+        if wt_path and not _worktree_path_is_safe(wt_path):
+            # The column is read straight back from the DB and handed to
+            # shutil.rmtree. Rows written before the traversal guard landed, or
+            # via mcp create_task (which does not validate ids at all), can
+            # point anywhere on disk — verify containment instead of trusting it.
+            logger.warning(
+                "Refusing to remove worktree_path %r for task %r: resolves "
+                "outside the superharness worktree root", wt_path, task_id,
+            )
+            wt_path = None
         if wt_path:
             import shutil, subprocess
             harness_link = os.path.join(wt_path, ".superharness")
