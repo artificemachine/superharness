@@ -108,6 +108,22 @@ def write_state(pid):
                      "log_out": out_log, "log_err": err_log}}, f)
 
 def pid_alive(pid):
+    if os.name == "nt":
+        # os.kill(pid, 0) on Windows is TerminateProcess, not a probe —
+        # it would kill the watcher it is checking. Query the handle instead.
+        import ctypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        handle = ctypes.windll.kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return False
+        try:
+            code = ctypes.c_ulong(STILL_ACTIVE)
+            ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+            return code.value == STILL_ACTIVE
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:

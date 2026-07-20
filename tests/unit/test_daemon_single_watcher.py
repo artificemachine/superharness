@@ -70,6 +70,28 @@ class TestMonitorAdoptsWatcher:
             f"loop even starts — this is the second-watcher bug"
         )
 
+    def test_monitor_pid_alive_is_windows_safe(self, tmp_path):
+        """os.kill(pid, 0) on Windows is TerminateProcess, not a liveness
+        probe — a monitor built on it kills the watcher it is checking (and
+        collapses the window where `daemon start` idempotency sees the
+        original watcher pid alive). The generated script must branch to a
+        handle query on nt before any os.kill-based probe."""
+        (tmp_path / ".superharness").mkdir()
+        script = daemon_mod._write_monitor_script(
+            tmp_path, 30, tmp_path / "out.log", tmp_path / "err.log", watcher_pid=4242,
+        )
+        text = script.read_text()
+
+        fn_start = text.index("def pid_alive")
+        fn_body = text[fn_start:text.index("def wait_for_exit")]
+        nt_idx = fn_body.find('os.name == "nt"')
+        kill_idx = fn_body.find("os.kill(")
+        assert nt_idx != -1 and "OpenProcess" in fn_body, (
+            "pid_alive has no Windows branch — os.kill(pid, 0) terminates "
+            "the probed process on Windows"
+        )
+        assert nt_idx < kill_idx, "the nt branch must come before the os.kill probe"
+
 
 # ---------------------------------------------------------------------------
 # _stop_daemon — must kill the watcher, not only the monitor
@@ -88,8 +110,10 @@ class TestStopKillsWatcher:
         _write_state(tmp_path, pid=100, watcher_pid=200)
 
         monkeypatch.setattr(daemon_mod, "_is_pid_alive", lambda pid: True)
-        monkeypatch.setattr(daemon_mod.os, "killpg", lambda pgid, sig: None)
-        monkeypatch.setattr(daemon_mod.os, "getpgid", lambda pid: pid)
+        # raising=False: Windows os has neither killpg nor getpgid — the
+        # production code hasattr-guards them, the test must not require them.
+        monkeypatch.setattr(daemon_mod.os, "killpg", lambda pgid, sig: None, raising=False)
+        monkeypatch.setattr(daemon_mod.os, "getpgid", lambda pid: pid, raising=False)
         killed = []
         monkeypatch.setattr(daemon_mod.os, "kill", lambda pid, sig: killed.append(pid))
         monkeypatch.setattr(daemon_mod, "_STOP_POLL_TIMEOUT_S", 0.05)
@@ -117,8 +141,8 @@ class TestStopKillsWatcher:
             return False
 
         monkeypatch.setattr(daemon_mod, "_is_pid_alive", fake_alive)
-        monkeypatch.setattr(daemon_mod.os, "killpg", lambda pgid, sig: None)
-        monkeypatch.setattr(daemon_mod.os, "getpgid", lambda pid: pid)
+        monkeypatch.setattr(daemon_mod.os, "killpg", lambda pgid, sig: None, raising=False)
+        monkeypatch.setattr(daemon_mod.os, "getpgid", lambda pid: pid, raising=False)
         monkeypatch.setattr(daemon_mod.os, "kill", lambda pid, sig: None)
         monkeypatch.setattr(daemon_mod, "_STOP_POLL_TIMEOUT_S", 1.0)
         monkeypatch.setattr(daemon_mod, "_STOP_POLL_INTERVAL_S", 0.01)
