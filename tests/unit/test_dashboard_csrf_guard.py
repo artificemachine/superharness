@@ -88,6 +88,29 @@ class TestHostHeaderIsValidated:
         h = _handler(dash, {"Host": "evil.com"})
         assert "evil.com" not in _bind(dash, h, "_expected_origin")()
 
+    def test_non_default_port_is_accepted(self, dash):
+        """The dashboard scans 8787-8806 for a free port, so the bound port is
+        routinely not the default. An earlier revision compared the Host port
+        against a class attribute set only by main(), which 403'd every
+        auto-incremented port and every embedded server. Only the hostname
+        carries security meaning — a browser sets Host from the URL, so the
+        hostname cannot be forged, and the port says nothing about origin.
+        """
+        h = _handler(dash, {"Host": "127.0.0.1:9123"}, bind_port=9123)
+        assert _bind(dash, h, "_host_is_allowed")() is True
+
+    def test_expected_origin_follows_the_live_socket(self, dash):
+        """When a real server is attached, the bound socket wins over the class
+        attributes — otherwise any Handler not built by main() silently
+        compares against the wrong port."""
+        h = _handler(dash, {"Host": "127.0.0.1:9123"})
+
+        class _Srv:
+            server_address = ("127.0.0.1", 9123)
+
+        h.server = _Srv()
+        assert _bind(dash, h, "_expected_origin")() == "http://127.0.0.1:9123"
+
 
 class TestMutationAuth:
     def test_tokened_client_without_origin_is_allowed(self, dash):

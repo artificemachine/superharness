@@ -1708,31 +1708,51 @@ class Handler(BaseHTTPRequestHandler):
 
     _ALLOWED_HOSTNAMES = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
 
+    def _bound_address(self) -> tuple[str, int]:
+        """The address actually bound, preferred over the class attributes.
+
+        `main()` sets bind_host/bind_port after binding, but anything else that
+        constructs this Handler (the integration suite, or any embedding code)
+        would silently inherit the class defaults. Reading the live socket
+        removes that coupling — and the defaults still cover a Handler built
+        without a server, as the unit tests do.
+        """
+        srv = getattr(self, "server", None)
+        addr = getattr(srv, "server_address", None) if srv is not None else None
+        if addr:
+            return str(addr[0]), int(addr[1])
+        return self.bind_host, self.bind_port
+
     def _host_is_allowed(self) -> bool:
-        """Reject requests whose Host header is not the loopback address we bound.
+        """Reject requests whose Host header is not a loopback name.
 
         This is the anti-DNS-rebinding control. The server is already
         loopback-bind-enforced, but that does not help when the attacker owns
         the browser: they point evil.com at 127.0.0.1 and the browser happily
-        connects, sending `Host: evil.com`. Pinning Host to the real bind
-        address breaks that, and it protects unauthenticated GETs too — which
-        matters because `GET /` embeds the auth token in the page it serves.
+        connects, sending `Host: evil.com`. Checking Host breaks that, and it
+        protects unauthenticated GETs too — which matters because `GET /`
+        embeds the auth token in the page it serves.
+
+        Only the hostname is checked, never the port. A browser sets Host from
+        the URL, so an attacker cannot forge the hostname; the port carries no
+        security signal. Comparing it also broke every non-default port, and
+        the dashboard routinely picks one — it scans 8787-8806 for a free slot.
         """
         host = (self.headers.get("Host") or "").strip()
         if not host:
             return False
-        # Strip the port: rsplit avoids mangling a bracketed IPv6 literal.
-        hostname = host
+        # Strip the port without mangling a bracketed IPv6 literal.
         if host.startswith("["):
             hostname = host.split("]")[0] + "]"
         elif ":" in host:
-            hostname, _, port = host.rpartition(":")
-            if port and port != str(self.bind_port):
-                return False
+            hostname = host.rpartition(":")[0]
+        else:
+            hostname = host
         return hostname.lower() in self._ALLOWED_HOSTNAMES
 
     def _expected_origin(self) -> str:
-        return f"http://{self.bind_host}:{self.bind_port}"
+        host, port = self._bound_address()
+        return f"http://{host}:{port}"
 
     def _verify_mutation_auth(self) -> tuple[dict, int] | None:
         if not self._host_is_allowed():
