@@ -1699,18 +1699,84 @@ class Handler(BaseHTTPRequestHandler):
             "cmd": " ".join(shlex.quote(a) for a in args),
         }
 
+    # Set from the real bind address at server startup. Deriving the expected
+    # origin from the request's own Host header (the original implementation)
+    # made the comparison circular — it always matched, so it was no defence
+    # at all against DNS rebinding.
+    bind_host: str = "127.0.0.1"
+    bind_port: int = 8787
+
+    _ALLOWED_HOSTNAMES = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
+
+    def _bound_address(self) -> tuple[str, int]:
+        """The address actually bound, preferred over the class attributes.
+
+        `main()` sets bind_host/bind_port after binding, but anything else that
+        constructs this Handler (the integration suite, or any embedding code)
+        would silently inherit the class defaults. Reading the live socket
+        removes that coupling — and the defaults still cover a Handler built
+        without a server, as the unit tests do.
+        """
+        srv = getattr(self, "server", None)
+        addr = getattr(srv, "server_address", None) if srv is not None else None
+        if addr:
+            return str(addr[0]), int(addr[1])
+        return self.bind_host, self.bind_port
+
+    def _host_is_allowed(self) -> bool:
+        """Reject requests whose Host header is not a loopback name.
+
+        This is the anti-DNS-rebinding control. The server is already
+        loopback-bind-enforced, but that does not help when the attacker owns
+        the browser: they point evil.com at 127.0.0.1 and the browser happily
+        connects, sending `Host: evil.com`. Checking Host breaks that, and it
+        protects unauthenticated GETs too — which matters because `GET /`
+        embeds the auth token in the page it serves.
+
+        Only the hostname is checked, never the port. A browser sets Host from
+        the URL, so an attacker cannot forge the hostname; the port carries no
+        security signal. Comparing it also broke every non-default port, and
+        the dashboard routinely picks one — it scans 8787-8806 for a free slot.
+        """
+        host = (self.headers.get("Host") or "").strip()
+        if not host:
+            return False
+        # Strip the port without mangling a bracketed IPv6 literal.
+        if host.startswith("["):
+            hostname = host.split("]")[0] + "]"
+        elif ":" in host:
+            hostname = host.rpartition(":")[0]
+        else:
+            hostname = host
+        return hostname.lower() in self._ALLOWED_HOSTNAMES
+
     def _expected_origin(self) -> str:
-        return f"http://{self.headers.get('Host', '')}"
+        host, port = self._bound_address()
+        return f"http://{host}:{port}"
 
     def _verify_mutation_auth(self) -> tuple[dict, int] | None:
+        if not self._host_is_allowed():
+            return ({"error": "forbidden"}, 403)
+
         token = self.headers.get("X-Superharness-Token", "")
-        if not token or token != self.auth_token:
+        if not token or not secrets.compare_digest(token, self.auth_token or ""):
             return ({"error": "forbidden"}, 403)
 
         expected_origin = self._expected_origin()
         origin = self.headers.get("Origin", "")
         referer = self.headers.get("Referer", "")
 
+        # Absent Origin/Referer is deliberately allowed. CSRF is a browser-only
+        # attack and browsers always send Origin on a cross-origin POST, so a
+        # request with neither header did not come from a page — it came from a
+        # client that already holds the token (curl, the test suite, scripts).
+        # Rejecting those buys no security and breaks legitimate automation.
+        #
+        # What actually closes the rebinding chain is _host_is_allowed() plus
+        # deriving expected_origin from the real bind address: a rebound request
+        # carries Host: evil.com and is refused before reaching here, and a
+        # direct cross-origin fetch carries Origin: http://evil.com and fails
+        # the comparison below.
         if origin and origin != expected_origin:
             return ({"error": "forbidden"}, 403)
         if referer and not (referer == expected_origin or referer.startswith(expected_origin + "/")):
@@ -3163,6 +3229,10 @@ class Handler(BaseHTTPRequestHandler):
 
         # Discussion operator actions
         if p.startswith("/api/discussion/") and p.endswith("/close"):
+            auth_error = self._verify_mutation_auth()
+            if auth_error:
+                self._json(*auth_error)
+                return
             from urllib.parse import unquote as _unquote_close
             disc_id = _unquote_close(p[len("/api/discussion/"):-len("/close")])
             if not disc_id:
@@ -3185,6 +3255,10 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if p.startswith("/api/discussion/") and p.endswith("/create-task"):
+            auth_error = self._verify_mutation_auth()
+            if auth_error:
+                self._json(*auth_error)
+                return
             from urllib.parse import unquote as _unquote_ct
             disc_id = _unquote_ct(p[len("/api/discussion/"):-len("/create-task")])
             if not disc_id:
@@ -3515,6 +3589,10 @@ def main() -> int:
             if exc.errno in (48, 98, 10048, _errno_mod.EADDRINUSE) or "address already in use" in str(exc).lower():
                 raise SystemExit(f"Port {port} is already in use") from None
             raise
+    # Pin the guards to the address actually bound, so _expected_origin and
+    # _host_is_allowed compare against reality rather than the request.
+    Handler.bind_host = args.host
+    Handler.bind_port = port
     url = f"http://{args.host}:{port}"
     print(f"dashboard: {url}")
     print(f"project: {project_dir}")

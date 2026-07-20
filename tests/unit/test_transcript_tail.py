@@ -16,7 +16,15 @@ from superharness.engine.transcript_tail import select_transcript, tail_step
 
 
 def _write_lines(path, lines: list[str]) -> None:
-    with open(path, "w") as f:
+    # newline="" disables newline translation. Without it, text mode on Windows
+    # rewrites every "\n" to "\r\n", so the bytes on disk no longer match the
+    # bytes of the Python string — and these tests assert byte offsets computed
+    # from that string (len(line.encode())). The tailer reads "rb" and correctly
+    # reports the real file position, so the mismatch was the test's arithmetic,
+    # not the tailer: it failed on Windows CI with 108 != 105 while passing on
+    # macOS/Linux. Real transcripts are LF-delimited, so this also matches
+    # production input more faithfully.
+    with open(path, "w", newline="") as f:
         for line in lines:
             f.write(line)
 
