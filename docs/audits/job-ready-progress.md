@@ -71,7 +71,7 @@ Verdict: NOT READY (personal-data hard gate); rest = polish grade.
   - metadata/topics/default-branch/community-files/binaries: all clean
   - gitleaks: 2 hits, both `tests/unit/test_module_obsidian.py:211` — confirmed FAKE fixture (`sk-1234567890abcdef`). Not a secret.
   - LOW: no screenshot/demo above the fold (carried from 2026-07-19, still open)
-  - LOW: `airm2max` in 3 tracked files (`.shipguard.yml:43` intentional blocklist; `docs/bugs/*.md:3` "Reporter:" x2)
+  - LOW: maintainer username in 3 tracked files (`.shipguard.yml:43` intentional blocklist; `docs/bugs/*.md:3` "Reporter:" x2) — closed by iteration 5 of PLAN-hire-ready.md (2026-07-20): blocklist now env-referenced, "Reporter:" lines now say "maintainer"
   - LOW: GitHub license API still `NOASSERTION` despite canonical 201-line Apache-2.0 (carried, >24h — not a cache flush)
 - **Stage 2 — Git history & releases: FAIL (1 blocker)**
   - commits excellent: 1154/1196 conventional (96.5%); recent 30 all clean; the lone "WIP on" is stash-only, not in history

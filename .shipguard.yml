@@ -44,6 +44,16 @@ use_rust_secrets: false
 # Used by /security-pipeline (step 6) and /ship (step 9) to catch PII leaks.
 # Add project-specific terms here — standard patterns (/Users/<name>/, /home/<name>/)
 # are checked automatically.
+#
+# The maintainer's real username is intentionally not hardcoded here — that
+# literal was itself a personal-data finding in the 2026-07-20 job-ready audit
+# (docs/audits/2026-07-20-job-ready-v2.md). Set SUPERHARNESS_MAINTAINER_USERNAME
+# in your local environment if a scan needs to check for it specifically.
+# Note: as installed (shipguard 0.5.2), this key is not actually read by the
+# scanner — grepping the installed package for `sanitize_blocklist` finds no
+# matches, so this entry is presently inert either way. The live, CI-enforced
+# guard against this literal reappearing in a tracked file is
+# tests/unit/test_no_tracked_personal_data.py, not this blocklist.
 sanitize_blocklist:
-  - "airm2max"
+  - "${SUPERHARNESS_MAINTAINER_USERNAME}"
   - "DevOpsCelstn"

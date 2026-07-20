@@ -16,6 +16,7 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 
 ALL_STATUSES: list[str] = [
+    "pending",
     "todo",
     "plan_proposed",
     "plan_approved",
@@ -49,6 +50,17 @@ _DISC_ROUND_RE = re.compile(r"^(discuss-[^/]+)/round-(\d+)$")
 # ---------------------------------------------------------------------------
 
 _MAPPING: dict[str, tuple[Optional[str], list[str], str]] = {
+    # "pending" is the initial status for a decomposed-subtask row (see
+    # engine/subtask.py and commands/delegate.py's _record_decomposition) —
+    # not part of the top-level task lifecycle proper, but a real value
+    # written to tasks.status, so it needs the same floor as every other
+    # status (migration v35's CHECK constraint) and the same transitions as
+    # "todo", which is the closest equivalent ("not yet started").
+    "pending": (
+        "plan_proposed",
+        ["plan_proposed", "waiting_input"],
+        "author a plan handoff before dispatch (subtask default status)",
+    ),
     "todo": (
         "plan_proposed",
         ["plan_proposed", "waiting_input"],
@@ -274,6 +286,7 @@ def plan_only_allowed_statuses(workflow: str) -> set[str]:
 
 # Maps each status to its board column (board_view / board_tasks / JS columns)
 STATUS_TO_COL: dict[str, str] = {
+    "pending": "todo",
     "todo": "todo",
     "plan_proposed": "plan",
     "plan_approved": "plan",
@@ -307,7 +320,7 @@ STATUS_GROUPS: list[dict] = [
     {"key": "review",   "label": "🔍 review",    "statuses": ["report_ready", "review_requested", "review_passed", "review_failed"]},
     {"key": "in_progress", "label": "🔄 in progress", "statuses": ["in_progress", "launched", "running", "waiting_input", "paused", "pending_user_approval"]},
     {"key": "plan",     "label": "📋 plan",      "statuses": ["plan_proposed", "plan_approved"]},
-    {"key": "todo",     "label": "🕐 todo",      "statuses": ["todo", "blocked"]},
+    {"key": "todo",     "label": "🕐 todo",      "statuses": ["todo", "blocked", "pending"]},
 ]
 
 
