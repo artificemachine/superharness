@@ -16,6 +16,7 @@ from superharness.engine.next_action import (
 # ── Legal transitions (from the graph in next_action.py) ─────────────────────
 
 LEGAL_TRANSITIONS = {
+    "pending":              ["plan_proposed", "waiting_input"],
     "todo":                 ["plan_proposed", "waiting_input"],
     "plan_proposed":        ["plan_approved", "todo"],
     "plan_approved":        ["in_progress", "plan_proposed"],

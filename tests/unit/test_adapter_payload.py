@@ -237,15 +237,26 @@ class TestStatusMapping:
             assert task["color"] == expected_color, \
                 f"status={raw_status}: expected color={expected_color}, got {task['color']}"
 
-    def test_unknown_status_falls_back_to_pending(self, tmp_path):
-        """An unrecognized status should not crash — falls back to pending."""
-        project = _setup(tmp_path, tasks=[
-            {"id": "t1", "title": "T", "owner": "claude-code", "status": "some_future_status"},
-        ])
-        r = _run(["--project", str(project)])
-        assert r.returncode == 0
-        d = json.loads(r.stdout)
-        assert d["tasks"][0]["display_status"] == "pending"
+    def test_unknown_status_falls_back_to_pending(self):
+        """An unrecognized status should not crash the display mapping —
+        falls back to pending.
+
+        Iteration 6 of docs/PLAN-hire-ready.md (migration v35) added a
+        CHECK(status IN (...ALL_STATUSES...)) constraint on tasks.status, so
+        a genuinely unrecognized status like "some_future_status" can no
+        longer reach tasks_dao.upsert()/the tasks table at all — the
+        write is rejected with sqlite3.IntegrityError before adapter_payload
+        ever sees it. That's the fix working as intended (an unrecognized
+        status used to sit invisibly in the table forever; now it's rejected
+        at the write boundary instead). This test now exercises
+        _display_status() directly rather than round-tripping an
+        unrepresentable status through YAML-seed -> SQLite -> the CLI
+        subprocess, since that path is what the CHECK constraint exists to
+        close.
+        """
+        from superharness.commands.adapter_payload import _display_status
+        display, color = _display_status("some_future_status")
+        assert display == "pending"
 
 
 # ---------------------------------------------------------------------------

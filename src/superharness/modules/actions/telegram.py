@@ -5,7 +5,10 @@ import logging
 import os
 from typing import Any
 
+from superharness.guard.redact import TokenRedactingFilter
+
 logger = logging.getLogger(__name__)
+logger.addFilter(TokenRedactingFilter())
 
 # Try to import requests, but don't fail if not available
 try:

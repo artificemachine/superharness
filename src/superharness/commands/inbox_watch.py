@@ -1369,6 +1369,51 @@ def _has_identical_failure_loop(conn, task_id: str) -> bool:
     return len(snippets) == 1 and next(iter(snippets)) != ""
 
 
+def _with_task_lock(conn, task_id: str, changes: dict, *, guard=None, context: str = ""):
+    """Apply `changes` (status and/or other columns) to `task_id` through
+    `tasks_dao.set_status`/`update` — the version-checked writer — instead
+    of a raw, unversioned SQL update statement against the tasks table.
+
+    Reads the task's current version immediately before writing, retries
+    once on a `ConcurrencyError` (re-reading the fresh version), and on a
+    second conflict logs and returns None rather than raising or silently
+    overwriting a concurrent writer's change. The 2026-07-20 audit found 17
+    of 18 task writers bypassed the version check entirely and
+    `ConcurrencyError` was caught nowhere in the codebase — this is the one
+    seam all of the watcher's status-writing call sites now share.
+
+    `guard`, if given, receives the freshly-read TaskRow and must return
+    True for the write to proceed — used by call sites whose original raw
+    SQL carried a `WHERE ... AND status='...'` condition rather than a bare
+    `WHERE id=?`. Returns None (no write attempted) when the guard rejects
+    the current state, same as a task that no longer exists.
+    """
+    from superharness.engine import tasks_dao
+    from superharness.engine.state_errors import ConcurrencyError
+
+    for attempt in range(2):
+        task = tasks_dao.get(conn, task_id)
+        if task is None:
+            return None
+        if guard is not None and not guard(task):
+            return None
+        try:
+            if "status" in changes:
+                status = changes["status"]
+                extra = {k: v for k, v in changes.items() if k != "status"}
+                return tasks_dao.set_status(conn, task_id, status, task.version, **extra)
+            return tasks_dao.update(conn, task_id, task.version, changes)
+        except ConcurrencyError:
+            if attempt == 0:
+                continue  # re-read the fresh version and retry once
+            logger.warning(
+                "inbox_watch: skipping task '%s' after repeated version "
+                "conflict (%s)", task_id, context or sorted(changes.keys()),
+            )
+            return None
+    return None
+
+
 def _escalate_runaway_inbox(conn, row, reason_label: str, now: str) -> None:
     """Mark task as waiting_input and close the inbox row so a human can
     act. Called when auto-recover hits an absolute ceiling or detects
@@ -1380,11 +1425,14 @@ def _escalate_runaway_inbox(conn, row, reason_label: str, now: str) -> None:
         if task and task.status in ("in_progress", "todo"):
             try:
                 validate_status_transition(task.status, "waiting_input")
-                conn.execute(
-                    "UPDATE tasks SET status='waiting_input', in_progress_at=NULL, "
-                    "failed_reason=? WHERE id=?",
-                    (f"auto-recover: {reason_label} ({row.failed_reason or 'unknown'})",
-                     row.task_id),
+                _with_task_lock(
+                    conn, row.task_id,
+                    {
+                        "status": "waiting_input",
+                        "in_progress_at": None,
+                        "failed_reason": f"auto-recover: {reason_label} ({row.failed_reason or 'unknown'})",
+                    },
+                    context="escalate_runaway_inbox",
                 )
             except Exception as e:
                 logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
@@ -1472,9 +1520,9 @@ def _auto_fallback_owner_reassign(project_dir: str) -> None:
                     # Fallback owner has also exhausted retries — let auto_recover escalate
                     continue
 
-                conn.execute(
-                    "UPDATE tasks SET owner=? WHERE id=?",
-                    (fallback_owner, row.task_id),
+                _with_task_lock(
+                    conn, row.task_id, {"owner": fallback_owner},
+                    context="auto_fallback_owner",
                 )
                 inbox_dao.reassign(
                     conn,
@@ -1566,10 +1614,14 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                             from superharness.engine.next_action import validate_status_transition
                             validate_status_transition(task_pb.status, "waiting_input")
                             gate_reason = row.failed_reason or "lifecycle gate rejected"
-                            conn.execute(
-                                "UPDATE tasks SET status='waiting_input', in_progress_at=NULL, "
-                                "failed_reason=? WHERE id=?",
-                                (gate_reason, row.task_id),
+                            _with_task_lock(
+                                conn, row.task_id,
+                                {
+                                    "status": "waiting_input",
+                                    "in_progress_at": None,
+                                    "failed_reason": gate_reason,
+                                },
+                                context="permanent_block_escalation",
                             )
                             # Mark inbox as done so it doesn't block re-dispatch
                             inbox_dao.mark_done(conn, row.id, now=now)
@@ -1629,11 +1681,17 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                         f"all_owners_exhausted (tried: {per_owner_summary})",
                         now,
                     )
-                    # Tag task with escalation_reason for dashboard/status distinction
+                    # Tag task with escalation_reason for dashboard/status distinction.
+                    # Guarded on status=='waiting_input' — same condition the
+                    # original raw SQL's WHERE clause carried — because
+                    # _escalate_runaway_inbox() above only actually moves the
+                    # task to waiting_input when it was in_progress/todo.
                     try:
-                        conn.execute(
-                            "UPDATE tasks SET failed_reason=? WHERE id=? AND status='waiting_input'",
-                            (f"all_owners_exhausted: {per_owner_summary}", row.task_id),
+                        _with_task_lock(
+                            conn, row.task_id,
+                            {"failed_reason": f"all_owners_exhausted: {per_owner_summary}"},
+                            guard=lambda t: t.status == "waiting_input",
+                            context="tag_all_owners_exhausted",
                         )
                     except Exception as e:
                         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
@@ -1753,10 +1811,14 @@ def _reconcile_permanent_blocks(project_dir: str) -> int:
                     continue
                 from superharness.engine.next_action import validate_status_transition as _vst2
                 _vst2(task.status, "waiting_input")
-                conn.execute(
-                    "UPDATE tasks SET status='waiting_input', in_progress_at=NULL, "
-                    "failed_reason=? WHERE id=?",
-                    (row.failed_reason or "lifecycle gate rejected", row.task_id),
+                _with_task_lock(
+                    conn, row.task_id,
+                    {
+                        "status": "waiting_input",
+                        "in_progress_at": None,
+                        "failed_reason": row.failed_reason or "lifecycle gate rejected",
+                    },
+                    context="reconcile_permanent_blocks",
                 )
                 inbox_dao.mark_done(conn, row.id, now=_now_utc())
                 count += 1
@@ -1828,10 +1890,14 @@ def _auto_bootstrap_empty_tasks(project_dir: str) -> int:
                 # Revert task to plan_proposed so watcher can auto-dispatch it
                 from superharness.engine.next_action import validate_status_transition as _vst3
                 _vst3("waiting_input", "plan_proposed")
-                conn.execute(
-                    "UPDATE tasks SET status='plan_proposed', failed_reason=NULL, "
-                    "in_progress_at=NULL WHERE id=?",
-                    (task.id,),
+                _with_task_lock(
+                    conn, task.id,
+                    {
+                        "status": "plan_proposed",
+                        "failed_reason": None,
+                        "in_progress_at": None,
+                    },
+                    context="auto_bootstrap_empty_tasks",
                 )
                 count += 1
                 print(
@@ -4378,15 +4444,29 @@ def _gc_stuck_waiting_input(project_dir: str) -> int:
             cutoff = (datetime.now(timezone.utc) - timedelta(minutes=30)).strftime(
                 "%Y-%m-%dT%H:%M:%SZ"
             )
-            cursor = conn.execute(
-                "UPDATE tasks SET status='archived', archived_reason='gc: waiting_input timeout (>30min)' "
-                "WHERE status='waiting_input' AND ("
+            # Bulk-select the candidate ids first — the actual status write
+            # goes through _with_task_lock (one row at a time) so each write
+            # is version-checked instead of a single unguarded bulk UPDATE.
+            stuck_rows = conn.execute(
+                "SELECT id FROM tasks WHERE status='waiting_input' AND ("
                 "(in_progress_at IS NOT NULL AND in_progress_at < ?) "
                 "OR (created_at IS NOT NULL AND created_at < ? AND in_progress_at IS NULL)"
                 ")",
                 (cutoff, cutoff),
-            )
-            cleaned = cursor.rowcount or 0
+            ).fetchall()
+            cleaned = 0
+            for row in stuck_rows:
+                result = _with_task_lock(
+                    conn, row["id"],
+                    {
+                        "status": "archived",
+                        "archived_reason": "gc: waiting_input timeout (>30min)",
+                    },
+                    guard=lambda t: t.status == "waiting_input",
+                    context="gc_stuck_waiting_input",
+                )
+                if result is not None:
+                    cleaned += 1
             if cleaned:
                 conn.commit()
             return cleaned

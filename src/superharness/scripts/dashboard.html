@@ -532,7 +532,7 @@ function discFilterStatus(status) {
 async function loadDiscussions() {
   const qs = _discStatusFilter ? `?status=${encodeURIComponent(_discStatusFilter)}` : '';
   try {
-    const r = await fetch('/api/discussions' + qs);
+    const r = await fetch('/api/discussions' + qs, _withAuthHeaders());
     const d = await r.json();
     _discRows = d.discussions || [];
     renderDiscTable(_discRows);
@@ -611,7 +611,7 @@ async function loadDiscRounds(discId) {
   document.getElementById('discRoundsBody').innerHTML = '<span style="color:var(--muted)">loading…</span>';
   document.getElementById('discOperatorStatus').textContent = '';
   try {
-    const r = await fetch(`/api/discussion/${encodeURIComponent(discId)}/rounds`);
+    const r = await fetch(`/api/discussion/${encodeURIComponent(discId)}/rounds`, _withAuthHeaders());
     const d = await r.json();
     // Operator buttons:
     // - "close discussion": only for active/open discussions
@@ -752,7 +752,7 @@ let selectedOwners = new Set();
 // Watcher error panel auto-refresh
 async function loadWatcherErrors() {
   try {
-    const r = await fetch('/api/watcher-errors?lines=20');
+    const r = await fetch('/api/watcher-errors?lines=20', _withAuthHeaders());
     const d = await r.json();
     const el = document.getElementById('watcherErrors');
     if (!el) return;
@@ -796,7 +796,7 @@ function liveLogsConnect() {
   const status = document.getElementById('liveLogsStatus');
   if (status) status.textContent = '(connecting...)';
   // Seed with last 30 lines, then attach the live stream
-  fetch('/api/logs?n=30' + (liveLogsChannel === 'audit' ? '&audit=1' : ''))
+  fetch('/api/logs?n=30' + (liveLogsChannel === 'audit' ? '&audit=1' : ''), _withAuthHeaders())
     .then(r => r.json())
     .then(d => {
       const el = document.getElementById('liveLogs');
@@ -805,7 +805,10 @@ function liveLogsConnect() {
     })
     .catch(() => {})
     .finally(() => {
-      const url = '/api/logs/stream' + (liveLogsChannel === 'audit' ? '?audit=1' : '');
+      // EventSource cannot set custom request headers, so the token travels
+      // via query param here only — every other /api/ GET uses the header.
+      const streamQs = (liveLogsChannel === 'audit' ? 'audit=1&' : '') + 'token=' + encodeURIComponent(AUTH_TOKEN);
+      const url = '/api/logs/stream?' + streamQs;
       liveLogsSource = new EventSource(url);
       liveLogsSource.onopen = () => {
         if (status) status.textContent = '(streaming ' + liveLogsChannel + ')';
@@ -845,17 +848,19 @@ function liveLogsToggleStream(btn) {
   }
 }
 
-liveLogsConnect();
 let knownOwners = [];
 const AUTH_TOKEN = __AUTH_TOKEN__;
 const TIMEOUT_SECONDS = __TIMEOUT_SECONDS__;
 let lastUserInteraction = Date.now();
+// Must run after AUTH_TOKEN is declared above — it fetches /api/logs with
+// the auth header via _withAuthHeaders().
+liveLogsConnect();
 
 // Keep-alive heartbeats if a timeout is configured
 if (TIMEOUT_SECONDS > 0) {
   setInterval(async () => {
     try {
-      await fetch('/api/ping');
+      await fetch('/api/ping', _withAuthHeaders());
     } catch (e) {}
   }, 30000); // Ping every 30s
 
@@ -883,8 +888,18 @@ if (TIMEOUT_SECONDS > 0) {
   });
 }
 
+// Read-only /api/* GETs require the same token as mutating POSTs (I2:
+// dashboard-ui.py's do_GET gates every /api/ path). Merge it into whatever
+// headers a caller already passes rather than requiring every call site to
+// remember it.
+function _withAuthHeaders(init) {
+  const merged = Object.assign({}, init || {});
+  merged.headers = Object.assign({'X-Superharness-Token': AUTH_TOKEN}, (init && init.headers) || {});
+  return merged;
+}
+
 async function api(path, init) {
-  const r = await fetch(path, init);
+  const r = await fetch(path, _withAuthHeaders(init));
   const d = await r.json();
   if (!r.ok) throw new Error(d.error || ('http ' + r.status));
   return d;
@@ -1665,7 +1680,7 @@ async function viewDiscussion(discId) {
   meta.textContent = discId;
   body.textContent = 'loading…';
   try {
-    const r = await fetch(`/api/discussion?id=${encodeURIComponent(discId)}&_auth=${AUTH_TOKEN}`);
+    const r = await fetch(`/api/discussion?id=${encodeURIComponent(discId)}`, _withAuthHeaders());
     const d = await r.json();
     if (d.error) { body.textContent = 'Error: ' + d.error; return; }
 
@@ -1713,7 +1728,7 @@ async function viewDiscussion(discId) {
 
     // Add live agent activity
     try {
-      const sr = await fetch('/api/discussion-status?id=' + encodeURIComponent(discId));
+      const sr = await fetch('/api/discussion-status?id=' + encodeURIComponent(discId), _withAuthHeaders());
       const sd = await sr.json();
 
       // Submissions history
@@ -2680,7 +2695,7 @@ function renderTaskOverview(tasks) {
 
 async function loadSkillInsights() {
   try {
-    const r = await fetch('/api/skill-insights');
+    const r = await fetch('/api/skill-insights', _withAuthHeaders());
     const d = await r.json();
     const tbody = document.getElementById('skillRows');
     const summary = document.getElementById('skillSummary');
@@ -2810,7 +2825,7 @@ document.addEventListener('keydown', (e) => {
 async function loadDiscussionStatus(discId) {
   if (!discId) return;
   try {
-    const r = await fetch('/api/discussion-status?id=' + discId);
+    const r = await fetch('/api/discussion-status?id=' + discId, _withAuthHeaders());
     const d = await r.json();
     const el = document.getElementById('discussionAgentStatus');
     if (!el) return;
