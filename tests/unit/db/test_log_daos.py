@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from superharness.engine import failures_dao, decisions_dao, ledger_dao
+from tests.unit.db.conftest import seed_task
 
 T0 = "2026-01-01T00:00:00Z"
 T1 = "2026-01-01T01:00:00Z"
 
 
 def test_failures_record_and_get(db_conn):
+    seed_task(db_conn, "t1")
     row = failures_dao.record(db_conn, task_id="t1", agent="claude-code",
                               pattern="timeout", error_snippet="Process timed out", now=T0)
     assert row.id is not None
@@ -26,6 +28,7 @@ def test_failures_filter_by_agent(db_conn):
 
 
 def test_decisions_record_and_get(db_conn):
+    seed_task(db_conn, "t1")
     row = decisions_dao.record(
         db_conn,
         agent="claude-code",
@@ -43,6 +46,7 @@ def test_decisions_record_and_get(db_conn):
 
 
 def test_ledger_record_and_get(db_conn):
+    seed_task(db_conn, "t1")
     row = ledger_dao.record(
         db_conn,
         task_id="t1",

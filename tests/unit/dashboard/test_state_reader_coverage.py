@@ -29,6 +29,14 @@ def seeded_project(tmp_path: Path) -> Path:
     conn = get_connection(str(project))
     try:
         init_db(conn)
+        # task-1/task-2 must exist since failures/decisions/ledger.task_id
+        # is FK'd to tasks(id) (migration v33).
+        for _tid in ("task-1", "task-2"):
+            conn.execute(
+                "INSERT INTO tasks (id, title, status, version, created_at) "
+                "VALUES (?, ?, 'todo', 1, '2026-04-30T00:00:00Z')",
+                (_tid, _tid),
+            )
         # Seed failures
         failures_dao.record(
             conn, task_id="task-1", agent="claude-code",

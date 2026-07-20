@@ -28,24 +28,49 @@ def record(
     details: dict[str, Any] | None = None,
     now: str,
 ) -> LedgerRow:
-    """Record an operational trace entry."""
+    """Record an operational trace entry.
+
+    If task_id doesn't reference an existing task, the FK is degraded to
+    NULL rather than losing the ledger record entirely — matches the
+    ON DELETE SET NULL semantics already used when a real task is later
+    deleted.
+    """
     details_json = json.dumps(details) if details is not None else None
-    
+
     try:
-        cursor = conn.execute(
-            """
-            INSERT INTO ledger (task_id, agent, action, details, created_at)
-            VALUES (?, ?, ?, ?, ?)
-            RETURNING id, task_id, agent, action, details, created_at
-            """,
-            (task_id, agent, action, details_json, now)
+        return _insert(conn, task_id, agent, action, details_json, now)
+    except sqlite3.IntegrityError as e:
+        if task_id is None:
+            raise StateError(f"Failed to record ledger entry: {e}") from e
+        logger.warning(
+            "ledger.task_id %r does not reference an existing task — recording with task_id=NULL",
+            task_id,
         )
-        row = cursor.fetchone()
-        if not row:
-            raise StateError("Failed to record ledger entry: no row returned")
-        return _row_to_ledger(row)
+        return _insert(conn, None, agent, action, details_json, now)
     except sqlite3.Error as e:
         raise StateError(f"Failed to record ledger entry: {e}") from e
+
+
+def _insert(
+    conn: sqlite3.Connection,
+    task_id: str | None,
+    agent: str | None,
+    action: str,
+    details_json: str | None,
+    now: str,
+) -> LedgerRow:
+    cursor = conn.execute(
+        """
+        INSERT INTO ledger (task_id, agent, action, details, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        RETURNING id, task_id, agent, action, details, created_at
+        """,
+        (task_id, agent, action, details_json, now)
+    )
+    row = cursor.fetchone()
+    if not row:
+        raise StateError("Failed to record ledger entry: no row returned")
+    return _row_to_ledger(row)
 
 def get_recent(
     conn: sqlite3.Connection,
