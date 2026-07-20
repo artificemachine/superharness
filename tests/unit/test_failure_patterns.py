@@ -6,6 +6,23 @@ from pathlib import Path
 import pytest
 
 
+def _seed_task(project_dir: Path, task_id: str) -> None:
+    """Create a minimal real task row so failures.task_id (FK'd to tasks(id)
+    since migration v33) actually associates with the recorded failure,
+    instead of degrading to NULL."""
+    from superharness.engine.db import get_connection, init_db
+
+    conn = get_connection(str(project_dir))
+    init_db(conn, str(project_dir))
+    conn.execute(
+        "INSERT INTO tasks (id, title, status, version, created_at) "
+        "VALUES (?, ?, 'todo', 1, '2026-01-01T00:00:00Z')",
+        (task_id, task_id),
+    )
+    conn.commit()
+    conn.close()
+
+
 class TestMatchPatterns:
     def test_import_error_matched(self) -> None:
         from superharness.engine.failure_patterns import match_patterns
@@ -99,6 +116,7 @@ class TestRecordFailure:
         sh.mkdir()
         # Init SQLite (post-migration source of truth).
         _c = get_connection(str(tmp_path)); init_db(_c, str(tmp_path)); _c.close()
+        _seed_task(tmp_path, "task-1")
 
         matched = record_failure(str(tmp_path), "task-1", "ModuleNotFoundError: No module named foo")
         ids = [p.id for p in matched]
@@ -116,6 +134,7 @@ class TestRecordFailure:
         sh = tmp_path / ".superharness"
         sh.mkdir()
         _c = get_connection(str(tmp_path)); init_db(_c, str(tmp_path)); _c.close()
+        _seed_task(tmp_path, "task-inject")
 
         record_failure(str(tmp_path), "task-inject", "ImportError",
                        extra={"task": "evil", "agent": "hacker", "context": "legit-context"})
@@ -172,6 +191,7 @@ class TestGetFailureHints:
         sh = tmp_path / ".superharness"
         sh.mkdir()
         (sh / "failures.yaml").write_text("failures: []\n")
+        _seed_task(tmp_path, "feat.my-task")
 
         record_failure(str(tmp_path), "feat.my-task", "ImportError: No module named foo")
         hints = get_failure_hints(str(tmp_path), "feat.my-task")
@@ -192,6 +212,7 @@ class TestGetFailureHints:
         sh = tmp_path / ".superharness"
         sh.mkdir()
         (sh / "failures.yaml").write_text("failures: []\n")
+        _seed_task(tmp_path, "dup-task")
 
         # Same pattern recorded twice
         record_failure(str(tmp_path), "dup-task", "TimeoutError: timed out")
@@ -206,6 +227,7 @@ class TestGetFailureHints:
         sh = tmp_path / ".superharness"
         sh.mkdir()
         (sh / "failures.yaml").write_text("failures: []\n")
+        _seed_task(tmp_path, "fix-task")
 
         record_failure(str(tmp_path), "fix-task", "ImportError: cannot import name X")
         hints = get_failure_hints(str(tmp_path), "fix-task")

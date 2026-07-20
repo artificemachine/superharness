@@ -143,6 +143,10 @@ class TestPreflightPriorFailures:
         now = _now()
         conn = get_connection(str(project))
         init_db(conn)
+        conn.execute(
+            "INSERT INTO tasks (id, title, status, version, created_at) "
+            "VALUES ('task-x', 'X', 'todo', 1, ?)", (now,)
+        )
         failures_dao.record(conn, task_id="task-x", agent="claude-code",
                             pattern="import error", error_snippet="ModuleNotFoundError", now=now)
         conn.commit()
