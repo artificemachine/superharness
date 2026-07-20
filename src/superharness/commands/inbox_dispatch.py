@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from superharness.engine.process import pid_alive
+from superharness.engine.process import pid_alive, signal_process_group
 
 _log = logging.getLogger(__name__)
 
@@ -371,16 +371,10 @@ def _run_with_timeout(timeout_secs: int, cmd: list[str], inbox_file: str = "", i
     if _use_sigalrm:
         def _on_alarm(signum: int, frame: object) -> None:
             timed_out[0] = True
-            try:
-                os.killpg(proc.pid, signal.SIGTERM)  # type: ignore[attr-defined]
-            except (ProcessLookupError, AttributeError):
-                pass
+            signal_process_group(proc.pid, signal.SIGTERM)
 
         def _on_term(signum: int, frame: object) -> None:
-            try:
-                os.killpg(proc.pid, signal.SIGTERM)  # type: ignore[attr-defined]
-            except (ProcessLookupError, AttributeError):
-                pass
+            signal_process_group(proc.pid, signal.SIGTERM)
             sys.exit(1)
 
         old_alarm = signal.signal(signal.SIGALRM, _on_alarm)  # type: ignore[attr-defined]

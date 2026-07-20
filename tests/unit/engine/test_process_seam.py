@@ -19,11 +19,13 @@ from __future__ import annotations
 
 import inspect
 import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
 
-from superharness.engine.process import pid_alive
+from superharness.engine import process as process_mod
+from superharness.engine.process import pid_alive, signal_process_group, terminate, terminate_group
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SRC_ROOT = _REPO_ROOT / "src" / "superharness"
@@ -108,3 +110,167 @@ class TestNoDuplicateLivenessImplementations:
             f"raw os.kill(pid, 0) liveness probe(s) found outside "
             f"engine/process.py: {hits}"
         )
+
+    def test_no_raw_killpg_outside_the_seam(self):
+        """No file other than engine/process.py may send a group signal
+        directly. `os.getpgid` alone (without a matching `os.killpg`) is a
+        separate, narrower case — see the next test."""
+        hits = []
+        for f in sorted(_SRC_ROOT.rglob("*.py")):
+            if f == _PROCESS_PY:
+                continue
+            if "os.killpg" in f.read_text():
+                hits.append(str(f.relative_to(_REPO_ROOT)))
+        assert not hits, (
+            f"raw os.killpg usage found outside engine/process.py: {hits}"
+        )
+
+    def test_getpgid_outside_the_seam_is_used_only_for_the_self_check(self):
+        """`engine/operator.py` is a deliberate, narrow exception: it calls
+        `os.getpgid` three times, but only to compare against `os.getpid()`
+        before deciding whether to signal at all — never signalling its own
+        process group, which a coincidental pgid match would otherwise
+        SIGTERM/SIGKILL the operator itself. The actual signal-sending
+        already goes through `engine.process.signal_process_group` (proven
+        by the previous test finding zero `os.killpg` calls here). This is
+        not the killpg/getpgid boilerplate duplication the seam exists to
+        eliminate — it is a caller-specific safety check that doesn't belong
+        in a general-purpose primitive used by callers with no reason to
+        make the same comparison."""
+        hits = []
+        for f in sorted(_SRC_ROOT.rglob("*.py")):
+            if f == _PROCESS_PY:
+                continue
+            if "os.getpgid" in f.read_text():
+                hits.append(str(f.relative_to(_REPO_ROOT)))
+        assert hits == ["src/superharness/engine/operator.py"], (
+            f"os.getpgid usage outside engine/process.py changed shape: {hits}. "
+            "If this is a new site, route it through signal_process_group instead "
+            "of reimplementing the getpgid dance; if operator.py's own count changed, "
+            "update this ratchet after confirming the new site is the same "
+            "self-pgid safety check, not a duplicated signal-dispatch path."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Iteration 4 — terminate / signal_process_group / terminate_group
+# ---------------------------------------------------------------------------
+
+class TestTerminate:
+    def test_terminate_is_idempotent_on_dead_pid(self, tmp_path, monkeypatch):
+        child = subprocess.Popen([sys.executable, "-c", "pass"])
+        child.wait()
+        # Must not raise, whether the OS reports ProcessLookupError or some
+        # other OSError for an already-reaped pid.
+        terminate(child.pid)
+
+    def test_terminate_rejects_nonpositive(self):
+        terminate(0)
+        terminate(-1)
+
+    def test_terminate_sends_sigterm_to_a_real_child(self):
+        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        try:
+            terminate(proc.pid)
+            assert proc.wait(timeout=5) != 0 or True  # exited; exact code is platform-dependent
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+            proc.wait(timeout=5)
+
+
+class TestSignalProcessGroup:
+    def test_signal_process_group_falls_back_to_single_pid_without_killpg(self, monkeypatch):
+        monkeypatch.delattr(os, "killpg", raising=False)
+        kills = []
+        monkeypatch.setattr(os, "kill", lambda pid, sig: kills.append((pid, sig)))
+        signal_process_group(4242, 15)
+        assert kills == [(4242, 15)]
+
+    def test_signal_process_group_uses_killpg_when_available(self, monkeypatch):
+        killpg_calls = []
+        monkeypatch.setattr(os, "getpgid", lambda pid: pid, raising=False)
+        monkeypatch.setattr(os, "killpg", lambda pgid, sig: killpg_calls.append((pgid, sig)), raising=False)
+        signal_process_group(4242, 15)
+        assert killpg_calls == [(4242, 15)]
+
+    def test_signal_process_group_degrades_on_getpgid_oserror(self, monkeypatch):
+        def _raise(pid):
+            raise OSError("no such process")
+
+        monkeypatch.setattr(os, "getpgid", _raise, raising=False)
+        monkeypatch.setattr(os, "killpg", lambda pgid, sig: (_ for _ in ()).throw(
+            AssertionError("must not call killpg when getpgid failed")
+        ), raising=False)
+        kills = []
+        monkeypatch.setattr(os, "kill", lambda pid, sig: kills.append((pid, sig)))
+        signal_process_group(4242, 15)
+        assert kills == [(4242, 15)]
+
+
+class TestTerminateGroup:
+    def test_terminate_group_falls_back_to_single_pid_without_killpg(self, monkeypatch):
+        monkeypatch.delattr(os, "killpg", raising=False)
+        kills = []
+        monkeypatch.setattr(os, "kill", lambda pid, sig: kills.append((pid, sig)))
+        monkeypatch.setattr(process_mod, "pid_alive", lambda pid: False)
+
+        terminate_group(4242, escalate_after=None)
+
+        assert kills == [(4242, signal.SIGTERM)]
+
+    def test_terminate_group_sigterm_only_when_escalate_after_is_none(self, monkeypatch):
+        """The shape needed inside a signal handler: one signal, no blocking."""
+        sent = []
+        monkeypatch.setattr(process_mod, "signal_process_group", lambda pid, sig: sent.append((pid, sig)))
+        slept = []
+        terminate_group(4242, escalate_after=None, sleep=lambda s: slept.append(s))
+        assert sent == [(4242, signal.SIGTERM)]
+        assert slept == []
+
+    def test_terminate_group_escalates_to_sigkill_after_timeout(self, monkeypatch):
+        sent = []
+        monkeypatch.setattr(process_mod, "signal_process_group", lambda pid, sig: sent.append((pid, sig)))
+        monkeypatch.setattr(process_mod, "pid_alive", lambda pid: True)  # never dies
+
+        clock = {"t": 0.0}
+
+        def fake_now():
+            return clock["t"]
+
+        def fake_sleep(seconds):
+            clock["t"] += seconds
+
+        terminate_group(4242, escalate_after=1.0, poll_interval=0.3, sleep=fake_sleep, now=fake_now)
+
+        assert sent[0] == (4242, signal.SIGTERM)
+        assert sent[-1] == (4242, signal.SIGKILL)
+        assert sent.count((4242, signal.SIGKILL)) == 1, "SIGKILL must be sent exactly once"
+
+    def test_terminate_group_does_not_escalate_if_pid_dies_in_time(self, monkeypatch):
+        sent = []
+        monkeypatch.setattr(process_mod, "signal_process_group", lambda pid, sig: sent.append((pid, sig)))
+
+        alive_calls = {"n": 0}
+
+        def fake_alive(pid):
+            alive_calls["n"] += 1
+            return alive_calls["n"] < 2  # dies on the second check
+
+        monkeypatch.setattr(process_mod, "pid_alive", fake_alive)
+
+        clock = {"t": 0.0}
+        terminate_group(
+            4242, escalate_after=5.0, poll_interval=0.1,
+            sleep=lambda s: clock.__setitem__("t", clock["t"] + s),
+            now=lambda: clock["t"],
+        )
+
+        assert sent == [(4242, signal.SIGTERM)], "must not escalate to SIGKILL once the pid is confirmed dead"
+
+    def test_terminate_group_rejects_nonpositive(self, monkeypatch):
+        sent = []
+        monkeypatch.setattr(process_mod, "signal_process_group", lambda pid, sig: sent.append((pid, sig)))
+        terminate_group(0)
+        terminate_group(-1)
+        assert sent == []

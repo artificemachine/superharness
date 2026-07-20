@@ -20,7 +20,7 @@ from pathlib import Path
 
 import click
 
-from superharness.engine.process import pid_alive
+from superharness.engine.process import pid_alive, terminate_group
 
 logger = logging.getLogger(__name__)
 
@@ -210,9 +210,6 @@ _STOP_POLL_INTERVAL_S = 0.2
 
 
 def _stop_daemon(project_dir: Path) -> None:
-    import signal as _signal
-    import time as _time
-
     state = _read_state(project_dir)
     pid = state.get("pid")
     watcher_pid = state.get("watcher_pid")
@@ -227,41 +224,19 @@ def _stop_daemon(project_dir: Path) -> None:
         _state_file(project_dir).unlink(missing_ok=True)
         return
 
+    # terminate_group sends SIGTERM to the process group, then polls and
+    # escalates to SIGKILL after _STOP_POLL_TIMEOUT_S if still alive — see
+    # engine/process.py. The watcher is spawned with start_new_session=True,
+    # so it lives in its own process group and a group signal to the
+    # monitor never reaches it; it must be terminated directly or it
+    # survives as a permanent orphan holding the lock.
     if monitor_alive:
-        try:
-            if hasattr(os, "killpg"):
-                try:
-                    pgid = os.getpgid(pid)
-                    os.killpg(pgid, _signal.SIGTERM)
-                    click.echo(f"daemon: sent SIGTERM to process group {pgid}")
-                except OSError:
-                    # Fallback to single PID if PGID lookup fails
-                    os.kill(pid, _signal.SIGTERM)
-                    click.echo(f"daemon: sent SIGTERM to pid={pid} (pgid lookup failed)")
-            else:
-                os.kill(pid, _signal.SIGTERM)
-                click.echo(f"daemon: sent SIGTERM to pid={pid}")
-        except Exception as exc:
-            click.echo(f"daemon: could not stop pid={pid}: {exc}", err=True)
+        terminate_group(pid, escalate_after=_STOP_POLL_TIMEOUT_S, poll_interval=_STOP_POLL_INTERVAL_S)
+        click.echo(f"daemon: sent SIGTERM to pid={pid}")
 
-    # The watcher is spawned with start_new_session=True, so it lives in its
-    # own process group and the killpg above never reaches it — signal it
-    # directly or it survives as a permanent orphan holding the lock.
     if watcher_alive:
-        try:
-            os.kill(watcher_pid, _signal.SIGTERM)
-            click.echo(f"daemon: sent SIGTERM to watcher pid={watcher_pid}")
-        except Exception as exc:
-            click.echo(f"daemon: could not stop watcher pid={watcher_pid}: {exc}", err=True)
-
-    # Don't remove the state file — and let `status` report "not running" —
-    # until both pids are actually gone, or an orphan can hold the lock
-    # while the CLI already believes the daemon is stopped.
-    deadline = _time.time() + _STOP_POLL_TIMEOUT_S
-    while _time.time() < deadline:
-        if not _is_pid_alive(pid) and not (watcher_pid and _is_pid_alive(watcher_pid)):
-            break
-        _time.sleep(_STOP_POLL_INTERVAL_S)
+        terminate_group(watcher_pid, escalate_after=_STOP_POLL_TIMEOUT_S, poll_interval=_STOP_POLL_INTERVAL_S)
+        click.echo(f"daemon: sent SIGTERM to watcher pid={watcher_pid}")
 
     _state_file(project_dir).unlink(missing_ok=True)
 

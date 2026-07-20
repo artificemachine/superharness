@@ -139,52 +139,77 @@ def _write_state(project_dir: Path, pid: int, watcher_pid: int | None) -> None:
 
 
 class TestStopKillsWatcher:
+    """Iteration 4 of PLAN-coding-practices.md moved the killpg/getpgid
+    escalation dance behind engine.process.terminate_group. These tests are
+    rewritten to monkeypatch that seam directly — patching daemon_mod.os.killpg
+    / .getpgid would no longer intercept anything, since daemon.py no longer
+    calls them itself. Full escalation/polling correctness (SIGTERM then
+    SIGKILL, Windows/no-pgid degradation, dead-pid idempotency) is covered
+    by tests/unit/engine/test_process_seam.py::TestTerminateGroup; these
+    tests cover only _stop_daemon's own orchestration.
+    """
+
     def test_stop_kills_the_watcher_not_only_the_monitor(self, tmp_path, monkeypatch):
         (tmp_path / ".superharness").mkdir()
         _write_state(tmp_path, pid=100, watcher_pid=200)
 
         monkeypatch.setattr(daemon_mod, "_is_pid_alive", lambda pid: True)
-        # raising=False: Windows os has neither killpg nor getpgid — the
-        # production code hasattr-guards them, the test must not require them.
-        monkeypatch.setattr(daemon_mod.os, "killpg", lambda pgid, sig: None, raising=False)
-        monkeypatch.setattr(daemon_mod.os, "getpgid", lambda pid: pid, raising=False)
-        killed = []
-        monkeypatch.setattr(daemon_mod.os, "kill", lambda pid, sig: killed.append(pid))
-        monkeypatch.setattr(daemon_mod, "_STOP_POLL_TIMEOUT_S", 0.05)
-        monkeypatch.setattr(daemon_mod, "_STOP_POLL_INTERVAL_S", 0.01)
+        terminated = []
+        monkeypatch.setattr(daemon_mod, "terminate_group", lambda pid, **kwargs: terminated.append(pid))
 
         daemon_mod._stop_daemon(tmp_path)
 
-        assert 200 in killed, "the watcher pid must be signalled directly — killpg on the monitor's group does not reach it (start_new_session=True)"
+        assert 200 in terminated, (
+            "the watcher pid must be terminated directly — a process-group "
+            "signal to the monitor's group does not reach it (start_new_session=True)"
+        )
+        assert 100 in terminated
 
-    def test_stop_removes_state_only_after_processes_are_gone(self, tmp_path, monkeypatch):
-        """Also covers the chaos case: a stale watcher_pid belonging to a
-        dead process must not raise and must not block cleanup forever."""
+    def test_stop_does_not_terminate_an_already_dead_pid(self, tmp_path, monkeypatch):
+        """Chaos: a stale watcher_pid belonging to a dead process must not
+        raise and must not be signalled."""
         (tmp_path / ".superharness").mkdir()
         _write_state(tmp_path, pid=100, watcher_pid=200)
 
-        alive_calls = {"monitor": 0, "watcher": 0}
-
         def fake_alive(pid):
-            if pid == 100:
-                alive_calls["monitor"] += 1
-                return alive_calls["monitor"] <= 2  # dies after 2 checks
-            if pid == 200:
-                alive_calls["watcher"] += 1
-                return False  # stale/dead from the start
-            return False
+            return pid == 100  # only the monitor is alive; watcher is stale
 
         monkeypatch.setattr(daemon_mod, "_is_pid_alive", fake_alive)
-        monkeypatch.setattr(daemon_mod.os, "killpg", lambda pgid, sig: None, raising=False)
-        monkeypatch.setattr(daemon_mod.os, "getpgid", lambda pid: pid, raising=False)
-        monkeypatch.setattr(daemon_mod.os, "kill", lambda pid, sig: None)
-        monkeypatch.setattr(daemon_mod, "_STOP_POLL_TIMEOUT_S", 1.0)
-        monkeypatch.setattr(daemon_mod, "_STOP_POLL_INTERVAL_S", 0.01)
+        terminated = []
+        monkeypatch.setattr(daemon_mod, "terminate_group", lambda pid, **kwargs: terminated.append(pid))
+
+        daemon_mod._stop_daemon(tmp_path)  # must not raise
+
+        assert terminated == [100], "must not attempt to terminate an already-dead watcher pid"
+
+    def test_stop_removes_state_file_after_terminating(self, tmp_path, monkeypatch):
+        (tmp_path / ".superharness").mkdir()
+        _write_state(tmp_path, pid=100, watcher_pid=200)
+
+        monkeypatch.setattr(daemon_mod, "_is_pid_alive", lambda pid: True)
+        monkeypatch.setattr(daemon_mod, "terminate_group", lambda pid, **kwargs: None)
 
         state_file = daemon_mod._state_file(tmp_path)
         assert state_file.exists()
 
-        daemon_mod._stop_daemon(tmp_path)  # must not raise
+        daemon_mod._stop_daemon(tmp_path)
 
-        assert not state_file.exists(), "state file must be removed once both pids are confirmed dead"
-        assert alive_calls["monitor"] >= 2, "must have polled until the monitor pid actually died"
+        assert not state_file.exists()
+
+    def test_stop_passes_the_configured_escalation_budget(self, tmp_path, monkeypatch):
+        (tmp_path / ".superharness").mkdir()
+        _write_state(tmp_path, pid=100, watcher_pid=None)
+
+        monkeypatch.setattr(daemon_mod, "_is_pid_alive", lambda pid: True)
+        monkeypatch.setattr(daemon_mod, "_STOP_POLL_TIMEOUT_S", 2.5)
+        monkeypatch.setattr(daemon_mod, "_STOP_POLL_INTERVAL_S", 0.05)
+        calls = []
+
+        def fake_terminate_group(pid, **kwargs):
+            calls.append((pid, kwargs))
+
+        monkeypatch.setattr(daemon_mod, "terminate_group", fake_terminate_group)
+
+        daemon_mod._stop_daemon(tmp_path)
+
+        assert calls == [(100, {"escalate_after": 2.5, "poll_interval": 0.05})]

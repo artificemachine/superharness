@@ -14,7 +14,7 @@ from typing import Any
 
 import yaml
 
-from superharness.engine.process import pid_alive
+from superharness.engine.process import pid_alive, signal_process_group
 
 import logging
 logger = logging.getLogger(__name__)
@@ -368,13 +368,21 @@ class Operator:
     def _kill_process(self, proc: subprocess.Popen, name: str = "") -> None:
         """Terminate a subprocess and ALL its children (process group).
 
-        On Unix: uses os.killpg to send SIGTERM to the entire process group,
-        then SIGKILL if any survivors remain. This prevents orphaned
-        grandchildren (e.g. pytest, bridge_worker.js spawned by the
-        watcher) from accumulating as PPID=1 zombies.
+        On Unix: signals the entire process group via
+        engine.process.signal_process_group (SIGTERM, then SIGKILL if any
+        survivors remain). This prevents orphaned grandchildren (e.g.
+        pytest, bridge_worker.js spawned by the watcher) from accumulating
+        as PPID=1 zombies.
 
         On Windows: falls back to proc.terminate() + proc.kill() since
-        os.killpg and process groups are Unix-only concepts.
+        process groups are a Unix-only concept there.
+
+        This method (unlike engine.process.terminate_group) always reaps via
+        proc.wait() rather than polling pid_alive — it owns the Popen handle
+        for a real child, and a reaped-pending zombie still answers a
+        liveness probe until wait() is called, so polling would not detect
+        it. It still uses the shared seam for the group-signal step, so the
+        killpg/getpgid hasattr guard is not duplicated here.
 
         Fix: BUG-2026-06-04-operator-orphans-pytest-swap-storm — 10.7 GB
         orphaned pytest survived because only the direct child was killed.
@@ -387,18 +395,14 @@ class Operator:
             except (OSError, ProcessLookupError):
                 pass  # already dead
 
+            # Never signal our own process group — a coincidental pgid match
+            # would SIGTERM/SIGKILL the operator itself.
             if pgid is not None and pgid != os.getpid():
-                try:
-                    os.killpg(pgid, signal.SIGTERM)
-                except (OSError, ProcessLookupError):
-                    pass
+                signal_process_group(proc.pid, signal.SIGTERM)
                 try:
                     proc.wait(timeout=5)
                 except subprocess.TimeoutExpired:
-                    try:
-                        os.killpg(pgid, signal.SIGKILL)
-                    except (OSError, ProcessLookupError):
-                        pass
+                    signal_process_group(proc.pid, signal.SIGKILL)
                     try:
                         proc.wait(timeout=2)
                     except subprocess.TimeoutExpired:
@@ -435,7 +439,7 @@ class Operator:
                 if has_pg:
                     pgid = os.getpgid(proc.pid)
                     if pgid != os.getpid():
-                        os.killpg(pgid, signal.SIGTERM)
+                        signal_process_group(proc.pid, signal.SIGTERM)
                     else:
                         proc.terminate()
                 else:
@@ -449,7 +453,7 @@ class Operator:
                     if has_pg:
                         pgid = os.getpgid(proc.pid)
                         if pgid != os.getpid():
-                            os.killpg(pgid, signal.SIGKILL)
+                            signal_process_group(proc.pid, signal.SIGKILL)
                         else:
                             proc.kill()
                     else:
