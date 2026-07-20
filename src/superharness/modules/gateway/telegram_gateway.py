@@ -4,7 +4,7 @@ Supported commands:
   /approve <task_id>   — approve a task's pending plan
   /reject  <task_id>   — reject a task's pending plan
   /close   <task_id>   — mark a task done
-  /reset   <task_id>   — reset a task to pending
+  /reset   <task_id>   — reset a task to todo
 
 Security model:
   - Only chat_ids / user_ids listed in allowed_senders are processed.
@@ -20,14 +20,21 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from superharness.guard.redact import TokenRedactingFilter, redact_bot_token
+
 logger = logging.getLogger(__name__)
+logger.addFilter(TokenRedactingFilter())
+
+# Re-exported so this module's own call sites (and callers) can redact an
+# arbitrary string without a logger in the loop.
+_redact_token = redact_bot_token
 
 HELP_TEXT = (
     "Superharness operator commands:\n"
     "  /approve <task_id>  — approve a pending plan\n"
     "  /reject  <task_id>  — reject a pending plan\n"
     "  /close   <task_id>  — mark task done\n"
-    "  /reset   <task_id>  — reset task to pending\n"
+    "  /reset   <task_id>  — reset task to todo\n"
 )
 
 KNOWN_COMMANDS = frozenset(["approve", "reject", "close", "reset"])
@@ -238,7 +245,11 @@ class GatewayListener:
             "approve": ("plan_approved", "plan_approved_at"),
             "reject":  ("stopped",       "stopped_at"),
             "close":   ("done",          "done_at"),
-            "reset":   ("pending",       None),
+            # "todo", not "pending": "pending" is the initial status of a
+            # decomposed subtask (commands/delegate.py), not an entry point in
+            # the task lifecycle — no lifecycle rule advances a task sitting at
+            # it, so /reset used to strand the task invisibly.
+            "reset":   ("todo",          None),
         }
         target_status, ts_field = _COMMAND_STATUS.get(parsed.command, (None, None))
         if target_status is None:

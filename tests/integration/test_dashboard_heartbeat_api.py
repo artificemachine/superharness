@@ -65,10 +65,13 @@ def _insert_heartbeat(tmp_path: Path, agent: str, status: str, updated_at: str) 
     conn.close()
 
 
-def _get(base: str, path: str) -> tuple[int, dict]:
+def _get(base: str, path: str, token: str | None = None) -> tuple[int, dict]:
     url = base + path
+    req = urllib.request.Request(url, method="GET")
+    if token is not None:
+        req.add_header("X-Superharness-Token", token)
     try:
-        with urllib.request.urlopen(url, timeout=5) as r:
+        with urllib.request.urlopen(req, timeout=5) as r:
             return r.status, json.loads(r.read())
     except urllib.error.HTTPError as e:
         return e.code, json.loads(e.read())
@@ -107,16 +110,16 @@ def server(tmp_path):
 
 class TestHeartbeatEndpoint:
     def test_returns_200_with_required_keys(self, server):
-        base, _, _ = server
-        status, body = _get(base, "/api/heartbeats")
+        base, token, _ = server
+        status, body = _get(base, "/api/heartbeats", token)
         assert status == 200
         assert "agents" in body
         assert "now_utc" in body
 
     def test_empty_db_returns_gray_for_known_agents(self, server):
         """All KNOWN_AGENTS should appear as gray when the table has no rows."""
-        base, _, _ = server
-        _, body = _get(base, "/api/heartbeats")
+        base, token, _ = server
+        _, body = _get(base, "/api/heartbeats", token)
         agents = body["agents"]
         # Every default known agent must be present
         for agent in ["claude-code", "codex-cli", "gemini-cli", "opencode"]:
@@ -127,11 +130,11 @@ class TestHeartbeatEndpoint:
 
     def test_fresh_heartbeat_is_green(self, server):
         """A row updated just now (age < 60s) should produce level='green'."""
-        base, _, tmp_path = server
+        base, token, tmp_path = server
         now_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         _insert_heartbeat(tmp_path, "claude-code", "alive", now_ts)
 
-        _, body = _get(base, "/api/heartbeats")
+        _, body = _get(base, "/api/heartbeats", token)
         info = body["agents"]["claude-code"]
         assert info["level"] == "green"
         assert info["age_seconds"] >= 0
@@ -139,62 +142,62 @@ class TestHeartbeatEndpoint:
 
     def test_old_heartbeat_is_red(self, server):
         """A row not updated for >300s should produce level='red'."""
-        base, _, tmp_path = server
+        base, token, tmp_path = server
         # 6 minutes ago
         old_ts = time.strftime(
             "%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 370)
         )
         _insert_heartbeat(tmp_path, "codex-cli", "alive", old_ts)
 
-        _, body = _get(base, "/api/heartbeats")
+        _, body = _get(base, "/api/heartbeats", token)
         info = body["agents"]["codex-cli"]
         assert info["level"] == "red"
         assert info["age_seconds"] >= 300
 
     def test_zombie_status_is_red(self, server):
         """A row with status='zombie' should produce level='red' regardless of age."""
-        base, _, tmp_path = server
+        base, token, tmp_path = server
         # Updated very recently but already marked zombie
         now_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         _insert_heartbeat(tmp_path, "gemini-cli", "zombie", now_ts)
 
-        _, body = _get(base, "/api/heartbeats")
+        _, body = _get(base, "/api/heartbeats", token)
         info = body["agents"]["gemini-cli"]
         assert info["level"] == "red"
 
     def test_idle_heartbeat_is_yellow(self, server):
         """A row updated 60-300s ago should produce level='yellow'."""
-        base, _, tmp_path = server
+        base, token, tmp_path = server
         ts_90s_ago = time.strftime(
             "%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 90)
         )
         _insert_heartbeat(tmp_path, "opencode", "alive", ts_90s_ago)
 
-        _, body = _get(base, "/api/heartbeats")
+        _, body = _get(base, "/api/heartbeats", token)
         info = body["agents"]["opencode"]
         assert info["level"] == "yellow"
         assert 60 <= info["age_seconds"] < 300
 
     def test_agent_not_in_known_agents_appears_if_in_db(self, server):
         """Agents not in KNOWN_AGENTS but in the heartbeats table must still appear."""
-        base, _, tmp_path = server
+        base, token, tmp_path = server
         now_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         _insert_heartbeat(tmp_path, "custom-bot", "alive", now_ts)
 
-        _, body = _get(base, "/api/heartbeats")
+        _, body = _get(base, "/api/heartbeats", token)
         assert "custom-bot" in body["agents"]
         assert body["agents"]["custom-bot"]["level"] == "green"
 
     def test_response_includes_task_id_and_updated_at(self, server):
         """Heartbeat info includes task_id and updated_at when a row exists."""
-        base, _, tmp_path = server
+        base, token, tmp_path = server
         now_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         conn = get_connection(str(tmp_path))
         heartbeat_dao.upsert(conn, agent="claude-code", task_id="feat.x", status="alive", now=now_ts)
         conn.commit()
         conn.close()
 
-        _, body = _get(base, "/api/heartbeats")
+        _, body = _get(base, "/api/heartbeats", token)
         info = body["agents"]["claude-code"]
         assert info["task_id"] == "feat.x"
         assert info["updated_at"] == now_ts

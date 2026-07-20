@@ -1066,7 +1066,7 @@ def test_monitor_status_includes_heartbeat(repo_root, tmp_path, monkeypatch) -> 
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
-        status, payload = _request_json("GET", base_url + "/api/status")
+        status, payload = _request_json("GET", base_url + "/api/status", headers={"X-Superharness-Token": module.Handler.auth_token})
     finally:
         _stop_server(server, thread)
 
@@ -1093,7 +1093,7 @@ def test_monitor_status_reports_foreground_when_heartbeat_ok_and_launchd_missing
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
-        status, payload = _request_json("GET", base_url + "/api/status")
+        status, payload = _request_json("GET", base_url + "/api/status", headers={"X-Superharness-Token": module.Handler.auth_token})
     finally:
         _stop_server(server, thread)
 
@@ -1815,6 +1815,7 @@ def test_task_report_endpoint_returns_500_on_crash(repo_root, tmp_path, monkeypa
         status, payload = _request_json(
             "GET",
             base_url + "/api/task-report?task=test-task&agent=claude-code",
+            headers={"X-Superharness-Token": module.Handler.auth_token},
         )
     finally:
         _stop_server(server, thread)
@@ -2163,6 +2164,7 @@ def test_task_instructions_api_endpoint(repo_root, tmp_path, monkeypatch) -> Non
         status, payload = _request_json(
             "GET",
             base_url + "/api/task-instructions?task=mcp-docs",
+            headers={"X-Superharness-Token": module.Handler.auth_token},
         )
     finally:
         _stop_server(server, thread)
@@ -2224,6 +2226,7 @@ def test_task_log_endpoint_returns_log_content(repo_root, tmp_path, monkeypatch)
         status, payload = _request_json(
             "GET",
             base_url + "/api/task-log?task=mod.5-security&lines=50",
+            headers={"X-Superharness-Token": module.Handler.auth_token},
         )
     finally:
         _stop_server(server, thread)
@@ -2243,6 +2246,7 @@ def test_task_log_endpoint_no_log(repo_root, tmp_path, monkeypatch) -> None:
         status, payload = _request_json(
             "GET",
             base_url + "/api/task-log?task=nonexistent",
+            headers={"X-Superharness-Token": module.Handler.auth_token},
         )
     finally:
         _stop_server(server, thread)
@@ -2444,7 +2448,7 @@ def test_board_api_endpoint_returns_grouped_tasks(repo_root, tmp_path, monkeypat
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
-        status, payload = _request_json("GET", base_url + "/api/board")
+        status, payload = _request_json("GET", base_url + "/api/board", headers={"X-Superharness-Token": module.Handler.auth_token})
     finally:
         _stop_server(server, thread)
 
@@ -2471,7 +2475,7 @@ def test_board_api_includes_agent_status(repo_root, tmp_path, monkeypatch) -> No
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
-        status, payload = _request_json("GET", base_url + "/api/board")
+        status, payload = _request_json("GET", base_url + "/api/board", headers={"X-Superharness-Token": module.Handler.auth_token})
     finally:
         _stop_server(server, thread)
 
@@ -2730,7 +2734,7 @@ def test_monitor_board_endpoint_exists(repo_root, tmp_path, monkeypatch) -> None
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
-        status, payload = _request_json("GET", base_url + "/api/board")
+        status, payload = _request_json("GET", base_url + "/api/board", headers={"X-Superharness-Token": module.Handler.auth_token})
     finally:
         _stop_server(server, thread)
 
@@ -2805,7 +2809,7 @@ def test_monitor_review_queue_endpoint_exists(repo_root, tmp_path, monkeypatch) 
 
     server, thread, base_url = _start_server(module, repo_root, project)
     try:
-        status, payload = _request_json("GET", base_url + "/api/review-queue")
+        status, payload = _request_json("GET", base_url + "/api/review-queue", headers={"X-Superharness-Token": module.Handler.auth_token})
     finally:
         _stop_server(server, thread)
 

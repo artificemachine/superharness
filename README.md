@@ -9,6 +9,29 @@
 
 superharness lets AI coding assistants work on the same project without stepping on each other. It provides a shared contract (SQLite-backed), queue-based delegation, lifecycle rules, and handoff/ledger state so tasks survive across sessions and auto-manage themselves.
 
+One command tells you the whole state of a project — agents, queue, discussions, and every task, in one screen:
+
+```console
+$ shux status
+superharness status
+project: ~/code/my-project
+watcher: level=ok foreground (last heartbeat 9s ago)
+heartbeat: ok (last heartbeat 9s ago)
+inbox: pending=0 launched=0 running=2 paused=0 done=1655 failed=46 stale=0 stopped=0
+retry-alert: threshold=3 high=46 ids=inbox-001,auto-eab0b7,auto-9db89b
+approvals: pending=1
+discussions: active=1 consensus=0 failed_participant=21 deadlock=0 closed=12
+tasks: archived=10254 done=6 review=0 todo=2 in_progress=2 plan=1 failed=0 blocked=0 waiting_input=0
+
+Active Tasks:
+  feat-auth-rotation   in_progress   claude-code   (dispatched 4m ago)
+  fix-migration-drift  plan_proposed owner         (awaiting approval)
+
+No issues found. All clean.
+```
+
+`shux status --fix` cleans orphans and stale items; `shux status --check` exits non-zero for CI.
+
 ## Install as Claude Code Plugin
 
 ```
