@@ -109,8 +109,11 @@ def write_state(pid):
 
 def pid_alive(pid):
     if os.name == "nt":
-        # os.kill(pid, 0) on Windows is TerminateProcess, not a probe —
-        # it would kill the watcher it is checking. Query the handle instead.
+        # os.kill(pid, 0) on Windows calls GenerateConsoleCtrlEvent(CTRL_C_EVENT,
+        # pid) instead of probing the process. The adopted watcher is not in this
+        # process's console process group, so that call raises OSError, which a
+        # naive except OSError: return False reports as "dead" even though the
+        # watcher is alive. Query the handle instead.
         import ctypes
         PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
         STILL_ACTIVE = 259
