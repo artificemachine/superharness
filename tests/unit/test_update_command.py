@@ -57,9 +57,17 @@ def test_update_exits_nonzero_when_git_pull_fails(tmp_path):
 
 
 def test_update_uses_pipx_when_root_is_not_repo():
-    """When _ROOT is not a git repo, step 1 must try pipx upgrade."""
+    """When _ROOT is not a git repo, step 1 must try pipx upgrade.
+
+    _detect_installer and shutil.which are pinned explicitly — without this,
+    the real installer choice depends on whichever venv pytest happens to run
+    under on this specific machine (pyenv/uv/pipx all resolve differently),
+    which made this test pass or fail depending on dev-machine state rather
+    than the code path it's meant to verify."""
     runner = CliRunner()
     with patch("superharness.cli._is_git_repo", return_value=False), \
+         patch("superharness.cli._detect_installer", return_value="pipx"), \
+         patch("superharness.cli.shutil.which", return_value="/usr/local/bin/pipx"), \
          patch("superharness.cli.subprocess.run") as mock_run, \
          patch("superharness.cli._run_module"):
         mock_run.return_value = MagicMock(returncode=0)
@@ -114,8 +122,12 @@ def test_update_exits_nonzero_when_pip_fallback_also_fails():
 
 
 def test_update_prints_pipx_done_message_on_success():
+    """Pins _detect_installer/shutil.which for the same reason as
+    test_update_uses_pipx_when_root_is_not_repo above."""
     runner = CliRunner()
     with patch("superharness.cli._is_git_repo", return_value=False), \
+         patch("superharness.cli._detect_installer", return_value="pipx"), \
+         patch("superharness.cli.shutil.which", return_value="/usr/local/bin/pipx"), \
          patch("superharness.cli.subprocess.run") as mock_run, \
          patch("superharness.cli._run_module"):
         mock_run.return_value = MagicMock(returncode=0)
