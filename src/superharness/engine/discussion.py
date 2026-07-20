@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 from superharness.engine.db import get_connection, init_db
 from superharness.engine import discussions_dao
+from superharness.engine.process import pid_alive
 
 import logging
 logger = logging.getLogger(__name__)
@@ -666,32 +667,10 @@ def cmd_list(discussions_dir: str) -> int:
     return 0
 
 
-def _pid_alive(pid: int) -> bool:
-    """Cross-platform liveness check. Mirrors daemon.py's _is_pid_alive."""
-    if sys.platform == "win32":
-        import ctypes
-        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        STILL_ACTIVE = 259
-        handle = ctypes.windll.kernel32.OpenProcess(
-            PROCESS_QUERY_LIMITED_INFORMATION, False, pid
-        )
-        if not handle:
-            return False
-        try:
-            exit_code = ctypes.c_ulong(STILL_ACTIVE)
-            ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
-            return exit_code.value == STILL_ACTIVE
-        finally:
-            ctypes.windll.kernel32.CloseHandle(handle)
-    try:
-        os.kill(pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return False
+# Kept as a module-level name: tests/unit/test_discussion_close_terminates_agents_2026_07_09.py
+# calls discussion_mod._pid_alive directly. Delegates to the single seam in
+# engine/process.py.
+_pid_alive = pid_alive
 
 
 def _terminate_process_tree(pid: int, force: bool = False) -> None:

@@ -20,6 +20,8 @@ from pathlib import Path
 
 import click
 
+from superharness.engine.process import pid_alive
+
 logger = logging.getLogger(__name__)
 
 _DAEMON_STATE_FILE = ".superharness/daemon-state.json"
@@ -186,31 +188,10 @@ def _cleanup_monitor_script(script: Path) -> None:
     except Exception as e:
         logger.warning("daemon.py unexpected error: %s", e, exc_info=True)
         pass
-def _is_pid_alive(pid: int) -> bool:
-    if sys.platform == "win32":
-        import ctypes
-        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        STILL_ACTIVE = 259
-        handle = ctypes.windll.kernel32.OpenProcess(
-            PROCESS_QUERY_LIMITED_INFORMATION, False, pid
-        )
-        if not handle:
-            return False
-        try:
-            exit_code = ctypes.c_ulong(STILL_ACTIVE)
-            ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
-            return exit_code.value == STILL_ACTIVE
-        finally:
-            ctypes.windll.kernel32.CloseHandle(handle)
-    try:
-        os.kill(pid, 0)
-        return True
-    except ProcessLookupError:
-        return False  # No such process
-    except PermissionError:
-        return True   # Process exists; we just lack permission to signal it
-    except OSError:
-        return False  # Windows: OSError(22) for invalid/out-of-range PID
+# Kept as a module-level name (not inlined at call sites): monkeypatched by
+# tests/unit/test_daemon_single_watcher.py to stub liveness without touching
+# real processes. Delegates to the single seam in engine/process.py.
+_is_pid_alive = pid_alive
 
 
 def _find_watch_script() -> Path | None:
