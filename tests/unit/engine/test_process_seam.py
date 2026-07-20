@@ -8,17 +8,12 @@ comments already in this codebase (inbox_dispatch.py, operator.py,
 inbox.py, mcp/cli.py).
 
 Iteration 2: every duplicate pid-liveness implementation is migrated to call
-`pid_alive`, with one deliberate, documented exception — `daemon.py`'s
-`_write_monitor_script` still writes a standalone generated script containing
-its own `pid_alive()` (already Windows-correct since `3eeda989`). That script
-is not a real, directly-executed module today: it is a string literal daemon.py
-writes to `.superharness/daemon-monitor.py` in the *target* project, run by
-whatever interpreter `_find_superharness_python()` picks. Iteration 3 of
-PLAN-coding-practices.md replaces this entire generated-string mechanism with
-a real importable module (`commands/daemon_monitor.py`) invoked via `-m`,
-which is where this last occurrence is retired. The ratchets below exclude
-only that known, already-scheduled region of daemon.py — everywhere else,
-including the rest of daemon.py's own real code, is held to zero.
+`pid_alive`, with one deliberate, documented exception at the time — daemon.py's
+`_write_monitor_script` still wrote a standalone generated script containing
+its own `pid_alive()`. Iteration 3 deleted that generated-string mechanism
+entirely (see `commands/daemon_monitor.py`, now a real importable module
+invoked via `-m`), which retired the last occurrence. The ratchets below now
+hold every file under `src/` to zero, with no exception.
 """
 from __future__ import annotations
 
@@ -28,28 +23,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from superharness.commands import daemon as daemon_mod
 from superharness.engine.process import pid_alive
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SRC_ROOT = _REPO_ROOT / "src" / "superharness"
 _PROCESS_PY = _SRC_ROOT / "engine" / "process.py"
 _DAEMON_PY = _SRC_ROOT / "commands" / "daemon.py"
-
-
-def _daemon_source_excluding_generated_script() -> str:
-    """daemon.py's real source, with the still-embedded generated monitor
-    script (deferred to iteration 3, see module docstring above) cut out."""
-    text = _DAEMON_PY.read_text()
-    start = text.index("def _write_monitor_script")
-    end = text.index("def _cleanup_monitor_script")
-    return text[:start] + text[end:]
-
-
-def _source_text_for_ratchet(path: Path) -> str:
-    if path == _DAEMON_PY:
-        return _daemon_source_excluding_generated_script()
-    return path.read_text()
 
 
 def test_pid_alive_true_for_current_process():
@@ -76,15 +55,17 @@ def test_pid_alive_never_uses_os_kill_on_windows():
     assert nt_idx < kill_idx, "the nt branch must appear before any os.kill( probe"
 
 
-def test_daemon_monitor_comment_states_the_real_mechanism(tmp_path):
-    (tmp_path / ".superharness").mkdir()
-    script = daemon_mod._write_monitor_script(
-        tmp_path, 30, tmp_path / "out.log", tmp_path / "err.log", watcher_pid=4242,
-    )
-    text = script.read_text()
-
-    assert "TerminateProcess, not a probe" not in text
-    assert "GenerateConsoleCtrlEvent" in text
+def test_no_generated_monitor_script_remains():
+    """Iteration 3 superseded this test — it used to write the generated
+    monitor script (`daemon_mod._write_monitor_script`) and assert on its
+    text. That function is gone; the monitor is now a real module
+    (commands/daemon_monitor.py, see test_daemon_monitor.py for its
+    behavioural coverage). This guards the deletion from silently coming
+    back."""
+    from superharness.commands import daemon as daemon_mod
+    assert not hasattr(daemon_mod, "_write_monitor_script")
+    assert not hasattr(daemon_mod, "_cleanup_monitor_script")
+    assert "TerminateProcess, not a probe" not in _DAEMON_PY.read_text()
 
 
 def test_pid_alive_treats_permission_error_as_alive(monkeypatch):
@@ -100,16 +81,14 @@ def test_pid_alive_treats_permission_error_as_alive(monkeypatch):
 
 
 class TestNoDuplicateLivenessImplementations:
-    """Iteration 2 ratchets — see module docstring for the one documented
-    exception (daemon.py's still-embedded generated monitor script,
-    deferred to iteration 3)."""
+    """Ratchets, held to zero with no exception as of iteration 3."""
 
     def test_no_duplicate_ctypes_liveness_impls(self):
         hits = []
         for f in sorted(_SRC_ROOT.rglob("*.py")):
             if f == _PROCESS_PY:
                 continue
-            if "GetExitCodeProcess" in _source_text_for_ratchet(f):
+            if "GetExitCodeProcess" in f.read_text():
                 hits.append(str(f.relative_to(_REPO_ROOT)))
         assert not hits, (
             f"duplicate ctypes liveness implementation(s) found outside "
@@ -123,7 +102,7 @@ class TestNoDuplicateLivenessImplementations:
         for f in sorted(_SRC_ROOT.rglob("*.py")):
             if f == _PROCESS_PY:
                 continue
-            if pattern.search(_source_text_for_ratchet(f)):
+            if pattern.search(f.read_text()):
                 hits.append(str(f.relative_to(_REPO_ROOT)))
         assert not hits, (
             f"raw os.kill(pid, 0) liveness probe(s) found outside "

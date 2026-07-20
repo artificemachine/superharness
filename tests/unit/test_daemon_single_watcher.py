@@ -11,86 +11,120 @@ Before this fix:
     in its own process group — so `_stop_daemon`'s `killpg` on the monitor's
     group never reaches it, leaving a permanent orphan.
 
-Side-effect fence: no real daemon is spawned in these tests. The generated
-script is asserted on as text; `_stop_daemon`'s process-signalling is
-asserted with `os.kill`/`_is_pid_alive` stubbed.
+Side-effect fence: no real daemon is spawned in these tests. `_stop_daemon`'s
+process-signalling is asserted with `os.kill`/`_is_pid_alive` stubbed.
 """
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from superharness.commands import daemon as daemon_mod
+from superharness.commands import daemon_monitor
 
 
 # ---------------------------------------------------------------------------
-# Generated monitor script — adopts the already-spawned watcher
+# Monitor adopts the already-spawned watcher
+#
+# Rewritten in iteration 3 of PLAN-coding-practices.md: this class used to
+# assert on the *text* of a generated script (`daemon_mod._write_monitor_script`).
+# That function no longer exists — the monitor is now a real module,
+# commands/daemon_monitor.py, exercised here behaviourally instead. Full
+# coverage of its adopt/respawn loop lives in tests/unit/test_daemon_monitor.py;
+# this class keeps the two properties this file's history cares about most
+# (adopts rather than spawns, and launches as `-m`), plus a Windows-safety
+# assertion inherited from `pid_alive` no longer being reimplemented here.
 # ---------------------------------------------------------------------------
+
+class _Stop(Exception):
+    pass
+
 
 class TestMonitorAdoptsWatcher:
     def test_monitor_adopts_passed_watcher_pid(self, tmp_path):
         (tmp_path / ".superharness").mkdir()
-        script = daemon_mod._write_monitor_script(
-            tmp_path, 30, tmp_path / "out.log", tmp_path / "err.log", watcher_pid=4242,
-        )
-        text = script.read_text()
+        seen_pids = []
 
-        assign_idx = text.index("watcher_pid = int(sys.argv[5])")
-        # watcher_pid must be referenced again after the argv parse line, as a
-        # bare identifier (not just as the "watcher_pid" JSON key name that
-        # was already present in the buggy version's write_state()) —
-        # previously the parsed value was discarded and never used again.
-        rest = text[assign_idx + len("watcher_pid = int(sys.argv[5])"):]
-        bare_refs = re.findall(r'(?<!")\bwatcher_pid\b(?!")', rest)
-        assert bare_refs, (
-            "the generated monitor never references the watcher_pid variable "
-            "after parsing it from argv — it will spawn a second watcher "
-            "instead of adopting the first"
+        def fake_alive(pid):
+            seen_pids.append(pid)
+            raise _Stop()
+
+        def fake_spawn():
+            raise AssertionError(
+                "the monitor spawned a fresh watcher instead of adopting "
+                "the passed watcher_pid — this is the second-watcher bug"
+            )
+
+        with pytest.raises(_Stop):
+            daemon_monitor.run_monitor(
+                str(tmp_path), 30, str(tmp_path / "out.log"), str(tmp_path / "err.log"),
+                watcher_pid=4242, spawn=fake_spawn, sleep=lambda s: None, alive=fake_alive,
+            )
+
+        assert seen_pids and seen_pids[0] == 4242, (
+            "the monitor must check liveness of the adopted watcher_pid first"
         )
 
     def test_monitor_does_not_spawn_before_first_wait(self, tmp_path):
         (tmp_path / ".superharness").mkdir()
-        script = daemon_mod._write_monitor_script(
-            tmp_path, 30, tmp_path / "out.log", tmp_path / "err.log", watcher_pid=4242,
-        )
-        text = script.read_text()
+        spawned = []
 
-        while_idx = text.index("while True:")
-        before_loop = text[:while_idx]
+        def fake_alive(pid):
+            raise _Stop()  # stop as soon as the first liveness check happens
 
-        # No unconditional top-level `proc = spawn()` (or equivalent call)
-        # before the main loop — the first watcher must come from the
-        # adopted watcher_pid, not a fresh spawn() at script startup.
-        calls_before_loop = re.findall(r'(?<!def )\bspawn\(\)', before_loop)
-        assert not calls_before_loop, (
-            f"spawn() is called {len(calls_before_loop)} time(s) before the main "
-            f"loop even starts — this is the second-watcher bug"
+        def fake_spawn():
+            spawned.append(1)
+            raise _Stop()
+
+        with pytest.raises(_Stop):
+            daemon_monitor.run_monitor(
+                str(tmp_path), 30, str(tmp_path / "out.log"), str(tmp_path / "err.log"),
+                watcher_pid=4242, spawn=fake_spawn, sleep=lambda s: None, alive=fake_alive,
+            )
+
+        assert not spawned, (
+            "spawn() must not be called before the adopted watcher's first "
+            "liveness check — this is the second-watcher bug"
         )
 
-    def test_monitor_pid_alive_is_windows_safe(self, tmp_path):
-        """os.kill(pid, 0) on Windows is TerminateProcess, not a liveness
-        probe — a monitor built on it kills the watcher it is checking (and
-        collapses the window where `daemon start` idempotency sees the
-        original watcher pid alive). The generated script must branch to a
-        handle query on nt before any os.kill-based probe."""
-        (tmp_path / ".superharness").mkdir()
-        script = daemon_mod._write_monitor_script(
-            tmp_path, 30, tmp_path / "out.log", tmp_path / "err.log", watcher_pid=4242,
-        )
-        text = script.read_text()
+    def test_start_launches_monitor_as_a_module(self, tmp_path, monkeypatch):
+        """`_start_daemon`'s _monitor_argv must invoke the real module via
+        `-m`, not a generated script path."""
+        project_dir = tmp_path / "proj"
+        (project_dir / ".superharness").mkdir(parents=True)
 
-        fn_start = text.index("def pid_alive")
-        fn_body = text[fn_start:text.index("def wait_for_exit")]
-        nt_idx = fn_body.find('os.name == "nt"')
-        kill_idx = fn_body.find("os.kill(")
-        assert nt_idx != -1 and "OpenProcess" in fn_body, (
-            "pid_alive has no Windows branch — os.kill(pid, 0) terminates "
-            "the probed process on Windows"
-        )
-        assert nt_idx < kill_idx, "the nt branch must come before the os.kill probe"
+        captured = {}
+
+        class FakeProc:
+            pid = 555
+
+        def fake_spawn_watcher_popen(*args, **kwargs):
+            return FakeProc()
+
+        def fake_execvpe(path, argv, env):
+            captured["argv"] = argv
+            raise _Stop()
+
+        monkeypatch.setattr(daemon_mod.subprocess, "Popen", fake_spawn_watcher_popen)
+        monkeypatch.setattr(daemon_mod, "_check_version_and_upgrade", lambda project_dir: None)
+        if hasattr(daemon_mod.os, "fork"):
+            monkeypatch.setattr(daemon_mod.os, "fork", lambda: 0)
+            monkeypatch.setattr(daemon_mod.os, "setsid", lambda: None, raising=False)
+            monkeypatch.setattr(daemon_mod.os, "chdir", lambda p: None)
+            monkeypatch.setattr(daemon_mod.os, "umask", lambda m: None, raising=False)
+            monkeypatch.setattr(daemon_mod.os, "closerange", lambda a, b: None, raising=False)
+            monkeypatch.setattr(daemon_mod.os, "open", lambda *a, **k: 0)
+            monkeypatch.setattr(daemon_mod.os, "execvpe", fake_execvpe)
+
+        with pytest.raises(_Stop):
+            daemon_mod._start_daemon(project_dir, 30)
+
+        argv = captured["argv"]
+        assert "-m" in argv
+        assert "superharness.commands.daemon_monitor" in argv
+        assert str(555) in argv, "the monitor argv must carry the spawned watcher's pid"
 
 
 # ---------------------------------------------------------------------------

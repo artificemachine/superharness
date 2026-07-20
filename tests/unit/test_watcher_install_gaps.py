@@ -144,36 +144,26 @@ def test_no_new_launchagents_appear_during_test_run():
 # ---------------------------------------------------------------------------
 
 def test_daemon_monitor_logs_clean_exit_at_runtime(tmp_path):
-    """Render and execute a tiny version of the daemon monitor template,
-    feeding it a watcher that exits 0 vs exits 7. Assert the log message
-    differs."""
+    """Execute the real daemon monitor's restart-message logic, feeding it a
+    watcher that exits 0 vs exits 7. Assert the log message differs.
+
+    Iteration 3 of PLAN-coding-practices.md extracted the monitor loop out
+    of daemon.py's generated-script string into a real, importable module,
+    commands/daemon_monitor.py — this now calls its `_restart_message`
+    helper directly instead of rendering a template and grepping the
+    result, which is possible precisely because the monitor is no longer a
+    string.
+    """
     sys.path.insert(0, SRC)
     try:
-        from superharness.commands import daemon as daemon_mod
+        from superharness.commands import daemon_monitor
     finally:
         if SRC in sys.path:
             sys.path.remove(SRC)
 
-    # Pull the embedded monitor-script template via the helper.
-    project = tmp_path / "proj"
-    harness = project / ".superharness"
-    harness.mkdir(parents=True)
+    clean_msg = daemon_monitor._restart_message(0)
+    crash_msg = daemon_monitor._restart_message(7)
 
-    # Find the function that builds the monitor script
-    builder = getattr(daemon_mod, "_build_monitor_script", None) or \
-              getattr(daemon_mod, "build_monitor_script", None) or \
-              getattr(daemon_mod, "_monitor_script", None)
-    if builder is None:
-        # Static fallback: the template lives in source as a docstring/template.
-        # Read it directly and assert both branches exist.
-        src = (REPO_ROOT / "src" / "superharness" / "commands" / "daemon.py").read_text()
-        assert "exited cleanly" in src, "daemon.py must log clean exit on rc=0"
-        assert "crashed (rc=" in src, "daemon.py must still log crash on rc!=0"
-        return
-
-    # Otherwise execute it
-    script = builder(str(project), interval=1, watcher_cmd=["true"])
-    assert "exited cleanly" in str(script), \
-        "monitor template must log clean exit on rc=0"
-    assert "crashed (rc=" in str(script), \
-        "monitor template must still log crash on rc!=0"
+    assert "exited cleanly" in clean_msg, "monitor must log clean exit on rc=0"
+    assert "crashed (rc=" in crash_msg, "monitor must still log crash on rc!=0"
+    assert clean_msg != crash_msg
