@@ -46,8 +46,10 @@ def is_mcp_available() -> bool:
     Returns:
         True if MCP server is running and accessible
     """
-    # TODO: Check if obsidian-semantic MCP server is callable
-    # For now, return False (level 1-2 only)
+    # Optional integration point: live probing of the obsidian-semantic MCP
+    # server is not wired into this build, so the module operates at levels 1-2
+    # (no live MCP). Returning False keeps callers on the graceful-degradation
+    # path; implement a real probe here to enable level-3 semantic features.
     return False
 
 

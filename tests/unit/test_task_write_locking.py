@@ -144,7 +144,11 @@ def test_telegram_reset_targets_todo_not_pending():
     import re
     from pathlib import Path
 
-    src = Path("src/superharness/modules/gateway/telegram_gateway.py").read_text()
+    # Anchor to repo root, not CWD: an earlier test that chdir's into a tmp
+    # dir without restoring would otherwise make this relative read raise
+    # FileNotFoundError depending on test ordering.
+    _repo_root = Path(__file__).resolve().parents[2]
+    src = (_repo_root / "src/superharness/modules/gateway/telegram_gateway.py").read_text()
     mapping = re.search(r'"reset":\s*\(\s*"([a-z_]+)"', src)
     assert mapping is not None, "could not find the /reset status mapping"
     assert mapping.group(1) == "todo", (

@@ -6,8 +6,10 @@ from pathlib import Path
 @pytest.fixture
 def fake_adapter(tmp_path):
     # Setup a fake adapter manifest and launcher
-    manifest_dir = Path("src/superharness/adapter_manifests")
-    scripts_dir = Path("src/superharness/scripts")
+    # Anchor to repo root, not CWD — ordering-independent.
+    _repo_root = Path(__file__).resolve().parents[2]
+    manifest_dir = _repo_root / "src/superharness/adapter_manifests"
+    scripts_dir = _repo_root / "src/superharness/scripts"
     
     manifest_file = manifest_dir / "fake-agent.yaml"
     launcher_file = scripts_dir / "delegate-to-fake.sh"
