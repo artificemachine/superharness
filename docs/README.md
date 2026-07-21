@@ -1,6 +1,6 @@
 # superharness — Documentation Index
 
-> Regenerated 2026-07-19. 112 active docs (39 archived). Run `docs-organize` skill to audit.
+> Updated 2026-07-22. Run `docs-organize` skill to audit. 18 internal working docs (`PLAN-*`/`AUDIT-*`/`bulletproof-report-*` matching `.gitignore`) untracked from the public tree; 6 one-off analysis docs (`ANALYSIS-*`/`CLASSIFY-*`/`COMPARE-*`/`DESIGN-*`/`IMPLEMENTATION-*`/`STEAL-*`) moved to `archive/`. The 4 prior-art analyses cited from the root README's "Prior art" section stay tracked.
 
 ---
 
@@ -22,12 +22,12 @@
 | Doc | What |
 |-----|------|
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Architecture overview and design decisions |
-| [`DESIGN-risky-choices.md`](DESIGN-risky-choices.md) | Documented sharp edges and risky choices |
+| [`DESIGN-risky-choices.md`](archive/DESIGN-risky-choices.md) | Documented sharp edges and risky choices |
 | [`ROADMAP-phases.md`](ROADMAP-phases.md) | **Master phase roadmap** (single source of truth) |
-| [`IMPLEMENTATION-status.md`](IMPLEMENTATION-status.md) | Implementation status across all audits |
+| [`IMPLEMENTATION-status.md`](archive/IMPLEMENTATION-status.md) | Implementation status across all audits |
 | [`improvement-roadmap.md`](improvement-roadmap.md) | Morpheme + superharness improvement roadmap |
 | [`improvement-tdd-plans.md`](improvement-tdd-plans.md) | Improvement TDD plans per PR |
-| [`ANALYSIS-sqlite-doctrine-drift.md`](ANALYSIS-sqlite-doctrine-drift.md) | How the SQLite doctrine drifted, and how to make it un-driftable |
+| [`ANALYSIS-sqlite-doctrine-drift.md`](archive/ANALYSIS-sqlite-doctrine-drift.md) | How the SQLite doctrine drifted, and how to make it un-driftable |
 | [`brain-multi-agent-tiers-fleet.md`](brain-multi-agent-tiers-fleet.md) | Why 4 agent CLIs, what tiers mean, Ollama + vLLM fleet |
 | [`brain-scan-2026-07-12.md`](brain-scan-2026-07-12.md) | Brain-level scan of superharness (2026-07-12) |
 | [`fleet-vllm-enablement.md`](fleet-vllm-enablement.md) | vLLM per-tier fleet endpoints — enablement guide |
@@ -55,7 +55,6 @@
 | [`gateway-security.md`](gateway-security.md) | Notification gateway security audit |
 | [`SECURITY-autonomous-dispatch.md`](SECURITY-autonomous-dispatch.md) | Autonomous dispatch security gates |
 | [`defense_layers_plan.md`](defense_layers_plan.md) | Defense layers TDD iteration plan |
-| [`AUDIT-agent-harness-comparison.md`](AUDIT-agent-harness-comparison.md) | Browser-harness vs Hermes vs superharness |
 | [`AUDIT-claude-mem-adaptation.md`](AUDIT-claude-mem-adaptation.md) | Claude-mem adaptation audit |
 | [`AUDIT-paperclip-gap-analysis.md`](AUDIT-paperclip-gap-analysis.md) | Superharness vs Paperclip gap analysis |
 | [`AUDIT-pi-hermes-adaptation.md`](AUDIT-pi-hermes-adaptation.md) | **Pi-Mono + Hermes adaptation audit** (ground truth) |
@@ -68,36 +67,26 @@
 |-----|------|
 | [`AUDIT-2026-06-07-task-discussion-failure.md`](AUDIT-2026-06-07-task-discussion-failure.md) | Why task/discussion create+manage fails (2026-06-07) |
 | [`AUDIT-2026-07-09-discussion-close-data-loss.md`](AUDIT-2026-07-09-discussion-close-data-loss.md) | `discussion close` orphans agents and discards output |
-| [`AUDIT-dashboard-management.md`](AUDIT-dashboard-management.md) | Dashboard management architecture audit |
 | [`AUDIT-discussion-verdict-consensus.md`](AUDIT-discussion-verdict-consensus.md) | `shux discussion` verdict semantics and consensus soundness |
-| [`AUDIT-headless-refactor.md`](AUDIT-headless-refactor.md) | Headless-first architecture & dashboard decoupling |
-| [`CLASSIFY-discussion-tier-effort.md`](CLASSIFY-discussion-tier-effort.md) | Task & discussion tier/effort classification |
-| [`COMPARE-ltx2-train-model-skill-vs-lifecycle.md`](COMPARE-ltx2-train-model-skill-vs-lifecycle.md) | LTX-2 `train-model` skill vs the superharness lifecycle |
-| [`STEAL-LIST-omnigent-2026-07-19.md`](STEAL-LIST-omnigent-2026-07-19.md) | Steal list — omnigent → superharness (2026-07-19) |
-| [`audits/2026-07-19-job-ready.md`](audits/2026-07-19-job-ready.md) | Job-ready portfolio scorecard (2026-07-19) |
-| [`audits/job-ready-progress.md`](audits/job-ready-progress.md) | `/job-ready` progress log (2026-07-19) |
+| [`CLASSIFY-discussion-tier-effort.md`](archive/CLASSIFY-discussion-tier-effort.md) | Task & discussion tier/effort classification |
+| [`COMPARE-ltx2-train-model-skill-vs-lifecycle.md`](archive/COMPARE-ltx2-train-model-skill-vs-lifecycle.md) | LTX-2 `train-model` skill vs the superharness lifecycle |
+| [`STEAL-LIST-omnigent-2026-07-19.md`](archive/STEAL-LIST-omnigent-2026-07-19.md) | Steal list — omnigent → superharness (2026-07-19) |
 
 ## 📋 Plans (Active)
 
 | Doc | What |
 |-----|------|
 | **Hermes / Pi-Mono** | |
-| [`PLAN-hermes-features-to-steal.md`](PLAN-hermes-features-to-steal.md) | Shipped + gaps + 3-phase priority plan |
 | [`hermes-integration-tdd-plan.md`](hermes-integration-tdd-plan.md) | Hermes integration TDD iterations |
-| [`PLAN-hermes-self-improvement.md`](PLAN-hermes-self-improvement.md) | Hermes self-improvement adaptation |
 | **Paperclip** | |
-| [`PLAN-absorb-paperclip-features.md`](PLAN-absorb-paperclip-features.md) | Absorb paperclip features plan |
 | **Omnigent** | |
 | [`PLAN-steal-omnigent.md`](PLAN-steal-omnigent.md) | Omnigent steal-list implementation |
 | **Claude-Mem** | |
 | [`PLAN-claude-mem-integration.md`](PLAN-claude-mem-integration.md) | Claude-mem integration iteration plan |
 | **Ralph** | |
-| [`PLAN-ralph-extraction.md`](PLAN-ralph-extraction.md) | Ralph loops extraction plan |
 | **Auto-Mode / Dispatch** | |
 | [`auto-mode-gap-v2.md`](auto-mode-gap-v2.md) | Auto-mode gap analysis v2 |
 | [`auto-mode-gap-plan.md`](auto-mode-gap-plan.md) | Auto-mode TDD implementation plan |
-| [`PLAN-auto-orchestrate-dispatch.md`](PLAN-auto-orchestrate-dispatch.md) | Auto-orchestrate dispatch plan |
-| [`PLAN-auto-orchestrate-implementation.md`](PLAN-auto-orchestrate-implementation.md) | Auto-orchestrate — implementation |
 | [`PLAN-fix-task-discussion.md`](PLAN-fix-task-discussion.md) | Fixes for AUDIT-2026-06-07 task/discussion failures |
 | [`PLAN-mvf.md`](PLAN-mvf.md) | Make discussions reach consensus (MVF) |
 | **Task Lifecycle** | |
@@ -107,21 +96,13 @@
 | [`PLAN-issue-link.md`](PLAN-issue-link.md) | GitHub/GitLab issue linking for shux tasks |
 | **Memory / Learning** | |
 | [`PLAN-memory-distillation.md`](PLAN-memory-distillation.md) | Memory distillation, capped index, age-stamped recall |
-| [`PLAN-negative-knowledge-retention.md`](PLAN-negative-knowledge-retention.md) | Negative-knowledge retention |
-| [`PLAN-self-learning-architecture.md`](PLAN-self-learning-architecture.md) | Superharness self-learning architecture |
 | [`plans/PLAN-superharness-L5.md`](plans/PLAN-superharness-L5.md) | Superharness L5: close G5c, wire dormant learning loops |
 | **Infrastructure** | |
-| [`PLAN-portable-adapter-paths.md`](PLAN-portable-adapter-paths.md) | Portable adapter paths |
-| [`PLAN-portable-paths-cleanup.md`](PLAN-portable-paths-cleanup.md) | Portable paths cleanup |
-| [`PLAN-protocol-evolution.md`](PLAN-protocol-evolution.md) | Protocol friction reduction |
-| [`PLAN-wizard-gateway-adaptation.md`](PLAN-wizard-gateway-adaptation.md) | Wizard + gateway adaptation |
 | [`windows-native-full-fix-tdd-plan.md`](windows-native-full-fix-tdd-plan.md) | Native Windows fix TDD plan |
 | [`REMOVE-ALL-PROTOCOL-YAML.md`](REMOVE-ALL-PROTOCOL-YAML.md) | Remove all protocol YAML (in progress) |
-| [`PLAN-sqlite-source-of-truth-refactor.md`](PLAN-sqlite-source-of-truth-refactor.md) | SQLite source-of-truth refactor |
 | [`plans/harness-phi4mini-redesign.md`](plans/harness-phi4mini-redesign.md) | phi4-mini/Ollama harness — redesign against main |
 | **Module / Feature** | |
 | [`plan-effort-taxonomy-opus47-morpheme.md`](plan-effort-taxonomy-opus47-morpheme.md) | Effort taxonomy + Opus 4.7 |
-| [`PLAN-effort-wiring.md`](PLAN-effort-wiring.md) | Effort wiring — reasoning depth, not just budget |
 | [`plan-missions-alignment.md`](plan-missions-alignment.md) | Missions alignment (Factory talk) |
 | [`PLAN-superharness-plugin.md`](PLAN-superharness-plugin.md) | Superharness as a Claude Code plugin (`/shux`) |
 | [`PLAN-token-cost-accounting.md`](PLAN-token-cost-accounting.md) | Per-task token/cost accounting |
@@ -163,7 +144,6 @@ Point-in-time claim-vs-reality audits. Superseded runs live in `docs/archive/`; 
 
 | Doc | What |
 |-----|------|
-| [`bulletproof-report-2026-05-29.md`](bulletproof-report-2026-05-29.md) | General audit, v13 |
 | [`bulletproof-report-2026-06-08.md`](bulletproof-report-2026-06-08.md) | General audit, v14 |
 
 ## 📐 Specifications & References
