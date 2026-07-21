@@ -121,13 +121,16 @@ def escalate_stale_reviews(project_dir: str, timeout_minutes: int | None = None)
                 if isinstance(task, dict):
                     mirror_task_dict(project_dir, task)
         else:
+            # STATE_BACKEND=dual/yaml_only: mirror the (SQLite-sourced) mutated
+            # tasks back into contract.yaml via the canonical write_contract()
+            # helper (atomic write + its own SQLite sync), same as every other
+            # legacy-path writer in this codebase (test_type.py, discuss.py).
             try:
-                with open(contract_file, "w", encoding="utf-8") as f:
-                    yaml.dump(doc, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
-                from superharness.engine.state_writer import mirror_task_dict
-                for task in tasks:
-                    if isinstance(task, dict):
-                        mirror_task_dict(project_dir, task)
+                from superharness.engine import contract_io, state_reader
+                contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
+                doc = state_reader.get_contract_doc(project_dir)
+                doc["tasks"] = tasks
+                contract_io.write_contract(contract_file, doc)
             except Exception as e:
                 import sys
                 print(f"review-escalation: failed to write contract: {e}", file=sys.stderr)

@@ -24,6 +24,10 @@ pytest tests/ -q          # all tests must pass
 - Engine logic (no I/O) in `src/superharness/engine/`
 - New CLI commands need at least one unit test that invokes the command via subprocess
 
+## Regression tests
+
+When a fix lands for a real bug (not a new feature), tag its test `@pytest.mark.regression` and cite the bug in the docstring (what broke, why it wasn't caught). This is a forward-looking convention adopted 2026-07-21 — CHANGELOG.md has hundreds of prior `fix:` entries with no discoverable regression coverage, and retagging all of them retroactively isn't realistic. Going forward, `pytest -m regression` should answer "is bug X still covered" without reading history.
+
 ## Protocol state
 
 Files under `.superharness/` are operational state — do not modify them in PRs unless the change is specifically about protocol data migration.
