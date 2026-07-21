@@ -69,12 +69,14 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 markers = [
     "requires_bash: test requires bash shell (skipped on Windows)",
+    "regression: guards a specific past bug (cite the CHANGELOG entry or commit in the test docstring)",
 ]
 
 [tool.coverage.run]
 source = ["superharness"]
 
 [tool.coverage.report]
+fail_under = 53
 exclude_lines = [
     "pragma: no cover",
     "raise NotImplementedError",
