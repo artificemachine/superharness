@@ -16,9 +16,9 @@ superharness — multi-agent task coordination
     Work gets lost, duplicated, or silently dropped.
 
   The fix
-    contract.yaml   — single source of truth for all tasks
-    handoffs/       — context passed between agents (nothing lost)
-    inbox + watcher — tasks queued, dispatched, tracked, closed
+    state.db (SQLite) — single source of truth for all tasks
+    handoffs          — context passed between agents (nothing lost)
+    inbox + watcher   — tasks queued, dispatched, tracked, closed
 
   The flow
     task → delegate → agent works → handoff → verify → close
