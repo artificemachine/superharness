@@ -256,7 +256,7 @@ superharness is used to audit superharness. Reports live in
 [`docs/audits/`](docs/audits/) and are kept whether or not they are flattering —
 an audit trail that only records passes is not an audit trail.
 
-Findings from the [2026-07-20 pass](docs/audits/2026-07-20-job-ready-v2.md), all
+Findings from the [2026-07-20 pass](https://github.com/artificemachine/superharness/blob/54f52220/docs/audits/2026-07-20-job-ready-v2.md), all
 since fixed, give a sense of what these catch:
 
 - **The CI security scan had silently stopped running.** `shipguard` was pinned to
