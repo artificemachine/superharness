@@ -169,6 +169,34 @@ jobs:
           PYTHONPATH: src
           PYTHONUTF8: "1"
 
+  other-tests:
+    name: Other Tests (chaos/contract/engine/perf/smoke-dir/state-machine/root)
+    # 2026-07-21 portfolio-ready audit: tests/unit, tests/integration, tests/e2e,
+    # and tests/test_smoke.py were the only paths any workflow ever invoked —
+    # tests/chaos, tests/contract, tests/engine, tests/perf, tests/smoke/ (the
+    # directory, distinct from the tests/test_smoke.py file above), and 19 loose
+    # top-level test files (~1,134 tests, ~20% of the suite) never ran in CI.
+    # This job closes that gap. A real regression (dashboard read-auth, PR #58)
+    # and 2 real bugs sat undetected here until a manual fresh-clone run found
+    # them — see docs/audits/2026-07-21-portfolio-ready.md Stage 4.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3 # v5.2.0
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pytest pytest-cov pyyaml click ruamel.yaml && pip install -e .
+
+      - name: Run everything not already covered by the other jobs
+        run: python3 -m pytest tests/ -q --ignore=tests/unit --ignore=tests/integration --ignore=tests/e2e --ignore=tests/test_smoke.py
+        env:
+          PYTHONPATH: src
+          PYTHONUTF8: "1"
+
   qa-gate:
     name: QA Gate
     runs-on: ubuntu-latest
@@ -178,6 +206,7 @@ jobs:
       - unit-tests
       - integration-tests
       - e2e-tests
+      - other-tests
     if: always()
     steps:
       - name: Verify all quality layers passed
@@ -187,6 +216,7 @@ jobs:
           UNIT_TESTS: ${{ needs.unit-tests.result }}
           INTEGRATION_TESTS: ${{ needs.integration-tests.result }}
           E2E_TESTS: ${{ needs.e2e-tests.result }}
+          OTHER_TESTS: ${{ needs.other-tests.result }}
         run: |
           failures=0
           echo "shell-tests => $SHELL_TESTS"
@@ -194,11 +224,13 @@ jobs:
           echo "unit-tests => $UNIT_TESTS"
           echo "integration-tests => $INTEGRATION_TESTS"
           echo "e2e-tests => $E2E_TESTS"
+          echo "other-tests => $OTHER_TESTS"
           [ "$SHELL_TESTS" = "success" ] || failures=1
           [ "$SMOKE_TESTS" = "success" ] || failures=1
           [ "$UNIT_TESTS" = "success" ] || failures=1
           [ "$INTEGRATION_TESTS" = "success" ] || failures=1
           [ "$E2E_TESTS" = "success" ] || failures=1
+          [ "$OTHER_TESTS" = "success" ] || failures=1
           if [ "$failures" -ne 0 ]; then
             echo "QA Gate failed: one or more required test layers did not pass." >&2
             exit 1
