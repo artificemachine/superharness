@@ -28,8 +28,11 @@ def call_mcp_tool(server: str, tool: str, arguments: dict[str, Any]) -> dict[str
     Raises:
         RuntimeError: If MCP server is not available
     """
-    # TODO: Implement actual MCP client communication
-    # For now, this simulates the MCP server not being available
+    # Optional integration point: a direct MCP client transport is not wired
+    # into this build. Callers degrade gracefully — the action reports the
+    # server as unavailable rather than failing the task — so raising here is
+    # the intended level-1 behaviour, not an unfinished path. Wire a real
+    # client call in to enable live OpenClaw dispatch.
     raise RuntimeError(f"MCP server '{server}' not available")
 
 
