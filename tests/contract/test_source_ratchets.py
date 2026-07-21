@@ -22,9 +22,13 @@ SRC_ROOT = REPO_ROOT / "src" / "superharness"
 # migrated the 19 low-risk sites (contract.py, recall.py, validate.py,
 # profile.py, operator.py, detect.py) behind engine/errors.py, whose
 # handle_cli_error is the one legitimate remaining call — hence 88 - 19 + 1.
-# Iteration 7 (not yet implemented) is expected to lower this to 1 by
-# migrating discussion.py (38), inbox.py (23), and discuss.py (8).
-_SYS_EXIT_IN_ENGINE_CEILING = 70
+# Iteration 7 migrated the last 69 sites (discussion.py 38, inbox.py 23,
+# discuss.py 8), landing on the theoretical floor: engine/errors.py's own
+# handle_cli_error is the only file under engine/ that may ever contain the
+# literal text "sys.exit" again — every other engine/ module raises a
+# SuperharnessError and lets a CLI boundary (a module's own __main__ guard,
+# or an in-process caller like cli.py / commands/discuss.py) convert it.
+_SYS_EXIT_IN_ENGINE_CEILING = 1
 
 # Guards silently-swallowed errors (the "dead scanner" class of bug this
 # audit's iteration 8, not yet implemented, narrows further). The audit doc
