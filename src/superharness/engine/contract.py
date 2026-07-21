@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 
+from superharness.engine.errors import OperationError, SuperharnessError, UsageError, handle_cli_error
 from superharness.engine.yaml_helpers import safe_load
 
 _log = logging.getLogger(__name__)
@@ -134,7 +135,7 @@ def latest_handoff_task(dir: str, to: str) -> int:
         try:
             data = safe_load(file, dict)
         except Exception as e:
-            sys.exit(f"Failed to parse handoff {file}: {e}")
+            raise OperationError(f"Failed to parse handoff {file}: {e}", exit_code=1) from e
         if str(data.get("to", "")) != str(to):
             continue
         task_val = str(data.get("task", ""))
@@ -182,13 +183,13 @@ def main(argv: list[str] | None = None) -> None:
     if argv is None:
         argv = sys.argv[1:]
 
+    _usage_msg = (
+        "Usage: contract <task_exists|task_project_path|task_owner|task_status"
+        "|task_deadline_minutes|task_acceptance_criteria|contract_id|latest_handoff_task> [options]"
+    )
+
     if not argv:
-        print(
-            "Usage: contract <task_exists|task_project_path|task_owner|task_status"
-            "|task_deadline_minutes|task_acceptance_criteria|contract_id|latest_handoff_task> [options]",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        raise UsageError(_usage_msg, exit_code=1)
 
     cmd_name = argv[0]
     rest = argv[1:]
@@ -204,12 +205,7 @@ def main(argv: list[str] | None = None) -> None:
         "latest_handoff_task",
     }
     if cmd_name not in valid_cmds:
-        print(
-            "Usage: contract <task_exists|task_project_path|task_owner|task_status"
-            "|task_deadline_minutes|task_acceptance_criteria|contract_id|latest_handoff_task> [options]",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        raise UsageError(_usage_msg, exit_code=1)
 
     # Parse remaining args for this subcommand
     parser = argparse.ArgumentParser(add_help=False)
@@ -220,30 +216,35 @@ def main(argv: list[str] | None = None) -> None:
         parser.add_argument("--task")
         opts = parser.parse_args(rest)
         if not opts.file or not opts.task:
-            print("--file and --task are required", file=sys.stderr)
-            sys.exit(1)
+            raise UsageError("--file and --task are required", exit_code=1)
         rc = globals()[cmd_name](opts.file, opts.task)
-        sys.exit(rc)
+        if rc:
+            # None of these library functions currently return non-zero, but
+            # preserve the old exit-with-rc contract in case that changes.
+            raise OperationError("", exit_code=rc)
 
     elif cmd_name == "contract_id":
         parser.add_argument("--file")
         opts = parser.parse_args(rest)
         if not opts.file:
-            print("--file is required", file=sys.stderr)
-            sys.exit(1)
+            raise UsageError("--file is required", exit_code=1)
         rc = contract_id(opts.file)
-        sys.exit(rc)
+        if rc:
+            raise OperationError("", exit_code=rc)
 
     elif cmd_name == "latest_handoff_task":
         parser.add_argument("--dir")
         parser.add_argument("--to")
         opts = parser.parse_args(rest)
         if not opts.dir or not opts.to:
-            print("--dir and --to are required", file=sys.stderr)
-            sys.exit(1)
+            raise UsageError("--dir and --to are required", exit_code=1)
         rc = latest_handoff_task(opts.dir, opts.to)
-        sys.exit(rc)
+        if rc:
+            raise OperationError("", exit_code=rc)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SuperharnessError as e:
+        handle_cli_error(e)

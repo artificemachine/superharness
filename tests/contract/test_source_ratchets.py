@@ -18,33 +18,60 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src" / "superharness"
 
 # Guards the PR #58 root cause: sys.exit() calls scattered through engine/
-# instead of raising domain errors caught at the CLI boundary. Iterations 6
-# and 7 (not yet implemented) are expected to lower this toward 0.
-_SYS_EXIT_IN_ENGINE_CEILING = 88
+# instead of raising domain errors caught at the CLI boundary. Iteration 6
+# migrated the 19 low-risk sites (contract.py, recall.py, validate.py,
+# profile.py, operator.py, detect.py) behind engine/errors.py, whose
+# handle_cli_error is the one legitimate remaining call — hence 88 - 19 + 1.
+# Iteration 7 migrated the last 69 sites (discussion.py 38, inbox.py 23,
+# discuss.py 8), landing on the theoretical floor: engine/errors.py's own
+# handle_cli_error is the only file under engine/ that may ever contain the
+# literal text "sys.exit" again — every other engine/ module raises a
+# SuperharnessError and lets a CLI boundary (a module's own __main__ guard,
+# or an in-process caller like cli.py / commands/discuss.py) convert it.
+_SYS_EXIT_IN_ENGINE_CEILING = 1
 
-# Guards silently-swallowed errors (the "dead scanner" class of bug this
-# audit's iteration 8, not yet implemented, narrows further). The audit doc
-# (docs/AUDIT-coding-practices-2026-07-20.md) states 205 at authoring time;
-# a fresh measurement against this working tree gives 728 via the same
-# Path.rglob("*.py")-based counting this test itself uses (naive `grep -r`
-# without --include="*.py" is not reliable here — it also matches stale
-# bytecode under __pycache__, which produced a non-deterministic count
-# while a concurrent test run was recompiling modules during this session).
-# The 205 vs 728 gap predates iterations 1-4, which touched no `except
-# Exception` clauses. Recheck instruction says to measure fresh, not trust
-# the plan's copy — this is that fresh measurement.
-_BROAD_EXCEPT_CEILING = 728
+# Guards silently-swallowed errors (the "dead scanner" class of bug).
+# 728 was iteration 5's fresh measurement (the audit doc's authoring-time
+# 205 did not reproduce — see git history for that investigation). Iteration
+# 8 narrowed 4 sites in the three highest-count files (2 in
+# commands/inbox_watch.py's os.kill() calls, 1 in the same file's ledger
+# append, 1 in scripts/dashboard-ui.py's `import yaml` probe) from a broad
+# catch to the specific exception each site can actually raise, and found
+# and fixed a genuine pre-existing bug along the way: commands/
+# inbox_dispatch.py's _sqlite_mirror_dispatch had two stacked broad-catch
+# clauses on the same try, so the second (which already had exc_info=True)
+# was unreachable dead code. Merging that pair accounts for the fifth site
+# of the drop from 728 to 723. See CONTRIBUTING.md's "Exception-handling
+# policy" and tests/unit/test_broad_except_narrowing.py for the behavioural
+# proof each narrowed site now lets an unrelated exception propagate
+# instead of swallowing it.
+_BROAD_EXCEPT_CEILING = 723
+
+# The three files with the highest `except Exception` concentration,
+# measured fresh for iteration 8 (132, 80, 33 respectively — not assumed
+# from the plan's own guess, per its recheck instruction). Every remaining
+# `except Exception` in these three files must log with exc_info=True; see
+# CONTRIBUTING.md's "Exception-handling policy".
+_EXC_INFO_ENFORCED_FILES = (
+    "commands/inbox_watch.py",
+    "scripts/dashboard-ui.py",
+    "commands/inbox_dispatch.py",
+)
 
 # Guards god-file growth. inbox_watch.py is already the largest file in the
-# tree by a wide margin (out of scope to split — see docs/AUDIT-coding-practices-2026-07-20.md
-# "What not to do"); this ceiling stops it, and everything else, from
-# growing further unnoticed.
+# tree by a wide margin (out of scope to split — see
+# docs/AUDIT-coding-practices-2026-07-20.md "What not to do"); this ceiling
+# stops it, and everything else, from growing further unnoticed.
 # 2026-07-21: bumped 4720->4721, the exact +1 line cost of fixing a real
 # NameError crash bug (inbox_watch.py:2968, _ledger_record2 called without
-# the local import 3 sibling call sites in this file already have). Ratchet
-# did its job here — flagged the growth so it could be a deliberate,
-# justified bump instead of silent creep.
-_MAX_FILE_LINE_CEILING = 4721
+# the local import 3 sibling call sites in this file already have).
+# 2026-07-21 (coding-practices iter8, combined with the bump above via
+# rebase): raised again to 4788 — adding exc_info=True logging to 65
+# previously-silent `except Exception` sites in inbox_watch.py is
+# deliberate, reviewed growth, not drift — see CONTRIBUTING.md's
+# "Exception-handling policy". 4788 is the exact measured total with both
+# changes applied (`wc -l`), not padded.
+_MAX_FILE_LINE_CEILING = 4788
 
 
 def _count_matches(pattern: str, paths: list[Path]) -> int:
@@ -147,4 +174,104 @@ def test_no_python_source_generated_as_a_string():
         f"{hits}. This is the daemon-monitor-as-a-string shape iteration 3 "
         f"of PLAN-coding-practices.md removed — write real, importable "
         f"modules instead."
+    )
+
+
+def _bare_exception_handlers(tree: ast.AST) -> list[ast.ExceptHandler]:
+    """Every `except Exception` (bare or `as name`) handler — NOT
+    `except (Exception, X)` or a subclass, matching what the
+    _BROAD_EXCEPT_CEILING regex itself counts as `except Exception`."""
+    handlers = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ExceptHandler) and isinstance(node.type, ast.Name) \
+                and node.type.id == "Exception":
+            handlers.append(node)
+    return handlers
+
+
+def _handler_has_exc_info(handler: ast.ExceptHandler) -> bool:
+    """True if any Call anywhere in the handler body passes an `exc_info`
+    keyword argument — logger.warning(..., exc_info=True) is the documented
+    shape (CONTRIBUTING.md), but this doesn't check the value, only that
+    the keyword is present, matching the plan's own "carrying exc_info"
+    wording for this test."""
+    for node in ast.walk(handler):
+        if isinstance(node, ast.Call):
+            if any(kw.arg == "exc_info" for kw in node.keywords):
+                return True
+    return False
+
+
+def test_supervisory_excepts_log_with_exc_info():
+    """Iteration 8: every `except Exception` remaining in the three
+    highest-count files must log with exc_info=True — a supervisory
+    boundary that swallows an error without a traceback is how a watcher
+    tick or a dispatch step goes silently dead while still reporting
+    "success" (the "dead scanner" bug class). See CONTRIBUTING.md's
+    "Exception-handling policy"."""
+    offenders: dict[str, list[int]] = {}
+    for rel in _EXC_INFO_ENFORCED_FILES:
+        path = SRC_ROOT / rel
+        tree = ast.parse(path.read_text(), filename=str(path))
+        missing = [
+            h.lineno for h in _bare_exception_handlers(tree)
+            if not _handler_has_exc_info(h)
+        ]
+        if missing:
+            offenders[rel] = missing
+    assert not offenders, (
+        f"except Exception handler(s) without exc_info=True in the "
+        f"exc_info-enforced files: {offenders}. See CONTRIBUTING.md's "
+        f"Exception-handling policy — every broad except in these three "
+        f"files must log with exc_info=True, or be narrowed to a specific "
+        f"exception type."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Iteration 9 — coverage gate consistency
+# ---------------------------------------------------------------------------
+
+_COV_FAIL_UNDER_PATTERNS = (
+    # pytest-cov CLI flag, as used in .github/workflows/*.yml
+    re.compile(r"--cov-fail-under=(\d+)"),
+    # coverage.py's own [tool.coverage.report] key, as used in pyproject.toml
+    re.compile(r"^\s*fail_under\s*=\s*(\d+)\s*$", re.MULTILINE),
+)
+
+
+def _cov_fail_under_occurrences() -> dict[str, int]:
+    """Every `cov-fail-under`/`fail_under` value found under .github/ and in
+    pyproject.toml, keyed by "relative/path:line". Two different spellings
+    for the same concept (a CLI flag in CI workflows, a native TOML key for
+    local/IDE coverage runs) — both must agree, or CI and a local `pytest
+    --cov` run silently enforce different floors."""
+    occurrences: dict[str, int] = {}
+    candidates = list((REPO_ROOT / ".github").rglob("*.yml")) + list((REPO_ROOT / ".github").rglob("*.yaml"))
+    pyproject = REPO_ROOT / "pyproject.toml"
+    if pyproject.is_file():
+        candidates.append(pyproject)
+    for path in candidates:
+        text = path.read_text()
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            for pattern in _COV_FAIL_UNDER_PATTERNS:
+                m = pattern.search(line)
+                if m:
+                    key = f"{path.relative_to(REPO_ROOT)}:{lineno}"
+                    occurrences[key] = int(m.group(1))
+    return occurrences
+
+
+def test_coverage_gate_is_consistent_across_workflows():
+    """Every `cov-fail-under=N` / `fail_under = N` occurrence under
+    .github/ or in pyproject.toml must carry the identical value. Guards
+    the stale-pair failure mode where one of two (or more) identical CI
+    lines is updated and the other is not — the exact gap iteration 9 of
+    PLAN-coding-practices.md exists to close."""
+    occurrences = _cov_fail_under_occurrences()
+    assert occurrences, "expected at least one cov-fail-under/fail_under occurrence; found none"
+    values = set(occurrences.values())
+    assert len(values) == 1, (
+        f"cov-fail-under/fail_under values disagree across the repo: {occurrences}. "
+        f"Every occurrence must carry the same number — update all of them together."
     )

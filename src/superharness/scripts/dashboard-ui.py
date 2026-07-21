@@ -33,9 +33,12 @@ def _ensure_python_with_yaml() -> None:
     try:
         import yaml  # noqa: F401
         return
-    except Exception as e:
+    except ImportError as e:
+        # The only realistic failure of a bare `import yaml` is the module
+        # being absent; a narrower catch here lets a genuinely unexpected
+        # error (rather than "PyYAML not installed") surface instead of
+        # being folded into the re-exec fallback path below.
         logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
-        pass
     if os.environ.get("SUPERHARNESS_MONITOR_REEXEC") == "1":
         return
 
@@ -467,6 +470,7 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
                     if isinstance(parsed, dict):
                         hd = parsed
                 except Exception:
+                    logger.warning("task_report: unexpected error: %s", sys.exc_info()[1], exc_info=True)
                     pass
             result["handoff_status"] = hd.get("status") or str(row.get("status", ""))
             result["handoff_summary"] = hd.get("summary", "")
@@ -788,6 +792,7 @@ def task_log_content(project_dir: Path, task_id: str, agent: str, lines: int = 0
             result["log"] = content
             result["size_bytes"] = log_file.stat().st_size
         except Exception as exc:
+            logger.warning("task_log_content: unexpected error: %s", exc, exc_info=True)
             error_msg = f"(error reading log: {exc})"
             result["content"] = error_msg
             result["log"] = error_msg
@@ -1144,6 +1149,7 @@ def pending_approvals(handoff_dir: Path, project_dir: Path | None = None) -> lis
                     "markdown_report": str(meta.get("markdown_report", "")),
                 })
     except Exception:
+        logger.warning("pending_approvals: unexpected error: %s", sys.exc_info()[1], exc_info=True)
         pass
     return rows
 
@@ -1194,6 +1200,7 @@ def plan_proposals(harness_dir: Path) -> list[dict]:
                             if isinstance(parsed, dict):
                                 hdata = parsed
                         except Exception:
+                            logger.warning("plan_proposals: unexpected error: %s", sys.exc_info()[1], exc_info=True)
                             pass
                     handoff_summary = hdata.get("summary", "") or hdata.get("scope", "")
                     if isinstance(handoff_summary, list):
@@ -1228,6 +1235,7 @@ def _set_task_status(harness_dir: Path, task_id: str, to_status: str, from_statu
             return {"ok": False, "error": f"task {task_id} is {task.get('status')!r}, expected {from_status!r}"}
         return {"ok": False, "error": f"transition for {task_id} failed"}
     except Exception as e:
+        logger.warning("_set_task_status: unexpected error: %s", e, exc_info=True)
         return {"ok": False, "error": str(e)}
 
 
@@ -1349,6 +1357,7 @@ def _propose_plan_handoff(
     try:
         handoff_file.write_text(yaml.dump(doc, default_flow_style=False, allow_unicode=True, sort_keys=False))
     except Exception as exc:  # shipguard:ignore PY-007
+        logger.warning("_propose_plan_handoff: unexpected error: %s", exc, exc_info=True)
         # Roll back status transition so task doesn't sit in plan_proposed without a handoff.
         _set_task_status(harness_dir, task_id, "todo", from_status="plan_proposed")
         return {"ok": False, "error": f"failed to write handoff: {exc}"}
@@ -1381,6 +1390,7 @@ def _confirm_plan(harness_dir: Path, task_id: str) -> dict:
             else:
                 errors.append(f"task {task_id} transition plan_proposed -> todo failed (current: {task.get('status')})")
     except Exception as e:
+        logger.warning("_confirm_plan: unexpected error: %s", e, exc_info=True)
         errors.append(f"state_writer error: {e}")
 
     # Update matching handoff status via SQLite — YAML file update is export-only
@@ -1402,6 +1412,7 @@ def _confirm_plan(harness_dir: Path, task_id: str) -> dict:
                     if isinstance(parsed_cp, dict):
                         hdata = parsed_cp
                 except Exception:
+                    logger.warning("_confirm_plan: unexpected error: %s", sys.exc_info()[1], exc_info=True)
                     pass
             hdata["status"] = "plan_confirmed"
             gate = hdata.get("plan_gate", {}) or {}
@@ -1409,6 +1420,7 @@ def _confirm_plan(harness_dir: Path, task_id: str) -> dict:
             hdata["plan_gate"] = gate
             _sw_cp.write_handoff_to_db(str(harness_dir.parent), hdata, task_id=task_id, phase="plan")
     except Exception as e:
+        logger.warning("_confirm_plan: unexpected error: %s", e, exc_info=True)
         errors.append(f"handoff update error: {e}")
 
     result = {"ok": not errors, "task": task_id, "confirmed_at": now}
@@ -1618,6 +1630,7 @@ def _profile_data(project_dir: Path) -> dict:
                     with open(os.path.join(upath, fname)) as f:
                         profiles[fname.replace(".json", "")] = _json.load(f)
                 except Exception:
+                    logger.warning("_profile_data: unexpected error: %s", sys.exc_info()[1], exc_info=True)
                     pass
 
     trials = []
@@ -1640,6 +1653,7 @@ def _profile_data(project_dir: Path) -> dict:
         finally:
             conn.close()
     except Exception:
+        logger.warning("_profile_data: unexpected error: %s", sys.exc_info()[1], exc_info=True)
         pass
 
     return {
@@ -2028,6 +2042,7 @@ class Handler(BaseHTTPRequestHandler):
                     _conn.close()
                 return {"ok": True, "task": task_id, "new_owner": new_owner}, 200
             except Exception as exc:
+                logger.warning("_action: unexpected error: %s", exc, exc_info=True)
                 return ({"error": str(exc)}, 500)
 
         if action.startswith("approve_plan:"):
@@ -2226,6 +2241,7 @@ class Handler(BaseHTTPRequestHandler):
                     finally:
                         _cconn.close()
                 except Exception:
+                    logger.warning("_action: unexpected error: %s", sys.exc_info()[1], exc_info=True)
                     pass
 
                 # Use SQLite to find and update in_progress tasks linked to this discussion
@@ -2298,6 +2314,7 @@ class Handler(BaseHTTPRequestHandler):
                     _con.commit()
                     _con.close()
             except Exception as exc:
+                logger.warning("_action: unexpected error: %s", exc, exc_info=True)
                 return ({"error": str(exc)}, 500)
             return ({"ok": True, "stdout": f"Discussion {disc_id} reopened."}, 200)
 
@@ -2677,6 +2694,7 @@ class Handler(BaseHTTPRequestHandler):
                         updated = _cal.timegm(_time.strptime(row.updated_at, "%Y-%m-%dT%H:%M:%SZ"))
                         age = int(now_ts - updated)
                     except Exception:
+                        logger.warning("do_GET: unexpected error: %s", sys.exc_info()[1], exc_info=True)
                         age = -1
                     if row.status == "zombie":
                         level = "red"
@@ -2696,6 +2714,7 @@ class Handler(BaseHTTPRequestHandler):
                         "updated_at": row.updated_at,
                     }
             except Exception:
+                logger.warning("do_GET: unexpected error: %s", sys.exc_info()[1], exc_info=True)
                 pass
             self._json({"agents": agents, "now_utc": now_utc})
             return
@@ -2787,6 +2806,7 @@ class Handler(BaseHTTPRequestHandler):
                         "blocked_by": task.blocked_by,
                     })
             except Exception as e:
+                logger.warning("do_GET: unexpected error: %s", e, exc_info=True)
                 self._json({"error": str(e), "project": project_name, "tasks": []}, 500)
                 return
             finally:
@@ -2814,6 +2834,7 @@ class Handler(BaseHTTPRequestHandler):
                 result["lines"] = lines
                 self._json(result)
             except Exception as exc:
+                logger.warning("do_GET: unexpected error: %s", exc, exc_info=True)
                 self._json({"error": f"task_log_content failed: {exc}", "task": task_id, "agent": agent}, 500)
             return
 
@@ -2841,6 +2862,7 @@ class Handler(BaseHTTPRequestHandler):
                             break
                 self._json({"task": task_id, "instructions": text, "task_meta": task_meta})
             except Exception as exc:
+                logger.warning("do_GET: unexpected error: %s", exc, exc_info=True)
                 self._json({"error": str(exc)}, 500)
             return
 
@@ -2882,6 +2904,7 @@ class Handler(BaseHTTPRequestHandler):
                         ] if min_rank >= 0 else all_lines
                     content = "\n".join(all_lines[-n:])
                 except Exception as e:
+                    logger.warning("do_GET: unexpected error: %s", e, exc_info=True)
                     content = f"(error reading log: {e})"
             self._json({"lines": content, "path": str(log_path), "audit": audit, "level": level})
             return
@@ -2993,6 +3016,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 self._json(task_report(self.project_dir, task_id, agent))
             except Exception as exc:
+                logger.warning("do_GET: unexpected error: %s", exc, exc_info=True)
                 self._json({"error": f"task_report failed: {exc}", "task": task_id, "agent": agent}, 500)
             return
 
@@ -3037,6 +3061,7 @@ class Handler(BaseHTTPRequestHandler):
                 # SQLite is source of truth — no YAML fallback needed
                 self._json(result)
             except Exception as exc:
+                logger.warning("do_GET: unexpected error: %s", exc, exc_info=True)
                 self._json({"error": f"discussion fetch failed: {exc}"}, 500)
             return
 
@@ -3046,6 +3071,7 @@ class Handler(BaseHTTPRequestHandler):
                 insights = get_skill_insights(str(self.project_dir))
                 self._json({"skills": insights})
             except Exception as e:
+                logger.warning("do_GET: unexpected error: %s", e, exc_info=True)
                 self._json({"skills": [], "error": str(e)})
             return
 
@@ -3137,6 +3163,7 @@ class Handler(BaseHTTPRequestHandler):
                         "log_tail": log_tail,
                     })
             except Exception as e:
+                logger.warning("do_GET: unexpected error: %s", e, exc_info=True)
                 self._json({"error": str(e), "failures": []}, 500)
                 return
             self._json({"failures": failures, "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
@@ -3265,6 +3292,7 @@ class Handler(BaseHTTPRequestHandler):
                     finally:
                         _conn.close()
                 except Exception as e:
+                    logger.warning("do_POST: unexpected error: %s", e, exc_info=True)
                     self._json({"error": str(e)}, 500)
                     return
                 self._json({"ok": True, "owners": contract_owners(contract)})
@@ -3296,6 +3324,7 @@ class Handler(BaseHTTPRequestHandler):
                 body = self.rfile.read(length) if length > 0 else b"{}"
                 payload = json.loads(body.decode("utf-8"))
             except Exception:
+                logger.warning("do_POST: unexpected error: %s", sys.exc_info()[1], exc_info=True)
                 payload = {}
             result = subprocess.run(
                 ["shux", "discuss", "close", "--project", str(self.project_dir), "--id", disc_id],
@@ -3322,6 +3351,7 @@ class Handler(BaseHTTPRequestHandler):
                 body = self.rfile.read(length) if length > 0 else b"{}"
                 payload = json.loads(body.decode("utf-8"))
             except Exception:
+                logger.warning("do_POST: unexpected error: %s", sys.exc_info()[1], exc_info=True)
                 payload = {}
             title = str(payload.get("title", "")).strip() or f"Implement consensus from {disc_id}"
             owner = str(payload.get("owner", "claude-code")).strip()
@@ -3700,6 +3730,7 @@ def _get_health(project_dir: str) -> dict:
         finally:
             conn.close()
     except Exception as e:
+        logger.warning("_get_health: unexpected error: %s", e, exc_info=True)
         return {"error": str(e)}
 
 

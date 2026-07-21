@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 from superharness.engine.db import get_connection, init_db
 from superharness.engine import discussions_dao
+from superharness.engine.errors import OperationError, SuperharnessError, UsageError, handle_cli_error
 from superharness.engine.process import pid_alive, signal_process_group
 
 import logging
@@ -123,11 +124,11 @@ def cmd_submit_round(
     try:
         disc = discussions_dao.get(conn, disc_id)
         if not disc:
-            sys.exit(f"Discussion not found: {disc_id}")
+            raise OperationError(f"Discussion not found: {disc_id}", exit_code=1)
         if disc.status != "active":
-            sys.exit(f"Discussion is not active (status={disc.status})")
+            raise OperationError(f"Discussion is not active (status={disc.status})", exit_code=1)
         if agent not in disc.owners:
-            sys.exit(f"Agent '{agent}' is not a participant")
+            raise OperationError(f"Agent '{agent}' is not a participant", exit_code=1)
 
         # Normalize verdict: agents sometimes copy the prompt's example verbatim
         # ("agree or disagree or partial") instead of picking one.
@@ -141,19 +142,23 @@ def cmd_submit_round(
             matches = [v for v in sorted(valid_verdicts) if re.search(r'\b' + re.escape(v) + r'\b', verdict_lower)]
             if len(matches) >= 3:
                 # All three main options present → copied the prompt verbatim.
-                sys.exit(
+                raise UsageError(
                     f"Rejected prompt-copy verdict '{verdict}'. "
-                    f"Please pick ONE of: {', '.join(sorted(valid_verdicts))}"
+                    f"Please pick ONE of: {', '.join(sorted(valid_verdicts))}",
+                    exit_code=1,
                 )
             else:
-                sys.exit(f"Invalid verdict '{verdict}'. Must be one of: {', '.join(sorted(valid_verdicts))}")
+                raise UsageError(
+                    f"Invalid verdict '{verdict}'. Must be one of: {', '.join(sorted(valid_verdicts))}",
+                    exit_code=1,
+                )
         verdict = verdict_lower
 
         # Check if already submitted this round
         existing = discussions_dao.get_rounds(conn, disc_id)
         for r in existing:
             if r.round_number == round_ and r.agent == agent:
-                sys.exit(f"Round {round_} already submitted by {agent}")
+                raise OperationError(f"Round {round_} already submitted by {agent}", exit_code=1)
 
         discussions_dao.add_round(
             conn,
@@ -340,7 +345,7 @@ def cmd_check_round(discussion_dir: str, round_: int) -> int:
     try:
         disc = discussions_dao.get(conn, disc_id)
         if not disc:
-            sys.exit(f"Discussion not found: {disc_id}")
+            raise OperationError(f"Discussion not found: {disc_id}", exit_code=1)
 
         done = []
         pending = []
@@ -374,7 +379,7 @@ def cmd_check_consensus(discussion_dir: str) -> int:
     try:
         disc = discussions_dao.get(conn, disc_id)
         if not disc:
-            sys.exit(f"Discussion not found: {disc_id}")
+            raise OperationError(f"Discussion not found: {disc_id}", exit_code=1)
 
         rounds = discussions_dao.get_rounds(conn, disc_id)
         round_nums = sorted({r.round_number for r in rounds})
@@ -447,9 +452,9 @@ def cmd_advance(discussion_dir: str) -> int:
     try:
         disc = discussions_dao.get(conn, disc_id)
         if not disc:
-            sys.exit(f"Discussion not found: {disc_id}")
+            raise OperationError(f"Discussion not found: {disc_id}", exit_code=1)
         if disc.status != "active":
-            sys.exit(f"Discussion is not active (status={disc.status})")
+            raise OperationError(f"Discussion is not active (status={disc.status})", exit_code=1)
 
         rounds = discussions_dao.get_rounds(conn, disc_id)
         # Advance markers store next_round as a positive round_number (Bug O fix).
@@ -485,7 +490,7 @@ def cmd_advance(discussion_dir: str) -> int:
             if current_round in advance_markers:
                 result = {"action": "advanced", "next_round": current_round}
             else:
-                sys.exit(f"Round {current_round} is not complete yet")
+                raise OperationError(f"Round {current_round} is not complete yet", exit_code=1)
         else:
             # Gather verdicts
             verdicts: dict[str, str] = {}
@@ -580,7 +585,7 @@ def cmd_status(discussion_dir: str) -> int:
     try:
         disc = discussions_dao.get(conn, disc_id)
         if not disc:
-            sys.exit(f"Discussion not found: {disc_id}")
+            raise OperationError(f"Discussion not found: {disc_id}", exit_code=1)
 
         # Surface agent output written to disk but never registered — otherwise
         # a round with completed submissions renders as "(no submissions yet)".
@@ -761,7 +766,7 @@ def cmd_close(discussion_dir: str, outcome: str, reason: str = "") -> int:
     try:
         disc = discussions_dao.get(conn, disc_id)
         if not disc:
-            sys.exit(f"Discussion not found: {disc_id}")
+            raise OperationError(f"Discussion not found: {disc_id}", exit_code=1)
 
         discussions_dao.close(conn, disc_id, consensus=None if outcome != "consensus" else "consensus", now=now)
         # Override status if outcome is not a standard close (e.g., cancelled, failed)
@@ -833,7 +838,7 @@ def cmd_round_context(discussion_dir: str, round_: int, agent: str) -> int:
     try:
         disc = discussions_dao.get(conn, disc_id)
         if not disc:
-            sys.exit(f"Discussion not found: {disc_id}")
+            raise OperationError(f"Discussion not found: {disc_id}", exit_code=1)
 
         other_agents = [a for a in disc.owners if a != agent]
         rounds = discussions_dao.get_rounds(conn, disc_id)
@@ -891,13 +896,13 @@ def main(argv: list[str] | None = None) -> None:
     if argv is None:
         argv = sys.argv[1:]
 
+    _usage_msg = (
+        "Usage: discussion <start|submit_round|check_round|check_consensus"
+        "|advance|status|list|close|round_context> [options]"
+    )
+
     if not argv:
-        print(
-            "Usage: discussion <start|submit_round|check_round|check_consensus"
-            "|advance|status|list|close|round_context> [options]",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        raise UsageError(_usage_msg, exit_code=1)
 
     cmd = argv[0]
     rest = argv[1:]
@@ -907,12 +912,7 @@ def main(argv: list[str] | None = None) -> None:
         "advance", "status", "list", "close", "round_context",
     }
     if cmd not in valid:
-        print(
-            "Usage: discussion <start|submit_round|check_round|check_consensus"
-            "|advance|status|list|close|round_context> [options]",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        raise UsageError(_usage_msg, exit_code=1)
 
     if cmd == "start":
         parser = argparse.ArgumentParser(add_help=False)
@@ -925,19 +925,19 @@ def main(argv: list[str] | None = None) -> None:
         parser.add_argument("--created-by", dest="created_by", default="owner")
         opts = parser.parse_args(rest)
         if not opts.discussions_dir:
-            sys.exit("--discussions-dir is required")
+            raise UsageError("--discussions-dir is required", exit_code=1)
         if not opts.topic:
-            sys.exit("--topic is required")
+            raise UsageError("--topic is required", exit_code=1)
         if len(opts.participants) < 2:
-            sys.exit("Need at least 2 --participant flags")
+            raise UsageError("Need at least 2 --participant flags", exit_code=1)
         if not opts.project:
-            sys.exit("--project is required")
-        sys.exit(
-            cmd_start(
-                opts.discussions_dir, opts.topic, opts.participants,
-                opts.max_rounds, opts.task, opts.project, opts.created_by,
-            )
+            raise UsageError("--project is required", exit_code=1)
+        rc = cmd_start(
+            opts.discussions_dir, opts.topic, opts.participants,
+            opts.max_rounds, opts.task, opts.project, opts.created_by,
         )
+        if rc:
+            raise OperationError("", exit_code=rc)
 
     elif cmd == "submit_round":
         parser = argparse.ArgumentParser(add_help=False)
@@ -950,13 +950,13 @@ def main(argv: list[str] | None = None) -> None:
         for attr in ("discussion_dir", "round_", "agent", "verdict", "position"):
             if getattr(opts, attr, None) is None:
                 flag = attr.replace("_", "-")
-                sys.exit(f"--{flag} is required")
-        sys.exit(
-            cmd_submit_round(
-                opts.discussion_dir, opts.round_, opts.agent,
-                opts.verdict, opts.position,
-            )
+                raise UsageError(f"--{flag} is required", exit_code=1)
+        rc = cmd_submit_round(
+            opts.discussion_dir, opts.round_, opts.agent,
+            opts.verdict, opts.position,
         )
+        if rc:
+            raise OperationError("", exit_code=rc)
 
     elif cmd == "check_round":
         parser = argparse.ArgumentParser(add_help=False)
@@ -964,42 +964,52 @@ def main(argv: list[str] | None = None) -> None:
         parser.add_argument("--round", dest="round_", type=int)
         opts = parser.parse_args(rest)
         if not opts.discussion_dir:
-            sys.exit("--discussion-dir is required")
+            raise UsageError("--discussion-dir is required", exit_code=1)
         if opts.round_ is None:
-            sys.exit("--round is required")
-        sys.exit(cmd_check_round(opts.discussion_dir, opts.round_))
+            raise UsageError("--round is required", exit_code=1)
+        rc = cmd_check_round(opts.discussion_dir, opts.round_)
+        if rc:
+            raise OperationError("", exit_code=rc)
 
     elif cmd == "check_consensus":
         parser = argparse.ArgumentParser(add_help=False)
         parser.add_argument("--discussion-dir", dest="discussion_dir")
         opts = parser.parse_args(rest)
         if not opts.discussion_dir:
-            sys.exit("--discussion-dir is required")
-        sys.exit(cmd_check_consensus(opts.discussion_dir))
+            raise UsageError("--discussion-dir is required", exit_code=1)
+        rc = cmd_check_consensus(opts.discussion_dir)
+        if rc:
+            raise OperationError("", exit_code=rc)
 
     elif cmd == "advance":
         parser = argparse.ArgumentParser(add_help=False)
         parser.add_argument("--discussion-dir", dest="discussion_dir")
         opts = parser.parse_args(rest)
         if not opts.discussion_dir:
-            sys.exit("--discussion-dir is required")
-        sys.exit(cmd_advance(opts.discussion_dir))
+            raise UsageError("--discussion-dir is required", exit_code=1)
+        rc = cmd_advance(opts.discussion_dir)
+        if rc:
+            raise OperationError("", exit_code=rc)
 
     elif cmd == "status":
         parser = argparse.ArgumentParser(add_help=False)
         parser.add_argument("--discussion-dir", dest="discussion_dir")
         opts = parser.parse_args(rest)
         if not opts.discussion_dir:
-            sys.exit("--discussion-dir is required")
-        sys.exit(cmd_status(opts.discussion_dir))
+            raise UsageError("--discussion-dir is required", exit_code=1)
+        rc = cmd_status(opts.discussion_dir)
+        if rc:
+            raise OperationError("", exit_code=rc)
 
     elif cmd == "list":
         parser = argparse.ArgumentParser(add_help=False)
         parser.add_argument("--discussions-dir", dest="discussions_dir")
         opts = parser.parse_args(rest)
         if not opts.discussions_dir:
-            sys.exit("--discussions-dir is required")
-        sys.exit(cmd_list(opts.discussions_dir))
+            raise UsageError("--discussions-dir is required", exit_code=1)
+        rc = cmd_list(opts.discussions_dir)
+        if rc:
+            raise OperationError("", exit_code=rc)
 
     elif cmd == "close":
         parser = argparse.ArgumentParser(add_help=False)
@@ -1007,8 +1017,10 @@ def main(argv: list[str] | None = None) -> None:
         parser.add_argument("--outcome", default="cancelled")
         opts = parser.parse_args(rest)
         if not opts.discussion_dir:
-            sys.exit("--discussion-dir is required")
-        sys.exit(cmd_close(opts.discussion_dir, opts.outcome))
+            raise UsageError("--discussion-dir is required", exit_code=1)
+        rc = cmd_close(opts.discussion_dir, opts.outcome)
+        if rc:
+            raise OperationError("", exit_code=rc)
 
     elif cmd == "round_context":
         parser = argparse.ArgumentParser(add_help=False)
@@ -1019,9 +1031,14 @@ def main(argv: list[str] | None = None) -> None:
         for attr in ("discussion_dir", "round_", "agent"):
             if getattr(opts, attr, None) is None:
                 flag = attr.replace("_", "-")
-                sys.exit(f"--{flag} is required")
-        sys.exit(cmd_round_context(opts.discussion_dir, opts.round_, opts.agent))
+                raise UsageError(f"--{flag} is required", exit_code=1)
+        rc = cmd_round_context(opts.discussion_dir, opts.round_, opts.agent)
+        if rc:
+            raise OperationError("", exit_code=rc)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SuperharnessError as e:
+        handle_cli_error(e)

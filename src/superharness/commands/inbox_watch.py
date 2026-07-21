@@ -586,6 +586,7 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
             report_handoffs = [h for h in task_handoffs
                                if str(h.get("phase", "")) in ("report", "done")]
         except Exception:
+            logger.warning("_auto_archive_stale_tasks: unexpected error: %s", sys.exc_info()[1], exc_info=True)
             report_handoffs = []
         if report_handoffs:
             continue  # Has a completion handoff — agent produced output
@@ -616,6 +617,7 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
             finally:
                 conn2.close()
         except Exception as e:
+            logger.warning("_auto_archive_stale_tasks: unexpected error: %s", e, exc_info=True)
             print(f"auto-clean: failed to archive '{task.id}': {e}", file=sys.stderr)
 
     if archived:
@@ -793,6 +795,7 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
             finally:
                 conn.close()
         except Exception as e:
+            logger.warning("_auto_peer_approve_plans: unexpected error: %s", e, exc_info=True)
             print(f"peer-approve: failed to enqueue '{task_id}': {e}", file=sys.stderr)
 
     if enqueued:
@@ -878,6 +881,7 @@ def _trigger_auto_review(project_dir: str, task_id: str, reviewers: list[str]) -
             # Small sleep to ensure file-based inbox lock settles
             time.sleep(0.1)
         except Exception as e:
+            logger.warning("_trigger_auto_review: unexpected error: %s", e, exc_info=True)
             print(f"auto-review: error enqueuing {task_id} for {target}: {e}", file=sys.stderr)
             
     if success_count == 0:
@@ -888,6 +892,7 @@ def _trigger_auto_review(project_dir: str, task_id: str, reviewers: list[str]) -
         from superharness.engine.state_writer import set_task_status
         set_task_status(project_dir, task_id, "review_requested")
     except Exception as e:
+        logger.warning("_trigger_auto_review: unexpected error: %s", e, exc_info=True)
         print(f"auto-review: failed to update status for {task_id}: {e}", file=sys.stderr)
         return False
         
@@ -1016,6 +1021,7 @@ def _auto_close_review_passed(project_dir: str) -> None:
                     skip_verify=True,
                 )
             except Exception as e:
+                logger.warning("_auto_close_review_passed: unexpected error: %s", e, exc_info=True)
                 print(f"auto-close: failed to close task '{task_id}': {e}", file=sys.stderr)
 
         elif verdict == "rejected":
@@ -1029,9 +1035,12 @@ def _auto_close_review_passed(project_dir: str) -> None:
                 try:
                     with open(ledger_file, "a", encoding="utf-8") as f:
                         f.write(line)
-                except Exception as e:
+                except OSError as e:
+                    # File I/O only raises OSError; a narrower catch here
+                    # (vs Exception) lets an unrelated bug in this branch
+                    # propagate instead of being reported as "ledger write
+                    # failed".
                     logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
-                    pass
 def _auto_close_report_ready(project_dir: str) -> None:
     """Auto-close report_ready tasks whose latest report handoff has tests_passed: true.
 
@@ -1115,6 +1124,7 @@ def _auto_close_report_ready(project_dir: str) -> None:
                     print(f"auto-close: task '{task_id}' needs operator review: " + "; ".join(verification.failures))
                 continue
         except Exception as e:
+            logger.warning("_auto_close_report_ready: unexpected error: %s", e, exc_info=True)
             print(f"Warning: report verification skipped: {e}", file=sys.stderr)
 
         # NEW: Auto-review logic (Human-in-the-loop bypass)
@@ -1189,6 +1199,7 @@ def _auto_close_report_ready(project_dir: str) -> None:
             finally:
                 conn3.close()
         except Exception as exc:
+            logger.warning("_auto_close_report_ready: unexpected error: %s", exc, exc_info=True)
             print(f"auto-close: failed to close '{task_id}': {exc}", file=sys.stderr)
 
 
@@ -1263,6 +1274,7 @@ def _auto_retry_failed_sqlite(project_dir: str) -> None:
         finally:
             conn.close()
     except Exception as exc:
+        logger.warning("_auto_retry_failed_sqlite: unexpected error: %s", exc, exc_info=True)
         print(f"auto-retry (sqlite): error: {exc}", file=sys.stderr)
 
 
@@ -1292,6 +1304,7 @@ def _rank_fallback_agents(conn, candidates: list[str]) -> list[str]:
         ranked = review_dao.rank_owners(conn)
         rank_index = {stats.owner: i for i, stats in enumerate(ranked)}
     except Exception:
+        logger.warning("_rank_fallback_agents: unexpected error: %s", sys.exc_info()[1], exc_info=True)
         return candidates
     if not rank_index:
         return candidates
@@ -1422,6 +1435,7 @@ def _escalate_runaway_inbox(conn, row, reason_label: str, now: str) -> None:
             f"(reason: {reason_label})"
         )
     except Exception as exc:
+        logger.warning("_escalate_runaway_inbox: unexpected error: %s", exc, exc_info=True)
         print(f"auto-recover: escalation failed for {row.id}: {exc}", file=sys.stderr)
 
 
@@ -1540,6 +1554,7 @@ def _auto_fallback_owner_reassign(project_dir: str) -> None:
         finally:
             conn.close()
     except Exception as exc:
+        logger.warning("_auto_fallback_owner_reassign: unexpected error: %s", exc, exc_info=True)
         print(f"auto-fallback-owner: error: {exc}", file=sys.stderr)
 
 
@@ -1649,6 +1664,7 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                         and _agent_cli_reachable(a)
                     ]
                 except Exception:
+                    logger.warning("_auto_recover_exhausted_failures_sqlite: unexpected error: %s", sys.exc_info()[1], exc_info=True)
                     fallback_agents = [a for a in _FALLBACK_ORDER if a not in tried_agents]
                 fallback_agents = _rank_fallback_agents(conn, fallback_agents)
                 if not fallback_agents:
@@ -1759,6 +1775,7 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
         finally:
             conn.close()
     except Exception as exc:
+        logger.warning("_auto_recover_exhausted_failures_sqlite: unexpected error: %s", exc, exc_info=True)
         print(f"auto-recover: error: {exc}", file=sys.stderr)
 
 
@@ -1808,6 +1825,7 @@ def _reconcile_permanent_blocks(project_dir: str) -> int:
         finally:
             conn.close()
     except Exception as exc:
+        logger.warning("_reconcile_permanent_blocks: unexpected error: %s", exc, exc_info=True)
         print(f"reconcile-permanent-block: error: {exc}", file=sys.stderr)
     return count
 
@@ -1895,6 +1913,7 @@ def _auto_bootstrap_empty_tasks(project_dir: str) -> int:
         finally:
             conn.close()
     except Exception as exc:
+        logger.warning("_auto_bootstrap_empty_tasks: unexpected error: %s", exc, exc_info=True)
         print(f"auto-bootstrap: error: {exc}", file=sys.stderr)
     return count
 
@@ -2329,6 +2348,7 @@ def auto_enqueue_approved(project_dir: str) -> int:
                                   target_agent=owner, priority=2, max_retries=3,
                                   project_path=project_dir, plan_only=False, now=now)
             except Exception as _enq_err:
+                logger.warning("auto_enqueue_approved: unexpected error: %s", _enq_err, exc_info=True)
                 # StateError (duplicate) or any other DB error — skip silently.
                 active_tasks.add(task_id)
                 continue
@@ -2397,6 +2417,7 @@ def _run_scripts(
     try:
         _poll_operator_commands(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         _log_watcher_error(project_dir, "operator_commands", str(e))
 
     # Deadline check
@@ -2414,6 +2435,7 @@ def _run_scripts(
         from superharness.modules.runner import run_hooks
         run_hooks("on_watcher_tick", {"project_dir": project_dir}, Path(project_dir))
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         print(f"Warning: on_watcher_tick hook failed: {e}", file=sys.stderr)
 
     # Operator memory: check known failure patterns before retry/recovery
@@ -2457,6 +2479,7 @@ def _run_scripts(
         if _should_run(project_dir, "auto_retry", cooldown=10):
             _auto_retry_failed(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         _log_watcher_error(project_dir, "watcher", str(e))
 
     # Auto-fallback-owner: reassign exhausted tasks to profile-configured owner
@@ -2464,6 +2487,7 @@ def _run_scripts(
         if _should_run(project_dir, "auto_fallback_owner", cooldown=15):
             _auto_fallback_owner_reassign(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         print(f"Warning: auto_fallback_owner_reassign failed: {e}", file=sys.stderr)
 
     # Auto-recover exhausted failures: re-route to a different agent
@@ -2471,6 +2495,7 @@ def _run_scripts(
         if _should_run(project_dir, "auto_recover", cooldown=15):
             _auto_recover_exhausted_failures_sqlite(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         print(f"Warning: auto_recover_exhausted_failures failed: {e}", file=sys.stderr)
 
     # Auto-bootstrap: dispatch AC-proposal for tasks escalated with empty content
@@ -2478,6 +2503,7 @@ def _run_scripts(
         if _should_run(project_dir, "auto_bootstrap", cooldown=30) and not _circuit_breaker_tripped(project_dir):
             _auto_bootstrap_empty_tasks(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         print(f"Warning: auto_bootstrap_empty_tasks failed: {e}", file=sys.stderr)
 
     # Auto-close report_ready tasks with tests_passed: true in their handoff
@@ -2485,6 +2511,7 @@ def _run_scripts(
         if _should_run(project_dir, "auto_close_report_ready", cooldown=15):
             _auto_close_report_ready(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         _log_watcher_error(project_dir, "watcher", str(e))
 
     # Auto-close review_requested tasks when a reviewer submits a verdict report
@@ -2492,6 +2519,7 @@ def _run_scripts(
         if _should_run(project_dir, "auto_close_review_passed", cooldown=15):
             _auto_close_review_passed(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         _log_watcher_error(project_dir, "watcher", str(e))
 
     # Advance orphaned discussion rounds (inbox done, verdicts never submitted)
@@ -2499,12 +2527,14 @@ def _run_scripts(
     try:
         _auto_advance_orphaned_rounds(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         print(f"Warning: discussion orphan-advance failed: {e}", file=sys.stderr)
 
     # Auto-close consensus discussions after grace period
     try:
         _auto_close_consensus_discussions(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         print(f"Warning: discussion auto-close failed: {e}", file=sys.stderr)
 
     # Sync cancelled/closed discussions back to contract task status + clean inbox
@@ -2512,6 +2542,7 @@ def _run_scripts(
         if _should_run(project_dir, "reconcile_discussion_contract", cooldown=15):
             _reconcile_discussion_contract(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         print(f"Warning: discussion contract reconciliation failed: {e}", file=sys.stderr)
 
     # review_requested timeout is handled by reconcile_lifecycle (above, after dispatch reconciliation)
@@ -2521,6 +2552,7 @@ def _run_scripts(
         if _should_run(project_dir, "check_ship_on_complete", cooldown=15):
             _check_ship_on_complete_tasks(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         print(f"Warning: _check_ship_on_complete_tasks failed: {e}", file=sys.stderr)
 
     # Auto-enqueue todo tasks for planning when auto_dispatch=True and autonomy=autonomous
@@ -2528,6 +2560,7 @@ def _run_scripts(
         if _should_run(project_dir, "auto_enqueue_todo", cooldown=15) and not _circuit_breaker_tripped(project_dir):
             auto_enqueue_todo(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         print(f"Warning: auto_enqueue_todo failed: {e}", file=sys.stderr)
 
     # Auto peer-approve plan_proposed tasks: dispatch to a different max-tier agent for review
@@ -2535,6 +2568,7 @@ def _run_scripts(
         if _should_run(project_dir, "auto_peer_approve", cooldown=30) and not _circuit_breaker_tripped(project_dir):
             _auto_peer_approve_plans(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         print(f"Warning: peer_approve_plans failed: {e}", file=sys.stderr)
 
     # Auto-enqueue plan_approved tasks when auto_dispatch=True in profile.yaml
@@ -2542,24 +2576,28 @@ def _run_scripts(
         if _should_run(project_dir, "auto_enqueue_approved", cooldown=15) and not _circuit_breaker_tripped(project_dir):
             auto_enqueue_approved(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         print(f"Warning: auto_enqueue_approved failed: {e}", file=sys.stderr)
 
     # Clean stale tasks with no handoff after timeout
     try:
         _auto_archive_stale_tasks(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         print(f"Warning: auto_archive_stale_tasks failed: {e}", file=sys.stderr)
 
     # Reconcile zombie inbox items (launched but process gone)
     try:
         _reconcile_zombies(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         _log_watcher_error(project_dir, "watcher", str(e))
 
     # Analyze task logs for stuck agents
     try:
         _analyze_task_logs(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         _log_watcher_error(project_dir, "watcher", str(e))
 
     # Transcript tailing for live dispatch progress (feature-flagged off by
@@ -2568,6 +2606,7 @@ def _run_scripts(
     try:
         _run_transcript_tail_if_enabled(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         _log_watcher_error(project_dir, "watcher", str(e))
 
     # Reconcile paused dead-pid items — read from SQLite, write to SQLite
@@ -2592,6 +2631,7 @@ def _run_scripts(
         finally:
             conn_paused.close()
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         print(f"Warning: paused dead-pid reconciliation failed: {e}", file=sys.stderr)
 
     # iter 7: review escalation — runs before lifecycle reconciler so chain
@@ -2600,6 +2640,7 @@ def _run_scripts(
         from superharness.engine.review_escalation import escalate_stale_reviews
         escalate_stale_reviews(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         print(f"Warning: review escalation failed: {e}", file=sys.stderr)
 
     # Unified lifecycle reconciler (paused timeout, in_progress timeout, and
@@ -2608,6 +2649,7 @@ def _run_scripts(
         from superharness.engine.lifecycle_rules import reconcile_lifecycle
         reconcile_lifecycle(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         _log_watcher_error(project_dir, "watcher", str(e))
 
     # Proactive session flush: save partial work before lifecycle timeout
@@ -2619,6 +2661,7 @@ def _run_scripts(
         if expiring:
             print(f"session-flush: flushed {len(expiring)} expiring task(s)")
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         _log_watcher_error(project_dir, "watcher", str(e))
 
     # Inbox GC: reconcile stale items against contract
@@ -2626,12 +2669,14 @@ def _run_scripts(
         _watcher_cycle_count[0] += 1
         _run_gc_if_due(project_dir, _watcher_cycle_count[0])
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         print(f"Warning: inbox gc failed: {e}", file=sys.stderr)
 
     # Auto-delete terminal stale inbox items (status='stale') — they're dead data
     try:
         _auto_delete_stale_inbox(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         print(f"Warning: stale inbox cleanup failed: {e}", file=sys.stderr)
 
     # Comprehensive GC — time-gated, runs at most once per minute
@@ -2643,6 +2688,7 @@ def _run_scripts(
                 _parts = [f"{k}={v}" for k, v in gc_results.items() if v > 0]
                 print(f"GC: {' '.join(_parts)}", file=sys.stderr)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         print(f"Warning: comprehensive gc failed: {e}", file=sys.stderr)
 
     # Reinforcement loop — learn from history and auto-adjust behavior.
@@ -2652,12 +2698,14 @@ def _run_scripts(
         if _should_run(project_dir, "reinforce", cooldown=300):
             _reinforce_loop(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         print(f"Warning: reinforce loop failed: {e}", file=sys.stderr)
 
     # Cancel pending items for agents without dispatch scripts (will never dispatch)
     try:
         _cancel_undispatchable_agents(project_dir)
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         print(f"Warning: undispatchable agent cleanup failed: {e}", file=sys.stderr)
 
     # Dispatch — check budget before launching agents
@@ -2682,6 +2730,7 @@ def _run_scripts(
         elif budget.status == BudgetStatus.WARN:
             print(f"budget-gate: WARN — {budget.message}")
     except Exception as e:
+        logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         _log_watcher_error(project_dir, "watcher", str(e))
 
 
@@ -2696,6 +2745,7 @@ def _run_scripts(
             elif agent_budget.status == BudgetStatus.WARN:
                 print(f"budget-gate: {t} WARN — ${agent_budget.used_today:.2f} / ${agent_budget.daily_limit:.2f}")
         except Exception as e:
+            logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
             _log_watcher_error(project_dir, "watcher", str(e))
 
         # Loop detection: stateful warn→block using LoopGuard
@@ -2721,6 +2771,7 @@ def _run_scripts(
             if _loop_action == "block":
                 continue
         except Exception as e:
+            logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
             _log_watcher_error(project_dir, "watcher", str(e))
 
         _run_dispatch_cmd(
@@ -3167,9 +3218,13 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
                     if age > _PLAN_ONLY_TIMEOUT:
                         try:
                             os.kill(pid_int, signal.SIGTERM)
-                        except Exception as e:
+                        except OSError as e:
+                            # os.kill only ever raises OSError (typically
+                            # ProcessLookupError — the pid is already gone —
+                            # or PermissionError). Anything else propagates
+                            # instead of being silently treated as "already
+                            # dead", per CONTRIBUTING.md's exception policy.
                             logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
-                            pass
                         item["status"] = "failed"
                         item["failed_at"] = _now_utc()
                         item["pid"] = ""
@@ -3188,9 +3243,10 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
                     if age > _MAX_LAUNCH_AGE_SECONDS:
                         try:
                             os.kill(pid_int, signal.SIGTERM)
-                        except Exception as e:
+                        except OSError as e:
+                            # See the plan-only-timeout branch above: os.kill
+                            # only raises OSError; anything else propagates.
                             logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
-                            pass
                         item["status"] = "failed"
                         item["failed_at"] = _now_utc()
                         item["pid"] = ""
@@ -3325,6 +3381,7 @@ def _reconcile_discussion_contract(project_dir: str) -> int:
             if inbox_cleaned > 0:
                 print(f"discussion-reconcile: cleaned {inbox_cleaned} inbox item(s) for terminal discussions")
         except Exception as e:
+            logger.warning("_reconcile_discussion_contract: unexpected error: %s", e, exc_info=True)
             print(f"discussion-reconcile: inbox cleanup failed: {e}", file=sys.stderr)
 
     return updated
@@ -3579,6 +3636,7 @@ def _auto_advance_orphaned_rounds(project_dir: str) -> int:
         if advanced:
             conn.commit()
     except Exception as e:
+        logger.warning("_auto_advance_orphaned_rounds: unexpected error: %s", e, exc_info=True)
         print(f"discussion-orphan-advance: error: {e}", file=sys.stderr)
     finally:
         conn.close()
@@ -3663,6 +3721,7 @@ def _auto_close_consensus_discussions(project_dir: str) -> int:
 
         conn.commit()
     except Exception as e:
+        logger.warning("_auto_close_consensus_discussions: unexpected error: %s", e, exc_info=True)
         print(f"discussion-auto-close: error: {e}", file=sys.stderr)
     finally:
         conn.close()
@@ -3704,6 +3763,7 @@ def _auto_delete_stale_inbox(project_dir: str) -> int:
         finally:
             conn.close()
     except Exception as e:
+        logger.warning("_auto_delete_stale_inbox: unexpected error: %s", e, exc_info=True)
         print(f"auto-delete-stale: failed: {e}", file=sys.stderr)
         return 0
 
@@ -3863,6 +3923,7 @@ def _reinforce_loop(project_dir: str) -> None:
                         history=history,
                     )
                 except Exception:
+                    logger.warning("_reinforce_loop: unexpected error: %s", sys.exc_info()[1], exc_info=True)
                     classification = "unknown"
 
                 # Try self-healing BEFORE pausing — fix the problem if we can
@@ -3942,6 +4003,7 @@ def _reinforce_loop(project_dir: str) -> None:
                                     "action": "profile_update",
                                 })
             except Exception:
+                logger.warning("_reinforce_loop: unexpected error: %s", sys.exc_info()[1], exc_info=True)
                 pass
 
             # ── 3. Consensus extraction ─────────────────────────────────
@@ -3968,6 +4030,7 @@ def _reinforce_loop(project_dir: str) -> None:
                         "discussion_id": disc.id, "task_id": task_id, "topic": topic,
                     })
             except Exception:
+                logger.warning("_reinforce_loop: unexpected error: %s", sys.exc_info()[1], exc_info=True)
                 pass
 
         finally:
@@ -4034,6 +4097,7 @@ def _self_heal(project_dir: str, agent: str, error: str) -> tuple[bool, str]:
                     })
                     return False, f"pip install '{module_name}' failed: {result.stderr[:100]}"
             except Exception as e:
+                logger.warning("_self_heal: unexpected error: %s", e, exc_info=True)
                 return False, f"pip install failed: {e}"
         
         if action == "kill_orphan":
@@ -4053,6 +4117,7 @@ def _self_heal(project_dir: str, agent: str, error: str) -> tuple[bool, str]:
                         except (OSError, ProcessLookupError, ValueError):
                             pass
                 except Exception:
+                    logger.warning("_self_heal: unexpected error: %s", sys.exc_info()[1], exc_info=True)
                     pass
             if killed > 0:
                 trace_event(project_dir, "self_heal_success", {
@@ -4076,6 +4141,7 @@ def _self_heal(project_dir: str, agent: str, error: str) -> tuple[bool, str]:
                 finally:
                     conn.close()
             except Exception:
+                logger.warning("_self_heal: unexpected error: %s", sys.exc_info()[1], exc_info=True)
                 return False, "SQLite pragma failed"
         
         if action == "downgrade_python":
@@ -4167,7 +4233,7 @@ def _gc_duplicate_inbox(project_dir: str) -> int:
         finally:
             conn.close()
     except Exception as e:
-        logger.warning("_gc_duplicate_inbox failed: %s", e)
+        logger.warning("_gc_duplicate_inbox failed: %s", e, exc_info=True)
         return 0
 
 
@@ -4200,7 +4266,7 @@ def _gc_zombie_running(project_dir: str) -> int:
         finally:
             conn.close()
     except Exception as e:
-        logger.warning("_gc_zombie_running failed: %s", e)
+        logger.warning("_gc_zombie_running failed: %s", e, exc_info=True)
         return 0
 
 
@@ -4227,7 +4293,7 @@ def _gc_zombie_pending(project_dir: str) -> int:
         finally:
             conn.close()
     except Exception as e:
-        logger.warning("_gc_zombie_pending failed: %s", e)
+        logger.warning("_gc_zombie_pending failed: %s", e, exc_info=True)
         return 0
 
 
@@ -4369,7 +4435,7 @@ def _gc_discussion_deadlock(project_dir: str) -> int:
         finally:
             conn.close()
     except Exception as e:
-        logger.warning("_gc_discussion_deadlock failed: %s", e)
+        logger.warning("_gc_discussion_deadlock failed: %s", e, exc_info=True)
         return 0
 
 
@@ -4406,7 +4472,7 @@ def _gc_orphaned_discussion_inbox(project_dir: str) -> int:
         finally:
             conn.close()
     except Exception as e:
-        logger.warning("_gc_orphaned_discussion_inbox failed: %s", e)
+        logger.warning("_gc_orphaned_discussion_inbox failed: %s", e, exc_info=True)
         return 0
 
 
@@ -4452,7 +4518,7 @@ def _gc_stuck_waiting_input(project_dir: str) -> int:
         finally:
             conn.close()
     except Exception as e:
-        logger.warning("_gc_stuck_waiting_input failed: %s", e)
+        logger.warning("_gc_stuck_waiting_input failed: %s", e, exc_info=True)
         return 0
 
 
@@ -4512,6 +4578,7 @@ def _cancel_undispatchable_agents(project_dir: str) -> int:
         finally:
             conn.close()
     except Exception as e:
+        logger.warning("_cancel_undispatchable_agents: unexpected error: %s", e, exc_info=True)
         print(f"undispatchable-cleanup: failed: {e}", file=sys.stderr)
         return 0
 
