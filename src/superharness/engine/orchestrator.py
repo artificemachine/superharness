@@ -468,6 +468,7 @@ class Orchestrator:
         provider_id, _, model_id = model_ref.partition("/")
         base_url = res.get("baseUrl")
 
+        lineage_id = str(res.get("lineageId") or "")
         if base_url:
             try:
                 key = os.environ.get(f"SHUX_RMDI_API_KEY_{provider_id.upper().replace('-', '_')}")
@@ -475,9 +476,19 @@ class Orchestrator:
                     str(base_url), model_id, prompt, timeout=_ORCHESTRATOR_TIMEOUT, api_key=key
                 )
                 _record_orchestrator_score(model_ref, bool(out))
+                # Defect D: the dispatch opened a lineage record — close it.
+                # Executed, usage unmeasured here (attested null, priced unknown).
+                err = rmdi_client.close_lineage(lineage_id, 0, "no-usage-observed", usage=None)
+                if err:
+                    logger.warning("%s", err)
                 return out
             except Exception as e:
                 logger.warning("rmdi orchestrator HTTP call failed (%s): %s", model_ref, e)
+                # Provider rejected / call failed after a clean dispatch: the
+                # truthful executed class from incident defect C.
+                err = rmdi_client.close_lineage(lineage_id, 0, "provider-error", usage=None)
+                if err:
+                    logger.warning("%s", err)
                 _record_orchestrator_score(model_ref, False)
                 return ""
 
@@ -489,10 +500,20 @@ class Orchestrator:
                 )
                 ok = result.returncode == 0 and bool(result.stdout.strip())
                 _record_orchestrator_score(model_ref, ok)
+                err = rmdi_client.close_lineage(
+                    lineage_id, result.returncode,
+                    "no-usage-observed" if result.returncode == 0 else "nonzero-exit",
+                    usage=None,
+                )
+                if err:
+                    logger.warning("%s", err)
                 return result.stdout.strip() if ok else ""
             except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as e:
                 logger.warning("rmdi orchestrator claude CLI failed: %s", e)
                 _record_orchestrator_score(model_ref, False)
+                err = rmdi_client.close_lineage(lineage_id, -1, "spawn-error")
+                if err:
+                    logger.warning("%s", err)
                 return ""
 
         logger.warning(
@@ -500,6 +521,9 @@ class Orchestrator:
             "(add a baseUrl for endpoint %s in x-fleet-routing.json to enable it)",
             model_ref, provider_id,
         )
+        err = rmdi_client.close_lineage(lineage_id, -1, "never-executed")
+        if err:
+            logger.warning("%s", err)
         return ""
 
     def _call_orchestrator_model(self, prompt: str) -> str:

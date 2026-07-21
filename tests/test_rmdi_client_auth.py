@@ -104,3 +104,50 @@ def test_dispatch_carries_context_window_estimate(monkeypatch, tmp_path):
 
     rmdi_client.dispatch("scout@main", estimated_prompt_tokens=1234)
     assert json.loads(seen["req"].data)["estimatedPromptTokens"] == 1234
+
+
+def test_outcome_distinguishes_omitted_usage_from_null_attestation(monkeypatch, tmp_path):
+    """Defect D: usage omitted = non-executed class; usage=None = explicit
+    executed-but-unmeasured attestation. The wire must preserve the difference."""
+    monkeypatch.setenv("RMDI_TOKEN_FILE", str(tmp_path / "absent"))
+    seen = _capture_request(monkeypatch)
+
+    rmdi_client.outcome("lin-1", -1, "never-executed")
+    body = json.loads(seen["req"].data)
+    assert "usage" not in body
+    assert body["errorClass"] == "never-executed"
+
+    rmdi_client.outcome("lin-2", 0, "no-usage-observed", duration_ms=42, usage=None)
+    body = json.loads(seen["req"].data)
+    assert body["usage"] is None
+    assert body["durationMs"] == 42
+
+
+def test_close_lineage_retries_and_treats_already_closed_as_success(monkeypatch):
+    calls = {"n": 0}
+
+    def flaky(lineage_id, exit_code, error_class, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise rmdi_client.RmdiRouterDown("boom")
+        return {"outcome": {}}
+
+    monkeypatch.setattr(rmdi_client, "outcome", flaky)
+    assert rmdi_client.close_lineage("lin-3", 0, "no-usage-observed", usage=None) is None
+    assert calls["n"] == 2
+
+    def closed(*a, **kw):
+        raise rmdi_client.RmdiError(409, "ALREADY_CLOSED", {})
+
+    monkeypatch.setattr(rmdi_client, "outcome", closed)
+    assert rmdi_client.close_lineage("lin-4", 1, "nonzero-exit", usage=None) is None
+
+    def dead(*a, **kw):
+        raise rmdi_client.RmdiError(400, "BAD_REQUEST", {"detail": "x"})
+
+    monkeypatch.setattr(rmdi_client, "outcome", dead)
+    err = rmdi_client.close_lineage("lin-5", 0, "no-usage-observed", usage=None)
+    assert err and "lin-5" in err and "BAD_REQUEST" in err
+
+    # Empty id: nothing to close, never a call.
+    assert rmdi_client.close_lineage("", 0, "ok") is None

@@ -192,6 +192,58 @@ def bindings() -> list[dict[str, Any]]:
     return _request("GET", "/bindings")
 
 
+# Sentinel: distinguish OMITTED usage (non-executed classes) from an explicit
+# usage: null attestation (executed but unmeasured — priced unknown, not zero).
+_USAGE_OMITTED = object()
+
+
+def outcome(
+    lineage_id: str,
+    exit_code: int,
+    error_class: str,
+    *,
+    duration_ms: int | None = None,
+    usage: Any = _USAGE_OMITTED,
+) -> dict[str, Any]:
+    """Close a delegation's lineage record (R1). Pass usage=None to attest
+    executed-but-unmeasured; omit it entirely for non-executed classes."""
+    body: dict[str, Any] = {"id": lineage_id, "exitCode": exit_code, "errorClass": error_class}
+    if duration_ms is not None:
+        body["durationMs"] = duration_ms
+    if usage is not _USAGE_OMITTED:
+        body["usage"] = usage
+    return _request("POST", "/outcomes", body)
+
+
+def close_lineage(
+    lineage_id: str,
+    exit_code: int,
+    error_class: str,
+    *,
+    duration_ms: int | None = None,
+    usage: Any = _USAGE_OMITTED,
+) -> str | None:
+    """Best-effort close (incident 2026-07-21 defect D): every dispatch opens a
+    lineage record, so every exit path must close one. Retry once; a 409
+    ALREADY_CLOSED is success (a prior append landed, its response was lost).
+    Never raises — returns an error string for the caller to SURFACE (stderr),
+    because a silent orphan is the defect this exists to kill."""
+    if not lineage_id:
+        return None
+    last: str | None = None
+    for _ in range(2):
+        try:
+            outcome(lineage_id, exit_code, error_class, duration_ms=duration_ms, usage=usage)
+            return None
+        except RmdiError as e:
+            if e.code == "ALREADY_CLOSED":
+                return None
+            last = str(e)
+        except Exception as e:  # router down etc. — surfaced, never fatal
+            last = str(e)
+    return f"lineage orphan: outcome for {lineage_id} could NOT be recorded — {last}"
+
+
 def chat_completions(
     base_url: str,
     model_id: str,

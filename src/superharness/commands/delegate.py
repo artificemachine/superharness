@@ -152,6 +152,10 @@ def _resolve_via_rmdi(
     return {
         "seat": seat,
         "bindingVersion": binding.get("version"),
+        # R1 (incident 2026-07-21 defect D): the router-minted lineage id —
+        # this dispatch OPENED a delegation record; every exit path must close
+        # it via rmdi_client.close_lineage or it orphans in the ledger.
+        "lineageId": res.get("lineageId") or "",
         "modelRef": model_ref,
         # claude CLI takes a bare model id; other adapters receive the full
         # provider/model ref and must define the provider in their own config
@@ -671,6 +675,24 @@ def _confirm_dangerous_flag_risk(env_name: str, risk_msg: str) -> None:
 # Launch
 # ---------------------------------------------------------------------------
 
+def _close_rmdi_lineage(lineage_id: str, exit_code: int, error_class: str,
+                        duration_ms: int | None = None, executed: bool = False) -> None:
+    """Close the dispatch's lineage record (defect D). executed=True attests
+    usage: null (ran but unmeasured — shux does not parse child token usage);
+    executed=False omits usage (non-executed class). Failures are SURFACED on
+    stderr, never raised — an orphan must be visible, not fatal."""
+    if not lineage_id:
+        return
+    from superharness.engine import rmdi_client
+    err = rmdi_client.close_lineage(
+        lineage_id, exit_code, error_class,
+        duration_ms=duration_ms,
+        **({"usage": None} if executed else {}),
+    )
+    if err:
+        print(f"[{err}]", file=sys.stderr)
+
+
 def _launch_agent(
     target: str,
     prompt: str,
@@ -683,6 +705,7 @@ def _launch_agent(
     task_id: str = "",
     print_only: bool = False,
     yolo: bool = False,
+    rmdi_lineage_id: str = "",
 ) -> None:
     from superharness.engine.platform_runtime import launch_agent, expand_agent_path
     from superharness.logging_utils import get_logger, get_audit_logger, redact
@@ -727,6 +750,7 @@ def _launch_agent(
 
     if print_only:
         print(f"would launch: {launcher}")
+        _close_rmdi_lineage(rmdi_lineage_id, -1, "never-executed")
         return
 
     # Register agent daemon heartbeat before dispatching.
@@ -749,11 +773,31 @@ def _launch_agent(
 
     display_label = f" {label}" if label else ""
     agent_name = target.replace("-cli", "").replace("-code", "").capitalize()
-    
+
     # Print launcher path to satisfy integration tests
     print(f"Launching {agent_name}{display_label} ({os.path.basename(launcher)})...")
 
-    rc = launch_agent(launch_args, cwd=project_dir)
+    # Defect D: the dispatch opened a lineage record — close it with the
+    # mechanical verdict whatever happens to the child (honest classes, never
+    # a silent orphan). shux does not observe child token usage, so executed
+    # closes attest usage: null (priced unknown, never a fabricated zero).
+    import time as _time
+    started = _time.monotonic()
+    try:
+        rc = launch_agent(launch_args, cwd=project_dir)
+    except BaseException:
+        _close_rmdi_lineage(rmdi_lineage_id, -1, "spawn-error",
+                            duration_ms=int((_time.monotonic() - started) * 1000))
+        raise
+    duration_ms = int((_time.monotonic() - started) * 1000)
+    if rc == 0:
+        # Clean exit, nothing measured — executed-but-unmeasured, not "ok".
+        _close_rmdi_lineage(rmdi_lineage_id, 0, "no-usage-observed", duration_ms, executed=True)
+    elif rc < 0:
+        # subprocess convention: negative rc = terminated by signal.
+        _close_rmdi_lineage(rmdi_lineage_id, 128 + abs(rc), "killed", duration_ms, executed=True)
+    else:
+        _close_rmdi_lineage(rmdi_lineage_id, rc, "nonzero-exit", duration_ms, executed=True)
     sys.exit(rc)
 
 
@@ -1437,6 +1481,7 @@ def delegate(
             target, prompt, project_dir, non_interactive, codex_bypass,
             label=label, model=resolved_model, effort=resolved_effort,
             task_id=task_id, print_only=True, yolo=yolo,
+            rmdi_lineage_id=(rmdi_resolution or {}).get("lineageId", ""),
         )
         return 0
 
@@ -1497,6 +1542,8 @@ def delegate(
 
             # Save context snapshot for warm-start on related future tasks
             _save_context_snapshot(project_dir, task_id, result, model=resolved_model)
+            # Defect D: close the dispatch lineage — SDK path completed.
+            _close_rmdi_lineage((rmdi_resolution or {}).get("lineageId", ""), 0, "no-usage-observed", executed=True)
             return 0
         except Exception as e:
             print(f"⚠️  SDK execution failed: {e}", file=sys.stderr)
@@ -1505,12 +1552,19 @@ def delegate(
 
     # CLI dispatch path (original behavior)
     if non_interactive:
-        _confirm_non_interactive_risk(target, codex_bypass)
+        try:
+            _confirm_non_interactive_risk(target, codex_bypass)
+        except SystemExit:
+            # Refused before any child ran — the dispatch's lineage record
+            # still needs its honest close (defect D).
+            _close_rmdi_lineage((rmdi_resolution or {}).get("lineageId", ""), -1, "never-executed")
+            raise
 
     _launch_agent(
         target, prompt, project_dir, non_interactive, codex_bypass,
         label=label, model=resolved_model, effort=resolved_effort,
         task_id=task_id, yolo=yolo,
+        rmdi_lineage_id=(rmdi_resolution or {}).get("lineageId", ""),
     )
     return 0  # unreachable after exec, but satisfies type checker
 
