@@ -72,5 +72,11 @@ docs/HANDOFF-*.md
 docs/AUDIT-*.md
 docs/PLAN-*.md
 docs/bulletproof-report-*.md
+# Job-ready audit artifacts — working docs, not repo content. Kept local so a
+# findings report cannot re-leak the PII it documents into a tracked file
+# (see the 2026-07-21 audit report that tripped test_no_tracked_personal_data).
+docs/audits/*job-ready*
+docs/audits/job-ready-*
+docs/audits/branch-recovery-*
 # Evidence backing the ignored audits above (agent transcripts, captured state)
 docs/discussions/
