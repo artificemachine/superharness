@@ -174,4 +174,9 @@ def terminate_group(
         sleep(poll_interval)
 
     if pid_alive(pid):
-        signal_process_group(pid, signal.SIGKILL)
+        if os.name == "nt":
+            # Windows has no SIGKILL and no process groups; terminate() issues
+            # a TerminateProcess, which is the forcible-kill equivalent.
+            terminate(pid)
+        else:
+            signal_process_group(pid, signal.SIGKILL)

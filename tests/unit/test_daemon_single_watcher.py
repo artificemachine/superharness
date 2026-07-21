@@ -100,14 +100,21 @@ class TestMonitorAdoptsWatcher:
         class FakeProc:
             pid = 555
 
-        def fake_spawn_watcher_popen(*args, **kwargs):
+        def fake_popen(cmd, *args, **kwargs):
+            # The monitor is launched via subprocess.Popen on Windows (no
+            # os.fork) and via os.execvpe on POSIX. Distinguish it from the
+            # watcher spawn (also a Popen, also carrying `-m`) by module name,
+            # so this assertion holds on every platform.
+            if "superharness.commands.daemon_monitor" in cmd:
+                captured["argv"] = cmd
+                raise _Stop()
             return FakeProc()
 
         def fake_execvpe(path, argv, env):
             captured["argv"] = argv
             raise _Stop()
 
-        monkeypatch.setattr(daemon_mod.subprocess, "Popen", fake_spawn_watcher_popen)
+        monkeypatch.setattr(daemon_mod.subprocess, "Popen", fake_popen)
         monkeypatch.setattr(daemon_mod, "_check_version_and_upgrade", lambda project_dir: None)
         if hasattr(daemon_mod.os, "fork"):
             monkeypatch.setattr(daemon_mod.os, "fork", lambda: 0)

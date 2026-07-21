@@ -142,7 +142,7 @@ class TestNoDuplicateLivenessImplementations:
             if f == _PROCESS_PY:
                 continue
             if "os.getpgid" in f.read_text():
-                hits.append(str(f.relative_to(_REPO_ROOT)))
+                hits.append(f.relative_to(_REPO_ROOT).as_posix())
         assert hits == ["src/superharness/engine/operator.py"], (
             f"os.getpgid usage outside engine/process.py changed shape: {hits}. "
             "If this is a new site, route it through signal_process_group instead "
@@ -228,9 +228,11 @@ class TestTerminateGroup:
         assert sent == [(4242, signal.SIGTERM)]
         assert slept == []
 
-    def test_terminate_group_escalates_to_sigkill_after_timeout(self, monkeypatch):
+    def test_terminate_group_escalates_after_timeout(self, monkeypatch):
         sent = []
         monkeypatch.setattr(process_mod, "signal_process_group", lambda pid, sig: sent.append((pid, sig)))
+        terminated = []
+        monkeypatch.setattr(process_mod, "terminate", lambda pid: terminated.append(pid))
         monkeypatch.setattr(process_mod, "pid_alive", lambda pid: True)  # never dies
 
         clock = {"t": 0.0}
@@ -243,9 +245,15 @@ class TestTerminateGroup:
 
         terminate_group(4242, escalate_after=1.0, poll_interval=0.3, sleep=fake_sleep, now=fake_now)
 
+        # SIGTERM to the group is the first move on every platform.
         assert sent[0] == (4242, signal.SIGTERM)
-        assert sent[-1] == (4242, signal.SIGKILL)
-        assert sent.count((4242, signal.SIGKILL)) == 1, "SIGKILL must be sent exactly once"
+        if os.name == "nt":
+            # Windows has no SIGKILL / process groups: escalation is a
+            # forcible TerminateProcess via terminate().
+            assert terminated == [4242], "Windows escalation must go through terminate()"
+        else:
+            assert sent[-1] == (4242, signal.SIGKILL)
+            assert sent.count((4242, signal.SIGKILL)) == 1, "SIGKILL must be sent exactly once"
 
     def test_terminate_group_does_not_escalate_if_pid_dies_in_time(self, monkeypatch):
         sent = []
