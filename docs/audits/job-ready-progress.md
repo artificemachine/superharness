@@ -3,7 +3,7 @@
 ## Stage 1 — First impression: PASS (2026-07-21)
 - verdict: strong first impression; HEAD clean of PII, all community files, badges + CLI demo
 - blockers: 0
-- evidence: gh repo view (PUBLIC, 12 topics); git grep airm2max = 0 tracked; history 107 commits (known); LICENSE Apache-2.0
+- evidence: gh repo view (PUBLIC, 12 topics); git grep <user> = 0 tracked; history 107 commits (known); LICENSE Apache-2.0
 
 ## Stage 2 — Git history & releases: PASS (2026-07-21)
 - verdict: strong commit/release discipline; version gap + 82 remote branches are the blemishes
