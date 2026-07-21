@@ -19,6 +19,9 @@ version: 1
 # CI / repo-level tooling configs (static input, never state)
 # ---------------------------------------------------------------------------
 files:
+  - path: .github/dependabot.yml
+    type: config
+    reason: Dependabot update-schedule config for pip + github-actions ecosystems
   - path: .github/workflows/ci-matrix.yml
     type: config
     reason: GitHub Actions matrix workflow

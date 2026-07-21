@@ -14,6 +14,15 @@ import pytest
 
 # ── CLI command smoke (expect ~30 tests) ──────────────────────────────────────
 
+# Commands deliberately excluded from the "every command has --help" assumption
+# below, with why:
+#   hook — a passthrough proxy (`context_settings={"help_option_names": []}` in
+#     cli.py) that forwards its args verbatim to an adapter hook script, so
+#     `shux hook <name> --help` must NOT be intercepted by click — `--help` is
+#     for the wrapped script, not shux's own parser. Not a bug in `hook`.
+_NO_HELP_COMMANDS = {"hook"}
+
+
 def _cli_commands() -> list[str]:
     """Extract all shux subcommands from --help output."""
     r = subprocess.run(["shux", "--help"], capture_output=True, text=True, timeout=5)
@@ -30,7 +39,7 @@ def _cli_commands() -> list[str]:
             parts = line.strip().split()
             if parts and not parts[0].startswith("-"):
                 cmd = parts[0].rstrip(",")
-                if cmd not in commands:
+                if cmd not in commands and cmd not in _NO_HELP_COMMANDS:
                     commands.append(cmd)
     return commands
 
