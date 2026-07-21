@@ -226,3 +226,52 @@ def test_supervisory_excepts_log_with_exc_info():
         f"files must log with exc_info=True, or be narrowed to a specific "
         f"exception type."
     )
+
+
+# ---------------------------------------------------------------------------
+# Iteration 9 — coverage gate consistency
+# ---------------------------------------------------------------------------
+
+_COV_FAIL_UNDER_PATTERNS = (
+    # pytest-cov CLI flag, as used in .github/workflows/*.yml
+    re.compile(r"--cov-fail-under=(\d+)"),
+    # coverage.py's own [tool.coverage.report] key, as used in pyproject.toml
+    re.compile(r"^\s*fail_under\s*=\s*(\d+)\s*$", re.MULTILINE),
+)
+
+
+def _cov_fail_under_occurrences() -> dict[str, int]:
+    """Every `cov-fail-under`/`fail_under` value found under .github/ and in
+    pyproject.toml, keyed by "relative/path:line". Two different spellings
+    for the same concept (a CLI flag in CI workflows, a native TOML key for
+    local/IDE coverage runs) — both must agree, or CI and a local `pytest
+    --cov` run silently enforce different floors."""
+    occurrences: dict[str, int] = {}
+    candidates = list((REPO_ROOT / ".github").rglob("*.yml")) + list((REPO_ROOT / ".github").rglob("*.yaml"))
+    pyproject = REPO_ROOT / "pyproject.toml"
+    if pyproject.is_file():
+        candidates.append(pyproject)
+    for path in candidates:
+        text = path.read_text()
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            for pattern in _COV_FAIL_UNDER_PATTERNS:
+                m = pattern.search(line)
+                if m:
+                    key = f"{path.relative_to(REPO_ROOT)}:{lineno}"
+                    occurrences[key] = int(m.group(1))
+    return occurrences
+
+
+def test_coverage_gate_is_consistent_across_workflows():
+    """Every `cov-fail-under=N` / `fail_under = N` occurrence under
+    .github/ or in pyproject.toml must carry the identical value. Guards
+    the stale-pair failure mode where one of two (or more) identical CI
+    lines is updated and the other is not — the exact gap iteration 9 of
+    PLAN-coding-practices.md exists to close."""
+    occurrences = _cov_fail_under_occurrences()
+    assert occurrences, "expected at least one cov-fail-under/fail_under occurrence; found none"
+    values = set(occurrences.values())
+    assert len(values) == 1, (
+        f"cov-fail-under/fail_under values disagree across the repo: {occurrences}. "
+        f"Every occurrence must carry the same number — update all of them together."
+    )
