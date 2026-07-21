@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 from superharness.engine.db import get_connection, init_db
 from superharness.engine import discussions_dao
+from superharness.engine.process import pid_alive, signal_process_group
 
 import logging
 logger = logging.getLogger(__name__)
@@ -666,32 +667,10 @@ def cmd_list(discussions_dir: str) -> int:
     return 0
 
 
-def _pid_alive(pid: int) -> bool:
-    """Cross-platform liveness check. Mirrors daemon.py's _is_pid_alive."""
-    if sys.platform == "win32":
-        import ctypes
-        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        STILL_ACTIVE = 259
-        handle = ctypes.windll.kernel32.OpenProcess(
-            PROCESS_QUERY_LIMITED_INFORMATION, False, pid
-        )
-        if not handle:
-            return False
-        try:
-            exit_code = ctypes.c_ulong(STILL_ACTIVE)
-            ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
-            return exit_code.value == STILL_ACTIVE
-        finally:
-            ctypes.windll.kernel32.CloseHandle(handle)
-    try:
-        os.kill(pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return False
+# Kept as a module-level name: tests/unit/test_discussion_close_terminates_agents_2026_07_09.py
+# calls discussion_mod._pid_alive directly. Delegates to the single seam in
+# engine/process.py.
+_pid_alive = pid_alive
 
 
 def _terminate_process_tree(pid: int, force: bool = False) -> None:
@@ -700,11 +679,13 @@ def _terminate_process_tree(pid: int, force: bool = False) -> None:
     POSIX: `inbox_dispatch.py` always spawns the delegate.py wrapper with
     `preexec_fn=os.setsid`, so *pid* is a process-group leader — the same
     pattern `_run_with_timeout`'s SIGALRM handler already relies on
-    (`os.killpg(proc.pid, signal.SIGTERM)`) to kill both the wrapper and the
+    (`engine.process.signal_process_group`) to kill both the wrapper and the
     agent CLI it spawned in one shot.
 
     Windows: `preexec_fn` is POSIX-only, so there is no process group.
-    `taskkill /T` walks the tree instead.
+    `taskkill /T` walks the tree instead — this is a genuinely different
+    mechanism (a real child-tree walk) from what the process seam provides
+    on Windows (a single-pid TerminateProcess), so it is not migrated there.
     """
     if sys.platform == "win32":
         try:
@@ -716,15 +697,7 @@ def _terminate_process_tree(pid: int, force: bool = False) -> None:
             pass
         return
     sig = signal.SIGKILL if force else signal.SIGTERM
-    try:
-        os.killpg(pid, sig)
-    except (ProcessLookupError, PermissionError):
-        pass
-    except OSError:
-        try:
-            os.kill(pid, sig)
-        except (ProcessLookupError, PermissionError, OSError):
-            pass
+    signal_process_group(pid, sig)
 
 
 def _terminate_launched_agents(conn, disc_id: str) -> int:
