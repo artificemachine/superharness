@@ -14,6 +14,8 @@ from typing import Any
 
 import yaml
 
+from superharness.engine.process import pid_alive, signal_process_group
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -254,36 +256,11 @@ class Operator:
 
     @staticmethod
     def _is_pid_alive(pid: int) -> bool:
-        """Check if a process is alive without waiting on it (safe from forked child)."""
-        import sys
+        """Check if a process is alive without waiting on it (safe from forked child).
 
-        if sys.platform == "win32":
-            # os.kill(pid, 0) on Windows sends CTRL_C_EVENT (signal 0 == CTRL_C_EVENT)
-            # to the process group, which triggers KeyboardInterrupt in the calling
-            # process when pid == os.getpid(). Use OpenProcess instead.
-            import ctypes
-
-            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-            STILL_ACTIVE = 259
-            handle = ctypes.windll.kernel32.OpenProcess(  # type: ignore[attr-defined]
-                PROCESS_QUERY_LIMITED_INFORMATION, False, pid
-            )
-            if not handle:
-                return False
-            exit_code = ctypes.c_ulong()
-            alive = bool(
-                ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))  # type: ignore[attr-defined]
-                and exit_code.value == STILL_ACTIVE
-            )
-            ctypes.windll.kernel32.CloseHandle(handle)  # type: ignore[attr-defined]
-            return alive
-        try:
-            os.kill(pid, 0)
-            return True
-        except PermissionError:
-            return True  # process exists but we lack signal permission
-        except OSError:
-            return False  # ESRCH on Unix; various codes on Windows = not alive
+        Delegates to the single seam in engine/process.py.
+        """
+        return pid_alive(pid)
 
     def monitor_and_recover(self, poll_interval: int = 5):
         """Loop forever, restarting any crashed components.
@@ -391,13 +368,21 @@ class Operator:
     def _kill_process(self, proc: subprocess.Popen, name: str = "") -> None:
         """Terminate a subprocess and ALL its children (process group).
 
-        On Unix: uses os.killpg to send SIGTERM to the entire process group,
-        then SIGKILL if any survivors remain. This prevents orphaned
-        grandchildren (e.g. pytest, bridge_worker.js spawned by the
-        watcher) from accumulating as PPID=1 zombies.
+        On Unix: signals the entire process group via
+        engine.process.signal_process_group (SIGTERM, then SIGKILL if any
+        survivors remain). This prevents orphaned grandchildren (e.g.
+        pytest, bridge_worker.js spawned by the watcher) from accumulating
+        as PPID=1 zombies.
 
         On Windows: falls back to proc.terminate() + proc.kill() since
-        os.killpg and process groups are Unix-only concepts.
+        process groups are a Unix-only concept there.
+
+        This method (unlike engine.process.terminate_group) always reaps via
+        proc.wait() rather than polling pid_alive — it owns the Popen handle
+        for a real child, and a reaped-pending zombie still answers a
+        liveness probe until wait() is called, so polling would not detect
+        it. It still uses the shared seam for the group-signal step, so the
+        killpg/getpgid hasattr guard is not duplicated here.
 
         Fix: BUG-2026-06-04-operator-orphans-pytest-swap-storm — 10.7 GB
         orphaned pytest survived because only the direct child was killed.
@@ -410,18 +395,14 @@ class Operator:
             except (OSError, ProcessLookupError):
                 pass  # already dead
 
+            # Never signal our own process group — a coincidental pgid match
+            # would SIGTERM/SIGKILL the operator itself.
             if pgid is not None and pgid != os.getpid():
-                try:
-                    os.killpg(pgid, signal.SIGTERM)
-                except (OSError, ProcessLookupError):
-                    pass
+                signal_process_group(proc.pid, signal.SIGTERM)
                 try:
                     proc.wait(timeout=5)
                 except subprocess.TimeoutExpired:
-                    try:
-                        os.killpg(pgid, signal.SIGKILL)
-                    except (OSError, ProcessLookupError):
-                        pass
+                    signal_process_group(proc.pid, signal.SIGKILL)
                     try:
                         proc.wait(timeout=2)
                     except subprocess.TimeoutExpired:
@@ -458,7 +439,7 @@ class Operator:
                 if has_pg:
                     pgid = os.getpgid(proc.pid)
                     if pgid != os.getpid():
-                        os.killpg(pgid, signal.SIGTERM)
+                        signal_process_group(proc.pid, signal.SIGTERM)
                     else:
                         proc.terminate()
                 else:
@@ -472,7 +453,7 @@ class Operator:
                     if has_pg:
                         pgid = os.getpgid(proc.pid)
                         if pgid != os.getpid():
-                            os.killpg(pgid, signal.SIGKILL)
+                            signal_process_group(proc.pid, signal.SIGKILL)
                         else:
                             proc.kill()
                     else:

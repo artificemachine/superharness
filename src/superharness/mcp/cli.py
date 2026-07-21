@@ -9,37 +9,18 @@ import signal
 
 import click
 
+from superharness.engine.process import pid_alive as _seam_pid_alive
+
 logger = logging.getLogger(__name__)
 
 
 def _pid_alive(pid: int | None) -> bool:
-    """Non-destructive liveness probe. On Windows, os.kill(pid, 0) maps to
-    CTRL_C_EVENT (signal 0) and signals the process group instead of probing,
-    so use OpenProcess there."""
-    if not pid or pid <= 0:
+    """Non-destructive liveness probe. Delegates to the single seam in
+    engine/process.py (see that module's docstring for the Windows
+    mechanism this guards against)."""
+    if not pid:
         return False
-    if sys.platform == "win32":
-        import ctypes
-        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        STILL_ACTIVE = 259
-        handle = ctypes.windll.kernel32.OpenProcess(
-            PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
-        if not handle:
-            return False
-        try:
-            code = ctypes.c_ulong(0)
-            if not ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
-                return False
-            return code.value == STILL_ACTIVE
-        finally:
-            ctypes.windll.kernel32.CloseHandle(handle)
-    try:
-        os.kill(int(pid), 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except OSError:
-        return True
+    return _seam_pid_alive(int(pid))
 
 
 @click.group(name="mcp")
@@ -80,12 +61,11 @@ def cmd_mcp_status(project_path: str | None) -> None:
         port = data.get("port", 7474)
         host = data.get("host", "127.0.0.1")
         # Check if process is alive
-        try:
-            os.kill(pid, 0)
+        if _pid_alive(pid):
             click.echo(f"MCP server: running  pid={pid}  port={port}")
             click.echo(f"  project: {project_dir}")
             click.echo(f"  url: http://{host}:{port}/mcp")
-        except (ProcessLookupError, OSError):
+        else:
             click.echo("MCP server: stopped (stale state file)")
             os.unlink(state_path)
     except Exception as e:
