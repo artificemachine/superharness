@@ -2965,6 +2965,7 @@ def _analyze_task_logs(project_dir: str) -> None:
                         except Exception as e:
                             logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                             pass
+                        from superharness.engine.ledger_dao import record as _ledger_record2
                         _ledger_record2(conn, task_id=item.task_id, agent="watcher",
                                        action="block_loop",
                                        details={"pattern": loop_result.get("pattern"),
