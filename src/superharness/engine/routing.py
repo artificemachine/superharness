@@ -48,7 +48,9 @@ DEFAULT_SEAT_MAP = {
 DEFAULT_ADAPTER_MAP = {
     "claude": "claude-code",
     "codex": "codex-cli",
-    "*": "opencode",
+    # pi is the canonical harness for everything else (fleet/local models);
+    # OpenCode was decommissioned 2026-07-07 — RMDI refs are pi-native.
+    "*": "pi",
 }
 
 _profile_cache: dict[str, tuple[float, dict]] = {}
@@ -109,4 +111,4 @@ def seat_for(role: str, cfg: dict[str, Any] | None = None) -> str:
 
 def adapter_for(provider_id: str, cfg: dict[str, Any] | None = None) -> str:
     adapter_map = {**DEFAULT_ADAPTER_MAP, **((cfg or {}).get("adapter_map") or {})}
-    return adapter_map.get(provider_id) or adapter_map.get("*", "opencode")
+    return adapter_map.get(provider_id) or adapter_map.get("*", "pi")

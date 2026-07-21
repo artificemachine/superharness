@@ -1,0 +1,26 @@
+name: pi
+version: "1"
+description: "pi — canonical Claude-Code-parity agent harness (replaced OpenCode 2026-07-07); RMDI fleet model refs are pi-native"
+type: native
+launcher_script: delegate-to-pi.sh
+capabilities:
+  - code_generation
+  - file_editing
+  - test_execution
+supports_effort: false  # pi thinking levels are session config, not a CLI flag here
+model_tiers:
+  mini:
+    versions:
+      "*": { id: vm903-sidecar/qwen3.6-27b-awq, label: "Qwen3.6-27B AWQ (vm903 via pi)" }
+  standard:
+    versions:
+      "*": { id: vm913-direct/qwen3.6-27b, label: "Qwen3.6-27B BF16 256k (vm913 via pi)" }
+  max:
+    versions:
+      "*": { id: deepseek/deepseek-v4-pro, label: "DeepSeek V4 Pro (via pi)" }
+requires:
+  bin: pi
+  env: []
+validation:
+  check_bin: false # Don't block surfaces where pi isn't installed (P510, Mac)
+  check_env: false

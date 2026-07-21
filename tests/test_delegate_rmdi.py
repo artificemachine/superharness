@@ -55,7 +55,7 @@ def test_resolve_maps_role_to_seat_and_endpoint_to_adapter(project, monkeypatch)
     monkeypatch.setattr("superharness.engine.rmdi_client.dispatch", fake_dispatch)
     res = _resolve_via_rmdi(project, "worker", "T-1")
     assert calls["seat"] == "worker@shux"
-    assert res["adapter"] == "opencode"  # vm913-direct matches the "*" adapter
+    assert res["adapter"] == "pi"  # vm913-direct matches the "*" adapter (pi = canonical harness)
     assert res["model"] == "vm913-direct/qwen3.6-27b"  # full ref for non-claude adapters
     assert res["bindingVersion"] == 3
     assert res["recipe"] == "shux-orchestrator"

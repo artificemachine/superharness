@@ -40,6 +40,7 @@ _ORCHESTRATOR_CHAIN: list[tuple[str, str, str]] = [
     ("codex",  "gpt-5.5",                 "Codex GPT-5.5 (max)"),
     ("gemini", "gemini-3.1-pro-preview",   "Gemini 3.1 Pro (max)"),
     ("opencode", "deepseek/deepseek-v4-pro", "DeepSeek V4 Pro (max)"),
+    ("pi", "deepseek/deepseek-v4-pro", "DeepSeek V4 Pro (via pi, max)"),
 ]
 
 
@@ -56,6 +57,8 @@ def _build_agent_argv(binary: str, model: str, prompt: str) -> list[str]:
         return [binary, "exec", "-m", model, prompt]
     if binary == "opencode":
         return [binary, "run", "-m", model, prompt]
+    if binary == "pi":
+        return [binary, "-p", "--no-session", "--model", model, prompt]
     if binary == "gemini":
         return [binary, "-m", model, "-p", prompt]
     # claude (and any unknown binary): Claude-style flags
