@@ -1,0 +1,26 @@
+name: pi
+version: "1"
+description: "pi — Claude-Code-parity agent harness (badlogic/pi-mono); provider-agnostic model refs resolved by pi's own config"
+type: native
+launcher_script: delegate-to-pi.sh
+capabilities:
+  - code_generation
+  - file_editing
+  - test_execution
+supports_effort: false  # pi thinking levels are session config, not a CLI flag here
+model_tiers:
+  mini:
+    versions:
+      "*": { id: deepseek/deepseek-chat, label: "DeepSeek Chat (via pi)" }
+  standard:
+    versions:
+      "*": { id: deepseek/deepseek-v4-flash, label: "DeepSeek V4 Flash (via pi)" }
+  max:
+    versions:
+      "*": { id: deepseek/deepseek-v4-pro, label: "DeepSeek V4 Pro (via pi)" }
+requires:
+  bin: pi
+  env: []
+validation:
+  check_bin: false # Don't block if not installed yet
+  check_env: false

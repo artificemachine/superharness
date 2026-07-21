@@ -1127,7 +1127,7 @@ def _auto_close_report_ready(project_dir: str) -> None:
 
         # Autonomous Peer Review selection (cross-pollination)
         if not peer_reviewers and autonomy == "ai_driven":
-            known_agents = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
+            known_agents = ["claude-code", "codex-cli", "gemini-cli", "pi"]
             owner = str(task.get("owner", ""))
             peers = [a for a in known_agents if a != owner]
             if peers:
@@ -1267,14 +1267,14 @@ def _auto_retry_failed_sqlite(project_dir: str) -> None:
 
 
 _AGENT_FALLBACK: dict[str, list[str]] = {
-    "claude-code": ["codex-cli", "gemini-cli", "opencode"],
-    "gemini-cli":  ["claude-code", "codex-cli", "opencode"],
-    "codex-cli":   ["claude-code", "gemini-cli", "opencode"],
-    "opencode":    ["claude-code", "codex-cli", "gemini-cli"],
+    "claude-code": ["codex-cli", "gemini-cli", "pi"],
+    "gemini-cli":  ["claude-code", "codex-cli", "pi"],
+    "codex-cli":   ["claude-code", "gemini-cli", "pi"],
+    "pi":          ["claude-code", "codex-cli", "gemini-cli"],
 }
 
 # Ordered preference for fallback when tried_agents is derived from inbox history
-_FALLBACK_ORDER = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
+_FALLBACK_ORDER = ["claude-code", "codex-cli", "gemini-cli", "pi"]
 
 
 def _rank_fallback_agents(conn, candidates: list[str]) -> list[str]:
@@ -2668,7 +2668,7 @@ def _run_scripts(
             targets = list_adapters()
         except Exception as e:
             logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
-            targets = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
+            targets = ["claude-code", "codex-cli", "gemini-cli", "pi"]
     else:
         targets = [target]
 

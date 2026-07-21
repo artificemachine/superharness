@@ -33,6 +33,12 @@ MODEL_MAP: dict[str, dict[str, str]] = {
         "standard": "deepseek/deepseek-v4-pro",
         "max": "deepseek/deepseek-v4-pro"
     },
+    # pi (badlogic/pi-mono) — provider/model refs resolved by pi's own config.
+    "pi": {
+        "mini": "deepseek/deepseek-chat",
+        "standard": "deepseek/deepseek-v4-pro",
+        "max": "deepseek/deepseek-v4-pro"
+    },
 }
 
 VALID_TIERS = {"mini", "standard", "max"}
@@ -206,6 +212,7 @@ _CLASSIFIER_AGENTS: list[tuple[str, list[str]]] = [
     ("claude-code", ["claude", "--model", "{model}", "-p", "{prompt}"]),
     ("gemini-cli",  ["gemini", "-m", "{model}", "-p", "{prompt}"]),
     ("opencode",    ["opencode", "run", "-m", "{model}", "{prompt}"]),
+    ("pi",          ["pi", "-p", "--no-session", "--model", "{model}", "{prompt}"]),
     ("codex-cli",   ["codex", "exec", "-m", "{model}", "{prompt}"]),
 ]
 
@@ -706,24 +713,27 @@ def suggest_tier(complexity: str, budget_remaining: float | None = None) -> str:
 
 # Per-agent tier routing for discussions.
 # When the discussion topic tier is high, not all agents need max compute.
-# Primary reasoners (claude, opencode) get the full tier; secondary agents
+# Primary reasoners (claude, opencode/pi) get the full tier; secondary agents
 # (gemini, codex) are capped at standard for cost efficiency.
 _DISCUSSION_TIER_ROUTING: dict[str, dict[str, str]] = {
     "max": {
         "claude-code": "max",
         "opencode": "max",
+        "pi": "max",
         "gemini-cli": "standard",
         "codex-cli": "standard",
     },
     "standard": {
         "claude-code": "standard",
         "opencode": "standard",
+        "pi": "standard",
         "gemini-cli": "standard",
         "codex-cli": "standard",
     },
     "mini": {
         "claude-code": "mini",
         "opencode": "mini",
+        "pi": "mini",
         "gemini-cli": "mini",
         "codex-cli": "mini",
     },

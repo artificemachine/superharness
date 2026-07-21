@@ -16,7 +16,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
-VALID_TARGETS = {"claude-code", "codex-cli", "gemini-cli", "opencode"}
+VALID_TARGETS = {"claude-code", "codex-cli", "gemini-cli", "pi"}
 
 
 _JSON_MODE = False

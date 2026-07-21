@@ -19,6 +19,7 @@ ENTRYPOINT_FILES=(
   "src/superharness/scripts/delegate-to-codex.sh"
   "src/superharness/scripts/delegate-to-gemini.sh"
   "src/superharness/scripts/delegate-to-opencode.sh"
+  "src/superharness/scripts/delegate-to-pi.sh"
   "src/superharness/scripts/ensure-launchd-inbox-watcher.sh"
   "src/superharness/scripts/inbox-dispatch.sh"
   "src/superharness/scripts/inbox-deadline-check.sh"

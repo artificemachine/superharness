@@ -46,8 +46,8 @@ except ImportError:
 
 
 VALID_PHASES = {"plan", "report"}
-VALID_FROM = {"claude-code", "codex-cli", "gemini-cli", "opencode", "owner"}
-VALID_TO = {"claude-code", "codex-cli", "gemini-cli", "opencode", "owner"}
+VALID_FROM = {"claude-code", "codex-cli", "gemini-cli", "pi", "opencode", "owner"}
+VALID_TO = {"claude-code", "codex-cli", "gemini-cli", "pi", "opencode", "owner"}
 _ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 

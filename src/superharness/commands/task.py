@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 # Validation helpers
 # ---------------------------------------------------------------------------
 
-VALID_OWNERS = {"owner", "claude-code", "codex-cli", "gemini-cli", "opencode"}
+# "opencode" stays READ-valid for historical rows; new work targets pi.
+VALID_OWNERS = {"owner", "claude-code", "codex-cli", "gemini-cli", "pi", "opencode"}
 VALID_CREATE_STATUSES = {"todo", "in_progress", "pending_user_approval", "done"}
 VALID_WORKFLOWS = {"implementation", "quick", "discussion", "review", "approval", "note"}
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._/-]+$")

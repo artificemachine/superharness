@@ -55,7 +55,7 @@ def run_pipeline_check(project_dir: str) -> int:
 
     # 4. Agent binaries
     import shutil
-    for agent, binary in [("claude-code", "claude"), ("codex-cli", "codex"), ("gemini-cli", "gemini"), ("opencode", "opencode")]:
+    for agent, binary in [("claude-code", "claude"), ("codex-cli", "codex"), ("gemini-cli", "gemini"), ("pi", "pi")]:
         _check(f"{agent} binary", shutil.which(binary) is not None, f"install {binary}")
 
     # 5. Watcher heartbeat
