@@ -140,7 +140,9 @@ def test_write_contract_syncs_subtasks_to_sqlite(tmp_path):
 
 def test_all_command_modules_do_not_define_write_contract_locally():
     """No command module should define _write_contract locally after centralization."""
-    commands_dir = pathlib.Path("src/superharness/commands")
+    # Anchor to repo root, not CWD (ordering-independent — see the note in
+    # test_task_write_locking.py's telegram reset test).
+    commands_dir = pathlib.Path(__file__).resolve().parents[2] / "src/superharness/commands"
     offenders = []
     for py_file in commands_dir.glob("*.py"):
         source = py_file.read_text(encoding="utf-8")
