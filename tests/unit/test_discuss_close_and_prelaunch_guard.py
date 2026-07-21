@@ -301,11 +301,14 @@ class TestDiscussCloseCmd:
 
     def test_close_unknown_discussion_exits_nonzero(self, tmp_path):
         from superharness.engine.discussion import cmd_close
+        from superharness.engine.errors import SuperharnessError
         project = _seed_project(tmp_path)
-        # No discussion seeded — should sys.exit with a message.
+        # No discussion seeded — should raise a domain error with a message.
+        # PLAN-coding-practices.md iteration 7: cmd_close raises instead of
+        # calling sys.exit() directly — see engine/errors.py.
         disc_dir = project / ".superharness" / "discussions" / DISC_ID
         disc_dir.mkdir(parents=True)
-        with pytest.raises(SystemExit):
+        with pytest.raises(SuperharnessError):
             cmd_close(str(disc_dir), outcome="closed")
 
 

@@ -76,7 +76,7 @@ markers = [
 source = ["superharness"]
 
 [tool.coverage.report]
-fail_under = 53
+fail_under = 56
 exclude_lines = [
     "pragma: no cover",
     "raise NotImplementedError",

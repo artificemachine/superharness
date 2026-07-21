@@ -16,6 +16,7 @@ import pytest
 from superharness.engine.db import get_connection, init_db, now_iso
 from superharness.engine import discussions_dao
 from superharness.engine.discussion import _check_all_submitted_and_set_consensus
+from superharness.engine.errors import SuperharnessError
 
 
 @pytest.fixture
@@ -87,29 +88,32 @@ class TestSubmitRejectsPromptCopyVerdict:
         return disc_dir
 
     def test_rejects_prompt_copy_all_three_options(self, project_with_db: Path):
-        """'agree or disagree or partial' (all 3 options) → SystemExit."""
+        """'agree or disagree or partial' (all 3 options) → domain error.
+
+        PLAN-coding-practices.md iteration 7: cmd_submit_round raises
+        UsageError instead of calling sys.exit() directly, so this is no
+        longer a SystemExit — see engine/errors.py. The old test also
+        redirected sys.stderr because sys.exit(str) printed the message
+        itself; that print no longer happens here (only handle_cli_error,
+        at the real CLI boundary, prints), so the redirection is no longer
+        needed either.
+        """
         project = project_with_db
         disc_dir = self._setup_discussion_dir(
             project, "disc-prompt-copy", ["claude-code", "codex-cli"]
         )
 
         from superharness.engine.discussion import cmd_submit_round
-        import io, sys
 
-        old_stderr = sys.stderr
-        sys.stderr = io.StringIO()
-        try:
-            with pytest.raises(SystemExit) as exc_info:
-                cmd_submit_round(
-                    discussion_dir=str(disc_dir),
-                    round_=1,
-                    agent="codex-cli",
-                    verdict="agree or disagree or partial",
-                    position="test",
-                )
-            assert exc_info.value.code != 0, "must exit non-zero for prompt-copy verdict"
-        finally:
-            sys.stderr = old_stderr
+        with pytest.raises(SuperharnessError) as exc_info:
+            cmd_submit_round(
+                discussion_dir=str(disc_dir),
+                round_=1,
+                agent="codex-cli",
+                verdict="agree or disagree or partial",
+                position="test",
+            )
+        assert exc_info.value.exit_code != 0, "must exit non-zero for prompt-copy verdict"
 
     def test_accepts_valid_abstain(self, project_with_db: Path):
         """'abstain' → accepted (valid consensus vote)."""

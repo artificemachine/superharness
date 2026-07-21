@@ -19,6 +19,8 @@ from pathlib import Path
 import logging
 logger = logging.getLogger(__name__)
 
+from superharness.engine.errors import OperationError, SuperharnessError, UsageError, handle_cli_error
+
 
 def _try_date(val: object) -> date | None:
     if val is None:
@@ -245,21 +247,22 @@ def main(argv: list[str] | None = None) -> None:
 
     terms = [t.lower() for t in opts.terms]
     if not terms:
-        print("Error: at least one search term required", file=sys.stderr)
-        sys.exit(1)
+        raise UsageError("Error: at least one search term required", exit_code=1)
 
     project_dir = Path(opts.project).resolve()
     sh_dir = project_dir / ".superharness"
     if not sh_dir.is_dir():
-        print(f"Not a superharness project (no .superharness/): {project_dir}", file=sys.stderr)
-        sys.exit(1)
+        raise OperationError(
+            f"Not a superharness project (no .superharness/): {project_dir}", exit_code=1
+        )
 
     since_days: int | None = None
     if opts.since:
         m = re.fullmatch(r"(\d+)d", opts.since)
         if not m:
-            print(f"Invalid --since format (expected Nd, e.g. 7d): {opts.since}", file=sys.stderr)
-            sys.exit(1)
+            raise UsageError(
+                f"Invalid --since format (expected Nd, e.g. 7d): {opts.since}", exit_code=1
+            )
         since_days = int(m.group(1))
 
     results = search(project_dir, terms, since_days)
@@ -267,11 +270,14 @@ def main(argv: list[str] | None = None) -> None:
     if not results:
         quoted = ", ".join(f'"{t}"' for t in terms)
         print(f"(no results for: {quoted})")
-        sys.exit(0)
+        return
 
     max_fresh_days = _resolve_max_fresh_days(opts.max_fresh_days)
     print(format_results(results, max_fresh_days))
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SuperharnessError as e:
+        handle_cli_error(e)

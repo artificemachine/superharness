@@ -12,6 +12,8 @@ import yaml
 import logging
 logger = logging.getLogger(__name__)
 
+from superharness.engine.errors import OperationError, SuperharnessError, UsageError, handle_cli_error
+
 
 def _atomic_write(path: str, content: str) -> None:
     dir_ = os.path.dirname(os.path.abspath(path))
@@ -52,7 +54,10 @@ def _file_lock(path: str, timeout: float = 5.0) -> Iterator[None]:
                 break
             except BlockingIOError:
                 if time.monotonic() >= deadline:
-                    sys.exit(f"E_LOCK_TIMEOUT: could not acquire lock on {path} within {timeout}s")
+                    raise OperationError(
+                        f"E_LOCK_TIMEOUT: could not acquire lock on {path} within {timeout}s",
+                        exit_code=1,
+                    )
                 time.sleep(0.1)
         try:
             yield
@@ -203,8 +208,7 @@ def cmd_approve(
 
         # Use the pre-loaded doc (authoritative from SQLite); verify task still matches.
         if not handoff_doc or str(handoff_doc.get("task", "")) != task_id:
-            print("Handoff doc mismatch during approval", file=sys.stderr)
-            sys.exit(1)
+            raise OperationError("Handoff doc mismatch during approval", exit_code=1)
 
         handoff_doc.setdefault("approval_gate", {})
         handoff_doc["approval_gate"]["required"] = True
@@ -334,9 +338,10 @@ def main(argv: list[str] | None = None) -> None:
     if argv is None:
         argv = sys.argv[1:]
 
+    _usage_msg = "Usage: discuss <status|approve> [options]"
+
     if not argv:
-        print("Usage: discuss <status|approve> [options]", file=sys.stderr)
-        sys.exit(1)
+        raise UsageError(_usage_msg, exit_code=1)
 
     cmd = argv[0]
     rest = argv[1:]
@@ -347,10 +352,9 @@ def main(argv: list[str] | None = None) -> None:
         parser.add_argument("--task")
         opts = parser.parse_args(rest)
         if not opts.handoff_dir:
-            print("--handoff-dir is required", file=sys.stderr)
-            sys.exit(1)
+            raise UsageError("--handoff-dir is required", exit_code=1)
         cmd_status(opts.handoff_dir, task_filter=opts.task)
-        sys.exit(0)
+        return
 
     elif cmd == "approve":
         parser = argparse.ArgumentParser(add_help=False)
@@ -365,24 +369,25 @@ def main(argv: list[str] | None = None) -> None:
         missing = [k for k in ("handoff_dir", "task", "project_dir") if not getattr(opts, k, None)]
         if missing:
             flags = ", ".join(f"--{k.replace('_', '-')}" for k in missing)
-            print(f"Missing required flags: {flags}", file=sys.stderr)
-            sys.exit(1)
-        sys.exit(
-            cmd_approve(
-                handoff_dir=opts.handoff_dir,
-                contract_file=opts.contract_file or "",
-                inbox_file=opts.inbox_file or "",
-                task_id=opts.task,
-                project_dir=opts.project_dir,
-                actor=opts.by,
-                note=opts.note,
-            )
+            raise UsageError(f"Missing required flags: {flags}", exit_code=1)
+        rc = cmd_approve(
+            handoff_dir=opts.handoff_dir,
+            contract_file=opts.contract_file or "",
+            inbox_file=opts.inbox_file or "",
+            task_id=opts.task,
+            project_dir=opts.project_dir,
+            actor=opts.by,
+            note=opts.note,
         )
+        if rc:
+            raise OperationError("", exit_code=rc)
 
     else:
-        print("Usage: discuss <status|approve> [options]", file=sys.stderr)
-        sys.exit(1)
+        raise UsageError(_usage_msg, exit_code=1)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SuperharnessError as e:
+        handle_cli_error(e)

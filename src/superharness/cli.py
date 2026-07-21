@@ -14,6 +14,7 @@ import click
 
 from superharness import __version__
 from superharness.engine.adapter_registry import fallback_flagship, flagship
+from superharness.engine.errors import SuperharnessError, handle_cli_error
 from superharness.logging_utils import get_logger as _bootstrap_logger
 
 import logging
@@ -666,7 +667,10 @@ def operator_start(project, port, no_open, use_dashboard, no_daemon):
     """
     from superharness.engine.operator import Operator
     op = Operator(project)
-    op.start_stack(dashboard_port=port, no_open=no_open, use_dashboard=use_dashboard)
+    try:
+        op.start_stack(dashboard_port=port, no_open=no_open, use_dashboard=use_dashboard)
+    except SuperharnessError as e:
+        handle_cli_error(e)
     if use_dashboard:
         click.echo(f"dashboard: http://127.0.0.1:{port}")
     click.echo(f"monitor pid: {os.getpid()}")

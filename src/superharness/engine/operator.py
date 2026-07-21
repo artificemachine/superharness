@@ -14,6 +14,7 @@ from typing import Any
 
 import yaml
 
+from superharness.engine.errors import OperationError
 from superharness.engine.process import pid_alive, signal_process_group
 
 import logging
@@ -153,13 +154,12 @@ class Operator:
             except Exception:
                 existing_pid = "?"
                 existing_port = "?"
-            print(
+            raise OperationError(
                 f"[operator] already running (pid={existing_pid}, port={existing_port}). "
                 "Refusing to start a second instance. "
                 "Run 'shux operator stop' first if you want to restart.",
-                file=sys.stderr,
+                exit_code=0,
             )
-            sys.exit(0)
 
         self._spawn_watcher()
         

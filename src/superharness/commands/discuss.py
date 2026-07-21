@@ -10,6 +10,7 @@ import sys
 from datetime import datetime, timezone
 
 from superharness.commands.task import VALID_OWNERS
+from superharness.engine.errors import SuperharnessError, handle_cli_error
 
 import logging
 logger = logging.getLogger(__name__)
@@ -840,4 +841,15 @@ def main(argv: list[str] | None = None) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # main() dispatches straight into engine.discuss / engine.discussion
+    # library functions (cmd_status, cmd_approve, cmd_submit_round,
+    # cmd_close) in-process — none of that is a separate subprocess, so a
+    # SuperharnessError raised deep inside those engine calls surfaces
+    # here, not inside engine/discuss.py's or engine/discussion.py's own
+    # __main__ guards. This file's own sys.exit() calls (_abort, the
+    # final `sys.exit(rc)`) are commands/ code, out of scope for the
+    # engine/ migration, and are left untouched.
+    try:
+        main()
+    except SuperharnessError as e:
+        handle_cli_error(e)
