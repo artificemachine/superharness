@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 
 # Primary agents always included in discussions by default (before contract-owner
 # additions). Consistent with KNOWN_AGENTS / VALID_TARGETS across the codebase.
-PRIMARY_AGENTS = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
+# pi replaced opencode in the active roster (harness decommissioned 2026-07-07).
+PRIMARY_AGENTS = ["claude-code", "codex-cli", "gemini-cli", "pi"]
 
 
 def _abort(msg: str, code: int = 1) -> None:

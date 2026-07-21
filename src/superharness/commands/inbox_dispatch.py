@@ -1594,7 +1594,7 @@ def _prepare_launch_context(ctx: DispatchContext) -> None:
                 ctx.effective_timeout = DISCUSSION_TIMEOUT_MEDIUM  # medium or unknown
 
         # Resolve tier → agent-specific model, with per-agent routing.
-        # For discussions, primary reasoners (claude, opencode) get the
+        # For discussions, primary reasoners (claude, pi) get the
         # full classified tier; secondary agents (gemini, codex) are capped
         # at standard for cost efficiency on max-tier topics.
         try:
