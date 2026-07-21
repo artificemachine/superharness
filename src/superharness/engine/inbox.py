@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import sys
 import tempfile
 from contextlib import contextmanager
 from datetime import datetime
@@ -19,6 +18,7 @@ from typing import Iterator
 
 import yaml
 
+from superharness.engine.errors import OperationError, SuperharnessError, UsageError, handle_cli_error
 from superharness.engine.process import pid_alive
 from superharness.engine.yaml_helpers import safe_load_normalized
 from superharness.engine import state_reader
@@ -224,7 +224,7 @@ def enqueue(file: str, id: str, to: str, task: str, project: str, priority: int,
         conn.close()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> None:
     import argparse as _ap
     _p = _ap.ArgumentParser(description="Inbox management CLI.")
     _p.add_argument("command", help="Command: enqueue|launch|set_status|set_field|remove|normalize|recover_launched|list_launched|deadline_fail|sync_task_status")
@@ -247,10 +247,10 @@ if __name__ == "__main__":
     _p.add_argument("--action", help="Action for recover_launched: retry|stale")
     _p.add_argument("--reason", help="Failure reason")
     _p.add_argument("--drop-status", help="Status to drop in normalize")
-    
-    _args = _p.parse_args()
+
+    _args = _p.parse_args(argv)
     _project_dir = os.path.dirname(os.path.dirname(os.path.abspath(_args.file)))
-    
+
     # Auto-ingest YAML fixtures if needed (common in tests)
     try:
         from superharness.engine.state_reader import _ensure_ingested
@@ -261,24 +261,27 @@ if __name__ == "__main__":
     if _args.command == "enqueue":
         _id = _args.id or f"item-{datetime.now().timestamp()}"
         _created = _args.created_at or _args.now or datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
-        sys.exit(enqueue(
+        _rc = enqueue(
             file=_args.file, id=_id, to=_args.to, task=_args.task,
             project=_args.project or _project_dir, priority=_args.priority,
             created_at=_created, retry_count=_args.retry_count,
             max_retries=_args.max_retries, plan_only=_args.plan_only
-        ))
+        )
+        if _rc:
+            # enqueue() currently always returns 0, but preserve the old
+            # exit-with-rc contract in case that changes.
+            raise OperationError("", exit_code=_rc)
+        return
 
     if _args.command == "next_pending":
         _target = _args.to
         try:
             from superharness.engine.db import get_connection, init_db
             from superharness.engine import inbox_dao
-            import os
             conn = get_connection(_project_dir)
             try:
                 init_db(conn)
                 # Ruby parity: next_pending marks it launched
-                import os
                 pid = os.getpid()
                 now = _args.now or datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
                 item = inbox_dao.claim_next(conn, target_agent=_target, pid=pid, now=now)
@@ -286,13 +289,14 @@ if __name__ == "__main__":
                     conn.commit()
                     from dataclasses import asdict
                     print(json.dumps(asdict(item)))
-                    sys.exit(0)
-                sys.exit(0)
+                    return
+                return
             finally:
                 conn.close()
+        except SuperharnessError:
+            raise
         except Exception as _e:
-            print(f"next_pending error: {_e}", file=sys.stderr)
-            sys.exit(1)
+            raise OperationError(f"next_pending error: {_e}", exit_code=1) from _e
 
     if _args.command == "launch":
         _id = _args.id
@@ -303,20 +307,19 @@ if __name__ == "__main__":
             conn = get_connection(_project_dir)
             try:
                 init_db(conn)
-                import os
                 updated = inbox_dao.update_status(conn, _id, from_status="pending", to_status="launched", now=_now)
                 if updated:
                     conn.commit()
                     print(f"Launched {_id} at {_now}")
-                    sys.exit(0)
+                    return
                 else:
-                    print(f"Item {_id} not found", file=sys.stderr)
-                    sys.exit(1)
+                    raise OperationError(f"Item {_id} not found", exit_code=1)
             finally:
                 conn.close()
+        except SuperharnessError:
+            raise
         except Exception as _e:
-            print(f"launch error: {_e}", file=sys.stderr)
-            sys.exit(1)
+            raise OperationError(f"launch error: {_e}", exit_code=1) from _e
 
     if _args.command == "set_status":
         _now = _args.now or datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -331,14 +334,15 @@ if __name__ == "__main__":
                 updated = inbox_dao.update_status(conn, _args.id, from_status=_args.from_status, to_status=_args.to, now=_now)
                 if updated:
                     conn.commit()
-                    sys.exit(0)
+                    return
                 else:
-                    sys.exit(3) # Mismatch or not found
+                    raise OperationError("", exit_code=3)  # Mismatch or not found
             finally:
                 conn.close()
+        except SuperharnessError:
+            raise
         except Exception as _e:
-            print(f"set_status error: {_e}", file=sys.stderr)
-            sys.exit(1)
+            raise OperationError(f"set_status error: {_e}", exit_code=1) from _e
 
     if _args.command == "remove":
         try:
@@ -351,14 +355,15 @@ if __name__ == "__main__":
                 if removed:
                     conn.commit()
                     print(f"result=removed id={_args.id}")
-                    sys.exit(0)
+                    return
                 else:
-                    sys.exit(2) # Not found
+                    raise OperationError("", exit_code=2)  # Not found
             finally:
                 conn.close()
+        except SuperharnessError:
+            raise
         except Exception as _e:
-            print(f"remove error: {_e}", file=sys.stderr)
-            sys.exit(1)
+            raise OperationError(f"remove error: {_e}", exit_code=1) from _e
 
     if _args.command == "set_field":
         try:
@@ -370,19 +375,19 @@ if __name__ == "__main__":
                 try:
                     inbox_dao.set_field(conn, _args.id, _args.key, _args.value)
                 except Exception as _e:
-                    print(f"set_field error: {_e}", file=sys.stderr)
-                    sys.exit(1)
+                    raise OperationError(f"set_field error: {_e}", exit_code=1) from _e
                 updated = conn.total_changes > 0
                 if updated:
                     conn.commit()
-                    sys.exit(0)
+                    return
                 else:
-                    sys.exit(1)
+                    raise OperationError("", exit_code=1)
             finally:
                 conn.close()
+        except SuperharnessError:
+            raise
         except Exception as _e:
-            print(f"set_field error: {_e}", file=sys.stderr)
-            sys.exit(1)
+            raise OperationError(f"set_field error: {_e}", exit_code=1) from _e
 
     if _args.command == "deadline_fail":
         _id = _args.id
@@ -396,14 +401,15 @@ if __name__ == "__main__":
                 updated = inbox_dao.update_status(conn, _id, from_status="launched", to_status="failed", now=_now, reason=_args.reason)
                 if updated:
                     conn.commit()
-                    sys.exit(0)
+                    return
                 else:
-                    sys.exit(1)
+                    raise OperationError("", exit_code=1)
             finally:
                 conn.close()
+        except SuperharnessError:
+            raise
         except Exception as _e:
-            print(f"deadline_fail error: {_e}", file=sys.stderr)
-            sys.exit(1)
+            raise OperationError(f"deadline_fail error: {_e}", exit_code=1) from _e
 
     if _args.command == "list_launched":
         # Emit a JSON array of launched inbox items in the YAML-shape that
@@ -428,14 +434,21 @@ if __name__ == "__main__":
                         "launched_at": r.launched_at,
                     })
                 print(json.dumps(out))
-                sys.exit(0)
+                return
             finally:
                 conn.close()
+        except SuperharnessError:
+            raise
         except Exception as _e:
-            print(f"list_launched error: {_e}", file=sys.stderr)
-            sys.exit(1)
+            raise OperationError(f"list_launched error: {_e}", exit_code=1) from _e
 
     # ... Other commands omitted for brevity, adding the most critical ones first
-    print(f"Command {_args.command} not fully implemented in CLI yet", file=sys.stderr)
-    sys.exit(1)
+    raise UsageError(f"Command {_args.command} not fully implemented in CLI yet", exit_code=1)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except SuperharnessError as e:
+        handle_cli_error(e)
 

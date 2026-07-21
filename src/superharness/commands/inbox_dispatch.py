@@ -509,10 +509,11 @@ def _sqlite_mirror_dispatch(
         finally:
             conn.close()
     except Exception as e:
-        _log.warning("_sqlite_mirror_dispatch failed for %s: %s", item_id, e)
-    except Exception as e:
-        _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
-        pass
+        # Was two stacked broad-catch clauses on the same try — the second
+        # (with exc_info=True) could never run, since the first already
+        # matches every Exception subclass. Merged into one, keeping the
+        # more specific message and adding exc_info=True.
+        _log.warning("_sqlite_mirror_dispatch failed for %s: %s", item_id, e, exc_info=True)
 # ---------------------------------------------------------------------------
 # Cost extraction helper
 # ---------------------------------------------------------------------------
@@ -825,7 +826,7 @@ def _reconcile_state(ctx: DispatchContext) -> int:
                 if _task_row:
                     final_state = str(_task_row.get("status", ""))
             except Exception as _e:
-                _log.warning("_reconcile_state: could not read SQLite task status: %s", _e)
+                _log.warning("_reconcile_state: could not read SQLite task status: %s", _e, exc_info=True)
 
         reconciled = 0
 
@@ -975,6 +976,7 @@ def _recover_yaml_from_log(
         try:
             data = _yaml.safe_load(candidate)
         except Exception:
+            _log.warning("_recover_yaml_from_log: unexpected error: %s", sys.exc_info()[1], exc_info=True)
             continue
         if not isinstance(data, dict):
             continue
@@ -1135,7 +1137,7 @@ def _handle_failure(ctx: DispatchContext) -> int:
                     ctx.item_to,
                 )
         except Exception as _auth_err:
-            _log.warning("inbox_dispatch: auth state reset failed: %s", _auth_err)
+            _log.warning("inbox_dispatch: auth state reset failed: %s", _auth_err, exc_info=True)
 
     # quota: record a cooldown window so the watcher skips this agent during
     # fallback routing until the quota resets.  Default cooldown is 60 minutes.
@@ -1149,7 +1151,7 @@ def _handle_failure(ctx: DispatchContext) -> int:
                 ctx.item_to,
             )
         except Exception as _quota_err:
-            _log.warning("inbox_dispatch: quota state write failed: %s", _quota_err)
+            _log.warning("inbox_dispatch: quota state write failed: %s", _quota_err, exc_info=True)
 
     if failure_class == "unknown" and ctx.launcher_rc == 1:
         try:
@@ -1168,6 +1170,7 @@ def _handle_failure(ctx: DispatchContext) -> int:
             finally:
                 conn.close()
         except Exception:
+            _log.warning("_handle_failure: unexpected error: %s", sys.exc_info()[1], exc_info=True)
             pass
     # Append structured diagnostic to the task log file so operators can trace
     # which agent/round failed and why — the Python logger is not visible to them.
@@ -1185,7 +1188,7 @@ def _handle_failure(ctx: DispatchContext) -> int:
                     f"--- end diagnostic ---\n"
                 )
         except Exception as _diag_err:
-            _log.warning("inbox_dispatch.py: could not write failure diagnostic: %s", _diag_err)
+            _log.warning("inbox_dispatch.py: could not write failure diagnostic: %s", _diag_err, exc_info=True)
     new_lock = _MkdirLock(ctx.inbox_file + ".lock.d")
     # Record failure in decision ledger for debugging
     try:
@@ -1379,7 +1382,7 @@ def _prepare_execution(ctx: DispatchContext) -> None:
         if _task_row:
             task_status = str(_task_row.get("status", ""))
     except Exception as _e:
-        _log.warning("_prepare_execution: could not read SQLite task status: %s", _e)
+        _log.warning("_prepare_execution: could not read SQLite task status: %s", _e, exc_info=True)
     if task_status == "review_requested":
         launch_args.append("--for-review")
     if bool(ctx.item.get("plan_only", False)):
@@ -1668,6 +1671,7 @@ def main(argv: list[str] | None = None) -> None:
             launcher_timeout=launcher_timeout,
         )
     except Exception as e:
+        _log.warning("_format_usage: unexpected error: %s", e, exc_info=True)
         _log_dispatch_error(opts.project, f"dispatch raised: {e}")
         raise
     sys.exit(rc)

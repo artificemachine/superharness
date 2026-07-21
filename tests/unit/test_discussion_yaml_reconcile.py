@@ -28,6 +28,7 @@ from superharness.engine.discussion import (
     cmd_check_round,
     cmd_status,
 )
+from superharness.engine.errors import SuperharnessError
 
 
 # ---------------------------------------------------------------------------
@@ -249,9 +250,12 @@ class TestCmdAdvanceReconciles:
         disc_dir = self._make_discussion_dir(project, disc_id)
         # agent-b has neither YAML nor DB row → incomplete
 
-        with pytest.raises(SystemExit) as exc_info:
+        # PLAN-coding-practices.md iteration 7: cmd_advance raises a domain
+        # error instead of calling sys.exit() directly, so this is no longer
+        # a SystemExit — see engine/errors.py.
+        with pytest.raises(SuperharnessError) as exc_info:
             cmd_advance(disc_dir)
-        assert exc_info.value.code != 0
+        assert exc_info.value.exit_code != 0
 
     def test_check_round_and_advance_agree_after_yaml_only_submit(self, project: Path):
         """check_round returning complete=true must not contradict cmd_advance

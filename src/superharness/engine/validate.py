@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 _log = logging.getLogger(__name__)
 
+from superharness.engine.errors import OperationError, SuperharnessError, handle_cli_error
 from superharness.engine.yaml_helpers import safe_load
 from superharness.engine.taxonomy import VALID_EFFORTS as _VALID_EFFORTS
 from superharness.engine.subtask import is_subtask_resolved
@@ -315,17 +316,23 @@ def main(argv: list[str] | None = None) -> None:
 
     if opts.help:
         print(HELP_TEXT, end="")
-        sys.exit(0)
+        return
 
     try:
         project = os.path.realpath(opts.project or os.getcwd())
     except OSError as e:
-        print(str(e), file=sys.stderr)
-        sys.exit(1)
+        raise OperationError(str(e), exit_code=1) from e
 
     rc = run_validate(project, strict=opts.strict, repair=opts.repair)
-    sys.exit(rc)
+    if rc:
+        # run_validate() already printed its diagnostics to stdout; no
+        # separate stderr text accompanies this exit, so the exception
+        # carries none either (see errors.SuperharnessError's docstring).
+        raise OperationError("", exit_code=rc)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SuperharnessError as e:
+        handle_cli_error(e)
