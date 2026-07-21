@@ -101,11 +101,15 @@ def test_session_start_no_launchctl_when_opt_out(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_daemon_log_distinguishes_clean_exit_from_crash():
-    """daemon.py monitor script must log rc=0 as a clean exit, not a crash."""
-    daemon_py = REPO_ROOT / "src" / "superharness" / "commands" / "daemon.py"
-    src = daemon_py.read_text()
-    # The monitor script template must branch on exit code, not log every
-    # exit as a crash.
+    """The daemon monitor must log rc=0 as a clean exit, not a crash.
+
+    Iteration 3 of PLAN-coding-practices.md moved the monitor loop (and this
+    log message) out of daemon.py's generated-script string into a real
+    module, commands/daemon_monitor.py — updated to read from there.
+    """
+    daemon_monitor_py = REPO_ROOT / "src" / "superharness" / "commands" / "daemon_monitor.py"
+    src = daemon_monitor_py.read_text()
+    # The monitor must branch on exit code, not log every exit as a crash.
     has_branch = (
         "if exit_code == 0" in src
         or "if exit_code != 0" in src

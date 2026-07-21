@@ -25,6 +25,7 @@ from urllib.parse import parse_qs, urlparse
 
 from superharness import __version__
 from superharness.engine import db, dashboard_presenter
+from superharness.engine.process import pid_alive
 
 
 def _ensure_python_with_yaml() -> None:
@@ -3579,9 +3580,7 @@ def main() -> int:
                 # If the port is unknown, the PID is dead — kill stale entry and start fresh
                 if _existing_port is None:
                     print(f"dashboard: found stale pid={_other_pid} for project '{project_dir.name}' — clearing and starting fresh")
-                    try:
-                        os.kill(_other_pid, 0)  # test if alive
-                    except OSError:
+                    if not pid_alive(_other_pid):
                         # PID is dead — remove stale operator-state.json
                         _state_file = project_dir / ".superharness" / "operator-state.json"
                         try:
