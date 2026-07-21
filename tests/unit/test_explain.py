@@ -49,6 +49,19 @@ def test_explain_fits_one_screen(runner):
     assert len(lines) <= 25, f"explain output is {len(lines)} non-blank lines (max 25)"
 
 
+@pytest.mark.regression
+def test_explain_does_not_claim_contract_yaml_is_source_of_truth(runner):
+    """Regression: explain.py said 'contract.yaml — single source of truth'
+    long after the project moved to SQLite as the source of truth (YAML is
+    export-only). Found by the 2026-07-21 portfolio-ready fresh-clone check —
+    the CLI's own onboarding pitch contradicted README.md and CLAUDE.md.
+    """
+    from superharness.cli import main
+    result = runner.invoke(main, ["explain"])
+    assert "contract.yaml" not in result.output
+    assert "sqlite" in result.output.lower()
+
+
 def test_explain_aliases(runner):
     """'why' and 'wtf' are registered aliases that also work."""
     from superharness.cli import main
