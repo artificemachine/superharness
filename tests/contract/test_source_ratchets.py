@@ -18,9 +18,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src" / "superharness"
 
 # Guards the PR #58 root cause: sys.exit() calls scattered through engine/
-# instead of raising domain errors caught at the CLI boundary. Iterations 6
-# and 7 (not yet implemented) are expected to lower this toward 0.
-_SYS_EXIT_IN_ENGINE_CEILING = 88
+# instead of raising domain errors caught at the CLI boundary. Iteration 6
+# migrated the 19 low-risk sites (contract.py, recall.py, validate.py,
+# profile.py, operator.py, detect.py) behind engine/errors.py, whose
+# handle_cli_error is the one legitimate remaining call — hence 88 - 19 + 1.
+# Iteration 7 (not yet implemented) is expected to lower this to 1 by
+# migrating discussion.py (38), inbox.py (23), and discuss.py (8).
+_SYS_EXIT_IN_ENGINE_CEILING = 70
 
 # Guards silently-swallowed errors (the "dead scanner" class of bug this
 # audit's iteration 8, not yet implemented, narrows further). The audit doc

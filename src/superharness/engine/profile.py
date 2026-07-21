@@ -22,6 +22,8 @@ import os
 import sys
 from pathlib import Path
 
+from superharness.engine.errors import SuperharnessError, UsageError, handle_cli_error
+
 _log = logging.getLogger(__name__)
 
 FIELD_DEFAULTS: dict[str, str] = {
@@ -104,15 +106,17 @@ def main(argv: list[str] | None = None) -> None:
     opts = p.parse_args(argv)
 
     if not opts.field:
-        print("Usage: profile [--project DIR] FIELD", file=sys.stderr)
-        sys.exit(2)
+        raise UsageError("Usage: profile [--project DIR] FIELD", exit_code=2)
 
     project_dir = Path(opts.project).resolve()
     print(read_field(project_dir, opts.field))
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SuperharnessError as e:
+        handle_cli_error(e)
 
 
 def write_field(project_dir: Path, field: str, value: str) -> None:

@@ -18,6 +18,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from superharness.engine.errors import SuperharnessError, UsageError, handle_cli_error
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -263,12 +265,14 @@ def main(argv: list[str] | None = None) -> None:
 
     project_dir = Path(opts.project).resolve()
     if not project_dir.is_dir():
-        print(f"Not a directory: {project_dir}", file=sys.stderr)
-        sys.exit(1)
+        raise UsageError(f"Not a directory: {project_dir}", exit_code=1)
 
     output_path = Path(opts.output) if opts.output else None
     run(project_dir, output_path)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SuperharnessError as e:
+        handle_cli_error(e)
