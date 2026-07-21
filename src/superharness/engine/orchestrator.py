@@ -452,7 +452,9 @@ class Orchestrator:
         cfg = routing.rmdi_config(self.project_dir)
         seat = routing.seat_for("orchestrator", cfg)
         try:
-            res = rmdi_client.dispatch(seat)
+            # Step-0.4 §3: estimate from the actual decompose prompt; output
+            # budget mirrors chat_completions' default max_tokens.
+            res = rmdi_client.dispatch(seat, prompt=prompt, requested_output_tokens=4000)
         except (RmdiError, RmdiRouterDown) as e:
             # Decompose is auxiliary under rmdi — skip it loudly, never
             # re-enter the native chain (that would hand routing back to shux).

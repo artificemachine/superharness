@@ -148,14 +148,43 @@ def switch_events(limit: int = 20) -> list[dict[str, Any]]:
     return _request("GET", f"/recipes/switch-events?limit={limit}")
 
 
-def dispatch(seat: str, from_seat: str | None = None, consent: bool = False) -> dict[str, Any]:
+# Step-0.4 §3 (incident 2026-07-21 B): every dispatch carries a conservative
+# prompt-size estimate — the router's context_window_fits predicate rejects an
+# over-window binding at bind time (fail-closed on a missing estimate). chars/3
+# over-counts on purpose (never under-count across a window boundary); the
+# envelope allowance covers system prompt + tool schemas.
+_ENVELOPE_TOKENS = 6_000
+
+
+def estimate_prompt_tokens(prompt: str) -> int:
+    return len(prompt) // 3 + 1 + _ENVELOPE_TOKENS
+
+
+def dispatch(
+    seat: str,
+    from_seat: str | None = None,
+    consent: bool = False,
+    *,
+    estimated_prompt_tokens: int | None = None,
+    prompt: str | None = None,
+    requested_output_tokens: int | None = None,
+) -> dict[str, Any]:
     """Resolve a seat's binding for a delegation. Returns
-    {binding, modelRef, baseUrl, roleClass, seatConfig}."""
+    {binding, modelRef, baseUrl, roleClass, seatConfig}.
+
+    The router requires estimatedPromptTokens (fail-closed) — pass either the
+    number directly or the prompt text to estimate from."""
     body: dict[str, Any] = {}
     if from_seat:
         body["from"] = from_seat
     if consent:
         body["consent"] = True
+    if estimated_prompt_tokens is None and prompt is not None:
+        estimated_prompt_tokens = estimate_prompt_tokens(prompt)
+    if estimated_prompt_tokens is not None:
+        body["estimatedPromptTokens"] = estimated_prompt_tokens
+    if requested_output_tokens is not None:
+        body["requestedOutputTokens"] = requested_output_tokens
     return _request("POST", f"/dispatch/{seat}", body)
 
 

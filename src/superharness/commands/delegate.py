@@ -100,6 +100,7 @@ def _resolve_via_rmdi(
     task_id: str,
     from_seat: str | None = None,
     non_interactive: bool = False,
+    prompt_text: str = "",
 ) -> dict:
     """Resolve (adapter, model) for a delegation through the RMDI router.
 
@@ -117,7 +118,9 @@ def _resolve_via_rmdi(
     consent = False
     while True:
         try:
-            res = rmdi_client.dispatch(seat, from_seat=from_seat, consent=consent)
+            # Step-0.4 §3: the router fails closed without an estimate — send a
+            # conservative one derived from the task's composed content.
+            res = rmdi_client.dispatch(seat, from_seat=from_seat, consent=consent, prompt=prompt_text)
             break
         except RmdiError as e:
             if e.status == 409 and e.code == "EDGE_DENIED":
@@ -1005,6 +1008,7 @@ def delegate(
             rmdi_resolution = _resolve_via_rmdi(
                 project_dir, role or "worker", task_id,
                 from_seat=_rmdi_from_seat, non_interactive=non_interactive,
+                prompt_text=str(task_obj) if task_obj else "",
             )
         except RmdiRouterDown as e:
             print(str(e), file=sys.stderr)

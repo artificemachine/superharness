@@ -47,7 +47,7 @@ def project(tmp_path):
 def test_resolve_maps_role_to_seat_and_endpoint_to_adapter(project, monkeypatch):
     calls = {}
 
-    def fake_dispatch(seat, from_seat=None, consent=False):
+    def fake_dispatch(seat, from_seat=None, consent=False, **kwargs):
         calls["seat"] = seat
         calls["from_seat"] = from_seat
         return _dispatch_response("vm913-direct/qwen3.6-27b")
@@ -64,7 +64,7 @@ def test_resolve_maps_role_to_seat_and_endpoint_to_adapter(project, monkeypatch)
 def test_claude_endpoint_gets_bare_model_id_and_claude_adapter(project, monkeypatch):
     monkeypatch.setattr(
         "superharness.engine.rmdi_client.dispatch",
-        lambda seat, from_seat=None, consent=False: _dispatch_response("claude/claude-sonnet-5"),
+        lambda seat, from_seat=None, consent=False, **kwargs: _dispatch_response("claude/claude-sonnet-5"),
     )
     res = _resolve_via_rmdi(project, "reviewer", "T-1")
     assert res["adapter"] == "claude-code"
@@ -73,7 +73,7 @@ def test_claude_endpoint_gets_bare_model_id_and_claude_adapter(project, monkeypa
 
 
 def test_edge_denied_is_a_permanent_block(project, monkeypatch):
-    def deny(seat, from_seat=None, consent=False):
+    def deny(seat, from_seat=None, consent=False, **kwargs):
         raise RmdiError(409, "EDGE_DENIED", {"recipe": "shux-orchestrator", "to": seat})
 
     monkeypatch.setattr("superharness.engine.rmdi_client.dispatch", deny)
@@ -83,7 +83,7 @@ def test_edge_denied_is_a_permanent_block(project, monkeypatch):
 
 
 def test_consent_required_blocks_without_tty(project, monkeypatch):
-    def gated(seat, from_seat=None, consent=False):
+    def gated(seat, from_seat=None, consent=False, **kwargs):
         raise RmdiError(428, "EDGE_CONSENT_REQUIRED", {"to": seat})
 
     monkeypatch.setattr("superharness.engine.rmdi_client.dispatch", gated)
@@ -93,7 +93,7 @@ def test_consent_required_blocks_without_tty(project, monkeypatch):
 
 
 def test_router_down_fails_loud(project, monkeypatch):
-    def down(seat, from_seat=None, consent=False):
+    def down(seat, from_seat=None, consent=False, **kwargs):
         raise RmdiRouterDown("connection refused")
 
     monkeypatch.setattr("superharness.engine.rmdi_client.dispatch", down)
@@ -115,7 +115,7 @@ def test_profile_seat_and_adapter_maps_override_defaults(project, monkeypatch, t
     )
     seen = {}
 
-    def fake_dispatch(seat, from_seat=None, consent=False):
+    def fake_dispatch(seat, from_seat=None, consent=False, **kwargs):
         seen["seat"] = seat
         return _dispatch_response("vm913-direct/qwen3.6-27b")
 

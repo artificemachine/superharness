@@ -88,3 +88,19 @@ def test_candidates_fall_back_to_per_user_scoped_token(monkeypatch):
 def test_env_override_wins_alone(monkeypatch):
     monkeypatch.setenv("RMDI_TOKEN_FILE", "/tmp/x")
     assert rmdi_client._token_candidates() == ["/tmp/x"]
+
+
+def test_dispatch_carries_context_window_estimate(monkeypatch, tmp_path):
+    """Step-0.4 §3 (incident 2026-07-21 B): the router fails closed without
+    estimatedPromptTokens — dispatch derives a conservative one from the prompt."""
+    monkeypatch.setenv("RMDI_TOKEN_FILE", str(tmp_path / "absent"))
+    seen = _capture_request(monkeypatch)
+
+    rmdi_client.dispatch("scout@main", prompt="x" * 3000, requested_output_tokens=4000)
+
+    body = json.loads(seen["req"].data)
+    assert body["estimatedPromptTokens"] == 3000 // 3 + 1 + rmdi_client._ENVELOPE_TOKENS
+    assert body["requestedOutputTokens"] == 4000
+
+    rmdi_client.dispatch("scout@main", estimated_prompt_tokens=1234)
+    assert json.loads(seen["req"].data)["estimatedPromptTokens"] == 1234
