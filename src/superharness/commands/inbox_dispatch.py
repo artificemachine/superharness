@@ -14,6 +14,8 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from superharness.engine.process import pid_alive, signal_process_group
+
 _log = logging.getLogger(__name__)
 
 DIRTY_WORKTREE_REASON = "dirty_worktree_requires_user_confirmation"
@@ -123,32 +125,7 @@ class _MkdirLock:
     def _pid_alive(pid: int | None) -> bool:
         if pid is None:
             return False
-        if sys.platform == "win32":
-            # os.kill(pid, 0) on Windows calls GenerateConsoleCtrlEvent(CTRL_C_EVENT, pid),
-            # which sends Ctrl+C to the entire process group — never use it for liveness checks.
-            import ctypes
-            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-            STILL_ACTIVE = 259
-            handle = ctypes.windll.kernel32.OpenProcess(
-                PROCESS_QUERY_LIMITED_INFORMATION, False, pid
-            )
-            if not handle:
-                return False
-            try:
-                exit_code = ctypes.c_ulong(STILL_ACTIVE)
-                ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
-                return exit_code.value == STILL_ACTIVE
-            finally:
-                ctypes.windll.kernel32.CloseHandle(handle)
-        try:
-            os.kill(pid, 0)
-            return True
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            return True
-        except OSError:
-            return False
+        return pid_alive(pid)
 
     def _break_orphan(self) -> bool:
         """Remove lock if owning PID is dead or lock is stale with no PID."""
@@ -394,16 +371,10 @@ def _run_with_timeout(timeout_secs: int, cmd: list[str], inbox_file: str = "", i
     if _use_sigalrm:
         def _on_alarm(signum: int, frame: object) -> None:
             timed_out[0] = True
-            try:
-                os.killpg(proc.pid, signal.SIGTERM)  # type: ignore[attr-defined]
-            except (ProcessLookupError, AttributeError):
-                pass
+            signal_process_group(proc.pid, signal.SIGTERM)
 
         def _on_term(signum: int, frame: object) -> None:
-            try:
-                os.killpg(proc.pid, signal.SIGTERM)  # type: ignore[attr-defined]
-            except (ProcessLookupError, AttributeError):
-                pass
+            signal_process_group(proc.pid, signal.SIGTERM)
             sys.exit(1)
 
         old_alarm = signal.signal(signal.SIGALRM, _on_alarm)  # type: ignore[attr-defined]

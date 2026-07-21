@@ -10,6 +10,7 @@ import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 
+from superharness.engine.process import pid_alive
 from superharness.engine.yaml_helpers import safe_load
 
 import logging
@@ -274,8 +275,10 @@ def _deep_inbox_health(project_dir: str) -> dict:
             # Dead PID check
             if pid:
                 try:
-                    os.kill(int(pid), 0)
-                except (OSError, ValueError):
+                    is_alive = pid_alive(int(pid))
+                except ValueError:
+                    is_alive = False
+                if not is_alive:
                     result["dead_pid"].append({
                         "inbox_id": item.get("id", "?"),
                         "task_id": tid,

@@ -15,7 +15,8 @@ Mechanism, verified against source before writing this fix:
   group leader — and records `proc.pid` into `inbox.pid` via `set_field`,
   cleared back to empty on completion. This is the exact same pattern
   `_run_with_timeout`'s SIGALRM handler already uses to kill on timeout
-  (`os.killpg(proc.pid, signal.SIGTERM)`), reused here for consistency.
+  (`engine.process.signal_process_group`, as of iteration 4 of
+  PLAN-coding-practices.md), reused here for consistency.
 - On Windows, `preexec_fn` is POSIX-only, so there is no process group;
   `taskkill /T /F /PID` is used instead to walk the tree.
 

@@ -321,32 +321,10 @@ def _read_lock_pid(lock_dir: str) -> int | None:
 
 
 def _pid_is_running(pid: int | None) -> bool:
+    from superharness.engine.process import pid_alive
     if pid is None:
         return False
-    if sys.platform == "win32":
-        import ctypes
-        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        STILL_ACTIVE = 259
-        handle = ctypes.windll.kernel32.OpenProcess(
-            PROCESS_QUERY_LIMITED_INFORMATION, False, pid
-        )
-        if not handle:
-            return False
-        try:
-            exit_code = ctypes.c_ulong(STILL_ACTIVE)
-            ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
-            return exit_code.value == STILL_ACTIVE
-        finally:
-            ctypes.windll.kernel32.CloseHandle(handle)
-    try:
-        os.kill(pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return False
+    return pid_alive(pid)
 
 
 def _reconcile_paused_dead_pids(inbox: list) -> bool:
@@ -4478,13 +4456,14 @@ def _gc_stuck_waiting_input(project_dir: str) -> int:
 
 
 def _pid_alive(pid: int) -> bool:
-    """Return True if process with given PID exists."""
-    try:
-        import signal
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
+    """Return True if process with given PID exists.
+
+    Delegates to the single seam in engine/process.py — the previous body
+    (a raw signal-0 probe with no Windows branch) reported every live
+    process as dead on Windows.
+    """
+    from superharness.engine.process import pid_alive
+    return pid_alive(pid)
 
 
 def _cancel_undispatchable_agents(project_dir: str) -> int:
