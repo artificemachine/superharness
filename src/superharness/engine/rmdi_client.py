@@ -15,6 +15,7 @@ stdlib-only (urllib), mirroring engine/model_router.py:_call_fleet.
 
 from __future__ import annotations
 
+import getpass
 import json
 import os
 import urllib.error
@@ -22,11 +23,53 @@ import urllib.request
 from typing import Any
 
 DEFAULT_ROUTER_URL = "http://127.0.0.1:8200"
+DEFAULT_TOKEN_FILE = "/var/lib/rmdi/control-token"
 _TIMEOUT_SECONDS = 5
 
 
 def router_url() -> str:
     return os.environ.get("RMDI_ROUTER_URL", DEFAULT_ROUTER_URL).rstrip("/")
+
+
+# R12 — control-plane bearer (mirrors pi-extension/client.ts): possession of
+# a token file is the identity. Read lazily, cached for the process; a missing
+# or unreadable file sends no header and the router answers 401 naming the fix
+# (fail loud, never fail silent).
+_UNREAD = object()
+_cached_token: Any = _UNREAD
+
+
+def _token_candidates() -> list[str]:
+    """RMDI_TOKEN_FILE overrides everything. Otherwise try the state-dir
+    token (root clients), then the scoped per-user token minted for non-root
+    clients (incident 2026-07-21 A): <state-dir>/control-tokens/<user>."""
+    override = os.environ.get("RMDI_TOKEN_FILE")
+    if override:
+        return [override]
+    candidates = [DEFAULT_TOKEN_FILE]
+    try:
+        user = getpass.getuser()
+    except Exception:
+        user = None
+    if user:
+        candidates.append(os.path.join(os.path.dirname(DEFAULT_TOKEN_FILE), "control-tokens", user))
+    return candidates
+
+
+def _control_token() -> str | None:
+    global _cached_token
+    if _cached_token is _UNREAD:
+        _cached_token = None
+        for path in _token_candidates():
+            try:
+                with open(path, encoding="utf-8") as f:
+                    token = f.read().strip()
+            except OSError:
+                continue
+            if token:
+                _cached_token = token
+                break
+    return _cached_token
 
 
 class RmdiError(Exception):
@@ -55,11 +98,15 @@ class RmdiRouterDown(Exception):
 def _request(method: str, path: str, body: dict[str, Any] | None = None) -> Any:
     url = f"{router_url()}{path}"
     data = json.dumps(body).encode() if body is not None else None
+    headers: dict[str, str] = {"Content-Type": "application/json"} if data is not None else {}
+    token = _control_token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(
         url,
         data=data,
         method=method,
-        headers={"Content-Type": "application/json"} if data is not None else {},
+        headers=headers,
     )
     try:
         with urllib.request.urlopen(req, timeout=_TIMEOUT_SECONDS) as resp:
