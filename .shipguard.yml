@@ -9,6 +9,16 @@ exclude_paths:
   - ".ruff_cache/**"
   - "htmlcov/**"
   - "archive/**"
+  # Gitignored local runtime state (task/discussion/handoff IDs are random
+  # strings that occasionally land on a Luhn-valid sequence, tripping
+  # PII-002 as a false positive — hit in both discussions/ and handoffs/
+  # this session, same root cause, whack-a-mole to exclude one subdir at a
+  # time). Confirmed 2026-07-21 portfolio-ready audit: `git ls-files
+  # .superharness/` shows only .gitignore and daemon-monitor.py tracked, and
+  # daemon-monitor.py is a test fixture mirroring src/superharness/commands/
+  # daemon_monitor.py (the real, still-scanned source) — excluding the whole
+  # directory doesn't remove unique scan coverage.
+  - ".superharness/**"
   # These test files intentionally contain fake credential patterns (AWS key
   # fixtures, PEM blocks) to verify the export-scrub and redact features.
   # They do not contain real secrets.
