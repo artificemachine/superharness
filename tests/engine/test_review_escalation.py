@@ -97,3 +97,37 @@ def test_review_without_chain_falls_back_to_operator(clean_harness: Path) -> Non
     assert n == 1
     doc = _read_contract(clean_harness)
     assert doc["tasks"][0].get("escalated_to") == "operator"
+
+
+@pytest.mark.regression
+def test_review_escalation_dual_mode_writes_contract_yaml(clean_harness: Path, monkeypatch) -> None:
+    """STATE_BACKEND=dual: escalation must mirror to contract.yaml, not just SQLite.
+
+    Regression: the else-branch of escalate_stale_reviews() referenced
+    `contract_file` and `doc` without ever defining them — a NameError,
+    silently swallowed by a broad except, that lost the ledger write and
+    the YAML mirror on every dual-mode escalation. `STATE_BACKEND=dual` is
+    a documented emergency-rollback mode (docs/yaml-inventory.md), still
+    reachable in production, not dead code. Found by the 2026-07-21
+    portfolio-ready audit's ruff pass (F821 undefined-name).
+    """
+    monkeypatch.setenv("STATE_BACKEND", "dual")
+
+    _write_contract(clean_harness, [{
+        "id": "feat.foo", "owner": "claude-code",
+        "status": "review_requested",
+        "review_requested_at": past_iso(121),
+        "review_chain": ["codex-cli", "gemini-cli"],
+        "review_chain_index": 0,
+        "review_target": "codex-cli",
+    }])
+
+    from superharness.engine.review_escalation import escalate_stale_reviews
+    n = escalate_stale_reviews(str(clean_harness))
+    assert n == 1  # must not silently no-op via the swallowed NameError
+
+    contract_file = clean_harness / ".superharness" / "contract.yaml"
+    on_disk = yaml.safe_load(contract_file.read_text())
+    t = on_disk["tasks"][0]
+    assert t["review_chain_index"] == 1
+    assert t["review_target"] == "gemini-cli"
