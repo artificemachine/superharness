@@ -101,7 +101,7 @@ def _show_profile(fmt: str = "text") -> None:
 
 
 def _reset_key(key: str) -> None:
-    from superharness.engine.behavioral import user_profile_path
+    from superharness.engine.behavioral import user_profile_path, load_profile, save_profile
     upath = user_profile_path()
     for fname in os.listdir(upath):
         if fname.endswith(".json") and not fname.startswith("_"):
