@@ -39,7 +39,12 @@ _BROAD_EXCEPT_CEILING = 728
 # tree by a wide margin (out of scope to split — see docs/AUDIT-coding-practices-2026-07-20.md
 # "What not to do"); this ceiling stops it, and everything else, from
 # growing further unnoticed.
-_MAX_FILE_LINE_CEILING = 4720
+# 2026-07-21: bumped 4720->4721, the exact +1 line cost of fixing a real
+# NameError crash bug (inbox_watch.py:2968, _ledger_record2 called without
+# the local import 3 sibling call sites in this file already have). Ratchet
+# did its job here — flagged the growth so it could be a deliberate,
+# justified bump instead of silent creep.
+_MAX_FILE_LINE_CEILING = 4721
 
 
 def _count_matches(pattern: str, paths: list[Path]) -> int:
