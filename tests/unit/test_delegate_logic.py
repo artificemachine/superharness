@@ -113,3 +113,58 @@ def test_retry_count_not_pinned_to_max(tmp_path):
         "retry_count would be pinned to max"
     )
 
+
+# ── Regression: nonexistent task must fail closed with a clear message ────────
+# Found by /gauntlet Stage 5 (ux), 2026-07-22 (3 of 3 independent reviews,
+# reproduced directly). delegate() never checked whether task_obj was None
+# before falling into the status-lifecycle gate — a missing task silently
+# became `_task_status = ""`, produced the misleading message "status is ''
+# — plan must be approved before delegating" (as if the task existed but had
+# no plan), and then called ledger_dao.decision_log(), which triggered a
+# task_id=NULL fallback write for a task that was never real in the first
+# place — a side effect on rejected input.
+
+def test_delegate_nonexistent_task_fails_closed(tmp_path, caplog):
+    from superharness.commands.delegate import delegate, EXIT_PERMANENT_BLOCK
+    from superharness.engine.db import get_connection, init_db
+    from superharness.engine import ledger_dao
+
+    project = _setup_impl_task(tmp_path)  # seeds a real task "impl-task"
+
+    with patch("superharness.commands.delegate._launch_agent", return_value=0), \
+         patch("superharness.commands.delegate._check_dispatch_gates", return_value=None), \
+         patch("superharness.commands.delegate.sdk_available", return_value=False), \
+         patch("superharness.commands.delegate._confirm_non_interactive_risk"):
+        rc = delegate(
+            str(project), "claude-code", "does-not-exist",
+            print_only=False, non_interactive=True, codex_bypass=True, skip_preflight=True,
+        )
+
+    assert rc == EXIT_PERMANENT_BLOCK, "a nonexistent task ID is a permanent, non-retryable block"
+
+    conn = get_connection(str(project))
+    init_db(conn)
+    recent = ledger_dao.get_recent(conn, limit=20)
+    conn.close()
+    assert not any(row.task_id in (None, "does-not-exist") for row in recent), (
+        "delegate() must not write a ledger row for a task that never existed"
+    )
+
+
+def test_delegate_help_lists_all_registered_agents():
+    """--to's help text must reflect the real adapter registry, not a stale
+    hardcoded pair — found by /gauntlet Stage 5 (ux): help said only
+    'claude-code or codex-cli' while the CLI actually accepts 4 agents."""
+    from superharness.engine.adapter_registry import list_adapters
+    from superharness.commands.delegate import main as delegate_main
+    import io
+    import contextlib
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), pytest.raises(SystemExit):
+        delegate_main(["--help"])
+
+    help_text = buf.getvalue()
+    for agent in list_adapters():
+        assert agent in help_text, f"--to help text must list registered agent {agent!r}"
+
