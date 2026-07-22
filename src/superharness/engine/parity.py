@@ -1,9 +1,12 @@
-"""parity — NO-OP stub during YAML→SQLite migration (Phase 3).
+"""parity — NO-OP stub, post YAML→SQLite migration.
 
 Previously checked and healed drift between YAML files and SQLite state.
 With the migration to SQLite-only, parity checking is no longer needed.
-The API exists only so importers don't break during the transition.
-Will be deleted entirely in Phase 4.
+Zero production importers remain (grep `superharness.engine.parity` under
+src/); only tests/unit/db/test_parity.py and test_sqlite_only_cutover.py
+still call it, asserting the no-op contract holds. No scheduled deletion —
+removing this module means retiring or rewriting those tests first, which
+is a separate decision, not a docs fix.
 """
 from __future__ import annotations
 

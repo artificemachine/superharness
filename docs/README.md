@@ -1,6 +1,6 @@
 # superharness — Documentation Index
 
-> Updated 2026-07-22. Run `docs-organize` skill to audit. 18 internal working docs (`PLAN-*`/`AUDIT-*`/`bulletproof-report-*` matching `.gitignore`) untracked from the public tree; 6 one-off analysis docs (`ANALYSIS-*`/`CLASSIFY-*`/`COMPARE-*`/`DESIGN-*`/`IMPLEMENTATION-*`/`STEAL-*`) moved to `archive/`. The 4 prior-art analyses cited from the root README's "Prior art" section stay tracked.
+> Updated 2026-07-22. Run `docs-organize` skill to audit. 18 internal working docs (`PLAN-*`/`AUDIT-*`/`bulletproof-report-*` matching `.gitignore`) untracked from the public tree; 6 one-off analysis docs (`ANALYSIS-*`/`CLASSIFY-*`/`COMPARE-*`/`DESIGN-*`/`IMPLEMENTATION-*`/`STEAL-*`) moved to `archive/`. The 4 prior-art analyses cited from the root README's "Prior art" section stay tracked. A follow-up `/bulletproof` pass the same day found 13 more dead links to always-gitignored, never-tracked working docs (`PLAN-*`/`AUDIT-*`/`bulletproof-report-2026-06-08.md`/`PYPI_SETUP.md`) that the first pass hadn't checked; those rows are removed too.
 
 ---
 
@@ -12,7 +12,6 @@
 | [`INSTALL-AGENT.md`](INSTALL-AGENT.md) | Installation guide for agents |
 | [`GUIDE.md`](GUIDE.md) | Full command reference (792 lines) |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contributing guide, test instructions |
-| [`PYPI_SETUP.md`](PYPI_SETUP.md) | pipx install via OIDC |
 | [`DISCUSS.md`](DISCUSS.md) | Multi-agent discussion protocol |
 | [`WHY-TUI.md`](WHY-TUI.md) | Why a TUI for superharness |
 | [`UNATTENDED.md`](UNATTENDED.md) | Overnight unattended agent execution |
@@ -58,16 +57,12 @@
 | [`AUDIT-claude-mem-adaptation.md`](AUDIT-claude-mem-adaptation.md) | Claude-mem adaptation audit |
 | [`AUDIT-paperclip-gap-analysis.md`](AUDIT-paperclip-gap-analysis.md) | Superharness vs Paperclip gap analysis |
 | [`AUDIT-pi-hermes-adaptation.md`](AUDIT-pi-hermes-adaptation.md) | **Pi-Mono + Hermes adaptation audit** (ground truth) |
-| [`AUDIT-hydra-security-review.md`](AUDIT-hydra-security-review.md) | Hydra security review |
 | [`yaml-inventory.md`](yaml-inventory.md) | YAML file inventory post phase-4 cleanup |
 
 ## 🔎 Audits (Runtime & Protocol)
 
 | Doc | What |
 |-----|------|
-| [`AUDIT-2026-06-07-task-discussion-failure.md`](AUDIT-2026-06-07-task-discussion-failure.md) | Why task/discussion create+manage fails (2026-06-07) |
-| [`AUDIT-2026-07-09-discussion-close-data-loss.md`](AUDIT-2026-07-09-discussion-close-data-loss.md) | `discussion close` orphans agents and discards output |
-| [`AUDIT-discussion-verdict-consensus.md`](AUDIT-discussion-verdict-consensus.md) | `shux discussion` verdict semantics and consensus soundness |
 | [`CLASSIFY-discussion-tier-effort.md`](archive/CLASSIFY-discussion-tier-effort.md) | Task & discussion tier/effort classification |
 | [`COMPARE-ltx2-train-model-skill-vs-lifecycle.md`](archive/COMPARE-ltx2-train-model-skill-vs-lifecycle.md) | LTX-2 `train-model` skill vs the superharness lifecycle |
 | [`STEAL-LIST-omnigent-2026-07-19.md`](archive/STEAL-LIST-omnigent-2026-07-19.md) | Steal list — omnigent → superharness (2026-07-19) |
@@ -79,23 +74,17 @@
 | **Hermes / Pi-Mono** | |
 | [`hermes-integration-tdd-plan.md`](hermes-integration-tdd-plan.md) | Hermes integration TDD iterations |
 | **Paperclip** | |
-| **Omnigent** | |
-| [`PLAN-steal-omnigent.md`](PLAN-steal-omnigent.md) | Omnigent steal-list implementation |
 | **Claude-Mem** | |
 | [`PLAN-claude-mem-integration.md`](PLAN-claude-mem-integration.md) | Claude-mem integration iteration plan |
 | **Ralph** | |
 | **Auto-Mode / Dispatch** | |
 | [`auto-mode-gap-v2.md`](auto-mode-gap-v2.md) | Auto-mode gap analysis v2 |
 | [`auto-mode-gap-plan.md`](auto-mode-gap-plan.md) | Auto-mode TDD implementation plan |
-| [`PLAN-fix-task-discussion.md`](PLAN-fix-task-discussion.md) | Fixes for AUDIT-2026-06-07 task/discussion failures |
-| [`PLAN-mvf.md`](PLAN-mvf.md) | Make discussions reach consensus (MVF) |
 | **Task Lifecycle** | |
 | [`plan-subtask-resolution-gate.md`](plan-subtask-resolution-gate.md) | Subtask resolution gate plan |
 | [`design-task-lifecycle-ship.md`](design-task-lifecycle-ship.md) | Ship step in task lifecycle |
 | [`plan-task-workflow-v2.md`](plan-task-workflow-v2.md) | Task workflow v2 implementation |
-| [`PLAN-issue-link.md`](PLAN-issue-link.md) | GitHub/GitLab issue linking for shux tasks |
 | **Memory / Learning** | |
-| [`PLAN-memory-distillation.md`](PLAN-memory-distillation.md) | Memory distillation, capped index, age-stamped recall |
 | [`plans/PLAN-superharness-L5.md`](plans/PLAN-superharness-L5.md) | Superharness L5: close G5c, wire dormant learning loops |
 | **Infrastructure** | |
 | [`windows-native-full-fix-tdd-plan.md`](windows-native-full-fix-tdd-plan.md) | Native Windows fix TDD plan |
@@ -104,8 +93,6 @@
 | **Module / Feature** | |
 | [`plan-effort-taxonomy-opus47-morpheme.md`](plan-effort-taxonomy-opus47-morpheme.md) | Effort taxonomy + Opus 4.7 |
 | [`plan-missions-alignment.md`](plan-missions-alignment.md) | Missions alignment (Factory talk) |
-| [`PLAN-superharness-plugin.md`](PLAN-superharness-plugin.md) | Superharness as a Claude Code plugin (`/shux`) |
-| [`PLAN-token-cost-accounting.md`](PLAN-token-cost-accounting.md) | Per-task token/cost accounting |
 | [`PROPOSAL-session-injection-discussion-dispatch.md`](PROPOSAL-session-injection-discussion-dispatch.md) | Session injection for discussion dispatch |
 | **Subsystem Plans** | |
 | [`plans/failure-management.md`](plans/failure-management.md) | Three-layer failure management |
@@ -140,11 +127,7 @@
 
 ## 🧾 Bulletproof / Verification Reports
 
-Point-in-time claim-vs-reality audits. Superseded runs live in `docs/archive/`; the two most recent stand-alone reports remain active:
-
-| Doc | What |
-|-----|------|
-| [`bulletproof-report-2026-06-08.md`](bulletproof-report-2026-06-08.md) | General audit, v14 |
+Point-in-time claim-vs-reality audits. `docs/bulletproof-report-*.md` is gitignored (working-notes pattern, matches `.gitignore`) — reports are never git-tracked and can't be linked here. Run `/bulletproof` to generate the latest one locally; check `docs/archive/` for historical superseded runs kept before this pattern was adopted.
 
 ## 📐 Specifications & References
 
@@ -166,7 +149,7 @@ Point-in-time claim-vs-reality audits. Superseded runs live in `docs/archive/`; 
 
 ---
 
-## 📦 Archived (39 files in `docs/archive/`)
+## 📦 Archived (44 files in `docs/archive/`)
 
 Obsolete, completed, superseded, or dated docs moved to archive. See `docs/archive/` for:
 - Session handoff notes (`HANDOFF-2026-06-*.md`, `NEXT_SESSION_HANDOFF.md`, `handoff-yaml-cleanup-session-2026-05-13.md`)
@@ -177,4 +160,4 @@ Obsolete, completed, superseded, or dated docs moved to archive. See `docs/archi
 
 ---
 
-**Last updated:** 2026-07-19 | **Active docs:** 112 | **Archived:** 39
+**Last updated:** 2026-07-22 | **Active docs:** 73 | **Archived:** 44
