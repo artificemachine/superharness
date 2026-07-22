@@ -80,6 +80,8 @@ docs/audits/*job-ready*
 docs/audits/job-ready-*
 docs/audits/*portfolio-ready*
 docs/audits/portfolio-ready-*
+docs/audits/*golive*
+docs/audits/golive-*
 docs/audits/branch-recovery-*
 # Evidence backing the ignored audits above (agent transcripts, captured state)
 docs/discussions/
