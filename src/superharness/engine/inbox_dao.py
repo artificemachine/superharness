@@ -372,6 +372,30 @@ def set_fields(
     conn.execute(f"UPDATE inbox SET {placeholders} WHERE id=?", values)
 
 
+def sync_task_status(
+    conn: sqlite3.Connection,
+    *,
+    task_id: str,
+    to_status: str,
+    now: str,
+) -> int:
+    """Transition every active inbox row for task_id to to_status.
+
+    Backs `inbox sync_task_status`, called by the session-stop/session-exit
+    Claude Code hooks to mark a task's inbox item(s) as stopped when the
+    session ends. Only rows in an active status are touched — a done/failed
+    item is terminal and must not be resurrected by a late-arriving hook.
+    Clears `pid` since the process this row was tracking is gone.
+    Returns the number of rows updated (the hooks parse this as `synced=N`).
+    """
+    placeholders = ",".join("?" * len(_ACTIVE_STATUSES))
+    cursor = conn.execute(
+        f"UPDATE inbox SET status=?, pid=NULL WHERE task_id=? AND status IN ({placeholders})",
+        (to_status, task_id, *_ACTIVE_STATUSES),
+    )
+    return cursor.rowcount
+
+
 def _row_to_inbox(row: sqlite3.Row) -> InboxRow:
     return InboxRow(
         id=row["id"],

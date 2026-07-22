@@ -140,3 +140,34 @@ def test_existing_rules_still_present():
     states = {r.state for r in LIFECYCLE_RULES}
     missing = expected - states
     assert not missing, f"Existing lifecycle rules missing after edit: {missing}"
+
+
+# ── Regression: a rejected write must not be counted as a change ─────────────
+# Found by /gauntlet Stage 4 (qa-coverage), 2026-07-22 (2 of 3 independent
+# reviews). _scan_contract discarded state_writer.set_task_status's boolean
+# return — a TOCTOU rejection (task's status changed between the reconciler's
+# read and its write, e.g. an operator ran `shux task status` in that window)
+# was reported as a successful transition: misleading log line + inflated
+# `changed` count, even though the DB write never happened.
+
+def test_scan_contract_does_not_count_a_rejected_write_as_changed(tmp_path, monkeypatch):
+    project, conn = _setup_project(tmp_path)
+    _insert_task(conn, "task-toctou", "plan_approved", "plan_approved_at", _now_iso(-300))
+    conn.close()
+
+    from superharness.engine.lifecycle_rules import _scan_contract, LIFECYCLE_RULES
+    from superharness.engine import state_writer, state_reader
+
+    monkeypatch.setattr(state_writer, "set_task_status", lambda *a, **k: False)
+
+    changed = _scan_contract(str(project), LIFECYCLE_RULES, {})
+
+    assert changed == 0, (
+        "set_task_status returned False (rejected write) — changed must stay 0, not be "
+        f"incremented as if the write succeeded; got changed={changed}"
+    )
+    tasks = state_reader.get_tasks(str(project))
+    task = next((t for t in tasks if t.get("id") == "task-toctou"), None)
+    assert task is not None and task.get("status") == "plan_approved", (
+        "task status must be untouched when the write was rejected"
+    )

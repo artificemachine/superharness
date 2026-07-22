@@ -1671,7 +1671,7 @@ def main(argv: list[str] | None = None) -> None:
             launcher_timeout=launcher_timeout,
         )
     except Exception as e:
-        _log.warning("_format_usage: unexpected error: %s", e, exc_info=True)
+        _log.warning("dispatch: unexpected error: %s", e, exc_info=True)
         _log_dispatch_error(opts.project, f"dispatch raised: {e}")
         raise
     sys.exit(rc)

@@ -718,6 +718,15 @@ def delegate(
     from superharness.engine import state_reader as _sr
     task_obj = _sr.get_task(project_dir, task_id)
 
+    # Gate 3b: existence — a task ID that doesn't resolve at all must fail
+    # closed with a clear "not found" message, not fall through the status
+    # gate below as if it were a real task with an empty status (which
+    # produced a misleading "plan must be approved" message and triggered a
+    # spurious ledger write for a task_id that was never real).
+    if task_obj is None:
+        print(f"blocked: task '{task_id}' not found", file=sys.stderr)
+        return EXIT_PERMANENT_BLOCK
+
     # Gate 4: minimum content — plan-only dispatch requires acceptance criteria
     # or definition of done. Empty tasks produce empty plans, wasting an agent cycle.
     if plan_only and task_obj:
@@ -744,7 +753,7 @@ def delegate(
     # Terminal statuses (done/failed/stopped) pass through — reconcile handles them.
     # --plan-only: relax the allowed set so the agent can propose a plan on a
     # todo/implementation task without first needing plan_approved.
-    _task_status = task_obj.get("status", "") if task_obj else ""
+    _task_status = task_obj.get("status", "")  # task_obj is guaranteed non-None past Gate 3b
     _workflow = _infer_workflow(task_id, task_obj)
     _DISPATCH_TERMINAL_STATUSES = {"done", "failed", "stopped"}
     # Auto-route: todo+implementation → plan-only (soft-route, not a permanent block)
@@ -1310,8 +1319,9 @@ def _build_parser() -> "argparse.ArgumentParser":
         formatter_class=_CapUsage,
         add_help=True,
     )
+    from superharness.engine.adapter_registry import list_adapters as _list_adapters_for_help
     parser.add_argument("--to", required=False, dest="target", default=None,
-                        help="Target agent: claude-code or codex-cli")
+                        help=f"Target agent: {', '.join(_list_adapters_for_help()) or 'claude-code, codex-cli, gemini-cli, opencode'}")
     parser.add_argument("--project", "-p", default=None,
                         help="Project directory (default: current directory)")
     parser.add_argument("--task", "-t", default="",

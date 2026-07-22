@@ -270,17 +270,17 @@ def _scan_inbox(project_dir: str, rules: list[LifecycleRule], profile: dict) -> 
                 if _apply_action(item, rule, age, limit):
                     new_status = item["status"]
                     item_id = str(item.get("id", ""))
-                    print(
-                        f"lifecycle: inbox item {item_id} "
-                        f"{rule.state} → {new_status} ({int(age)}m >= {limit}m)"
-                    )
                     # Write update via state_writer — pass only lifecycle-relevant fields
                     _lifecycle_fields = {
                         k: v for k, v in item.items()
                         if k in ("failed_reason", "failed_at", "archived_reason", "archived_at")
                     }
-                    state_writer.set_inbox_status(project_dir, item_id, new_status, **_lifecycle_fields)
-                    changed += 1
+                    if state_writer.set_inbox_status(project_dir, item_id, new_status, **_lifecycle_fields):
+                        print(
+                            f"lifecycle: inbox item {item_id} "
+                            f"{rule.state} → {new_status} ({int(age)}m >= {limit}m)"
+                        )
+                        changed += 1
                     break  # one rule per item per pass
 
     return changed
@@ -317,10 +317,6 @@ def _scan_contract(project_dir: str, rules: list[LifecycleRule], profile: dict) 
                 if _apply_action(task, rule, age, limit):
                     new_status = task["status"]
                     task_id = str(task.get("id", ""))
-                    print(
-                        f"lifecycle: task {task_id} "
-                        f"{rule.state} → {new_status} ({int(age)}m >= {limit}m)"
-                    )
                     # Write update via state_writer — pass only lifecycle-relevant fields
                     _lifecycle_fields = {
                         k: v for k, v in task.items()
@@ -330,12 +326,16 @@ def _scan_contract(project_dir: str, rules: list[LifecycleRule], profile: dict) 
                     # interactive transition graph since e.g. in_progress→archived
                     # is not a legal user move but is the whole point of
                     # the reconciler.
-                    state_writer.set_task_status(
+                    if state_writer.set_task_status(
                         project_dir, task_id, new_status,
                         from_status=original_status, force=True,
                         **_lifecycle_fields,
-                    )
-                    changed += 1
+                    ):
+                        print(
+                            f"lifecycle: task {task_id} "
+                            f"{rule.state} → {new_status} ({int(age)}m >= {limit}m)"
+                        )
+                        changed += 1
                     break
 
     return changed
@@ -454,34 +454,34 @@ def _check_deadlines(project_dir: str, profile: dict) -> int:
                             f"absolute ceiling exceeded ({int(age)}m elapsed >= "
                             f"{absolute_ceiling}m ceiling) — task was in status '{status}'"
                         )
-                        print(
-                            f"lifecycle: task {task_id} absolute ceiling exceeded "
-                            f"({int(age)}m >= {absolute_ceiling}m) → failed"
-                        )
-                        state_writer.set_task_status(
+                        if state_writer.set_task_status(
                             project_dir, task_id, "failed",
                             from_status=status, force=True,
                             failed_reason=reason,
                             failed_at=_now_utc_str(),
-                        )
-                        changed += 1
+                        ):
+                            print(
+                                f"lifecycle: task {task_id} absolute ceiling exceeded "
+                                f"({int(age)}m >= {absolute_ceiling}m) → failed"
+                            )
+                            changed += 1
                         continue
                     if idle_timeout > 0 and last_event_age >= idle_timeout:
                         reason = (
                             f"idle timeout exceeded (no events for {int(last_event_age)}m >= "
                             f"{idle_timeout}m idle limit) — task was in status '{status}'"
                         )
-                        print(
-                            f"lifecycle: task {task_id} idle timeout exceeded "
-                            f"({int(last_event_age)}m >= {idle_timeout}m) → failed"
-                        )
-                        state_writer.set_task_status(
+                        if state_writer.set_task_status(
                             project_dir, task_id, "failed",
                             from_status=status, force=True,
                             failed_reason=reason,
                             failed_at=_now_utc_str(),
-                        )
-                        changed += 1
+                        ):
+                            print(
+                                f"lifecycle: task {task_id} idle timeout exceeded "
+                                f"({int(last_event_age)}m >= {idle_timeout}m) → failed"
+                            )
+                            changed += 1
                         continue
                     # Events fresh and within ceiling: survives regardless
                     # of the legacy deadline_minutes field.
@@ -508,18 +508,17 @@ def _check_deadlines(project_dir: str, profile: dict) -> int:
                 f"deadline exceeded ({int(age)}m elapsed >= {deadline}m limit) — "
                 f"task was in status '{status}'"
             )
-            print(
-                f"lifecycle: task {task_id} "
-                f"deadline exceeded ({int(age)}m >= {deadline}m) → failed"
-            )
-
-            state_writer.set_task_status(
+            if state_writer.set_task_status(
                 project_dir, task_id, "failed",
                 from_status=status, force=True,
                 failed_reason=reason,
                 failed_at=_now_utc_str(),
-            )
-            changed += 1
+            ):
+                print(
+                    f"lifecycle: task {task_id} "
+                    f"deadline exceeded ({int(age)}m >= {deadline}m) → failed"
+                )
+                changed += 1
     finally:
         if events_conn is not None:
             events_conn.close()
