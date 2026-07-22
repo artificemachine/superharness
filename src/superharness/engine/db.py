@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import codecs
 import sqlite3
 import logging
 import shutil
@@ -14,6 +15,80 @@ from superharness.utils.paths import resolve_xdg_state_db_path
 logger = logging.getLogger(__name__)
 
 CURRENT_SCHEMA_VERSION = 35
+
+# Journal modes SQLite accepts; used to validate the SUPERHARNESS_JOURNAL_MODE
+# override before it is interpolated into a PRAGMA (guards against injection/typos).
+_VALID_JOURNAL_MODES = {"WAL", "TRUNCATE", "DELETE", "PERSIST", "MEMORY", "OFF"}
+
+# Journal modes that disable crash recovery — accepted via override, but warned.
+_UNSAFE_JOURNAL_MODES = {"MEMORY", "OFF"}
+
+# Filesystems where WAL is CATEGORICALLY unsafe: WAL needs a shared-memory (-shm)
+# mmap that network filesystems cannot provide, so concurrent multi-host writers
+# are guaranteed to corrupt the database. A rollback journal (PERSIST) is *safer*
+# there — POSIX advisory locks, no shared memory — but SQLite makes NO correctness
+# guarantee on NFS (its locking primitives are historically unreliable); switching
+# only removes the WAL-mmap corruption class, it does not make NFS safe. "autofs"
+# is included so an untriggered automount point (almost always network-backed) is
+# treated conservatively as network before its real filesystem materializes.
+_NETWORK_FS_TYPES = {
+    "nfs", "nfs3", "nfs4", "cifs", "smbfs", "smb2", "smb3",
+    "fuse.sshfs", "9p", "afs", "glusterfs", "ceph", "lustre", "autofs",
+}
+
+
+def _is_network_fs(path: str) -> bool:
+    """Return True if ``path`` resides on a network filesystem (NFS/CIFS/etc.).
+
+    Resolves the longest matching mount point in /proc/mounts and checks its
+    filesystem type. Best-effort: returns False on any error or non-Linux host
+    (e.g. no /proc/mounts), leaving the WAL default in place.
+    """
+    try:
+        target = os.path.realpath(path)
+        best_mount = ""
+        best_type = ""
+        with open("/proc/mounts", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                parts = line.split()
+                if len(parts) < 3:
+                    continue
+                # The kernel octal-escapes spaces/tabs/newlines/backslashes in the
+                # mount-point field (\040 etc.); decode so a path with a space
+                # still matches the unescaped realpath target.
+                mount_point = codecs.decode(parts[1], "unicode_escape")
+                fs_type = parts[2]
+                # Use >= so that when several filesystems stack on the same mount
+                # point (e.g. an autofs trigger with an nfs4 mount on top of it),
+                # the last — effective — entry in /proc/mounts wins.
+                if (
+                    target == mount_point
+                    or target.startswith(mount_point.rstrip("/") + "/")
+                ) and len(mount_point) >= len(best_mount):
+                    best_mount, best_type = mount_point, fs_type
+        return best_type.lower() in _NETWORK_FS_TYPES
+    except OSError:
+        return False
+
+
+def _resolve_journal_mode(db_path: str) -> str:
+    """Pick the SQLite journal mode for ``db_path``.
+
+    SUPERHARNESS_JOURNAL_MODE overrides when set to a valid mode; otherwise WAL on
+    local disk and PERSIST on network mounts. PERSIST is SQLite's recommended
+    rollback journal for network filesystems (it never creates/unlinks the journal
+    file, avoiding NFS orphan-file and unlink-race hazards) — safer than WAL, but
+    NOT a correctness guarantee: SQLite promises nothing over NFS.
+    """
+    override = os.environ.get("SUPERHARNESS_JOURNAL_MODE", "").strip().upper()
+    if override in _VALID_JOURNAL_MODES:
+        if override in _UNSAFE_JOURNAL_MODES:
+            logger.warning(
+                "SUPERHARNESS_JOURNAL_MODE=%s disables crash recovery — database "
+                "corruption is likely on unclean exit", override,
+            )
+        return override
+    return "PERSIST" if _is_network_fs(db_path) else "WAL"
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -69,7 +144,8 @@ def get_connection(project_dir: str) -> sqlite3.Connection:
          shux init is updated to seed the XDG path directly).
       4. Neither → create at XDG path (truly new project with no .superharness/).
 
-    Sets WAL mode, foreign keys, and busy timeout.
+    Sets the journal mode (WAL on local disk, a network-safe rollback journal on
+    NFS/CIFS — see _resolve_journal_mode), foreign keys, and busy timeout.
     Raises ConnectionError if SQLite version is too old.
     """
     if sqlite3.sqlite_version_info < (3, 35, 0):
@@ -97,14 +173,48 @@ def get_connection(project_dir: str) -> sqlite3.Connection:
 
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
+    journal_mode = _resolve_journal_mode(db_path)
+
+    # Opening a WAL database and switching it to a rollback journal auto-
+    # checkpoints on the mode change: SQLite folds the -wal into the main file.
+    # If that -wal is corrupt (the exact failure this change stops), the
+    # checkpoint bakes the corruption into the main DB. When we are NOT using WAL
+    # we therefore drop stale -wal/-shm sidecars BEFORE connecting — they belong
+    # to the WAL regime we are leaving, and -shm is an NFS shared-memory mapping
+    # that itself throws ESTALE. Trade-off: any committed-but-uncheckpointed WAL
+    # frames are lost, which beats propagating corruption on a filesystem where
+    # WAL was never trustworthy. A rollback journal never recreates these files,
+    # so this runs at most once (the migration open).
+    if journal_mode != "WAL":
+        for suffix in ("-wal", "-shm"):
+            sidecar = db_path + suffix
+            try:
+                if os.path.isfile(sidecar):
+                    logger.warning("Removing stale %s before %s open", sidecar, journal_mode)
+                    os.unlink(sidecar)
+            except OSError:
+                pass  # best-effort — a live writer may hold it; connect anyway
+
     try:
         conn = sqlite3.connect(db_path, timeout=5.0)
         conn.row_factory = sqlite3.Row
 
-        # Mandatory PRAGMAs
-        conn.execute("PRAGMA journal_mode=WAL")
+        # Mandatory PRAGMAs. WAL is GUARANTEED to corrupt on network filesystems
+        # (no -shm mmap) under concurrent multi-host writers; _resolve_journal_mode
+        # picks a rollback journal there instead — safer, though SQLite still makes
+        # no correctness guarantee over NFS. busy_timeout is raised off-WAL because
+        # cross-host lock contention resolves slower than local.
+        conn.execute(f"PRAGMA journal_mode={journal_mode}")
         conn.execute("PRAGMA foreign_keys=ON")
-        conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute(
+            "PRAGMA busy_timeout=%d" % (15000 if journal_mode != "WAL" else 5000)
+        )
+        if journal_mode != "WAL" and _is_network_fs(db_path):
+            logger.warning(
+                "SQLite on network filesystem (%s): %s rollback journal selected; "
+                "concurrent multi-host writes are safer than WAL but NOT guaranteed "
+                "corruption-free — prefer a single-writer host", db_path, journal_mode,
+            )
 
         return conn
     except sqlite3.Error as e:
