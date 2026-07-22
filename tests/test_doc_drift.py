@@ -6,12 +6,23 @@ named deleted modules and described a pre-SQLite source of truth. Code claims
 had CI guards and stayed fixed; doc claims had none and rotted between audits.
 This guard closes that asymmetry.
 
+Extended by /bulletproof (2026-07-22) after a follow-up audit found docs/GUIDE.md
+was not in _DOCTRINE at all, and the SoT check only caught literal "X is the
+source of truth" phrasing — it missed GUIDE.md describing contract.yaml/inbox.yaml
+as an operational read/write path ("read contract.yaml + handoffs", "write
+subtasks to contract.yaml") without ever using the words "source of truth".
+GUIDE.md is the project's primary command reference (see feedback memory
+feedback_ship_doc_sync.md) and had drifted in 8 places for 6+ weeks undetected.
+
 Project facts live HERE (deny-list, doctrine paths), not in the global command.
 
 Checks:
   1. Named-entity existence — every *.py file named in doctrine resolves on disk.
   2. SoT consistency — no doctrine file calls a state-YAML the "source of truth"
      (AGENTS.md/CLAUDE.md establish SQLite as the source of truth).
+  3. Operational-claim consistency — no doctrine file describes reading, writing,
+     creating, recording, or enqueuing to a state-YAML as if it were live state
+     (AGENTS.md/CLAUDE.md establish these as export-only artifacts).
 """
 from __future__ import annotations
 
@@ -28,6 +39,7 @@ _DOCTRINE = [
     "AGENTS.md",
     "CLAUDE.md",
     "docs/ARCHITECTURE.md",
+    "docs/GUIDE.md",
 ]
 
 # State YAMLs whose source-of-truth is SQLite (must never be called the SoT).
@@ -42,7 +54,19 @@ _STALE_SOT = re.compile(
 # Negation tokens that make a "source of truth" mention CORRECT (e.g. "no longer
 # the source of truth", "DEAD", "tombstone"). A line with any of these is fine.
 _NEGATION = re.compile(
-    r"\b(no longer|not|never|n't|dead|tombstone|legacy|deprecated|was|former)\b",
+    r"\b(no longer|not|never|n't|dead|tombstone|legacy|deprecated|was|former|export artifact)\b",
+    re.IGNORECASE,
+)
+
+# Verbs that treat a state-YAML as a live, operational read/write target rather
+# than an export/tombstone artifact. Ordered to match "<verb> ... <state-yaml>"
+# (the phrasing every real GUIDE.md violation used: "read contract.yaml",
+# "write subtasks to contract.yaml", "Creates a first task in contract.yaml").
+_STATE_OP_VERBS = r"(?:reads?|writes?|written|creates?|records?|recording|append(?:s|ed)?|enqueues?)"
+_STALE_STATE_OP = re.compile(
+    r"\b" + _STATE_OP_VERBS + r"\b[^\n]{0,60}(?:"
+    + "|".join(re.escape(y) for y in _STATE_YAMLS)
+    + r")(?!\.lock)",
     re.IGNORECASE,
 )
 
@@ -102,5 +126,23 @@ class TestDocDrift:
             pytest.fail(
                 "Doctrine calls a state-YAML the source of truth — SQLite is the SoT.\n"
                 "Fix the doc (or add a legacy/superseded banner):\n"
+                + "\n".join(f"  {h}" for h in hits)
+            )
+
+    def test_no_state_yaml_described_as_operational(self):
+        """No doctrine file may describe reading/writing/creating a state-YAML
+        as if it were live state — these are export-only artifacts (SQLite is
+        the read/write path). Catches operational phrasing that doesn't use the
+        words "source of truth" (e.g. "read contract.yaml + handoffs")."""
+        hits: list[str] = []
+        for doc in _doctrine_files():
+            for lineno, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
+                if _STALE_STATE_OP.search(line) and not _NEGATION.search(line):
+                    hits.append(f"{doc.relative_to(_REPO)}:{lineno}  {line.strip()}")
+        if hits:
+            pytest.fail(
+                "Doctrine describes reading/writing a state-YAML as live state — "
+                "SQLite (state.db) is the read/write path; state-YAMLs are export-only.\n"
+                "Fix the doc (or add a legacy/superseded banner, or an 'export artifact' note):\n"
                 + "\n".join(f"  {h}" for h in hits)
             )
