@@ -42,7 +42,9 @@ _cached_token: Any = _UNREAD
 def _token_candidates() -> list[str]:
     """RMDI_TOKEN_FILE overrides everything. Otherwise try the state-dir
     token (root clients), then the scoped per-user token minted for non-root
-    clients (incident 2026-07-21 A): <state-dir>/control-tokens/<user>."""
+    clients (incident 2026-07-21 A): <state-dir>/control-tokens/<user>, then
+    the user-local copy for REMOTE surfaces reaching the router over a tunnel
+    (e.g. P510 -> vm740 :8200): ~/.config/rmdi/control-token."""
     override = os.environ.get("RMDI_TOKEN_FILE")
     if override:
         return [override]
@@ -53,6 +55,7 @@ def _token_candidates() -> list[str]:
         user = None
     if user:
         candidates.append(os.path.join(os.path.dirname(DEFAULT_TOKEN_FILE), "control-tokens", user))
+    candidates.append(os.path.expanduser("~/.config/rmdi/control-token"))
     return candidates
 
 

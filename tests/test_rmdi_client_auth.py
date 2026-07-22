@@ -79,9 +79,11 @@ def test_candidates_fall_back_to_per_user_scoped_token(monkeypatch):
     monkeypatch.delenv("RMDI_TOKEN_FILE", raising=False)
     monkeypatch.setattr(rmdi_client.getpass, "getuser", lambda: "yjjoe")
 
+    import os
     assert rmdi_client._token_candidates() == [
         "/var/lib/rmdi/control-token",
         "/var/lib/rmdi/control-tokens/yjjoe",
+        os.path.expanduser("~/.config/rmdi/control-token"),
     ]
 
 
