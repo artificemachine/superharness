@@ -85,18 +85,18 @@ sequenceDiagram
     SH-->>CC: ✓ all checks pass
 
     U->>CC: shux continue
-    CC->>SH: read contract.yaml + handoffs
+    CC->>SH: read state.db (SQLite) + handoffs
     SH-->>CC: active task context injected
     CC->>CC: work on task
-    CC->>SH: shux close task-id (write handoff YAML + ledger)
+    CC->>SH: shux close task-id (write handoff + ledger)
 
     U->>CC: shux delegate next-task
-    CC->>SH: superharness enqueue → inbox.yaml
-    SH-->>W: inbox updated
+    CC->>SH: superharness enqueue → state.db
+    SH-->>W: task queue updated
     W->>CX: dispatch next-task prompt
     CX->>SH: read handoff from previous session
     CX->>CX: work on task
-    CX->>SH: write handoff YAML + update contract
+    CX->>SH: write handoff + update task status in state.db
     SH-->>CC: next session picks up from here
 ```
 
@@ -121,19 +121,19 @@ shux onboard --project /path/to/project            # target a different director
 | Step | Name | What it does |
 |------|------|-------------|
 | 1 | `detect` | Heuristic stack detection (Python, Node.js, Rust, Go, Ruby, unknown) |
-| 2 | `init` | Creates `.superharness/` scaffold (`contract.yaml`, `ledger.md`); writes `AGENTS.md` if missing |
+| 2 | `init` | Creates `.superharness/` scaffold (`state.db`, `ledger.md`); writes `AGENTS.md` if missing |
 | 2b | `global_claude` | Appends a superharness section to `~/.claude/CLAUDE.md` (once per machine, skip if already present) |
 | 3 | `git_track` | Configures `.gitignore` for solo or team mode; writes `.superharness/.gitignore` for runtime files |
 | 4 | `doctor` | Runs `shux doctor` non-blocking — warnings shown but don't stop setup |
-| 5 | `task` | Creates a first task in `contract.yaml` if `--task-title` given |
-| 6 | `delegate` | Enqueues the task to `inbox.yaml` if `--enqueue` given |
+| 5 | `task` | Creates a first task in `state.db` if `--task-title` given |
+| 6 | `delegate` | Enqueues the task in `state.db` if `--enqueue` given |
 | 7 | `summary` | Prints next steps |
 
 **Resumability:** Each step records its result in `.superharness/onboarding.yaml`. Re-running `shux onboard` skips completed steps — safe to run multiple times.
 
 **What gets written:**
 
-- `.superharness/contract.yaml` — empty task list (append tasks later with `shux delegate`)
+- `.superharness/state.db` — SQLite state store, empty task list (append tasks later with `shux delegate`)
 - `.superharness/ledger.md` — session history file
 - `AGENTS.md` — instructions for Claude Code and Codex CLI to use `shux` commands. Never overwritten if it already exists.
 - `~/.claude/CLAUDE.md` — a `## superharness` section is appended (once) so every Claude Code session on this machine knows to use `shux`. Never written if the file is missing; never duplicated if already present.
@@ -208,7 +208,7 @@ superharness delegate --to claude-code --project /path/to/project
 - `--model <tier|name>` — override model (mini/standard/max or sonnet/opus/haiku/gpt-5.3-codex)
 - `--effort <low|medium|high>` — override thinking effort
 - `--no-auto-model` — skip Haiku auto-classification, use profile defaults
-- `--orchestrate` — Opus orchestrator mode: decompose the task into subtasks, assign each a model tier (mini/standard/max), estimate cost, write subtasks to `contract.yaml`, then dispatch
+- `--orchestrate` — Opus orchestrator mode: decompose the task into subtasks, assign each a model tier (mini/standard/max), estimate cost, write subtasks to `state.db`, then dispatch
 - `--role <orchestrator|worker|validator|code_reviewer>` — set agent role; drives model selection and dispatch payload policy. `validator`/`code_reviewer` enforce fresh worktree + minimal payload (locked contract + diff only, no worker context). Defaults to `worker`.
 - `--force` — bypass a daily budget BLOCK and dispatch anyway (use sparingly)
 
@@ -227,7 +227,7 @@ shux config set budget.weekly_limit 20.00  # informational weekly cap shown in b
 superharness delegate --to claude-code --task T-42 --orchestrate
 superharness delegate --to codex-cli --task T-42 --orchestrate
 # Opus analyzes T-42, breaks it into subtasks (e.g. T-42.1 standard, T-42.2 mini),
-# estimates cost, writes subtasks to contract.yaml, then dispatches each sub-agent
+# estimates cost, writes subtasks to state.db, then dispatches each sub-agent
 # at the appropriate tier. The decomposition owner is set to the actual dispatch target.
 ```
 
@@ -428,16 +428,16 @@ superharness hygiene --project . --strict   # requires promotion alignment
 ```
 
 **What hygiene checks validate:**
-- Contract YAML structure and required fields
+- Task/handoff structure in `state.db` (SQLite) and required fields
 - Task status transitions (no invalid states)
 - Handoff files match done tasks
 - Ledger entries exist for completed work
 - Decisions/failures promotion alignment (strict mode only)
 
 **Failure-memory promotion workflow:**
-1. Record task-local incidents in `.superharness/contract.yaml` under `failures`.
-2. Promote reusable incidents to `.superharness/failures.yaml`.
-3. Keep strict hygiene green by ensuring promoted failures are not left only in the contract.
+1. Record task-local incidents against the task in `state.db` under `failures`.
+2. Promote reusable incidents to `.superharness/failures.yaml` (export artifact).
+3. Keep strict hygiene green by ensuring promoted failures are not left only on the task.
 
 ### Configuration (`shux config`)
 
@@ -804,8 +804,8 @@ log show --predicate 'process == "launchd"' --last 5m | grep superharness
 | Scenario | Recommendation |
 |----------|----------------|
 | Solo / personal | `echo '.superharness/' >> .gitignore` |
-| Team / shared agents | `git add .superharness/` — everyone reads the same contract |
-| Agents opening PRs | Commit — agents read `contract.yaml` before each session |
+| Team / shared agents | `git add .superharness/` — shares `ledger.md`, `handoffs/`, `discussions/`; `state.db` itself stays gitignored (`.superharness/.gitignore`) even in team mode |
+| Agents opening PRs | Commit — agents read the shared ledger and handoffs before each session; each checkout keeps its own local `state.db` |
 
 ### Task ownership
 
