@@ -11,10 +11,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-import tempfile
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Iterator
 
 import yaml
 
@@ -23,7 +21,6 @@ from superharness.engine.process import pid_alive
 from superharness.engine.yaml_helpers import safe_load_normalized
 from superharness.engine import state_reader
 
-import yaml
 
 _log = logging.getLogger(__name__)
 
@@ -156,7 +153,6 @@ def set_field(file: str, id: str, key: str, value: str) -> int:
 # Compatibility shims — used by discuss.py, task.py, inbox_enqueue.py
 HEADER = "# Delegation inbox\n"
 
-from contextlib import contextmanager
 
 # Cross-platform exclusive file lock. fcntl is POSIX-only; msvcrt provides
 # the equivalent on Windows. Without this guard, importing the inbox module
@@ -343,6 +339,30 @@ def main(argv: list[str] | None = None) -> None:
             raise
         except Exception as _e:
             raise OperationError(f"set_status error: {_e}", exit_code=1) from _e
+
+    if _args.command == "sync_task_status":
+        # Backs the session-stop/session-exit Claude Code hooks, which call
+        # this on every session end to mark a task's inbox item(s) stopped.
+        # Was silently broken (function deleted in c5d68ea3, docstring/help
+        # text/hooks kept referencing it) — every call fell through to
+        # UsageError below, swallowed by the hooks' `2>/dev/null || true`.
+        _now = _args.now or datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        try:
+            from superharness.engine.db import get_connection, init_db
+            from superharness.engine import inbox_dao
+            conn = get_connection(_project_dir)
+            try:
+                init_db(conn)
+                updated = inbox_dao.sync_task_status(conn, task_id=_args.task, to_status=_args.to, now=_now)
+                conn.commit()
+                print(f"result=ok synced={updated}")
+                return
+            finally:
+                conn.close()
+        except SuperharnessError:
+            raise
+        except Exception as _e:
+            raise OperationError(f"sync_task_status error: {_e}", exit_code=1) from _e
 
     if _args.command == "remove":
         try:

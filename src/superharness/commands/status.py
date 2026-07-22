@@ -562,7 +562,9 @@ def _collect_issues(project_dir: str,
                      heartbeat_status: str, heartbeat_detail: str,
                      inbox_health: dict,
                      disc_health: dict,
-                     task_health: dict) -> tuple[list[str], list[str]]:
+                     task_health: dict,
+                     retry_high: int = 0,
+                     retry_high_ids: list[str] | None = None) -> tuple[list[str], list[str]]:
     """Collect all issues and corresponding fix commands.
     Returns (issues, fixes) lists of human-readable strings.
     """
@@ -577,6 +579,15 @@ def _collect_issues(project_dir: str,
     # Watcher
     if watcher_level in ("bad", "warn"):
         add(f"watcher: {watcher_msg}")
+
+    # Retry-exhausted inbox items — printed in the retry-alert summary line
+    # above, but was never fed into this issue collector, so "No issues
+    # found. All clean." could print directly under a nonzero retry-alert
+    # count. Same-run contradiction, found by /gauntlet Stage 5 (ux).
+    if retry_high:
+        ids = ", ".join((retry_high_ids or [])[:3])
+        add(f"{retry_high} inbox item(s) exhausted their retry budget: {ids}",
+            "shux status --fix  (or investigate and shux inbox gc)")
     if heartbeat_status == "stale":
         add(f"heartbeat stale: {heartbeat_detail}", "shux operator start")
     elif heartbeat_status == "missing":
@@ -1099,6 +1110,7 @@ def main(argv: list[str] | None = None) -> None:
         project_dir, watcher_level, watcher_msg,
         heartbeat_status, heartbeat_detail,
         inbox_health, disc_health, task_health,
+        retry_high=retry_high, retry_high_ids=retry_high_ids,
     )
 
     if issues:
