@@ -787,3 +787,13 @@ chore: submitted gemini-cli round 1 position for gap analysis discussion
 - 2026-07-22 (gauntlet): fix(status): `shux status`'s issue collector (`_collect_issues`) never received the `retry_high` count that the same function's own `retry-alert:` summary line prints — so a run with retry-exhausted inbox items could still print "No issues found. All clean." two lines below a nonzero `retry-alert: ... high=N ...` line, a status command contradicting its own numbers. Found by /gauntlet Stage 5 UX review. Fixed: `retry_high`/`retry_high_ids` now feed into `_collect_issues`, adding a real issue entry when nonzero. New regression tests in `tests/unit/test_status_collect_issues.py`.
 - 2026-07-22 (gauntlet): fix(delegate): `delegate --help`'s `--to` flag description was a stale hardcoded "claude-code or codex-cli" — the CLI actually accepts all 4 registered adapters (`claude-code`, `codex-cli`, `gemini-cli`, `opencode`) per `adapter_registry.list_adapters()`. Found by all 3 parallel `/gauntlet` Stage 5 UX reviews. Fixed: help text now built from `list_adapters()` directly, so it can't drift stale again as adapters are added. New regression test `tests/unit/test_delegate_logic.py::test_delegate_help_lists_all_registered_agents`.
 - 2026-07-22 (gauntlet): chore(inbox): removed unused imports (`tempfile`, `typing.Iterator`) and consolidated 2 duplicate imports (`yaml`, `contextlib.contextmanager` each imported once at module top, once again inline further down) in `engine/inbox.py`. Found by `/gauntlet` Stage 6 (simplify, non-blocking) via `ruff --select F401,F811`, applied with `--fix`. No behavior change; `test_inbox_dao.py`/`test_inbox_sync_task_status_cli.py`/`test_set_owner_inbox_cleanup.py` (21 tests) re-verified green.
+
+## [Unreleased]
+### Added
+- `shux talk` — session-name-addressed inter-agent conversation threads built on the
+  discussions engine (register/send/show/inbox; threads stay open via verdict=partial,
+  rotate transparently when closed out-of-band; cross-host via shared talk dir + shared
+  state registry). Protocol doc: `docs/inter-agent-talk-protocol.md` (channel split:
+  `shux discuss` for transient/emergency deliberations that converge and close,
+  `shux talk` for versionable ongoing conversation and deliverable coordination,
+  append-only mailbox files for durable handoffs/receipts/decisions).
