@@ -9,7 +9,10 @@ from typing import Callable, Any, Iterator
 from contextlib import contextmanager
 
 from superharness.engine.state_errors import ConnectionError, SchemaError
-from superharness.utils.paths import resolve_xdg_state_db_path
+from superharness.utils.paths import (
+    StateDatabaseConflictError,
+    resolve_active_state_db_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +49,10 @@ def _backup_db(project_dir: str, version: int):
     """
     if not project_dir:
         return
-    xdg = resolve_xdg_state_db_path(project_dir)
-    legacy = os.path.join(project_dir, ".superharness", "state.sqlite3")
-    src = xdg if os.path.isfile(xdg) else legacy
+    try:
+        src = resolve_active_state_db_path(project_dir)
+    except StateDatabaseConflictError as exc:
+        raise SchemaError(str(exc)) from exc
     dst = f"{src}.bak.v{version}"
     if os.path.isfile(src) and not os.path.isfile(dst):
         try:
@@ -61,13 +65,9 @@ def _backup_db(project_dir: str, version: int):
 def get_connection(project_dir: str) -> sqlite3.Connection:
     """Open a connection to the state database.
 
-    Path resolution order:
-      1. XDG state path (~/.local/state/superharness/<hash>/state.db) if it exists.
-      2. Legacy path (.superharness/state.sqlite3) if it exists.
-      3. .superharness/ directory exists but no db yet → use legacy path (project
-         initialized via shux init but db not yet created; backward-compat until
-         shux init is updated to seed the XDG path directly).
-      4. Neither → create at XDG path (truly new project with no .superharness/).
+    Path selection is delegated to resolve_active_state_db_path, the resolver
+    of record. An explicit SUPERHARNESS_STATE_DIR is authoritative and conflicts
+    with pre-existing state paths fail closed before any directory is created.
 
     Sets WAL mode, foreign keys, and busy timeout.
     Raises ConnectionError if SQLite version is too old.
@@ -77,23 +77,10 @@ def get_connection(project_dir: str) -> sqlite3.Connection:
             f"SQLite version 3.35.0 or higher required (found {sqlite3.sqlite_version})"
         )
 
-    # When dispatching from a git worktree the caller sets SUPERHARNESS_STATE_PROJECT
-    # to the original project path so state reads use the correct XDG hash instead
-    # of hashing the ephemeral worktree path and opening an empty database.
-    state_project = os.environ.get("SUPERHARNESS_STATE_PROJECT", "").strip() or project_dir
-
-    xdg_path = resolve_xdg_state_db_path(state_project)
-    legacy_path = os.path.join(state_project, ".superharness", "state.sqlite3")
-    legacy_dir = os.path.join(state_project, ".superharness")
-
-    if os.path.isfile(xdg_path):
-        db_path = xdg_path
-    elif os.path.isfile(legacy_path):
-        db_path = legacy_path
-    elif os.path.isdir(legacy_dir):
-        db_path = legacy_path  # initialized project, db not yet created
-    else:
-        db_path = xdg_path  # new project — create at XDG location
+    try:
+        db_path = resolve_active_state_db_path(project_dir)
+    except StateDatabaseConflictError as exc:
+        raise ConnectionError(str(exc)) from exc
 
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
 

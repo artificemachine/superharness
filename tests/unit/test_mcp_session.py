@@ -7,7 +7,10 @@ import pytest
 from pathlib import Path
 
 from superharness.mcp.session import SessionManager, PolicyError
-from superharness.utils.paths import resolve_xdg_state_db_path
+from superharness.utils.paths import (
+    StateDatabaseConflictError,
+    resolve_xdg_state_db_path,
+)
 
 
 def _make_project(tmp_path: Path) -> Path:
@@ -99,15 +102,58 @@ def test_init_session_prefers_xdg_over_legacy(tmp_path, monkeypatch):
     assert sm.get_connection("xdg-1") is not None
 
 
-def test_init_session_falls_back_to_legacy_when_xdg_absent(tmp_path, monkeypatch):
-    """When XDG path has no db, the legacy .superharness/state.sqlite3 is opened."""
-    state_dir = str(tmp_path / "xdg_state_empty")
-    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", state_dir)
-
+def test_init_session_falls_back_to_legacy_without_override(tmp_path, monkeypatch):
+    """Plain resolution retains legacy compatibility when no XDG db exists."""
+    monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
     proj = _make_project(tmp_path)  # creates only the legacy path
     sm = SessionManager()
     conn_id = sm.init_session("legacy-1", str(proj), agent="claude-code")
     assert conn_id == "legacy-1"
+
+
+def test_init_session_refuses_explicit_override_conflict(tmp_path, monkeypatch):
+    """MCP must not bypass the fail-closed state-root guard."""
+    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", str(tmp_path / "shared"))
+    proj = _make_project(tmp_path)
+
+    sm = SessionManager()
+    with pytest.raises(StateDatabaseConflictError):
+        sm.init_session("conflict-1", str(proj), agent="claude-code")
+
+
+def test_init_session_plain_resolution_prefers_xdg_over_legacy(tmp_path, monkeypatch):
+    """Without an override, MCP keeps the interim XDG-first behavior."""
+    monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg-home"))
+    proj = _make_project(tmp_path)
+    xdg_path = resolve_xdg_state_db_path(str(proj))
+    os.makedirs(os.path.dirname(xdg_path), exist_ok=True)
+    sqlite3.connect(xdg_path).close()
+
+    sm = SessionManager()
+    sm.init_session("plain-xdg", str(proj), agent="claude-code")
+    conn = sm.get_connection("plain-xdg")
+    opened = conn.execute("PRAGMA database_list").fetchone()[2]
+
+    assert os.path.realpath(opened) == os.path.realpath(xdg_path)
+
+
+def test_init_session_honors_state_project_override(tmp_path, monkeypatch):
+    """MCP worktree sessions must open the original project's state."""
+    original = _make_project(tmp_path / "original")
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    monkeypatch.setenv("SUPERHARNESS_STATE_PROJECT", str(original))
+    monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
+
+    sm = SessionManager()
+    sm.init_session("worktree-1", str(worktree), agent="codex-cli")
+    opened = sm.get_connection("worktree-1").execute(
+        "PRAGMA database_list"
+    ).fetchone()[2]
+
+    expected = original / ".superharness" / "state.sqlite3"
+    assert os.path.realpath(opened) == os.path.realpath(expected)
 
 
 # ── Iter 13 RED: MCP session timeout must be seconds, not milliseconds ─────────
