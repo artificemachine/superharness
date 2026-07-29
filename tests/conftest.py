@@ -58,10 +58,15 @@ def _superharness_logger_propagates(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def isolated_state_dir(tmp_path_factory, monkeypatch):
-    """Point SUPERHARNESS_STATE_DIR at a per-test directory.
+    """Point XDG_STATE_HOME at a per-test directory.
 
     `get_connection(project_dir)` resolves the db to
-    `<state_dir>/<sha256(abspath(project_dir))[:12]>/state.db`. `state_dir`
+    `<state_home>/superharness/<sha256(abspath(project_dir))[:12]>/state.db`.
+    The production-only SUPERHARNESS_STATE_DIR override is intentionally not
+    used here: it now means an authoritative state-root selection and must fail
+    closed when a fixture intentionally creates legacy state.
+
+    The normal state dir
     defaults to `~/.local/state/superharness`, which lives outside `tmp_path`
     and persists indefinitely.
 
@@ -75,9 +80,10 @@ def isolated_state_dir(tmp_path_factory, monkeypatch):
     Set via the environment (not just in-process) because many tests spawn
     `python -m superharness...` subprocesses that inherit os.environ.
     """
-    state_dir = tmp_path_factory.mktemp("superharness-state")
-    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", str(state_dir))
-    yield state_dir
+    state_home = tmp_path_factory.mktemp("superharness-state-home")
+    monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
+    monkeypatch.setenv("XDG_STATE_HOME", str(state_home))
+    yield state_home / "superharness"
 
 
 def _assert_ephemeral_state_dir() -> None:

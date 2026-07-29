@@ -91,33 +91,26 @@ class Operator:
         re-create so heartbeat writes don't silently fail. Logs any issues.
         (Fix: BUGREPORT watcher-silent-death-no-recovery, root cause #3.)
         """
-        import sqlite3
-        from pathlib import Path
+        from superharness.utils.paths import resolve_active_state_db_path
 
-        # Resolve the DB path using the same logic as get_connection().
-        try:
-            from superharness.engine.db import resolve_xdg_state_db_path
-        except ImportError:
-            return  # db module not available; not critical
+        db_file = Path(resolve_active_state_db_path(str(self.project_dir)))
 
-        state_project = os.environ.get("SUPERHARNESS_STATE_PROJECT", "").strip() or str(self.project_dir)
-        xdg_path = Path(resolve_xdg_state_db_path(state_project))
-        legacy_path = Path(self.project_dir) / ".superharness" / "state.sqlite3"
-
-        for db_file in (xdg_path, legacy_path):
-            if db_file.exists() and db_file.stat().st_size == 0:
-                try:
-                    db_file.unlink()
-                    logger.warning(
-                        "operator.py: deleted 0-byte SQLite DB %s (never initialized) — "
-                        "will be re-created on first write",
-                        db_file,
-                    )
-                except OSError as e:
-                    logger.error(
-                        "operator.py: failed to delete 0-byte SQLite DB %s: %s",
-                        db_file, e,
-                    )
+        # Only repair the database selected by the canonical resolver. Never
+        # delete a legacy/XDG alternative: it may be the evidence that triggers
+        # the explicit-override split-brain guard.
+        if db_file.exists() and db_file.stat().st_size == 0:
+            try:
+                db_file.unlink()
+                logger.warning(
+                    "operator.py: deleted 0-byte SQLite DB %s (never initialized) — "
+                    "will be re-created on first write",
+                    db_file,
+                )
+            except OSError as e:
+                logger.error(
+                    "operator.py: failed to delete 0-byte SQLite DB %s: %s",
+                    db_file, e,
+                )
 
         # Try to initialize the DB to ensure tables exist.
         try:

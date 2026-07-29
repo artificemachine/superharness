@@ -428,14 +428,13 @@ def cmd_start(
                 project=project_dir,
                 priority=1,
                 created_at=created_at,
+                type="discussion",
             )
         if rc == 0:
             print(f"  Enqueued round 1 for {agent}: {item_id}")
-        # Shadow entry in SQLite so the watcher can see discussion items
-        _enqueue_sqlite_shadow(project_dir, item_id, disc_id, agent, created_at)
 
     # Show manual submission instructions — no active session required.
-    # Each participant can submit via CLI, or the watcher dispatches via session-inject.
+    # Each participant can submit via CLI; a watcher may dispatch a delegated worker.
     print()
     print("═" * 60)
     print("Manual submission (no agent session needed):")
