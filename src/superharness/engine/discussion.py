@@ -16,6 +16,7 @@ from superharness.engine.db import get_connection, init_db
 from superharness.engine import discussions_dao
 from superharness.engine.errors import OperationError, SuperharnessError, UsageError, handle_cli_error
 from superharness.engine.process import pid_alive, signal_process_group
+from superharness.utils.paths import StateDatabaseConflictError
 
 import logging
 logger = logging.getLogger(__name__)
@@ -1040,5 +1041,7 @@ def main(argv: list[str] | None = None) -> None:
 if __name__ == "__main__":
     try:
         main()
+    except StateDatabaseConflictError as e:
+        handle_cli_error(OperationError(str(e), exit_code=1))
     except SuperharnessError as e:
         handle_cli_error(e)

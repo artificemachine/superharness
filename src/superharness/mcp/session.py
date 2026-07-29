@@ -11,7 +11,6 @@ import threading
 from dataclasses import dataclass
 
 from superharness.utils.paths import resolve_active_state_db_path
-from superharness.engine.db import _resolve_journal_mode
 
 import logging
 logger = logging.getLogger(__name__)
@@ -56,12 +55,9 @@ class SessionManager:
         # are kept in lockstep with get_connection's mandatory set (arch A3).
         conn = sqlite3.connect(db_path, timeout=5.0, check_same_thread=False)
         conn.row_factory = sqlite3.Row
-        journal_mode = _resolve_journal_mode(db_path)
-        conn.execute(f"PRAGMA journal_mode={journal_mode}")
+        conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
-        conn.execute(
-            "PRAGMA busy_timeout=%d" % (15000 if journal_mode != "WAL" else 5000)
-        )
+        conn.execute("PRAGMA busy_timeout=5000")
 
         policy = self._load_policy(agent)
         session = ProjectSession(
