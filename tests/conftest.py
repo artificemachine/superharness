@@ -87,19 +87,23 @@ def isolated_state_dir(tmp_path_factory, monkeypatch):
 
 
 def _assert_ephemeral_state_dir() -> None:
-    """Fail fast if SUPERHARNESS_STATE_DIR does not point at an ephemeral tmp path.
+    """Fail fast unless the selected state root is an ephemeral tmp path.
 
     Defense-in-depth against the PR #12 bug class (test state leaking into
     $HOME / a real ~/.local/state/superharness). `isolated_state_dir` above
-    already pins every test to a `tmp_path_factory` directory; this guard
-    exists so a test that deliberately (or accidentally) overrides
-    SUPERHARNESS_STATE_DIR to a non-ephemeral path fails loudly before any
-    DB write, instead of silently mutating real state.
+    pins XDG_STATE_HOME to a `tmp_path_factory` directory without asserting
+    the production-authority semantics of SUPERHARNESS_STATE_DIR. A test may
+    still set that explicit override, but either selected root must remain
+    ephemeral.
     """
-    raw = os.environ.get("SUPERHARNESS_STATE_DIR")
+    explicit = os.environ.get("SUPERHARNESS_STATE_DIR")
+    xdg_home = os.environ.get("XDG_STATE_HOME")
+    raw = explicit or xdg_home
+    env_name = "SUPERHARNESS_STATE_DIR" if explicit else "XDG_STATE_HOME"
     if not raw:
         raise RuntimeError(
-            "SUPERHARNESS_STATE_DIR is unset — tests must pin state dir to an "
+            "SUPERHARNESS_STATE_DIR and XDG_STATE_HOME are unset — tests must "
+            "pin state to an "
             "ephemeral tmp path (see isolated_state_dir fixture in conftest.py)"
         )
     resolved = Path(raw).resolve()
@@ -113,7 +117,7 @@ def _assert_ephemeral_state_dir() -> None:
     )
     if not is_ephemeral:
         raise RuntimeError(
-            f"SUPERHARNESS_STATE_DIR resolves to a non-ephemeral path: "
+            f"{env_name} resolves to a non-ephemeral path: "
             f"{resolved_str!r}. Tests must target a tmp_path-derived "
             "directory, never a real state directory."
         )
@@ -124,8 +128,8 @@ def _state_dir_guardrail(isolated_state_dir):
     """Autouse guard run after isolated_state_dir sets an ephemeral env var.
 
     Function-scoped (not session-scoped): it must run after per-test env
-    setup, and must observe overrides individual tests make to
-    SUPERHARNESS_STATE_DIR via monkeypatch.
+    setup, and must observe overrides individual tests make to either
+    SUPERHARNESS_STATE_DIR or XDG_STATE_HOME via monkeypatch.
     """
     _assert_ephemeral_state_dir()
     yield
