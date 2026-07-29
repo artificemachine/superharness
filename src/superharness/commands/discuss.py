@@ -10,7 +10,12 @@ import sys
 from datetime import datetime, timezone
 
 from superharness.commands.task import VALID_OWNERS
-from superharness.engine.errors import SuperharnessError, handle_cli_error
+from superharness.engine.errors import OperationError, SuperharnessError, handle_cli_error
+from superharness.engine.state_errors import StateError
+from superharness.utils.paths import (
+    StateDatabaseConflictError,
+    resolve_active_state_db_path,
+)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -767,6 +772,11 @@ def main(argv: list[str] | None = None) -> None:
     if not os.path.isdir(harness_dir):
         _abort(f"Missing .superharness directory: {harness_dir}")
 
+    # Validate authority before any best-effort probes, subprocesses, or writes.
+    # This keeps every public discuss subcommand fail-closed and traceback-free
+    # when an explicit state root conflicts with existing project state.
+    resolve_active_state_db_path(project_dir)
+
     if opts.subcmd == "status":
         filter_id = getattr(opts, "disc_id", None) or getattr(opts, "task", None)
         rc = cmd_status(handoff_dir, task_id=filter_id)
@@ -852,3 +862,5 @@ if __name__ == "__main__":
         main()
     except SuperharnessError as e:
         handle_cli_error(e)
+    except (StateError, StateDatabaseConflictError) as e:
+        handle_cli_error(OperationError(str(e), exit_code=1))
