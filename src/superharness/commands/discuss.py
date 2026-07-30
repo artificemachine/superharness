@@ -529,6 +529,7 @@ def cmd_rounds(discussions_dir: str, disc_id: str) -> int:
         else:
             for s in subs:
                 print(f"    {s.get('agent', '')}: verdict={s.get('verdict', '')} ({s.get('submitted_at', '')})")
+                print(f"      {s.get('position', '')}")
     return 0
 
 
@@ -585,6 +586,60 @@ def cmd_list(discussions_dir: str) -> int:
                 f"{d.get('id', '')}  status={d.get('status', '')}  "
                 f"round={d.get('current_round', '')}/{d.get('max_rounds', '')}  "
                 f"topic={d.get('topic', '')}"
+            )
+    return 0
+
+
+def cmd_pending(project_dir: str, agent: str, as_json: bool = False) -> int:
+    """List pending discussion inbox items addressed to one agent."""
+    from superharness.engine import discussions_dao, inbox_dao
+    from superharness.engine.db import get_connection, init_db
+
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        items = []
+        seen: set[tuple[str, int]] = set()
+        for row in inbox_dao.get_all(conn, target_agent=agent):
+            if row.status not in {"pending", "claimed", "launched", "paused"}:
+                continue
+            if row.type != "discussion" or "/round-" not in row.task_id:
+                continue
+            disc_id, round_text = row.task_id.rsplit("/round-", 1)
+            try:
+                round_number = int(round_text)
+            except ValueError:
+                continue
+            key = (disc_id, round_number)
+            if key in seen:
+                continue
+            disc = discussions_dao.get(conn, disc_id)
+            if not disc or disc.status != "active" or agent not in disc.owners:
+                continue
+            seen.add(key)
+            items.append(
+                {
+                    "inbox_id": row.id,
+                    "discussion_id": disc_id,
+                    "round": round_number,
+                    "topic": disc.topic,
+                    "status": row.status,
+                    "participants": disc.owners,
+                    "created_at": row.created_at,
+                }
+            )
+    finally:
+        conn.close()
+
+    if as_json:
+        print(json.dumps(items, separators=(",", ":")))
+    elif not items:
+        print(f"No pending discussions for {agent}.")
+    else:
+        for item in items:
+            print(
+                f"{item['discussion_id']}  round={item['round']}  "
+                f"status={item['status']}  topic={item['topic']}"
             )
     return 0
 
@@ -729,6 +784,16 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("list", add_help=True)
     p.add_argument("--project", "-p", default=None)
 
+    # pending — cold-start discovery through the shared inbox
+    p = sub.add_parser(
+        "pending",
+        add_help=True,
+        help="List pending discussions addressed to an agent",
+    )
+    p.add_argument("--project", "-p", default=None)
+    p.add_argument("--agent", required=True)
+    p.add_argument("--json", action="store_true", dest="as_json")
+
     # summary
     p = sub.add_parser("summary", add_help=True,
                        help="Write a handoff YAML from a concluded discussion")
@@ -819,6 +884,9 @@ def main(argv: list[str] | None = None) -> None:
 
     elif opts.subcmd == "list":
         rc = cmd_list(discussions_dir)
+
+    elif opts.subcmd == "pending":
+        rc = cmd_pending(project_dir, opts.agent, opts.as_json)
 
     elif opts.subcmd == "summary":
         rc = cmd_summary(discussions_dir, opts.disc_id, handoff_dir)
