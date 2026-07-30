@@ -10,7 +10,7 @@ import sqlite3
 import threading
 from dataclasses import dataclass
 
-from superharness.utils.paths import resolve_xdg_state_db_path
+from superharness.utils.paths import resolve_active_state_db_path
 
 import logging
 logger = logging.getLogger(__name__)
@@ -39,18 +39,13 @@ class SessionManager:
     def init_session(self, conn_id: str, project_path: str, agent: str = "unknown") -> str:
         """Open a new session for *project_path*. Returns *conn_id*.
 
-        Tries the XDG state path first (new installs), falls back to the
-        legacy .superharness/state.sqlite3 for existing projects.
+        Uses the canonical state resolver. Explicit state-root conflicts fail
+        closed rather than silently opening a legacy database.
         """
-        xdg_path = resolve_xdg_state_db_path(project_path)
-        legacy_path = os.path.join(project_path, ".superharness", "state.sqlite3")
-        if os.path.isfile(xdg_path):
-            db_path = xdg_path
-        elif os.path.isfile(legacy_path):
-            db_path = legacy_path
-        else:
+        db_path = resolve_active_state_db_path(project_path)
+        if not os.path.isfile(db_path):
             raise ValueError(
-                f"No superharness state found. Tried:\n  {xdg_path}\n  {legacy_path}\n"
+                f"No superharness state found at {db_path}.\n"
                 "Run 'shux init' first."
             )
 
