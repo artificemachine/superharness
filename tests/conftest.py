@@ -57,7 +57,7 @@ def _superharness_logger_propagates(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def isolated_state_dir(tmp_path_factory, monkeypatch):
+def isolated_state_dir(tmp_path, monkeypatch):
     """Point XDG_STATE_HOME at a per-test directory.
 
     `get_connection(project_dir)` resolves the db to
@@ -80,7 +80,8 @@ def isolated_state_dir(tmp_path_factory, monkeypatch):
     Set via the environment (not just in-process) because many tests spawn
     `python -m superharness...` subprocesses that inherit os.environ.
     """
-    state_home = tmp_path_factory.mktemp("superharness-state-home")
+    state_home = tmp_path / "superharness-state-home"
+    state_home.mkdir()
     monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
     monkeypatch.setenv("XDG_STATE_HOME", str(state_home))
     yield state_home / "superharness"
@@ -91,7 +92,7 @@ def _assert_ephemeral_state_dir() -> None:
 
     Defense-in-depth against the PR #12 bug class (test state leaking into
     $HOME / a real ~/.local/state/superharness). `isolated_state_dir` above
-    pins XDG_STATE_HOME to a `tmp_path_factory` directory without asserting
+    pins XDG_STATE_HOME to a per-test `tmp_path` directory without asserting
     the production-authority semantics of SUPERHARNESS_STATE_DIR. A test may
     still set that explicit override, but either selected root must remain
     ephemeral.

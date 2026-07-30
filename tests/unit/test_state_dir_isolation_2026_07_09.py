@@ -59,9 +59,12 @@ def test_project_db_path_lives_under_the_isolated_state_dir(tmp_path):
 
 def test_state_dir_env_var_is_set_for_subprocesses():
     """Tests spawn `python -m superharness...` subprocesses; they inherit os.environ,
-    so the isolation must live in the environment, not only in-process."""
-    assert os.environ.get("SUPERHARNESS_STATE_DIR"), (
-        "SUPERHARNESS_STATE_DIR must be exported so subprocess tests are isolated too"
+        so the isolation must live in the environment, not only in-process."""
+    assert os.environ.get("XDG_STATE_HOME"), (
+        "XDG_STATE_HOME must be exported so subprocess tests are isolated too"
+    )
+    assert not os.environ.get("SUPERHARNESS_STATE_DIR"), (
+        "Tests must not opt into production-authority SUPERHARNESS_STATE_DIR semantics"
     )
 
 
