@@ -245,6 +245,7 @@ def main(argv: list[str] | None = None) -> None:
     _p.add_argument("--action", help="Action for recover_launched: retry|stale")
     _p.add_argument("--reason", help="Failure reason")
     _p.add_argument("--drop-status", help="Status to drop in normalize")
+    _p.add_argument("--type", default="task", help="Inbox row type for enqueue (e.g. task|discussion)")
 
     _args = _p.parse_args(argv)
     _project_dir = os.path.dirname(os.path.dirname(os.path.abspath(_args.file)))
@@ -263,7 +264,8 @@ def main(argv: list[str] | None = None) -> None:
             file=_args.file, id=_id, to=_args.to, task=_args.task,
             project=_args.project or _project_dir, priority=_args.priority,
             created_at=_created, retry_count=_args.retry_count,
-            max_retries=_args.max_retries, plan_only=_args.plan_only
+            max_retries=_args.max_retries, plan_only=_args.plan_only,
+            type=_args.type,
         )
         if _rc:
             # enqueue() currently always returns 0, but preserve the old
