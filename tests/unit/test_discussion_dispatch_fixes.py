@@ -1314,6 +1314,55 @@ class TestDiscussionRetryBudget:
         assert row["retry_count"] == 0, f"retry_count must start at 0, got {row['retry_count']}"
         assert row["max_retries"] >= 3, f"max_retries must be >=3, got {row['max_retries']}"
 
+    def test_primary_enqueue_persists_discussion_type_atomically(self, tmp_path):
+        """The primary insert must carry type=discussion; no shadow rewrite is needed."""
+        from superharness.engine import inbox
+        from superharness.engine.db import get_connection, init_db
+
+        project = tmp_path / "project"
+        inbox_file = project / ".superharness" / "inbox.yaml"
+        inbox_file.parent.mkdir(parents=True)
+        round_task = f"{DISC_ID}/round-1"
+
+        conn = get_connection(str(project))
+        try:
+            init_db(conn)
+            conn.execute(
+                """
+                INSERT INTO tasks (id, title, status, created_at)
+                VALUES (?, 'Discussion round 1', 'in_progress', ?)
+                """,
+                (round_task, "2026-07-29T00:00:00Z"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        rc = inbox.enqueue(
+            file=str(inbox_file),
+            id="discussion-primary-type",
+            to="codex-cli",
+            task=round_task,
+            project=str(project),
+            priority=1,
+            created_at="2026-07-29T00:00:00Z",
+            type="discussion",
+        )
+        assert rc == 0
+
+        conn = get_connection(str(project))
+        try:
+            init_db(conn)
+            row = conn.execute(
+                "SELECT type FROM inbox WHERE id=?",
+                ("discussion-primary-type",),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        assert row is not None
+        assert row["type"] == "discussion"
+
 
 # ---------------------------------------------------------------------------
 # Iter 2 — Scope agent-availability block to task + recency window

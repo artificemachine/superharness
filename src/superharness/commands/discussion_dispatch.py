@@ -311,6 +311,7 @@ def _enqueue_for_agent(
         "--project", project_dir,
         "--priority", "1",
         "--created-at", _now_utc(),
+        "--type", "discussion",
     ])
     if rc.returncode == 0:
         print(f"  Enqueued round {round_} for {agent}: {item_id}")

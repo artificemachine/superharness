@@ -194,6 +194,7 @@ class TestBugFRuntime:
             payload = json.loads(buf.getvalue())
             assert payload == {
                 "submitted": True, "round": 1, "agent": agent, "verdict": "abstain",
+                "acknowledged_inbox_ids": [],
             }
 
         # check_round must report complete=true.

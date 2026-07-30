@@ -19,7 +19,7 @@ def _make_legacy_db(project_dir: str) -> str:
     return db_path
 
 
-def test_init_db_backs_up_live_db(tmp_path):
+def test_init_db_backs_up_live_db(tmp_path, monkeypatch):
     """When init_db runs a migration, it must create a backup of the pre-migration db.
 
     RED: init_db(conn, project_dir) calls _backup_db only when a migration runs.
@@ -27,6 +27,7 @@ def test_init_db_backs_up_live_db(tmp_path):
     """
     from superharness.engine.db import CURRENT_SCHEMA_VERSION
 
+    monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
     project = str(tmp_path / "proj")
     db_path = _make_legacy_db(project)
 
@@ -49,8 +50,9 @@ def test_init_db_backs_up_live_db(tmp_path):
     )
 
 
-def test_get_connection_sets_wal_and_fk(tmp_path):
+def test_get_connection_sets_wal_and_fk(tmp_path, monkeypatch):
     """get_connection must set WAL journal mode and foreign_keys=ON."""
+    monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
     project = str(tmp_path / "proj")
     _make_legacy_db(project)
 
@@ -64,6 +66,25 @@ def test_get_connection_sets_wal_and_fk(tmp_path):
 
     assert jm == "wal", f"Expected journal_mode=wal, got {jm!r}"
     assert fk == 1, f"Expected foreign_keys=1 (ON), got {fk!r}"
+
+
+def test_get_connection_refuses_override_conflict_before_creation(tmp_path, monkeypatch):
+    """An explicit state root must not create a second DB beside legacy state."""
+    project = str(tmp_path / "proj")
+    _make_legacy_db(project)
+    override = tmp_path / "shared-state"
+    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", str(override))
+
+    from superharness.engine.db import get_connection
+    from superharness.engine.state_errors import ConnectionError
+    from superharness.utils.paths import project_hash
+
+    target = override / project_hash(project) / "state.db"
+    with pytest.raises(ConnectionError, match="Refusing to create or open"):
+        get_connection(project)
+
+    assert not target.exists()
+    assert not target.parent.exists()
 
 
 def test_init_db_heals_agent_heartbeats_missing_v25_columns(tmp_path):
@@ -119,11 +140,12 @@ def test_init_db_heals_agent_heartbeats_missing_v25_columns(tmp_path):
         assert expected in cols, f"init_db did not heal missing column {expected!r}: {cols}"
 
 
-def test_init_db_heal_is_noop_when_columns_already_present(tmp_path):
+def test_init_db_heal_is_noop_when_columns_already_present(tmp_path, monkeypatch):
     """The heal check must not error or duplicate work on an already-correct
     DB — it should just observe the columns are present and do nothing."""
     from superharness.engine.db import init_db
 
+    monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
     project = str(tmp_path / "proj")
     db_path = _make_legacy_db(project)
 

@@ -10,7 +10,12 @@ import sys
 from datetime import datetime, timezone
 
 from superharness.commands.task import VALID_OWNERS
-from superharness.engine.errors import SuperharnessError, handle_cli_error
+from superharness.engine.errors import OperationError, SuperharnessError, handle_cli_error
+from superharness.engine.state_errors import StateError
+from superharness.utils.paths import (
+    StateDatabaseConflictError,
+    resolve_active_state_db_path,
+)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -428,14 +433,13 @@ def cmd_start(
                 project=project_dir,
                 priority=1,
                 created_at=created_at,
+                type="discussion",
             )
         if rc == 0:
             print(f"  Enqueued round 1 for {agent}: {item_id}")
-        # Shadow entry in SQLite so the watcher can see discussion items
-        _enqueue_sqlite_shadow(project_dir, item_id, disc_id, agent, created_at)
 
     # Show manual submission instructions — no active session required.
-    # Each participant can submit via CLI, or the watcher dispatches via session-inject.
+    # Each participant can submit via CLI; a watcher may dispatch a delegated worker.
     print()
     print("═" * 60)
     print("Manual submission (no agent session needed):")
@@ -525,6 +529,7 @@ def cmd_rounds(discussions_dir: str, disc_id: str) -> int:
         else:
             for s in subs:
                 print(f"    {s.get('agent', '')}: verdict={s.get('verdict', '')} ({s.get('submitted_at', '')})")
+                print(f"      {s.get('position', '')}")
     return 0
 
 
@@ -581,6 +586,60 @@ def cmd_list(discussions_dir: str) -> int:
                 f"{d.get('id', '')}  status={d.get('status', '')}  "
                 f"round={d.get('current_round', '')}/{d.get('max_rounds', '')}  "
                 f"topic={d.get('topic', '')}"
+            )
+    return 0
+
+
+def cmd_pending(project_dir: str, agent: str, as_json: bool = False) -> int:
+    """List pending discussion inbox items addressed to one agent."""
+    from superharness.engine import discussions_dao, inbox_dao
+    from superharness.engine.db import get_connection, init_db
+
+    conn = get_connection(project_dir)
+    try:
+        init_db(conn)
+        items = []
+        seen: set[tuple[str, int]] = set()
+        for row in inbox_dao.get_all(conn, target_agent=agent):
+            if row.status not in {"pending", "claimed", "launched", "paused"}:
+                continue
+            if row.type != "discussion" or "/round-" not in row.task_id:
+                continue
+            disc_id, round_text = row.task_id.rsplit("/round-", 1)
+            try:
+                round_number = int(round_text)
+            except ValueError:
+                continue
+            key = (disc_id, round_number)
+            if key in seen:
+                continue
+            disc = discussions_dao.get(conn, disc_id)
+            if not disc or disc.status != "active" or agent not in disc.owners:
+                continue
+            seen.add(key)
+            items.append(
+                {
+                    "inbox_id": row.id,
+                    "discussion_id": disc_id,
+                    "round": round_number,
+                    "topic": disc.topic,
+                    "status": row.status,
+                    "participants": disc.owners,
+                    "created_at": row.created_at,
+                }
+            )
+    finally:
+        conn.close()
+
+    if as_json:
+        print(json.dumps(items, separators=(",", ":")))
+    elif not items:
+        print(f"No pending discussions for {agent}.")
+    else:
+        for item in items:
+            print(
+                f"{item['discussion_id']}  round={item['round']}  "
+                f"status={item['status']}  topic={item['topic']}"
             )
     return 0
 
@@ -725,6 +784,16 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("list", add_help=True)
     p.add_argument("--project", "-p", default=None)
 
+    # pending — cold-start discovery through the shared inbox
+    p = sub.add_parser(
+        "pending",
+        add_help=True,
+        help="List pending discussions addressed to an agent",
+    )
+    p.add_argument("--project", "-p", default=None)
+    p.add_argument("--agent", required=True)
+    p.add_argument("--json", action="store_true", dest="as_json")
+
     # summary
     p = sub.add_parser("summary", add_help=True,
                        help="Write a handoff YAML from a concluded discussion")
@@ -767,6 +836,11 @@ def main(argv: list[str] | None = None) -> None:
 
     if not os.path.isdir(harness_dir):
         _abort(f"Missing .superharness directory: {harness_dir}")
+
+    # Validate authority before any best-effort probes, subprocesses, or writes.
+    # This keeps every public discuss subcommand fail-closed and traceback-free
+    # when an explicit state root conflicts with existing project state.
+    resolve_active_state_db_path(project_dir)
 
     if opts.subcmd == "status":
         filter_id = getattr(opts, "disc_id", None) or getattr(opts, "task", None)
@@ -811,6 +885,9 @@ def main(argv: list[str] | None = None) -> None:
     elif opts.subcmd == "list":
         rc = cmd_list(discussions_dir)
 
+    elif opts.subcmd == "pending":
+        rc = cmd_pending(project_dir, opts.agent, opts.as_json)
+
     elif opts.subcmd == "summary":
         rc = cmd_summary(discussions_dir, opts.disc_id, handoff_dir)
 
@@ -853,3 +930,5 @@ if __name__ == "__main__":
         main()
     except SuperharnessError as e:
         handle_cli_error(e)
+    except (StateError, StateDatabaseConflictError) as e:
+        handle_cli_error(OperationError(str(e), exit_code=1))

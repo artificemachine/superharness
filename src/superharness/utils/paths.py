@@ -4,8 +4,9 @@ Borrows the CLAUDE_MEM_DATA_DIR / port-override pattern from claude-mem.
 Lets a single machine run multiple isolated superharness profiles
 (e.g. work vs scratch) without cd-juggling.
 
-These helpers are pure: no filesystem access, no DB access. Existing call
-sites are not refactored to use them yet. They opt in over time.
+Most helpers are pure and none opens a database. The active-state resolver and
+initialization guard inspect path existence so they can preserve compatibility
+and fail closed on an explicit state-root conflict.
 """
 from __future__ import annotations
 
@@ -14,6 +15,7 @@ import os
 
 
 _DATA_DIR_ENV = "SUPERHARNESS_DATA_DIR"
+_STATE_DIR_ENV = "SUPERHARNESS_STATE_DIR"
 _DASHBOARD_PORT_ENV = "SUPERHARNESS_DASHBOARD_PORT"
 
 _PORT_MIN = 1024
@@ -47,7 +49,7 @@ def resolve_state_dir() -> str:
     Precedence: SUPERHARNESS_STATE_DIR > XDG_STATE_HOME/superharness >
     ~/.local/state/superharness.
     """
-    override = _read_env("SUPERHARNESS_STATE_DIR")
+    override = _read_env(_STATE_DIR_ENV)
     if override:
         return override
     xdg = _read_env("XDG_STATE_HOME")
@@ -79,6 +81,17 @@ def project_hash(project_path: str) -> str:
     return digest[:12]
 
 
+def resolve_state_project_path(project_path: str) -> str:
+    """Return the project path whose state should be used.
+
+    Worktree dispatch sets SUPERHARNESS_STATE_PROJECT to the original project.
+    Keeping that override here prevents individual connection surfaces from
+    hashing or opening the ephemeral worktree independently.
+    """
+    override = _read_env("SUPERHARNESS_STATE_PROJECT")
+    return os.path.realpath(override if override else project_path)
+
+
 def is_project_initialized(project_path: str) -> bool:
     """Return True if a state db exists at the XDG path or the legacy path.
 
@@ -89,14 +102,7 @@ def is_project_initialized(project_path: str) -> bool:
     original project path is used for initialization checks so that a
     worktree path does not appear uninitialized.
     """
-    state_project = os.environ.get("SUPERHARNESS_STATE_PROJECT", "").strip()
-    check_path = os.path.realpath(state_project if state_project else project_path)
-    return (
-        os.path.isfile(resolve_xdg_state_db_path(check_path))
-        or os.path.isfile(
-            os.path.join(check_path, ".superharness", "state.sqlite3")
-        )
-    )
+    return os.path.isfile(resolve_active_state_db_path(project_path))
 
 
 def resolve_xdg_state_db_path(project_path: str) -> str:
@@ -110,19 +116,56 @@ def resolve_xdg_state_db_path(project_path: str) -> str:
     return os.path.join(resolve_state_dir(), project_hash(project_path), "state.db")
 
 
+class StateDatabaseConflictError(RuntimeError):
+    """Raised when an explicit state root would split an existing project state."""
+
+
+def _resolve_ambient_xdg_state_db_path(project_path: str) -> str:
+    """Return the normal XDG state path, ignoring SUPERHARNESS_STATE_DIR."""
+    xdg_home = _read_env("XDG_STATE_HOME")
+    base = (
+        xdg_home
+        if xdg_home
+        else os.path.join(os.path.expanduser("~"), ".local", "state")
+    )
+    return os.path.join(base, "superharness", project_hash(project_path), "state.db")
+
+
 def resolve_active_state_db_path(project_path: str) -> str:
     """Return the path to the active state db for a project.
 
-    Resolution order mirrors get_connection:
-      1. XDG path if it exists on disk
-      2. Legacy .superharness/state.sqlite3 if it exists on disk
-      3. .superharness/ directory exists → legacy path (backward-compat for
-         projects initialized via shux init before XDG seeding was added)
-      4. XDG path (truly new project with no .superharness/)
+    When SUPERHARNESS_STATE_DIR is explicit, it is authoritative even before
+    its per-project database exists.  To prevent a silent split-brain, however,
+    resolution fails closed if a legacy or ambient-XDG database already exists.
+    This function never creates a directory or database.
+
+    Without an explicit override, the existing compatibility order remains:
+    XDG database, legacy database, legacy directory, then XDG for a new project.
     """
-    project_path = os.path.realpath(project_path)
+    project_path = resolve_state_project_path(project_path)
     xdg = resolve_xdg_state_db_path(project_path)
     legacy = os.path.join(project_path, ".superharness", "state.sqlite3")
+
+    if _read_env(_STATE_DIR_ENV):
+        ambient_xdg = _resolve_ambient_xdg_state_db_path(project_path)
+        target_real = os.path.realpath(xdg)
+        alternatives = []
+        for candidate in (ambient_xdg, legacy):
+            if (
+                os.path.realpath(candidate) != target_real
+                and os.path.isfile(candidate)
+            ):
+                alternatives.append(candidate)
+        if alternatives:
+            joined = ", ".join(alternatives)
+            raise StateDatabaseConflictError(
+                f"{_STATE_DIR_ENV} selects {xdg}, but existing state database(s) "
+                f"for the same project were found at: {joined}. Refusing to "
+                "create or open another state database; migrate or archive the "
+                "existing state explicitly first."
+            )
+        return xdg
+
     if os.path.isfile(xdg):
         return xdg
     if os.path.isfile(legacy):
