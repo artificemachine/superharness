@@ -16,6 +16,7 @@ PYTHON = sys.executable
     "args",
     [
         ["start", "--topic", "authority test", "--force"],
+        ["pending", "--agent", "codex-cli"],
         [
             "submit",
             "--id",
@@ -33,7 +34,7 @@ PYTHON = sys.executable
         ["approve", "--task", "fake"],
         ["status"],
     ],
-    ids=["start", "submit", "close", "approve", "status"],
+    ids=["start", "pending", "submit", "close", "approve", "status"],
 )
 def test_state_authority_conflict_is_clean_cli_error(
     args: list[str],
