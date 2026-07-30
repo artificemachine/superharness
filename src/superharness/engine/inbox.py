@@ -193,7 +193,8 @@ def _inbox_lock(path: str):
 
 def enqueue(file: str, id: str, to: str, task: str, project: str, priority: int,
             created_at: str, retry_count: int = 0, max_retries: int = 3,
-            plan_only: bool = False, model_override: str = "", effort_override: str = "") -> int:
+            plan_only: bool = False, model_override: str = "", effort_override: str = "",
+            type: str = "task") -> int:
     """Enqueue to SQLite inbox. Compatibility shim for discuss.py."""
     import os as _os
     from superharness.engine.db import get_connection, init_db
@@ -213,7 +214,8 @@ def enqueue(file: str, id: str, to: str, task: str, project: str, priority: int,
             _log.warning("inbox.py: FK guard skipped for task %s: %s", task, e)
         _dao.enqueue(conn, id=id, task_id=task, target_agent=to,
                      priority=priority, max_retries=max_retries,
-                     project_path=project, plan_only=plan_only, now=created_at)
+                     project_path=project, plan_only=plan_only, type=type,
+                     now=created_at)
         conn.commit()
         return 0
     finally:
@@ -243,6 +245,7 @@ def main(argv: list[str] | None = None) -> None:
     _p.add_argument("--action", help="Action for recover_launched: retry|stale")
     _p.add_argument("--reason", help="Failure reason")
     _p.add_argument("--drop-status", help="Status to drop in normalize")
+    _p.add_argument("--type", default="task", help="Inbox row type for enqueue (e.g. task|discussion)")
 
     _args = _p.parse_args(argv)
     _project_dir = os.path.dirname(os.path.dirname(os.path.abspath(_args.file)))
@@ -261,7 +264,8 @@ def main(argv: list[str] | None = None) -> None:
             file=_args.file, id=_id, to=_args.to, task=_args.task,
             project=_args.project or _project_dir, priority=_args.priority,
             created_at=_created, retry_count=_args.retry_count,
-            max_retries=_args.max_retries, plan_only=_args.plan_only
+            max_retries=_args.max_retries, plan_only=_args.plan_only,
+            type=_args.type,
         )
         if _rc:
             # enqueue() currently always returns 0, but preserve the old
@@ -471,4 +475,3 @@ if __name__ == "__main__":
         main()
     except SuperharnessError as e:
         handle_cli_error(e)
-
