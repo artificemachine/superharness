@@ -13,7 +13,7 @@ import time
 from datetime import datetime, timezone
 
 from superharness.engine.db import get_connection, init_db
-from superharness.engine import discussions_dao
+from superharness.engine import discussions_dao, inbox_dao
 from superharness.engine.errors import OperationError, SuperharnessError, UsageError, handle_cli_error
 from superharness.engine.state_errors import StateError
 from superharness.engine.process import pid_alive, signal_process_group
@@ -172,6 +172,20 @@ def cmd_submit_round(
             now=now,
         )
 
+        # A manually joined agent consumes the same shared-inbox item that an
+        # auto-dispatched agent would. Mark it done atomically with the reply so
+        # cold-start discovery has an explicit receipt/consumption record.
+        acknowledged_inbox_ids = []
+        task_id = f"{disc_id}/round-{round_}"
+        for item in inbox_dao.get_all(conn, target_agent=agent):
+            if (
+                item.task_id == task_id
+                and item.type == "discussion"
+                and item.status in {"pending", "claimed", "launched", "paused"}
+            ):
+                inbox_dao.mark_done(conn, item.id, now=now)
+                acknowledged_inbox_ids.append(item.id)
+
         # Auto-transition to consensus if all participants submitted
         _check_all_submitted_and_set_consensus(conn, disc, round_, project_dir=project_dir)
 
@@ -179,7 +193,18 @@ def cmd_submit_round(
     finally:
         conn.close()
 
-    print(json.dumps({"submitted": True, "round": round_, "agent": agent, "verdict": verdict}, separators=(", ", ": ")))
+    print(
+        json.dumps(
+            {
+                "submitted": True,
+                "round": round_,
+                "agent": agent,
+                "verdict": verdict,
+                "acknowledged_inbox_ids": acknowledged_inbox_ids,
+            },
+            separators=(", ", ": "),
+        )
+    )
     return 0
 
 
@@ -617,6 +642,7 @@ def cmd_status(discussion_dir: str) -> int:
                     submissions.append({
                         "agent": r.agent,
                         "verdict": r.verdict,
+                        "position": r.content,
                         "submitted_at": r.created_at,
                     })
             rounds_info.append({"round": rn, "submissions": submissions})
