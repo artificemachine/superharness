@@ -85,3 +85,8 @@ docs/audits/golive-*
 docs/audits/branch-recovery-*
 # Evidence backing the ignored audits above (agent transcripts, captured state)
 docs/discussions/
+
+# ── /to-agents backup files ──
+# Duplicates what git history already preserves; never commit these.
+.to-agents/
+*.bak-to-agents-*
