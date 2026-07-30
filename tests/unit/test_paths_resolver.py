@@ -7,6 +7,7 @@ resolvers in follow-up work.
 from __future__ import annotations
 
 import os
+import re
 
 import pytest
 
@@ -261,7 +262,10 @@ def test_explicit_state_dir_refuses_ambient_xdg_state(monkeypatch, tmp_path):
     ambient_db.parent.mkdir(parents=True)
     _sqlite3.connect(ambient_db).close()
 
-    with pytest.raises(StateDatabaseConflictError, match=str(ambient_db)):
+    with pytest.raises(
+        StateDatabaseConflictError,
+        match=re.escape(str(ambient_db)),
+    ):
         resolve_active_state_db_path(project)
     assert not (override / project_hash(project) / "state.db").exists()
 
