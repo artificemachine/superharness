@@ -1,4 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
+# Git exports these into every hook's environment, and they take precedence over
+# both `cwd=` and `git -C`. Leaving them set makes the suite below operate on this
+# repository instead of its tmp fixtures — it has corrupted .git/config and written
+# junk commits into real history. Belt-and-braces with the isolated_git_env fixture
+# in tests/conftest.py. See docs/bugs/BUG-2026-07-31-test-suite-git-dir-escape.md.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+      GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_CEILING_DIRECTORIES GIT_PREFIX
+
 PYTHONPATH=. .venv/bin/pytest tests -q
