@@ -87,6 +87,36 @@ def isolated_state_dir(tmp_path, monkeypatch):
     yield state_home / "superharness"
 
 
+# Git resolves these ahead of both `cwd=` and `git -C`, so while any one of them
+# is set every git call in the suite retargets whatever repo it names, no matter
+# how carefully the call site is scoped. Git exports them into the environment of
+# every hook it runs, and `.project-hooks/pre-commit` runs this suite — so a plain
+# `git commit` in this repo made correctly-scoped tests rewrite the real
+# .git/config (core.bare, core.hooksPath, user.identity) and push junk commits and
+# stashes into real history. See docs/bugs/BUG-2026-07-31-test-suite-git-dir-escape.md.
+_GIT_ENV_VARS = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_COMMON_DIR",
+    "GIT_CEILING_DIRECTORIES",
+    "GIT_PREFIX",
+)
+
+
+@pytest.fixture(autouse=True)
+def isolated_git_env(monkeypatch):
+    """Strip inherited git plumbing vars so tests cannot reach the real repo.
+
+    Set via monkeypatch.delenv (not just in-process) because tests spawn git and
+    `python -m superharness...` subprocesses that inherit os.environ.
+    """
+    for var in _GIT_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+
+
 def _assert_ephemeral_state_dir() -> None:
     """Fail fast unless the selected state root is an ephemeral tmp path.
 
