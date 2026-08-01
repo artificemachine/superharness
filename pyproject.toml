@@ -70,6 +70,7 @@ pythonpath = ["src"]
 markers = [
     "requires_bash: test requires bash shell (skipped on Windows)",
     "regression: guards a specific past bug (cite the CHANGELOG entry or commit in the test docstring)",
+    "network: reaches a real external service (LLM provider, remote git). Deselect with -m 'not network'.",
 ]
 
 [tool.coverage.run]
