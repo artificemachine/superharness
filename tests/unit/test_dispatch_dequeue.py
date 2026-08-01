@@ -101,6 +101,22 @@ def _run_dispatch(project: Path, args: list[str] | None = None, bin_dir: Path | 
 # Tests
 # ---------------------------------------------------------------------------
 
+# Every adapter CLI superharness can launch. _run_dispatch prepends bin_dir to the
+# real PATH rather than replacing it, so any name left unstubbed still resolves to
+# the real binary. Stubbing only claude and codex let the orchestrator reach a real
+# `opencode run -m deepseek/...`, which blocked the suite on a live LLM API call —
+# indefinitely, because the pre-commit hook that runs it has no timeout.
+_AGENT_CLIS = ("claude", "codex", "gemini", "opencode")
+
+
+def _stub_agent_bins(bin_dir: Path, script: str = "#!/bin/bash\necho fake-agent\n") -> None:
+    """Stub every agent CLI in bin_dir so no test can reach a real provider."""
+    for name in _AGENT_CLIS:
+        path = bin_dir / name
+        path.write_text(script)
+        path.chmod(0o755)
+
+
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_dispatch_picks_next_pending(tmp_path: Path) -> None:
     project = _make_project(tmp_path, inbox_items=[
@@ -167,10 +183,7 @@ def test_dispatch_state_reconcile_done(tmp_path: Path) -> None:
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
-    (bin_dir / "codex").write_text("#!/bin/bash\necho fake-codex\n")
-    (bin_dir / "codex").chmod(0o755)
-    (bin_dir / "claude").write_text("#!/bin/bash\necho fake-claude\n")
-    (bin_dir / "claude").chmod(0o755)
+    _stub_agent_bins(bin_dir)
 
     r = _run_dispatch(project, ["--to", "codex-cli", "--non-interactive"], bin_dir)
     assert r.returncode == 0, r.stderr
@@ -187,10 +200,7 @@ def test_dispatch_state_reconcile_failed(tmp_path: Path) -> None:
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
-    (bin_dir / "codex").write_text("#!/bin/bash\nexit 1\n")
-    (bin_dir / "codex").chmod(0o755)
-    (bin_dir / "claude").write_text("#!/bin/bash\nexit 1\n")
-    (bin_dir / "claude").chmod(0o755)
+    _stub_agent_bins(bin_dir, "#!/bin/bash\nexit 1\n")
 
     r = _run_dispatch(project, ["--to", "codex-cli", "--non-interactive"], bin_dir)
     assert r.returncode == 1
@@ -217,10 +227,7 @@ def test_dispatch_dirty_worktree_uses_worktree(tmp_path: Path) -> None:
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
-    (bin_dir / "codex").write_text("#!/bin/bash\necho fake-codex\n")
-    (bin_dir / "codex").chmod(0o755)
-    (bin_dir / "claude").write_text("#!/bin/bash\necho fake-claude\n")
-    (bin_dir / "claude").chmod(0o755)
+    _stub_agent_bins(bin_dir)
 
     r = _run_dispatch(project, ["--to", "codex-cli", "--non-interactive"], bin_dir)
     # Should dispatch in worktree, not pause
