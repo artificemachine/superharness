@@ -9,4 +9,22 @@ set -euo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
       GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_CEILING_DIRECTORIES GIT_PREFIX
 
-PYTHONPATH=. .venv/bin/pytest tests -q
+# This hook used to run the whole suite (`pytest tests`). That was a bad trade:
+# ~3600 tests, ~20 minutes, and some of them dispatch real agents over the network,
+# so a single unstubbed provider binary could block a commit indefinitely — with no
+# timeout, on a hook that fires every time anyone commits. It also meant the repo's
+# own quality gate was its largest liability, since any escape in the suite landed
+# on the real repository.
+#
+# So: a fast, meaningful subset here (~19s), and the full matrix in CI where it
+# belongs. `-m "not network"` keeps provider-dependent tests out of the commit path.
+# Set SUPERHARNESS_FULL_PRECOMMIT=1 to run everything locally anyway.
+if [[ "${SUPERHARNESS_FULL_PRECOMMIT:-0}" == "1" ]]; then
+    PYTHONPATH=. .venv/bin/pytest tests -q -m "not network"
+else
+    PYTHONPATH=. .venv/bin/pytest -q -m "not network" \
+        tests/smoke \
+        tests/contract \
+        tests/state_machine \
+        tests/unit/test_git_env_isolation.py
+fi
