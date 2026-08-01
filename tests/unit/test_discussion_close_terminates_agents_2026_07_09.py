@@ -152,8 +152,16 @@ def test_close_escalates_to_sigkill_for_a_process_that_ignores_sigterm(tmp_path)
 
 
 def test_close_does_not_touch_processes_outside_the_discussion(tmp_path):
-    """Scope guard: a live process belonging to an unrelated task must survive."""
-    unrelated = _spawn_sleeper()
+    """Scope guard: a live process belonging to an unrelated task must survive.
+
+    The sentinel gets a long lifetime deliberately. The sibling tests above want
+    their sleeper to die, so the 30s default suits them; this one is the only test
+    that asserts survival, and a sentinel that outlives the assertion by seconds is
+    a latent flake. It fired on Windows CI on 2026-07-31, where the unit job runs
+    ~22 minutes: the sleeper expired on its own mid-test and the assertion reported
+    that close() had killed it.
+    """
+    unrelated = _spawn_sleeper(seconds=3600)
     try:
         project, disc_dir = _make_discussion(tmp_path)
         _seed_launched_inbox(project, "round-1", "claude-code", 999999)  # dead/bogus pid, this discussion
@@ -173,12 +181,22 @@ def test_close_does_not_touch_processes_outside_the_discussion(tmp_path):
         conn.commit()
         conn.close()
 
+        # Establish the premise before exercising the behaviour: if the sentinel is
+        # already gone, the assertion below would blame close() for a death it had
+        # nothing to do with.
+        assert discussion_mod._pid_alive(unrelated.pid), (
+            f"sentinel pid {unrelated.pid} died before close() was called "
+            f"(exit code {unrelated.poll()}) — this is a broken test fixture, "
+            f"not a scope violation in close()"
+        )
+
         rc = discussion_mod.cmd_close(str(disc_dir), "closed")
         assert rc == 0
 
         time.sleep(0.5)
         assert discussion_mod._pid_alive(unrelated.pid), (
-            "close() killed a process belonging to a different task"
+            f"close() killed pid {unrelated.pid}, which belongs to a different task "
+            f"(exit code {unrelated.poll()})"
         )
     finally:
         unrelated.terminate()
