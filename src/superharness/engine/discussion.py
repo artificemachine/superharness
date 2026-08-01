@@ -172,6 +172,20 @@ def cmd_submit_round(
             now=now,
         )
 
+        # Re-check status now that we hold the write lock. The gate above ran
+        # in autocommit (the implicit BEGIN starts at the INSERT), so a
+        # concurrent final submitter can have transitioned this discussion to
+        # consensus between that read and our write — landing this round in a
+        # closed discussion and re-firing the consensus transition.
+        current = discussions_dao.get(conn, disc_id)
+        if not current or current.status != "active":
+            conn.rollback()
+            raise OperationError(
+                f"Discussion is no longer active (status={current.status if current else 'gone'}) "
+                f"— it transitioned while this submission was in flight",
+                exit_code=1,
+            )
+
         # A manually joined agent consumes the same shared-inbox item that an
         # auto-dispatched agent would. Mark it done atomically with the reply so
         # cold-start discovery has an explicit receipt/consumption record.
@@ -252,10 +266,15 @@ def _check_all_submitted_and_set_consensus(conn, disc, round_: int, project_dir:
         return
 
     submitted_agents = {a for a in verdicts_by_agent if a in agent_participants}
-    conn.execute(
-        "UPDATE discussions SET status='consensus', consensus=? WHERE id=?",
+    # Guard on status='active' so the transition is once-only: a re-entrant
+    # check (e.g. a straggler submit racing the final submitter) must not
+    # re-fire task creation against an already consensus'd discussion.
+    cur = conn.execute(
+        "UPDATE discussions SET status='consensus', consensus=? WHERE id=? AND status='active'",
         (f"consensus — all {len(submitted_agents)} participants submitted round {round_}", disc.id),
     )
+    if cur.rowcount == 0:
+        return
     print(
         f"[discussion] auto-consensus: all {len(submitted_agents)} participants submitted round {round_} → consensus",
         file=sys.stderr,
