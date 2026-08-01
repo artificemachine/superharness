@@ -1,0 +1,4 @@
+# CHANGELOG.md is append-only: every change adds a line at EOF, so concurrent
+# branches conflict there and only there. A union merge keeps both sides instead
+# of stopping every parallel PR on a conflict that is never a real disagreement.
+CHANGELOG.md merge=union
