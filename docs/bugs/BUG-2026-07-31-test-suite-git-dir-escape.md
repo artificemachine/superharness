@@ -61,7 +61,22 @@ Also written into real history: commits `621c72d7 "init"` and `14b36aed "i"` (a 
 
 Every one of these call sites is *correctly written* (`cwd=tmp_path` or `git -C`). They are not the defect. The defect is that the suite is invoked in an environment where that scoping does not hold.
 
-**Unresolved:** the origin of `core.bare = true` specifically. Reproduction attempts with `GIT_DIR` set plus `cwd` outside the worktree did not flip `core.bare`. Do not treat that one as explained.
+### Attribution confirmed by bisect (2026-08-01)
+
+A throwaway clone was checked out at `cc5b9344` (pre-fix code) and each git-touching test file was run individually with `GIT_DIR`/`GIT_INDEX_FILE` set the way a hook sets them, checking the config after each file. Two writers of `core.hooksPath` were confirmed by reproduction, not inference:
+
+- `tests/unit/test_install_scripts.py` → sets `core.hooksPath=.githooks`. This is the exact value observed in the second incident.
+- `tests/unit/test_doctor.py` → sets `core.hooksPath=/nonexistent/hooks/dir`.
+
+The same file re-run **without** `GIT_DIR` leaves `core.hooksPath` at its original value, which confirms the escape was purely the inherited environment and that the `isolated_git_env` fixture closes it.
+
+### `core.bare = true`: not the test suite
+
+Measured, not assumed. The full suite was run against the pre-fix clone with `GIT_DIR` set — **5124 passed, 33 failed, 580 skipped, 13m36s** — and `core.bare` remained `false` for the entire run. Per-file bisection across all 41 git-touching files likewise never flipped it, and there is no `--bare` anywhere in `src/` or `tests/`. Five hand-built `git init` variants under `GIT_DIR` also failed to reproduce it.
+
+So whatever set `core.bare = true` during the original incident, **it was not a test in this suite**. The fixes in this report do not address it, and it should not be assumed fixed. If it recurs, look outside the suite: production code paths, the launchd-managed daemons, or a direct git invocation.
+
+(The 33 failures in that probe are themselves a measure of the escape's blast radius — tests like `test_is_git_repo_returns_false_for_plain_dir` fail precisely because `GIT_DIR` made them see a real repository. They pass normally.)
 
 ## Contributing factors
 
