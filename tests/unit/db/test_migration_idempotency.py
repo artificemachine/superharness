@@ -69,8 +69,13 @@ def test_migration_creates_backup(monkeypatch, tmp_path):
     conn.close()
 
     xdg_db = resolve_xdg_state_db_path(str(project))
-    assert os.path.isfile(f"{xdg_db}.bak.v1")
-    assert os.path.isfile(f"{xdg_db}.bak.v2")
+    # One backup per migration run, taken before the first pending migration
+    # (here: .bak.v0, the pre-run state). Per-step intermediates (.bak.v1,
+    # .bak.v2, ...) are no longer written — they only ever captured
+    # half-migrated states and littered fresh bootstraps with ~36 files.
+    assert os.path.isfile(f"{xdg_db}.bak.v0")
+    assert not os.path.isfile(f"{xdg_db}.bak.v1")
+    assert not os.path.isfile(f"{xdg_db}.bak.v2")
 
 def test_fk_violation_rolls_back(tmp_path):
     project = tmp_path
