@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import sys
@@ -247,3 +248,107 @@ def past_iso(minutes_ago: int) -> str:
     """
     from datetime import datetime, timedelta, timezone
     return (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# --------------------------------------------------------------------------
+# Hermeticity: the suite must not mutate the repository it is running from.
+#
+# On 2026-07-31 it did, twice. Tests scoped correctly with cwd=/git -C still
+# wrote to the real .git because GIT_DIR is inherited from the hook environment
+# and outranks both. That set core.bare=true (breaking `git status` repo-wide),
+# pointed core.hooksPath at /dev/null (silently disabling the secret scan, SAST,
+# path and CHANGELOG guards), rewrote the git identity, and pushed junk commits
+# and a stash into real history. Worktrees share .git/config, so one worktree's
+# commit corrupted every checkout.
+#
+# isolated_git_env removes the cause. This is the detector: if some future path
+# reaches the real repository by any route, a test fails immediately and names
+# what moved, instead of the damage being discovered days later by a puzzled
+# `git status`. Same role _state_dir_guardrail plays for the state directory.
+#
+# Deliberately a metadata fingerprint rather than `git status --porcelain`:
+# a few small file reads cost microseconds, and this runs before and after every
+# one of ~5000 tests. A full status call would add ~20 minutes to the suite.
+# --------------------------------------------------------------------------
+
+def _repo_fingerprint() -> dict[str, str] | None:
+    """Cheap snapshot of the real repo's git metadata.
+
+    None when there is no repo to protect (installed package, tarball, CI
+    checkout without .git), in which case the guard stands down.
+    """
+    git_dir = REPO_ROOT / ".git"
+    if git_dir.is_file():  # a linked worktree: .git is a pointer file
+        try:
+            target = git_dir.read_text().split("gitdir:", 1)[1].strip()
+        except (OSError, IndexError):
+            return None
+        git_dir = Path(target)
+    if not git_dir.is_dir():
+        return None
+
+    fp: dict[str, str] = {}
+    for name in ("config", "HEAD", "packed-refs"):
+        f = git_dir / name
+        try:
+            fp[name] = hashlib.sha256(f.read_bytes()).hexdigest() if f.exists() else "-"
+        except OSError:
+            fp[name] = "?"
+
+    # Branch/tag/stash refs, so a junk commit or stash shows up even when config
+    # is untouched. Ref *contents*, not just names: a commit landing on a branch
+    # that already exists moves its tip without adding a file, and that is exactly
+    # the junk-commit shape from the incident.
+    for sub in ("refs/heads", "refs/tags"):
+        d = git_dir / sub
+        try:
+            entries = (
+                sorted(
+                    f"{p.relative_to(d)}={p.read_text().strip()}"
+                    for p in d.rglob("*")
+                    if p.is_file()
+                )
+                if d.is_dir()
+                else []
+            )
+        except OSError:
+            entries = ["?"]
+        fp[sub] = hashlib.sha256(",".join(entries).encode()).hexdigest()
+
+    stash = git_dir / "refs/stash"
+    try:
+        fp["refs/stash"] = stash.read_text().strip() if stash.exists() else "absent"
+    except OSError:
+        fp["refs/stash"] = "?"
+    return fp
+
+
+_REPO_FP_LABELS = {
+    "config": ".git/config was rewritten (core.bare / core.hooksPath / user identity)",
+    "HEAD": ".git/HEAD moved — a commit or checkout landed on the real repo",
+    "packed-refs": "packed-refs changed",
+    "refs/heads": "a branch was created, deleted, or moved on the real repo",
+    "refs/tags": "a tag was created or deleted on the real repo",
+    "refs/stash": "a stash was pushed or dropped on the real repo",
+}
+
+
+@pytest.fixture(autouse=True)
+def _real_repo_untouched():
+    """Fail the test that mutates the repository the suite runs from."""
+    before = _repo_fingerprint()
+    yield
+    if before is None:
+        return
+    after = _repo_fingerprint()
+    if after is None or after == before:
+        return
+    changed = [k for k in before if before[k] != after.get(k)]
+    detail = "; ".join(_REPO_FP_LABELS.get(k, k) for k in changed)
+    raise AssertionError(
+        f"this test mutated the real repository at {REPO_ROOT}: {detail}. "
+        f"Tests must operate on tmp_path fixtures only. Check for inherited "
+        f"GIT_DIR/GIT_WORK_TREE (see isolated_git_env) or a git call with "
+        f"neither cwd= nor -C, which lands in the process working directory. "
+        f"See docs/bugs/BUG-2026-07-31-test-suite-git-dir-escape.md"
+    )
