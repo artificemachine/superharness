@@ -45,6 +45,13 @@ class Operator:
         self._max_restarts = 5  # circuit breaker: max restarts per component in window
         self._restart_window = 600  # 10-minute window for restart counting
         self._circuit_open_until: dict[str, float] = {}  # component → cooldown deadline (epoch seconds)
+        # The watcher is one-shot: it exits 0 after every tick and the
+        # monitor relaunches it. Relaunch is gated on this interval (also
+        # passed to inbox_watch as --interval), NOT on the monitor's 5s
+        # poll — respawning every poll ran the watcher at 3x the intended
+        # cadence and paid a full interpreter start each time.
+        self._watcher_respawn_interval: float = 15.0
+        self._watcher_last_spawn: float = 0.0
 
     @staticmethod
     def _resolve_python() -> str:
@@ -223,13 +230,14 @@ class Operator:
             json.dump(info, f, indent=2)
 
     def _spawn_watcher(self):
-        """Launch the background watcher."""
+        """Launch the background watcher (one-shot cycle)."""
         cmd = [
             self._python, "-m", "superharness.commands.inbox_watch",
             "--project", str(self.project_dir),
-            "--interval", "15",
+            "--interval", str(int(self._watcher_respawn_interval)),
             "--non-interactive",
         ]
+        self._watcher_last_spawn = time.time()
         self.processes["watcher"] = subprocess.Popen(
             cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
         )
@@ -276,6 +284,18 @@ class Operator:
         try:
             while not self._stopping:
                 try:
+                    # Throttled relaunch of the one-shot watcher: it was
+                    # removed from the table on its last clean exit; bring
+                    # it back only once the watcher interval has elapsed
+                    # since the previous spawn (and the circuit is closed).
+                    if (
+                        "watcher" not in self.processes
+                        and time.time() >= self._circuit_open_until.get("watcher", 0)
+                        and time.time() - self._watcher_last_spawn
+                        >= self._watcher_respawn_interval
+                    ):
+                        self._spawn_watcher()
+
                     for name, proc in list(self.processes.items()):
                         # Circuit breaker cooldown: if the circuit is open
                         # (tripped for this component), skip entirely until
@@ -302,7 +322,13 @@ class Operator:
                             if proc.returncode == 0:
                                 self._kill_process(proc, name)
                                 if name == "watcher":
-                                    self._spawn_watcher()
+                                    # Normal end of a one-shot watcher cycle.
+                                    # Do NOT respawn here — that would tie the
+                                    # watcher cadence to the 5s monitor poll.
+                                    # Drop it from the table; the throttled
+                                    # respawn at the top of the loop relaunches
+                                    # once _watcher_respawn_interval elapses.
+                                    self.processes.pop("watcher", None)
                                 elif name == "dashboard" and self._use_dashboard:
                                     if self._dashboard_port is None:
                                         self._dashboard_port = self._find_available_port(8787)
