@@ -67,6 +67,14 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+addopts = "-ra"
+# NOT `addopts = "-ra --strict-markers"` (the crossprose form) — on this
+# repo's pytest (9.0.2), a --strict-markers flag embedded in addopts never
+# reaches the override-ini mechanism (see
+# tests/contract/test_pytest_config.py::test_addopts_enables_strict_markers
+# docstring for the root cause) and silently downgrades to a warning. The
+# native ini key below is what actually enforces it.
+strict_markers = true
 markers = [
     "requires_bash: test requires bash shell (skipped on Windows)",
     "regression: guards a specific past bug (cite the CHANGELOG entry or commit in the test docstring)",
