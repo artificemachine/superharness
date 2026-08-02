@@ -16,7 +16,7 @@ from superharness.utils.paths import (
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 35
+CURRENT_SCHEMA_VERSION = 36
 
 def now_iso() -> str:
     """Return current UTC timestamp in ISO8601 format."""
@@ -248,7 +248,18 @@ def _heal_known_migration_drift(conn: sqlite3.Connection) -> None:
         conn.commit()
 
 def _run_migrations(conn: sqlite3.Connection, current_version: int, project_dir: str | None = None) -> None:
-    """Apply pending migrations in order."""
+    """Apply pending migrations in order.
+
+    One backup per run, taken before the first pending migration: that is the
+    only snapshot of true pre-migration state. Per-step backups (the old
+    behavior) captured half-migrated intermediates — redundant with each
+    step's own SAVEPOINT rollback — and littered a fresh bootstrap with ~36
+    .bak files of an empty database.
+    """
+    if project_dir:
+        _backup_db(project_dir, current_version)
+    else:
+        _backup_db_from_connection(conn, current_version)
     for v in range(current_version + 1, CURRENT_SCHEMA_VERSION + 1):
         _run_single_migration(conn, v, project_dir)
 
@@ -274,10 +285,45 @@ _MIGRATIONS_REQUIRING_FK_OFF: dict[int, tuple[str, ...]] = {
 }
 
 
+def _backup_db_from_connection(conn: sqlite3.Connection, version: int) -> None:
+    """Pre-migration backup derived from the connection itself.
+
+    ~All init_db callers omit project_dir (2026-06-07 audit Finding 41), which
+    silently disabled _backup_db for them. The connection already knows its
+    own file path, so derive it instead of requiring the caller to thread
+    project_dir through. Uses the SQLite backup API rather than a file copy:
+    under WAL, un-checkpointed pages live in the -wal sidecar and a bare copy
+    of the main file can be stale or torn.
+    """
+    try:
+        row = conn.execute("PRAGMA database_list").fetchone()
+        src = row[2] if row else ""
+        if not src:  # in-memory database — nothing to back up
+            return
+        dst = f"{src}.bak.v{version}"
+        if os.path.isfile(dst):
+            return
+        dst_conn = sqlite3.connect(dst)
+        try:
+            conn.backup(dst_conn)
+        finally:
+            dst_conn.close()
+        logger.info(f"Created pre-migration backup: {dst}")
+    except (sqlite3.Error, OSError) as e:
+        # Backup is best-effort protection — a read-only volume or a locked
+        # source DB must not block the migration itself. Scoped to the two
+        # failure classes this can actually raise (SQLite backup API, file IO)
+        # rather than a broad catch, per the ratchet in
+        # tests/contract/test_source_ratchets.py.
+        logger.warning("Pre-migration backup skipped: %s", e)
+
+
 def _run_single_migration(conn: sqlite3.Connection, v: int, project_dir: str | None = None) -> None:
-    """Run a single schema migration with backup and rollback."""
-    if project_dir:
-        _backup_db(project_dir, v - 1)
+    """Run a single schema migration with savepoint rollback.
+
+    Backup happens once per run in _run_migrations, not per step — see the
+    rationale there.
+    """
 
     needs_fk_off = v in _MIGRATIONS_REQUIRING_FK_OFF
     prior_fk_state = None
@@ -629,6 +675,16 @@ def _migration_v2(conn: sqlite3.Connection) -> None:
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_disc_rounds_disc ON discussion_rounds(discussion_id, round_number)")
+    # One submission per (discussion, round, agent). Declared here as well as in
+    # migration v36 so every path converges: a fresh DB gets it with the table,
+    # an existing DB gets it (plus dedup) from v36, and a DB that reached v36
+    # without the table yet gets it here when the table is finally created.
+    # '_advance' bookkeeping markers are not submissions and may repeat.
+    conn.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_disc_rounds_unique_submission
+        ON discussion_rounds(discussion_id, round_number, agent)
+        WHERE agent != '_advance'
+    """)
 
     # F8: UNIQUE partial index on yaml_sync_queue prevents duplicate pending ops for the
     # same (op_type, entity id). NULL ids (for ops without an id field) are always distinct.
@@ -1387,6 +1443,53 @@ def _migration_v35(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_v36(conn: sqlite3.Connection) -> None:
+    """Enforce one submission per (discussion, round, agent) at the DB level.
+
+    cmd_submit_round's duplicate check is read-then-insert with the read in
+    autocommit (Python sqlite3 issues the implicit BEGIN only at the first
+    write), so two concurrent submits by the same agent could both pass the
+    check and both INSERT. Dedup any historical duplicates first (keep the
+    earliest row — the one whose verdict the first submit reported to its
+    caller), then add a partial UNIQUE index. '_advance' bookkeeping markers
+    are exempt: they are not agent submissions and may legitimately repeat.
+    """
+    # A DB can reach this migration without the table: partial-schema fixtures
+    # and legacy DBs whose user_version outran their actual tables both exist
+    # (same class the _heal_known_migration_drift guard at line ~237 handles).
+    # Nothing to constrain — init_db's CREATE TABLE IF NOT EXISTS will build it
+    # with the index already in place on the next open.
+    if not _table_exists(conn, "discussion_rounds"):
+        return
+
+    # Only DELETE when duplicates actually exist: DELETE resolves the
+    # discussions FK, which explodes on hand-rolled test fixtures whose
+    # discussions table lacks the referenced PK (the exact failure mode
+    # documented on _MIGRATIONS_REQUIRING_FK_OFF). A SELECT resolves nothing,
+    # so dup-free DBs — including those fixtures — skip straight to the index.
+    has_dups = conn.execute("""
+        SELECT 1 FROM discussion_rounds
+        WHERE agent != '_advance'
+        GROUP BY discussion_id, round_number, agent
+        HAVING COUNT(*) > 1 LIMIT 1
+    """).fetchone()
+    if has_dups:
+        conn.execute("""
+            DELETE FROM discussion_rounds
+            WHERE agent != '_advance'
+              AND id NOT IN (
+                SELECT MIN(id) FROM discussion_rounds
+                WHERE agent != '_advance'
+                GROUP BY discussion_id, round_number, agent
+              )
+        """)
+    conn.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_disc_rounds_unique_submission
+        ON discussion_rounds(discussion_id, round_number, agent)
+        WHERE agent != '_advance'
+    """)
+
+
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v1,
     _migration_v2,
@@ -1423,4 +1526,5 @@ _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migration_v33,
     _migration_v34,
     _migration_v35,
+    _migration_v36,
 ]
