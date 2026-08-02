@@ -80,7 +80,7 @@ def test_migration_preserves_existing_rows(tmp_path):
     after_statuses = sorted(r["status"] for r in conn.execute("SELECT status FROM tasks"))
     conn.close()
 
-    assert after_version == 35
+    assert after_version == db_mod.CURRENT_SCHEMA_VERSION
     assert after_count == before_count == len(statuses)
     assert after_statuses == before_statuses
 
