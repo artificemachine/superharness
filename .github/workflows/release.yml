@@ -13,8 +13,101 @@ permissions:
   actions: write    # needed to dispatch publish.yml via workflow_dispatch
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Tagging is the one irreversible, outward-facing step in this repo: this
+  # workflow creates the GitHub Release and dispatches publish.yml, which
+  # uploads to PyPI. A PyPI version cannot be re-uploaded once taken.
+  #
+  # Until now nothing connected that to tests passing. The 2026-07-22 golive
+  # audit (Stage 7) logged this as a real MEDIUM: release.yml fires on any v*
+  # tag with zero automated dependency on tests.yml, so "CI must be green
+  # before tagging" was pure process discipline with no backstop. A tag pushed
+  # from a red commit — or from a local checkout that never ran CI — would
+  # publish.
+  #
+  # This gate mirrors branch protection exactly: it requires the same check
+  # contexts main requires, resolved against the tagged commit. It deliberately
+  # does NOT check the Tests *workflow* conclusion, because that workflow also
+  # contains non-required jobs (the pytest-xdist trial) whose failure must not
+  # be able to block a release.
+  #
+  # Fails closed. There is no skip variable: a bypass that can be set once and
+  # forgotten is exactly the fail-open pattern /ci-gate flags. If a tag's check
+  # runs have aged out (GitHub retains them ~90 days), re-run CI on that commit
+  # before releasing.
+  # ---------------------------------------------------------------------------
+  verify-ci:
+    name: Verify required checks passed on the tagged commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        with:
+          fetch-depth: 0
+
+      - name: Require branch-protection checks to be green on this commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          SHA="$(git rev-list -n1 "${GITHUB_REF_NAME}")"
+          echo "Tag ${GITHUB_REF_NAME} resolves to ${SHA}"
+
+          # Keep in sync with branch protection on main:
+          #   gh api repos/${GITHUB_REPOSITORY}/branches/main/protection \
+          #     --jq '.required_status_checks.contexts'
+          REQUIRED=("QA Gate" "Windows-Native Release Gate")
+
+          gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100" \
+            --paginate --jq '.check_runs[] | {name, conclusion, started_at}' \
+            | jq -s '.' > /tmp/check_runs.json
+
+          echo "Found $(jq 'length' /tmp/check_runs.json) check run(s) on ${SHA}"
+
+          FAILED=0
+          for name in "${REQUIRED[@]}"; do
+            # A rerun creates a second check run with the same name — take the
+            # most recently started one, which is the authoritative result.
+            conclusion="$(jq -r --arg n "$name" \
+              '[.[] | select(.name == $n)] | sort_by(.started_at) | last | .conclusion // "MISSING"' \
+              /tmp/check_runs.json)"
+            if [ "$conclusion" = "success" ]; then
+              echo "  OK       ${name}: success"
+            elif [ "$conclusion" = "MISSING" ] || [ "$conclusion" = "null" ]; then
+              echo "  BLOCKED  ${name}: no check run found on this commit"
+              FAILED=1
+            else
+              echo "  BLOCKED  ${name}: ${conclusion}"
+              FAILED=1
+            fi
+          done
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo ""
+            echo "Refusing to release ${GITHUB_REF_NAME}."
+            echo ""
+            echo "The checks main requires are not green on ${SHA}. Releasing would"
+            echo "create a GitHub Release and publish to PyPI, which cannot be undone"
+            echo "for that version number."
+            echo ""
+            echo "To resolve:"
+            echo "  1. Push ${SHA} to a branch and let the Tests workflow run, or re-run"
+            echo "     the existing failed jobs on that commit."
+            echo "  2. Once QA Gate and Windows-Native Release Gate are green, delete and"
+            echo "     re-push the tag:"
+            echo "       git push --delete origin ${GITHUB_REF_NAME}"
+            echo "       git push origin ${GITHUB_REF_NAME}"
+            echo ""
+            echo "If the check runs have simply aged out (GitHub retains them ~90 days),"
+            echo "re-run CI on the commit rather than bypassing this gate."
+            exit 1
+          fi
+
+          echo ""
+          echo "All required checks green on ${SHA} — proceeding with release."
+
   release:
     name: Create GitHub Release
+    needs: verify-ci
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
