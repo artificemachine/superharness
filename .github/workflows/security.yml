@@ -10,6 +10,29 @@ permissions:
   contents: read
 
 jobs:
+  # Gitleaks — the industry-standard secret scanner. Catches real secrets,
+  # keys, and high-entropy strings that ShipGuard's rule set does not see.
+  # Scans the full history on PRs (fetch-depth: 0) so a secret already
+  # committed in a branch is caught before merge, not only at the diff.
+  # Job is required by branch protection (required_status_checks "Gitleaks").
+  gitleaks:
+    name: Gitleaks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # SARIF upload
+      pull-requests: write     # leak report comment on the PR
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks secret scan
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   shipguard:
     name: ShipGuard Scan
     runs-on: ubuntu-latest

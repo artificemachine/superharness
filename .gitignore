@@ -93,3 +93,8 @@ docs/discussions/
 # Duplicates what git history already preserves; never commit these.
 .to-agents/
 *.bak-to-agents-*
+
+# Local-only private-identifier blocklist for tests/contract/test_no_infra_topology_leaks.py.
+# Contains exact private strings (usernames, LAN domains, host names) that must
+# never appear in tracked files. Never commit this file; CI runs without it.
+.security-blocklist.txt
