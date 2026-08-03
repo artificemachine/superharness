@@ -242,13 +242,14 @@ def main(argv: list[str] | None = None) -> None:
         # cause get_connection to fall back to the legacy path.
         try:
             import sqlite3 as _sq
-            from superharness.engine.db import init_db
+            from superharness.engine.db import init_db, _resolve_journal_mode
             from superharness.utils.paths import resolve_xdg_state_db_path
             _xdg_db = resolve_xdg_state_db_path(str(project_dir))
             os.makedirs(os.path.dirname(_xdg_db), exist_ok=True)
             _conn = _sq.connect(_xdg_db, timeout=5000)
             _conn.row_factory = _sq.Row
-            _conn.execute("PRAGMA journal_mode=WAL")
+            # Network-aware journal mode (WAL corrupts on NFS); mirrors get_connection.
+            _conn.execute(f"PRAGMA journal_mode={_resolve_journal_mode(_xdg_db)}")
             _conn.execute("PRAGMA foreign_keys=ON")
             try:
                 init_db(_conn, str(project_dir))
