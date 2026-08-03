@@ -44,6 +44,12 @@ def _get_decision(output: dict) -> str:
         # warn cases
         ("/etc/hosts", "ask"),
         ("/tmp/build.log", "ask"),
+        # Claude Code's own managed workspace temp is a sanctioned agent work
+        # area (not a user "system file") — allowed so create/edit never prompts.
+        ("/tmp/claude-1000/proj/uuid/scratchpad/notes.txt", "allow"),
+        ("/tmp/claude-0/a/b/scratchpad/build.py", "allow"),
+        # ...but the sensitive-file deny runs first, so a secret there is blocked.
+        ("/tmp/claude-1000/proj/uuid/scratchpad/id_rsa.key", "deny"),
         # allow
         ("src/main.py", "allow"),
     ],
