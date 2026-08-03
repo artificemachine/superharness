@@ -31,59 +31,21 @@ HOOKS_DIR_SRC = REPO_ROOT / "src" / "superharness" / "adapters" / "claude-code" 
 # ---------------------------------------------------------------------------
 # Known, already-real divergence between the two hook copies.
 #
-# Measured fresh against this worktree on 2026-08-01 (not assumed from the
-# plan, which only asserted the two dirs "must stay byte-identical" per PR
-# #87's commit message — that sentence is unenforced and, per this
-# measurement, already false for 5 of 9 files). This is a real bug this
-# iteration surfaced, not fixed: the hard constraints for this task forbid
-# editing any hook file. Each entry below is the exact reason the pair
-# differs today; closing an entry (making the pair byte-identical again) is
-# separate follow-up work, not this iteration's job. This allowlist may
-# only shrink.
+# EMPTY as of 2026-08-03 — the five entries this allowlist was born with are
+# closed. They were measured fresh on 2026-08-01 rather than assumed from PR
+# #87's "must stay byte-identical" commit message, which was unenforced prose
+# and already false for 5 of 9 files. The root copy turned out to be the
+# stale pre-SQLite-migration tree (reading the dead contract.yaml, missing
+# the *.env.example carve-out and the pending-discussion block, and binding
+# Stop to a script the packaged tree marks DEPRECATED), so it was resynced
+# from the packaged copy rather than reconciled entry by entry.
+#
+# This allowlist may only shrink. Adding an entry means shipping two hook
+# sets that behave differently depending on install path — the exact bug
+# tracked in issue #92 — so a new entry needs the same justification a
+# deliberate fork would.
 # ---------------------------------------------------------------------------
-KNOWN_DIVERGENT_HOOK_FILES = {
-    # Root copy still wires the Stop-hook slot to session-stop.sh; the src
-    # copy wires the same slot to session-turn-end.sh. This is a live
-    # consequence of the session-stop.sh split below, not a formatting
-    # nit — the packaged (src) hook set and the repo-root hook set fire
-    # different scripts for the same event.
-    "hooks.json": (
-        "root wires Stop -> session-stop.sh, src wires Stop -> "
-        "session-turn-end.sh (see session-stop.sh entry)."
-    ),
-    # src copy carries a *.env.example carve-out (scope-guard must not
-    # block edits to the checked-in template) that the root copy lacks.
-    "scope-guard.sh": (
-        "src copy excludes *.env.example from the sensitive-file block; "
-        "root copy still blocks edits to it."
-    ),
-    # src copy was migrated off contract.yaml onto
-    # superharness.engine.state_reader / state.sqlite3; the root copy still
-    # parses .superharness/contract.yaml directly with a regex/PyYAML,
-    # which is dead per this repo's "State lives in SQLite" rule.
-    "session-start.sh": (
-        "root copy still reads .superharness/contract.yaml directly; src "
-        "copy reads via engine.state_reader against state.sqlite3 (root "
-        "predates the SQLite-source-of-truth migration)."
-    ),
-    # src copy is explicitly marked DEPRECATED in its own header ("do not
-    # register as a Stop hook... superseded by session-turn-end.sh +
-    # session-exit.sh"); the root copy has no such header and is still the
-    # full, active legacy implementation reading contract.yaml.
-    "session-stop.sh": (
-        "src copy is header-marked DEPRECATED (superseded by the "
-        "session-turn-end.sh + session-exit.sh split); root copy is the "
-        "old, still-active implementation with no deprecation notice."
-    ),
-    # src copy is the live half of the split described above and contains
-    # an extra pending-discussion-prompt surfacing block the root copy
-    # lacks entirely.
-    "session-turn-end.sh": (
-        "src copy has an extra 'surface pending discussion prompts' block "
-        "(reads $SH_DIR/discussions/*/round-*.prompt.md) the root copy "
-        "does not have."
-    ),
-}
+KNOWN_DIVERGENT_HOOK_FILES: dict[str, str] = {}
 
 
 def _repo_root() -> Path:

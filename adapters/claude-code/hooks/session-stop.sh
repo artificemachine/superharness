@@ -1,7 +1,11 @@
 #!/bin/bash
-# superharness Stop hook for Claude Code
-# Fires automatically when a session ends. Writes a session-progress.md snapshot
-# so the next session-start.sh can restore context without agent cooperation.
+# DEPRECATED — do not register as a Stop hook.
+#
+# This file is superseded by the session-turn-end.sh + session-exit.sh split.
+#   session-turn-end.sh — snapshot only, safe on every turn (Stop hook)
+#   session-exit.sh     — pkills + task auto-stop, true exit only (NOT a Stop hook)
+#
+# Kept for reference. Will be removed in a future cleanup.
 
 if [ -n "$CLAUDE_PLUGIN_ROOT" ]; then
   SUPERHARNESS_ROOT="$(cd "$CLAUDE_PLUGIN_ROOT/../.." && pwd)"
@@ -15,8 +19,6 @@ SH_DIR="$PROJECT_DIR/.superharness"
 
 # Only act in superharness-initialized projects
 [ -d "$SH_DIR" ] || exit 0
-
-PYTHON="${SUPERHARNESS_PYTHON:-python3}"
 
 PROGRESS_FILE="$SH_DIR/session-progress.md"
 TIMESTAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%SZ")"
@@ -33,7 +35,7 @@ if command -v superharness >/dev/null 2>&1; then
 fi
 if [ -z "$TASK_CONTEXT" ]; then
   # Fallback: inline Python to extract minimal task info
-  TASK_CONTEXT=$("$PYTHON" -c "
+  TASK_CONTEXT=$(python3 -c "
 import sys
 try:
     import yaml
@@ -99,15 +101,14 @@ fi
 
 # --- Stop active Claude-owned tasks and write handoffs ---
 STOPPED_TASK_IDS=""
-if [ -f "$SH_DIR/contract.yaml" ] && command -v "$PYTHON" >/dev/null 2>&1; then
+if [ -f "$SH_DIR/state.sqlite3" ] && command -v python3 >/dev/null 2>&1; then
   export SH_SESSION_STOP_TIMESTAMP="$TIMESTAMP"
   export SH_SESSION_STOP_HARNESS_DIR="$SH_DIR"
   export SH_SESSION_STOP_TASK_CONTEXT="$TASK_CONTEXT"
   export SH_SESSION_STOP_BRANCH="${GIT_BRANCH:-}"
   export SH_SESSION_STOP_GIT_STATUS="${GIT_STATUS:-}"
   export SH_SESSION_STOP_GIT_LOG="${GIT_LOG:-}"
-  STOPPED_TASK_IDS="$("$PYTHON" - <<'PY'
-import io
+  STOPPED_TASK_IDS="$(python3 - <<'PY'
 import os
 import sys
 import yaml
@@ -119,7 +120,7 @@ branch = (os.environ.get("SH_SESSION_STOP_BRANCH") or "").strip()
 git_status = (os.environ.get("SH_SESSION_STOP_GIT_STATUS") or "").strip()
 git_log = (os.environ.get("SH_SESSION_STOP_GIT_LOG") or "").strip()
 
-contract_path = os.path.join(harness_dir, "contract.yaml")
+project_dir = os.path.dirname(harness_dir)
 handoffs_dir = os.path.join(harness_dir, "handoffs")
 os.makedirs(handoffs_dir, exist_ok=True)
 timestamp_safe = (timestamp or "unknown").replace(":", "-")
@@ -135,21 +136,12 @@ context = (
 )
 
 try:
-    try:
-        import ruamel.yaml as _ry
-        _yaml = _ry.YAML()
-        _yaml.preserve_quotes = True
-        with open(contract_path, encoding="utf-8") as fh:
-            doc = _yaml.load(fh) or {}
-        use_ruamel = True
-    except ImportError:
-        with open(contract_path, encoding="utf-8") as fh:
-            doc = yaml.safe_load(fh) or {}
-        use_ruamel = False
+    from superharness.engine import state_reader, state_writer
 
-    changed = False
     stopped_ids = []
-    for task in (doc.get("tasks") or []):
+    tasks = state_reader.get_tasks(project_dir)
+
+    for task in tasks:
         if not isinstance(task, dict):
             continue
         if str(task.get("owner", "")) != "claude-code":
@@ -160,11 +152,15 @@ try:
         if not task_id:
             continue
 
-        task["status"] = "stopped"
-        task["stopped_reason"] = "session_stopped"
-        task["stopped_at"] = timestamp
-        task["summary"] = summary
-        changed = True
+        # Write status to SQLite via state_writer (canonical path)
+        try:
+            state_writer.set_task_status(project_dir, task_id, "stopped",
+                stopped_at=timestamp,
+                stopped_reason="session_stopped",
+                summary=summary)
+        except Exception:
+            pass
+
         stopped_ids.append(task_id)
 
         handoff = {
@@ -186,15 +182,6 @@ try:
         with open(handoff_path, "w", encoding="utf-8") as fh:
             yaml.safe_dump(handoff, fh, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
-    if changed:
-        with open(contract_path, "w", encoding="utf-8") as fh:
-            if use_ruamel:
-                buf = io.StringIO()
-                _yaml.dump(doc, buf)
-                fh.write(buf.getvalue())
-            else:
-                fh.write(yaml.dump(doc, default_flow_style=False, allow_unicode=True, sort_keys=False))
-
     for task_id in stopped_ids:
         print(task_id)
 except Exception as exc:
@@ -206,8 +193,8 @@ fi
 for TASK_ID in $STOPPED_TASK_IDS; do
   [ -z "$TASK_ID" ] && continue
   _ledger "$TIMESTAMP session-stop: task stopped ($TASK_ID)"
-  if [ -n "$INBOX_FILE" ] && command -v "$PYTHON" >/dev/null 2>&1; then
-    SYNC_RESULT="$("$PYTHON" -m superharness.engine.inbox sync_task_status \
+  if [ -n "$INBOX_FILE" ] && command -v python3 >/dev/null 2>&1; then
+    SYNC_RESULT="$(python3 -m superharness.engine.inbox sync_task_status \
       --file "$INBOX_FILE" --task "$TASK_ID" --to stopped --now "$TIMESTAMP" 2>/dev/null || true)"
     case "$SYNC_RESULT" in
       *"synced=0"*) ;;
@@ -217,10 +204,10 @@ for TASK_ID in $STOPPED_TASK_IDS; do
 done
 
 # --- Pause any remaining active Claude-targeted inbox items ---
-if [ -n "$INBOX_FILE" ] && command -v "$PYTHON" >/dev/null 2>&1; then
+if [ -n "$INBOX_FILE" ] && command -v python3 >/dev/null 2>&1; then
   NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%SZ")"
   export SH_SESSION_STOP_INBOX_FILE="$INBOX_FILE"
-  PAUSABLE_IDS="$("$PYTHON" - <<'PY'
+  PAUSABLE_IDS="$(python3 - <<'PY'
 import os
 import sys
 import yaml
@@ -242,13 +229,13 @@ PY
 )" || true
   for ITEM_ID in $PAUSABLE_IDS; do
     [ -z "$ITEM_ID" ] && continue
-    "$PYTHON" -m superharness.engine.inbox set_status \
+    python3 -m superharness.engine.inbox set_status \
       --file "$INBOX_FILE" --id "$ITEM_ID" \
       --from pending --to paused --now "$NOW" --stamp-key paused_at 2>/dev/null || \
-    "$PYTHON" -m superharness.engine.inbox set_status \
+    python3 -m superharness.engine.inbox set_status \
       --file "$INBOX_FILE" --id "$ITEM_ID" \
       --from launched --to paused --now "$NOW" --stamp-key paused_at 2>/dev/null || \
-    "$PYTHON" -m superharness.engine.inbox set_status \
+    python3 -m superharness.engine.inbox set_status \
       --file "$INBOX_FILE" --id "$ITEM_ID" \
       --from running --to paused --now "$NOW" --stamp-key paused_at 2>/dev/null || true
     _ledger "$TIMESTAMP session-stop: inbox item paused ($ITEM_ID)"
@@ -260,5 +247,17 @@ fi
 # Unloading here caused the watcher to go dead every session and require manual reinstallation.
 # The hook now stops active Claude-owned work and pauses remaining Claude-targeted
 # inbox items, so the watcher won't dispatch orphaned jobs next cycle.
+
+# Kill MCP children spawned for this Claude session.
+# Global kill (not tty-scoped) because the tty is gone by the time this runs.
+# Safe for single-operator dev MacBook.
+pkill -TERM -f "keylogger-mcp-wrapper" 2>/dev/null || true
+pkill -TERM -f "serena start-mcp-server" 2>/dev/null || true
+pkill -TERM -f "KotlinLanguageServer" 2>/dev/null || true
+pkill -TERM -f "kotlin_language_server" 2>/dev/null || true
+pkill -TERM -f "voice-toolkit" 2>/dev/null || true
+pkill -TERM -f "token-diet-mcp" 2>/dev/null || true
+pkill -TERM -f "tilth mcp" 2>/dev/null || true
+pkill -TERM -f "nemoclaw-mcp-server" 2>/dev/null || true
 
 exit 0
