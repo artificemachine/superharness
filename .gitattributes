@@ -1,0 +1,13 @@
+# CHANGELOG.md is append-only: every change adds a line at EOF, so concurrent
+# branches conflict there and only there. A union merge keeps both sides instead
+# of stopping every parallel PR on a conflict that is never a real disagreement.
+#
+# CAVEAT: union keeps both sides but does NOT order them. Merging main into a
+# branch puts the branch's newer lines *before* main's, which breaks the
+# byte-prefix rule that check-changelog-append-only.sh enforces — a silent
+# wrong answer where the conflict would have been loud. Hand-resolving has the
+# same trap (the markers present "ours" first), so this is not an argument for
+# dropping the driver. It is why tests/contract/test_changelog_append_only.py
+# exists: it verifies the prefix property against the merge base and runs in
+# the pre-commit fast subset, so a misorder fails in seconds rather than in CI.
+CHANGELOG.md merge=union

@@ -13,9 +13,11 @@ import time
 from datetime import datetime, timezone
 
 from superharness.engine.db import get_connection, init_db
-from superharness.engine import discussions_dao
+from superharness.engine import discussions_dao, inbox_dao
 from superharness.engine.errors import OperationError, SuperharnessError, UsageError, handle_cli_error
+from superharness.engine.state_errors import StateError
 from superharness.engine.process import pid_alive, signal_process_group
+from superharness.utils.paths import StateDatabaseConflictError
 
 import logging
 logger = logging.getLogger(__name__)
@@ -170,6 +172,34 @@ def cmd_submit_round(
             now=now,
         )
 
+        # Re-check status now that we hold the write lock. The gate above ran
+        # in autocommit (the implicit BEGIN starts at the INSERT), so a
+        # concurrent final submitter can have transitioned this discussion to
+        # consensus between that read and our write — landing this round in a
+        # closed discussion and re-firing the consensus transition.
+        current = discussions_dao.get(conn, disc_id)
+        if not current or current.status != "active":
+            conn.rollback()
+            raise OperationError(
+                f"Discussion is no longer active (status={current.status if current else 'gone'}) "
+                f"— it transitioned while this submission was in flight",
+                exit_code=1,
+            )
+
+        # A manually joined agent consumes the same shared-inbox item that an
+        # auto-dispatched agent would. Mark it done atomically with the reply so
+        # cold-start discovery has an explicit receipt/consumption record.
+        acknowledged_inbox_ids = []
+        task_id = f"{disc_id}/round-{round_}"
+        for item in inbox_dao.get_all(conn, target_agent=agent):
+            if (
+                item.task_id == task_id
+                and item.type == "discussion"
+                and item.status in {"pending", "claimed", "launched", "paused"}
+            ):
+                inbox_dao.mark_done(conn, item.id, now=now)
+                acknowledged_inbox_ids.append(item.id)
+
         # Auto-transition to consensus if all participants submitted
         _check_all_submitted_and_set_consensus(conn, disc, round_, project_dir=project_dir)
 
@@ -177,7 +207,18 @@ def cmd_submit_round(
     finally:
         conn.close()
 
-    print(json.dumps({"submitted": True, "round": round_, "agent": agent, "verdict": verdict}, separators=(", ", ": ")))
+    print(
+        json.dumps(
+            {
+                "submitted": True,
+                "round": round_,
+                "agent": agent,
+                "verdict": verdict,
+                "acknowledged_inbox_ids": acknowledged_inbox_ids,
+            },
+            separators=(", ", ": "),
+        )
+    )
     return 0
 
 
@@ -225,10 +266,15 @@ def _check_all_submitted_and_set_consensus(conn, disc, round_: int, project_dir:
         return
 
     submitted_agents = {a for a in verdicts_by_agent if a in agent_participants}
-    conn.execute(
-        "UPDATE discussions SET status='consensus', consensus=? WHERE id=?",
+    # Guard on status='active' so the transition is once-only: a re-entrant
+    # check (e.g. a straggler submit racing the final submitter) must not
+    # re-fire task creation against an already consensus'd discussion.
+    cur = conn.execute(
+        "UPDATE discussions SET status='consensus', consensus=? WHERE id=? AND status='active'",
         (f"consensus — all {len(submitted_agents)} participants submitted round {round_}", disc.id),
     )
+    if cur.rowcount == 0:
+        return
     print(
         f"[discussion] auto-consensus: all {len(submitted_agents)} participants submitted round {round_} → consensus",
         file=sys.stderr,
@@ -615,6 +661,7 @@ def cmd_status(discussion_dir: str) -> int:
                     submissions.append({
                         "agent": r.agent,
                         "verdict": r.verdict,
+                        "position": r.content,
                         "submitted_at": r.created_at,
                     })
             rounds_info.append({"round": rn, "submissions": submissions})
@@ -1040,5 +1087,9 @@ def main(argv: list[str] | None = None) -> None:
 if __name__ == "__main__":
     try:
         main()
+    except StateDatabaseConflictError as e:
+        handle_cli_error(OperationError(str(e), exit_code=1))
+    except StateError as e:
+        handle_cli_error(OperationError(str(e), exit_code=1))
     except SuperharnessError as e:
         handle_cli_error(e)

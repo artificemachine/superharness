@@ -6,7 +6,10 @@ import sqlite3
 
 import pytest
 
-from superharness.utils.paths import resolve_xdg_state_db_path
+from superharness.utils.paths import (
+    StateDatabaseConflictError,
+    resolve_xdg_state_db_path,
+)
 
 
 def _touch_db(path: str) -> None:
@@ -29,8 +32,7 @@ def test_has_sqlite_db_true_when_xdg_path_exists(monkeypatch, tmp_path):
 
 
 def test_has_sqlite_db_true_when_legacy_path_exists(monkeypatch, tmp_path):
-    state_dir = str(tmp_path / "xdg_state_empty")
-    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", state_dir)
+    monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
 
     project = str(tmp_path / "proj")
     legacy = os.path.join(project, ".superharness", "state.sqlite3")
@@ -38,6 +40,17 @@ def test_has_sqlite_db_true_when_legacy_path_exists(monkeypatch, tmp_path):
 
     from superharness.engine.state_reader import _has_sqlite_db
     assert _has_sqlite_db(project) is True
+
+
+def test_has_sqlite_db_refuses_override_with_legacy_state(monkeypatch, tmp_path):
+    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", str(tmp_path / "shared"))
+    project = str(tmp_path / "proj")
+    legacy = os.path.join(project, ".superharness", "state.sqlite3")
+    _touch_db(legacy)
+
+    from superharness.engine.state_reader import _has_sqlite_db
+    with pytest.raises(StateDatabaseConflictError):
+        _has_sqlite_db(project)
 
 
 def test_has_sqlite_db_false_when_neither_exists(monkeypatch, tmp_path):

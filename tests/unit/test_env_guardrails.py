@@ -25,5 +25,6 @@ def test_guardrail_accepts_tmp_state_dir(monkeypatch, tmp_path):
 
 def test_guardrail_rejects_unset_env(monkeypatch):
     monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
-    with pytest.raises(RuntimeError, match="SUPERHARNESS_STATE_DIR"):
+    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+    with pytest.raises(RuntimeError, match="SUPERHARNESS_STATE_DIR and XDG_STATE_HOME"):
         _assert_ephemeral_state_dir()

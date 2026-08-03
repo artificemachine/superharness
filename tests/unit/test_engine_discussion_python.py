@@ -223,6 +223,27 @@ def test_list_discussions(tmp_path: Path) -> None:
     assert len(data) == 2
 
 
+def test_list_state_conflict_is_clean_cli_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = tmp_path / "project"
+    discussions_dir = project / ".superharness" / "discussions"
+    discussions_dir.mkdir(parents=True)
+    (project / ".superharness" / "state.sqlite3").touch()
+
+    selected_state = tmp_path / "selected-state"
+    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", str(selected_state))
+
+    result = _run_discussion(
+        "list", ["--discussions-dir", str(discussions_dir)]
+    )
+
+    assert result.returncode == 1
+    assert "Refusing to create or open another state database" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert not selected_state.exists()
+
+
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_close_discussion(tmp_path: Path) -> None:
     discussions_dir = tmp_path / "discussions"

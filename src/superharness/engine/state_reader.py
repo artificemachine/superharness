@@ -20,20 +20,14 @@ import re
 import sys
 from typing import Any
 
-from superharness.utils.paths import resolve_xdg_state_db_path
+from superharness.utils.paths import resolve_active_state_db_path
 
 logger = logging.getLogger(__name__)
 
 
 def _has_sqlite_db(project_dir: str) -> bool:
-    """Return True if a state db exists at the XDG path or the legacy path."""
-    # Honor the worktree-dispatch override so reads from an ephemeral worktree
-    # still find the original project's DB — db.get_connection uses the same env.
-    effective = os.environ.get("SUPERHARNESS_STATE_PROJECT", "").strip() or project_dir
-    return (
-        os.path.exists(resolve_xdg_state_db_path(effective))
-        or os.path.exists(os.path.join(effective, ".superharness", "state.sqlite3"))
-    )
+    """Return True if the canonically selected state database exists."""
+    return os.path.isfile(resolve_active_state_db_path(project_dir))
 
 
 def _get_backend(project_dir: str) -> str:
@@ -430,5 +424,3 @@ def parse_iso_utc(raw: str):
 
 # Legacy alias kept for internal compatibility
 _parse_iso_utc = parse_iso_utc
-
-

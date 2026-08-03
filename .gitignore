@@ -53,6 +53,9 @@ json
 .superharness/state.sqlite3
 .superharness/state.sqlite3-shm
 .superharness/state.sqlite3-wal
+# Pre-migration backups (schema v36+ writes these next to the DB itself)
+*.sqlite3.bak.v*
+*.db.bak.v*
 
 # JSONL event stream — runtime data, not source
 .superharness/events.jsonl
@@ -85,3 +88,8 @@ docs/audits/golive-*
 docs/audits/branch-recovery-*
 # Evidence backing the ignored audits above (agent transcripts, captured state)
 docs/discussions/
+
+# ── /to-agents backup files ──
+# Duplicates what git history already preserves; never commit these.
+.to-agents/
+*.bak-to-agents-*
