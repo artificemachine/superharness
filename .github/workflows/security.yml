@@ -10,6 +10,50 @@ permissions:
   contents: read
 
 jobs:
+  # Gitleaks — the industry-standard secret scanner. Catches real secrets,
+  # keys, and high-entropy strings that ShipGuard's rule set does not see.
+  # Scans the full history on PRs (fetch-depth: 0) so a secret already
+  # committed in a branch is caught before merge, not only at the diff.
+  # Job is required by branch protection (required_status_checks "Gitleaks").
+  #
+  # Runs the MIT-licensed gitleaks BINARY directly rather than the
+  # gitleaks-action wrapper: since v2, the action requires a paid
+  # GITLEAKS_LICENSE for organization repos ("[org] is an organization.
+  # License key is required.") even though the scanner itself is free.
+  gitleaks:
+    name: Gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks (MIT-licensed CLI)
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz -o /tmp/gitleaks.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - name: Gitleaks secret scan
+        # Scan the PR's own commits only (base..head). A per-PR gate should
+        # catch NEW secrets, not re-litigate history — the full-history sweep
+        # flags long-standing test fixtures with fake tokens (e.g. the dummy
+        # ghp_abc/1234567890abcdef values in tests/unit/test_module_obsidian.py)
+        # on every PR. Base-sha comes from the PR event; on push-to-main the
+        # whole branch is scanned.
+        run: |
+          set -o pipefail
+          BASE="${{ github.event.pull_request.base.sha || github.sha }}"
+          gitleaks detect --source . --log-opts="${BASE}..HEAD" --redact --exit-code 1 --verbose | tee gitleaks-report.txt
+
+      - name: Upload gitleaks report
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.txt
+
   shipguard:
     name: ShipGuard Scan
     runs-on: ubuntu-latest

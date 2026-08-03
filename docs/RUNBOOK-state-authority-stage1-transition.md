@@ -14,7 +14,7 @@ shared path. Merge and rollout are separate owner decisions.
 
 Until Stage 2 is designed and approved:
 
-- **Same host, P510:** plain `shux` continues to use the local XDG database.
+- **Same host, <primary-workstation>:** plain `shux` continues to use the local XDG database.
   PM and prod-insider may use local `shux discuss` only
   while both participants keep an active read/respond loop on the discussion
   ID. A written round does not wake an idle session.
@@ -23,11 +23,11 @@ Until Stage 2 is designed and approved:
 - **`shuxx-talk` is FAILED/NON-RELIABLE** and must not be used for
   communication or as proof of delivery.
 - **Do not create**
-  `/mnt/pve/gs-nas/yjjoe-workspace/Anthropic/root/.claude/shux-shared/<hash>/state.db`.
+  `<NAS-MOUNT>/<owner-workspace>/.claude/shux-shared/<hash>/state.db`.
   In particular, do not test the candidate build through a wrapper that exports
   that state directory.
 - No host may set `SUPERHARNESS_STATE_DIR` to
-  `/mnt/pve/gs-nas/yjjoe-workspace/Anthropic/root/.claude/shux-shared` before
+  `<NAS-MOUNT>/<owner-workspace>/.claude/shux-shared` before
   the separate Stage 2 owner decision.
 - Existing XDG and legacy databases remain independent historical authorities.
   Do not merge, copy, or select between them implicitly.
@@ -36,7 +36,7 @@ Until Stage 2 is designed and approved:
 
 No cutover starts until an owner-approved window is declared.
 
-1. On P510, vm740, and Max's site-B host, record:
+1. On <primary-workstation>, <shared-router-host>, and the owner's remote host, record:
    - installed Superharness version and wrapper version;
    - project realpath and computed project hash;
    - resolved database path with and without `SUPERHARNESS_STATE_DIR`;
@@ -63,10 +63,10 @@ No cutover starts until an owner-approved window is declared.
 
 ## Future synchronized rollout
 
-Activation is a separate owner decision. P510, vm740, and site-B must receive
-the same reviewed Superharness build and matching wrapper behavior in one
-window. The wrapper is delivered separately because it is outside this
-repository.
+Activation is a separate owner decision. The primary workstation, the shared
+router host, and the remote host must receive the same reviewed Superharness
+build and matching wrapper behavior in one window. The wrapper is delivered
+separately because it is outside this repository.
 
 Before unfreezing, verify on every host that:
 
