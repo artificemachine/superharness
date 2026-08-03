@@ -57,7 +57,9 @@ class OperatorMemory:
             Path(self._db_path).parent.mkdir(parents=True, exist_ok=True)
             self._conn = sqlite3.connect(self._db_path)
             self._conn.row_factory = sqlite3.Row
-            self._conn.execute("PRAGMA journal_mode=WAL")
+            # Network-aware journal mode (WAL corrupts on NFS); mirrors get_connection.
+            from superharness.engine.db import _resolve_journal_mode
+            self._conn.execute(f"PRAGMA journal_mode={_resolve_journal_mode(self._db_path)}")
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._conn.execute("PRAGMA busy_timeout=5000")
         return self._conn
