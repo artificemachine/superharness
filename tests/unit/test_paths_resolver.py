@@ -7,6 +7,7 @@ resolvers in follow-up work.
 from __future__ import annotations
 
 import os
+import re
 
 import pytest
 
@@ -20,6 +21,7 @@ from superharness.utils.paths import (
     resolve_xdg_state_db_path,
     is_project_initialized,
     resolve_active_state_db_path,
+    StateDatabaseConflictError,
 )
 
 
@@ -174,8 +176,7 @@ def test_is_project_initialized_true_when_xdg_db_exists(monkeypatch, tmp_path):
 
 def test_is_project_initialized_true_when_legacy_db_exists(monkeypatch, tmp_path):
     import sqlite3 as _sqlite3
-    state_dir = str(tmp_path / "xdg_state_empty")
-    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", state_dir)
+    monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
     project = str(tmp_path / "proj")
     legacy = os.path.join(project, ".superharness", "state.sqlite3")
     os.makedirs(os.path.dirname(legacy), exist_ok=True)
@@ -206,7 +207,7 @@ def test_resolve_active_state_db_path_returns_xdg_when_xdg_exists(monkeypatch, t
     assert resolve_active_state_db_path(project) == xdg_path
 
 
-def test_resolve_active_state_db_path_returns_legacy_when_only_legacy_exists(monkeypatch, tmp_path):
+def test_explicit_state_dir_refuses_legacy_fallback(monkeypatch, tmp_path):
     import sqlite3 as _sqlite3
     state_dir = str(tmp_path / "xdg_state_empty")
     monkeypatch.setenv("SUPERHARNESS_STATE_DIR", state_dir)
@@ -214,7 +215,8 @@ def test_resolve_active_state_db_path_returns_legacy_when_only_legacy_exists(mon
     legacy = os.path.join(project, ".superharness", "state.sqlite3")
     os.makedirs(os.path.dirname(legacy), exist_ok=True)
     _sqlite3.connect(legacy).close()
-    assert resolve_active_state_db_path(project) == legacy
+    with pytest.raises(StateDatabaseConflictError, match="Refusing to create or open"):
+        resolve_active_state_db_path(project)
 
 
 def test_resolve_active_state_db_path_returns_xdg_for_new_project(monkeypatch, tmp_path):
@@ -227,13 +229,61 @@ def test_resolve_active_state_db_path_returns_xdg_for_new_project(monkeypatch, t
 
 
 def test_resolve_active_state_db_path_returns_legacy_when_sh_dir_exists(monkeypatch, tmp_path):
-    state_dir = str(tmp_path / "xdg_state_empty")
-    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", state_dir)
+    monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
     project = str(tmp_path / "proj")
     # .superharness/ dir exists but no db yet — backward-compat with shux init
     os.makedirs(os.path.join(project, ".superharness"))
     expected = os.path.join(project, ".superharness", "state.sqlite3")
     assert resolve_active_state_db_path(project) == expected
+
+
+def test_explicit_state_dir_is_authoritative_before_db_exists(monkeypatch, tmp_path):
+    state_dir = str(tmp_path / "shared_state")
+    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", state_dir)
+    project = str(tmp_path / "proj")
+
+    expected = os.path.join(state_dir, project_hash(project), "state.db")
+    assert not os.path.exists(expected)
+    assert resolve_active_state_db_path(project) == expected
+    assert not os.path.exists(expected)
+
+
+def test_explicit_state_dir_refuses_ambient_xdg_state(monkeypatch, tmp_path):
+    import sqlite3 as _sqlite3
+
+    xdg_home = tmp_path / "ambient"
+    override = tmp_path / "shared"
+    monkeypatch.setenv("XDG_STATE_HOME", str(xdg_home))
+    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", str(override))
+    project = str(tmp_path / "proj")
+    ambient_db = (
+        xdg_home / "superharness" / project_hash(project) / "state.db"
+    )
+    ambient_db.parent.mkdir(parents=True)
+    _sqlite3.connect(ambient_db).close()
+
+    with pytest.raises(
+        StateDatabaseConflictError,
+        match=re.escape(str(ambient_db)),
+    ):
+        resolve_active_state_db_path(project)
+    assert not (override / project_hash(project) / "state.db").exists()
+
+
+def test_plain_resolution_keeps_xdg_first_when_legacy_also_exists(monkeypatch, tmp_path):
+    import sqlite3 as _sqlite3
+
+    monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "ambient"))
+    project = str(tmp_path / "proj")
+    xdg_path = resolve_xdg_state_db_path(project)
+    legacy = os.path.join(project, ".superharness", "state.sqlite3")
+    os.makedirs(os.path.dirname(xdg_path), exist_ok=True)
+    os.makedirs(os.path.dirname(legacy), exist_ok=True)
+    _sqlite3.connect(xdg_path).close()
+    _sqlite3.connect(legacy).close()
+
+    assert resolve_active_state_db_path(project) == xdg_path
 
 
 # ── Iter 12 RED: resolve_state_db_path must delegate to resolve_active_state_db_path ─

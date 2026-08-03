@@ -122,6 +122,75 @@ jobs:
           PYTHONPATH: src
           PYTHONUTF8: "1"
 
+  # ---------------------------------------------------------------------------
+  # TRIAL, NON-BLOCKING. Deliberately absent from qa-gate's `needs` list below,
+  # so it reports but cannot gate a merge. Branch protection requires only
+  # "QA Gate" and "Windows-Native Release Gate".
+  #
+  # Purpose: gather a track record for pytest-xdist before adopting it. Measured
+  # once on macOS 10-core (serial 12:48 -> 4:53, 2.6x, zero parallel-induced
+  # failures), and one green run is not a track record. Windows is the real
+  # target: that leg runs 17-19 min and is spawn-bound on ~199 real subprocess
+  # spawns, so it should benefit most.
+  #
+  # --dist loadfile is NOT optional. Bare `-n auto` CRASHES this suite with
+  # INTERNALERROR/worker death, because tests here kill PIDs and a bare
+  # distribution can schedule a killer and its victim into different workers.
+  # loadfile pins every test in a file to one worker, which keeps those pairs
+  # together. If this job is ever promoted to required, keep the flag.
+  #
+  # No --cov here, unlike the serial job. That is deliberate but it means the
+  # WALL-CLOCK NUMBERS ARE NOT DIRECTLY COMPARABLE to the serial job, which
+  # pays coverage overhead. The primary signal being gathered is CORRECTNESS
+  # (does the suite pass under parallel execution, repeatedly), not a precise
+  # speedup figure. Coverage is omitted because pytest-cov under xdist writes
+  # one parallel data file per worker, and a coverage-data-file corruption
+  # (`no such table: file`) is exactly what produced a spurious INTERNALERROR
+  # on the serial ubuntu leg on 2026-08-02 — mixing that in would confound the
+  # very thing this job is meant to measure. Add --cov before promoting.
+  #
+  # pytest-xdist is deliberately NOT added to pyproject.toml's dev group: it is
+  # installed here explicitly so the trial leaves no trace to unwind. Declaring
+  # it is the adoption step, not the trial step.
+  #
+  # Promote or delete after ~1 week of signal — a permanently-ignored red job
+  # is worse than no job.
+  # ---------------------------------------------------------------------------
+  unit-tests-parallel:
+    name: "Unit Tests — xdist trial, non-blocking (${{ matrix.os }})"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # ubuntu = cheap correctness signal, windows = the leg the speedup is for.
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3 # v5.2.0
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pytest pytest-cov pytest-timeout pytest-xdist pyyaml click ruamel.yaml && pip install -e .
+
+      - name: Run unit tests in parallel (Linux)
+        if: runner.os != 'Windows'
+        run: python3 -m pytest tests/unit -q --timeout=120 -n auto --dist loadfile
+        env:
+          PYTHONPATH: src
+          PYTHONUTF8: "1"
+
+      - name: Run unit tests in parallel (Windows — no per-test timeout)
+        if: runner.os == 'Windows'
+        # Same pytest-timeout/Windows-scheduler reason as the serial job above.
+        run: python3 -m pytest tests/unit -q -n auto --dist loadfile
+        env:
+          PYTHONPATH: src
+          PYTHONUTF8: "1"
+
   integration-tests:
     name: Integration Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

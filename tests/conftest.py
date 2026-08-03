@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import sys
@@ -57,11 +58,16 @@ def _superharness_logger_propagates(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def isolated_state_dir(tmp_path_factory, monkeypatch):
-    """Point SUPERHARNESS_STATE_DIR at a per-test directory.
+def isolated_state_dir(tmp_path, monkeypatch):
+    """Point XDG_STATE_HOME at a per-test directory.
 
     `get_connection(project_dir)` resolves the db to
-    `<state_dir>/<sha256(abspath(project_dir))[:12]>/state.db`. `state_dir`
+    `<state_home>/superharness/<sha256(abspath(project_dir))[:12]>/state.db`.
+    The production-only SUPERHARNESS_STATE_DIR override is intentionally not
+    used here: it now means an authoritative state-root selection and must fail
+    closed when a fixture intentionally creates legacy state.
+
+    The normal state dir
     defaults to `~/.local/state/superharness`, which lives outside `tmp_path`
     and persists indefinitely.
 
@@ -75,25 +81,61 @@ def isolated_state_dir(tmp_path_factory, monkeypatch):
     Set via the environment (not just in-process) because many tests spawn
     `python -m superharness...` subprocesses that inherit os.environ.
     """
-    state_dir = tmp_path_factory.mktemp("superharness-state")
-    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", str(state_dir))
-    yield state_dir
+    state_home = tmp_path / "superharness-state-home"
+    state_home.mkdir()
+    monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
+    monkeypatch.setenv("XDG_STATE_HOME", str(state_home))
+    yield state_home / "superharness"
+
+
+# Git resolves these ahead of both `cwd=` and `git -C`, so while any one of them
+# is set every git call in the suite retargets whatever repo it names, no matter
+# how carefully the call site is scoped. Git exports them into the environment of
+# every hook it runs, and `.project-hooks/pre-commit` runs this suite — so a plain
+# `git commit` in this repo made correctly-scoped tests rewrite the real
+# .git/config (core.bare, core.hooksPath, user.identity) and push junk commits and
+# stashes into real history. See docs/bugs/BUG-2026-07-31-test-suite-git-dir-escape.md.
+_GIT_ENV_VARS = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_COMMON_DIR",
+    "GIT_CEILING_DIRECTORIES",
+    "GIT_PREFIX",
+)
+
+
+@pytest.fixture(autouse=True)
+def isolated_git_env(monkeypatch):
+    """Strip inherited git plumbing vars so tests cannot reach the real repo.
+
+    Set via monkeypatch.delenv (not just in-process) because tests spawn git and
+    `python -m superharness...` subprocesses that inherit os.environ.
+    """
+    for var in _GIT_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
 
 
 def _assert_ephemeral_state_dir() -> None:
-    """Fail fast if SUPERHARNESS_STATE_DIR does not point at an ephemeral tmp path.
+    """Fail fast unless the selected state root is an ephemeral tmp path.
 
     Defense-in-depth against the PR #12 bug class (test state leaking into
     $HOME / a real ~/.local/state/superharness). `isolated_state_dir` above
-    already pins every test to a `tmp_path_factory` directory; this guard
-    exists so a test that deliberately (or accidentally) overrides
-    SUPERHARNESS_STATE_DIR to a non-ephemeral path fails loudly before any
-    DB write, instead of silently mutating real state.
+    pins XDG_STATE_HOME to a per-test `tmp_path` directory without asserting
+    the production-authority semantics of SUPERHARNESS_STATE_DIR. A test may
+    still set that explicit override, but either selected root must remain
+    ephemeral.
     """
-    raw = os.environ.get("SUPERHARNESS_STATE_DIR")
+    explicit = os.environ.get("SUPERHARNESS_STATE_DIR")
+    xdg_home = os.environ.get("XDG_STATE_HOME")
+    raw = explicit or xdg_home
+    env_name = "SUPERHARNESS_STATE_DIR" if explicit else "XDG_STATE_HOME"
     if not raw:
         raise RuntimeError(
-            "SUPERHARNESS_STATE_DIR is unset — tests must pin state dir to an "
+            "SUPERHARNESS_STATE_DIR and XDG_STATE_HOME are unset — tests must "
+            "pin state to an "
             "ephemeral tmp path (see isolated_state_dir fixture in conftest.py)"
         )
     resolved = Path(raw).resolve()
@@ -107,7 +149,7 @@ def _assert_ephemeral_state_dir() -> None:
     )
     if not is_ephemeral:
         raise RuntimeError(
-            f"SUPERHARNESS_STATE_DIR resolves to a non-ephemeral path: "
+            f"{env_name} resolves to a non-ephemeral path: "
             f"{resolved_str!r}. Tests must target a tmp_path-derived "
             "directory, never a real state directory."
         )
@@ -118,8 +160,8 @@ def _state_dir_guardrail(isolated_state_dir):
     """Autouse guard run after isolated_state_dir sets an ephemeral env var.
 
     Function-scoped (not session-scoped): it must run after per-test env
-    setup, and must observe overrides individual tests make to
-    SUPERHARNESS_STATE_DIR via monkeypatch.
+    setup, and must observe overrides individual tests make to either
+    SUPERHARNESS_STATE_DIR or XDG_STATE_HOME via monkeypatch.
     """
     _assert_ephemeral_state_dir()
     yield
@@ -206,3 +248,107 @@ def past_iso(minutes_ago: int) -> str:
     """
     from datetime import datetime, timedelta, timezone
     return (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# --------------------------------------------------------------------------
+# Hermeticity: the suite must not mutate the repository it is running from.
+#
+# On 2026-07-31 it did, twice. Tests scoped correctly with cwd=/git -C still
+# wrote to the real .git because GIT_DIR is inherited from the hook environment
+# and outranks both. That set core.bare=true (breaking `git status` repo-wide),
+# pointed core.hooksPath at /dev/null (silently disabling the secret scan, SAST,
+# path and CHANGELOG guards), rewrote the git identity, and pushed junk commits
+# and a stash into real history. Worktrees share .git/config, so one worktree's
+# commit corrupted every checkout.
+#
+# isolated_git_env removes the cause. This is the detector: if some future path
+# reaches the real repository by any route, a test fails immediately and names
+# what moved, instead of the damage being discovered days later by a puzzled
+# `git status`. Same role _state_dir_guardrail plays for the state directory.
+#
+# Deliberately a metadata fingerprint rather than `git status --porcelain`:
+# a few small file reads cost microseconds, and this runs before and after every
+# one of ~5000 tests. A full status call would add ~20 minutes to the suite.
+# --------------------------------------------------------------------------
+
+def _repo_fingerprint() -> dict[str, str] | None:
+    """Cheap snapshot of the real repo's git metadata.
+
+    None when there is no repo to protect (installed package, tarball, CI
+    checkout without .git), in which case the guard stands down.
+    """
+    git_dir = REPO_ROOT / ".git"
+    if git_dir.is_file():  # a linked worktree: .git is a pointer file
+        try:
+            target = git_dir.read_text().split("gitdir:", 1)[1].strip()
+        except (OSError, IndexError):
+            return None
+        git_dir = Path(target)
+    if not git_dir.is_dir():
+        return None
+
+    fp: dict[str, str] = {}
+    for name in ("config", "HEAD", "packed-refs"):
+        f = git_dir / name
+        try:
+            fp[name] = hashlib.sha256(f.read_bytes()).hexdigest() if f.exists() else "-"
+        except OSError:
+            fp[name] = "?"
+
+    # Branch/tag/stash refs, so a junk commit or stash shows up even when config
+    # is untouched. Ref *contents*, not just names: a commit landing on a branch
+    # that already exists moves its tip without adding a file, and that is exactly
+    # the junk-commit shape from the incident.
+    for sub in ("refs/heads", "refs/tags"):
+        d = git_dir / sub
+        try:
+            entries = (
+                sorted(
+                    f"{p.relative_to(d)}={p.read_text().strip()}"
+                    for p in d.rglob("*")
+                    if p.is_file()
+                )
+                if d.is_dir()
+                else []
+            )
+        except OSError:
+            entries = ["?"]
+        fp[sub] = hashlib.sha256(",".join(entries).encode()).hexdigest()
+
+    stash = git_dir / "refs/stash"
+    try:
+        fp["refs/stash"] = stash.read_text().strip() if stash.exists() else "absent"
+    except OSError:
+        fp["refs/stash"] = "?"
+    return fp
+
+
+_REPO_FP_LABELS = {
+    "config": ".git/config was rewritten (core.bare / core.hooksPath / user identity)",
+    "HEAD": ".git/HEAD moved — a commit or checkout landed on the real repo",
+    "packed-refs": "packed-refs changed",
+    "refs/heads": "a branch was created, deleted, or moved on the real repo",
+    "refs/tags": "a tag was created or deleted on the real repo",
+    "refs/stash": "a stash was pushed or dropped on the real repo",
+}
+
+
+@pytest.fixture(autouse=True)
+def _real_repo_untouched():
+    """Fail the test that mutates the repository the suite runs from."""
+    before = _repo_fingerprint()
+    yield
+    if before is None:
+        return
+    after = _repo_fingerprint()
+    if after is None or after == before:
+        return
+    changed = [k for k in before if before[k] != after.get(k)]
+    detail = "; ".join(_REPO_FP_LABELS.get(k, k) for k in changed)
+    raise AssertionError(
+        f"this test mutated the real repository at {REPO_ROOT}: {detail}. "
+        f"Tests must operate on tmp_path fixtures only. Check for inherited "
+        f"GIT_DIR/GIT_WORK_TREE (see isolated_git_env) or a git call with "
+        f"neither cwd= nor -C, which lands in the process working directory. "
+        f"See docs/bugs/BUG-2026-07-31-test-suite-git-dir-escape.md"
+    )

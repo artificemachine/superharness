@@ -102,10 +102,9 @@ def test_get_connection_creates_at_xdg_for_new_project(monkeypatch, tmp_path):
 
 
 def test_get_connection_uses_legacy_when_only_legacy_exists(monkeypatch, tmp_path):
-    """Existing projects with .superharness/state.sqlite3 continue to work unchanged."""
+    """Plain resolution keeps legacy compatibility when no XDG db exists."""
     from superharness.engine.db import get_connection, init_db
-    state_dir = str(tmp_path / "xdg_state_empty")
-    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", state_dir)
+    monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
 
     project = str(tmp_path / "oldproject")
     legacy_dir = os.path.join(project, ".superharness")
@@ -123,10 +122,10 @@ def test_get_connection_uses_legacy_when_only_legacy_exists(monkeypatch, tmp_pat
 
 
 def test_get_connection_prefers_xdg_when_both_exist(monkeypatch, tmp_path):
-    """When both paths have a db, XDG wins (newer install)."""
+    """Without an explicit override, XDG still wins over residual legacy state."""
     from superharness.engine.db import get_connection, init_db
-    state_dir = str(tmp_path / "xdg_state")
-    monkeypatch.setenv("SUPERHARNESS_STATE_DIR", state_dir)
+    monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg-home"))
 
     project = str(tmp_path / "dualproject")
     legacy_dir = os.path.join(project, ".superharness")
