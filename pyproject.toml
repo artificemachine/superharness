@@ -62,6 +62,11 @@ superharness = [
 dev = [
     "pytest>=9.0,<10",
     "pytest-cov>=7.0.0",
+    # Required by the Linux/macOS unit job in .github/workflows/tests.yml,
+    # which passes --timeout=120. CI installed it ad hoc via pip while it was
+    # declared nowhere, so a local `uv sync` produced an environment that
+    # could not run the CI command.
+    "pytest-timeout>=2.4",
 ]
 
 [tool.pytest.ini_options]
