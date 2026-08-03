@@ -43,8 +43,10 @@ class TestInstallHooks:
             for entry in data["hooks"].get("Stop", [])
             for h in entry.get("hooks", [])
         ]
+        # Post issue #92 (2026-08-03): Stop slot binds to session-turn-end
+        # (turn-safe snapshot only), not session-stop (DEPRECATED monolith).
         # Written as a stable `shux hook <name>` command, not a baked script path.
-        assert any(cmd.strip().endswith("hook session-stop") for cmd in stop_cmds), stop_cmds
+        assert any(cmd.strip().endswith("hook session-turn-end") for cmd in stop_cmds), stop_cmds
         # Must not contain the template variable, a version-baked venv path, or a
         # trailing .sh — those are exactly the fragilities the stable form removes.
         for cmd in stop_cmds:
@@ -76,11 +78,23 @@ class TestInstallHooks:
             for entry in data["hooks"].get("Stop", [])
             for h in entry.get("hooks", [])
         ]
-        session_stop_count = sum(1 for c in stop_cmds if c.strip().endswith("hook session-stop"))
-        assert session_stop_count == 1, f"Expected 1 session-stop entry, got {session_stop_count}: {stop_cmds}"
+        # Post issue #92 (2026-08-03): Stop slot binds to session-turn-end.
+        session_turn_end_count = sum(
+            1 for c in stop_cmds if c.strip().endswith("hook session-turn-end"))
+        assert session_turn_end_count == 1, (
+            f"Expected 1 session-turn-end entry, got {session_turn_end_count}: {stop_cmds}"
+        )
 
     def test_updates_stale_hardcoded_path(self, tmp_path: Path, repo_root: Path) -> None:
-        """If settings.json already has a session-stop.sh entry with wrong path, it gets updated."""
+        """Legacy session-stop.sh entries get rewritten to session-turn-end on re-install.
+
+        Regression for the install-path half of issue #92: a settings.json
+        from before the Stop-hook split has `bash .../session-stop.sh` baked
+        in. Without legacy-alias matching in install_hooks, re-running
+        install-hooks would ADD `shux hook session-turn-end` alongside the
+        stale session-stop entry → two Stop hooks fire every turn (the
+        legacy monolith's destructive side-effects plus the new turn-safe
+        snapshot). The legacy-alias map prevents that."""
         hooks_dir = repo_root / "adapters" / "claude-code" / "hooks"
         settings = tmp_path / "settings.json"
         # Write settings with a stale hardcoded path
@@ -105,9 +119,12 @@ class TestInstallHooks:
         ]
         assert all("otheruser" not in cmd for cmd in stop_cmds), \
             f"Stale path not updated: {stop_cmds}"
-        # Upgraded in place to the stable command form (no baked path at all).
-        assert any(cmd.strip().endswith("hook session-stop") for cmd in stop_cmds), \
-            f"Expected stable `hook session-stop` command in: {stop_cmds}"
+        # Upgraded in place to the stable command form (no baked path at all),
+        # AND migrated from the legacy session-stop name to session-turn-end.
+        assert any(cmd.strip().endswith("hook session-turn-end") for cmd in stop_cmds), \
+            f"Expected stable `hook session-turn-end` command in: {stop_cmds}"
+        assert not any("session-stop" in cmd for cmd in stop_cmds), \
+            f"Legacy session-stop entry must be migrated away, still present: {stop_cmds}"
 
     def test_preserves_unrelated_hooks(self, tmp_path: Path, repo_root: Path) -> None:
         hooks_dir = repo_root / "adapters" / "claude-code" / "hooks"
