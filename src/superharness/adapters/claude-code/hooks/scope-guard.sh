@@ -41,6 +41,18 @@ EOF
     ;;
 esac
 
+# Claude Code's own managed workspace temp (scratchpad, tool-results, tasks)
+# lives under /tmp/claude-<uid>/. It is a sanctioned agent work area, not a
+# user "system file" — allow silently so create/edit there never prompts.
+# The sensitive-file deny above still runs first, so a stray *.key / *.env
+# inside the scratchpad is still blocked.
+case "$FILE_PATH" in
+  /tmp/claude-*/*)
+    echo '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}'
+    exit 0
+    ;;
+esac
+
 # Warn if modifying files outside the project
 case "$FILE_PATH" in
   /etc/*|/usr/*|/var/*|/tmp/*)
