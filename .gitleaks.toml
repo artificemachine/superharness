@@ -1,0 +1,15 @@
+# Gitleaks configuration — direct-binary CI scan (see .github/workflows/security.yml)
+# MIT-licensed scanner; the paid action wrapper is avoided deliberately.
+# Default rules: known secret formats (AWS/GitHub/Stripe keys, PEM blocks,
+# generic API tokens) plus high-entropy strings.
+
+[extend]
+useDefault = true
+
+# Test fixtures deliberately contain fake credential patterns (AWS key
+# fixtures, PEM blocks) to verify export-scrub and redact features.
+[allowlist]
+paths = [
+  '''tests/unit/test_paperclip_export_scrub.py''',
+  '''tests/unit/test_redact.py''',
+]
