@@ -29,61 +29,35 @@ HOOKS_DIR_ROOT = REPO_ROOT / "adapters" / "claude-code" / "hooks"
 HOOKS_DIR_SRC = REPO_ROOT / "src" / "superharness" / "adapters" / "claude-code" / "hooks"
 
 # ---------------------------------------------------------------------------
-# Known, already-real divergence between the two hook copies.
+# Resolved 2026-08-03 (issue #92): the two hook trees are now byte-identical.
 #
-# Measured fresh against this worktree on 2026-08-01 (not assumed from the
-# plan, which only asserted the two dirs "must stay byte-identical" per PR
-# #87's commit message — that sentence is unenforced and, per this
-# measurement, already false for 5 of 9 files). This is a real bug this
-# iteration surfaced, not fixed: the hard constraints for this task forbid
-# editing any hook file. Each entry below is the exact reason the pair
-# differs today; closing an entry (making the pair byte-identical again) is
-# separate follow-up work, not this iteration's job. This allowlist may
-# only shrink.
+# The src tree (src/superharness/adapters/claude-code/hooks/) is canonical.
+# Decision rationale, recorded for future readers who might wonder why the
+# src tree won and not the repo-root tree:
+#
+#   1. Project rule `state-backend` (run `shux rules`): "SQLite is SoT;
+#      contract/inbox/failures/decisions YAML are DEAD." The src copies
+#      read .superharness/state.sqlite3 via superharness.engine.state_reader
+#      / state_writer. The repo-root copies read .superharness/contract.yaml
+#      via PyYAML. The root direction was dead-code; adopting it would
+#      have violated the project's own SoT rule.
+#   2. The src tree implements the correct Stop/exit split:
+#      session-turn-end.sh is the turn-safe Stop hook (snapshot only);
+#      session-exit.sh handles true-session-exit side-effects (pkill,
+#      task auto-stop, inbox pause) and is NOT a Stop hook. The repo-root
+#      tree was the monolithic legacy design that fired destructive
+#      side-effects on every Stop event (every assistant turn).
+#   3. src/scope-guard.sh carries a *.env.example carve-out (the checked-in
+#      template has placeholder var names; it is not a secret).
+#
+# The repo-root tree is now a byte-identical copy maintained by
+# test_hook_copies_are_byte_identical below. The remaining DEPRECATED
+# session-stop.sh is preserved in both trees because legacy installs may
+# still reference it; both trees' hooks.json bind Stop -> session-turn-end.sh,
+# so the DEPRECATED script is no longer reachable via either install path
+# (issue #92 definition-of-done #2).
 # ---------------------------------------------------------------------------
-KNOWN_DIVERGENT_HOOK_FILES = {
-    # Root copy still wires the Stop-hook slot to session-stop.sh; the src
-    # copy wires the same slot to session-turn-end.sh. This is a live
-    # consequence of the session-stop.sh split below, not a formatting
-    # nit — the packaged (src) hook set and the repo-root hook set fire
-    # different scripts for the same event.
-    "hooks.json": (
-        "root wires Stop -> session-stop.sh, src wires Stop -> "
-        "session-turn-end.sh (see session-stop.sh entry)."
-    ),
-    # src copy carries a *.env.example carve-out (scope-guard must not
-    # block edits to the checked-in template) that the root copy lacks.
-    "scope-guard.sh": (
-        "src copy excludes *.env.example from the sensitive-file block; "
-        "root copy still blocks edits to it."
-    ),
-    # src copy was migrated off contract.yaml onto
-    # superharness.engine.state_reader / state.sqlite3; the root copy still
-    # parses .superharness/contract.yaml directly with a regex/PyYAML,
-    # which is dead per this repo's "State lives in SQLite" rule.
-    "session-start.sh": (
-        "root copy still reads .superharness/contract.yaml directly; src "
-        "copy reads via engine.state_reader against state.sqlite3 (root "
-        "predates the SQLite-source-of-truth migration)."
-    ),
-    # src copy is explicitly marked DEPRECATED in its own header ("do not
-    # register as a Stop hook... superseded by session-turn-end.sh +
-    # session-exit.sh"); the root copy has no such header and is still the
-    # full, active legacy implementation reading contract.yaml.
-    "session-stop.sh": (
-        "src copy is header-marked DEPRECATED (superseded by the "
-        "session-turn-end.sh + session-exit.sh split); root copy is the "
-        "old, still-active implementation with no deprecation notice."
-    ),
-    # src copy is the live half of the split described above and contains
-    # an extra pending-discussion-prompt surfacing block the root copy
-    # lacks entirely.
-    "session-turn-end.sh": (
-        "src copy has an extra 'surface pending discussion prompts' block "
-        "(reads $SH_DIR/discussions/*/round-*.prompt.md) the root copy "
-        "does not have."
-    ),
-}
+KNOWN_DIVERGENT_HOOK_FILES: dict[str, str] = {}
 
 
 def _repo_root() -> Path:

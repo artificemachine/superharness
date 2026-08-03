@@ -152,12 +152,16 @@ try:
         if not task_id:
             continue
 
-        # Write status to SQLite via state_writer (canonical path)
+        # Write status to SQLite via state_writer (canonical path).
+        # Only `stopped_at` is a real tasks column; the `stopped_reason`
+        # and `summary` strings are recorded in the handoff YAML below
+        # (passing them to set_task_status raised "no such column:
+        # stopped_reason" and was silently swallowed by the surrounding
+        # try/except, so the status never actually changed — bug caught
+        # 2026-08-03 while closing issue #92).
         try:
             state_writer.set_task_status(project_dir, task_id, "stopped",
-                stopped_at=timestamp,
-                stopped_reason="session_stopped",
-                summary=summary)
+                stopped_at=timestamp)
         except Exception:
             pass
 

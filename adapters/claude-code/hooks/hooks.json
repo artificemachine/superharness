@@ -52,7 +52,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/session-stop.sh",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/session-turn-end.sh",
             "timeout": 10
           }
         ]

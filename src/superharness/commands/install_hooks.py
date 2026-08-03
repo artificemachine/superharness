@@ -123,11 +123,11 @@ def _write_settings(settings_file: Path, data: dict) -> None:
 
 
 def _hook_name(command: str) -> str:
-    """Normalize a hook command to its bare hook name for identity matching.
-
-    Handles both the legacy form (``bash /abs/path/session-start.sh``) and the
-    stable form (``shux hook session-start``) — both normalize to
-    ``session-start`` so re-running install-hooks upgrades old entries in place.
+    """Normalize an existing settings.json hook command to its bare hook
+    name for identity matching. Handles both the legacy form
+    (``bash /abs/path/session-start.sh``) and the stable form
+    (``shux hook session-start``) — both normalize to ``session-start``
+    so re-running install-hooks upgrades old entries in place.
     """
     if not command.strip():
         return ""
@@ -136,6 +136,24 @@ def _hook_name(command: str) -> str:
 
 # Back-compat alias (older callers/tests referenced this name).
 _script_basename = _hook_name
+
+
+# Legacy hook-name → current hook-name. When a template entry's name has
+# legacy aliases, merge_hooks() treats an existing entry under any alias
+# as the same hook and rewrites it to the current name. Without this,
+# users who installed superharness before the session-stop/session-turn-end
+# split (issue #92, 2026-08-03) would end up with TWO Stop hooks after
+# upgrading — the legacy `bash .../session-stop.sh` (monolithic, fires
+# destructive side-effects every turn) alongside the new
+# `shux hook session-turn-end` (turn-safe snapshot only).
+LEGACY_HOOK_ALIASES: dict[str, tuple[str, ...]] = {
+    "session-turn-end": ("session-stop",),
+}
+
+
+def _alias_set(current_name: str) -> tuple[str, ...]:
+    """Return (current_name, *legacy_aliases) for identity matching."""
+    return (current_name,) + LEGACY_HOOK_ALIASES.get(current_name, ())
 
 
 def _shux_invocation() -> str:
@@ -176,12 +194,17 @@ def merge_hooks(settings: dict, hook_defs: dict, hooks_dir: str) -> tuple[dict, 
                 if not name:
                     continue
                 resolved_cmd = f"{shux} hook {name}"
+                # Identity-match against the current name AND any legacy
+                # aliases (so a pre-split `session-stop` entry gets rewritten
+                # to the current `session-turn-end` rather than lingering
+                # alongside it).
+                identities = _alias_set(name)
 
                 # Find existing hook entry by normalized name (upgrades legacy paths).
                 found = False
                 for existing_entry in settings["hooks"][event]:
                     for existing_hook in existing_entry.get("hooks", []):
-                        if name == _hook_name(existing_hook.get("command", "")):
+                        if _hook_name(existing_hook.get("command", "")) in identities:
                             old_cmd = existing_hook["command"]
                             existing_hook["command"] = resolved_cmd
                             existing_hook["timeout"] = template_hook.get("timeout", existing_hook.get("timeout", 5))

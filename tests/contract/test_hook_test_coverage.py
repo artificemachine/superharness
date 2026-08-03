@@ -24,36 +24,13 @@ UNIT_TESTS_DIR = REPO_ROOT / "tests" / "unit"
 # plan's prediction, per its own recheck instruction — the plan predicted
 # {ledger-append.sh, session-exit.sh, session-start.sh, session-turn-end.sh}
 # untested; reality is smaller: tests/unit/test_ledger_append.py and
-# tests/unit/test_session_start.py already exist, so only these two remain
-# gaps. This allowlist may only shrink — closing an entry means writing the
-# test, not deleting the line.
+# tests/unit/test_session_start.py already exist. Both remaining gaps were
+# closed 2026-08-03 by tests/unit/test_session_exit.py and
+# tests/unit/test_session_turn_end.py as part of issue #92's
+# definition-of-done #4. This allowlist may only shrink — closing an
+# entry means writing the test, not deleting the line.
 # ---------------------------------------------------------------------------
-KNOWN_UNTESTED = {
-    # No dedicated test exercises the hook's own behavior (pkill of the
-    # session's watcher/dispatch processes, task auto-stop side effects on
-    # true session exit). tests/unit/test_sections_hooks.py references the
-    # literal string "session-exit.sh" only as a stale-worktree path
-    # fixture, not as a test of this hook's logic. A future test should
-    # cover: the hook fires only on true exit (not every Stop event), and
-    # its pkill/auto-stop side effects.
-    "session-exit.sh": (
-        "no dedicated test; tests/unit/test_sections_hooks.py mentions the "
-        "filename only as an unrelated path fixture. Future test should "
-        "cover the pkill + task auto-stop side effects on true session exit."
-    ),
-    # No dedicated test exercises the hook's own behavior (session-progress
-    # snapshotting, the pending-discussion-prompt surfacing block).
-    # tests/unit/test_init_project.py checks only that --refresh *wires up*
-    # the hook command string, not what the hook does when it runs. A
-    # future test should cover: snapshot content and the pending-discussion
-    # prompt block.
-    "session-turn-end.sh": (
-        "no dedicated test; tests/unit/test_init_project.py only asserts "
-        "the hook is registered in Stop hooks, not what it does when run. "
-        "Future test should cover snapshot writing and the pending-"
-        "discussion prompt surfacing block."
-    ),
-}
+KNOWN_UNTESTED: dict[str, str] = {}
 
 
 def _hook_files() -> list[Path]:

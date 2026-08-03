@@ -18,8 +18,13 @@ def test_session_start_outputs_json_with_context(repo_root, tmp_path) -> None:
     (superharness / "handoffs").mkdir(parents=True)
     (superharness / "contract.yaml").write_text("id: x\n")
     (superharness / "handoffs/2026-01-demo.yaml").write_text("to: claude-code\n")
+    # Post issue #92 (2026-08-03): session-start.sh reads state.sqlite3 via
+    # state_reader (SQLite is the project's SoT; contract.yaml is dead).
+    # Seed SQLite from the contract fixture so the hook finds a live project.
+    from tests.helpers import seed_sqlite_from_yaml
+    seed_sqlite_from_yaml(project)
 
-    script = repo_root / "adapters/claude-code/hooks/session-start.sh"
+    script = repo_root / "adapters" / "claude-code" / "hooks" / "session-start.sh"
     result = run_bash(script, cwd=project)
 
     assert result.returncode == 0, result.stderr
