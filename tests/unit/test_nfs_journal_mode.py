@@ -58,6 +58,11 @@ def fake_mounts(monkeypatch, tmp_path):
         return real_open(path, *args, **kwargs)
 
     monkeypatch.setattr("builtins.open", _open)
+    # Windows normalizes POSIX-style paths (drive prefix, backslashes), which
+    # breaks the mount-point prefix match. Pin realpath to identity so the
+    # target string compares exactly against the fake mount table.
+    import superharness.engine.db as db_mod
+    monkeypatch.setattr(db_mod.os.path, "realpath", lambda p: p)
     return mounts_file
 
 
