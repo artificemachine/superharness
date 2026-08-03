@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "superharness"
-version = "1.81.4"
+version = "1.81.8"
 description = "Multi-agent session handoff framework for Claude Code and Codex CLI"
 readme = "README.md"
 license = "Apache-2.0"
@@ -62,14 +62,28 @@ superharness = [
 dev = [
     "pytest>=9.0,<10",
     "pytest-cov>=7.0.0",
+    # Required by the Linux/macOS unit job in .github/workflows/tests.yml,
+    # which passes --timeout=120. CI installed it ad hoc via pip while it was
+    # declared nowhere, so a local `uv sync` produced an environment that
+    # could not run the CI command.
+    "pytest-timeout>=2.4",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+addopts = "-ra"
+# NOT `addopts = "-ra --strict-markers"` (the crossprose form) — on this
+# repo's pytest (9.0.2), a --strict-markers flag embedded in addopts never
+# reaches the override-ini mechanism (see
+# tests/contract/test_pytest_config.py::test_addopts_enables_strict_markers
+# docstring for the root cause) and silently downgrades to a warning. The
+# native ini key below is what actually enforces it.
+strict_markers = true
 markers = [
     "requires_bash: test requires bash shell (skipped on Windows)",
     "regression: guards a specific past bug (cite the CHANGELOG entry or commit in the test docstring)",
+    "network: reaches a real external service (LLM provider, remote git). Deselect with -m 'not network'.",
 ]
 
 [tool.coverage.run]
