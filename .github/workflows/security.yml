@@ -35,10 +35,17 @@ jobs:
           tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks
           gitleaks version
 
-      - name: Gitleaks secret scan (full history)
+      - name: Gitleaks secret scan
+        # Scan the PR's own commits only (base..head). A per-PR gate should
+        # catch NEW secrets, not re-litigate history — the full-history sweep
+        # flags long-standing test fixtures with fake tokens (e.g. the dummy
+        # ghp_abc/1234567890abcdef values in tests/unit/test_module_obsidian.py)
+        # on every PR. Base-sha comes from the PR event; on push-to-main the
+        # whole branch is scanned.
         run: |
           set -o pipefail
-          gitleaks detect --source . --log-opts="--all" --redact --exit-code 1 --verbose | tee gitleaks-report.txt
+          BASE="${{ github.event.pull_request.base.sha || github.sha }}"
+          gitleaks detect --source . --log-opts="${BASE}..HEAD" --redact --exit-code 1 --verbose | tee gitleaks-report.txt
 
       - name: Upload gitleaks report
         if: always()
