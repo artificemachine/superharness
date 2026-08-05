@@ -5,6 +5,7 @@ Three built-in profiles (orchestrator, worker, validator) determine:
 - Which fields are included in the dispatch payload
 - Whether context inheritance from the previous agent is allowed
 """
+
 from __future__ import annotations
 
 import json
@@ -28,7 +29,11 @@ _ROLE_PROFILES: dict[str, dict[str, Any]] = {
         # and the report handoff. No worker logs, no worker context window.
         "fresh_worktree": True,
         "inherit_context": False,
-        "payload_filter": {"locked_contract", "diff_since_plan_approved", "handoff_report"},
+        "payload_filter": {
+            "locked_contract",
+            "diff_since_plan_approved",
+            "handoff_report",
+        },
     },
     "code_reviewer": {
         "fresh_worktree": True,

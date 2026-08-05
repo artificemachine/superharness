@@ -8,12 +8,12 @@ every poll. These tests pin the throttled behavior: a clean watcher exit
 is only respawned once the configured watcher interval has elapsed since
 the previous spawn.
 """
+
 from __future__ import annotations
 
 import threading
 import time
 
-import pytest
 
 from superharness.engine.operator import Operator
 

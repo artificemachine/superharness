@@ -3,6 +3,7 @@
 Recall hits older than a threshold must carry a staleness caveat so stale
 file:line claims are not asserted as live fact. Fresh hits stay clean.
 """
+
 from __future__ import annotations
 
 from datetime import date, timedelta
@@ -13,7 +14,15 @@ from superharness.engine import recall
 def test_caveat_absent_for_fresh_hit():
     """A hit dated today produces no caveat."""
     out = recall.format_results(
-        [{"date": date.today(), "agent": "a", "task_id": "t", "count": 1, "snippets": ["x"]}],
+        [
+            {
+                "date": date.today(),
+                "agent": "a",
+                "task_id": "t",
+                "count": 1,
+                "snippets": ["x"],
+            }
+        ],
         max_fresh_days=14,
     )
     assert "days old" not in out

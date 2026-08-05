@@ -4,6 +4,7 @@ Env-var based resolution for SUPERHARNESS_DATA_DIR and SUPERHARNESS_DASHBOARD_PO
 Pure helpers, no I/O. Existing call sites opt in by switching to these
 resolvers in follow-up work.
 """
+
 from __future__ import annotations
 
 import os
@@ -43,7 +44,9 @@ def test_resolve_project_dir_ignores_empty_env(monkeypatch):
 def test_state_db_path_delegates_to_active_resolver(tmp_path):
     # resolve_state_db_path is now a thin wrapper around resolve_active_state_db_path.
     # With no db on disk, both return the XDG path.
-    assert resolve_state_db_path(str(tmp_path)) == resolve_active_state_db_path(str(tmp_path))
+    assert resolve_state_db_path(str(tmp_path)) == resolve_active_state_db_path(
+        str(tmp_path)
+    )
 
 
 def test_state_db_path_trailing_slash_normalised(tmp_path):
@@ -91,6 +94,7 @@ def test_dashboard_port_default_validated(monkeypatch):
 # XDG state / config dir resolution (Iteration 1 — BUG-11 / state isolation)
 # ---------------------------------------------------------------------------
 
+
 def test_state_dir_default_xdg(monkeypatch):
     monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
     monkeypatch.delenv("XDG_STATE_HOME", raising=False)
@@ -131,6 +135,7 @@ def test_project_hash_differs_for_two_worktrees(tmp_path):
 # XDG state db path (Iteration 2 — out-of-repo state.db location)
 # ---------------------------------------------------------------------------
 
+
 def test_xdg_state_db_path_default_structure(monkeypatch, tmp_path):
     monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
     monkeypatch.delenv("XDG_STATE_HOME", raising=False)
@@ -162,8 +167,10 @@ def test_xdg_state_db_path_isolation_across_projects(monkeypatch, tmp_path):
 # is_project_initialized (Iteration 6 — public guard for command entry points)
 # ---------------------------------------------------------------------------
 
+
 def test_is_project_initialized_true_when_xdg_db_exists(monkeypatch, tmp_path):
     import sqlite3 as _sqlite3
+
     state_dir = str(tmp_path / "xdg_state")
     monkeypatch.setenv("SUPERHARNESS_STATE_DIR", state_dir)
     project = str(tmp_path / "proj")
@@ -176,6 +183,7 @@ def test_is_project_initialized_true_when_xdg_db_exists(monkeypatch, tmp_path):
 
 def test_is_project_initialized_true_when_legacy_db_exists(monkeypatch, tmp_path):
     import sqlite3 as _sqlite3
+
     monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
     project = str(tmp_path / "proj")
     legacy = os.path.join(project, ".superharness", "state.sqlite3")
@@ -196,8 +204,12 @@ def test_is_project_initialized_false_when_no_db(monkeypatch, tmp_path):
 # resolve_active_state_db_path (Iteration 7 — single unified path resolver)
 # ---------------------------------------------------------------------------
 
-def test_resolve_active_state_db_path_returns_xdg_when_xdg_exists(monkeypatch, tmp_path):
+
+def test_resolve_active_state_db_path_returns_xdg_when_xdg_exists(
+    monkeypatch, tmp_path
+):
     import sqlite3 as _sqlite3
+
     state_dir = str(tmp_path / "xdg_state")
     monkeypatch.setenv("SUPERHARNESS_STATE_DIR", state_dir)
     project = str(tmp_path / "proj")
@@ -209,6 +221,7 @@ def test_resolve_active_state_db_path_returns_xdg_when_xdg_exists(monkeypatch, t
 
 def test_explicit_state_dir_refuses_legacy_fallback(monkeypatch, tmp_path):
     import sqlite3 as _sqlite3
+
     state_dir = str(tmp_path / "xdg_state_empty")
     monkeypatch.setenv("SUPERHARNESS_STATE_DIR", state_dir)
     project = str(tmp_path / "proj")
@@ -219,7 +232,9 @@ def test_explicit_state_dir_refuses_legacy_fallback(monkeypatch, tmp_path):
         resolve_active_state_db_path(project)
 
 
-def test_resolve_active_state_db_path_returns_xdg_for_new_project(monkeypatch, tmp_path):
+def test_resolve_active_state_db_path_returns_xdg_for_new_project(
+    monkeypatch, tmp_path
+):
     state_dir = str(tmp_path / "xdg_state_empty")
     monkeypatch.setenv("SUPERHARNESS_STATE_DIR", state_dir)
     project = str(tmp_path / "proj")
@@ -228,7 +243,9 @@ def test_resolve_active_state_db_path_returns_xdg_for_new_project(monkeypatch, t
     assert resolve_active_state_db_path(project) == expected
 
 
-def test_resolve_active_state_db_path_returns_legacy_when_sh_dir_exists(monkeypatch, tmp_path):
+def test_resolve_active_state_db_path_returns_legacy_when_sh_dir_exists(
+    monkeypatch, tmp_path
+):
     monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
     project = str(tmp_path / "proj")
     # .superharness/ dir exists but no db yet — backward-compat with shux init
@@ -256,9 +273,7 @@ def test_explicit_state_dir_refuses_ambient_xdg_state(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_STATE_HOME", str(xdg_home))
     monkeypatch.setenv("SUPERHARNESS_STATE_DIR", str(override))
     project = str(tmp_path / "proj")
-    ambient_db = (
-        xdg_home / "superharness" / project_hash(project) / "state.db"
-    )
+    ambient_db = xdg_home / "superharness" / project_hash(project) / "state.db"
     ambient_db.parent.mkdir(parents=True)
     _sqlite3.connect(ambient_db).close()
 
@@ -270,7 +285,9 @@ def test_explicit_state_dir_refuses_ambient_xdg_state(monkeypatch, tmp_path):
     assert not (override / project_hash(project) / "state.db").exists()
 
 
-def test_plain_resolution_keeps_xdg_first_when_legacy_also_exists(monkeypatch, tmp_path):
+def test_plain_resolution_keeps_xdg_first_when_legacy_also_exists(
+    monkeypatch, tmp_path
+):
     import sqlite3 as _sqlite3
 
     monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
@@ -287,6 +304,7 @@ def test_plain_resolution_keeps_xdg_first_when_legacy_also_exists(monkeypatch, t
 
 
 # ── Iter 12 RED: resolve_state_db_path must delegate to resolve_active_state_db_path ─
+
 
 def test_single_resolver_of_record_footgun_redirected(tmp_path, monkeypatch):
     """resolve_state_db_path must return the same result as resolve_active_state_db_path.

@@ -5,6 +5,7 @@ Bug 2 — gemini quota exhaustion (429) → should pause not fail.
 Bug 3 — opencode double-run: agent already submitted → should skip re-dispatch.
 Bug 4 — discussion rounds have no timeout → can run indefinitely.
 """
+
 from __future__ import annotations
 
 import os
@@ -43,20 +44,45 @@ def _make_discussion_dir(tmp_path: Path, submissions: list[dict] | None = None) 
 # Bug 1 — discussion dispatch includes --model for claude-code
 # ---------------------------------------------------------------------------
 
+
 class TestDiscussionModelArg:
     def test_discussion_launch_args_include_model(self, tmp_path):
         """_prepare_launch_context must add --model when dispatching a discussion round."""
-        from superharness.commands.inbox_dispatch import _prepare_launch_context, DispatchContext
+        from superharness.commands.inbox_dispatch import (
+            _prepare_launch_context,
+            DispatchContext,
+        )
         import sqlite3
 
         sh = tmp_path / ".superharness"
         sh.mkdir()
         db_path = sh / "state.sqlite3"
         conn = sqlite3.connect(str(db_path))
-        conn.execute("CREATE TABLE inbox (id TEXT, task_id TEXT, target_agent TEXT, status TEXT, priority INTEGER, retry_count INTEGER, max_retries INTEGER, pid INTEGER, project_path TEXT, plan_only INTEGER, failed_reason TEXT, created_at TEXT, launched_at TEXT, last_heartbeat TEXT, paused_at TEXT, failed_at TEXT, done_at TEXT)")
-        conn.execute("INSERT INTO inbox VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                     ("item-1", ROUND_TASK, "claude-code", "launched", 5, 0, 3, None,
-                      str(tmp_path), 0, None, "2026-05-07T11:00:00Z", None, None, None, None, None))
+        conn.execute(
+            "CREATE TABLE inbox (id TEXT, task_id TEXT, target_agent TEXT, status TEXT, priority INTEGER, retry_count INTEGER, max_retries INTEGER, pid INTEGER, project_path TEXT, plan_only INTEGER, failed_reason TEXT, created_at TEXT, launched_at TEXT, last_heartbeat TEXT, paused_at TEXT, failed_at TEXT, done_at TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO inbox VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "item-1",
+                ROUND_TASK,
+                "claude-code",
+                "launched",
+                5,
+                0,
+                3,
+                None,
+                str(tmp_path),
+                0,
+                None,
+                "2026-05-07T11:00:00Z",
+                None,
+                None,
+                None,
+                None,
+                None,
+            ),
+        )
         conn.commit()
 
         ctx = DispatchContext(
@@ -70,8 +96,13 @@ class TestDiscussionModelArg:
             sqlite_primary=True,
             print_only=True,
         )
-        ctx.item = {"id": "item-1", "task_id": ROUND_TASK, "target_agent": "claude-code",
-                    "status": "launched", "plan_only": False}
+        ctx.item = {
+            "id": "item-1",
+            "task_id": ROUND_TASK,
+            "target_agent": "claude-code",
+            "status": "launched",
+            "plan_only": False,
+        }
         ctx.item_id = "item-1"
         ctx.item_to = "claude-code"
         ctx.item_task = ROUND_TASK
@@ -85,11 +116,14 @@ class TestDiscussionModelArg:
         assert "--model" in ctx.launch_args, "discussion dispatch must pass --model"
         model_idx = ctx.launch_args.index("--model")
         model_val = ctx.launch_args[model_idx + 1]
-        assert "sonnet" in model_val or "claude" in model_val, f"unexpected model: {model_val}"
+        assert "sonnet" in model_val or "claude" in model_val, (
+            f"unexpected model: {model_val}"
+        )
 
     def test_discussion_model_not_prefixed_for_claude(self, tmp_path):
         """claude-code model must NOT use anthropic/ prefix (Claude CLI rejects it)."""
         from superharness.utils.model_routing import apply_model_prefix
+
         # claude-code gets bare model name, not anthropic/claude-sonnet-4-6
         model = "claude-sonnet-4-6"
         # apply_model_prefix is for opencode — should not be called for claude-code
@@ -101,6 +135,7 @@ class TestDiscussionModelArg:
 # ---------------------------------------------------------------------------
 # Bug 2 — quota exhaustion → pause not fail
 # ---------------------------------------------------------------------------
+
 
 class TestQuotaExhaustionPause:
     def test_quota_exit_code_detected(self):
@@ -118,7 +153,9 @@ class TestQuotaExhaustionPause:
         """Non-quota exit code 1 → fail as before."""
         from superharness.commands.inbox_dispatch import _classify_launch_failure
 
-        result = _classify_launch_failure(exit_code=1, log_tail="SyntaxError: invalid syntax")
+        result = _classify_launch_failure(
+            exit_code=1, log_tail="SyntaxError: invalid syntax"
+        )
         assert result["action"] == "fail"
 
     def test_sigkill_stays_failed(self):
@@ -144,54 +181,91 @@ class TestQuotaExhaustionPause:
 # Bug 3 — skip dispatch if agent already submitted this round
 # ---------------------------------------------------------------------------
 
+
 class TestSkipAlreadySubmitted:
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_already_submitted_agent_is_skipped(self, tmp_path):
         """If agent has a submission in state.yaml for current round, skip re-dispatch."""
         from superharness.commands.inbox_dispatch import _agent_already_submitted
 
-        _make_discussion_dir(tmp_path, submissions=[
-            {"agent": "opencode", "verdict": "partial", "submitted_at": "2026-05-07T11:06:35Z"}
-        ])
+        _make_discussion_dir(
+            tmp_path,
+            submissions=[
+                {
+                    "agent": "opencode",
+                    "verdict": "partial",
+                    "submitted_at": "2026-05-07T11:06:35Z",
+                }
+            ],
+        )
         disc_dir = str(tmp_path / ".superharness" / "discussions" / DISC_ID)
         assert _agent_already_submitted(disc_dir, round_num=1, agent="opencode") is True
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_not_submitted_agent_is_not_skipped(self, tmp_path):
         """Agent with no submission → not skipped."""
         from superharness.commands.inbox_dispatch import _agent_already_submitted
 
-        _make_discussion_dir(tmp_path, submissions=[
-            {"agent": "opencode", "verdict": "partial", "submitted_at": "2026-05-07T11:06:35Z"}
-        ])
+        _make_discussion_dir(
+            tmp_path,
+            submissions=[
+                {
+                    "agent": "opencode",
+                    "verdict": "partial",
+                    "submitted_at": "2026-05-07T11:06:35Z",
+                }
+            ],
+        )
         disc_dir = str(tmp_path / ".superharness" / "discussions" / DISC_ID)
-        assert _agent_already_submitted(disc_dir, round_num=1, agent="claude-code") is False
+        assert (
+            _agent_already_submitted(disc_dir, round_num=1, agent="claude-code")
+            is False
+        )
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_no_discussion_dir_returns_false(self, tmp_path):
         """Missing discussion dir → not skipped (safe default: try dispatch)."""
         from superharness.commands.inbox_dispatch import _agent_already_submitted
 
-        assert _agent_already_submitted(str(tmp_path / "nonexistent"), round_num=1, agent="claude-code") is False
+        assert (
+            _agent_already_submitted(
+                str(tmp_path / "nonexistent"), round_num=1, agent="claude-code"
+            )
+            is False
+        )
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_empty_submissions_not_skipped(self, tmp_path):
         """Empty submissions list → not skipped."""
         from superharness.commands.inbox_dispatch import _agent_already_submitted
 
         _make_discussion_dir(tmp_path, submissions=[])
         disc_dir = str(tmp_path / ".superharness" / "discussions" / DISC_ID)
-        assert _agent_already_submitted(disc_dir, round_num=1, agent="claude-code") is False
+        assert (
+            _agent_already_submitted(disc_dir, round_num=1, agent="claude-code")
+            is False
+        )
 
 
 # ---------------------------------------------------------------------------
 # Bug 4 — discussion rounds get a hard timeout
 # ---------------------------------------------------------------------------
 
+
 class TestDiscussionTimeout:
     def test_discussion_round_has_default_timeout(self, tmp_path):
         """Discussion rounds must have a non-zero effective_timeout."""
-        from superharness.commands.inbox_dispatch import DISCUSSION_ROUND_TIMEOUT_SECONDS
+        from superharness.commands.inbox_dispatch import (
+            DISCUSSION_ROUND_TIMEOUT_SECONDS,
+        )
 
         assert DISCUSSION_ROUND_TIMEOUT_SECONDS > 0
         assert DISCUSSION_ROUND_TIMEOUT_SECONDS <= 1800  # max 30 min
@@ -199,39 +273,78 @@ class TestDiscussionTimeout:
     def test_discussion_timeout_overrides_zero(self, tmp_path):
         """When launcher_timeout=0 and task is a discussion, use DISCUSSION_ROUND_TIMEOUT."""
         from superharness.commands.inbox_dispatch import (
-            DISCUSSION_ROUND_TIMEOUT_SECONDS, _get_task_effort_timeout
+            DISCUSSION_ROUND_TIMEOUT_SECONDS,
         )
+
         # Discussion round task IDs have no effort entry in contract
         # So _get_task_effort_timeout returns 0 → we must substitute the discussion default
         # Verify the constant is defined and sane
         assert isinstance(DISCUSSION_ROUND_TIMEOUT_SECONDS, int)
-        assert DISCUSSION_ROUND_TIMEOUT_SECONDS >= 600   # at least 10 min
+        assert DISCUSSION_ROUND_TIMEOUT_SECONDS >= 600  # at least 10 min
 
     def test_discussion_timeout_applied_in_context(self, tmp_path):
         """_prepare_launch_context sets effective_timeout to effort-driven default
         for round tasks (medium=1200s when task effort is unknown)."""
         import sqlite3
+
         sh = tmp_path / ".superharness"
         sh.mkdir()
         db_path = sh / "state.sqlite3"
         conn = sqlite3.connect(str(db_path))
         # Create tasks table so the code can read effort (will be NULL → medium fallback)
-        conn.execute("CREATE TABLE tasks (id TEXT, title TEXT, owner TEXT, status TEXT, "
-                      "project_path TEXT, created_at TEXT, updated_at TEXT, workflow TEXT, "
-                      "model_tier TEXT, effort TEXT)")
-        conn.execute("INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?)",
-                     (ROUND_TASK, "Round 1", "claude-code", "in_progress",
-                      str(tmp_path), "2026-05-01T00:00:00Z", "2026-05-01T00:00:00Z",
-                      "discussion", None, None))
-        conn.execute("CREATE TABLE inbox (id TEXT, task_id TEXT, target_agent TEXT, status TEXT, priority INTEGER, retry_count INTEGER, max_retries INTEGER, pid INTEGER, project_path TEXT, plan_only INTEGER, failed_reason TEXT, created_at TEXT, launched_at TEXT, last_heartbeat TEXT, paused_at TEXT, failed_at TEXT, done_at TEXT)")
-        conn.execute("INSERT INTO inbox VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                     ("item-1", ROUND_TASK, "claude-code", "launched", 5, 0, 3, None,
-                      str(tmp_path), 0, None, "2026-05-07T11:00:00Z", None, None, None, None, None))
+        conn.execute(
+            "CREATE TABLE tasks (id TEXT, title TEXT, owner TEXT, status TEXT, "
+            "project_path TEXT, created_at TEXT, updated_at TEXT, workflow TEXT, "
+            "model_tier TEXT, effort TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (
+                ROUND_TASK,
+                "Round 1",
+                "claude-code",
+                "in_progress",
+                str(tmp_path),
+                "2026-05-01T00:00:00Z",
+                "2026-05-01T00:00:00Z",
+                "discussion",
+                None,
+                None,
+            ),
+        )
+        conn.execute(
+            "CREATE TABLE inbox (id TEXT, task_id TEXT, target_agent TEXT, status TEXT, priority INTEGER, retry_count INTEGER, max_retries INTEGER, pid INTEGER, project_path TEXT, plan_only INTEGER, failed_reason TEXT, created_at TEXT, launched_at TEXT, last_heartbeat TEXT, paused_at TEXT, failed_at TEXT, done_at TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO inbox VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "item-1",
+                ROUND_TASK,
+                "claude-code",
+                "launched",
+                5,
+                0,
+                3,
+                None,
+                str(tmp_path),
+                0,
+                None,
+                "2026-05-07T11:00:00Z",
+                None,
+                None,
+                None,
+                None,
+                None,
+            ),
+        )
         conn.commit()
 
         from superharness.commands.inbox_dispatch import (
-            DispatchContext, _prepare_launch_context, DISCUSSION_TIMEOUT_MEDIUM
+            DispatchContext,
+            _prepare_launch_context,
+            DISCUSSION_TIMEOUT_MEDIUM,
         )
+
         ctx = DispatchContext(
             project_dir=str(tmp_path),
             inbox_file=str(sh / "inbox.yaml"),
@@ -243,8 +356,13 @@ class TestDiscussionTimeout:
             sqlite_primary=True,
             print_only=True,
         )
-        ctx.item = {"id": "item-1", "task_id": ROUND_TASK, "target_agent": "claude-code",
-                    "status": "launched", "plan_only": False}
+        ctx.item = {
+            "id": "item-1",
+            "task_id": ROUND_TASK,
+            "target_agent": "claude-code",
+            "status": "launched",
+            "plan_only": False,
+        }
         ctx.item_id = "item-1"
         ctx.item_to = "claude-code"
         ctx.item_task = ROUND_TASK
@@ -267,7 +385,8 @@ class TestEffortDrivenDiscussionTimeout:
     def test_low_effort_gets_10_minutes(self, tmp_path):
         """Discussion task with effort=low → 600s timeout."""
         from superharness.commands.inbox_dispatch import (
-            DispatchContext, _prepare_launch_context,
+            DispatchContext,
+            _prepare_launch_context,
             DISCUSSION_TIMEOUT_LOW,
         )
 
@@ -285,8 +404,13 @@ class TestEffortDrivenDiscussionTimeout:
             sqlite_primary=True,
             print_only=True,
         )
-        ctx.item = {"id": "item-1", "task_id": ROUND_TASK, "target_agent": "claude-code",
-                    "status": "launched", "plan_only": False}
+        ctx.item = {
+            "id": "item-1",
+            "task_id": ROUND_TASK,
+            "target_agent": "claude-code",
+            "status": "launched",
+            "plan_only": False,
+        }
         ctx.item_id = "item-1"
         ctx.item_to = "claude-code"
         ctx.item_task = ROUND_TASK
@@ -308,7 +432,8 @@ class TestEffortDrivenDiscussionTimeout:
     def test_high_effort_gets_30_minutes(self, tmp_path):
         """Discussion task with effort=high → 1800s timeout."""
         from superharness.commands.inbox_dispatch import (
-            DispatchContext, _prepare_launch_context,
+            DispatchContext,
+            _prepare_launch_context,
             DISCUSSION_TIMEOUT_HIGH,
         )
 
@@ -326,8 +451,13 @@ class TestEffortDrivenDiscussionTimeout:
             sqlite_primary=True,
             print_only=True,
         )
-        ctx.item = {"id": "item-1", "task_id": ROUND_TASK, "target_agent": "claude-code",
-                    "status": "launched", "plan_only": False}
+        ctx.item = {
+            "id": "item-1",
+            "task_id": ROUND_TASK,
+            "target_agent": "claude-code",
+            "status": "launched",
+            "plan_only": False,
+        }
         ctx.item_id = "item-1"
         ctx.item_to = "claude-code"
         ctx.item_task = ROUND_TASK
@@ -348,7 +478,8 @@ class TestEffortDrivenDiscussionTimeout:
     def test_env_var_overrides_effort_timeout(self, tmp_path, monkeypatch):
         """SUPERHARNESS_DISCUSSION_ROUND_TIMEOUT_SECONDS overrides effort-based timeout."""
         from superharness.commands.inbox_dispatch import (
-            DispatchContext, _prepare_launch_context,
+            DispatchContext,
+            _prepare_launch_context,
         )
         import sqlite3
 
@@ -365,9 +496,18 @@ class TestEffortDrivenDiscussionTimeout:
         )
         conn.execute(
             "INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (ROUND_TASK, "Round 1", "claude-code", "in_progress",
-             str(tmp_path), "2026-05-01T00:00:00Z", "2026-05-01T00:00:00Z",
-             "discussion", "standard", "high"),
+            (
+                ROUND_TASK,
+                "Round 1",
+                "claude-code",
+                "in_progress",
+                str(tmp_path),
+                "2026-05-01T00:00:00Z",
+                "2026-05-01T00:00:00Z",
+                "discussion",
+                "standard",
+                "high",
+            ),
         )
         conn.execute(
             "CREATE TABLE inbox (id TEXT, task_id TEXT, target_agent TEXT, status TEXT, "
@@ -377,8 +517,25 @@ class TestEffortDrivenDiscussionTimeout:
         )
         conn.execute(
             "INSERT INTO inbox VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            ("item-1", ROUND_TASK, "claude-code", "launched", 5, 0, 3, None,
-             str(tmp_path), 0, None, "2026-05-07T11:00:00Z", None, None, None, None, None),
+            (
+                "item-1",
+                ROUND_TASK,
+                "claude-code",
+                "launched",
+                5,
+                0,
+                3,
+                None,
+                str(tmp_path),
+                0,
+                None,
+                "2026-05-07T11:00:00Z",
+                None,
+                None,
+                None,
+                None,
+                None,
+            ),
         )
         conn.commit()
 
@@ -393,8 +550,13 @@ class TestEffortDrivenDiscussionTimeout:
             sqlite_primary=True,
             print_only=True,
         )
-        ctx.item = {"id": "item-1", "task_id": ROUND_TASK, "target_agent": "claude-code",
-                    "status": "launched", "plan_only": False}
+        ctx.item = {
+            "id": "item-1",
+            "task_id": ROUND_TASK,
+            "target_agent": "claude-code",
+            "status": "launched",
+            "plan_only": False,
+        }
         ctx.item_id = "item-1"
         ctx.item_to = "claude-code"
         ctx.item_task = ROUND_TASK
@@ -418,9 +580,11 @@ class TestProfileConfigFallback:
     def test_profile_config_used_when_task_has_no_model_tier(self, tmp_path):
         """When task has no model_tier, profile config discussion_model_tier is used."""
         from superharness.commands.inbox_dispatch import (
-            DispatchContext, _prepare_launch_context,
+            DispatchContext,
+            _prepare_launch_context,
         )
-        import os, yaml, sqlite3
+        import yaml
+        import sqlite3
 
         # Set up profile with discussion_model_tier = max
         sh = tmp_path / ".superharness"
@@ -440,9 +604,18 @@ class TestProfileConfigFallback:
         )
         conn.execute(
             "INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (ROUND_TASK, "Round 1", "claude-code", "in_progress",
-             str(tmp_path), "2026-05-01T00:00:00Z", "2026-05-01T00:00:00Z",
-             "discussion", None, "medium"),
+            (
+                ROUND_TASK,
+                "Round 1",
+                "claude-code",
+                "in_progress",
+                str(tmp_path),
+                "2026-05-01T00:00:00Z",
+                "2026-05-01T00:00:00Z",
+                "discussion",
+                None,
+                "medium",
+            ),
         )
         conn.execute(
             "CREATE TABLE inbox (id TEXT, task_id TEXT, target_agent TEXT, status TEXT, "
@@ -452,8 +625,25 @@ class TestProfileConfigFallback:
         )
         conn.execute(
             "INSERT INTO inbox VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            ("item-1", ROUND_TASK, "claude-code", "launched", 5, 0, 3, None,
-             str(tmp_path), 0, None, "2026-05-07T11:00:00Z", None, None, None, None, None),
+            (
+                "item-1",
+                ROUND_TASK,
+                "claude-code",
+                "launched",
+                5,
+                0,
+                3,
+                None,
+                str(tmp_path),
+                0,
+                None,
+                "2026-05-07T11:00:00Z",
+                None,
+                None,
+                None,
+                None,
+                None,
+            ),
         )
         conn.commit()
 
@@ -468,8 +658,13 @@ class TestProfileConfigFallback:
             sqlite_primary=True,
             print_only=True,
         )
-        ctx.item = {"id": "item-1", "task_id": ROUND_TASK, "target_agent": "claude-code",
-                    "status": "launched", "plan_only": False}
+        ctx.item = {
+            "id": "item-1",
+            "task_id": ROUND_TASK,
+            "target_agent": "claude-code",
+            "status": "launched",
+            "plan_only": False,
+        }
         ctx.item_id = "item-1"
         ctx.item_to = "claude-code"
         ctx.item_task = ROUND_TASK
@@ -490,9 +685,11 @@ class TestProfileConfigFallback:
     def test_env_var_overrides_profile_config(self, tmp_path, monkeypatch):
         """SUPERHARNESS_CLAUDE_MODEL env var overrides profile config."""
         from superharness.commands.inbox_dispatch import (
-            DispatchContext, _prepare_launch_context,
+            DispatchContext,
+            _prepare_launch_context,
         )
-        import yaml, sqlite3
+        import yaml
+        import sqlite3
 
         monkeypatch.setenv("SUPERHARNESS_CLAUDE_MODEL", "claude-haiku-4-5")
 
@@ -510,9 +707,18 @@ class TestProfileConfigFallback:
         )
         conn.execute(
             "INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (ROUND_TASK, "Round 1", "claude-code", "in_progress",
-             str(tmp_path), "2026-05-01T00:00:00Z", "2026-05-01T00:00:00Z",
-             "discussion", None, "medium"),
+            (
+                ROUND_TASK,
+                "Round 1",
+                "claude-code",
+                "in_progress",
+                str(tmp_path),
+                "2026-05-01T00:00:00Z",
+                "2026-05-01T00:00:00Z",
+                "discussion",
+                None,
+                "medium",
+            ),
         )
         conn.execute(
             "CREATE TABLE inbox (id TEXT, task_id TEXT, target_agent TEXT, status TEXT, "
@@ -522,8 +728,25 @@ class TestProfileConfigFallback:
         )
         conn.execute(
             "INSERT INTO inbox VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            ("item-1", ROUND_TASK, "claude-code", "launched", 5, 0, 3, None,
-             str(tmp_path), 0, None, "2026-05-07T11:00:00Z", None, None, None, None, None),
+            (
+                "item-1",
+                ROUND_TASK,
+                "claude-code",
+                "launched",
+                5,
+                0,
+                3,
+                None,
+                str(tmp_path),
+                0,
+                None,
+                "2026-05-07T11:00:00Z",
+                None,
+                None,
+                None,
+                None,
+                None,
+            ),
         )
         conn.commit()
 
@@ -538,8 +761,13 @@ class TestProfileConfigFallback:
             sqlite_primary=True,
             print_only=True,
         )
-        ctx.item = {"id": "item-1", "task_id": ROUND_TASK, "target_agent": "claude-code",
-                    "status": "launched", "plan_only": False}
+        ctx.item = {
+            "id": "item-1",
+            "task_id": ROUND_TASK,
+            "target_agent": "claude-code",
+            "status": "launched",
+            "plan_only": False,
+        }
         ctx.item_id = "item-1"
         ctx.item_to = "claude-code"
         ctx.item_task = ROUND_TASK
@@ -566,7 +794,7 @@ class TestProfileConfigFallback:
 class TestTierFlagOnDiscussStart:
     def test_tier_flag_stored_on_task(self, tmp_path):
         """When --tier max is passed, task gets model_tier=max without classify_task call."""
-        import os, yaml, json, secrets, sqlite3
+        import sqlite3
         from unittest.mock import patch
 
         sh = tmp_path / ".superharness"
@@ -583,6 +811,7 @@ class TestTierFlagOnDiscussStart:
 
         # Mock heartbeats for participants (v1.69.5 requirement)
         from datetime import datetime, timezone
+
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         seed_sqlite_heartbeat(tmp_path, agent="watcher", status="alive", now=now)
         seed_sqlite_heartbeat(tmp_path, agent="claude-code", status="alive", now=now)
@@ -590,7 +819,8 @@ class TestTierFlagOnDiscussStart:
 
         with patch("superharness.engine.inbox._inbox_lock"):
             from superharness.commands.discuss import cmd_start
-            rc = cmd_start(
+
+            cmd_start(
                 discussions_dir=discussions_dir,
                 inbox_file=inbox_file,
                 contract_file=contract_file,
@@ -627,7 +857,8 @@ class TestPerAgentTierRouting:
     def test_max_tier_routes_primary_to_max_secondary_to_standard(self, tmp_path):
         """Max-tier discussion: claude gets opus, gemini gets 2.5-pro."""
         from superharness.commands.inbox_dispatch import (
-            DispatchContext, _prepare_launch_context,
+            DispatchContext,
+            _prepare_launch_context,
         )
 
         sh = tmp_path / ".superharness"
@@ -643,11 +874,20 @@ class TestPerAgentTierRouting:
             project_dir=str(tmp_path),
             inbox_file=str(sh / "inbox.yaml"),
             contract_file=str(sh / "contract.yaml"),
-            non_interactive=True, codex_bypass=False, launcher_timeout=0,
-            script_dir="", sqlite_primary=True, print_only=True,
+            non_interactive=True,
+            codex_bypass=False,
+            launcher_timeout=0,
+            script_dir="",
+            sqlite_primary=True,
+            print_only=True,
         )
-        ctx.item = {"id": "item-c", "task_id": ROUND_TASK, "target_agent": "claude-code",
-                    "status": "launched", "plan_only": False}
+        ctx.item = {
+            "id": "item-c",
+            "task_id": ROUND_TASK,
+            "target_agent": "claude-code",
+            "status": "launched",
+            "plan_only": False,
+        }
         ctx.item_id = "item-c"
         ctx.item_to = "claude-code"
         ctx.item_task = ROUND_TASK
@@ -660,18 +900,29 @@ class TestPerAgentTierRouting:
 
         assert "--model" in ctx.launch_args
         m = ctx.launch_args[ctx.launch_args.index("--model") + 1]
-        assert "opus" in m.lower(), f"claude-code on max discussion should get opus, got {m}"
+        assert "opus" in m.lower(), (
+            f"claude-code on max discussion should get opus, got {m}"
+        )
 
         # Test gemini-cli (secondary agent → capped at standard)
         ctx2 = DispatchContext(
             project_dir=str(tmp_path),
             inbox_file=str(sh / "inbox.yaml"),
             contract_file=str(sh / "contract.yaml"),
-            non_interactive=True, codex_bypass=False, launcher_timeout=0,
-            script_dir="", sqlite_primary=True, print_only=True,
+            non_interactive=True,
+            codex_bypass=False,
+            launcher_timeout=0,
+            script_dir="",
+            sqlite_primary=True,
+            print_only=True,
         )
-        ctx2.item = {"id": "item-g", "task_id": ROUND_TASK, "target_agent": "gemini-cli",
-                     "status": "launched", "plan_only": False}
+        ctx2.item = {
+            "id": "item-g",
+            "task_id": ROUND_TASK,
+            "target_agent": "gemini-cli",
+            "status": "launched",
+            "plan_only": False,
+        }
         ctx2.item_id = "item-g"
         ctx2.item_to = "gemini-cli"
         ctx2.item_task = ROUND_TASK
@@ -690,7 +941,10 @@ class TestPerAgentTierRouting:
 
     def test_max_tier_opencode_gets_v4_pro(self, tmp_path):
         """opencode on max-tier discussion must get deepseek-v4-pro, not v4-flash."""
-        from superharness.commands.inbox_dispatch import DispatchContext, _prepare_launch_context
+        from superharness.commands.inbox_dispatch import (
+            DispatchContext,
+            _prepare_launch_context,
+        )
 
         sh = tmp_path / ".superharness"
         sh.mkdir()
@@ -703,11 +957,20 @@ class TestPerAgentTierRouting:
             project_dir=str(tmp_path),
             inbox_file=str(sh / "inbox.yaml"),
             contract_file=str(sh / "contract.yaml"),
-            non_interactive=True, codex_bypass=False, launcher_timeout=0,
-            script_dir="", sqlite_primary=True, print_only=True,
+            non_interactive=True,
+            codex_bypass=False,
+            launcher_timeout=0,
+            script_dir="",
+            sqlite_primary=True,
+            print_only=True,
         )
-        ctx.item = {"id": "item-o", "task_id": ROUND_TASK, "target_agent": "opencode",
-                    "status": "launched", "plan_only": False}
+        ctx.item = {
+            "id": "item-o",
+            "task_id": ROUND_TASK,
+            "target_agent": "opencode",
+            "status": "launched",
+            "plan_only": False,
+        }
         ctx.item_id = "item-o"
         ctx.item_to = "opencode"
         ctx.item_task = ROUND_TASK
@@ -718,7 +981,9 @@ class TestPerAgentTierRouting:
         with patch("superharness.engine.tasks_dao.get", return_value=mock_task):
             _prepare_launch_context(ctx)
 
-        assert "--model" in ctx.launch_args, "opencode discussion dispatch must include --model"
+        assert "--model" in ctx.launch_args, (
+            "opencode discussion dispatch must include --model"
+        )
         m = ctx.launch_args[ctx.launch_args.index("--model") + 1]
         assert "v4-pro" in m or "deepseek-v4-pro" in m, (
             f"opencode on max discussion should get deepseek-v4-pro, got {m!r}"
@@ -733,7 +998,6 @@ class TestPerAgentTierRouting:
 class TestDiscussionDeadline:
     def test_deadline_from_effort(self):
         """Effort maps to deadline: low=10, medium=20, high=30 minutes."""
-        from superharness.commands.discussion_dispatch import dispatch
         # Verify the deadline constants are correct
         deadline_map = {"low": 10, "medium": 20, "high": 30}
         assert deadline_map["low"] == 10
@@ -742,9 +1006,11 @@ class TestDiscussionDeadline:
 
     def test_expired_discussion_closed(self, tmp_path):
         """Discussion created >30min ago with high effort → auto-closed."""
-        import os, yaml, json, sqlite3
+        import yaml
+        import json
+        import sqlite3
         from datetime import datetime, timezone, timedelta
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch
 
         sh = tmp_path / ".superharness"
         sh.mkdir(parents=True)
@@ -756,7 +1022,9 @@ class TestDiscussionDeadline:
         disc_dir.mkdir()
 
         # Create discussion state with old created_at
-        old_time = (datetime.now(timezone.utc) - timedelta(minutes=35)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        old_time = (datetime.now(timezone.utc) - timedelta(minutes=35)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         state = {
             "id": disc_id,
             "status": "active",
@@ -779,8 +1047,18 @@ class TestDiscussionDeadline:
         )
         conn.execute(
             "INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (f"{disc_id}/round-1", "Round 1", "claude-code", "in_progress",
-             str(tmp_path), old_time, old_time, "discussion", "max", "high"),
+            (
+                f"{disc_id}/round-1",
+                "Round 1",
+                "claude-code",
+                "in_progress",
+                str(tmp_path),
+                old_time,
+                old_time,
+                "discussion",
+                "max",
+                "high",
+            ),
         )
         conn.execute(
             "CREATE TABLE IF NOT EXISTS discussions (id TEXT, task_id TEXT, topic TEXT, "
@@ -788,8 +1066,16 @@ class TestDiscussionDeadline:
         )
         conn.execute(
             "INSERT INTO discussions VALUES (?,?,?,?,?,?,?,?)",
-            (disc_id, None, "old discussion", json.dumps(["claude-code", "gemini-cli"]),
-             "active", None, old_time, None),
+            (
+                disc_id,
+                None,
+                "old discussion",
+                json.dumps(["claude-code", "gemini-cli"]),
+                "active",
+                None,
+                old_time,
+                None,
+            ),
         )
         conn.commit()
         conn.close()
@@ -800,6 +1086,7 @@ class TestDiscussionDeadline:
             side_effect=lambda args: _mock_engine_response(args, disc_id, disc_dir),
         ):
             from superharness.commands.discussion_dispatch import dispatch
+
             dispatch(str(tmp_path))
 
         # Verify dispatch ran without error for expired discussion
@@ -808,7 +1095,9 @@ class TestDiscussionDeadline:
 
     def test_fresh_discussion_not_closed(self, tmp_path):
         """Discussion created 2 minutes ago → not expired, continues normally."""
-        import os, yaml, json, sqlite3
+        import yaml
+        import json
+        import sqlite3
         from datetime import datetime, timezone, timedelta
         from unittest.mock import patch
 
@@ -821,7 +1110,9 @@ class TestDiscussionDeadline:
         disc_dir = discussions_dir / disc_id
         disc_dir.mkdir()
 
-        recent_time = (datetime.now(timezone.utc) - timedelta(minutes=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        recent_time = (datetime.now(timezone.utc) - timedelta(minutes=2)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         state = {
             "id": disc_id,
             "status": "active",
@@ -843,8 +1134,18 @@ class TestDiscussionDeadline:
         )
         conn.execute(
             "INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (f"{disc_id}/round-1", "Round 1", "claude-code", "in_progress",
-             str(tmp_path), recent_time, recent_time, "discussion", "standard", "medium"),
+            (
+                f"{disc_id}/round-1",
+                "Round 1",
+                "claude-code",
+                "in_progress",
+                str(tmp_path),
+                recent_time,
+                recent_time,
+                "discussion",
+                "standard",
+                "medium",
+            ),
         )
         conn.execute(
             "CREATE TABLE IF NOT EXISTS discussions (id TEXT, task_id TEXT, topic TEXT, "
@@ -852,7 +1153,16 @@ class TestDiscussionDeadline:
         )
         conn.execute(
             "INSERT INTO discussions VALUES (?,?,?,?,?,?,?,?)",
-            (disc_id, None, "fresh discussion", json.dumps(["claude-code"]), "active", None, recent_time, None),
+            (
+                disc_id,
+                None,
+                "fresh discussion",
+                json.dumps(["claude-code"]),
+                "active",
+                None,
+                recent_time,
+                None,
+            ),
         )
         conn.commit()
         conn.close()
@@ -862,6 +1172,7 @@ class TestDiscussionDeadline:
             side_effect=lambda args: _mock_engine_response(args, disc_id, disc_dir),
         ):
             from superharness.commands.discussion_dispatch import dispatch
+
             dispatch(str(tmp_path))
 
         # Discussion should still be active (not closed)
@@ -877,27 +1188,56 @@ class TestDiscussionDeadline:
 
 def _mock_engine_response(args, disc_id, disc_dir):
     """Mock engine subprocess responses for deadline tests."""
-    import subprocess, os, yaml, json
+    import subprocess
+    import yaml
+    import json
+
     cmd = args[1] if len(args) > 1 else ""
     if cmd == "status":
         state_file = os.path.join(disc_dir, "state.yaml")
         if os.path.exists(state_file):
             state = yaml.safe_load(open(state_file))
-            return subprocess.CompletedProcess(args, 0, stdout=json.dumps(state), stderr="")
+            return subprocess.CompletedProcess(
+                args, 0, stdout=json.dumps(state), stderr=""
+            )
         return subprocess.CompletedProcess(args, 1, stdout="{}", stderr="not found")
     if cmd == "check_round":
-        return subprocess.CompletedProcess(args, 0, stdout=json.dumps({
-            "complete": False, "agents_pending": [],
-        }), stderr="")
+        return subprocess.CompletedProcess(
+            args,
+            0,
+            stdout=json.dumps(
+                {
+                    "complete": False,
+                    "agents_pending": [],
+                }
+            ),
+            stderr="",
+        )
     if cmd == "close":
-        return subprocess.CompletedProcess(args, 0, stdout=json.dumps({
-            "action": "closed",
-            "reason": args[args.index("--reason") + 1] if "--reason" in args else "unknown",
-        }), stderr="")
+        return subprocess.CompletedProcess(
+            args,
+            0,
+            stdout=json.dumps(
+                {
+                    "action": "closed",
+                    "reason": args[args.index("--reason") + 1]
+                    if "--reason" in args
+                    else "unknown",
+                }
+            ),
+            stderr="",
+        )
     if cmd == "advance":
-        return subprocess.CompletedProcess(args, 0, stdout=json.dumps({
-            "action": "closed",
-        }), stderr="")
+        return subprocess.CompletedProcess(
+            args,
+            0,
+            stdout=json.dumps(
+                {
+                    "action": "closed",
+                }
+            ),
+            stderr="",
+        )
     return subprocess.CompletedProcess(args, 0, stdout="{}", stderr="")
 
 
@@ -918,7 +1258,9 @@ class TestOrphanRecovery:
         conn = sqlite3.connect(str(db_path))
 
         # Create inbox with a stuck item
-        old_time = (datetime.now(timezone.utc) - timedelta(minutes=20)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        old_time = (datetime.now(timezone.utc) - timedelta(minutes=20)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         conn.execute(
             "CREATE TABLE IF NOT EXISTS inbox (id TEXT, task_id TEXT, target_agent TEXT, status TEXT, "
             "priority INTEGER, retry_count INTEGER, max_retries INTEGER, pid INTEGER, "
@@ -927,40 +1269,82 @@ class TestOrphanRecovery:
         )
         conn.execute(
             "INSERT INTO inbox VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            ("orphan-1", "discuss-X/round-2", "gemini-cli", "launched", 5, 0, 3, 99999,
-             str(tmp_path), 0, None, old_time, old_time, None, None, None, None),
+            (
+                "orphan-1",
+                "discuss-X/round-2",
+                "gemini-cli",
+                "launched",
+                5,
+                0,
+                3,
+                99999,
+                str(tmp_path),
+                0,
+                None,
+                old_time,
+                old_time,
+                None,
+                None,
+                None,
+                None,
+            ),
         )
         # Also insert a healthy item (recent heartbeat)
         recent = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         conn.execute(
             "INSERT INTO inbox VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            ("healthy-1", "discuss-Y/round-1", "claude-code", "running", 5, 0, 3, 12345,
-             str(tmp_path), 0, None, recent, recent, recent, None, None, None),
+            (
+                "healthy-1",
+                "discuss-Y/round-1",
+                "claude-code",
+                "running",
+                5,
+                0,
+                3,
+                12345,
+                str(tmp_path),
+                0,
+                None,
+                recent,
+                recent,
+                recent,
+                None,
+                None,
+                None,
+            ),
         )
         conn.commit()
         conn.close()
 
-        from superharness.commands.discussion_dispatch import _recover_orphaned_dispatches
+        from superharness.commands.discussion_dispatch import (
+            _recover_orphaned_dispatches,
+        )
+
         _recover_orphaned_dispatches(str(tmp_path))
 
         # Verify orphan was marked failed
         conn2 = sqlite3.connect(str(db_path))
         conn2.row_factory = sqlite3.Row
-        row = conn2.execute("SELECT status, failed_reason FROM inbox WHERE id = ?", ("orphan-1",)).fetchone()
+        row = conn2.execute(
+            "SELECT status, failed_reason FROM inbox WHERE id = ?", ("orphan-1",)
+        ).fetchone()
         assert row is not None
         assert row["status"] == "failed", f"Expected 'failed', got {row['status']}"
         assert "orphaned" in (row["failed_reason"] or "").lower()
 
         # Verify healthy item was untouched
-        hrow = conn2.execute("SELECT status FROM inbox WHERE id = ?", ("healthy-1",)).fetchone()
+        hrow = conn2.execute(
+            "SELECT status FROM inbox WHERE id = ?", ("healthy-1",)
+        ).fetchone()
         assert hrow is not None
-        assert hrow["status"] == "running", f"Healthy item should stay 'running', got {hrow['status']}"
+        assert hrow["status"] == "running", (
+            f"Healthy item should stay 'running', got {hrow['status']}"
+        )
         conn2.close()
 
     def test_no_orphans_does_nothing(self, tmp_path):
         """When there are no stuck items, the function is a no-op."""
-        import sqlite3, os
-        from datetime import datetime, timezone
+        import sqlite3
 
         sh = tmp_path / ".superharness"
         sh.mkdir()
@@ -975,7 +1359,10 @@ class TestOrphanRecovery:
         conn.commit()
         conn.close()
 
-        from superharness.commands.discussion_dispatch import _recover_orphaned_dispatches
+        from superharness.commands.discussion_dispatch import (
+            _recover_orphaned_dispatches,
+        )
+
         # Should not raise
         _recover_orphaned_dispatches(str(tmp_path))
 
@@ -988,9 +1375,9 @@ class TestOrphanRecovery:
 class TestTimeoutKillLogging:
     def test_discussion_timeout_logs_error(self, tmp_path):
         """Discussion round timeout (rc=124) must log ERROR with agent details."""
-        import logging
         from superharness.commands.inbox_dispatch import (
-            DispatchContext, _prepare_launch_context,
+            DispatchContext,
+            _prepare_launch_context,
         )
         from unittest.mock import patch, MagicMock
 
@@ -1006,11 +1393,20 @@ class TestTimeoutKillLogging:
             project_dir=str(tmp_path),
             inbox_file=str(sh / "inbox.yaml"),
             contract_file=str(sh / "contract.yaml"),
-            non_interactive=True, codex_bypass=False, launcher_timeout=0,
-            script_dir="", sqlite_primary=True, print_only=True,
+            non_interactive=True,
+            codex_bypass=False,
+            launcher_timeout=0,
+            script_dir="",
+            sqlite_primary=True,
+            print_only=True,
         )
-        ctx.item = {"id": "item-1", "task_id": ROUND_TASK, "target_agent": "gemini-cli",
-                    "status": "launched", "plan_only": False}
+        ctx.item = {
+            "id": "item-1",
+            "task_id": ROUND_TASK,
+            "target_agent": "gemini-cli",
+            "status": "launched",
+            "plan_only": False,
+        }
         ctx.item_id = "item-1"
         ctx.item_to = "gemini-cli"
         ctx.item_task = ROUND_TASK
@@ -1037,7 +1433,7 @@ class TestTimeoutKillLogging:
 class TestEffortFlagOnDiscussStart:
     def test_effort_flag_stored_on_task(self, tmp_path):
         """When --effort high is passed, task gets effort=high without classifier."""
-        import os, yaml, json, secrets, sqlite3
+        import sqlite3
         from unittest.mock import patch
 
         sh = tmp_path / ".superharness"
@@ -1053,6 +1449,7 @@ class TestEffortFlagOnDiscussStart:
 
         # Mock heartbeats for participants (v1.69.5 requirement)
         from datetime import datetime, timezone
+
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         seed_sqlite_heartbeat(tmp_path, agent="watcher", status="alive", now=now)
         seed_sqlite_heartbeat(tmp_path, agent="claude-code", status="alive", now=now)
@@ -1060,7 +1457,8 @@ class TestEffortFlagOnDiscussStart:
 
         with patch("superharness.engine.inbox._inbox_lock"):
             from superharness.commands.discuss import cmd_start
-            rc = cmd_start(
+
+            cmd_start(
                 discussions_dir=discussions_dir,
                 inbox_file=inbox_file,
                 contract_file=contract_file,
@@ -1089,7 +1487,7 @@ class TestEffortFlagOnDiscussStart:
 
     def test_tier_and_effort_flags_combined(self, tmp_path):
         """When both --tier max --effort low are passed, both stored on task."""
-        import os, yaml, json, secrets, sqlite3
+        import sqlite3
         from unittest.mock import patch
 
         sh = tmp_path / ".superharness"
@@ -1105,6 +1503,7 @@ class TestEffortFlagOnDiscussStart:
 
         # Mock heartbeats for participants (v1.69.5 requirement)
         from datetime import datetime, timezone
+
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         seed_sqlite_heartbeat(tmp_path, agent="watcher", status="alive", now=now)
         seed_sqlite_heartbeat(tmp_path, agent="claude-code", status="alive", now=now)
@@ -1112,7 +1511,8 @@ class TestEffortFlagOnDiscussStart:
 
         with patch("superharness.engine.inbox._inbox_lock"):
             from superharness.commands.discuss import cmd_start
-            rc = cmd_start(
+
+            cmd_start(
                 discussions_dir=discussions_dir,
                 inbox_file=inbox_file,
                 contract_file=contract_file,
@@ -1154,6 +1554,7 @@ class TestDiscussionFailureDiagnostic:
 
     def _make_ctx(self, tmp_path):
         from superharness.commands.inbox_dispatch import DispatchContext
+
         sh = tmp_path / ".superharness"
         sh.mkdir(parents=True, exist_ok=True)
         task_log = str(tmp_path / "round-1-claude-code.log")
@@ -1163,11 +1564,21 @@ class TestDiscussionFailureDiagnostic:
             project_dir=str(tmp_path),
             inbox_file=str(sh / "inbox.yaml"),
             contract_file=str(sh / "contract.yaml"),
-            non_interactive=True, codex_bypass=False, launcher_timeout=300,
-            script_dir="", sqlite_primary=True, print_only=False,
+            non_interactive=True,
+            codex_bypass=False,
+            launcher_timeout=300,
+            script_dir="",
+            sqlite_primary=True,
+            print_only=False,
         )
-        ctx.item = {"id": "item-cc", "task_id": ROUND_TASK, "target_agent": "claude-code",
-                    "status": "launched", "plan_only": False, "max_retries": 3}
+        ctx.item = {
+            "id": "item-cc",
+            "task_id": ROUND_TASK,
+            "target_agent": "claude-code",
+            "status": "launched",
+            "plan_only": False,
+            "max_retries": 3,
+        }
         ctx.item_id = "item-cc"
         ctx.item_to = "claude-code"
         ctx.item_task = ROUND_TASK
@@ -1186,11 +1597,16 @@ class TestDiscussionFailureDiagnostic:
         ctx = self._make_ctx(tmp_path)
         ctx.launcher_rc = 124
 
-        with patch("superharness.commands.inbox_dispatch._mark_item_failed"), \
-             patch("superharness.commands.inbox_dispatch._sqlite_mirror_dispatch"), \
-             patch("superharness.commands.inbox_dispatch._set_inbox_status", return_value=False), \
-             patch("superharness.commands.inbox_dispatch._inbox_cmd"), \
-             patch("superharness.engine.ledger_dao.decision_log"):
+        with (
+            patch("superharness.commands.inbox_dispatch._mark_item_failed"),
+            patch("superharness.commands.inbox_dispatch._sqlite_mirror_dispatch"),
+            patch(
+                "superharness.commands.inbox_dispatch._set_inbox_status",
+                return_value=False,
+            ),
+            patch("superharness.commands.inbox_dispatch._inbox_cmd"),
+            patch("superharness.engine.ledger_dao.decision_log"),
+        ):
             _handle_failure(ctx)
 
         content = Path(ctx.task_log).read_text()
@@ -1207,11 +1623,16 @@ class TestDiscussionFailureDiagnostic:
         ctx = self._make_ctx(tmp_path)
         ctx.launcher_rc = 1
 
-        with patch("superharness.commands.inbox_dispatch._mark_item_failed"), \
-             patch("superharness.commands.inbox_dispatch._sqlite_mirror_dispatch"), \
-             patch("superharness.commands.inbox_dispatch._set_inbox_status", return_value=False), \
-             patch("superharness.commands.inbox_dispatch._inbox_cmd"), \
-             patch("superharness.engine.ledger_dao.decision_log"):
+        with (
+            patch("superharness.commands.inbox_dispatch._mark_item_failed"),
+            patch("superharness.commands.inbox_dispatch._sqlite_mirror_dispatch"),
+            patch(
+                "superharness.commands.inbox_dispatch._set_inbox_status",
+                return_value=False,
+            ),
+            patch("superharness.commands.inbox_dispatch._inbox_cmd"),
+            patch("superharness.engine.ledger_dao.decision_log"),
+        ):
             _handle_failure(ctx)
 
         content = Path(ctx.task_log).read_text()
@@ -1221,7 +1642,10 @@ class TestDiscussionFailureDiagnostic:
 
     def test_no_diagnostic_for_non_discussion(self, tmp_path):
         """Non-discussion round failures must NOT append extra diagnostic block."""
-        from superharness.commands.inbox_dispatch import DispatchContext, _handle_failure
+        from superharness.commands.inbox_dispatch import (
+            DispatchContext,
+            _handle_failure,
+        )
 
         sh = tmp_path / ".superharness"
         sh.mkdir()
@@ -1232,11 +1656,21 @@ class TestDiscussionFailureDiagnostic:
             project_dir=str(tmp_path),
             inbox_file=str(sh / "inbox.yaml"),
             contract_file=str(sh / "contract.yaml"),
-            non_interactive=True, codex_bypass=False, launcher_timeout=300,
-            script_dir="", sqlite_primary=True, print_only=False,
+            non_interactive=True,
+            codex_bypass=False,
+            launcher_timeout=300,
+            script_dir="",
+            sqlite_primary=True,
+            print_only=False,
         )
-        ctx.item = {"id": "item-t", "task_id": "task-abc", "target_agent": "claude-code",
-                    "status": "launched", "plan_only": False, "max_retries": 3}
+        ctx.item = {
+            "id": "item-t",
+            "task_id": "task-abc",
+            "target_agent": "claude-code",
+            "status": "launched",
+            "plan_only": False,
+            "max_retries": 3,
+        }
         ctx.item_id = "item-t"
         ctx.item_to = "claude-code"
         ctx.item_task = "task-abc"
@@ -1248,11 +1682,16 @@ class TestDiscussionFailureDiagnostic:
         ctx.launch_start = 0.0
         ctx.launcher_rc = 1
 
-        with patch("superharness.commands.inbox_dispatch._mark_item_failed"), \
-             patch("superharness.commands.inbox_dispatch._sqlite_mirror_dispatch"), \
-             patch("superharness.commands.inbox_dispatch._set_inbox_status", return_value=False), \
-             patch("superharness.commands.inbox_dispatch._inbox_cmd"), \
-             patch("superharness.engine.ledger_dao.decision_log"):
+        with (
+            patch("superharness.commands.inbox_dispatch._mark_item_failed"),
+            patch("superharness.commands.inbox_dispatch._sqlite_mirror_dispatch"),
+            patch(
+                "superharness.commands.inbox_dispatch._set_inbox_status",
+                return_value=False,
+            ),
+            patch("superharness.commands.inbox_dispatch._inbox_cmd"),
+            patch("superharness.engine.ledger_dao.decision_log"),
+        ):
             _handle_failure(ctx)
 
         content = Path(task_log).read_text()
@@ -1279,7 +1718,9 @@ class TestDiscussionRetryBudget:
         disc_id = DISC_ID
         created_at = "2026-05-27T00:00:00Z"
 
-        _enqueue_sqlite_shadow(str(tmp_path), item_id, disc_id, "claude-code", created_at)
+        _enqueue_sqlite_shadow(
+            str(tmp_path), item_id, disc_id, "claude-code", created_at
+        )
 
         conn = get_connection(str(tmp_path))
         init_db(conn)
@@ -1288,7 +1729,9 @@ class TestDiscussionRetryBudget:
         ).fetchone()
         conn.close()
 
-        assert row is not None, "Shadow inbox row must exist after _enqueue_sqlite_shadow"
+        assert row is not None, (
+            "Shadow inbox row must exist after _enqueue_sqlite_shadow"
+        )
         assert row["max_retries"] == 3, (
             f"Discussion shadow rows must have max_retries=3 for retry headroom, got {row['max_retries']}"
         )
@@ -1311,8 +1754,12 @@ class TestDiscussionRetryBudget:
         conn.close()
 
         assert row is not None
-        assert row["retry_count"] == 0, f"retry_count must start at 0, got {row['retry_count']}"
-        assert row["max_retries"] >= 3, f"max_retries must be >=3, got {row['max_retries']}"
+        assert row["retry_count"] == 0, (
+            f"retry_count must start at 0, got {row['retry_count']}"
+        )
+        assert row["max_retries"] >= 3, (
+            f"max_retries must be >=3, got {row['max_retries']}"
+        )
 
     def test_primary_enqueue_persists_discussion_type_atomically(self, tmp_path):
         """The primary insert must carry type=discussion; no shadow rewrite is needed."""
@@ -1368,22 +1815,29 @@ class TestDiscussionRetryBudget:
 # Iter 2 — Scope agent-availability block to task + recency window
 # ---------------------------------------------------------------------------
 
+
 class TestAgentAvailabilityScope:
     """Iter 2 RED tests: a stale or unrelated-task block must not disqualify an
     agent from new discussions."""
 
     def _setup_db(self, tmp_path: Path) -> None:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(str(tmp_path))
         init_db(conn)
         conn.commit()
         conn.close()
 
     def _seed_failed_inbox(
-        self, tmp_path: Path, task_id: str, agent: str,
-        failed_reason: str, created_at: str,
+        self,
+        tmp_path: Path,
+        task_id: str,
+        agent: str,
+        failed_reason: str,
+        created_at: str,
     ) -> None:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(str(tmp_path))
         init_db(conn)
         conn.execute(
@@ -1394,8 +1848,17 @@ class TestAgentAvailabilityScope:
             "INSERT INTO inbox (id, task_id, target_agent, status, priority, "
             "retry_count, max_retries, created_at, failed_reason) "
             "VALUES (?,?,?,?,?,?,?,?,?)",
-            (f"fail-{task_id[:20]}", task_id, agent, "failed", 5, 3, 3,
-             created_at, failed_reason),
+            (
+                f"fail-{task_id[:20]}",
+                task_id,
+                agent,
+                "failed",
+                5,
+                3,
+                3,
+                created_at,
+                failed_reason,
+            ),
         )
         conn.commit()
         conn.close()
@@ -1417,7 +1880,8 @@ class TestAgentAvailabilityScope:
 
         # Check availability for a DIFFERENT discussion task in June
         available, reason = _agent_available(
-            "gemini-cli", str(tmp_path),
+            "gemini-cli",
+            str(tmp_path),
             task_id="discuss-new20260607T000000Z-1-111111111/round-1",
         )
         assert available, (
@@ -1441,7 +1905,9 @@ class TestAgentAvailabilityScope:
             created_at=now_str,
         )
 
-        available, reason = _agent_available("gemini-cli", str(tmp_path), task_id=disc_task)
+        available, reason = _agent_available(
+            "gemini-cli", str(tmp_path), task_id=disc_task
+        )
         assert not available, "Recent same-round block must still disqualify the agent"
         assert "permanent block" in reason
 
@@ -1460,7 +1926,9 @@ class TestAgentAvailabilityScope:
             created_at="2026-05-01T00:00:00Z",
         )
 
-        available, reason = _agent_available("gemini-cli", str(tmp_path), task_id=disc_task)
+        available, reason = _agent_available(
+            "gemini-cli", str(tmp_path), task_id=disc_task
+        )
         assert available, (
             f"Old block even on same task should be ignored after recency window; reason: {reason}"
         )
@@ -1505,12 +1973,15 @@ class TestAgentAvailabilityScope:
 
 # ── Iter 10 RED: same-day orphan detection and deadline close ─────────────────
 
+
 def _setup_orphan_project(tmp_path: Path) -> tuple[Path, object]:
     """Create a project with a launched inbox item that has a 'T'-format heartbeat."""
     from datetime import datetime, timezone, timedelta
+
     harness = tmp_path / ".superharness"
     harness.mkdir(exist_ok=True)
     from superharness.engine.db import get_connection, init_db
+
     conn = get_connection(str(tmp_path))
     init_db(conn)
     # Task row needed for FK
@@ -1519,17 +1990,43 @@ def _setup_orphan_project(tmp_path: Path) -> tuple[Path, object]:
         "INSERT INTO tasks (id, title, owner, status, created_at, updated_at, "
         "acceptance_criteria, test_types, out_of_scope, definition_of_done) "
         "VALUES (?,?,?,?,?,?,?,?,?,?)",
-        ("orphan-task", "Orphan", "claude-code", "in_progress", now, now, "[]", "[]", "[]", "[]"),
+        (
+            "orphan-task",
+            "Orphan",
+            "claude-code",
+            "in_progress",
+            now,
+            now,
+            "[]",
+            "[]",
+            "[]",
+            "[]",
+        ),
     )
     # Inbox item launched 20 min ago, heartbeat 16 min ago — both in ISO 'T' format
-    launched_at = (datetime.now(timezone.utc) - timedelta(minutes=20)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    last_heartbeat = (datetime.now(timezone.utc) - timedelta(minutes=16)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    launched_at = (datetime.now(timezone.utc) - timedelta(minutes=20)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    last_heartbeat = (datetime.now(timezone.utc) - timedelta(minutes=16)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     conn.execute(
         "INSERT INTO inbox (id, task_id, target_agent, status, retry_count, "
         "max_retries, failed_reason, created_at, project_path, launched_at, last_heartbeat) "
         "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-        ("orphan-inbox-1", "orphan-task", "claude-code", "launched",
-         0, 3, None, now, str(tmp_path), launched_at, last_heartbeat),
+        (
+            "orphan-inbox-1",
+            "orphan-task",
+            "claude-code",
+            "launched",
+            0,
+            3,
+            None,
+            now,
+            str(tmp_path),
+            launched_at,
+            last_heartbeat,
+        ),
     )
     conn.commit()
     return tmp_path, conn
@@ -1546,14 +2043,14 @@ def test_same_day_orphan_detected(tmp_path):
     conn.close()
 
     from superharness.commands.discussion_dispatch import _recover_orphaned_dispatches
+
     _recover_orphaned_dispatches(str(project))
 
     from superharness.engine.db import get_connection, init_db
+
     conn2 = get_connection(str(project))
     init_db(conn2)
-    row = conn2.execute(
-        "SELECT status FROM inbox WHERE id='orphan-inbox-1'"
-    ).fetchone()
+    row = conn2.execute("SELECT status FROM inbox WHERE id='orphan-inbox-1'").fetchone()
     conn2.close()
 
     assert row is not None
@@ -1572,6 +2069,7 @@ def test_deadline_close_does_not_pass_unknown_reason_flag(tmp_path):
     """
     import inspect
     from superharness.commands import discussion_dispatch as dd
+
     src = inspect.getsource(dd)
     # Exact bad pattern: the deadline close passes "--reason", f"deadline_exceeded ..."
     # to _run_engine, but discussion.py's CLI parser does not accept --reason → exit 2.

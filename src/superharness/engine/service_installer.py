@@ -19,9 +19,9 @@ install(project_dir, worker_dir, scripts_dir, opts) -> bool
 uninstall(project_dir, scripts_dir) -> bool
     Remove the watcher service (best-effort; returns False if already absent).
 """
+
 from __future__ import annotations
 
-import os
 import platform
 import subprocess
 import sys
@@ -82,6 +82,7 @@ def _install_launchd(
     codex_bypass: bool,
 ) -> bool:
     from superharness.logging_utils import get_logger, get_audit_logger
+
     log = get_logger("service_installer")
     audit = get_audit_logger()
 
@@ -92,25 +93,48 @@ def _install_launchd(
         return False
 
     args = [
-        "bash", str(script),
-        "--project", str(worker_dir),
-        "--interval", str(interval),
-        "--recover-timeout-minutes", str(recover_timeout),
-        "--recover-action", recover_action,
-        "--launcher-timeout", str(launcher_timeout),
-        "--to", to,
-        "--confirm-non-interactive", "yes",
-        "--confirm-skip-permissions", "yes",
+        "bash",
+        str(script),
+        "--project",
+        str(worker_dir),
+        "--interval",
+        str(interval),
+        "--recover-timeout-minutes",
+        str(recover_timeout),
+        "--recover-action",
+        recover_action,
+        "--launcher-timeout",
+        str(launcher_timeout),
+        "--to",
+        to,
+        "--confirm-non-interactive",
+        "yes",
+        "--confirm-skip-permissions",
+        "yes",
     ]
     if codex_bypass:
         args += ["--codex-bypass", "--confirm-codex-bypass", "yes"]
-        audit.info("launchd install with --codex-bypass: project=%s worker=%s", project_dir, worker_dir)
+        audit.info(
+            "launchd install with --codex-bypass: project=%s worker=%s",
+            project_dir,
+            worker_dir,
+        )
 
-    audit.info("launchd install: project=%s worker=%s to=%s", project_dir, worker_dir, to)
+    audit.info(
+        "launchd install: project=%s worker=%s to=%s", project_dir, worker_dir, to
+    )
     result = subprocess.run(args, check=False)
     if result.returncode != 0:
-        log.error("launchd watcher install failed: returncode=%d script=%s", result.returncode, script)
-        audit.warning("launchd install FAILED: project=%s returncode=%d", project_dir, result.returncode)
+        log.error(
+            "launchd watcher install failed: returncode=%d script=%s",
+            result.returncode,
+            script,
+        )
+        audit.warning(
+            "launchd install FAILED: project=%s returncode=%d",
+            project_dir,
+            result.returncode,
+        )
         print(
             f"ERROR: launchd watcher install failed (returncode={result.returncode}). "
             f"Script: {script}",
@@ -124,7 +148,9 @@ def _uninstall_launchd(project_dir: Path, scripts_dir: Path) -> bool:
     script = _resolve_script(scripts_dir, "uninstall-launchd-inbox-watcher.sh")
     if not script.is_file():
         return False
-    result = subprocess.run(["bash", str(script), "--project", str(project_dir)], check=False)
+    result = subprocess.run(
+        ["bash", str(script), "--project", str(project_dir)], check=False
+    )
     return result.returncode == 0
 
 
@@ -157,7 +183,9 @@ def _uninstall_systemd(project_dir: Path, scripts_dir: Path) -> bool:
     script = _resolve_script(scripts_dir, "uninstall-systemd-inbox-watcher.sh")
     if not script.is_file():
         return False
-    result = subprocess.run(["bash", str(script), "--project", str(project_dir)], check=False)
+    result = subprocess.run(
+        ["bash", str(script), "--project", str(project_dir)], check=False
+    )
     return result.returncode == 0
 
 
@@ -171,6 +199,7 @@ _TASK_NAME_PREFIX = "SuperharnessWatcher"
 def _schtasks_task_name(worker_dir: Path) -> str:
     """Derive a unique Task Scheduler task name from the worker path."""
     import hashlib
+
     key = hashlib.sha1(str(worker_dir).encode()).hexdigest()[:8]
     safe = worker_dir.name.replace(" ", "_")[:24]
     return f"{_TASK_NAME_PREFIX}_{safe}_{key}"
@@ -212,13 +241,20 @@ def _install_winsvc(
     python_exe = sys.executable
 
     watch_cmd_parts = [
-        python_exe, "-m", "superharness.commands.inbox_watch",
-        "--project", str(worker_dir),
+        python_exe,
+        "-m",
+        "superharness.commands.inbox_watch",
+        "--project",
+        str(worker_dir),
         "--once",
-        "--to", to,
-        "--recover-timeout-minutes", str(recover_timeout),
-        "--recover-action", recover_action,
-        "--launcher-timeout", str(launcher_timeout),
+        "--to",
+        to,
+        "--recover-timeout-minutes",
+        str(recover_timeout),
+        "--recover-action",
+        recover_action,
+        "--launcher-timeout",
+        str(launcher_timeout),
     ]
     if codex_bypass:
         watch_cmd_parts.append("--codex-bypass")
@@ -229,17 +265,23 @@ def _install_winsvc(
 
     # Interval in minutes (minimum 1)
     interval_min = max(1, interval // 60) if interval >= 60 else 1
-    repeat_interval = f"PT{interval_min}M"
 
     # Use schtasks /Create to register a ONCE trigger with repetition
     # /F = force (overwrite if exists), /RL HIGHEST = run with highest privileges available
     schtasks_args = [
-        "schtasks", "/Create", "/F",
-        "/TN", task_name,
-        "/TR", f'"{program}" {arguments}',
-        "/SC", "MINUTE",
-        "/MO", str(interval_min),
-        "/RL", "HIGHEST",
+        "schtasks",
+        "/Create",
+        "/F",
+        "/TN",
+        task_name,
+        "/TR",
+        f'"{program}" {arguments}',
+        "/SC",
+        "MINUTE",
+        "/MO",
+        str(interval_min),
+        "/RL",
+        "HIGHEST",
     ]
 
     result = subprocess.run(schtasks_args, check=False, capture_output=True, text=True)
@@ -258,8 +300,9 @@ def _install_winsvc(
     return True
 
 
-def _uninstall_winsvc(project_dir: Path, worker_dir: Path | None = None,
-                      **_kwargs: object) -> bool:
+def _uninstall_winsvc(
+    project_dir: Path, worker_dir: Path | None = None, **_kwargs: object
+) -> bool:
     """Delete THIS project's Task Scheduler watcher task.
 
     Scoped to the single task name derived from the worker dir. The previous
@@ -274,7 +317,9 @@ def _uninstall_winsvc(project_dir: Path, worker_dir: Path | None = None,
 
     del_result = subprocess.run(
         ["schtasks", "/Delete", "/TN", target_name, "/F"],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     return del_result.returncode == 0
 
@@ -341,8 +386,9 @@ def install(
     return False
 
 
-def uninstall(project_dir: Path, scripts_dir: Path,
-              worker_dir: Path | None = None) -> bool:
+def uninstall(
+    project_dir: Path, scripts_dir: Path, worker_dir: Path | None = None
+) -> bool:
     """Uninstall the watcher service for *project_dir*.
 
     Args:

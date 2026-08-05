@@ -1,8 +1,7 @@
 """Unit tests for operator memory hooks — _seed_operator_memory and _check_operator_memory."""
+
 from __future__ import annotations
 
-import os
-from pathlib import Path
 
 import pytest
 
@@ -16,6 +15,7 @@ from superharness.engine.operator_memory import OperatorMemory
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def db_with_table(tmp_path):
@@ -54,6 +54,7 @@ def sample_patterns():
 # ---------------------------------------------------------------------------
 # _seed_operator_memory
 # ---------------------------------------------------------------------------
+
 
 def test_seed_creates_new_patterns(db_with_table, sample_patterns):
     """Seeding unknown patterns creates entries in operator_memory."""
@@ -95,8 +96,11 @@ def test_seed_handles_missing_sqlite_gracefully(tmp_path):
     # No state.sqlite3
 
     pattern = FailurePattern(
-        id="test", description="", match_patterns=["x"],
-        hint="fix", severity="minor",
+        id="test",
+        description="",
+        match_patterns=["x"],
+        hint="fix",
+        severity="minor",
     )
     # Should not raise
     _seed_operator_memory(str(tmp_path), [pattern])
@@ -122,6 +126,7 @@ def test_seed_multiple_patterns_same_batch(db_with_table, sample_patterns):
 # _check_operator_memory (inbox_watch hook)
 # ---------------------------------------------------------------------------
 
+
 def test_check_operator_memory_no_state_db(tmp_path, capsys):
     """Missing state.sqlite3 — returns early, no output."""
     sh = tmp_path / ".superharness"
@@ -142,10 +147,14 @@ def test_check_operator_memory_empty_inbox(db_with_table, capsys):
     assert "operator-memory:" not in captured.out
 
 
-def test_check_operator_memory_handles_missing_state_reader(db_with_table, monkeypatch, capsys):
+def test_check_operator_memory_handles_missing_state_reader(
+    db_with_table, monkeypatch, capsys
+):
     """If get_inbox_items fails, the hook catches the exception and returns."""
+
     def _raise(*a, **kw):
         raise RuntimeError("simulated failure")
+
     monkeypatch.setattr(
         "superharness.engine.state_reader.get_inbox_items",
         _raise,

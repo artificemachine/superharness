@@ -24,6 +24,7 @@ subset runs, so a bad merge resolution fails in seconds instead of minutes.
 Read-only: runs `git` plumbing that never writes, so it is compatible with the
 autouse `_real_repo_untouched` hermeticity guard.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -55,7 +56,10 @@ def _resolve_base() -> str | None:
     clone, no upstream ref, tarball with no .git), in which case the test
     skips rather than inventing a comparison."""
     for ref in UPSTREAM_CANDIDATES:
-        if _git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode != 0:
+        if (
+            _git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode
+            != 0
+        ):
             continue
         merge_base = _git("merge-base", "HEAD", ref)
         if merge_base.returncode == 0 and merge_base.stdout.strip():
@@ -100,8 +104,16 @@ def test_changelog_is_append_only_against_merge_base():
         ),
         min(len(base_lines), len(current_lines)),
     )
-    expected = base_lines[first_diff].decode(errors="replace") if first_diff < len(base_lines) else "<end of file>"
-    actual = current_lines[first_diff].decode(errors="replace") if first_diff < len(current_lines) else "<end of file>"
+    expected = (
+        base_lines[first_diff].decode(errors="replace")
+        if first_diff < len(base_lines)
+        else "<end of file>"
+    )
+    actual = (
+        current_lines[first_diff].decode(errors="replace")
+        if first_diff < len(current_lines)
+        else "<end of file>"
+    )
 
     raise AssertionError(
         f"CHANGELOG.md is no longer append-only against merge base {base[:8]}.\n"

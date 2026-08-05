@@ -19,6 +19,7 @@ wrong in both directions:
 So: split the command into segments, find the actual push invocations, and resolve
 what each one would write to.
 """
+
 from __future__ import annotations
 
 import json
@@ -49,7 +50,9 @@ def current_branch() -> str | None:
     try:
         r = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -70,7 +73,7 @@ def push_targets(tokens: list[str]) -> list[str] | None:
         return None
 
     args, skip = [], False
-    for tok in tokens[idx + 1:]:
+    for tok in tokens[idx + 1 :]:
         if skip:
             skip = False
             continue
@@ -94,7 +97,7 @@ def push_targets(tokens: list[str]) -> list[str] | None:
         dst = spec.split(":", 1)[1] if ":" in spec else spec
         dst = dst.lstrip("+")
         if dst.startswith("refs/heads/"):
-            dst = dst[len("refs/heads/"):]
+            dst = dst[len("refs/heads/") :]
         targets.append(dst)
     return targets
 
@@ -108,8 +111,11 @@ def main() -> None:
 
     if not command:
         if raw.strip():
-            emit("ask", "superharness: branch-guard could not parse tool input. "
-                        "Proceeding with caution.")
+            emit(
+                "ask",
+                "superharness: branch-guard could not parse tool input. "
+                "Proceeding with caution.",
+            )
         emit("allow")
 
     for segment in SEGMENT_SPLIT.split(command):
@@ -124,30 +130,47 @@ def main() -> None:
             continue
 
         # LAN mirror remote (gitlab.gs — private, never internet-facing).
-        if len(tokens) > tokens.index("push") + 1 and tokens[tokens.index("push") + 1].startswith("gitlab"):
+        if len(tokens) > tokens.index("push") + 1 and tokens[
+            tokens.index("push") + 1
+        ].startswith("gitlab"):
             continue
 
         if "--force" in tokens and "--force-with-lease" not in tokens:
-            emit("deny", "superharness: BLOCKED — bare --force push is destructive. "
-                         "Use --force-with-lease instead.")
+            emit(
+                "deny",
+                "superharness: BLOCKED — bare --force push is destructive. "
+                "Use --force-with-lease instead.",
+            )
 
         targets = push_targets(tokens)
         if targets is None:
-            emit("ask", "superharness: branch-guard could not determine the push "
-                        "target for this command. Confirm it is not a protected branch.")
+            emit(
+                "ask",
+                "superharness: branch-guard could not determine the push "
+                "target for this command. Confirm it is not a protected branch.",
+            )
         hits = [t for t in targets if t in PROTECTED]
         if hits:
-            emit("deny", f"superharness: BLOCKED — this would push to "
-                         f"{', '.join(sorted(set(hits)))}. Never push directly to a "
-                         f"protected branch. Use a feature branch and PR.")
+            emit(
+                "deny",
+                f"superharness: BLOCKED — this would push to "
+                f"{', '.join(sorted(set(hits)))}. Never push directly to a "
+                f"protected branch. Use a feature branch and PR.",
+            )
 
     if re.search(r"git\s+(reset\s+--hard|clean\s+-f|checkout\s+--\s+\.)", command):
-        emit("ask", "superharness: WARNING — destructive git operation detected. "
-                    "Make sure this is intentional.")
+        emit(
+            "ask",
+            "superharness: WARNING — destructive git operation detected. "
+            "Make sure this is intentional.",
+        )
 
     if re.search(r"rm\s+-rf\s+/", command):
-        emit("ask", "superharness: WARNING — recursive delete on root path. "
-                    "Double-check the target.")
+        emit(
+            "ask",
+            "superharness: WARNING — recursive delete on root path. "
+            "Double-check the target.",
+        )
 
     emit("allow")
 

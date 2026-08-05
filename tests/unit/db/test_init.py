@@ -8,8 +8,10 @@ import pytest
 from superharness.engine.state_errors import ConnectionError
 from superharness.utils.paths import resolve_xdg_state_db_path
 
+
 def test_db_file_created(monkeypatch, tmp_path: Path):
     from superharness.engine.db import get_connection
+
     state_dir = str(tmp_path / "xdg_state")
     monkeypatch.setenv("SUPERHARNESS_STATE_DIR", state_dir)
 
@@ -23,10 +25,11 @@ def test_db_file_created(monkeypatch, tmp_path: Path):
     finally:
         conn.close()
 
+
 def test_init_db_creates_tables(db_conn: sqlite3.Connection):
     cursor = db_conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
     tables = {row[0] for row in cursor.fetchall()}
-    
+
     expected_tables = {
         "schema_migrations",
         "tasks",
@@ -42,26 +45,31 @@ def test_init_db_creates_tables(db_conn: sqlite3.Connection):
     for table in expected_tables:
         assert table in tables, f"Table {table} missing"
 
+
 def test_pragma_values(db_conn: sqlite3.Connection):
     # WAL mode
     cursor = db_conn.execute("PRAGMA journal_mode")
     assert cursor.fetchone()[0].lower() == "wal"
-    
+
     # FK enforcement
     cursor = db_conn.execute("PRAGMA foreign_keys")
     assert cursor.fetchone()[0] == 1
-    
+
     # User version matches current schema
     from superharness.engine.db import CURRENT_SCHEMA_VERSION
+
     cursor = db_conn.execute("PRAGMA user_version")
     assert cursor.fetchone()[0] == CURRENT_SCHEMA_VERSION
+
 
 def test_schema_migrations_row(db_conn: sqlite3.Connection):
     cursor = db_conn.execute("SELECT version FROM schema_migrations WHERE version=1")
     assert cursor.fetchone() is not None
 
+
 def test_idempotency(db_conn: sqlite3.Connection):
     from superharness.engine.db import init_db, CURRENT_SCHEMA_VERSION
+
     # Should not raise even if called again
     init_db(db_conn)
     init_db(db_conn)
@@ -69,16 +77,21 @@ def test_idempotency(db_conn: sqlite3.Connection):
     cursor = db_conn.execute("SELECT count(*) FROM schema_migrations")
     assert cursor.fetchone()[0] == CURRENT_SCHEMA_VERSION
 
+
 def test_sqlite_version_check(monkeypatch, tmp_path: Path):
     import sqlite3
+
     # Force a low version for testing
     monkeypatch.setattr(sqlite3, "sqlite_version_info", (3, 34, 0))
 
     from superharness.engine.db import get_connection
+
     project = tmp_path
     (project / ".superharness").mkdir()
 
-    with pytest.raises(ConnectionError, match="SQLite version 3.35.0 or higher required"):
+    with pytest.raises(
+        ConnectionError, match="SQLite version 3.35.0 or higher required"
+    ):
         get_connection(str(project))
 
 
@@ -86,9 +99,11 @@ def test_sqlite_version_check(monkeypatch, tmp_path: Path):
 # XDG path migration (Iteration 4 — get_connection uses XDG for new projects)
 # ---------------------------------------------------------------------------
 
+
 def test_get_connection_creates_at_xdg_for_new_project(monkeypatch, tmp_path):
     """A fresh project directory causes get_connection to create state.db at the XDG path."""
     from superharness.engine.db import get_connection
+
     state_dir = str(tmp_path / "xdg_state")
     monkeypatch.setenv("SUPERHARNESS_STATE_DIR", state_dir)
 
@@ -104,6 +119,7 @@ def test_get_connection_creates_at_xdg_for_new_project(monkeypatch, tmp_path):
 def test_get_connection_uses_legacy_when_only_legacy_exists(monkeypatch, tmp_path):
     """Plain resolution keeps legacy compatibility when no XDG db exists."""
     from superharness.engine.db import get_connection, init_db
+
     monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
 
     project = str(tmp_path / "oldproject")
@@ -123,7 +139,8 @@ def test_get_connection_uses_legacy_when_only_legacy_exists(monkeypatch, tmp_pat
 
 def test_get_connection_prefers_xdg_when_both_exist(monkeypatch, tmp_path):
     """Without an explicit override, XDG still wins over residual legacy state."""
-    from superharness.engine.db import get_connection, init_db
+    from superharness.engine.db import get_connection
+
     monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg-home"))
 

@@ -1,8 +1,8 @@
 """Tests for security module (TDD — RED phase)."""
+
 from __future__ import annotations
 
 from unittest.mock import Mock, patch
-
 
 
 class TestSecurityModule:
@@ -40,7 +40,10 @@ class TestSecurityModule:
         mock_result.stdout = "No critical findings"
         mock_result.stderr = ""
 
-        with patch("superharness.modules.actions.security.shutil.which", return_value="/usr/local/bin/shipguard"):
+        with patch(
+            "superharness.modules.actions.security.shutil.which",
+            return_value="/usr/local/bin/shipguard",
+        ):
             with patch("subprocess.run", return_value=mock_result):
                 result = security_scan(context, settings)
 
@@ -70,7 +73,10 @@ class TestSecurityModule:
         mock_result.stdout = "CRITICAL: Hardcoded secret detected"
         mock_result.stderr = ""
 
-        with patch("superharness.modules.actions.security.shutil.which", return_value="/usr/local/bin/shipguard"):
+        with patch(
+            "superharness.modules.actions.security.shutil.which",
+            return_value="/usr/local/bin/shipguard",
+        ):
             with patch("subprocess.run", return_value=mock_result):
                 result = security_scan(context, settings)
 

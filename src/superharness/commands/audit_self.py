@@ -5,6 +5,7 @@ Verification includes:
 2. Logging compliance: Use centralized logging_utils.get_logger.
 3. Changelog hygiene: Ensure CHANGELOG.md is append-only (not fully implemented).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,7 +43,9 @@ def _check_yaml_reads(src_dir: str, project_dir: str) -> int:
                 for pattern in yaml_patterns:
                     if re.search(pattern, content):
                         rel_path = os.path.relpath(path, project_dir)
-                        print(f"  [FAIL] Unauthorized YAML read pattern '{pattern}' in {rel_path}")
+                        print(
+                            f"  [FAIL] Unauthorized YAML read pattern '{pattern}' in {rel_path}"
+                        )
                         issues += 1
     return issues
 
@@ -83,9 +86,15 @@ def run_audit_self(project_dir: str, yaml_only: bool = False) -> int:
             path = os.path.join(root, file)
             with open(path, "r", encoding="utf-8") as f:
                 content = f.read()
-                if "import logging" in content and "get_logger" not in content and "logging_utils" not in content:
+                if (
+                    "import logging" in content
+                    and "get_logger" not in content
+                    and "logging_utils" not in content
+                ):
                     rel_path = os.path.relpath(path, project_dir)
-                    print(f"  [FAIL] Direct 'import logging' without centralized get_logger in {rel_path}")
+                    print(
+                        f"  [FAIL] Direct 'import logging' without centralized get_logger in {rel_path}"
+                    )
                     issues += 1
 
     # 3. Changelog existence

@@ -6,6 +6,7 @@ throwaway repos so its verdict is verified rather than assumed.
 
 Context: docs/bugs/BUG-2026-07-31-test-suite-git-dir-escape.md
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -58,7 +59,9 @@ class TestDetectorFires:
     def test_new_commit_is_detected(self, monkeypatch, repo):
         before = _fingerprint(monkeypatch, repo)
         (repo / "f.txt").write_text("changed\n")
-        _git(repo, "-c", "commit.gpgsign=false", "commit", "-qam", "junk", "--no-verify")
+        _git(
+            repo, "-c", "commit.gpgsign=false", "commit", "-qam", "junk", "--no-verify"
+        )
         assert _fingerprint(monkeypatch, repo) != before
 
     def test_new_branch_is_detected(self, monkeypatch, repo):

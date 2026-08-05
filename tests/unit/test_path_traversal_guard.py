@@ -11,6 +11,7 @@ Validating only at the CLI boundary is not sufficient: mcp/tools/contract.py
 create_task() INSERTs an arbitrary id with no validation at all, so the
 path-building sink has to defend itself.
 """
+
 from __future__ import annotations
 
 import os
@@ -64,15 +65,17 @@ class TestWorktreePathIsContained:
         from superharness.commands import inbox_dispatch
 
         calls: list[str] = []
-        monkeypatch.setattr(inbox_dispatch.os, "makedirs",
-                            lambda p, **kw: calls.append(p))
+        monkeypatch.setattr(
+            inbox_dispatch.os, "makedirs", lambda p, **kw: calls.append(p)
+        )
 
         class _Result:
             returncode = 1
             stderr = "stubbed: no real git worktree"
 
-        monkeypatch.setattr(inbox_dispatch.subprocess, "run",
-                            lambda *a, **kw: _Result())
+        monkeypatch.setattr(
+            inbox_dispatch.subprocess, "run", lambda *a, **kw: _Result()
+        )
 
         inbox_dispatch._git_worktree_add(str(tmp_path), bad)
 

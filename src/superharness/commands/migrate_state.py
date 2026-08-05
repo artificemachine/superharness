@@ -8,6 +8,7 @@ checkpointed WAL file:
     shux operator stop --project .
     shux migrate-state [--project DIR] [--dry-run] [--keep-legacy]
 """
+
 from __future__ import annotations
 
 import os
@@ -16,6 +17,7 @@ import sqlite3
 import sys
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -89,17 +91,27 @@ def run_migrate_state(
         xdg_behind = bool(legacy_cols - xdg_cols)
 
         if xdg_behind:
-            print("WARN XDG db's agent_heartbeats is missing columns the legacy db has:")
+            print(
+                "WARN XDG db's agent_heartbeats is missing columns the legacy db has:"
+            )
             print(f"  Missing: {sorted(legacy_cols - xdg_cols)}")
-            print("Refusing to auto-resolve — the 'active' copy is schema-behind the 'stale' one.")
+            print(
+                "Refusing to auto-resolve — the 'active' copy is schema-behind the 'stale' one."
+            )
             print("Manual resolution required. Options:")
-            print(f"  - Keep legacy, discard XDG: rm {xdg_db} && shux migrate-state --project {project_dir}")
-            print(f"  - Inspect both and merge manually before removing either.")
+            print(
+                f"  - Keep legacy, discard XDG: rm {xdg_db} && shux migrate-state --project {project_dir}"
+            )
+            print("  - Inspect both and merge manually before removing either.")
             return 1
 
-        print("The XDG db is the active source of truth and is not schema-behind the legacy db.")
+        print(
+            "The XDG db is the active source of truth and is not schema-behind the legacy db."
+        )
         if dry_run:
-            print("[dry-run] Would remove legacy db (no data loss — XDG is active and not behind).")
+            print(
+                "[dry-run] Would remove legacy db (no data loss — XDG is active and not behind)."
+            )
             print("Dry run complete — no changes made.")
             return 0
         if not keep_legacy:
@@ -131,7 +143,10 @@ def run_migrate_state(
         src_size = os.path.getsize(legacy_db)
         dst_size = os.path.getsize(xdg_db)
         if src_size != dst_size:
-            print(f"ERROR: size mismatch after copy ({src_size} vs {dst_size}). Aborting.", file=sys.stderr)
+            print(
+                f"ERROR: size mismatch after copy ({src_size} vs {dst_size}). Aborting.",
+                file=sys.stderr,
+            )
             os.remove(xdg_db)
             return 1
 
@@ -159,19 +174,34 @@ def run_migrate_state(
             try:
                 os.remove(xdg_db)
             except Exception as e:
-                logger.warning("migrate_state.py unexpected error: %s", e, exc_info=True)
+                logger.warning(
+                    "migrate_state.py unexpected error: %s", e, exc_info=True
+                )
                 pass
         return 1
 
 
 def cmd_migrate_state(args: list[str]) -> None:
     import argparse
+
     parser = argparse.ArgumentParser(
         prog="shux migrate-state",
         description="Move legacy .superharness/state.sqlite3 to the XDG state path.",
     )
-    parser.add_argument("--project", default=".", help="Project directory (default: cwd)")
-    parser.add_argument("--dry-run", action="store_true", help="Show what would happen without making changes")
-    parser.add_argument("--keep-legacy", action="store_true", help="Keep the legacy file after copying")
+    parser.add_argument(
+        "--project", default=".", help="Project directory (default: cwd)"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would happen without making changes",
+    )
+    parser.add_argument(
+        "--keep-legacy", action="store_true", help="Keep the legacy file after copying"
+    )
     parsed = parser.parse_args(args)
-    sys.exit(run_migrate_state(parsed.project, dry_run=parsed.dry_run, keep_legacy=parsed.keep_legacy))
+    sys.exit(
+        run_migrate_state(
+            parsed.project, dry_run=parsed.dry_run, keep_legacy=parsed.keep_legacy
+        )
+    )

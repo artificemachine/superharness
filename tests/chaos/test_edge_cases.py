@@ -1,11 +1,9 @@
 """Additional chaos / failure injection tests."""
+
 from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-
-import pytest
-import yaml
 
 
 def _setup_db(tmp_path: Path) -> sqlite3.Connection:
@@ -15,12 +13,14 @@ def _setup_db(tmp_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     from superharness.engine.db import init_db
+
     init_db(conn)
     conn.commit()
     return conn
 
 
 # ── Additional chaos tests (13 tests target) ──────────────────────────────────
+
 
 class TestChaosWALContention:
     """SQLite WAL mode edge cases."""
@@ -41,6 +41,7 @@ class TestChaosWALContention:
         harness.mkdir()
         db_path = harness / "state.sqlite3"
         from superharness.engine.db import init_db
+
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
         init_db(conn)
@@ -57,8 +58,11 @@ class TestChaosOrchestratorFallback:
 
     def test_all_models_fail_returns_fallback(self, tmp_path):
         from superharness.engine.orchestrator import Orchestrator
+
         orch = Orchestrator(project_dir=str(tmp_path))
-        plan = orch._fallback_routing({"id": "t1", "title": "Test", "owner": "gemini-cli"})
+        plan = orch._fallback_routing(
+            {"id": "t1", "title": "Test", "owner": "gemini-cli"}
+        )
         assert plan.owner == "gemini-cli"
         assert plan.tier == "standard"
         assert plan.decompose is False
@@ -66,6 +70,7 @@ class TestChaosOrchestratorFallback:
 
     def test_fallback_routing_all_owners(self, tmp_path):
         from superharness.engine.orchestrator import Orchestrator
+
         for owner in ["claude-code", "codex-cli", "gemini-cli", "opencode"]:
             orch = Orchestrator(project_dir=str(tmp_path))
             plan = orch._fallback_routing({"id": "t1", "title": "T", "owner": owner})
@@ -73,6 +78,7 @@ class TestChaosOrchestratorFallback:
 
     def test_empty_task_dict(self, tmp_path):
         from superharness.engine.orchestrator import Orchestrator
+
         orch = Orchestrator(project_dir=str(tmp_path))
         plan = orch._fallback_routing({})
         assert plan.owner == "claude-code"  # default
@@ -87,7 +93,7 @@ class TestChaosDispatcherFailure:
         conn.execute(
             "INSERT INTO tasks (id, title, status, project_path, created_at) "
             "VALUES ('t1', 'T', 'in_progress', ?, '2026-01-01T00:00:00Z')",
-            (str(tmp_path),)
+            (str(tmp_path),),
         )
         conn.execute(
             "INSERT INTO inbox (id, task_id, target_agent, status, pid, retry_count, max_retries, created_at) "
@@ -122,6 +128,7 @@ class TestChaosDiscussionFailure:
         conn.commit()
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import discussions_dao
+
         conn2 = get_connection(str(tmp_path))
         try:
             init_db(conn2)
@@ -140,6 +147,7 @@ class TestChaosDiscussionFailure:
         conn.commit()
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import discussions_dao
+
         conn2 = get_connection(str(tmp_path))
         try:
             init_db(conn2)

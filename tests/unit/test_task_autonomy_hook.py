@@ -4,6 +4,7 @@ Verifies that `shux task status --status plan_proposed` on a task with
 autonomy=ai_driven automatically advances to plan_approved.  Tasks with
 oversight or hands_on stay at plan_proposed.  No recursion beyond one step.
 """
+
 from __future__ import annotations
 import pytest
 
@@ -16,7 +17,10 @@ import yaml
 PYTHON = sys.executable
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+pytestmark = pytest.mark.skip(
+    reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+)
+
 
 def _make_project(tmp_path: Path, task: dict) -> Path:
     """Create a minimal project with one task. Returns project path."""
@@ -29,21 +33,32 @@ def _make_project(tmp_path: Path, task: dict) -> Path:
     }
     (sh / "contract.yaml").write_text(yaml.dump(contract))
     from tests.helpers import seed_sqlite_from_yaml
+
     seed_sqlite_from_yaml(project)
     return project
 
 
-def _run_status(project: Path, task_id: str, status: str,
-                actor: str = "claude-code",
-                summary: str = "test summary",
-                reason: str = "") -> subprocess.CompletedProcess:
+def _run_status(
+    project: Path,
+    task_id: str,
+    status: str,
+    actor: str = "claude-code",
+    summary: str = "test summary",
+    reason: str = "",
+) -> subprocess.CompletedProcess:
     args = [
-        PYTHON, "-m", "superharness.commands.task",
+        PYTHON,
+        "-m",
+        "superharness.commands.task",
         "status",
-        "--project", str(project),
-        "--id", task_id,
-        "--status", status,
-        "--actor", actor,
+        "--project",
+        str(project),
+        "--id",
+        task_id,
+        "--status",
+        status,
+        "--actor",
+        actor,
     ]
     if summary:
         args += ["--summary", summary]
@@ -61,8 +76,9 @@ def _read_task_status(project: Path, task_id: str) -> str:
     raise AssertionError(f"task {task_id} not found")
 
 
-def _base_task(task_id: str = "t1", autonomy: str = "ai_driven",
-               status: str = "todo") -> dict:
+def _base_task(
+    task_id: str = "t1", autonomy: str = "ai_driven", status: str = "todo"
+) -> dict:
     return {
         "id": task_id,
         "title": "test task",
@@ -77,8 +93,10 @@ def _base_task(task_id: str = "t1", autonomy: str = "ai_driven",
 # Tests
 # ---------------------------------------------------------------------------
 
+
 def test_plan_proposed_auto_flips_to_plan_approved_when_ai_driven(
-        tmp_path: Path) -> None:
+    tmp_path: Path,
+) -> None:
     """ai_driven task: plan_proposed → plan_approved automatically."""
     task = _base_task(autonomy="ai_driven")
     project = _make_project(tmp_path, task)
@@ -109,7 +127,9 @@ def test_plan_proposed_stays_when_hands_on(tmp_path: Path) -> None:
 def test_plan_proposed_stays_when_autonomy_absent(tmp_path: Path) -> None:
     """Task without autonomy field defaults to ai_driven → auto-approves."""
     task = {
-        "id": "t1", "title": "x", "owner": "claude-code",
+        "id": "t1",
+        "title": "x",
+        "owner": "claude-code",
         "status": "todo",
         # no autonomy field
     }
@@ -136,7 +156,7 @@ def test_ledger_logs_auto_approval(tmp_path: Path) -> None:
     project = _make_project(tmp_path, task)
     r = _run_status(project, "t1", "plan_proposed")
     assert r.returncode == 0, r.stderr
-    ledger = (project / ".superharness" / "ledger.md")
+    ledger = project / ".superharness" / "ledger.md"
     if ledger.exists():
         content = ledger.read_text()
         assert "auto" in content.lower() or "ai_driven" in content.lower(), (

@@ -10,16 +10,15 @@ Covers:
 - resolve_launcher raises AdapterValidationError when script is missing
 - Dispatch routing uses registry (no hard-coded if/else)
 """
+
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from superharness.engine.adapter_registry import (
-    MANIFEST_DIR,
     AdapterManifest,
     AdapterValidationError,
     adapter_info,
@@ -63,7 +62,9 @@ class TestLoadManifest:
 
     def test_load_unknown_adapter_raises_error(self):
         """load_manifest for unknown adapter raises AdapterValidationError."""
-        with pytest.raises(AdapterValidationError, match="Unknown adapter 'nonexistent-agent'"):
+        with pytest.raises(
+            AdapterValidationError, match="Unknown adapter 'nonexistent-agent'"
+        ):
             load_manifest("nonexistent-agent")
 
     def test_error_message_lists_available_adapters(self):
@@ -158,53 +159,65 @@ class TestDispatchUsesRegistry:
     def test_dispatch_imports_adapter_registry(self):
         """inbox_dispatch module can be imported without error."""
         from superharness.commands import inbox_dispatch
+
         # The module should import cleanly
         assert inbox_dispatch is not None
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_dispatch_does_not_hardcode_target_strings(self):
         """inbox_dispatch._do_dispatch uses resolve_launcher, not a hard-coded if/else."""
         import inspect
         from superharness.commands import inbox_dispatch
+
         source = inspect.getsource(inbox_dispatch._do_dispatch)
         # Should not have a raw if/else that hard-codes agent names directly
         # (resolve_launcher call should be present instead)
         assert "resolve_launcher" in source or "adapter_registry" in source
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_dispatch_unknown_target_fails_gracefully(self, tmp_path):
         """Dispatching to an unknown target fails with a clear validation error."""
         import json
+
         inbox_file = tmp_path / "inbox.yaml"
         contract_file = tmp_path / "contract.yaml"
 
         # Create a minimal inbox with an unknown target
         inbox_data = {
-            "items": [{
+            "items": [
+                {
+                    "id": "test-001",
+                    "to": "unknown-agent-xyz",
+                    "task": "test.task",
+                    "status": "pending",
+                    "project": str(tmp_path),
+                }
+            ]
+        }
+        import yaml
+
+        inbox_file.write_text(yaml.dump(inbox_data))
+
+        from superharness.commands.inbox_dispatch import _do_dispatch, _MkdirLock
+
+        lock = _MkdirLock(str(tmp_path / "inbox.yaml.lock.d"))
+
+        from unittest.mock import patch
+
+        # Mock subprocess.run to return the inbox item
+        mock_item = json.dumps(
+            {
                 "id": "test-001",
                 "to": "unknown-agent-xyz",
                 "task": "test.task",
                 "status": "pending",
                 "project": str(tmp_path),
-            }]
-        }
-        import yaml
-        inbox_file.write_text(yaml.dump(inbox_data))
-
-        from superharness.commands.inbox_dispatch import _do_dispatch, _MkdirLock
-        lock = _MkdirLock(str(tmp_path / "inbox.yaml.lock.d"))
-
-        import sys
-        from unittest.mock import patch
-
-        # Mock subprocess.run to return the inbox item
-        mock_item = json.dumps({
-            "id": "test-001",
-            "to": "unknown-agent-xyz",
-            "task": "test.task",
-            "status": "pending",
-            "project": str(tmp_path),
-        })
+            }
+        )
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
@@ -301,7 +314,9 @@ class TestManifestNormalization:
             "  standard: sonnet\n"
             "  max: opus\n"
         )
-        monkeypatch.setattr("superharness.engine.adapter_registry.MANIFEST_DIR", fake_dir)
+        monkeypatch.setattr(
+            "superharness.engine.adapter_registry.MANIFEST_DIR", fake_dir
+        )
 
         m = load_manifest("legacy-agent")
         assert m.model_tiers["mini"] == {"id": "haiku", "label": "haiku"}
@@ -319,12 +334,15 @@ class TestManifestNormalization:
             "model_tiers:\n"
             "  standard: sonnet\n"
         )
-        monkeypatch.setattr("superharness.engine.adapter_registry.MANIFEST_DIR", fake_dir)
+        monkeypatch.setattr(
+            "superharness.engine.adapter_registry.MANIFEST_DIR", fake_dir
+        )
         result = resolve_model("legacy-agent", "standard")
         assert result == {"id": "sonnet", "label": "sonnet"}
 
 
 # ── packaging regression: adapter manifests must ship in the wheel ───────────
+
 
 class TestManifestPackaging:
     """Without these files, resolve_model() silently falls back to {id: tier, label: tier}
@@ -334,6 +352,7 @@ class TestManifestPackaging:
     def test_builtin_adapters_are_discoverable_from_installed_layout(self):
         """list_adapters() must find the YAML files from the package location."""
         from superharness.engine import adapter_registry as reg
+
         names = reg.list_adapters()
         assert "claude-code" in names, names
         assert "codex-cli" in names, names
@@ -342,15 +361,18 @@ class TestManifestPackaging:
         """MANIFEST_DIR resolves to a path inside the installed package, not the repo."""
         from superharness.engine import adapter_registry as reg
         import superharness
+
         pkg_root = Path(superharness.__file__).parent
         assert reg.MANIFEST_DIR.is_relative_to(pkg_root), (reg.MANIFEST_DIR, pkg_root)
 
     def test_claude_code_manifest_yaml_file_exists_on_disk(self):
         from superharness.engine import adapter_registry as reg
+
         assert (reg.MANIFEST_DIR / "claude-code.yaml").is_file()
 
     def test_codex_cli_manifest_yaml_file_exists_on_disk(self):
         from superharness.engine import adapter_registry as reg
+
         assert (reg.MANIFEST_DIR / "codex-cli.yaml").is_file()
 
 
@@ -365,6 +387,7 @@ class TestOpus48Adapter:
     def test_pricing_includes_opus_48(self):
         """MODEL_PRICING must contain a claude-opus-4-8 entry with positive rates."""
         from superharness.engine.sdk_runner import MODEL_PRICING
+
         assert "claude-opus-4-8" in MODEL_PRICING
         assert MODEL_PRICING["claude-opus-4-8"]["input"] > 0
         assert MODEL_PRICING["claude-opus-4-8"]["output"] > 0
@@ -372,6 +395,7 @@ class TestOpus48Adapter:
     def test_cli_shortcut_opus_resolves_to_4_8(self):
         """'opus' model shortcut must resolve to claude-opus-4-8."""
         from superharness.cli import MODEL_SHORTCUTS
+
         assert MODEL_SHORTCUTS["opus"] == "claude-opus-4-8"
 
     def test_1m_variant_in_manifest(self):

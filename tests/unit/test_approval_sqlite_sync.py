@@ -4,6 +4,7 @@ Doctrine: SQLite is source of truth. After cmd_approve runs, the handoffs
 table must reflect the updated approval_gate — not just the YAML file.
 This test fails if approval state lives in YAML only.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -28,6 +29,7 @@ def project(tmp_path: Path) -> Path:
 def _seed_handoff_yaml(project: Path, task_id: str, phase: str = "report") -> Path:
     """Write a handoff YAML file as upsert_handoff would, with pending approval gate."""
     import yaml
+
     handoff_id = f"{task_id}-{phase}"
     content = {
         "task": task_id,
@@ -78,6 +80,7 @@ def _seed_handoff_sqlite(project: Path, task_id: str, phase: str = "report") -> 
 
 def _seed_task_sqlite(project: Path, task_id: str) -> None:
     from superharness.engine.db import managed_connection
+
     with managed_connection(str(project)) as conn:
         conn.execute(
             "INSERT OR IGNORE INTO tasks (id, title, status, project_path, created_at, version)"
@@ -86,10 +89,13 @@ def _seed_task_sqlite(project: Path, task_id: str) -> None:
         )
 
 
-def _get_handoff_approval_gate(project: Path, task_id: str, phase: str = "report") -> dict | None:
+def _get_handoff_approval_gate(
+    project: Path, task_id: str, phase: str = "report"
+) -> dict | None:
     """Read latest handoff from SQLite and return the approval_gate metadata."""
     from superharness.engine import handoffs_dao
     from superharness.engine.db import managed_connection
+
     with managed_connection(str(project)) as conn:
         row = handoffs_dao.get_latest(conn, task_id, phase)
     if row is None:
@@ -113,6 +119,7 @@ def test_approve_writes_approval_gate_to_sqlite(project: Path) -> None:
     handoff_dir = str(project / ".superharness" / "handoffs")
 
     from superharness.engine import discuss
+
     discuss.cmd_approve(
         handoff_dir=handoff_dir,
         task_id=task_id,
@@ -141,6 +148,7 @@ def test_cmd_status_reads_pending_from_sqlite(project: Path) -> None:
     handoff_dir = str(project / ".superharness" / "handoffs")
 
     from superharness.engine import discuss
+
     rows = discuss.cmd_status(handoff_dir=handoff_dir)
 
     task_ids = [r.get("task") or r.get("task_id") for r in rows]

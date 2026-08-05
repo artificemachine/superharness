@@ -9,6 +9,7 @@ from superharness.engine.state_errors import StateError
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass(frozen=True)
 class FailureRow:
     id: int
@@ -17,6 +18,7 @@ class FailureRow:
     pattern: str | None
     error_snippet: str | None
     created_at: str
+
 
 def record(
     conn: sqlite3.Connection,
@@ -63,12 +65,13 @@ def _insert(
         VALUES (?, ?, ?, ?, ?)
         RETURNING *
         """,
-        (task_id, agent, pattern, error_snippet, now)
+        (task_id, agent, pattern, error_snippet, now),
     )
     row = cursor.fetchone()
     if not row:
         raise StateError("Failed to record failure: no row returned")
     return _row_to_failure(row)
+
 
 def get_recent(
     conn: sqlite3.Connection,
@@ -86,12 +89,13 @@ def get_recent(
     if agent:
         query += " AND agent = ?"
         params.append(agent)
-    
+
     query += " ORDER BY created_at DESC, id DESC LIMIT ?"
     params.append(limit)
-    
+
     cursor = conn.execute(query, params)
     return [_row_to_failure(row) for row in cursor.fetchall()]
+
 
 def _row_to_failure(row: sqlite3.Row) -> FailureRow:
     return FailureRow(
@@ -100,5 +104,5 @@ def _row_to_failure(row: sqlite3.Row) -> FailureRow:
         agent=row["agent"],
         pattern=row["pattern"],
         error_snippet=row["error_snippet"],
-        created_at=row["created_at"]
+        created_at=row["created_at"],
     )

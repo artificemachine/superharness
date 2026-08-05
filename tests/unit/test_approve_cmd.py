@@ -4,6 +4,7 @@ Acceptance criteria:
   - shux approve writes an operator_command row
   - shux approve is idempotent on duplicate call
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,31 +20,36 @@ from superharness.engine.tasks_dao import TaskRow
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_task(conn, project_dir: Path, task_id: str, status: str = "plan_proposed"):
     """Insert a minimal task row for testing."""
     from datetime import datetime, timezone
+
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    tasks_dao.upsert(conn, TaskRow(
-        id=task_id,
-        title="Test task",
-        status=status,
-        owner="claude-code",
-        project_path=str(project_dir),
-        created_at=now,
-        updated_at=now,
-        version=1,
-        effort=None,
-        development_method=None,
-        acceptance_criteria=[],
-        test_types=[],
-        out_of_scope=[],
-        definition_of_done=[],
-        context=None,
-        blocked_by=[],
-        parent_id=None,
-        tdd=None,
-        contract_locked_at=None,
-    ))
+    tasks_dao.upsert(
+        conn,
+        TaskRow(
+            id=task_id,
+            title="Test task",
+            status=status,
+            owner="claude-code",
+            project_path=str(project_dir),
+            created_at=now,
+            updated_at=now,
+            version=1,
+            effort=None,
+            development_method=None,
+            acceptance_criteria=[],
+            test_types=[],
+            out_of_scope=[],
+            definition_of_done=[],
+            context=None,
+            blocked_by=[],
+            parent_id=None,
+            tdd=None,
+            contract_locked_at=None,
+        ),
+    )
 
 
 @pytest.fixture()
@@ -64,6 +70,7 @@ def db_conn(project_dir: Path):
 # ---------------------------------------------------------------------------
 # shux approve writes operator_command row
 # ---------------------------------------------------------------------------
+
 
 class TestApproveWritesRow:
     def test_approve_creates_operator_command_row(
@@ -129,18 +136,14 @@ class TestApproveWritesRow:
         assert row is not None
         assert row.command == "reject"
 
-    def test_unknown_task_returns_error(
-        self, project_dir: Path, db_conn
-    ) -> None:
+    def test_unknown_task_returns_error(self, project_dir: Path, db_conn) -> None:
         from superharness.commands.approve import run_approve
 
         # No task created
         rc = run_approve(project_dir, "t-nonexistent", command="approve")
         assert rc == 1
 
-    def test_unknown_command_returns_error(
-        self, project_dir: Path, db_conn
-    ) -> None:
+    def test_unknown_command_returns_error(self, project_dir: Path, db_conn) -> None:
         from superharness.commands.approve import run_approve
 
         rc = run_approve(project_dir, "t-001", command="bogus")
@@ -151,10 +154,9 @@ class TestApproveWritesRow:
 # shux approve is idempotent on duplicate call
 # ---------------------------------------------------------------------------
 
+
 class TestApproveIdempotent:
-    def test_second_call_returns_zero(
-        self, project_dir: Path, db_conn
-    ) -> None:
+    def test_second_call_returns_zero(self, project_dir: Path, db_conn) -> None:
         from superharness.commands.approve import run_approve
 
         _make_task(db_conn, project_dir, "t-idem1", status="plan_proposed")
@@ -183,7 +185,9 @@ class TestApproveIdempotent:
             ("cli-approve-t-idem2",),
         )
         count = cursor.fetchone()[0]
-        assert count == 1, "Only one operator_command row should exist after duplicate calls"
+        assert count == 1, (
+            "Only one operator_command row should exist after duplicate calls"
+        )
 
     def test_task_status_unchanged_on_second_call(
         self, project_dir: Path, db_conn
@@ -198,7 +202,12 @@ class TestApproveIdempotent:
 
         # Manually change task status to simulate mid-flight change
         task = tasks_dao.get(db_conn, "t-idem3")
-        tasks_dao.update(db_conn, "t-idem3", task.version, {"status": "in_progress", "updated_at": "2026-01-01T00:00:00Z"})
+        tasks_dao.update(
+            db_conn,
+            "t-idem3",
+            task.version,
+            {"status": "in_progress", "updated_at": "2026-01-01T00:00:00Z"},
+        )
         db_conn.commit()
 
         # Second approve call — idempotent: must NOT re-transition
@@ -221,5 +230,5 @@ class TestApproveIdempotent:
         from superharness.commands.approve import _idempotency_key
 
         k_approve = _idempotency_key("approve", "t-001")
-        k_reject  = _idempotency_key("reject",  "t-001")
+        k_reject = _idempotency_key("reject", "t-001")
         assert k_approve != k_reject

@@ -23,6 +23,7 @@ changes, and as 30k+ accumulated directories under the user's real
 Fix: an autouse fixture points `SUPERHARNESS_STATE_DIR` at a per-test temporary
 directory, so state is isolated per test and nothing escapes into `$HOME`.
 """
+
 from __future__ import annotations
 
 import os
@@ -59,7 +60,7 @@ def test_project_db_path_lives_under_the_isolated_state_dir(tmp_path):
 
 def test_state_dir_env_var_is_set_for_subprocesses():
     """Tests spawn `python -m superharness...` subprocesses; they inherit os.environ,
-        so the isolation must live in the environment, not only in-process."""
+    so the isolation must live in the environment, not only in-process."""
     assert os.environ.get("XDG_STATE_HOME"), (
         "XDG_STATE_HOME must be exported so subprocess tests are isolated too"
     )

@@ -9,7 +9,6 @@ Covers the gaps from test_rules.py:
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -25,16 +24,20 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # CLI entry point tests (subprocess)
 # ---------------------------------------------------------------------------
 
+
 class TestRulesCLI:
     def test_cli_list(self, tmp_path: Path):
         """shux rules (list) via subprocess."""
         rules_dir = tmp_path / ".superharness" / "rules"
         rules_dir.mkdir(parents=True)
-        (rules_dir / "test.md").write_text("---\nid: cli-test\ntitle: CLI Test\nstatus: active\n---\nBody.")
+        (rules_dir / "test.md").write_text(
+            "---\nid: cli-test\ntitle: CLI Test\nstatus: active\n---\nBody."
+        )
         result = subprocess.run(
             [sys.executable, "-m", "superharness", "rules"],
             cwd=str(tmp_path),
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0
         assert "cli-test" in result.stdout
@@ -44,11 +47,14 @@ class TestRulesCLI:
         """shux rules <id> via subprocess."""
         rules_dir = tmp_path / ".superharness" / "rules"
         rules_dir.mkdir(parents=True)
-        (rules_dir / "show.md").write_text("---\nid: show-me\ntitle: Show Me\n---\nContent here.")
+        (rules_dir / "show.md").write_text(
+            "---\nid: show-me\ntitle: Show Me\n---\nContent here."
+        )
         result = subprocess.run(
             [sys.executable, "-m", "superharness", "rules", "show-me"],
             cwd=str(tmp_path),
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0
         assert "Content here." in result.stdout
@@ -57,11 +63,14 @@ class TestRulesCLI:
         """shux rules --search via subprocess."""
         rules_dir = tmp_path / ".superharness" / "rules"
         rules_dir.mkdir(parents=True)
-        (rules_dir / "find-me.md").write_text("---\nid: find-me\ntitle: Findable\n---\nUnique keyword: xylophone.")
+        (rules_dir / "find-me.md").write_text(
+            "---\nid: find-me\ntitle: Findable\n---\nUnique keyword: xylophone."
+        )
         result = subprocess.run(
             [sys.executable, "-m", "superharness", "rules", "--search", "xylophone"],
             cwd=str(tmp_path),
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0
         assert "find-me" in result.stdout
@@ -71,7 +80,8 @@ class TestRulesCLI:
         result = subprocess.run(
             [sys.executable, "-m", "superharness", "rules", "nope"],
             cwd=str(tmp_path),
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 1
 
@@ -80,7 +90,8 @@ class TestRulesCLI:
         result = subprocess.run(
             [sys.executable, "-m", "superharness", "rules"],
             cwd=str(tmp_path),
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0
         assert "No rules found" in result.stdout
@@ -90,16 +101,22 @@ class TestRulesCLI:
 # init_project creates rules directory
 # ---------------------------------------------------------------------------
 
+
 class TestInitProjectCreatesRules:
     def test_init_creates_rules_dir(self, tmp_path: Path):
         """init_project must create .superharness/rules/."""
         # init_project uses positional args: project_name [tech_stack] [status]
         result = subprocess.run(
-            [sys.executable, "-m", "superharness.commands.init_project",
-             "--dry-run",
-             "test-proj"],
+            [
+                sys.executable,
+                "-m",
+                "superharness.commands.init_project",
+                "--dry-run",
+                "test-proj",
+            ],
             cwd=str(tmp_path),
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0
 
@@ -107,6 +124,7 @@ class TestInitProjectCreatesRules:
 # ---------------------------------------------------------------------------
 # Edge cases
 # ---------------------------------------------------------------------------
+
 
 class TestRuleEdgeCases:
     def test_malformed_frontmatter(self, tmp_path: Path):
@@ -129,7 +147,9 @@ class TestRuleEdgeCases:
         """Rule with frontmatter but no body content."""
         rules_dir = tmp_path / ".superharness" / "rules"
         rules_dir.mkdir(parents=True)
-        (rules_dir / "meta-only.md").write_text("---\nid: meta\ntitle: Meta Only\nstatus: active\n---\n")
+        (rules_dir / "meta-only.md").write_text(
+            "---\nid: meta\ntitle: Meta Only\nstatus: active\n---\n"
+        )
         rule = _parse_rule(rules_dir / "meta-only.md")
         assert rule is not None
         assert rule["id"] == "meta"
@@ -149,6 +169,7 @@ class TestRuleEdgeCases:
         rules_dir.mkdir(parents=True)
         (rules_dir / "not-a-rule.txt").write_text("---\nid: nope\n---\n")
         from superharness.commands.rules import list_rules
+
         rules = list_rules(str(tmp_path))
         assert all(r["id"] != "nope" for r in rules)  # .txt not matched
 
@@ -159,6 +180,7 @@ class TestRuleEdgeCases:
         (rules_dir / "dup1.md").write_text("---\nid: same\ntitle: First\n---\nA.")
         (rules_dir / "dup2.md").write_text("---\nid: same\ntitle: Second\n---\nB.")
         from superharness.commands.rules import list_rules
+
         rules = list_rules(str(tmp_path))
         ids = [r["id"] for r in rules]
         assert ids.count("same") == 2
@@ -167,7 +189,9 @@ class TestRuleEdgeCases:
         """Rules with unicode in body parse correctly."""
         rules_dir = tmp_path / ".superharness" / "rules"
         rules_dir.mkdir(parents=True)
-        (rules_dir / "unicode.md").write_text("---\nid: unicode\ntitle: Unicode\n---\n✓ Lörem ipsum → café")
+        (rules_dir / "unicode.md").write_text(
+            "---\nid: unicode\ntitle: Unicode\n---\n✓ Lörem ipsum → café"
+        )
         rule = _parse_rule(rules_dir / "unicode.md")
         assert rule is not None
         assert "Lörem ipsum" in rule["_body"]
@@ -176,6 +200,7 @@ class TestRuleEdgeCases:
 # ---------------------------------------------------------------------------
 # Rules auto-injection in delegate prompt
 # ---------------------------------------------------------------------------
+
 
 class TestDelegatePromptReferences:
     def test_delegate_prompt_refers_to_handoff(self):
@@ -191,11 +216,13 @@ class TestDelegatePromptReferences:
     def test_handoff_includes_rules(self, tmp_path: Path):
         """generate_handoff result dict includes 'rules' key."""
         from superharness.engine.handoff_generator import generate_handoff
-        result = generate_handoff(str(tmp_path), "nonexistent-task")
+
+        generate_handoff(str(tmp_path), "nonexistent-task")
         # Task doesn't exist → error dict, but structure should still have rules key
         # Actually generate_handoff returns {"error": ...} for missing tasks.
         # Let me test _load_rules directly instead (already done in test_rules.py)
         from superharness.engine.handoff_generator import _load_rules
+
         rules = _load_rules(str(tmp_path))
         assert isinstance(rules, str)  # always returns string, even if empty
 
@@ -204,11 +231,13 @@ class TestDelegatePromptReferences:
 # SHUX_RULES env integration
 # ---------------------------------------------------------------------------
 
+
 class TestShuxRulesIntegration:
     def test_shux_rules_listed_in_cli_help(self):
         """shux --help must list 'rules' as a command."""
         result = subprocess.run(
             [sys.executable, "-m", "superharness", "--help"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert "rules" in result.stdout.lower()

@@ -29,8 +29,8 @@ def _get_decision(output: dict) -> str:
         ("config/app.secrets.yaml", "deny"),
         ("secrets.yml", "deny"),
         ("secrets.toml", "deny"),
-        ("secrets.txt", "allow"),           # plain .txt is not blocked
-        ("my_notes_secrets.md", "allow"),   # non-secret extension not blocked
+        ("secrets.txt", "allow"),  # plain .txt is not blocked
+        ("my_notes_secrets.md", "allow"),  # non-secret extension not blocked
         # key / cert files
         ("keys/id_rsa.key", "deny"),
         ("server.pem", "deny"),
@@ -54,7 +54,9 @@ def _get_decision(output: dict) -> str:
         ("src/main.py", "allow"),
     ],
 )
-def test_scope_guard_policies(repo_root, tmp_path, file_path: str, decision: str) -> None:
+def test_scope_guard_policies(
+    repo_root, tmp_path, file_path: str, decision: str
+) -> None:
     script = repo_root / "adapters/claude-code/hooks/scope-guard.sh"
     payload = json.dumps({"tool_input": {"file_path": file_path}})
 

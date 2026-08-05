@@ -36,12 +36,7 @@ Covers:
     - truly unknown action produces 400
 """
 
-import json
-import sqlite3
-import time
 from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -50,8 +45,10 @@ from superharness.engine.db import get_connection, init_db
 
 # ── panel toggle logic ────────────────────────────────────────────────────────
 
+
 class PanelState:
     """Minimal Python model of the JS panel toggle state."""
+
     def __init__(self, visible: bool = True):
         self.visible = visible
         self.arrow = "▾" if visible else "▸"
@@ -83,9 +80,14 @@ class TestTogglePanel:
         assert p.visible
         assert p.arrow == "▾"
 
-    @pytest.mark.parametrize("panel", ["ledger", "actionOut", "stdout", "stderr", "cost"])
+    @pytest.mark.parametrize(
+        "panel", ["ledger", "actionOut", "stdout", "stderr", "cost"]
+    )
     def test_all_five_panels_toggle_independently(self, panel):
-        panels = {name: PanelState(visible=True) for name in ["ledger", "actionOut", "stdout", "stderr", "cost"]}
+        panels = {
+            name: PanelState(visible=True)
+            for name in ["ledger", "actionOut", "stdout", "stderr", "cost"]
+        }
         panels[panel].toggle()
         assert not panels[panel].visible
         for other, state in panels.items():
@@ -132,6 +134,7 @@ class TestToggleTaskOverview:
 
 # ── view toggle (list ↔ board) ────────────────────────────────────────────────
 
+
 class ViewState:
     def __init__(self):
         self.current = "list"
@@ -140,8 +143,8 @@ class ViewState:
 
     def set_view(self, v: str) -> None:
         self.current = v
-        self.filter_pills_visible = (v == "list")
-        self.board_card_visible = (v == "board")
+        self.filter_pills_visible = v == "list"
+        self.board_card_visible = v == "board"
 
 
 class TestSetView:
@@ -174,8 +177,10 @@ class TestSetView:
 
 # ── selectStatus toggle ───────────────────────────────────────────────────────
 
+
 class StatusSelector:
     """Python model of selectedStatus and detail panel visibility."""
+
     def __init__(self):
         self.selected: str | None = None
         self.detail_visible = False
@@ -212,6 +217,7 @@ class TestSelectStatus:
 
     def test_active_maps_to_discussion_pill(self):
         """The 'active' key selects the discussion pill (starts with 'discussion:')."""
+
         def pill_prefix(k: str) -> str:
             return "discussion:" if k == "active" else f"{k}:"
 
@@ -228,14 +234,15 @@ class TestSelectStatus:
 
 # ── showInboxReason formatting ────────────────────────────────────────────────
 
+
 def _format_reason(item: dict) -> str:
     """Replicate the JS reason extraction logic."""
     return (
-        item.get("pause_reason") or
-        item.get("failed_reason") or
-        item.get("stale_reason") or
-        item.get("stopped_reason") or
-        ""
+        item.get("pause_reason")
+        or item.get("failed_reason")
+        or item.get("stale_reason")
+        or item.get("stopped_reason")
+        or ""
     )
 
 
@@ -278,6 +285,7 @@ class TestShowInboxReason:
 
 # ── GET /api endpoint shape tests ────────────────────────────────────────────
 
+
 def _init_db_tmp(tmp_path: Path) -> None:
     harness = tmp_path / ".superharness"
     harness.mkdir(exist_ok=True)
@@ -292,17 +300,29 @@ class TestApiStatusShape:
     # Keys returned by dashboard_presenter.get_dashboard_status_snapshot()
     # Note: "version" and "project" are added at handler level (/api/status), not here.
     REQUIRED_KEYS = [
-        "contract_tasks", "board_columns",
-        "inbox_items", "inbox_counts", "activity_feed", "active_discussions",
-        "review_queue", "review_queue_count", "ledger_tail",
-        "active_inbox_tasks", "done_inbox_tasks", "paused_inbox_tasks", "failed_inbox_tasks",
+        "contract_tasks",
+        "board_columns",
+        "inbox_items",
+        "inbox_counts",
+        "activity_feed",
+        "active_discussions",
+        "review_queue",
+        "review_queue_count",
+        "ledger_tail",
+        "active_inbox_tasks",
+        "done_inbox_tasks",
+        "paused_inbox_tasks",
+        "failed_inbox_tasks",
     ]
 
     def test_snapshot_contains_required_keys(self, tmp_path):
         _init_db_tmp(tmp_path)
         from superharness.engine import dashboard_presenter
+
         conn = get_connection(str(tmp_path))
-        snapshot = dashboard_presenter.get_dashboard_status_snapshot(conn, str(tmp_path))
+        snapshot = dashboard_presenter.get_dashboard_status_snapshot(
+            conn, str(tmp_path)
+        )
         conn.close()
 
         for key in self.REQUIRED_KEYS:
@@ -311,56 +331,77 @@ class TestApiStatusShape:
     def test_contract_tasks_is_list(self, tmp_path):
         _init_db_tmp(tmp_path)
         from superharness.engine import dashboard_presenter
+
         conn = get_connection(str(tmp_path))
-        snapshot = dashboard_presenter.get_dashboard_status_snapshot(conn, str(tmp_path))
+        snapshot = dashboard_presenter.get_dashboard_status_snapshot(
+            conn, str(tmp_path)
+        )
         conn.close()
         assert isinstance(snapshot["contract_tasks"], list)
 
     def test_inbox_items_is_list(self, tmp_path):
         _init_db_tmp(tmp_path)
         from superharness.engine import dashboard_presenter
+
         conn = get_connection(str(tmp_path))
-        snapshot = dashboard_presenter.get_dashboard_status_snapshot(conn, str(tmp_path))
+        snapshot = dashboard_presenter.get_dashboard_status_snapshot(
+            conn, str(tmp_path)
+        )
         conn.close()
         assert isinstance(snapshot["inbox_items"], list)
 
     def test_board_columns_is_dict(self, tmp_path):
         _init_db_tmp(tmp_path)
         from superharness.engine import dashboard_presenter
+
         conn = get_connection(str(tmp_path))
-        snapshot = dashboard_presenter.get_dashboard_status_snapshot(conn, str(tmp_path))
+        snapshot = dashboard_presenter.get_dashboard_status_snapshot(
+            conn, str(tmp_path)
+        )
         conn.close()
         assert isinstance(snapshot["board_columns"], dict)
 
     def test_active_discussions_is_list(self, tmp_path):
         _init_db_tmp(tmp_path)
         from superharness.engine import dashboard_presenter
+
         conn = get_connection(str(tmp_path))
-        snapshot = dashboard_presenter.get_dashboard_status_snapshot(conn, str(tmp_path))
+        snapshot = dashboard_presenter.get_dashboard_status_snapshot(
+            conn, str(tmp_path)
+        )
         conn.close()
         assert isinstance(snapshot["active_discussions"], list)
 
     def test_review_queue_is_list(self, tmp_path):
         _init_db_tmp(tmp_path)
         from superharness.engine import dashboard_presenter
+
         conn = get_connection(str(tmp_path))
-        snapshot = dashboard_presenter.get_dashboard_status_snapshot(conn, str(tmp_path))
+        snapshot = dashboard_presenter.get_dashboard_status_snapshot(
+            conn, str(tmp_path)
+        )
         conn.close()
         assert isinstance(snapshot["review_queue"], list)
 
     def test_ledger_tail_is_list(self, tmp_path):
         _init_db_tmp(tmp_path)
         from superharness.engine import dashboard_presenter
+
         conn = get_connection(str(tmp_path))
-        snapshot = dashboard_presenter.get_dashboard_status_snapshot(conn, str(tmp_path))
+        snapshot = dashboard_presenter.get_dashboard_status_snapshot(
+            conn, str(tmp_path)
+        )
         conn.close()
         assert isinstance(snapshot["ledger_tail"], list)
 
     def test_empty_db_returns_empty_collections(self, tmp_path):
         _init_db_tmp(tmp_path)
         from superharness.engine import dashboard_presenter
+
         conn = get_connection(str(tmp_path))
-        snapshot = dashboard_presenter.get_dashboard_status_snapshot(conn, str(tmp_path))
+        snapshot = dashboard_presenter.get_dashboard_status_snapshot(
+            conn, str(tmp_path)
+        )
         conn.close()
         assert snapshot["contract_tasks"] == []
         assert snapshot["inbox_items"] == []
@@ -370,16 +411,21 @@ class TestApiStatusShape:
 class TestApiTaskReportShape:
     """get_task_report_data must return required fields or None for unknown task."""
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_unknown_task_returns_none(self, tmp_path):
         _init_db_tmp(tmp_path)
         from superharness.engine import dashboard_presenter
+
         conn = get_connection(str(tmp_path))
         result = dashboard_presenter.get_task_report_data(conn, "ghost-task")
         conn.close()
         assert result is None
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_known_task_has_required_fields(self, tmp_path):
         _init_db_tmp(tmp_path)
         conn = get_connection(str(tmp_path))
@@ -387,11 +433,22 @@ class TestApiTaskReportShape:
         now = "2026-04-27T00:00:00Z"
         conn.execute(
             "INSERT INTO tasks (id, title, status, owner, created_at, acceptance_criteria, test_types, out_of_scope, definition_of_done) VALUES (?,?,?,?,?,?,?,?,?)",
-            ("t1", "Test task", "in_progress", "claude-code", now, "[]", "[]", "[]", "[]"),
+            (
+                "t1",
+                "Test task",
+                "in_progress",
+                "claude-code",
+                now,
+                "[]",
+                "[]",
+                "[]",
+                "[]",
+            ),
         )
         conn.commit()
 
         from superharness.engine import dashboard_presenter
+
         result = dashboard_presenter.get_task_report_data(conn, "t1")
         conn.close()
 
@@ -399,7 +456,9 @@ class TestApiTaskReportShape:
         for key in ["contract_status", "contract_title", "contract_owner"]:
             assert key in result, f"task report missing key: '{key}'"
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_known_task_status_matches(self, tmp_path):
         _init_db_tmp(tmp_path)
         conn = get_connection(str(tmp_path))
@@ -407,11 +466,22 @@ class TestApiTaskReportShape:
         now = "2026-04-27T00:00:00Z"
         conn.execute(
             "INSERT INTO tasks (id, title, status, owner, created_at, acceptance_criteria, test_types, out_of_scope, definition_of_done) VALUES (?,?,?,?,?,?,?,?,?)",
-            ("t2", "Review task", "review_requested", "codex-cli", now, "[]", "[]", "[]", "[]"),
+            (
+                "t2",
+                "Review task",
+                "review_requested",
+                "codex-cli",
+                now,
+                "[]",
+                "[]",
+                "[]",
+                "[]",
+            ),
         )
         conn.commit()
 
         from superharness.engine import dashboard_presenter
+
         result = dashboard_presenter.get_task_report_data(conn, "t2")
         conn.close()
 
@@ -422,16 +492,21 @@ class TestApiTaskReportShape:
 class TestApiTaskInstructionsShape:
     """get_task_instructions_data must return required fields or None."""
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_unknown_task_returns_none(self, tmp_path):
         _init_db_tmp(tmp_path)
         from superharness.engine import dashboard_presenter
+
         conn = get_connection(str(tmp_path))
         result = dashboard_presenter.get_task_instructions_data(conn, "ghost")
         conn.close()
         assert result is None
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_known_task_has_required_fields(self, tmp_path):
         _init_db_tmp(tmp_path)
         conn = get_connection(str(tmp_path))
@@ -444,6 +519,7 @@ class TestApiTaskInstructionsShape:
         conn.commit()
 
         from superharness.engine import dashboard_presenter
+
         result = dashboard_presenter.get_task_instructions_data(conn, "t1")
         conn.close()
 
@@ -454,22 +530,46 @@ class TestApiTaskInstructionsShape:
 
 # ── action routing completeness ───────────────────────────────────────────────
 
+
 class TestActionRoutingCompleteness:
     """Every documented action prefix must route successfully (not produce 400 for bad format)."""
 
     KNOWN_EXACT = {
-        "recover_retry", "recover_failed", "normalize_stale",
-        "clear_resolved_inbox", "dispatch_print_codex", "dispatch_print_claude",
-        "watcher_start", "watcher_restart",
+        "recover_retry",
+        "recover_failed",
+        "normalize_stale",
+        "clear_resolved_inbox",
+        "dispatch_print_codex",
+        "dispatch_print_claude",
+        "watcher_start",
+        "watcher_restart",
     }
 
     KNOWN_PREFIXES = [
-        "remove_item:", "resume_item:", "resume_task:", "retry_item:", "retry_task:",
-        "stop_item:", "pause_item:", "remove_task:", "approve_plan:", "cancel_review:",
-        "approve_without_review:", "approve_report:", "approve_task:", "mark_done:",
-        "confirm_plan:", "disable_task:", "enable_task:", "set_owner:t1:claude-code",
-        "request_review:", "enqueue_task:", "close_task:", "propose_plan:",
-        "delegate_plan:", "cancel_discussion:",
+        "remove_item:",
+        "resume_item:",
+        "resume_task:",
+        "retry_item:",
+        "retry_task:",
+        "stop_item:",
+        "pause_item:",
+        "remove_task:",
+        "approve_plan:",
+        "cancel_review:",
+        "approve_without_review:",
+        "approve_report:",
+        "approve_task:",
+        "mark_done:",
+        "confirm_plan:",
+        "disable_task:",
+        "enable_task:",
+        "set_owner:t1:claude-code",
+        "request_review:",
+        "enqueue_task:",
+        "close_task:",
+        "propose_plan:",
+        "delegate_plan:",
+        "cancel_discussion:",
     ]
 
     def _routes(self, action: str) -> bool:

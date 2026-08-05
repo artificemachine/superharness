@@ -1,4 +1,5 @@
 """Tests for `shux task requires` CLI verb — set_requires() function."""
+
 from __future__ import annotations
 
 import json
@@ -82,10 +83,13 @@ class TestSetRequiresCLIVerb:
         from superharness.commands.task import set_requires
 
         project = _setup_project(tmp_path)
-        set_requires(str(project), "t-req-test",
-                     cli_add=["gitleaks"],
-                     env_add=["ALLOW_PUSH"],
-                     fail_mode="warn")
+        set_requires(
+            str(project),
+            "t-req-test",
+            cli_add=["gitleaks"],
+            env_add=["ALLOW_PUSH"],
+            fail_mode="warn",
+        )
         extras = _get_extras(project, "t-req-test")
         req = extras.get("requires", {})
         assert req.get("fail_mode") == "warn"
@@ -128,7 +132,9 @@ class TestSetRequiresCLIVerb:
         from superharness.commands.task import set_requires
 
         project = _setup_project(tmp_path)
-        set_requires(str(project), "t-req-test", cli_add=["gitleaks"], fail_mode="block")
+        set_requires(
+            str(project), "t-req-test", cli_add=["gitleaks"], fail_mode="block"
+        )
         rc = set_requires(str(project), "t-req-test", show=True)
         assert rc == 0
         out = capsys.readouterr().out

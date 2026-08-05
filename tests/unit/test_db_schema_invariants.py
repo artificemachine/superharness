@@ -5,12 +5,9 @@ Prevents the class of bugs where:
 - CURRENT_SCHEMA_VERSION is bumped but no migration function is added
 - A new table is added to a DAO but never wired into init_db migrations
 """
+
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
-
-import pytest
 
 from superharness.engine.db import (
     CURRENT_SCHEMA_VERSION,
@@ -78,6 +75,7 @@ def test_schema_version_advances_on_fresh_db(tmp_path):
 def test_init_db_idempotent_with_pre_existing_tables(tmp_path):
     """init_db must succeed when tables already exist (IF NOT EXISTS safety)."""
     import sqlite3
+
     (tmp_path / ".superharness").mkdir()
     db_path = tmp_path / ".superharness" / "state.sqlite3"
     conn = sqlite3.connect(str(db_path))
@@ -97,21 +95,32 @@ def test_init_db_idempotent_with_pre_existing_tables(tmp_path):
 
 def test_init_db_recreates_full_schema_after_partial_migration(tmp_path):
     """After init_db on a clean DB, all required tables exist."""
-    import sqlite3
     (tmp_path / ".superharness").mkdir()
 
     conn = get_connection(str(tmp_path))
     try:
         init_db(conn)
-        tables = {r[0] for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()}
+        tables = {
+            r[0]
+            for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
     finally:
         conn.close()
 
     # Core tables that must exist after init_db
-    required = {"tasks", "inbox", "handoffs", "failures", "decisions",
-                "ledger", "review_store", "watcher_instance",
-                "discussions", "discussion_rounds"}
+    required = {
+        "tasks",
+        "inbox",
+        "handoffs",
+        "failures",
+        "decisions",
+        "ledger",
+        "review_store",
+        "watcher_instance",
+        "discussions",
+        "discussion_rounds",
+    }
     missing = required - tables
     assert not missing, f"Tables missing after init_db: {missing}"

@@ -4,6 +4,7 @@ The utility removes <private>...</private> spans from agent-authored text
 before it lands in SQLite. Borrowed pattern from claude-mem with applied
 at the superharness write boundary instead of a hook layer.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -12,7 +13,9 @@ from superharness.utils.privacy import strip_private_tags, PRIVATE_TAG_RE
 
 
 def test_strip_single_span():
-    assert strip_private_tags("before <private>secret</private> after") == "before  after"
+    assert (
+        strip_private_tags("before <private>secret</private> after") == "before  after"
+    )
 
 
 def test_strip_multiple_spans():

@@ -7,6 +7,7 @@ path below must either route through get_connection or apply the same
 pragmas inline. These tests assert the pragmas actually land on the
 connection object each path yields.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -27,6 +28,7 @@ def _assert_mandatory_pragmas(conn: sqlite3.Connection) -> None:
 # ---------------------------------------------------------------------------
 # engine/insights.py — rerouted through db.get_connection
 # ---------------------------------------------------------------------------
+
 
 def test_insights_connection_has_mandatory_pragmas(tmp_path, monkeypatch):
     project_dir = str(tmp_path)
@@ -64,6 +66,7 @@ def test_insights_connection_has_mandatory_pragmas(tmp_path, monkeypatch):
 # mcp/session.py — raw connect (check_same_thread=False), pragmas inline
 # ---------------------------------------------------------------------------
 
+
 def _make_mcp_project(tmp_path: Path) -> Path:
     proj = tmp_path / "proj"
     sh = proj / ".superharness"
@@ -87,6 +90,7 @@ def test_mcp_session_connection_has_mandatory_pragmas(tmp_path):
 # ---------------------------------------------------------------------------
 # engine/operator_memory.py — raw connect, pragmas inline
 # ---------------------------------------------------------------------------
+
 
 def test_operator_memory_connection_has_mandatory_pragmas(tmp_path):
     from superharness.engine.operator_memory import OperatorMemory

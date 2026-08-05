@@ -3,6 +3,7 @@
 Promote project memory patterns to global memory after N occurrences.
 Cross-project learning: what project A learns, project B automatically benefits from.
 """
+
 from __future__ import annotations
 
 import os
@@ -15,10 +16,12 @@ import pytest
 @pytest.fixture
 def agent_memory():
     from superharness.engine import agent_memory
+
     return agent_memory
 
 
 # ── RED: pattern counting ─────────────────────────────────────────────────────
+
 
 def test_count_pattern_occurrences(agent_memory, tmp_path: Path) -> None:
     """Should count how many times a pattern appears in a memory file."""
@@ -30,6 +33,7 @@ def test_count_pattern_occurrences(agent_memory, tmp_path: Path) -> None:
         agent_memory.append(str(tmp_path), "pitfalls.md", pattern)
 
     from superharness.engine.agent_memory import _count_pattern_occurrences
+
     count = _count_pattern_occurrences(pdir, "pitfalls.md", pattern.strip())
     assert count == 3
 
@@ -42,15 +46,17 @@ def test_unique_patterns_not_overcounted(agent_memory, tmp_path: Path) -> None:
     agent_memory.append(str(tmp_path), "pitfalls.md", "use uv instead of pip")
 
     from superharness.engine.agent_memory import _count_pattern_occurrences
+
     assert _count_pattern_occurrences(pdir, "pitfalls.md", "avoid pytest -n auto") == 1
     assert _count_pattern_occurrences(pdir, "pitfalls.md", "use uv instead of pip") == 1
 
 
 # ── RED: promotion rule ───────────────────────────────────────────────────────
 
+
 def test_pattern_not_promoted_below_threshold(agent_memory, tmp_path: Path) -> None:
     """Pattern with <3 occurrences should NOT be promoted."""
-    pdir = agent_memory.ensure_project_memory(str(tmp_path))
+    agent_memory.ensure_project_memory(str(tmp_path))
     pattern = "test-unique-xyz-2026: avoid running database migrations on weekends"
 
     # Write only 2 occurrences
@@ -131,6 +137,7 @@ def test_already_promoted_pattern_not_duplicated(agent_memory, tmp_path: Path) -
 
 
 # ── RED: cross-project learning ───────────────────────────────────────────────
+
 
 def test_cross_project_injects_global_memory(tmp_path: Path) -> None:
     """When project A promotes a pattern, project B's dispatch should include it."""

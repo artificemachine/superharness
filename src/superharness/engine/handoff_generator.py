@@ -3,20 +3,30 @@
 Adapted from Pi Mono's structured summary shape:
 compact, focused on what was done, what remains, decisions, next steps.
 """
+
 from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
 _NEXT_STEPS_BY_STATUS: dict[str, list[str]] = {
     "todo": ["Create a plan and set status to plan_proposed", "Wait for plan approval"],
     "plan_proposed": ["Wait for operator to approve or reject the plan"],
-    "plan_approved": ["Run failing tests (RED)", "Implement to make tests pass (GREEN)", "Submit report handoff"],
-    "in_progress": ["Complete implementation", "Run full test suite", "Write report handoff"],
+    "plan_approved": [
+        "Run failing tests (RED)",
+        "Implement to make tests pass (GREEN)",
+        "Submit report handoff",
+    ],
+    "in_progress": [
+        "Complete implementation",
+        "Run full test suite",
+        "Write report handoff",
+    ],
     "waiting_input": ["Provide requested input", "Resume implementation"],
     "report_ready": ["Operator: review report and run shux close <task-id>"],
     "done": ["No further action required"],
@@ -27,6 +37,7 @@ _NEXT_STEPS_BY_STATUS: dict[str, list[str]] = {
 
 def _load_task(project_dir: str, task_id: str) -> dict | None:
     from superharness.engine.state_reader import get_task
+
     return get_task(project_dir, task_id)
 
 
@@ -43,7 +54,11 @@ def _tdd_phase(tdd_raw: str | None, status: str) -> str:
         return "RED phase next — write failing tests before implementing"
     if status == "in_progress":
         green = tdd.get("green", "")
-        return f"GREEN phase — implementing: {green}" if green else "GREEN phase — implementation in progress"
+        return (
+            f"GREEN phase — implementing: {green}"
+            if green
+            else "GREEN phase — implementation in progress"
+        )
     return f"Status: {status}"
 
 
@@ -88,10 +103,12 @@ def _load_rules(project_dir: str) -> str:
     """Load project rules for agent context injection (Pi-style)."""
     try:
         from superharness.commands.rules import all_rules_text
+
         return all_rules_text(project_dir)
     except Exception as e:
         logger.warning("handoff_generator.py unexpected error: %s", e, exc_info=True)
         return ""
+
 
 def generate_handoff(project_dir: str, task_id: str) -> dict:
     """Generate a structured handoff for a task.

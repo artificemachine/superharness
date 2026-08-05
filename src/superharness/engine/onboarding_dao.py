@@ -4,6 +4,7 @@ Backs `commands/onboard.py` step-completion tracking. The YAML file at
 `.superharness/onboarding.yaml` is an export mirror for backwards compat
 and external tooling (dual-write when not sqlite_only).
 """
+
 from __future__ import annotations
 
 import json

@@ -3,6 +3,7 @@
 RED: all tests fail before contract_io.py exists.
 GREEN: all tests pass after implementation.
 """
+
 from __future__ import annotations
 
 import ast
@@ -23,7 +24,12 @@ def test_write_valid_contract_succeeds(tmp_path):
         "created_by": "claude-code",
         "status": "active",
         "tasks": [
-            {"id": "foo.bar", "title": "A task", "owner": "claude-code", "status": "todo"}
+            {
+                "id": "foo.bar",
+                "title": "A task",
+                "owner": "claude-code",
+                "status": "todo",
+            }
         ],
         "decisions": [],
         "failures": [],
@@ -85,9 +91,13 @@ def test_write_is_atomic(tmp_path, monkeypatch):
     monkeypatch.setattr(os, "replace", exploding_replace)
 
     valid_doc = {
-        "id": "new", "created": "2026-01-01T00:00:00Z",
-        "created_by": "x", "status": "active",
-        "tasks": [], "decisions": [], "failures": [],
+        "id": "new",
+        "created": "2026-01-01T00:00:00Z",
+        "created_by": "x",
+        "status": "active",
+        "tasks": [],
+        "decisions": [],
+        "failures": [],
     }
     with pytest.raises(OSError):
         contract_io.write_contract(str(path), valid_doc)
@@ -101,7 +111,6 @@ def test_write_is_atomic(tmp_path, monkeypatch):
 
 def test_write_contract_syncs_subtasks_to_sqlite(tmp_path):
     """Subtasks nested under a parent task in contract.yaml are upserted to SQLite (B2 fix)."""
-    import sqlite3 as _sqlite3
     from superharness.engine.contract_io import write_contract
     from superharness.engine.db import get_connection, init_db
 
@@ -110,19 +119,34 @@ def test_write_contract_syncs_subtasks_to_sqlite(tmp_path):
     path = str(sh_dir / "contract.yaml")
 
     doc = {
-        "id": "test-sub", "created": "2026-01-01T00:00:00Z",
-        "created_by": "claude-code", "status": "active",
+        "id": "test-sub",
+        "created": "2026-01-01T00:00:00Z",
+        "created_by": "claude-code",
+        "status": "active",
         "tasks": [
             {
-                "id": "parent", "title": "Parent", "owner": "claude-code",
+                "id": "parent",
+                "title": "Parent",
+                "owner": "claude-code",
                 "status": "todo",
                 "subtasks": [
-                    {"id": "sub1", "title": "Sub One", "owner": "claude-code", "status": "pending"},
-                    {"id": "sub2", "title": "Sub Two", "owner": "claude-code", "status": "pending"},
+                    {
+                        "id": "sub1",
+                        "title": "Sub One",
+                        "owner": "claude-code",
+                        "status": "pending",
+                    },
+                    {
+                        "id": "sub2",
+                        "title": "Sub Two",
+                        "owner": "claude-code",
+                        "status": "pending",
+                    },
                 ],
             }
         ],
-        "decisions": [], "failures": [],
+        "decisions": [],
+        "failures": [],
     }
     write_contract(path, doc)
 
@@ -142,7 +166,9 @@ def test_all_command_modules_do_not_define_write_contract_locally():
     """No command module should define _write_contract locally after centralization."""
     # Anchor to repo root, not CWD (ordering-independent — see the note in
     # test_task_write_locking.py's telegram reset test).
-    commands_dir = pathlib.Path(__file__).resolve().parents[2] / "src/superharness/commands"
+    commands_dir = (
+        pathlib.Path(__file__).resolve().parents[2] / "src/superharness/commands"
+    )
     offenders = []
     for py_file in commands_dir.glob("*.py"):
         source = py_file.read_text(encoding="utf-8")

@@ -6,6 +6,7 @@ report input_tokens/output_tokens/cost_usd/model as optional fields on the
 handoff payload they already write at every phase transition. A handoff with
 no usage fields must behave exactly as before this change.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -40,11 +41,16 @@ def _write_handoff(project: Path, **extra):
     from superharness.commands.handoff_write import _build_parser, write_handoff
 
     args_list = [
-        "--task", "t1",
-        "--phase", "report",
-        "--from", "codex-cli",
-        "--to", "owner",
-        "--outcome", "did the thing",
+        "--task",
+        "t1",
+        "--phase",
+        "report",
+        "--from",
+        "codex-cli",
+        "--to",
+        "owner",
+        "--outcome",
+        "did the thing",
     ]
     for flag, value in extra.items():
         args_list += [flag, str(value)]

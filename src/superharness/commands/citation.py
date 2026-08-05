@@ -12,6 +12,7 @@ module keeps them explicit rather than building a generic adapter.
 Route returns (payload, http_status). 400 on invalid id, 404 on not
 found, 200 with the row dict on success.
 """
+
 from __future__ import annotations
 
 import json
@@ -43,18 +44,14 @@ def _fetch_handoff(conn: sqlite3.Connection, hid: int) -> dict[str, Any] | None:
 
 
 def _fetch_decision(conn: sqlite3.Connection, did: int) -> dict[str, Any] | None:
-    row = conn.execute(
-        "SELECT * FROM decisions WHERE id = ?", (did,)
-    ).fetchone()
+    row = conn.execute("SELECT * FROM decisions WHERE id = ?", (did,)).fetchone()
     if row is None:
         return None
     return dict(row)
 
 
 def _fetch_failure(conn: sqlite3.Connection, fid: int) -> dict[str, Any] | None:
-    row = conn.execute(
-        "SELECT * FROM failures WHERE id = ?", (fid,)
-    ).fetchone()
+    row = conn.execute("SELECT * FROM failures WHERE id = ?", (fid,)).fetchone()
     if row is None:
         return None
     return dict(row)
@@ -62,6 +59,7 @@ def _fetch_failure(conn: sqlite3.Connection, fid: int) -> dict[str, Any] | None:
 
 def _fetch_observation(conn: sqlite3.Connection, oid: int) -> dict[str, Any] | None:
     from superharness.engine import observations_dao
+
     return observations_dao.get_by_id(conn, oid)
 
 
@@ -106,5 +104,6 @@ def route_task_observations(
     if not task_id:
         return ({"error": "task_id is required"}, 400)
     from superharness.engine import observations_dao
+
     rows = observations_dao.list_for_task(conn, task_id)
     return ({"task_id": task_id, "observations": rows}, 200)

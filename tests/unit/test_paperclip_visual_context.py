@@ -1,4 +1,5 @@
 """Tests for visual_context in adapter payload (paperclip.visual-context feature)."""
+
 from __future__ import annotations
 
 import json
@@ -58,10 +59,12 @@ def test_visual_context_included_in_payload_task(project_dir, conn):
     conn.commit()
     conn.close()
 
-    import os, sys
+    import os
+
     os.environ.setdefault("STATE_BACKEND", "sqlite_only")
 
     from superharness.commands.adapter_payload import build_payload
+
     payload = build_payload(str(project_dir))
 
     tasks = payload.get("tasks", [])
@@ -76,6 +79,7 @@ def test_visual_context_empty_list_when_absent(project_dir, conn):
     conn.close()
 
     from superharness.commands.adapter_payload import build_payload
+
     payload = build_payload(str(project_dir))
 
     tasks = payload.get("tasks", [])
@@ -87,6 +91,7 @@ def test_visual_context_empty_list_when_absent(project_dir, conn):
 def test_artifacts_key_in_payload(project_dir, conn):
     conn.close()
     from superharness.commands.adapter_payload import build_payload
+
     payload = build_payload(str(project_dir))
     assert "artifacts" in payload
     assert isinstance(payload["artifacts"], list)
@@ -95,6 +100,7 @@ def test_artifacts_key_in_payload(project_dir, conn):
 def test_agent_heartbeats_key_in_payload(project_dir, conn):
     conn.close()
     from superharness.commands.adapter_payload import build_payload
+
     payload = build_payload(str(project_dir))
     assert "agent_heartbeats" in payload
     assert isinstance(payload["agent_heartbeats"], list)

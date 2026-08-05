@@ -5,6 +5,7 @@ unauthenticated caller on the loopback port could read `/api/logs`,
 `/api/status`, task reports, and handoffs. `GET /` must stay open — it is
 what hands the token to the browser in the first place.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -16,12 +17,17 @@ import pytest
 
 _DASH = (
     Path(__file__).resolve().parents[2]
-    / "src" / "superharness" / "scripts" / "dashboard-ui.py"
+    / "src"
+    / "superharness"
+    / "scripts"
+    / "dashboard-ui.py"
 )
 
 
 def _load_dashboard_module():
-    spec = importlib.util.spec_from_file_location("dashboard_ui_readauth_under_test", _DASH)
+    spec = importlib.util.spec_from_file_location(
+        "dashboard_ui_readauth_under_test", _DASH
+    )
     mod = importlib.util.module_from_spec(spec)
     sys.modules["dashboard_ui_readauth_under_test"] = mod
     spec.loader.exec_module(mod)
@@ -90,12 +96,15 @@ class TestReadOnlyAuth:
         assert gate_idx != -1
 
         import re
+
         # Require at least one char after "/api/" so the gate's own bare
         # `if p.startswith("/api/"):` check (which has nothing after the
         # slash) is not mistaken for one of the specific routes it guards.
         branch_positions = [
             m.start()
-            for m in re.finditer(r'if p(?: ==|\.startswith\()\s*["\']\/api\/[^"\']+["\']', body)
+            for m in re.finditer(
+                r'if p(?: ==|\.startswith\()\s*["\']\/api\/[^"\']+["\']', body
+            )
         ]
         assert len(branch_positions) >= 20, (
             "expected to find the known /api/ branches in do_GET; "

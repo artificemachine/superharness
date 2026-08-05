@@ -11,6 +11,7 @@ The actual per-agent invocation assembly (agent binary via a bash launcher
 script resolved from adapter_registry manifests) lives in delegate.py's
 `_launch_agent()`, which is where this registry is actually consulted.
 """
+
 from __future__ import annotations
 
 from superharness.harnesses.base import Harness, Invocation

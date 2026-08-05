@@ -5,6 +5,7 @@ Usage:
     shux pulse --list
     shux pulse --list --json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,15 +29,25 @@ def cmd_pulse(argv: list[str] | None = None) -> None:
         description="Register agent liveness in SQLite (agent_heartbeats table).",
     )
     p.add_argument("--project", "-p", default=None)
-    p.add_argument("--agent", "-a", default=None,
-                   help="Agent name to register (e.g. claude-code, codex-cli)")
+    p.add_argument(
+        "--agent",
+        "-a",
+        default=None,
+        help="Agent name to register (e.g. claude-code, codex-cli)",
+    )
     p.add_argument("--task", "-t", default=None, help="Active task ID")
-    p.add_argument("--status", "-s", default="alive",
-                   choices=["alive", "paused", "done"],
-                   help="Liveness status (default: alive)")
+    p.add_argument(
+        "--status",
+        "-s",
+        default="alive",
+        choices=["alive", "paused", "done"],
+        help="Liveness status (default: alive)",
+    )
     p.add_argument("--pid", type=int, default=None, help="Process ID")
     p.add_argument("--list", "-l", action="store_true", help="List all heartbeats")
-    p.add_argument("--json", action="store_true", help="Output as JSON (use with --list)")
+    p.add_argument(
+        "--json", action="store_true", help="Output as JSON (use with --list)"
+    )
 
     opts = p.parse_args(argv if argv is not None else sys.argv[1:])
     project = _project_dir(opts.project)
@@ -52,6 +63,7 @@ def cmd_pulse(argv: list[str] | None = None) -> None:
             rows = heartbeat_dao.get_all(conn)
             if opts.json:
                 from dataclasses import asdict
+
                 print(json.dumps([asdict(r) for r in rows], indent=2))
             else:
                 if not rows:
@@ -68,7 +80,10 @@ def cmd_pulse(argv: list[str] | None = None) -> None:
             # Default to the current agent from env, or prompt
             agent = os.environ.get("SUPERHARNESS_AGENT_NAME", "")
             if not agent:
-                print("pulse: --agent is required (or set SUPERHARNESS_AGENT_NAME)", file=sys.stderr)
+                print(
+                    "pulse: --agent is required (or set SUPERHARNESS_AGENT_NAME)",
+                    file=sys.stderr,
+                )
                 sys.exit(1)
 
         pid = opts.pid or os.getpid()
@@ -84,8 +99,11 @@ def cmd_pulse(argv: list[str] | None = None) -> None:
         conn.commit()
         if opts.json:
             from dataclasses import asdict
+
             print(json.dumps(asdict(row)))
         else:
-            print(f"pulse: {agent} → {row.status} (task={row.task_id or '-'}, pid={row.pid})")
+            print(
+                f"pulse: {agent} → {row.status} (task={row.task_id or '-'}, pid={row.pid})"
+            )
     finally:
         conn.close()

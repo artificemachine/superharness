@@ -361,7 +361,7 @@ The CLI just takes the path:
 
 ```
 shux backup --to "$HOME/Library/Mobile Documents/com~apple~CloudDocs/superharness-backups/"
-shux backup --to "$HOME/Library/CloudStorage/GoogleDrive-me@gmail.com/My Drive/superharness-backups/"
+shux backup --to "$HOME/Library/CloudStorage/GoogleDrive-<account>/My Drive/superharness-backups/"
 shux backup --to "$HOME/Dropbox/superharness-backups/"
 shux backup --to "$HOME/Library/CloudStorage/OneDrive-Personal/superharness-backups/"
 shux backup --to "$HOME/MEGA/superharness-backups/"
@@ -437,6 +437,10 @@ Add `shux backup --print-paths` so external backup tools can pick up exactly the
 
 ### 6.3 Debug surface (no more `cat .superharness/state.db`)
 
+> **Status: proposal, not current CLI functionality.** The `shux state` commands
+> below describe a planned interface. Today use `shux contract`, `shux status`,
+> `shux backup-state`, and `shux export-yaml` for the supported equivalents.
+
 Problem: today `sqlite3 .superharness/state.db 'SELECT * FROM tasks'` works from the repo root. After the move, the path is `~/.local/state/superharness/projects/<hash>/state.db`.
 
 Fix: make `shux` itself the debugger. The DB should be first-class in the CLI, not raw.
@@ -481,7 +485,7 @@ Project:        superharness
 Path:           $HOME/DevOpsSec/superharness
 Hash:           a1b2c3d4e5f6
 State dir:      $HOME/.local/state/superharness/projects/a1b2c3d4e5f6/
-State db:       /Users/.../state.db  (2.4 MB, 1247 tasks)
+State db:       <state-dir>/state.db  (2.4 MB, 1247 tasks)
 Last backup:    2026-05-17 03:00 (380 KB)
 Watcher:        running (PID 78234, port 8787)
 ```

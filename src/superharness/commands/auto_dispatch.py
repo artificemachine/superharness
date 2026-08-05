@@ -7,6 +7,7 @@ inbox.yaml. The watcher picks them up within the normal poll interval.
 Usage:
   shux auto-dispatch [--project DIR] [--dry-run] [--effort-gate high] [--agent claude-code]
 """
+
 from __future__ import annotations
 
 import os
@@ -19,6 +20,7 @@ from superharness.engine.orchestrator import Orchestrator
 from superharness.utils.paths import is_project_initialized
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,6 +28,7 @@ def _get_valid_agents() -> tuple[str, ...]:
     """Return all registered adapter names from the manifest directory."""
     try:
         from superharness.engine.adapter_registry import list_adapters
+
         adapters = list_adapters()
         return tuple(adapters) if adapters else ("claude-code", "codex-cli")
     except Exception as e:
@@ -41,7 +44,8 @@ _DECOMPOSE_EFFORTS = {"high", "max"}
 
 def _todo_tasks(contract: dict) -> list[dict]:
     return [
-        t for t in (contract.get("tasks") or [])
+        t
+        for t in (contract.get("tasks") or [])
         if isinstance(t, dict) and str(t.get("status", "")) == "todo"
     ]
 
@@ -54,6 +58,7 @@ def _classify_task(task: dict, project_dir: str) -> tuple[str, str]:
     """
     try:
         from superharness.engine.model_router import classify_task
+
         # classify_task expects (title, criteria, ...) — passing the whole task
         # dict bound it to `title`, so the deterministic heuristic did
         # `title.lower()` on a dict and every task silently fell back.
@@ -78,6 +83,7 @@ def _read_round_skip_flag(project_dir: str) -> bool:
         return True
     try:
         import yaml
+
         with open(profile_file) as f:
             doc = yaml.safe_load(f) or {}
         val = doc.get("round_tasks_skip_plan_approval")
@@ -114,12 +120,16 @@ def _enqueue(
     if workflow != "implementation":
         plan_only = False
     # Discussion round tasks bypass plan-only when the profile flag allows it (default: True)
-    if ("/round-" in str(task_id) or "round-" in str(task_id)) and _read_round_skip_flag(project_dir):
+    if (
+        "/round-" in str(task_id) or "round-" in str(task_id)
+    ) and _read_round_skip_flag(project_dir):
         plan_only = False
     from datetime import datetime, timezone
+
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao
+
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         item_id = f"{now[:8]}T{now[9:15].replace(':', '')}Z-{task_id.replace('.', '-')}-{uuid.uuid4().hex[:6]}"
         conn = get_connection(project_dir)
@@ -231,10 +241,14 @@ def run_auto_dispatch(
     orchestrate: bool = False,
 ) -> int:
     if not is_project_initialized(project_dir):
-        print(f"auto-dispatch: project state not found at {project_dir}. Run 'shux init' first.", file=sys.stderr)
+        print(
+            f"auto-dispatch: project state not found at {project_dir}. Run 'shux init' first.",
+            file=sys.stderr,
+        )
         return 1
 
     from superharness.engine.state_reader import get_contract_doc as _get_contract_doc
+
     contract = _get_contract_doc(project_dir) or {}
     tasks = _todo_tasks(contract)
 
@@ -274,18 +288,27 @@ def run_auto_dispatch(
             if result.subtasks:
                 decompose_flagged += 1
                 if dry_run:
-                    print(f"  orchestrate {task_id}  subtasks={len(result.subtasks)} (dry-run, no writes)")
+                    print(
+                        f"  orchestrate {task_id}  subtasks={len(result.subtasks)} (dry-run, no writes)"
+                    )
                     for sub in result.subtasks:
-                        print(f"    subtask {sub.get('id')}  effort={sub.get('effort')}  tier={sub.get('model_tier')}")
+                        print(
+                            f"    subtask {sub.get('id')}  effort={sub.get('effort')}  tier={sub.get('model_tier')}"
+                        )
                     enqueued += len(result.subtasks)
                 else:
                     n = _register_subtasks(project_dir, task, result.subtasks, agent)
-                    print(f"  orchestrate {task_id}  subtasks={len(result.subtasks)}  enqueued={n}")
+                    print(
+                        f"  orchestrate {task_id}  subtasks={len(result.subtasks)}  enqueued={n}"
+                    )
                     enqueued += n
                 continue
             else:
                 # Empty decomposition — fall back to normal enqueue
-                logger.warning("Orchestrator returned 0 subtasks for %s; falling back to direct enqueue", task_id)
+                logger.warning(
+                    "Orchestrator returned 0 subtasks for %s; falling back to direct enqueue",
+                    task_id,
+                )
 
         decompose_note = " [→ orchestrate]" if (decompose and not orchestrate) else ""
         print(f"  queue {task_id}  agent={agent}  tier={tier}{decompose_note}")
@@ -309,8 +332,10 @@ def run_auto_dispatch(
         summary += f", orchestrated {decompose_flagged} task(s)"
     print(summary)
     if decompose_flagged and not orchestrate:
-        print(f"auto-dispatch: {decompose_flagged} task(s) flagged for orchestrator decomposition "
-              f"(effort >= {effort_gate}) — re-dispatch with --orchestrate to decompose")
+        print(
+            f"auto-dispatch: {decompose_flagged} task(s) flagged for orchestrator decomposition "
+            f"(effort >= {effort_gate}) — re-dispatch with --orchestrate to decompose"
+        )
 
     return 0
 
@@ -322,18 +347,34 @@ def main(argv: list[str] | None = None) -> None:
         prog="auto-dispatch",
         description="Scan todo tasks, classify each, and enqueue to the best agent.",
     )
-    parser.add_argument("-p", "--project", default=None,
-                        help="Project directory (default: cwd)")
-    parser.add_argument("--dry-run", action="store_true", default=False,
-                        help="Show what would be enqueued without making changes")
-    parser.add_argument("--effort-gate", default="high",
-                        choices=list(VALID_EFFORTS),
-                        help="Effort threshold that flags a task for orchestrator decomposition "
-                             "(default: high)")
-    parser.add_argument("--agent", default=None, choices=list(_VALID_AGENTS),
-                        help="Override agent for all tasks (skip auto-classification)")
-    parser.add_argument("--orchestrate", action="store_true", default=False,
-                        help="Decompose high-effort tasks via Orchestrator and register subtasks")
+    parser.add_argument(
+        "-p", "--project", default=None, help="Project directory (default: cwd)"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="Show what would be enqueued without making changes",
+    )
+    parser.add_argument(
+        "--effort-gate",
+        default="high",
+        choices=list(VALID_EFFORTS),
+        help="Effort threshold that flags a task for orchestrator decomposition "
+        "(default: high)",
+    )
+    parser.add_argument(
+        "--agent",
+        default=None,
+        choices=list(_VALID_AGENTS),
+        help="Override agent for all tasks (skip auto-classification)",
+    )
+    parser.add_argument(
+        "--orchestrate",
+        action="store_true",
+        default=False,
+        help="Decompose high-effort tasks via Orchestrator and register subtasks",
+    )
     opts = parser.parse_args(argv)
 
     project = os.path.realpath(opts.project or os.getcwd())

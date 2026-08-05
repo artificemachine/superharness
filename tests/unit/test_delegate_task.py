@@ -9,6 +9,7 @@ import pytest
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
+
 def _setup_project(tmp_path: Path, owner: str = "codex-cli") -> Path:
     project = tmp_path / "proj"
     project.mkdir()
@@ -22,12 +23,13 @@ def _setup_project(tmp_path: Path, owner: str = "codex-cli") -> Path:
                 "  - id: mcp-docs",
                 f"    owner: {owner}",
                 "    status: plan_approved",
-                f"    project_path: '{project.as_posix()}'" ,
+                f"    project_path: '{project.as_posix()}'",
             ]
         )
         + "\n"
     )
     from tests.helpers import seed_sqlite_from_yaml
+
     seed_sqlite_from_yaml(project)
     return project
 
@@ -180,13 +182,18 @@ def _set_task_requires(project: Path, task_id: str, requires: dict) -> None:
     """Inject a `requires:` block into the task's extras_json (SQLite source of truth)."""
     import json as _j
     from superharness.engine.db import get_connection, init_db
+
     conn = get_connection(str(project))
     try:
         init_db(conn)
-        row = conn.execute("SELECT extras_json FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        row = conn.execute(
+            "SELECT extras_json FROM tasks WHERE id = ?", (task_id,)
+        ).fetchone()
         extras = _j.loads(row[0]) if row and row[0] else {}
         extras["requires"] = requires
-        conn.execute("UPDATE tasks SET extras_json = ? WHERE id = ?", (_j.dumps(extras), task_id))
+        conn.execute(
+            "UPDATE tasks SET extras_json = ? WHERE id = ?", (_j.dumps(extras), task_id)
+        )
         conn.commit()
     finally:
         conn.close()
@@ -202,8 +209,12 @@ def test_delegate_blocks_dispatch_on_unmet_requires(tmp_path, monkeypatch) -> No
     monkeypatch.delenv("SHUX_E2E_UNSET_REQ_VAR_4242", raising=False)
     project = _setup_project(tmp_path, owner="claude-code")
     _set_task_requires(
-        project, "mcp-docs",
-        {"fail_mode": "block", "env": [{"name": "SHUX_E2E_UNSET_REQ_VAR_4242", "reason": "needed"}]},
+        project,
+        "mcp-docs",
+        {
+            "fail_mode": "block",
+            "env": [{"name": "SHUX_E2E_UNSET_REQ_VAR_4242", "reason": "needed"}],
+        },
     )
 
     from superharness.commands import delegate as deleg

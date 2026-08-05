@@ -4,6 +4,7 @@ Unit tests: _reconcile_zombies function directly.
 Integration test: _run_scripts calls _reconcile_zombies during watcher cycle.
 E2E test: inbox_watch --once reconciles zombies end-to-end.
 """
+
 from __future__ import annotations
 import pytest
 
@@ -11,14 +12,17 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
+from tests.helpers import seed_sqlite_from_yaml
 
 import yaml
 
 PYTHON = sys.executable
 
 
-pytestmark = pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+pytestmark = pytest.mark.skip(
+    reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+)
+
 
 def _make_project(tmp_path: Path) -> Path:
     project = tmp_path / "proj"
@@ -37,7 +41,9 @@ def _write_contract(project: Path, tasks: list[dict]) -> None:
 
 def _write_inbox(project: Path, items: list[dict]) -> None:
     harness = project / ".superharness"
-    lines = ["# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n"]
+    lines = [
+        "# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n"
+    ]
     (harness / "inbox.yaml").write_text(lines[0] + yaml.dump(items))
 
 
@@ -54,11 +60,22 @@ class TestReconcileZombies:
         from superharness.commands.inbox_watch import _reconcile_zombies
 
         project = _make_project(tmp_path)
-        _write_contract(project, [{"id": "t1", "status": "done", "owner": "claude-code"}])
-        _write_inbox(project, [
-            {"id": "item1", "task": "t1", "to": "claude-code", "status": "launched",
-             "launched_at": "2026-03-20T10:00:00Z", "project": str(project)},
-        ])
+        _write_contract(
+            project, [{"id": "t1", "status": "done", "owner": "claude-code"}]
+        )
+        _write_inbox(
+            project,
+            [
+                {
+                    "id": "item1",
+                    "task": "t1",
+                    "to": "claude-code",
+                    "status": "launched",
+                    "launched_at": "2026-03-20T10:00:00Z",
+                    "project": str(project),
+                },
+            ],
+        )
 
         count = _reconcile_zombies(str(project))
         assert count == 1
@@ -70,11 +87,23 @@ class TestReconcileZombies:
         from superharness.commands.inbox_watch import _reconcile_zombies
 
         project = _make_project(tmp_path)
-        _write_contract(project, [{"id": "t1", "status": "todo", "owner": "claude-code"}])
-        _write_inbox(project, [
-            {"id": "item1", "task": "t1", "to": "claude-code", "status": "launched",
-             "pid": "999999", "launched_at": "2026-03-20T10:00:00Z", "project": str(project)},
-        ])
+        _write_contract(
+            project, [{"id": "t1", "status": "todo", "owner": "claude-code"}]
+        )
+        _write_inbox(
+            project,
+            [
+                {
+                    "id": "item1",
+                    "task": "t1",
+                    "to": "claude-code",
+                    "status": "launched",
+                    "pid": "999999",
+                    "launched_at": "2026-03-20T10:00:00Z",
+                    "project": str(project),
+                },
+            ],
+        )
 
         count = _reconcile_zombies(str(project))
         assert count == 1
@@ -86,12 +115,24 @@ class TestReconcileZombies:
         from superharness.commands.inbox_watch import _reconcile_zombies
 
         project = _make_project(tmp_path)
-        _write_contract(project, [{"id": "t1", "status": "todo", "owner": "claude-code"}])
+        _write_contract(
+            project, [{"id": "t1", "status": "todo", "owner": "claude-code"}]
+        )
         # Use our own PID (guaranteed alive)
-        _write_inbox(project, [
-            {"id": "item1", "task": "t1", "to": "claude-code", "status": "launched",
-             "pid": str(os.getpid()), "launched_at": "2026-03-20T10:00:00Z", "project": str(project)},
-        ])
+        _write_inbox(
+            project,
+            [
+                {
+                    "id": "item1",
+                    "task": "t1",
+                    "to": "claude-code",
+                    "status": "launched",
+                    "pid": str(os.getpid()),
+                    "launched_at": "2026-03-20T10:00:00Z",
+                    "project": str(project),
+                },
+            ],
+        )
 
         count = _reconcile_zombies(str(project))
         assert count == 0
@@ -103,11 +144,22 @@ class TestReconcileZombies:
         from superharness.commands.inbox_watch import _reconcile_zombies
 
         project = _make_project(tmp_path)
-        _write_contract(project, [{"id": "t1", "status": "todo", "owner": "claude-code"}])
-        _write_inbox(project, [
-            {"id": "item1", "task": "t1", "to": "claude-code", "status": "launched",
-             "launched_at": "2026-01-01T00:00:00Z", "project": str(project)},
-        ])
+        _write_contract(
+            project, [{"id": "t1", "status": "todo", "owner": "claude-code"}]
+        )
+        _write_inbox(
+            project,
+            [
+                {
+                    "id": "item1",
+                    "task": "t1",
+                    "to": "claude-code",
+                    "status": "launched",
+                    "launched_at": "2026-01-01T00:00:00Z",
+                    "project": str(project),
+                },
+            ],
+        )
 
         count = _reconcile_zombies(str(project), max_age_seconds=60)
         assert count == 1
@@ -120,12 +172,23 @@ class TestReconcileZombies:
         from datetime import datetime, timezone
 
         project = _make_project(tmp_path)
-        _write_contract(project, [{"id": "t1", "status": "todo", "owner": "claude-code"}])
+        _write_contract(
+            project, [{"id": "t1", "status": "todo", "owner": "claude-code"}]
+        )
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        _write_inbox(project, [
-            {"id": "item1", "task": "t1", "to": "claude-code", "status": "launched",
-             "launched_at": now, "project": str(project)},
-        ])
+        _write_inbox(
+            project,
+            [
+                {
+                    "id": "item1",
+                    "task": "t1",
+                    "to": "claude-code",
+                    "status": "launched",
+                    "launched_at": now,
+                    "project": str(project),
+                },
+            ],
+        )
 
         count = _reconcile_zombies(str(project), max_age_seconds=3600)
         assert count == 0
@@ -137,16 +200,32 @@ class TestReconcileZombies:
         from superharness.commands.inbox_watch import _reconcile_zombies
 
         project = _make_project(tmp_path)
-        _write_contract(project, [
-            {"id": "t1", "status": "done", "owner": "claude-code"},
-            {"id": "t2", "status": "todo", "owner": "claude-code"},
-        ])
-        _write_inbox(project, [
-            {"id": "item1", "task": "t1", "to": "claude-code", "status": "done",
-             "project": str(project)},
-            {"id": "item2", "task": "t2", "to": "claude-code", "status": "pending",
-             "project": str(project)},
-        ])
+        _write_contract(
+            project,
+            [
+                {"id": "t1", "status": "done", "owner": "claude-code"},
+                {"id": "t2", "status": "todo", "owner": "claude-code"},
+            ],
+        )
+        _write_inbox(
+            project,
+            [
+                {
+                    "id": "item1",
+                    "task": "t1",
+                    "to": "claude-code",
+                    "status": "done",
+                    "project": str(project),
+                },
+                {
+                    "id": "item2",
+                    "task": "t2",
+                    "to": "claude-code",
+                    "status": "pending",
+                    "project": str(project),
+                },
+            ],
+        )
 
         count = _reconcile_zombies(str(project))
         assert count == 0
@@ -156,6 +235,7 @@ class TestReconcileZombies:
 # Integration: _run_scripts calls _reconcile_zombies
 # ---------------------------------------------------------------------------
 
+
 class TestReconcileIntegration:
     """Verify _run_scripts integrates zombie reconciliation."""
 
@@ -164,11 +244,22 @@ class TestReconcileIntegration:
         from superharness.commands import inbox_watch
 
         project = _make_project(tmp_path)
-        _write_contract(project, [{"id": "t1", "status": "done", "owner": "claude-code"}])
-        _write_inbox(project, [
-            {"id": "zombie1", "task": "t1", "to": "claude-code", "status": "launched",
-             "launched_at": "2026-03-20T10:00:00Z", "project": str(project)},
-        ])
+        _write_contract(
+            project, [{"id": "t1", "status": "done", "owner": "claude-code"}]
+        )
+        _write_inbox(
+            project,
+            [
+                {
+                    "id": "zombie1",
+                    "task": "t1",
+                    "to": "claude-code",
+                    "status": "launched",
+                    "launched_at": "2026-03-20T10:00:00Z",
+                    "project": str(project),
+                },
+            ],
+        )
         (project / ".superharness" / "ledger.md").write_text("")
 
         # Stub out everything except reconciliation
@@ -195,49 +286,101 @@ class TestReconcileIntegration:
 # E2E: inbox_watch --once reconciles zombies
 # ---------------------------------------------------------------------------
 
+
 class TestReconcileE2E:
     """End-to-end: run inbox_watch --once and verify zombie reconciliation."""
 
     def test_watch_once_reconciles_contract_done_zombie(self, tmp_path):
         """inbox_watch --once reconciles launched item when contract says done."""
         project = _make_project(tmp_path)
-        _write_contract(project, [{"id": "t1", "status": "done", "owner": "claude-code"}])
-        _write_inbox(project, [
-            {"id": "zombie1", "task": "t1", "to": "claude-code", "status": "launched",
-             "launched_at": "2026-03-20T10:00:00Z", "project": str(project)},
-        ])
+        _write_contract(
+            project, [{"id": "t1", "status": "done", "owner": "claude-code"}]
+        )
+        _write_inbox(
+            project,
+            [
+                {
+                    "id": "zombie1",
+                    "task": "t1",
+                    "to": "claude-code",
+                    "status": "launched",
+                    "launched_at": "2026-03-20T10:00:00Z",
+                    "project": str(project),
+                },
+            ],
+        )
         (project / ".superharness" / "ledger.md").write_text("")
 
         env = os.environ.copy()
         env["SUPERHARNESS_CONFIRM_NON_INTERACTIVE"] = "YES"
         r = subprocess.run(
-            [PYTHON, "-m", "superharness.commands.inbox_watch",
-             "--project", str(project), "--once", "--to", "claude-code", "--print-only"],
-            capture_output=True, text=True, check=False, env=env,
+            [
+                PYTHON,
+                "-m",
+                "superharness.commands.inbox_watch",
+                "--project",
+                str(project),
+                "--once",
+                "--to",
+                "claude-code",
+                "--print-only",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
             timeout=30,
         )
 
         items = _read_inbox(project)
-        assert items[0]["status"] == "done", f"Expected done, got {items[0]['status']}. stderr: {r.stderr}"
+        assert items[0]["status"] == "done", (
+            f"Expected done, got {items[0]['status']}. stderr: {r.stderr}"
+        )
 
     def test_watch_once_reconciles_dead_pid_zombie(self, tmp_path):
         """inbox_watch --once marks launched item failed when PID is dead."""
         project = _make_project(tmp_path)
-        _write_contract(project, [{"id": "t1", "status": "todo", "owner": "claude-code"}])
-        _write_inbox(project, [
-            {"id": "zombie1", "task": "t1", "to": "claude-code", "status": "launched",
-             "pid": "999999", "launched_at": "2026-03-20T10:00:00Z", "project": str(project)},
-        ])
+        _write_contract(
+            project, [{"id": "t1", "status": "todo", "owner": "claude-code"}]
+        )
+        _write_inbox(
+            project,
+            [
+                {
+                    "id": "zombie1",
+                    "task": "t1",
+                    "to": "claude-code",
+                    "status": "launched",
+                    "pid": "999999",
+                    "launched_at": "2026-03-20T10:00:00Z",
+                    "project": str(project),
+                },
+            ],
+        )
         (project / ".superharness" / "ledger.md").write_text("")
 
         env = os.environ.copy()
         env["SUPERHARNESS_CONFIRM_NON_INTERACTIVE"] = "YES"
         r = subprocess.run(
-            [PYTHON, "-m", "superharness.commands.inbox_watch",
-             "--project", str(project), "--once", "--to", "claude-code", "--print-only"],
-            capture_output=True, text=True, check=False, env=env,
+            [
+                PYTHON,
+                "-m",
+                "superharness.commands.inbox_watch",
+                "--project",
+                str(project),
+                "--once",
+                "--to",
+                "claude-code",
+                "--print-only",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
             timeout=30,
         )
 
         items = _read_inbox(project)
-        assert items[0]["status"] == "failed", f"Expected failed, got {items[0]['status']}. stderr: {r.stderr}"
+        assert items[0]["status"] == "failed", (
+            f"Expected failed, got {items[0]['status']}. stderr: {r.stderr}"
+        )

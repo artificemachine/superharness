@@ -15,12 +15,11 @@ and every other module's spelling — see celstnblacc/superharness#328,
 cherry-picked as artificemachine#25, which fixed a 'canceled' (one L)
 production bug that this test had been asserting as correct behavior.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-
-import pytest
 
 
 TASK_ID = "feat.test-set-owner"
@@ -31,14 +30,21 @@ def _make_project(tmp_path: Path) -> Path:
     sh.mkdir(parents=True)
     (sh / "profile.yaml").write_text("auto_approve_plans: false\nautonomy: ai_driven\n")
     from superharness.engine.db import get_connection, init_db
+
     conn = get_connection(str(tmp_path))
     init_db(conn)
     conn.close()
     return tmp_path
 
 
-def _seed_inbox_row(project_dir: Path, task_id: str, *, target_agent: str,
-                    status: str = "pending", item_id: str | None = None) -> str:
+def _seed_inbox_row(
+    project_dir: Path,
+    task_id: str,
+    *,
+    target_agent: str,
+    status: str = "pending",
+    item_id: str | None = None,
+) -> str:
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import inbox_dao
     import uuid
@@ -66,7 +72,9 @@ def _seed_inbox_row(project_dir: Path, task_id: str, *, target_agent: str,
     return item_id
 
 
-def _seed_task_in_db(project_dir: Path, task_id: str, owner: str = "claude-code") -> None:
+def _seed_task_in_db(
+    project_dir: Path, task_id: str, owner: str = "claude-code"
+) -> None:
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
 
@@ -74,17 +82,41 @@ def _seed_task_in_db(project_dir: Path, task_id: str, owner: str = "claude-code"
     init_db(conn)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     row = tasks_dao.TaskRow(
-        id=task_id, title=f"test {task_id}", owner=owner, status="in_progress",
-        effort="medium", project_path=str(project_dir), development_method=None,
-        acceptance_criteria=[], test_types=[], out_of_scope=[],
-        definition_of_done=[], context=None, tdd=None, version=1,
-        created_at=now, updated_at=now,
-        plan_proposed_at=None, plan_approved_at=None, in_progress_at=now,
-        report_ready_at=None, review_requested_at=None,
-        done_at=None, cancelled_at=None, blocked_by=[],
-        verified=False, verified_at=None, verified_by=None, deadline_minutes=None,
-        failed_at=None, stopped_at=None, failed_reason=None,
-        archived_at=None, archived_reason=None, model_tier=None, pause_reason=None,
+        id=task_id,
+        title=f"test {task_id}",
+        owner=owner,
+        status="in_progress",
+        effort="medium",
+        project_path=str(project_dir),
+        development_method=None,
+        acceptance_criteria=[],
+        test_types=[],
+        out_of_scope=[],
+        definition_of_done=[],
+        context=None,
+        tdd=None,
+        version=1,
+        created_at=now,
+        updated_at=now,
+        plan_proposed_at=None,
+        plan_approved_at=None,
+        in_progress_at=now,
+        report_ready_at=None,
+        review_requested_at=None,
+        done_at=None,
+        cancelled_at=None,
+        blocked_by=[],
+        verified=False,
+        verified_at=None,
+        verified_by=None,
+        deadline_minutes=None,
+        failed_at=None,
+        stopped_at=None,
+        failed_reason=None,
+        archived_at=None,
+        archived_reason=None,
+        model_tier=None,
+        pause_reason=None,
         workflow="implementation",
     )
     tasks_dao.upsert(conn, row)
@@ -94,6 +126,7 @@ def _seed_task_in_db(project_dir: Path, task_id: str, owner: str = "claude-code"
 
 def _inbox_status_for(project_dir: Path, item_id: str) -> str:
     from superharness.engine.db import get_connection
+
     conn = get_connection(str(project_dir))
     try:
         cur = conn.execute("SELECT status FROM inbox WHERE id=?", (item_id,))
@@ -107,6 +140,7 @@ def _inbox_status_for(project_dir: Path, item_id: str) -> str:
 # Tests
 # ---------------------------------------------------------------------------
 
+
 class TestSetOwnerInboxCleanup:
     def test_cancels_active_inbox_rows_for_old_owner(self, tmp_path):
         """A pending row for the old owner must be canceled when reassigning."""
@@ -114,7 +148,9 @@ class TestSetOwnerInboxCleanup:
 
         proj = _make_project(tmp_path)
         _seed_task_in_db(proj, TASK_ID, owner="claude-code")
-        item_id = _seed_inbox_row(proj, TASK_ID, target_agent="claude-code", status="pending")
+        item_id = _seed_inbox_row(
+            proj, TASK_ID, target_agent="claude-code", status="pending"
+        )
 
         rc = set_owner(str(proj), TASK_ID, "codex-cli")
 
@@ -129,13 +165,21 @@ class TestSetOwnerInboxCleanup:
 
         proj = _make_project(tmp_path)
         _seed_task_in_db(proj, TASK_ID, owner="claude-code")
-        _seed_task_in_db(proj, "other-task", owner="claude-code")  # FK requires task row
+        _seed_task_in_db(
+            proj, "other-task", owner="claude-code"
+        )  # FK requires task row
         unrelated = _seed_inbox_row(
-            proj, "other-task", target_agent="claude-code", status="pending",
+            proj,
+            "other-task",
+            target_agent="claude-code",
+            status="pending",
             item_id="other-1",
         )
         terminal = _seed_inbox_row(
-            proj, TASK_ID, target_agent="claude-code", status="done",
+            proj,
+            TASK_ID,
+            target_agent="claude-code",
+            status="done",
             item_id="terminal-1",
         )
 
@@ -151,7 +195,10 @@ class TestSetOwnerInboxCleanup:
         proj = _make_project(tmp_path)
         _seed_task_in_db(proj, TASK_ID, owner="claude-code")
         new_owner_row = _seed_inbox_row(
-            proj, TASK_ID, target_agent="codex-cli", status="pending",
+            proj,
+            TASK_ID,
+            target_agent="codex-cli",
+            status="pending",
             item_id="new-owner-1",
         )
 

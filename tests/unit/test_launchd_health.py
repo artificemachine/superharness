@@ -4,11 +4,10 @@ All launchctl interactions are mocked so the test suite runs
 identically on macOS and Linux. Real-world coverage of the bootstrap
 path comes from the manual smoke test in operator install.
 """
+
 from __future__ import annotations
 
-import os
 import subprocess
-import sys
 from pathlib import Path
 from unittest import mock
 
@@ -53,13 +52,18 @@ _FAKE_LAUNCHCTL_LIST = (
 class TestListLoaded:
     def test_skips_non_macos(self, monkeypatch):
         from superharness.engine import launchd_health
+
         monkeypatch.setattr(launchd_health.platform, "system", lambda: "Linux")
         assert launchd_health.list_loaded_superharness_services() == []
 
     def test_parses_launchctl_output(self, force_macos):
         from superharness.engine import launchd_health
+
         fake = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout=_FAKE_LAUNCHCTL_LIST, stderr="",
+            args=[],
+            returncode=0,
+            stdout=_FAKE_LAUNCHCTL_LIST,
+            stderr="",
         )
         with mock.patch.object(launchd_health, "_run", return_value=fake):
             entries = launchd_health.list_loaded_superharness_services()
@@ -84,10 +88,15 @@ class TestFindZombies:
         from superharness.engine import launchd_health
 
         # Only the operator plist exists on disk
-        (isolated_launch_agents / "com.superharness.operator.deadbeef.plist").write_text("")
+        (
+            isolated_launch_agents / "com.superharness.operator.deadbeef.plist"
+        ).write_text("")
 
         fake = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout=_FAKE_LAUNCHCTL_LIST, stderr="",
+            args=[],
+            returncode=0,
+            stdout=_FAKE_LAUNCHCTL_LIST,
+            stderr="",
         )
         with mock.patch.object(launchd_health, "_run", return_value=fake):
             zombies = launchd_health.find_zombies()
@@ -102,8 +111,12 @@ class TestFindZombies:
 class TestFindStaleVersions:
     def test_inbox_pattern_is_stale(self, force_macos):
         from superharness.engine import launchd_health
+
         fake = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout=_FAKE_LAUNCHCTL_LIST, stderr="",
+            args=[],
+            returncode=0,
+            stdout=_FAKE_LAUNCHCTL_LIST,
+            stderr="",
         )
         with mock.patch.object(launchd_health, "_run", return_value=fake):
             stale = launchd_health.find_stale_versions()
@@ -114,8 +127,11 @@ class TestFindStaleVersions:
 
 
 class TestFindOrphanPlists:
-    def test_returns_stale_pattern_plists_on_disk(self, force_macos, isolated_launch_agents):
+    def test_returns_stale_pattern_plists_on_disk(
+        self, force_macos, isolated_launch_agents
+    ):
         from superharness.engine import launchd_health
+
         (isolated_launch_agents / "com.superharness.inbox.old1.plist").write_text("")
         (isolated_launch_agents / "com.superharness.watcher.old2.plist").write_text("")
         (isolated_launch_agents / "com.superharness.operator.live.plist").write_text("")
@@ -135,6 +151,7 @@ class TestFindOrphanPlists:
 class TestHeal:
     def test_non_macos_returns_skipped_report(self, monkeypatch):
         from superharness.engine import launchd_health
+
         monkeypatch.setattr(launchd_health.platform, "system", lambda: "Linux")
         report = launchd_health.heal(operator_plist=None)
         assert report.skipped_reason == "not macOS"
@@ -162,19 +179,27 @@ class TestHeal:
         def fake_run(cmd, *, timeout=5.0):
             call_log.append(list(cmd))
             if cmd[:2] == ["launchctl", "list"] and len(cmd) == 2:
-                return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=list_output, stderr="")
+                return subprocess.CompletedProcess(
+                    args=cmd, returncode=0, stdout=list_output, stderr=""
+                )
             if cmd[:2] == ["launchctl", "list"] and len(cmd) == 3:
                 # `launchctl list <label>` — is_loaded check.
                 # Return 0 only after bootstrap was called for that label.
                 label = cmd[2]
                 bootstrapped = any(
-                    c[:2] == ["launchctl", "bootstrap"] and c[-1].endswith(f"{label}.plist")
+                    c[:2] == ["launchctl", "bootstrap"]
+                    and c[-1].endswith(f"{label}.plist")
                     for c in call_log
                 )
                 return subprocess.CompletedProcess(
-                    args=cmd, returncode=0 if bootstrapped else 1, stdout="", stderr="",
+                    args=cmd,
+                    returncode=0 if bootstrapped else 1,
+                    stdout="",
+                    stderr="",
                 )
-            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout="", stderr=""
+            )
 
         with mock.patch.object(launchd_health, "_run", side_effect=fake_run):
             report = launchd_health.heal(operator_plist=op_plist)
@@ -195,9 +220,13 @@ class TestHeal:
         # Operator plist was bootstrapped.
         assert report.bootstrapped == ["com.superharness.operator.live"]
         # The orphan plist was actually unlinked from disk.
-        assert not (isolated_launch_agents / "com.superharness.inbox.orphan.plist").is_file()
+        assert not (
+            isolated_launch_agents / "com.superharness.inbox.orphan.plist"
+        ).is_file()
 
-    def test_nothing_to_do_returns_clean_report(self, force_macos, isolated_launch_agents):
+    def test_nothing_to_do_returns_clean_report(
+        self, force_macos, isolated_launch_agents
+    ):
         from superharness.engine import launchd_health
 
         op_plist = isolated_launch_agents / "com.superharness.operator.live.plist"
@@ -210,8 +239,12 @@ class TestHeal:
 
         def fake_run(cmd, *, timeout=5.0):
             if cmd[:2] == ["launchctl", "list"] and len(cmd) == 3:
-                return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
-            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=list_output, stderr="")
+                return subprocess.CompletedProcess(
+                    args=cmd, returncode=0, stdout="", stderr=""
+                )
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout=list_output, stderr=""
+            )
 
         with mock.patch.object(launchd_health, "_run", side_effect=fake_run):
             report = launchd_health.heal(operator_plist=op_plist)
@@ -227,10 +260,15 @@ class TestHeal:
 
 class TestWatchdogPlist:
     def test_write_watchdog_plist_creates_file_with_expected_keys(
-        self, force_macos, isolated_launch_agents,
+        self,
+        force_macos,
+        isolated_launch_agents,
     ):
         from superharness.engine import launchd_health
-        wp = launchd_health.write_watchdog_plist(python_bin="/usr/bin/python3", interval_seconds=300)
+
+        wp = launchd_health.write_watchdog_plist(
+            python_bin="/usr/bin/python3", interval_seconds=300
+        )
         assert wp.is_file()
         content = wp.read_text()
         assert "<key>Label</key>" in content
@@ -246,6 +284,7 @@ class TestWatchdogPlist:
 
     def test_watchdog_uses_custom_interval(self, force_macos, isolated_launch_agents):
         from superharness.engine import launchd_health
+
         wp = launchd_health.write_watchdog_plist(interval_seconds=120)
         assert "<integer>120</integer>" in wp.read_text()
 

@@ -11,9 +11,9 @@ Operator request (§8): `shux discuss close --id <id>` — a first-class
 way to terminate an active discussion AND cancel its pending inbox
 items in one transaction.
 """
+
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -37,6 +37,7 @@ def _seed_project(tmp_path: Path) -> Path:
 
 def _seed_task(project: Path, task_id: str) -> None:
     from superharness.engine.db import get_connection, init_db
+
     conn = get_connection(str(project))
     init_db(conn)
     conn.execute(
@@ -50,6 +51,7 @@ def _seed_task(project: Path, task_id: str) -> None:
 def _seed_discussion(project: Path, owners: list[str], status: str = "active") -> Path:
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import discussions_dao
+
     conn = get_connection(str(project))
     init_db(conn)
     discussions_dao.create(
@@ -62,7 +64,8 @@ def _seed_discussion(project: Path, owners: list[str], status: str = "active") -
     )
     if status != "active":
         conn.execute(
-            "UPDATE discussions SET status=? WHERE id=?", (status, DISC_ID),
+            "UPDATE discussions SET status=? WHERE id=?",
+            (status, DISC_ID),
         )
     conn.commit()
     conn.close()
@@ -74,6 +77,7 @@ def _seed_discussion(project: Path, owners: list[str], status: str = "active") -
 
 def _seed_inbox(project: Path, agent: str, status: str = "launched") -> None:
     from superharness.engine.db import get_connection, init_db
+
     conn = get_connection(str(project))
     init_db(conn)
     conn.execute(
@@ -83,9 +87,18 @@ def _seed_inbox(project: Path, agent: str, status: str = "launched") -> None:
          project_path, created_at, launched_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (f"item-{agent}", ROUND_TASK, agent, status, 1, 0, 3,
-         str(project), "2026-05-11T12:00:00Z",
-         "2026-05-11T12:00:01Z" if status != "pending" else None),
+        (
+            f"item-{agent}",
+            ROUND_TASK,
+            agent,
+            status,
+            1,
+            0,
+            3,
+            str(project),
+            "2026-05-11T12:00:00Z",
+            "2026-05-11T12:00:01Z" if status != "pending" else None,
+        ),
     )
     conn.commit()
     conn.close()
@@ -93,6 +106,7 @@ def _seed_inbox(project: Path, agent: str, status: str = "launched") -> None:
 
 def _make_ctx(project: Path, agent: str):
     from superharness.commands.inbox_dispatch import DispatchContext
+
     ctx = DispatchContext(
         project_dir=str(project),
         inbox_file=str(project / ".superharness" / "inbox.yaml"),
@@ -121,7 +135,9 @@ def _make_ctx(project: Path, agent: str):
 
 class TestPrelaunchGuardYamlOnDisk:
     def test_yaml_present_skips_launch_and_marks_done(self, tmp_path):
-        from superharness.commands.inbox_dispatch import _skip_already_done_discussion_round
+        from superharness.commands.inbox_dispatch import (
+            _skip_already_done_discussion_round,
+        )
         from superharness.engine.db import get_connection
 
         project = _seed_project(tmp_path)
@@ -137,14 +153,17 @@ class TestPrelaunchGuardYamlOnDisk:
         conn = get_connection(str(project))
         row = conn.execute(
             "SELECT status, failed_reason FROM inbox WHERE id=?",
-            (f"item-claude-code",),
+            ("item-claude-code",),
         ).fetchone()
         conn.close()
         assert row["status"] == "done"
         assert "submission YAML already present" in (row["failed_reason"] or "")
 
     def test_no_yaml_no_closed_does_not_skip(self, tmp_path):
-        from superharness.commands.inbox_dispatch import _skip_already_done_discussion_round
+        from superharness.commands.inbox_dispatch import (
+            _skip_already_done_discussion_round,
+        )
+
         project = _seed_project(tmp_path)
         _seed_task(project, ROUND_TASK)
         _seed_discussion(project, owners=["claude-code"])
@@ -156,7 +175,10 @@ class TestPrelaunchGuardYamlOnDisk:
     def test_print_only_short_circuits_to_false(self, tmp_path):
         """Print-only never mutates inbox state, so the guard must
         return False and let the print-only path complete normally."""
-        from superharness.commands.inbox_dispatch import _skip_already_done_discussion_round
+        from superharness.commands.inbox_dispatch import (
+            _skip_already_done_discussion_round,
+        )
+
         project = _seed_project(tmp_path)
         _seed_task(project, ROUND_TASK)
         disc_dir = _seed_discussion(project, owners=["claude-code"])
@@ -175,7 +197,9 @@ class TestPrelaunchGuardYamlOnDisk:
 
 class TestPrelaunchGuardClosedDiscussion:
     def test_closed_discussion_skips_launch(self, tmp_path):
-        from superharness.commands.inbox_dispatch import _skip_already_done_discussion_round
+        from superharness.commands.inbox_dispatch import (
+            _skip_already_done_discussion_round,
+        )
         from superharness.engine.db import get_connection
 
         project = _seed_project(tmp_path)
@@ -188,13 +212,17 @@ class TestPrelaunchGuardClosedDiscussion:
 
         conn = get_connection(str(project))
         row = conn.execute(
-            "SELECT status FROM inbox WHERE id=?", (f"item-claude-code",),
+            "SELECT status FROM inbox WHERE id=?",
+            ("item-claude-code",),
         ).fetchone()
         conn.close()
         assert row["status"] == "done"
 
     def test_cancelled_discussion_also_skips(self, tmp_path):
-        from superharness.commands.inbox_dispatch import _skip_already_done_discussion_round
+        from superharness.commands.inbox_dispatch import (
+            _skip_already_done_discussion_round,
+        )
+
         project = _seed_project(tmp_path)
         _seed_task(project, ROUND_TASK)
         _seed_discussion(project, owners=["claude-code"], status="cancelled")
@@ -265,8 +293,19 @@ class TestDiscussCloseCmd:
              project_path, created_at, done_at, failed_reason)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            ("item-old", ROUND_TASK, "claude-code", "done", 1, 0, 3,
-             str(project), "2026-05-11T11:00:00Z", "2026-05-11T11:05:00Z", "original"),
+            (
+                "item-old",
+                ROUND_TASK,
+                "claude-code",
+                "done",
+                1,
+                0,
+                3,
+                str(project),
+                "2026-05-11T11:00:00Z",
+                "2026-05-11T11:05:00Z",
+                "original",
+            ),
         )
         conn.commit()
         conn.close()
@@ -275,7 +314,8 @@ class TestDiscussCloseCmd:
 
         conn = get_connection(str(project))
         row = conn.execute(
-            "SELECT failed_reason FROM inbox WHERE id=?", ("item-old",),
+            "SELECT failed_reason FROM inbox WHERE id=?",
+            ("item-old",),
         ).fetchone()
         conn.close()
         assert row["failed_reason"] == "original", "terminal item must not be rewritten"
@@ -302,6 +342,7 @@ class TestDiscussCloseCmd:
     def test_close_unknown_discussion_exits_nonzero(self, tmp_path):
         from superharness.engine.discussion import cmd_close
         from superharness.engine.errors import SuperharnessError
+
         project = _seed_project(tmp_path)
         # No discussion seeded — should raise a domain error with a message.
         # PLAN-coding-practices.md iteration 7: cmd_close raises instead of

@@ -5,6 +5,7 @@ spawns its own internal watcher loop), registered under a different launchd
 label (com.superharness.operator.<hash>) or run ad hoc in the foreground.
 doctor should not warn "watcher not loaded" when such a process is live.
 """
+
 from __future__ import annotations
 
 import os

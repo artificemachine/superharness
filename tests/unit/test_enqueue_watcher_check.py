@@ -1,8 +1,9 @@
 """Tests for watcher health check on enqueue."""
+
 from __future__ import annotations
 
 from pathlib import Path
-from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
+from tests.helpers import seed_sqlite_from_yaml
 from unittest.mock import patch
 
 import pytest
@@ -34,6 +35,7 @@ def _setup_project(tmp_path: Path) -> Path:
         ],
     }
     import yaml
+
     (harness / "contract.yaml").write_text(yaml.safe_dump(contract))
     (harness / "inbox.yaml").write_text("# Delegation inbox\n")
     seed_sqlite_from_yaml(project)
@@ -50,7 +52,9 @@ class TestCheckWatcherHealth:
         project = _setup_project(tmp_path)
         with patch("superharness.commands.inbox_enqueue.platform") as mock_plat:
             mock_plat.system.return_value = "Darwin"
-            with patch("superharness.commands.inbox_enqueue.subprocess.run") as mock_run:
+            with patch(
+                "superharness.commands.inbox_enqueue.subprocess.run"
+            ) as mock_run:
                 mock_run.return_value.stdout = "com.superharness.inbox.test-proj\n"
                 assert _check_watcher_health(str(project)) is True
 
@@ -58,7 +62,9 @@ class TestCheckWatcherHealth:
         project = _setup_project(tmp_path)
         with patch("superharness.commands.inbox_enqueue.platform") as mock_plat:
             mock_plat.system.return_value = "Darwin"
-            with patch("superharness.commands.inbox_enqueue.subprocess.run") as mock_run:
+            with patch(
+                "superharness.commands.inbox_enqueue.subprocess.run"
+            ) as mock_run:
                 mock_run.return_value.stdout = "some.other.service\n"
                 assert _check_watcher_health(str(project)) is False
 
@@ -76,10 +82,15 @@ class TestCheckWatcherHealth:
 
 
 class TestEnqueueWatcherWarning:
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_warns_when_watcher_not_loaded(self, tmp_path, capsys):
         project = _setup_project(tmp_path)
-        with patch("superharness.commands.inbox_enqueue._check_watcher_health", return_value=False):
+        with patch(
+            "superharness.commands.inbox_enqueue._check_watcher_health",
+            return_value=False,
+        ):
             rc = enqueue_cmd(
                 project_dir=str(project),
                 target="claude-code",
@@ -91,10 +102,15 @@ class TestEnqueueWatcherWarning:
         captured = capsys.readouterr()
         assert "watcher not loaded" in captured.err.lower()
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_no_warning_when_watcher_loaded(self, tmp_path, capsys):
         project = _setup_project(tmp_path)
-        with patch("superharness.commands.inbox_enqueue._check_watcher_health", return_value=True):
+        with patch(
+            "superharness.commands.inbox_enqueue._check_watcher_health",
+            return_value=True,
+        ):
             rc = enqueue_cmd(
                 project_dir=str(project),
                 target="claude-code",
@@ -115,7 +131,10 @@ class TestEnqueueWatcherWarning:
 class TestEnqueueWatcherGate:
     def test_gate_blocks_when_watcher_not_loaded(self, tmp_path):
         project = _setup_project(tmp_path)
-        with patch("superharness.commands.inbox_enqueue._check_watcher_health", return_value=False):
+        with patch(
+            "superharness.commands.inbox_enqueue._check_watcher_health",
+            return_value=False,
+        ):
             with pytest.raises(SystemExit) as exc:
                 enqueue_cmd(
                     project_dir=str(project),
@@ -127,10 +146,15 @@ class TestEnqueueWatcherGate:
                 )
             assert exc.value.code == 1
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_gate_passes_when_watcher_loaded(self, tmp_path):
         project = _setup_project(tmp_path)
-        with patch("superharness.commands.inbox_enqueue._check_watcher_health", return_value=True):
+        with patch(
+            "superharness.commands.inbox_enqueue._check_watcher_health",
+            return_value=True,
+        ):
             rc = enqueue_cmd(
                 project_dir=str(project),
                 target="claude-code",

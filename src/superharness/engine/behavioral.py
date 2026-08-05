@@ -7,6 +7,7 @@ Profile storage:
   ~/.config/superharness/behavioral/  ← user.* (cross-project)
   .superharness/behavioral/           ← project.<hash>.* (per-project)
 """
+
 from __future__ import annotations
 
 import json
@@ -26,16 +27,20 @@ PROJECT_PROFILE_DIRNAME = "behavioral"
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 
+
 def user_profile_path() -> str:
     os.makedirs(USER_PROFILE_DIR, exist_ok=True)
     return USER_PROFILE_DIR
+
 
 def project_profile_path(project_dir: str) -> str:
     p = os.path.join(project_dir, ".superharness", PROJECT_PROFILE_DIRNAME)
     os.makedirs(p, exist_ok=True)
     return p
 
+
 # ── Confidence scoring ───────────────────────────────────────────────────────
+
 
 def confidence_level(sample_count: int) -> str:
     if sample_count < 5:
@@ -44,13 +49,17 @@ def confidence_level(sample_count: int) -> str:
         return "medium"
     return "high"
 
+
 def confidence_score(sample_count: int) -> float:
     return min(sample_count / 20.0, 1.0)
 
+
 # ── EWMA decay ───────────────────────────────────────────────────────────────
+
 
 def ewma_weight(age_days: float, halflife_days: float = 30.0) -> float:
     return math.exp(-age_days / halflife_days)
+
 
 HALFLIFE = {
     "communication": 90,
@@ -61,6 +70,7 @@ HALFLIFE = {
 }
 
 # ── Hysteresis ───────────────────────────────────────────────────────────────
+
 
 def hysteresis_check(
     successes: int,
@@ -77,12 +87,15 @@ def hysteresis_check(
         return "downgrade"
     return "neutral"
 
+
 # ── Serialization ────────────────────────────────────────────────────────────
+
 
 def save_profile(filepath: Path | str, profile: dict) -> None:
     os.makedirs(os.path.dirname(str(filepath)), exist_ok=True)
     with open(filepath, "w") as f:
         json.dump(profile, f, indent=2, default=str)
+
 
 def load_profile(filepath: Path | str) -> dict:
     if not os.path.isfile(filepath):
@@ -93,11 +106,14 @@ def load_profile(filepath: Path | str) -> dict:
     except (json.JSONDecodeError, OSError):
         return {}
 
+
 # ── Profile extraction ───────────────────────────────────────────────────────
+
 
 def extract_task_style(project_dir: str) -> dict:
     try:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -122,7 +138,9 @@ def extract_task_style(project_dir: str) -> dict:
                 "default_effort": default_effort,
                 "effort_distribution": efforts,
                 "tdd_required": tdd_count > (total * 0.5) if total > 0 else False,
-                "test_types": json.loads(test_types_row["test_types"]) if test_types_row else [],
+                "test_types": json.loads(test_types_row["test_types"])
+                if test_types_row
+                else [],
                 "confidence": confidence_level(sample_count),
                 "sample_count": sample_count,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -131,12 +149,17 @@ def extract_task_style(project_dir: str) -> dict:
             conn.close()
     except Exception as e:
         logger.warning("Failed to extract task style: %s", e)
-        return {"confidence": "low", "sample_count": 0, "updated_at": datetime.now(timezone.utc).isoformat()}
+        return {
+            "confidence": "low",
+            "sample_count": 0,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
 
 
 def extract_review_style(project_dir: str) -> dict:
     try:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -149,7 +172,9 @@ def extract_review_style(project_dir: str) -> dict:
                 avg = float(r["avg_score"] or 0)
                 failures = int(r["failures"] or 0)
                 total = int(r["cnt"])
-                strictness = max(0.0, min(1.0, 1.0 - (avg / 10.0) + (failures / max(total, 1))))
+                strictness = max(
+                    0.0, min(1.0, 1.0 - (avg / 10.0) + (failures / max(total, 1)))
+                )
                 return {
                     "strictness": round(strictness, 2),
                     "avg_score": round(avg, 2),
@@ -163,13 +188,21 @@ def extract_review_style(project_dir: str) -> dict:
             conn.close()
     except Exception as e:
         logger.warning("Failed to extract review style: %s", e)
-    return {"strictness": 0.5, "avg_score": 0, "total_reviews": 0, "failures": 0,
-            "confidence": "low", "sample_count": 0, "updated_at": datetime.now(timezone.utc).isoformat()}
+    return {
+        "strictness": 0.5,
+        "avg_score": 0,
+        "total_reviews": 0,
+        "failures": 0,
+        "confidence": "low",
+        "sample_count": 0,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def extract_model_prefs(project_dir: str) -> dict:
     try:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -190,18 +223,22 @@ def extract_model_prefs(project_dir: str) -> dict:
             conn.close()
     except Exception as e:
         logger.warning("Failed to extract model prefs: %s", e)
-    return {"confidence": "low", "sample_count": 0, "updated_at": datetime.now(timezone.utc).isoformat()}
+    return {
+        "confidence": "low",
+        "sample_count": 0,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def extract_autonomy_profile(project_dir: str) -> dict:
     try:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
             r = conn.execute(
-                "SELECT status, COUNT(*) as cnt FROM tasks "
-                "GROUP BY status"
+                "SELECT status, COUNT(*) as cnt FROM tasks GROUP BY status"
             ).fetchall()
             status_map = {row["status"]: row["cnt"] for row in r}
             successes = status_map.get("done", 0)
@@ -221,7 +258,11 @@ def extract_autonomy_profile(project_dir: str) -> dict:
             conn.close()
     except Exception as e:
         logger.warning("Failed to extract autonomy profile: %s", e)
-    return {"confidence": "low", "sample_count": 0, "updated_at": datetime.now(timezone.utc).isoformat()}
+    return {
+        "confidence": "low",
+        "sample_count": 0,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def extract_all_profiles(project_dir: str) -> dict:
@@ -232,7 +273,9 @@ def extract_all_profiles(project_dir: str) -> dict:
         "autonomy_profile": extract_autonomy_profile(project_dir),
     }
 
+
 # ── Adaptive rules ───────────────────────────────────────────────────────────
+
 
 def evaluate_rules(
     project_dir: str,
@@ -246,61 +289,77 @@ def evaluate_rules(
     # Rule 1: autonomous success → bump autonomy
     auto_successes = th.get("autonomous_successes", 0)
     if auto_successes >= 10:
-        rules.append({
-            "action": "bump_autonomy",
-            "reason": f"{auto_successes} consecutive autonomous successes",
-            "confidence": confidence_level(auto_successes),
-        })
+        rules.append(
+            {
+                "action": "bump_autonomy",
+                "reason": f"{auto_successes} consecutive autonomous successes",
+                "confidence": confidence_level(auto_successes),
+            }
+        )
 
     # Rule 2: repeated rejection → lower autonomy
     rejections = th.get("plan_rejections", 0)
     approvals = th.get("plan_approvals", 0)
     if rejections >= 4 and rejections > approvals:
-        rules.append({
-            "action": "lower_autonomy",
-            "reason": f"{rejections} of last {rejections + approvals} plans rejected",
-            "confidence": confidence_level(rejections + approvals),
-        })
+        rules.append(
+            {
+                "action": "lower_autonomy",
+                "reason": f"{rejections} of last {rejections + approvals} plans rejected",
+                "confidence": confidence_level(rejections + approvals),
+            }
+        )
 
     # Rule 3: high quality reviews → relax gate
     review_count = rh.get("review_count", 0)
     avg_score = rh.get("avg_score", 0)
     review_failures = rh.get("failures", 0)
     if review_count >= 10 and avg_score >= 8.0 and review_failures == 0:
-        rules.append({
-            "action": "relax_review",
-            "reason": f"Average review score {avg_score}/10 over {review_count} reviews",
-            "confidence": confidence_level(review_count),
-        })
+        rules.append(
+            {
+                "action": "relax_review",
+                "reason": f"Average review score {avg_score}/10 over {review_count} reviews",
+                "confidence": confidence_level(review_count),
+            }
+        )
 
     # Rule 4: all failures are test failures → auto-enable TDD
     if th.get("only_test_failures", False) and th.get("total_failures", 0) >= 5:
-        rules.append({
-            "action": "enable_tdd",
-            "reason": "All recent failures are test-related",
-            "confidence": "medium",
-        })
+        rules.append(
+            {
+                "action": "enable_tdd",
+                "reason": "All recent failures are test-related",
+                "confidence": "medium",
+            }
+        )
 
     # Rule 5: model preference detected
     model_prefs = extract_model_prefs(project_dir)
     if model_prefs.get("sample_count", 0) >= 20:
         preferred = model_prefs.get("preferred_model", "")
         if preferred:
-            rules.append({
-                "action": "set_default_model",
-                "reason": f"User prefers {preferred} model ({model_prefs['sample_count']} tasks)",
-                "confidence": confidence_level(model_prefs["sample_count"]),
-                "preferred_model": preferred,
-            })
+            rules.append(
+                {
+                    "action": "set_default_model",
+                    "reason": f"User prefers {preferred} model ({model_prefs['sample_count']} tasks)",
+                    "confidence": confidence_level(model_prefs["sample_count"]),
+                    "preferred_model": preferred,
+                }
+            )
 
     return rules
 
+
 # ── Project/user separation ──────────────────────────────────────────────────
 
-def should_promote_to_user(pattern_key: str, project_count: int, threshold: int = 3) -> bool:
+
+def should_promote_to_user(
+    pattern_key: str, project_count: int, threshold: int = 3
+) -> bool:
     return project_count >= threshold
 
+
 # ── Context formatting ───────────────────────────────────────────────────────
+
 
 def format_profile_for_context(profile: dict, tier: str = "standard") -> str:
     parts: list[str] = []
@@ -321,31 +380,40 @@ def format_profile_for_context(profile: dict, tier: str = "standard") -> str:
         ts = profile.get("task_style", {})
         if ts:
             conf = ts.get("confidence", "low")
-            parts.append(f"- Task style ({conf} confidence): "
-                        f"prefers effort={ts.get('default_effort', 'medium')}, "
-                        f"TDD={'required' if ts.get('tdd_required') else 'optional'}, "
-                        f"based on {ts.get('sample_count', 0)} tasks.")
+            parts.append(
+                f"- Task style ({conf} confidence): "
+                f"prefers effort={ts.get('default_effort', 'medium')}, "
+                f"TDD={'required' if ts.get('tdd_required') else 'optional'}, "
+                f"based on {ts.get('sample_count', 0)} tasks."
+            )
 
         rs = profile.get("review_style", {})
         if rs and rs.get("strictness") is not None:
-            parts.append(f"- Review style: strictness={rs.get('strictness', 0.5)}, "
-                        f"avg score={rs.get('avg_score', 0)}/10 "
-                        f"({rs.get('sample_count', 0)} reviews).")
+            parts.append(
+                f"- Review style: strictness={rs.get('strictness', 0.5)}, "
+                f"avg score={rs.get('avg_score', 0)}/10 "
+                f"({rs.get('sample_count', 0)} reviews)."
+            )
 
         mp = profile.get("model_prefs", {})
         if mp and mp.get("sample_count", 0) > 0:
-            parts.append(f"- Model preference: {mp.get('preferred_model', 'standard')} "
-                        f"({mp.get('sample_count', 0)} tasks).")
+            parts.append(
+                f"- Model preference: {mp.get('preferred_model', 'standard')} "
+                f"({mp.get('sample_count', 0)} tasks)."
+            )
 
         ap = profile.get("autonomy_profile", {})
         if ap and ap.get("sample_count", 0) > 0:
-            parts.append(f"- Task success rate: {ap.get('success_rate', 0):.0%} "
-                        f"({ap.get('total_tasks', 0)} tasks).")
+            parts.append(
+                f"- Task success rate: {ap.get('success_rate', 0):.0%} "
+                f"({ap.get('total_tasks', 0)} tasks)."
+            )
 
     return "\n".join(parts)
 
 
 # ── I5.2: Watcher profile refresh ────────────────────────────────────────────
+
 
 def refresh_behavioral_profile(project_dir: str) -> bool:
     """Extract and save all behavioral profiles. Returns True if any data changed."""
@@ -367,6 +435,7 @@ def refresh_behavioral_profile(project_dir: str) -> bool:
 
 
 # ── I5.3: Auto-apply adaptive rules ──────────────────────────────────────────
+
 
 def apply_rule(project_dir: str, rule: dict) -> bool:
     """Apply an adaptive rule to the project. Returns True if applied.
@@ -400,14 +469,19 @@ def apply_rule(project_dir: str, rule: dict) -> bool:
     # Record to ledger
     try:
         from superharness.engine.db import get_connection, init_db, now_iso
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
             conn.execute(
                 "INSERT INTO ledger (task_id, agent, action, details, created_at) VALUES (?, ?, ?, ?, ?)",
-                ("system", "watcher", f"adapt_{action}",
-                 json.dumps({"reason": reason, "rule": rule}),
-                 now_iso()),
+                (
+                    "system",
+                    "watcher",
+                    f"adapt_{action}",
+                    json.dumps({"reason": reason, "rule": rule}),
+                    now_iso(),
+                ),
             )
             conn.commit()
         finally:
@@ -419,13 +493,16 @@ def apply_rule(project_dir: str, rule: dict) -> bool:
     return True
 
 
-def _start_trial_if_changed(project_dir: str, key: str, old_val: str, new_val: str) -> None:
+def _start_trial_if_changed(
+    project_dir: str, key: str, old_val: str, new_val: str
+) -> None:
     """Start a trial if the profile value actually changed."""
     profile_path = os.path.join(project_dir, ".superharness", "profile.yaml")
     current = old_val
     if os.path.isfile(profile_path):
         try:
             import yaml as _yaml
+
             with open(profile_path) as f:
                 p = _yaml.safe_load(f) or {}
             current = p.get(key, old_val)
@@ -435,6 +512,7 @@ def _start_trial_if_changed(project_dir: str, key: str, old_val: str, new_val: s
         # Compute baseline from task history
         try:
             from superharness.engine.db import get_connection, init_db
+
             conn = get_connection(project_dir)
             try:
                 init_db(conn)
@@ -456,6 +534,7 @@ def _start_trial_if_changed(project_dir: str, key: str, old_val: str, new_val: s
 def _update_profile_field(project_dir: str, key: str, value: Any) -> None:
     """Update a field in .superharness/profile.yaml."""
     import yaml as _yaml
+
     profile_path = os.path.join(project_dir, ".superharness", "profile.yaml")
     profile = {}
     if os.path.isfile(profile_path):
@@ -471,16 +550,28 @@ def _update_profile_field(project_dir: str, key: str, value: Any) -> None:
 
 # ── I5.4: Auto-record reviews ────────────────────────────────────────────────
 
-def record_review(project_dir: str, task_id: str, outcome: str, owner: str = "user",
-                  score: float | None = None, duration_s: float = 0) -> bool:
+
+def record_review(
+    project_dir: str,
+    task_id: str,
+    outcome: str,
+    owner: str = "user",
+    score: float | None = None,
+    duration_s: float = 0,
+) -> bool:
     """Record a review in review_store. Returns True on success.
 
     Called automatically by state_writer on task done/review_passed.
     Score defaults: done=10, review_passed=8, failed=3, verify_pass=9, verify_fail=2.
     """
     if score is None:
-        score_map = {"done": 10.0, "review_passed": 8.0, "failed": 3.0,
-                     "verify_pass": 9.0, "verify_fail": 2.0}
+        score_map = {
+            "done": 10.0,
+            "review_passed": 8.0,
+            "failed": 3.0,
+            "verify_pass": 9.0,
+            "verify_fail": 2.0,
+        }
         score = score_map.get(outcome, 5.0)
 
     failed = 1 if score < 5.0 else 0
@@ -488,6 +579,7 @@ def record_review(project_dir: str, task_id: str, outcome: str, owner: str = "us
 
     try:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -508,8 +600,14 @@ def record_review(project_dir: str, task_id: str, outcome: str, owner: str = "us
 
 # ── I6: Verification feedback loop — A/B test every profile change ───────────
 
-def start_trial(project_dir: str, profile_key: str, old_value: str,
-                new_value: str, baseline_success_rate: float) -> int | None:
+
+def start_trial(
+    project_dir: str,
+    profile_key: str,
+    old_value: str,
+    new_value: str,
+    baseline_success_rate: float,
+) -> int | None:
     """Record the start of a profile change trial. Returns trial ID.
 
     Called when a rule fires and a profile change is about to be applied.
@@ -517,6 +615,7 @@ def start_trial(project_dir: str, profile_key: str, old_value: str,
     """
     try:
         from superharness.engine.db import get_connection, init_db, now_iso
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -542,6 +641,7 @@ def evaluate_trial(project_dir: str, trial_id: int) -> str:
     """
     try:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -555,7 +655,7 @@ def evaluate_trial(project_dir: str, trial_id: int) -> str:
             r = conn.execute(
                 "SELECT status, COUNT(*) as cnt FROM tasks "
                 "WHERE created_at > ? GROUP BY status",
-                (trial["trial_started_at"],)
+                (trial["trial_started_at"],),
             ).fetchall()
             status_map = {row["status"]: row["cnt"] for row in r}
             done_count = status_map.get("done", 0) + status_map.get("archived", 0)
@@ -589,6 +689,7 @@ def complete_trial(project_dir: str, trial_id: int) -> dict:
 
     try:
         from superharness.engine.db import get_connection, init_db, now_iso
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -604,7 +705,13 @@ def complete_trial(project_dir: str, trial_id: int) -> dict:
             conn.execute(
                 "UPDATE profile_trials SET outcome=?, trial_completed_at=?, "
                 "reinforced=?, reverted=? WHERE id=?",
-                (outcome, now_iso(), 1 if reinforced else 0, 1 if reverted else 0, trial_id),
+                (
+                    outcome,
+                    now_iso(),
+                    1 if reinforced else 0,
+                    1 if reverted else 0,
+                    trial_id,
+                ),
             )
             conn.commit()
 
@@ -612,11 +719,19 @@ def complete_trial(project_dir: str, trial_id: int) -> dict:
                 # Actually restore the prior value. Previously this only logged
                 # and set reverted=1, leaving the degraded profile change applied
                 # forever — the A/B verification loop never closed.
-                _update_profile_field(project_dir, trial["profile_key"], trial["old_value"])
-                logger.info("Reverting trial %s: %s → %s (degraded)",
-                           trial_id, trial["new_value"], trial["old_value"])
+                _update_profile_field(
+                    project_dir, trial["profile_key"], trial["old_value"]
+                )
+                logger.info(
+                    "Reverting trial %s: %s → %s (degraded)",
+                    trial_id,
+                    trial["new_value"],
+                    trial["old_value"],
+                )
             elif reinforced:
-                logger.info("Reinforcing trial %s: %s (improved)", trial_id, trial["new_value"])
+                logger.info(
+                    "Reinforcing trial %s: %s (improved)", trial_id, trial["new_value"]
+                )
 
             return {"outcome": outcome, "reverted": reverted, "reinforced": reinforced}
         finally:
@@ -630,6 +745,7 @@ def evaluate_all_open_trials(project_dir: str) -> int:
     """Evaluate and complete all open trials. Returns count of completed trials."""
     try:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)

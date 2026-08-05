@@ -18,10 +18,11 @@ Usage:
     verdict.passed  # True/False
     verdict.steps   # list of step results
 """
+
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 
@@ -45,7 +46,7 @@ class BehavioralVerdict:
 
 @dataclass
 class BehavioralStep:
-    action: str          # "GET /path" or "POST /path"
+    action: str  # "GET /path" or "POST /path"
     expect_status: int
     expect_json_key: str | None = None
     body: dict[str, Any] | None = None
@@ -125,7 +126,9 @@ class BehavioralValidator:
     ) -> "BehavioralValidator":
         if isinstance(locked_contract, str):
             locked_contract = json.loads(locked_contract)
-        assertions: list[dict[str, Any]] = locked_contract.get("behavioral_assertions") or []
+        assertions: list[dict[str, Any]] = (
+            locked_contract.get("behavioral_assertions") or []
+        )
         steps = [
             BehavioralStep(
                 action=a["action"],

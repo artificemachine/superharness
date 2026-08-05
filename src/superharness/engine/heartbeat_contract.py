@@ -19,6 +19,7 @@ Schema (YAML):
     tokens_limit: null
     cost_usd: 0.0
 """
+
 from __future__ import annotations
 
 import os
@@ -27,6 +28,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 SCHEMA_VERSION = "1"
@@ -50,7 +52,9 @@ class AgentHeartbeat:
     active_task: Optional[str] = None
     next_wake_at: Optional[str] = None
     written_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        default_factory=lambda: datetime.now(timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
     )
     budget: Optional[AgentBudget] = None
 
@@ -76,6 +80,7 @@ def write_heartbeat(project_dir: str, heartbeat: AgentHeartbeat) -> None:
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import watcher_heartbeat_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -101,16 +106,23 @@ def write_heartbeat(project_dir: str, heartbeat: AgentHeartbeat) -> None:
         finally:
             conn.close()
     except Exception as e:
-        logger.error("heartbeat_contract: SQLite SoT write failed — falling back to YAML crash dump: %s", e)
+        logger.error(
+            "heartbeat_contract: SQLite SoT write failed — falling back to YAML crash dump: %s",
+            e,
+        )
 
     # YAML mirror: skip only when SQLite succeeded AND sqlite_only mode is active.
     # If SQLite failed, write YAML regardless (durability fallback).
     try:
         from superharness.engine.sqlite_only import is_sqlite_only
+
         if sqlite_ok and is_sqlite_only(project_dir=project_dir):
             return
     except Exception as e:
-        logger.debug("heartbeat_contract: is_sqlite_only check failed, writing YAML mirror: %s", e)
+        logger.debug(
+            "heartbeat_contract: is_sqlite_only check failed, writing YAML mirror: %s",
+            e,
+        )
 
     import yaml  # type: ignore
 
@@ -139,7 +151,9 @@ def write_heartbeat(project_dir: str, heartbeat: AgentHeartbeat) -> None:
         yaml.safe_dump(data, f, default_flow_style=False)
 
 
-def read_heartbeat_db(project_dir: str, agent_id: str = "watcher") -> Optional[AgentHeartbeat]:
+def read_heartbeat_db(
+    project_dir: str, agent_id: str = "watcher"
+) -> Optional[AgentHeartbeat]:
     """Read AgentHeartbeat: prefer SQLite, but if a YAML crash dump is newer
     (i.e. C-DURABLE fallback fired and SQLite is stale), prefer the YAML.
 
@@ -151,6 +165,7 @@ def read_heartbeat_db(project_dir: str, agent_id: str = "watcher") -> Optional[A
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import watcher_heartbeat_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -159,7 +174,11 @@ def read_heartbeat_db(project_dir: str, agent_id: str = "watcher") -> Optional[A
             conn.close()
         if row is not None:
             budget: Optional[AgentBudget] = None
-            if row.tokens_used is not None or row.tokens_limit is not None or row.cost_usd is not None:
+            if (
+                row.tokens_used is not None
+                or row.tokens_limit is not None
+                or row.cost_usd is not None
+            ):
                 budget = AgentBudget(
                     tokens_used=int(row.tokens_used or 0),
                     tokens_limit=row.tokens_limit,
@@ -209,7 +228,9 @@ def _yaml_newer_than(yaml_path: str, sqlite_iso_ts: str | None) -> bool:
         yaml_mtime = os.path.getmtime(yaml_path)
         if not sqlite_iso_ts:
             return True
-        sqlite_dt = datetime.strptime(sqlite_iso_ts.rstrip("Z"), "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+        sqlite_dt = datetime.strptime(
+            sqlite_iso_ts.rstrip("Z"), "%Y-%m-%dT%H:%M:%S"
+        ).replace(tzinfo=timezone.utc)
         sqlite_unix = sqlite_dt.timestamp()
         return yaml_mtime > sqlite_unix
     except Exception as e:
@@ -222,7 +243,7 @@ def read_heartbeat(path: str) -> Optional[AgentHeartbeat]:
     import yaml  # type: ignore
 
     try:
-        with open(path) as f:  # noqa: state-read — YAML fallback when SQLite empty (legacy projects)
+        with open(path) as f:  # shipguard:ignore state-read: YAML fallback when SQLite is empty for legacy projects
             data = yaml.safe_load(f)
         if not isinstance(data, dict):
             return None
@@ -250,7 +271,9 @@ def read_heartbeat(path: str) -> Optional[AgentHeartbeat]:
         return None
 
 
-def is_stale(heartbeat: AgentHeartbeat, stale_seconds: int = STALE_SECONDS_DEFAULT) -> bool:
+def is_stale(
+    heartbeat: AgentHeartbeat, stale_seconds: int = STALE_SECONDS_DEFAULT
+) -> bool:
     """Return True if heartbeat written_at is older than stale_seconds."""
     try:
         hb_dt = datetime.fromisoformat(heartbeat.written_at.replace("Z", "+00:00"))
@@ -283,6 +306,7 @@ def list_agent_heartbeats(project_dir: str) -> list[AgentHeartbeat]:
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import watcher_heartbeat_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -291,7 +315,11 @@ def list_agent_heartbeats(project_dir: str) -> list[AgentHeartbeat]:
             conn.close()
         for row in rows:
             budget: Optional[AgentBudget] = None
-            if row.tokens_used is not None or row.tokens_limit is not None or row.cost_usd is not None:
+            if (
+                row.tokens_used is not None
+                or row.tokens_limit is not None
+                or row.cost_usd is not None
+            ):
                 budget = AgentBudget(
                     tokens_used=int(row.tokens_used or 0),
                     tokens_limit=row.tokens_limit,
@@ -309,7 +337,9 @@ def list_agent_heartbeats(project_dir: str) -> list[AgentHeartbeat]:
                 budget=budget,
             )
     except Exception as e:
-        logger.debug("heartbeat_contract.list_agent_heartbeats SQLite read failed: %s", e)
+        logger.debug(
+            "heartbeat_contract.list_agent_heartbeats SQLite read failed: %s", e
+        )
 
     # YAML scan — fills in agents not in SQLite (external runtimes, legacy projects)
     # AND prefers YAML over SQLite when YAML's mtime is newer than the SQLite row

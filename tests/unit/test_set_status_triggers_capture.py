@@ -5,9 +5,9 @@ Verifies the wire-up in engine.state_writer without exercising the full
 CLI surface. The hook is defensive: if capture fails internally the
 transition itself still succeeds.
 """
+
 from __future__ import annotations
 
-import pytest
 from unittest import mock
 
 from superharness.engine.db import get_connection, init_db, now_iso
@@ -51,7 +51,11 @@ def test_transition_to_report_ready_captures_observation(tmp_path):
     _seed_task(str(project_dir), "t-1")
 
     from superharness.engine.summarizer import NoopSummarizer
-    with mock.patch("superharness.engine.observation_capture.get_summarizer", return_value=NoopSummarizer()):
+
+    with mock.patch(
+        "superharness.engine.observation_capture.get_summarizer",
+        return_value=NoopSummarizer(),
+    ):
         ok = set_task_status(str(project_dir), "t-1", "report_ready", force=True)
         assert ok is True
 

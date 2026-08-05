@@ -10,6 +10,7 @@ instead of exec'ing) before these adapters existed, per the plan's
 test file (test_harness_registry.py) for the same pattern applied to
 claude-code.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -33,8 +34,17 @@ def test_codex_invocation_parity():
         non_interactive=True,
     )
     assert invocation.argv == (
-        "bash", launcher, "--project", "/tmp/proj", "--prompt", "do the thing",
-        "--non-interactive", "--model", "openai/gpt-5-codex", "--effort", "high",
+        "bash",
+        launcher,
+        "--project",
+        "/tmp/proj",
+        "--prompt",
+        "do the thing",
+        "--non-interactive",
+        "--model",
+        "openai/gpt-5-codex",
+        "--effort",
+        "high",
     )
     assert invocation.cwd == "/tmp/proj"
 
@@ -47,8 +57,15 @@ def test_gemini_invocation_parity():
         non_interactive=True,
     )
     assert invocation.argv == (
-        "bash", launcher, "--project", "/tmp/proj", "--prompt", "do the thing",
-        "--non-interactive", "--model", "google/gemini-3-pro",
+        "bash",
+        launcher,
+        "--project",
+        "/tmp/proj",
+        "--prompt",
+        "do the thing",
+        "--non-interactive",
+        "--model",
+        "google/gemini-3-pro",
     )
     assert invocation.cwd == "/tmp/proj"
 
@@ -61,14 +78,26 @@ def test_opencode_invocation_parity():
         non_interactive=True,
     )
     assert invocation.argv == (
-        "bash", launcher, "--project", "/tmp/proj", "--prompt", "do the thing",
-        "--non-interactive", "--model", "anthropic/claude-sonnet-4-6",
+        "bash",
+        launcher,
+        "--project",
+        "/tmp/proj",
+        "--prompt",
+        "do the thing",
+        "--non-interactive",
+        "--model",
+        "anthropic/claude-sonnet-4-6",
     )
     assert invocation.cwd == "/tmp/proj"
 
 
 def test_all_known_harnesses_resolve():
-    assert set(KNOWN_HARNESSES) == {"claude-code", "codex-cli", "gemini-cli", "opencode"}
+    assert set(KNOWN_HARNESSES) == {
+        "claude-code",
+        "codex-cli",
+        "gemini-cli",
+        "opencode",
+    }
     for name in KNOWN_HARNESSES:
         invocation = get_harness(name).build_invocation(
             task={"prompt": "do the thing"},

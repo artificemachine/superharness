@@ -2,6 +2,7 @@
 
 One JSON object per line. Dashboards and external clients tail the file.
 """
+
 from __future__ import annotations
 
 import json
@@ -9,6 +10,7 @@ import os
 from datetime import datetime, timezone
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 

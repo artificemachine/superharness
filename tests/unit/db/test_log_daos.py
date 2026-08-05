@@ -9,8 +9,14 @@ T1 = "2026-01-01T01:00:00Z"
 
 def test_failures_record_and_get(db_conn):
     seed_task(db_conn, "t1")
-    row = failures_dao.record(db_conn, task_id="t1", agent="claude-code",
-                              pattern="timeout", error_snippet="Process timed out", now=T0)
+    row = failures_dao.record(
+        db_conn,
+        task_id="t1",
+        agent="claude-code",
+        pattern="timeout",
+        error_snippet="Process timed out",
+        now=T0,
+    )
     assert row.id is not None
     assert row.task_id == "t1"
     assert row.pattern == "timeout"

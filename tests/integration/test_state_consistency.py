@@ -1,4 +1,5 @@
 """Iter 12 RED integration tests: DB path split-brain detection and consolidation."""
+
 from __future__ import annotations
 
 import os
@@ -10,7 +11,9 @@ import sys
 def _shux(*args, cwd):
     return subprocess.run(
         [sys.executable, "-m", "superharness.cli", *args],
-        capture_output=True, text=True, cwd=cwd,
+        capture_output=True,
+        text=True,
+        cwd=cwd,
     )
 
 
@@ -26,6 +29,7 @@ def _init_sqlite(path: str) -> None:
 
 
 # ── test_doctor_detects_two_dbs ────────────────────────────────────────────────
+
 
 def test_doctor_detects_two_dbs(tmp_path, monkeypatch):
     """doctor must report a WARN when both XDG and legacy state dbs exist.
@@ -50,7 +54,11 @@ def test_doctor_detects_two_dbs(tmp_path, monkeypatch):
     result = _shux("doctor", "--project", project, cwd=project)
     output = result.stdout + result.stderr
 
-    assert "split-brain" in output.lower() or "two state db" in output.lower() or "both state" in output.lower(), (
+    assert (
+        "split-brain" in output.lower()
+        or "two state db" in output.lower()
+        or "both state" in output.lower()
+    ), (
         f"doctor output did not warn about two-DB coexistence (split-brain).\n"
         f"Expected a WARN containing 'split-brain', 'two state db', or 'both state'.\n"
         f"Got: {output!r}"
@@ -58,6 +66,7 @@ def test_doctor_detects_two_dbs(tmp_path, monkeypatch):
 
 
 # ── test_migrate_state_consolidates_when_both_exist ───────────────────────────
+
 
 def test_migrate_state_consolidates_when_both_exist(tmp_path, monkeypatch):
     """migrate-state must merge legacy into XDG when both exist, not abort.

@@ -1,4 +1,5 @@
 """Test contract hygiene CI enforcement."""
+
 import subprocess
 import yaml
 from pathlib import Path
@@ -28,7 +29,7 @@ def test_hygiene_check_passes_with_valid_contract(tmp_path):
             {"id": "task-one", "status": "done", "title": "Test task", "verified": True}
         ],
         "decisions": [],
-        "failures": []
+        "failures": [],
     }
     (harness / "contract.yaml").write_text(yaml.dump(contract))
     _setup_harness(harness)
@@ -42,7 +43,7 @@ def test_hygiene_check_passes_with_valid_contract(tmp_path):
     handoff = {
         "task": "task-one",
         "status": "done",
-        "outcomes": ["completed successfully"]
+        "outcomes": ["completed successfully"],
     }
     (handoffs / "task-one.yaml").write_text(yaml.dump(handoff))
 
@@ -52,16 +53,27 @@ def test_hygiene_check_passes_with_valid_contract(tmp_path):
 
     # Seed SQLite for handoff and ledger (production code reads from SQLite)
     from tests.helpers import seed_sqlite_handoff, seed_sqlite_ledger
-    seed_sqlite_handoff(tmp_path, "task-one", phase="report", status="done",
-                        content="task: task-one\nstatus: done\n", now="2026-03-10T00:00:00Z")
-    seed_sqlite_ledger(tmp_path, action="completed task-one", task_id="task-one",
-                       now="2026-03-10T00:00:00Z")
+
+    seed_sqlite_handoff(
+        tmp_path,
+        "task-one",
+        phase="report",
+        status="done",
+        content="task: task-one\nstatus: done\n",
+        now="2026-03-10T00:00:00Z",
+    )
+    seed_sqlite_ledger(
+        tmp_path,
+        action="completed task-one",
+        task_id="task-one",
+        now="2026-03-10T00:00:00Z",
+    )
 
     # Run check
     result = subprocess.run(
         [str(SCRIPTS_DIR / "check-contract-hygiene.sh"), "--project", str(tmp_path)],
         capture_output=True,
-        text=True
+        text=True,
     )
 
     assert result.returncode == 0, f"stdout: {result.stdout}\nstderr: {result.stderr}"
@@ -76,11 +88,9 @@ def test_hygiene_check_fails_without_handoff(tmp_path):
     contract = {
         "id": "test-contract",
         "status": "active",
-        "tasks": [
-            {"id": "task-orphan", "status": "done", "title": "Orphan task"}
-        ],
+        "tasks": [{"id": "task-orphan", "status": "done", "title": "Orphan task"}],
         "decisions": [],
-        "failures": []
+        "failures": [],
     }
     (harness / "contract.yaml").write_text(yaml.dump(contract))
     _setup_harness(harness)
@@ -96,7 +106,7 @@ def test_hygiene_check_fails_without_handoff(tmp_path):
     result = subprocess.run(
         [str(SCRIPTS_DIR / "check-contract-hygiene.sh"), "--project", str(tmp_path)],
         capture_output=True,
-        text=True
+        text=True,
     )
 
     assert result.returncode == 1
@@ -111,11 +121,9 @@ def test_hygiene_check_fails_without_ledger_entry(tmp_path):
     contract = {
         "id": "test-contract",
         "status": "active",
-        "tasks": [
-            {"id": "task-silent", "status": "done", "title": "Silent task"}
-        ],
+        "tasks": [{"id": "task-silent", "status": "done", "title": "Silent task"}],
         "decisions": [],
-        "failures": []
+        "failures": [],
     }
     (harness / "contract.yaml").write_text(yaml.dump(contract))
     _setup_harness(harness)
@@ -123,11 +131,7 @@ def test_hygiene_check_fails_without_ledger_entry(tmp_path):
 
     handoffs = harness / "handoffs"
     handoffs.mkdir()
-    handoff = {
-        "task": "task-silent",
-        "status": "done",
-        "outcomes": ["completed"]
-    }
+    handoff = {"task": "task-silent", "status": "done", "outcomes": ["completed"]}
     (handoffs / "task-silent.yaml").write_text(yaml.dump(handoff))
 
     (harness / "decisions.yaml").write_text("decisions: []\n")
@@ -136,7 +140,7 @@ def test_hygiene_check_fails_without_ledger_entry(tmp_path):
     result = subprocess.run(
         [str(SCRIPTS_DIR / "check-contract-hygiene.sh"), "--project", str(tmp_path)],
         capture_output=True,
-        text=True
+        text=True,
     )
 
     assert result.returncode == 1
@@ -153,10 +157,10 @@ def test_hygiene_check_skips_non_done_tasks(tmp_path):
         "status": "active",
         "tasks": [
             {"id": "task-todo", "status": "todo", "title": "Not done yet"},
-            {"id": "task-in-progress", "status": "in_progress", "title": "Working"}
+            {"id": "task-in-progress", "status": "in_progress", "title": "Working"},
         ],
         "decisions": [],
-        "failures": []
+        "failures": [],
     }
     (harness / "contract.yaml").write_text(yaml.dump(contract))
     _setup_harness(harness)
@@ -171,7 +175,7 @@ def test_hygiene_check_skips_non_done_tasks(tmp_path):
     result = subprocess.run(
         [str(SCRIPTS_DIR / "check-contract-hygiene.sh"), "--project", str(tmp_path)],
         capture_output=True,
-        text=True
+        text=True,
     )
 
     assert result.returncode == 0

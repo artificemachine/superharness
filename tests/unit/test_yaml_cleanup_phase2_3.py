@@ -4,12 +4,11 @@ Phase 2: inbox_watch.py — no contract.yaml/inbox.yaml reads
 Phase 3: adapter_payload.py — no YAML fallbacks in _load_failures/decisions/inbox;
          validate.py / doctor.py — check state.sqlite3 not contract.yaml
 """
+
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
-import pytest
 
 from superharness.engine.db import get_connection, init_db
 from superharness.engine import tasks_dao
@@ -33,6 +32,7 @@ def _mk_project(tmp_path: Path) -> Path:
 # Phase 2: inbox_watch._ensure_task_in_sqlite — no YAML read
 # ---------------------------------------------------------------------------
 
+
 class TestEnsureTaskInSqliteNoYaml:
     def test_returns_without_reading_yaml_when_no_db(self, tmp_path: Path) -> None:
         """_ensure_task_in_sqlite must not crash when called on a project
@@ -42,6 +42,7 @@ class TestEnsureTaskInSqliteNoYaml:
         init_db(conn)
         # No contract.yaml — should not raise
         from superharness.commands.inbox_watch import _ensure_task_in_sqlite
+
         _ensure_task_in_sqlite(conn, "t-missing", str(project), T0)
         # Task should not be created (no seed source)
         task = tasks_dao.get(conn, "t-missing")
@@ -52,14 +53,29 @@ class TestEnsureTaskInSqliteNoYaml:
         project = _mk_project(tmp_path)
         conn = get_connection(str(project))
         init_db(conn)
-        tasks_dao.upsert(conn, TaskRow(
-            id="t1", title="T", owner="x", status="todo", effort=None,
-            project_path=str(project), development_method="tdd",
-            acceptance_criteria=[], test_types=[], out_of_scope=[],
-            definition_of_done=[], context=None, tdd=None, version=1, created_at=T0,
-        ))
+        tasks_dao.upsert(
+            conn,
+            TaskRow(
+                id="t1",
+                title="T",
+                owner="x",
+                status="todo",
+                effort=None,
+                project_path=str(project),
+                development_method="tdd",
+                acceptance_criteria=[],
+                test_types=[],
+                out_of_scope=[],
+                definition_of_done=[],
+                context=None,
+                tdd=None,
+                version=1,
+                created_at=T0,
+            ),
+        )
         conn.commit()
         from superharness.commands.inbox_watch import _ensure_task_in_sqlite
+
         _ensure_task_in_sqlite(conn, "t1", str(project), T0)
         # Should not raise; task still present
         assert tasks_dao.get(conn, "t1") is not None
@@ -70,10 +86,12 @@ class TestEnsureTaskInSqliteNoYaml:
 # Phase 3: adapter_payload._load_failures — no YAML fallback
 # ---------------------------------------------------------------------------
 
+
 class TestLoadFailuresNoYaml:
     def test_returns_empty_when_no_db_no_yaml(self, tmp_path: Path) -> None:
         project = _mk_project(tmp_path)
         from superharness.commands.adapter_payload import _load_failures
+
         result = _load_failures(project / ".superharness")
         assert result == []
 
@@ -84,6 +102,7 @@ class TestLoadFailuresNoYaml:
             "failures:\n- task: old\n  error_snippet: stale\n  agent: x\n  date: 2020-01-01\n"
         )
         from superharness.commands.adapter_payload import _load_failures
+
         result = _load_failures(project / ".superharness")
         # Should NOT return the YAML data (fallback removed)
         assert result == []
@@ -93,10 +112,12 @@ class TestLoadFailuresNoYaml:
 # Phase 3: adapter_payload._load_decisions — no YAML fallback
 # ---------------------------------------------------------------------------
 
+
 class TestLoadDecisionsNoYaml:
     def test_returns_empty_when_sqlite_empty(self, tmp_path: Path) -> None:
         project = _mk_project(tmp_path)
         from superharness.commands.adapter_payload import _load_decisions
+
         result = _load_decisions(project / ".superharness")
         assert result == []
 
@@ -106,6 +127,7 @@ class TestLoadDecisionsNoYaml:
             "decisions:\n- id: d1\n  what: old decision\n  why: stale\n"
         )
         from superharness.commands.adapter_payload import _load_decisions
+
         result = _load_decisions(project / ".superharness")
         assert result == []
 
@@ -114,10 +136,12 @@ class TestLoadDecisionsNoYaml:
 # Phase 3: adapter_payload._load_inbox — no YAML fallback
 # ---------------------------------------------------------------------------
 
+
 class TestLoadInboxNoYaml:
     def test_returns_empty_when_sqlite_empty(self, tmp_path: Path) -> None:
         project = _mk_project(tmp_path)
         from superharness.commands.adapter_payload import _load_inbox
+
         result = _load_inbox(project / ".superharness")
         assert result == []
 
@@ -127,6 +151,7 @@ class TestLoadInboxNoYaml:
             "[{id: i1, task: t1, status: pending, to: claude-code}]\n"
         )
         from superharness.commands.adapter_payload import _load_inbox
+
         result = _load_inbox(project / ".superharness")
         assert result == []
 
@@ -134,6 +159,7 @@ class TestLoadInboxNoYaml:
 # ---------------------------------------------------------------------------
 # Phase 3: validate.py — checks state.sqlite3 not contract.yaml
 # ---------------------------------------------------------------------------
+
 
 class TestValidateChecksDb:
     def test_missing_sqlite_returns_nonzero(self, tmp_path: Path) -> None:
@@ -144,6 +170,7 @@ class TestValidateChecksDb:
         (project / ".superharness" / "ledger.md").write_text("")
         # No state.sqlite3 — should return non-zero
         from superharness.engine.validate import run_validate
+
         result = run_validate(str(project))
         assert result != 0
 
@@ -153,5 +180,6 @@ class TestValidateChecksDb:
         (project / ".superharness" / "handoffs").mkdir()
         (project / ".superharness" / "ledger.md").write_text("")
         from superharness.engine.validate import run_validate
+
         result = run_validate(str(project))
         assert result == 0

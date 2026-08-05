@@ -7,6 +7,7 @@ failure) is logged. Budget exhaustion raises RateLimitExceeded.
 DAO faults degrade gracefully (limiter allows the call rather than
 blocking transitions).
 """
+
 from __future__ import annotations
 
 import pytest
@@ -121,7 +122,9 @@ def test_sqlite_limiter_dao_failure_does_not_block(project_dir, monkeypatch, tmp
     # Redirect XDG state dir so the bad-path hash doesn't contaminate real FS.
     monkeypatch.setenv("SUPERHARNESS_STATE_DIR", str(tmp_path / "sh_state_broken"))
     s = _SQLiteRateLimitedSummarizer(
-        NoopSummarizer(), max_per_hour=1, project_dir="/nonexistent/path/xyz",
+        NoopSummarizer(),
+        max_per_hour=1,
+        project_dir="/nonexistent/path/xyz",
         provider_name="noop",
     )
     # Budget check on a bad path swallows the error; call proceeds.

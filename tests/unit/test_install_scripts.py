@@ -22,7 +22,9 @@ def _run_watcher_worker_py(cwd, args: list[str] | None = None, env: dict | None 
             else:
                 merged[k] = v
     cmd = [sys.executable, "-m", "superharness.commands.watcher_worker"] + (args or [])
-    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=merged, check=False)
+    return subprocess.run(
+        cmd, cwd=str(cwd), text=True, capture_output=True, env=merged, check=False
+    )
 
 
 def _setup_launchd_project(tmp_path: Path) -> Path:
@@ -70,8 +72,11 @@ def test_claude_install_symlink_lifecycle(repo_root, tmp_path) -> None:
     assert "Already installed" in second.stdout
 
 
-def test_install_wrapper_symlink_executes_scripts_from_outside_repo(repo_root, tmp_path) -> None:
+def test_install_wrapper_symlink_executes_scripts_from_outside_repo(
+    repo_root, tmp_path
+) -> None:
     import sys
+
     home = tmp_path / "home"
     home.mkdir()
     work = tmp_path / "work"
@@ -79,8 +84,13 @@ def test_install_wrapper_symlink_executes_scripts_from_outside_repo(repo_root, t
 
     env = {**os.environ, "HOME": str(home), "PYTHONPATH": str(repo_root / "src")}
     install = subprocess.run(
-        [sys.executable, "-m", "superharness.commands.install_wrapper",
-         "--target-dir", str(home / ".local" / "bin")],
+        [
+            sys.executable,
+            "-m",
+            "superharness.commands.install_wrapper",
+            "--target-dir",
+            str(home / ".local" / "bin"),
+        ],
         cwd=repo_root,
         text=True,
         capture_output=True,
@@ -138,8 +148,16 @@ def test_install_git_hooks_force_behavior(repo_root, tmp_path) -> None:
     assert hooks_path.stdout.strip() == ".githooks"
 
 
-def test_install_launchd_requires_explicit_noninteractive_confirmation(repo_root, tmp_path) -> None:
-    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
+def test_install_launchd_requires_explicit_noninteractive_confirmation(
+    repo_root, tmp_path
+) -> None:
+    script = (
+        repo_root
+        / "src"
+        / "superharness"
+        / "scripts"
+        / "install-launchd-inbox-watcher.sh"
+    )
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home"
     home.mkdir()
@@ -159,8 +177,16 @@ def test_install_launchd_requires_explicit_noninteractive_confirmation(repo_root
     assert "--confirm-non-interactive yes" in result.stderr
 
 
-def test_install_launchd_requires_explicit_claude_skip_permissions_confirmation(repo_root, tmp_path) -> None:
-    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
+def test_install_launchd_requires_explicit_claude_skip_permissions_confirmation(
+    repo_root, tmp_path
+) -> None:
+    script = (
+        repo_root
+        / "src"
+        / "superharness"
+        / "scripts"
+        / "install-launchd-inbox-watcher.sh"
+    )
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home"
     home.mkdir()
@@ -169,7 +195,14 @@ def test_install_launchd_requires_explicit_claude_skip_permissions_confirmation(
     result = run_bash(
         script,
         cwd=repo_root,
-        args=["--project", str(project), "--to", "claude-code", "--confirm-non-interactive", "yes"],
+        args=[
+            "--project",
+            str(project),
+            "--to",
+            "claude-code",
+            "--confirm-non-interactive",
+            "yes",
+        ],
         env={
             "HOME": str(home),
             "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
@@ -180,8 +213,16 @@ def test_install_launchd_requires_explicit_claude_skip_permissions_confirmation(
     assert "--confirm-skip-permissions yes" in result.stderr
 
 
-def test_install_launchd_rejects_invalid_confirm_codex_bypass(repo_root, tmp_path) -> None:
-    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
+def test_install_launchd_rejects_invalid_confirm_codex_bypass(
+    repo_root, tmp_path
+) -> None:
+    script = (
+        repo_root
+        / "src"
+        / "superharness"
+        / "scripts"
+        / "install-launchd-inbox-watcher.sh"
+    )
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home-invalid-codex"
     home.mkdir()
@@ -208,8 +249,16 @@ def test_install_launchd_rejects_invalid_confirm_codex_bypass(repo_root, tmp_pat
     assert "--confirm-codex-bypass must be yes or no" in result.stderr
 
 
-def test_install_launchd_escapes_plist_values_and_writes_confirmation_envs(repo_root, tmp_path) -> None:
-    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
+def test_install_launchd_escapes_plist_values_and_writes_confirmation_envs(
+    repo_root, tmp_path
+) -> None:
+    script = (
+        repo_root
+        / "src"
+        / "superharness"
+        / "scripts"
+        / "install-launchd-inbox-watcher.sh"
+    )
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home"
     home.mkdir()
@@ -218,7 +267,14 @@ def test_install_launchd_escapes_plist_values_and_writes_confirmation_envs(repo_
     result = run_bash(
         script,
         cwd=repo_root,
-        args=["--project", str(project), "--to", "codex-cli", "--confirm-non-interactive", "yes"],
+        args=[
+            "--project",
+            str(project),
+            "--to",
+            "codex-cli",
+            "--confirm-non-interactive",
+            "yes",
+        ],
         env={
             "HOME": str(home),
             "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
@@ -236,11 +292,19 @@ def test_install_launchd_escapes_plist_values_and_writes_confirmation_envs(repo_
     assert "<key>SUPERHARNESS_CONFIRM_CODEX_BYPASS</key>" in plist_text
 
 
-def test_install_launchd_state_project_defaults_to_project_dir_without_symlink(repo_root, tmp_path) -> None:
+def test_install_launchd_state_project_defaults_to_project_dir_without_symlink(
+    repo_root, tmp_path
+) -> None:
     """When .superharness is a real directory (not the watcher-worker symlink
     pattern), SUPERHARNESS_STATE_PROJECT must equal --project — a no-op that
     preserves existing single-project (non-worker) installs."""
-    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = (
+        repo_root
+        / "src"
+        / "superharness"
+        / "scripts"
+        / "install-launchd-inbox-watcher.sh"
+    )
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home"
     home.mkdir()
@@ -249,7 +313,14 @@ def test_install_launchd_state_project_defaults_to_project_dir_without_symlink(r
     result = run_bash(
         script,
         cwd=repo_root,
-        args=["--project", str(project), "--to", "codex-cli", "--confirm-non-interactive", "yes"],
+        args=[
+            "--project",
+            str(project),
+            "--to",
+            "codex-cli",
+            "--confirm-non-interactive",
+            "yes",
+        ],
         env={
             "HOME": str(home),
             "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
@@ -261,12 +332,14 @@ def test_install_launchd_state_project_defaults_to_project_dir_without_symlink(r
     plist_text = (home / "Library" / "LaunchAgents" / f"{label}.plist").read_text()
     assert "<key>SUPERHARNESS_STATE_PROJECT</key>" in plist_text
     idx = plist_text.index("<key>SUPERHARNESS_STATE_PROJECT</key>")
-    value_line = plist_text[idx:idx + 200].splitlines()[1]
+    value_line = plist_text[idx : idx + 200].splitlines()[1]
     expected = str(project.resolve()).replace("&", "&amp;")
     assert expected in value_line
 
 
-def test_install_launchd_state_project_resolves_symlink_to_source(repo_root, tmp_path) -> None:
+def test_install_launchd_state_project_resolves_symlink_to_source(
+    repo_root, tmp_path
+) -> None:
     """watcher-worker.py symlinks the worker's .superharness/ back to the
     source project so both share one state DB. Without SUPERHARNESS_STATE_PROJECT
     pointing at the source, the watcher process (running with --project
@@ -280,7 +353,13 @@ def test_install_launchd_state_project_resolves_symlink_to_source(repo_root, tmp
     the script's own symlink resolution, and going through the full pipeline
     means fighting unrelated confirmation-flow/OS-detection state that
     belongs to other tests."""
-    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = (
+        repo_root
+        / "src"
+        / "superharness"
+        / "scripts"
+        / "install-launchd-inbox-watcher.sh"
+    )
     source = tmp_path / "source-proj"
     (source / ".superharness").mkdir(parents=True, exist_ok=True)
     seed_sqlite_from_yaml(source)
@@ -297,9 +376,14 @@ def test_install_launchd_state_project_resolves_symlink_to_source(repo_root, tmp
         script,
         cwd=repo_root,
         args=[
-            "--project", str(worker), "--to", "both",
-            "--confirm-non-interactive", "yes",
-            "--confirm-skip-permissions", "yes",
+            "--project",
+            str(worker),
+            "--to",
+            "both",
+            "--confirm-non-interactive",
+            "yes",
+            "--confirm-skip-permissions",
+            "yes",
         ],
         env={
             "HOME": str(home),
@@ -315,7 +399,7 @@ def test_install_launchd_state_project_resolves_symlink_to_source(repo_root, tmp
 
     assert "<key>SUPERHARNESS_STATE_PROJECT</key>" in plist_text
     idx = plist_text.index("<key>SUPERHARNESS_STATE_PROJECT</key>")
-    value_line = plist_text[idx:idx + 200].splitlines()[1]
+    value_line = plist_text[idx : idx + 200].splitlines()[1]
     assert str(source.resolve()) in value_line, (
         f"SUPERHARNESS_STATE_PROJECT must resolve through the .superharness "
         f"symlink to the source project ({source.resolve()}), not the worker "
@@ -324,10 +408,18 @@ def test_install_launchd_state_project_resolves_symlink_to_source(repo_root, tmp
     assert str(worker.resolve()) not in value_line
 
 
-def test_install_launchd_plist_keepalive_only_restarts_on_crash(repo_root, tmp_path) -> None:
+def test_install_launchd_plist_keepalive_only_restarts_on_crash(
+    repo_root, tmp_path
+) -> None:
     """KeepAlive must use SuccessfulExit=false so launchd only restarts on crash,
     not after a normal single-cycle exit."""
-    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = (
+        repo_root
+        / "src"
+        / "superharness"
+        / "scripts"
+        / "install-launchd-inbox-watcher.sh"
+    )
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home"
     home.mkdir()
@@ -336,7 +428,14 @@ def test_install_launchd_plist_keepalive_only_restarts_on_crash(repo_root, tmp_p
     result = run_bash(
         script,
         cwd=repo_root,
-        args=["--project", str(project), "--to", "codex-cli", "--confirm-non-interactive", "yes"],
+        args=[
+            "--project",
+            str(project),
+            "--to",
+            "codex-cli",
+            "--confirm-non-interactive",
+            "yes",
+        ],
         env={
             "HOME": str(home),
             "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
@@ -353,12 +452,22 @@ def test_install_launchd_plist_keepalive_only_restarts_on_crash(repo_root, tmp_p
     assert "<false/>" in plist_text
     # Verify we don't have the old pattern: KeepAlive followed immediately by <true/>
     import re
-    assert not re.search(r"<key>KeepAlive</key>\s*<true/>", plist_text), \
+
+    assert not re.search(r"<key>KeepAlive</key>\s*<true/>", plist_text), (
         "KeepAlive must not use unconditional <true/>"
+    )
 
 
-def test_install_launchd_protected_path_requires_allow_flag(repo_root, tmp_path) -> None:
-    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
+def test_install_launchd_protected_path_requires_allow_flag(
+    repo_root, tmp_path
+) -> None:
+    script = (
+        repo_root
+        / "src"
+        / "superharness"
+        / "scripts"
+        / "install-launchd-inbox-watcher.sh"
+    )
     home = tmp_path / "home-protected"
     project = home / "Documents" / "proj"
     (project / ".superharness").mkdir(parents=True, exist_ok=True)
@@ -369,9 +478,12 @@ def test_install_launchd_protected_path_requires_allow_flag(repo_root, tmp_path)
         script,
         cwd=repo_root,
         args=[
-            "--project", str(project),
-            "--to", "codex-cli",
-            "--confirm-non-interactive", "yes",
+            "--project",
+            str(project),
+            "--to",
+            "codex-cli",
+            "--confirm-non-interactive",
+            "yes",
         ],
         env={
             "HOME": str(home),
@@ -385,9 +497,12 @@ def test_install_launchd_protected_path_requires_allow_flag(repo_root, tmp_path)
         script,
         cwd=repo_root,
         args=[
-            "--project", str(project),
-            "--to", "codex-cli",
-            "--confirm-non-interactive", "yes",
+            "--project",
+            str(project),
+            "--to",
+            "codex-cli",
+            "--confirm-non-interactive",
+            "yes",
             "--allow-protected-path",
         ],
         env={
@@ -399,7 +514,13 @@ def test_install_launchd_protected_path_requires_allow_flag(repo_root, tmp_path)
 
 
 def test_install_launchd_writes_recover_arguments_to_plist(repo_root, tmp_path) -> None:
-    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = (
+        repo_root
+        / "src"
+        / "superharness"
+        / "scripts"
+        / "install-launchd-inbox-watcher.sh"
+    )
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home"
     home.mkdir()
@@ -409,11 +530,16 @@ def test_install_launchd_writes_recover_arguments_to_plist(repo_root, tmp_path) 
         script,
         cwd=repo_root,
         args=[
-            "--project", str(project),
-            "--to", "codex-cli",
-            "--confirm-non-interactive", "yes",
-            "--recover-timeout-minutes", "11",
-            "--recover-action", "retry",
+            "--project",
+            str(project),
+            "--to",
+            "codex-cli",
+            "--confirm-non-interactive",
+            "yes",
+            "--recover-timeout-minutes",
+            "11",
+            "--recover-action",
+            "retry",
         ],
         env={
             "HOME": str(home),
@@ -431,8 +557,16 @@ def test_install_launchd_writes_recover_arguments_to_plist(repo_root, tmp_path) 
     assert "<string>retry</string>" in plist_text
 
 
-def test_ensure_launchd_rejects_invalid_confirm_codex_bypass(repo_root, tmp_path) -> None:
-    script = repo_root / "src" / "superharness" / "scripts" / "ensure-launchd-inbox-watcher.sh"
+def test_ensure_launchd_rejects_invalid_confirm_codex_bypass(
+    repo_root, tmp_path
+) -> None:
+    script = (
+        repo_root
+        / "src"
+        / "superharness"
+        / "scripts"
+        / "ensure-launchd-inbox-watcher.sh"
+    )
     project = _setup_launchd_project(tmp_path)
 
     result = run_bash(
@@ -449,8 +583,12 @@ def test_ensure_launchd_rejects_invalid_confirm_codex_bypass(repo_root, tmp_path
     assert "--confirm-codex-bypass must be yes or no" in result.stderr
 
 
-def test_reset_watcher_rejects_invalid_confirm_codex_bypass(repo_root, tmp_path) -> None:
-    script = repo_root / "src" / "superharness" / "scripts" / "reset-watcher-and-test.sh"
+def test_reset_watcher_rejects_invalid_confirm_codex_bypass(
+    repo_root, tmp_path
+) -> None:
+    script = (
+        repo_root / "src" / "superharness" / "scripts" / "reset-watcher-and-test.sh"
+    )
     project = _setup_launchd_project(tmp_path)
 
     result = run_bash(
@@ -527,19 +665,26 @@ sync_worker_copy
     assert sync_result.returncode == 0, sync_result.stderr
 
     # .superharness must still be a symlink
-    assert (worker / ".superharness").is_symlink(), \
+    assert (worker / ".superharness").is_symlink(), (
         ".superharness should remain a symlink after sync_worker_copy"
+    )
     assert (worker / ".superharness").resolve() == (source / ".superharness").resolve()
     # Source content should be synced
     assert (worker / "README.md").read_text() == "source\n"
     # Excluded dirs should not exist in worker
     assert not (worker / ".venv").exists(), ".venv should be excluded from sync"
-    assert not (worker / "node_modules").exists(), "node_modules should be excluded from sync"
-    assert not (worker / ".pytest_cache").exists(), ".pytest_cache should be excluded from sync"
+    assert not (worker / "node_modules").exists(), (
+        "node_modules should be excluded from sync"
+    )
+    assert not (worker / ".pytest_cache").exists(), (
+        ".pytest_cache should be excluded from sync"
+    )
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_setup_watcher_worker_creates_clean_worker_and_watcher_config(repo_root, tmp_path) -> None:
+def test_setup_watcher_worker_creates_clean_worker_and_watcher_config(
+    repo_root, tmp_path
+) -> None:
     project = tmp_path / "source-proj"
     (project / ".superharness").mkdir(parents=True, exist_ok=True)
     (project / "README.md").write_text("source\n")
@@ -553,10 +698,14 @@ def test_setup_watcher_worker_creates_clean_worker_and_watcher_config(repo_root,
     result = _run_watcher_worker_py(
         repo_root,
         args=[
-            "--project", str(project),
-            "--worker", str(worker),
-            "--interval", "15",
-            "--to", "both",
+            "--project",
+            str(project),
+            "--worker",
+            str(worker),
+            "--interval",
+            "15",
+            "--to",
+            "both",
         ],
         env={"HOME": str(home), "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}"},
     )
@@ -576,7 +725,13 @@ def test_setup_watcher_worker_creates_clean_worker_and_watcher_config(repo_root,
 
 def test_install_launchd_creates_plist_from_scratch(repo_root, tmp_path) -> None:
     """When no plist exists, install creates it with correct label and loads it."""
-    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = (
+        repo_root
+        / "src"
+        / "superharness"
+        / "scripts"
+        / "install-launchd-inbox-watcher.sh"
+    )
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home-fresh"
     home.mkdir()
@@ -589,10 +744,14 @@ def test_install_launchd_creates_plist_from_scratch(repo_root, tmp_path) -> None
         script,
         cwd=repo_root,
         args=[
-            "--project", str(project),
-            "--interval", "15",
-            "--to", "codex-cli",
-            "--confirm-non-interactive", "yes",
+            "--project",
+            str(project),
+            "--interval",
+            "15",
+            "--to",
+            "codex-cli",
+            "--confirm-non-interactive",
+            "yes",
         ],
         env={
             "HOME": str(home),
@@ -611,9 +770,17 @@ def test_install_launchd_creates_plist_from_scratch(repo_root, tmp_path) -> None
     assert "<integer>15</integer>" in plist_text
 
 
-def test_install_launchd_reinstall_overwrites_existing_plist(repo_root, tmp_path) -> None:
+def test_install_launchd_reinstall_overwrites_existing_plist(
+    repo_root, tmp_path
+) -> None:
     """Reinstalling overwrites the plist with updated settings."""
-    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = (
+        repo_root
+        / "src"
+        / "superharness"
+        / "scripts"
+        / "install-launchd-inbox-watcher.sh"
+    )
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home-reinstall"
     home.mkdir()
@@ -624,10 +791,14 @@ def test_install_launchd_reinstall_overwrites_existing_plist(repo_root, tmp_path
         script,
         cwd=repo_root,
         args=[
-            "--project", str(project),
-            "--interval", "30",
-            "--to", "codex-cli",
-            "--confirm-non-interactive", "yes",
+            "--project",
+            str(project),
+            "--interval",
+            "30",
+            "--to",
+            "codex-cli",
+            "--confirm-non-interactive",
+            "yes",
         ],
         env={
             "HOME": str(home),
@@ -645,10 +816,14 @@ def test_install_launchd_reinstall_overwrites_existing_plist(repo_root, tmp_path
         script,
         cwd=repo_root,
         args=[
-            "--project", str(project),
-            "--interval", "15",
-            "--to", "codex-cli",
-            "--confirm-non-interactive", "yes",
+            "--project",
+            str(project),
+            "--interval",
+            "15",
+            "--to",
+            "codex-cli",
+            "--confirm-non-interactive",
+            "yes",
         ],
         env={
             "HOME": str(home),
@@ -665,7 +840,13 @@ def test_install_launchd_reinstall_overwrites_existing_plist(repo_root, tmp_path
 
 def test_install_launchd_plist_contains_project_and_target(repo_root, tmp_path) -> None:
     """Plist must contain the project path and target agent arguments."""
-    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = (
+        repo_root
+        / "src"
+        / "superharness"
+        / "scripts"
+        / "install-launchd-inbox-watcher.sh"
+    )
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home-target"
     home.mkdir()
@@ -675,10 +856,14 @@ def test_install_launchd_plist_contains_project_and_target(repo_root, tmp_path) 
         script,
         cwd=repo_root,
         args=[
-            "--project", str(project),
-            "--to", "claude-code",
-            "--confirm-non-interactive", "yes",
-            "--confirm-skip-permissions", "yes",
+            "--project",
+            str(project),
+            "--to",
+            "claude-code",
+            "--confirm-non-interactive",
+            "yes",
+            "--confirm-skip-permissions",
+            "yes",
         ],
         env={
             "HOME": str(home),
@@ -697,7 +882,13 @@ def test_install_launchd_plist_contains_project_and_target(repo_root, tmp_path) 
 
 def test_install_launchd_output_reports_all_settings(repo_root, tmp_path) -> None:
     """Install output must report interval, recover settings, target, and mode."""
-    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = (
+        repo_root
+        / "src"
+        / "superharness"
+        / "scripts"
+        / "install-launchd-inbox-watcher.sh"
+    )
     project = _setup_launchd_project(tmp_path)
     home = tmp_path / "home-output"
     home.mkdir()
@@ -707,12 +898,18 @@ def test_install_launchd_output_reports_all_settings(repo_root, tmp_path) -> Non
         script,
         cwd=repo_root,
         args=[
-            "--project", str(project),
-            "--interval", "20",
-            "--to", "codex-cli",
-            "--confirm-non-interactive", "yes",
-            "--recover-timeout-minutes", "15",
-            "--recover-action", "stale",
+            "--project",
+            str(project),
+            "--interval",
+            "20",
+            "--to",
+            "codex-cli",
+            "--confirm-non-interactive",
+            "yes",
+            "--recover-timeout-minutes",
+            "15",
+            "--recover-action",
+            "stale",
         ],
         env={
             "HOME": str(home),
@@ -730,7 +927,13 @@ def test_install_launchd_output_reports_all_settings(repo_root, tmp_path) -> Non
 
 def test_install_launchd_missing_superharness_dir_fails(repo_root, tmp_path) -> None:
     """Install fails if project has no .superharness directory."""
-    script = repo_root / "src" / "superharness" / "scripts" / "install-launchd-inbox-watcher.sh"
+    script = (
+        repo_root
+        / "src"
+        / "superharness"
+        / "scripts"
+        / "install-launchd-inbox-watcher.sh"
+    )
     project = tmp_path / "no-harness"
     project.mkdir()
     home = tmp_path / "home-no-harness"
@@ -741,9 +944,12 @@ def test_install_launchd_missing_superharness_dir_fails(repo_root, tmp_path) -> 
         script,
         cwd=repo_root,
         args=[
-            "--project", str(project),
-            "--to", "codex-cli",
-            "--confirm-non-interactive", "yes",
+            "--project",
+            str(project),
+            "--to",
+            "codex-cli",
+            "--confirm-non-interactive",
+            "yes",
         ],
         env={
             "HOME": str(home),
@@ -756,7 +962,9 @@ def test_install_launchd_missing_superharness_dir_fails(repo_root, tmp_path) -> 
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_setup_watcher_worker_persists_custom_recover_values(repo_root, tmp_path) -> None:
+def test_setup_watcher_worker_persists_custom_recover_values(
+    repo_root, tmp_path
+) -> None:
     project = tmp_path / "source-proj-custom"
     (project / ".superharness").mkdir(parents=True, exist_ok=True)
     (project / ".superharness" / "contract.yaml").write_text("id: demo\n")
@@ -769,13 +977,20 @@ def test_setup_watcher_worker_persists_custom_recover_values(repo_root, tmp_path
     result = _run_watcher_worker_py(
         repo_root,
         args=[
-            "--project", str(project),
-            "--worker", str(worker),
-            "--interval", "15",
-            "--recover-timeout-minutes", "12",
-            "--recover-action", "stale",
-            "--launcher-timeout", "45",
-            "--to", "both",
+            "--project",
+            str(project),
+            "--worker",
+            str(worker),
+            "--interval",
+            "15",
+            "--recover-timeout-minutes",
+            "12",
+            "--recover-action",
+            "stale",
+            "--launcher-timeout",
+            "45",
+            "--to",
+            "both",
         ],
         env={"HOME": str(home), "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}"},
     )

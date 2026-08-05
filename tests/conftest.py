@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import atexit
 import hashlib
 import logging
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -25,6 +27,31 @@ os.environ.setdefault("SUPERHARNESS_PYTHON", sys.executable)
 # Block tests from auto-installing real LaunchAgents on the user's system.
 # session-start.sh and friends honor this flag and skip ensure-launchd-inbox-watcher.sh.
 os.environ["SUPERHARNESS_NO_AUTO_INSTALL"] = "1"
+
+# Tests are offline by default. `SUPERHARNESS_ALLOW_LIVE_TESTS=1` is the
+# explicit opt-in for provider smoke tests that deliberately contact a real
+# service or agent CLI.
+if os.environ.get("SUPERHARNESS_ALLOW_LIVE_TESTS") != "1":
+    # Test subprocesses inherit this flag. The model router must use its
+    # deterministic fallback instead of contacting a local fleet or agent CLI.
+    os.environ["SUPERHARNESS_TEST_OFFLINE"] = "1"
+
+    # Do not inherit a real summarizer provider from the operator environment.
+    # Observation capture in test subprocesses must stay deterministic and local.
+    os.environ["SUPERHARNESS_SUMMARIZER"] = "noop"
+
+    # Catch direct CLI invocations that bypass the model router or summarizer.
+    # Subprocesses spawned by tests inherit PATH, so these inert stand-ins prevent
+    # any real Claude/Codex/Gemini/OpenCode client from running during the suite.
+    _offline_agent_bin = Path(tempfile.mkdtemp(prefix="superharness-test-agents-"))
+    for _agent_binary in ("claude", "codex", "gemini", "opencode"):
+        _stub = _offline_agent_bin / _agent_binary
+        _stub.write_text("#!/bin/sh\nexit 127\n")
+        _stub.chmod(0o755)
+    os.environ["PATH"] = (
+        str(_offline_agent_bin) + os.pathsep + os.environ.get("PATH", "")
+    )
+    atexit.register(shutil.rmtree, _offline_agent_bin, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)
@@ -224,11 +251,15 @@ def _launchd_leak_guard():
         yield
         return
     import shutil
+
     if not shutil.which("launchctl"):
         yield
         return
 
-    from tests.unit.test_launchd_test_pollution import find_leaked_labels, _current_labels
+    from tests.unit.test_launchd_test_pollution import (
+        find_leaked_labels,
+        _current_labels,
+    )
 
     before = _current_labels()
     yield
@@ -247,7 +278,10 @@ def past_iso(minutes_ago: int) -> str:
     libraries. Example: `paused_at=past_iso(31)` to test a 30-minute timeout.
     """
     from datetime import datetime, timedelta, timezone
-    return (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    return (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
 
 
 # --------------------------------------------------------------------------
@@ -270,6 +304,7 @@ def past_iso(minutes_ago: int) -> str:
 # a few small file reads cost microseconds, and this runs before and after every
 # one of ~5000 tests. A full status call would add ~20 minutes to the suite.
 # --------------------------------------------------------------------------
+
 
 def _repo_fingerprint() -> dict[str, str] | None:
     """Cheap snapshot of the real repo's git metadata.

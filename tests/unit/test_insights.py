@@ -1,4 +1,5 @@
 """TDD: shux insights — task/dispatch/agent breakdown from SQLite."""
+
 from __future__ import annotations
 
 import sqlite3
@@ -61,18 +62,21 @@ def _setup_db(tmp_path: Path) -> str:
 class TestInsightsModule:
     def test_returns_dict(self, tmp_path):
         from superharness.engine.insights import get_insights
+
         project_dir = _setup_db(tmp_path)
         result = get_insights(project_dir)
         assert isinstance(result, dict)
 
     def test_has_required_sections(self, tmp_path):
         from superharness.engine.insights import get_insights
+
         result = get_insights(_setup_db(tmp_path))
         for key in ("tasks", "agents", "dispatch", "failures"):
             assert key in result, f"missing section: {key}"
 
     def test_tasks_section_counts_by_status(self, tmp_path):
         from superharness.engine.insights import get_insights
+
         result = get_insights(_setup_db(tmp_path))
         tasks = result["tasks"]
         assert tasks["done"] == 2
@@ -81,6 +85,7 @@ class TestInsightsModule:
 
     def test_agents_section_counts_done_by_agent(self, tmp_path):
         from superharness.engine.insights import get_insights
+
         result = get_insights(_setup_db(tmp_path))
         agents = result["agents"]
         assert agents["claude-code"]["done"] == 1
@@ -88,6 +93,7 @@ class TestInsightsModule:
 
     def test_dispatch_section_has_launch_and_fail_counts(self, tmp_path):
         from superharness.engine.insights import get_insights
+
         result = get_insights(_setup_db(tmp_path))
         d = result["dispatch"]
         assert d["launched"] == 2
@@ -95,6 +101,7 @@ class TestInsightsModule:
 
     def test_failures_section_lists_most_retried(self, tmp_path):
         from superharness.engine.insights import get_insights
+
         result = get_insights(_setup_db(tmp_path))
         f = result["failures"]
         assert isinstance(f, list)
@@ -104,6 +111,7 @@ class TestInsightsModule:
 
     def test_missing_db_returns_empty_sections(self, tmp_path):
         from superharness.engine.insights import get_insights
+
         (tmp_path / ".superharness").mkdir()
         result = get_insights(str(tmp_path))
         assert result["tasks"] == {}
@@ -111,6 +119,7 @@ class TestInsightsModule:
 
     def test_cost_breakdown_aggregates_by_agent(self, tmp_path):
         from superharness.engine.insights import get_insights
+
         result = get_insights(_setup_db(tmp_path))
         cost = result["cost_breakdown"]
 
@@ -126,6 +135,7 @@ class TestInsightsModule:
 
     def test_cost_breakdown_empty_when_no_usage_data(self, tmp_path):
         from superharness.engine.insights import get_insights
+
         project_dir = str(tmp_path)
         sh = tmp_path / ".superharness"
         sh.mkdir()
@@ -146,6 +156,7 @@ class TestInsightsModule:
 
     def test_cost_breakdown_handles_null_cost_gracefully(self, tmp_path):
         from superharness.engine.insights import get_insights
+
         project_dir = str(tmp_path)
         sh = tmp_path / ".superharness"
         sh.mkdir()
@@ -180,6 +191,7 @@ class TestInsightsModule:
 class TestInsightsCLI:
     def test_cli_runs_without_error(self, tmp_path, capsys):
         from superharness.commands.insights import main
+
         _setup_db(tmp_path)
         main(["--project", str(tmp_path)])
         out = capsys.readouterr().out
@@ -188,6 +200,7 @@ class TestInsightsCLI:
     def test_json_flag_outputs_valid_json(self, tmp_path, capsys):
         import json
         from superharness.commands.insights import main
+
         _setup_db(tmp_path)
         main(["--project", str(tmp_path), "--json"])
         out = capsys.readouterr().out
@@ -197,6 +210,7 @@ class TestInsightsCLI:
     def test_cli_output_includes_cost_breakdown(self, tmp_path, capsys):
         import json
         from superharness.commands.insights import main
+
         _setup_db(tmp_path)
         main(["--project", str(tmp_path), "--json"])
         out = capsys.readouterr().out

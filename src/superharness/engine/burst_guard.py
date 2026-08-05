@@ -9,14 +9,16 @@ This is a broader safety net than the peer-review-specific cooldown in
 inbox_watch — it catches any fast-failing loop regardless of which
 auto-flow triggered it.
 """
+
 from __future__ import annotations
 
 import sqlite3
 
 import logging
+
 logger = logging.getLogger(__name__)
 
-BURST_THRESHOLD = 5       # failed rows in the window before suppression
+BURST_THRESHOLD = 5  # failed rows in the window before suppression
 BURST_WINDOW_MINUTES = 10
 
 
@@ -29,6 +31,7 @@ def task_burst_suppressed(
 ) -> bool:
     """Return True if task_id has generated too many failed inbox rows recently."""
     from datetime import datetime, timedelta, timezone
+
     try:
         cutoff = (
             datetime.now(timezone.utc) - timedelta(minutes=window_minutes)

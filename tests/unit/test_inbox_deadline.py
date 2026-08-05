@@ -7,7 +7,9 @@ import pytest
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
-def _make_project(tmp_path, task_id: str, owner: str, deadline_minutes: int | None, launched_at: str):
+def _make_project(
+    tmp_path, task_id: str, owner: str, deadline_minutes: int | None, launched_at: str
+):
     project = tmp_path / f"proj-deadline-{task_id}"
     project.mkdir()
     harness = project / ".superharness"
@@ -16,7 +18,11 @@ def _make_project(tmp_path, task_id: str, owner: str, deadline_minutes: int | No
     (harness / "failures.yaml").write_text("failures: []\n")
     (harness / "decisions.yaml").write_text("decisions: []\n")
 
-    deadline_line = f"    deadline_minutes: {deadline_minutes}\n" if deadline_minutes is not None else ""
+    deadline_line = (
+        f"    deadline_minutes: {deadline_minutes}\n"
+        if deadline_minutes is not None
+        else ""
+    )
     (harness / "contract.yaml").write_text(
         f"id: test-contract\n"
         f"tasks:\n"
@@ -25,7 +31,7 @@ def _make_project(tmp_path, task_id: str, owner: str, deadline_minutes: int | No
         f"    status: in_progress\n"
         f"    owner: {owner}\n"
         f"{deadline_line}"
-        f"    project_path: \"{project}\"\n"
+        f'    project_path: "{project}"\n'
         f"decisions: []\n"
         f"failures: []\n"
     )
@@ -37,7 +43,7 @@ def _make_project(tmp_path, task_id: str, owner: str, deadline_minutes: int | No
         f"- id: inbox-{task_id}\n"
         f"  to: {owner}\n"
         f"  task: {task_id}\n"
-        f"  project: \"{project}\"\n"
+        f'  project: "{project}"\n'
         f"  status: launched\n"
         f"  launched_at: {launched_at}\n"
         f"  priority: 1\n"
@@ -56,7 +62,7 @@ def test_deadline_exceeded_marks_failed_and_reenqueues(repo_root, tmp_path) -> N
         task_id="slow-task",
         owner="claude-code",
         deadline_minutes=1,
-        launched_at="2026-01-01T00:00:00Z",   # far in the past
+        launched_at="2026-01-01T00:00:00Z",  # far in the past
     )
 
     script = repo_root / "src" / "superharness" / "scripts" / "inbox-deadline-check.sh"
@@ -68,6 +74,7 @@ def test_deadline_exceeded_marks_failed_and_reenqueues(repo_root, tmp_path) -> N
     # Inbox is SQLite-backed post-migration; inbox.yaml is no longer
     # the source of truth. Query SQLite for the status checks.
     import sqlite3 as _sql
+
     db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
     rows = db.execute(
         "SELECT id, target_agent, status, failed_reason FROM inbox "
@@ -87,7 +94,9 @@ def test_deadline_exceeded_marks_failed_and_reenqueues(repo_root, tmp_path) -> N
     assert "slow-task" in ledger_text
     assert "codex-cli" in ledger_text
 
-    handoff_files = list((project / ".superharness" / "handoffs").glob("*deadline-slow-task.yaml"))
+    handoff_files = list(
+        (project / ".superharness" / "handoffs").glob("*deadline-slow-task.yaml")
+    )
     assert len(handoff_files) == 1
     handoff_text = handoff_files[0].read_text()
     assert "deadline_exceeded" in handoff_text
@@ -107,6 +116,7 @@ def test_deadline_exceeded_marks_failed_and_reenqueues(repo_root, tmp_path) -> N
 
 def test_deadline_not_exceeded_does_nothing(repo_root, tmp_path) -> None:
     from datetime import datetime, timezone
+
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     project = _make_project(
@@ -114,7 +124,7 @@ def test_deadline_not_exceeded_does_nothing(repo_root, tmp_path) -> None:
         task_id="fast-task",
         owner="codex-cli",
         deadline_minutes=60,
-        launched_at=now_utc,   # just launched
+        launched_at=now_utc,  # just launched
     )
 
     script = repo_root / "src" / "superharness" / "scripts" / "inbox-deadline-check.sh"
@@ -124,7 +134,7 @@ def test_deadline_not_exceeded_does_nothing(repo_root, tmp_path) -> None:
     assert "exceeded=0" in result.stdout
 
     inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
-    assert "status: launched" in inbox_text   # unchanged
+    assert "status: launched" in inbox_text  # unchanged
 
 
 def test_no_deadline_set_does_nothing(repo_root, tmp_path) -> None:
@@ -143,7 +153,7 @@ def test_no_deadline_set_does_nothing(repo_root, tmp_path) -> None:
     assert "exceeded=0" in result.stdout
 
     inbox_text = (project / ".superharness" / "inbox.yaml").read_text()
-    assert "status: launched" in inbox_text   # unchanged
+    assert "status: launched" in inbox_text  # unchanged
 
 
 def test_deadline_reassigns_codex_to_claude(repo_root, tmp_path) -> None:
@@ -163,6 +173,7 @@ def test_deadline_reassigns_codex_to_claude(repo_root, tmp_path) -> None:
 
     # Inbox is SQLite-backed post-migration; query the DB.
     import sqlite3 as _sql
+
     db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
     rows = db.execute(
         "SELECT target_agent, status FROM inbox WHERE task_id LIKE '%codex-slow%'"

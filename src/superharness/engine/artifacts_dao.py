@@ -3,6 +3,7 @@
 Agents register file outputs linked to a task. Each artifact has a type
 (code|image|test_report|binary|file), optional hash, and file size.
 """
+
 from __future__ import annotations
 
 import sqlite3

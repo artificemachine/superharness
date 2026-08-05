@@ -14,6 +14,7 @@ from superharness.engine import ledger_dao
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass(frozen=True)
 class MigrationReport:
     tasks_imported: int = 0
@@ -25,10 +26,9 @@ class MigrationReport:
     errors: list[str] = field(default_factory=list)
     worker_dirs_migrated: list[str] = field(default_factory=list)
 
+
 def migrate_all_to_sqlite(
-    conn: sqlite3.Connection, 
-    project_dir: str, 
-    workers_root: str | None = None
+    conn: sqlite3.Connection, project_dir: str, workers_root: str | None = None
 ) -> MigrationReport:
     """Migrate project state from YAML to SQLite."""
     sh_dir = Path(project_dir) / ".superharness"
@@ -40,33 +40,36 @@ def migrate_all_to_sqlite(
         "decisions_imported": 0,
         "review_imported": 0,
         "errors": [],
-        "worker_dirs_migrated": []
+        "worker_dirs_migrated": [],
     }
-    
+
     now = now_iso()
-    
+
     # 1. Contract (Tasks + Dependencies)
     _migrate_contract(conn, sh_dir, report_data, now)
-    
+
     # 2. Inbox (Main + Workers)
     _migrate_inbox(conn, sh_dir, report_data, now)
     _migrate_worker_inboxes(conn, project_dir, report_data, now, workers_root)
-    
+
     # 3. Handoffs
     _migrate_handoffs(conn, sh_dir, report_data, now)
-    
+
     # 4. Failures
     _migrate_failures(conn, sh_dir, report_data, now)
-    
+
     # 5. Decisions
     _migrate_decisions(conn, sh_dir, report_data, now)
-    
+
     # 6. Review store
     _migrate_review_store(conn, sh_dir, report_data, now)
-    
+
     return MigrationReport(**report_data)
 
-def _safe_load_yaml(path: Path, report_data: dict[str, Any], conn: sqlite3.Connection, now: str) -> Any:
+
+def _safe_load_yaml(
+    path: Path, report_data: dict[str, Any], conn: sqlite3.Connection, now: str
+) -> Any:
     """Load YAML file with error capturing."""
     if not path.exists():
         return None
@@ -76,31 +79,39 @@ def _safe_load_yaml(path: Path, report_data: dict[str, Any], conn: sqlite3.Conne
     except Exception as e:
         err_msg = f"Error parsing {path.name}: {e}"
         report_data["errors"].append(err_msg)
-        ledger_dao.record(conn, action="migration_error", details={"file": str(path), "error": str(e)}, now=now)
+        ledger_dao.record(
+            conn,
+            action="migration_error",
+            details={"file": str(path), "error": str(e)},
+            now=now,
+        )
         return None
 
-def _migrate_contract(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[str, Any], now: str) -> None:
+
+def _migrate_contract(
+    conn: sqlite3.Connection, sh_dir: Path, report_data: dict[str, Any], now: str
+) -> None:
     data = _safe_load_yaml(sh_dir / "contract.yaml", report_data, conn, now)
     if not data or not isinstance(data, dict) or "tasks" not in data:
         return
-    
+
     tasks = data["tasks"]
     if not isinstance(tasks, list):
         return
-        
+
     count = 0
     with transaction(conn):
         for t in tasks:
             if not isinstance(t, dict) or "id" not in t:
                 continue
-            
+
             # Simple mapping, JSON encode lists/dicts
             ac = json.dumps(t.get("acceptance_criteria", []))
             tt = json.dumps(t.get("test_types", []))
             oos = json.dumps(t.get("out_of_scope", []))
             dod = json.dumps(t.get("definition_of_done", []))
             tdd = json.dumps(t.get("tdd")) if t.get("tdd") else None
-            
+
             # Carry over lifecycle timestamps from YAML so reconcile_lifecycle
             # sees the actual age of the task instead of the migration timestamp.
             updated_at = t.get("updated_at") or now
@@ -108,7 +119,8 @@ def _migrate_contract(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[
             archived_at = t.get("archived_at")
             created_at = t.get("created_at") or now
 
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO tasks (
                     id, title, owner, status, effort, project_path,
                     development_method, acceptance_criteria, test_types,
@@ -126,25 +138,54 @@ def _migrate_contract(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[
                     updated_at=excluded.updated_at,
                     in_progress_at=excluded.in_progress_at,
                     archived_at=excluded.archived_at
-            """, (
-                t["id"], t.get("title", "Untitled"), t.get("owner"), t.get("status", "todo"),
-                t.get("effort"), t.get("project_path"), t.get("development_method"),
-                ac, tt, oos, dod, t.get("context"), tdd, created_at,
-                updated_at, in_progress_at, archived_at
-            ))
+            """,
+                (
+                    t["id"],
+                    t.get("title", "Untitled"),
+                    t.get("owner"),
+                    t.get("status", "todo"),
+                    t.get("effort"),
+                    t.get("project_path"),
+                    t.get("development_method"),
+                    ac,
+                    tt,
+                    oos,
+                    dod,
+                    t.get("context"),
+                    tdd,
+                    created_at,
+                    updated_at,
+                    in_progress_at,
+                    archived_at,
+                ),
+            )
 
             # Carry over any remaining scalar lifecycle fields whose names
             # match real columns (deadline_minutes, failed_reason, plan_*_at,
             # report_ready_at, review_requested_at, etc.). Skips fields that
             # belong to the structured INSERT above and any unknown keys.
             _scalar_passthrough = {
-                "deadline_minutes", "failed_at", "failed_reason",
-                "plan_proposed_at", "plan_approved_at", "report_ready_at",
-                "review_requested_at", "done_at", "cancelled_at",
-                "stopped_at", "pause_reason", "archived_reason",
-                "model_tier", "worktree_path", "verified", "verified_at",
-                "verified_by", "parent_id", "version",
-                "workflow", "autonomy",
+                "deadline_minutes",
+                "failed_at",
+                "failed_reason",
+                "plan_proposed_at",
+                "plan_approved_at",
+                "report_ready_at",
+                "review_requested_at",
+                "done_at",
+                "cancelled_at",
+                "stopped_at",
+                "pause_reason",
+                "archived_reason",
+                "model_tier",
+                "worktree_path",
+                "verified",
+                "verified_at",
+                "verified_by",
+                "parent_id",
+                "version",
+                "workflow",
+                "autonomy",
             }
             for _k in _scalar_passthrough:
                 if _k in t and t[_k] is not None:
@@ -166,9 +207,11 @@ def _migrate_contract(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[
                     pass
             # Nested metadata (subtasks / classifier / decomposer / retry)
             # → extras_json. Pulled apart at read time by state_reader.
-            extras = {k: t[k] for k in ("subtasks", "classifier",
-                                        "decomposer", "retry")
-                      if k in t and t[k] is not None}
+            extras = {
+                k: t[k]
+                for k in ("subtasks", "classifier", "decomposer", "retry")
+                if k in t and t[k] is not None
+            }
             if extras:
                 try:
                     conn.execute(
@@ -177,7 +220,7 @@ def _migrate_contract(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[
                     )
                 except sqlite3.OperationalError:
                     pass
-            
+
             # Dependencies. Treat sentinels (none/null/~/[]) as no deps.
             # If a list is provided, normalize. Skip FK inserts when the
             # prerequisite task isn't (yet) in the tasks table — pytest
@@ -190,13 +233,21 @@ def _migrate_contract(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[
             blocked_by = t.get("blocked_by") or t.get("dependency")
             deps: list[str] = []
             if isinstance(blocked_by, list):
-                deps = [str(d).strip() for d in blocked_by
-                        if d and str(d).strip() and str(d).strip().lower() not in ("none", "null", "~")]
+                deps = [
+                    str(d).strip()
+                    for d in blocked_by
+                    if d
+                    and str(d).strip()
+                    and str(d).strip().lower() not in ("none", "null", "~")
+                ]
             elif blocked_by:
                 raw = str(blocked_by).strip()
                 if raw.lower() not in ("none", "null", "~", "", "[]"):
-                    deps = [d.strip() for d in raw.split(",") if d.strip()
-                            and d.strip().lower() not in ("none", "null", "~")]
+                    deps = [
+                        d.strip()
+                        for d in raw.split(",")
+                        if d.strip() and d.strip().lower() not in ("none", "null", "~")
+                    ]
             try:
                 conn.execute(
                     "UPDATE tasks SET blocked_by_raw = ? WHERE id = ?",
@@ -205,7 +256,10 @@ def _migrate_contract(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[
             except sqlite3.OperationalError:
                 pass  # column missing on this schema version
             if deps:
-                conn.execute("DELETE FROM task_dependencies WHERE dependent_task_id = ?", (t["id"],))
+                conn.execute(
+                    "DELETE FROM task_dependencies WHERE dependent_task_id = ?",
+                    (t["id"],),
+                )
                 for dep in deps:
                     exists = conn.execute(
                         "SELECT 1 FROM tasks WHERE id = ?", (dep,)
@@ -214,34 +268,40 @@ def _migrate_contract(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[
                         continue  # silently skip unknown prerequisites
                     conn.execute(
                         "INSERT OR IGNORE INTO task_dependencies (dependent_task_id, prerequisite_task_id) VALUES (?, ?)",
-                        (t["id"], dep)
+                        (t["id"], dep),
                     )
             count += 1
     report_data["tasks_imported"] = count
 
-def _migrate_inbox(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[str, Any], now: str) -> None:
+
+def _migrate_inbox(
+    conn: sqlite3.Connection, sh_dir: Path, report_data: dict[str, Any], now: str
+) -> None:
     data = _safe_load_yaml(sh_dir / "inbox.yaml", report_data, conn, now)
     if not data or not isinstance(data, list):
         return
-    
+
     count = 0
     with transaction(conn):
         for item in data:
             if not isinstance(item, dict) or "id" not in item:
                 continue
-            
+
             # Check if task exists (FK constraint)
             task_id = item.get("task")
             if not task_id:
                 continue
-                
+
             cursor = conn.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,))
             if not cursor.fetchone():
-                report_data["errors"].append(f"Orphaned inbox item {item['id']} references missing task {task_id}")
+                report_data["errors"].append(
+                    f"Orphaned inbox item {item['id']} references missing task {task_id}"
+                )
                 continue
 
             try:
-                conn.execute("""
+                conn.execute(
+                    """
                     INSERT INTO inbox (
                         id, task_id, target_agent, status, priority, retry_count,
                         max_retries, pid, project_path, plan_only, failed_reason,
@@ -249,13 +309,27 @@ def _migrate_inbox(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[str
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         status=excluded.status, pid=excluded.pid, launched_at=excluded.launched_at
-                """, (
-                    item["id"], task_id, item.get("to", "unknown"), item.get("status", "pending"),
-                    item.get("priority", 2), item.get("retry_count", 0), item.get("max_retries", 3),
-                    item.get("pid"), item.get("project"), 1 if item.get("plan_only") else 0,
-                    item.get("failed_reason"), item.get("created_at", now), item.get("launched_at"),
-                    item.get("last_heartbeat"), item.get("paused_at"), item.get("failed_at"), item.get("done_at")
-                ))
+                """,
+                    (
+                        item["id"],
+                        task_id,
+                        item.get("to", "unknown"),
+                        item.get("status", "pending"),
+                        item.get("priority", 2),
+                        item.get("retry_count", 0),
+                        item.get("max_retries", 3),
+                        item.get("pid"),
+                        item.get("project"),
+                        1 if item.get("plan_only") else 0,
+                        item.get("failed_reason"),
+                        item.get("created_at", now),
+                        item.get("launched_at"),
+                        item.get("last_heartbeat"),
+                        item.get("paused_at"),
+                        item.get("failed_at"),
+                        item.get("done_at"),
+                    ),
+                )
                 count += 1
             except sqlite3.IntegrityError:
                 # Legacy YAML could contain duplicate active rows for the same
@@ -269,12 +343,13 @@ def _migrate_inbox(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[str
                 )
     report_data["inbox_imported"] += count
 
+
 def _migrate_worker_inboxes(
-    conn: sqlite3.Connection, 
-    project_dir: str, 
-    report_data: dict[str, Any], 
+    conn: sqlite3.Connection,
+    project_dir: str,
+    report_data: dict[str, Any],
     now: str,
-    workers_root: str | None = None
+    workers_root: str | None = None,
 ) -> None:
     # Look for workers_root or default to ~/.superharness-workers/
     if workers_root:
@@ -286,20 +361,20 @@ def _migrate_worker_inboxes(
             root = Path.home() / ".superharness-workers"
         except (RuntimeError, KeyError):
             return
-        
+
     if not root.exists():
         return
-    
+
     project_abs = os.path.abspath(project_dir)
     sh_path = os.path.join(project_abs, ".superharness")
-    
+
     for worker_dir in root.iterdir():
         if not worker_dir.is_dir():
             continue
         sh_worker = worker_dir / ".superharness"
         if not sh_worker.exists():
             continue
-        
+
         # Check if it's a symlink to this project
         try:
             if sh_worker.is_symlink():
@@ -308,16 +383,19 @@ def _migrate_worker_inboxes(
                     continue
         except OSError:
             continue
-            
+
         # It's a separate copy, migrate its inbox
         _migrate_inbox(conn, sh_worker, report_data, now)
         report_data["worker_dirs_migrated"].append(str(worker_dir))
 
-def _migrate_handoffs(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[str, Any], now: str) -> None:
+
+def _migrate_handoffs(
+    conn: sqlite3.Connection, sh_dir: Path, report_data: dict[str, Any], now: str
+) -> None:
     handoffs_dir = sh_dir / "handoffs"
     if not handoffs_dir.exists():
         return
-    
+
     count = 0
     with transaction(conn):
         for h_file in handoffs_dir.glob("*.yaml"):
@@ -332,119 +410,155 @@ def _migrate_handoffs(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[
                 task_id = h.get("task") or h.get("task_id")
                 if not task_id:
                     continue
-                
+
                 # Check task exists
                 cursor = conn.execute("SELECT 1 FROM tasks WHERE id = ?", (task_id,))
                 if not cursor.fetchone():
-                    report_data["errors"].append(f"Orphaned handoff in {h_file.name} references missing task {task_id}")
+                    report_data["errors"].append(
+                        f"Orphaned handoff in {h_file.name} references missing task {task_id}"
+                    )
                     continue
-                
+
                 metadata = json.dumps(h.get("metadata", {}))
-                
+
                 # We don't have a unique ID in YAML for handoffs, so just insert if not exists
                 # Based on task_id + created_at
-                created_at = h.get("created_at") or h.get("date") or h.get("generated_at") or now
+                created_at = (
+                    h.get("created_at") or h.get("date") or h.get("generated_at") or now
+                )
                 cursor = conn.execute(
                     "SELECT 1 FROM handoffs WHERE task_id = ? AND created_at = ?",
-                    (task_id, created_at)
+                    (task_id, created_at),
                 )
                 if cursor.fetchone():
                     continue
 
-                conn.execute("""
+                conn.execute(
+                    """
                     INSERT INTO handoffs (
                         task_id, phase, status, from_agent, to_agent, content, metadata, created_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    task_id, h.get("phase", "unknown"), h.get("status", "unknown"),
-                    h.get("from_agent") or h.get("from"), h.get("to_agent") or h.get("to"), h.get("content"),
-                    metadata, created_at
-                ))
+                """,
+                    (
+                        task_id,
+                        h.get("phase", "unknown"),
+                        h.get("status", "unknown"),
+                        h.get("from_agent") or h.get("from"),
+                        h.get("to_agent") or h.get("to"),
+                        h.get("content"),
+                        metadata,
+                        created_at,
+                    ),
+                )
                 count += 1
             except Exception as e:
-                report_data["errors"].append(f"Error parsing handoff {h_file.name}: {e}")
-                
+                report_data["errors"].append(
+                    f"Error parsing handoff {h_file.name}: {e}"
+                )
+
     report_data["handoffs_imported"] = count
 
-def _migrate_failures(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[str, Any], now: str) -> None:
+
+def _migrate_failures(
+    conn: sqlite3.Connection, sh_dir: Path, report_data: dict[str, Any], now: str
+) -> None:
     data = _safe_load_yaml(sh_dir / "failures.yaml", report_data, conn, now)
     if not data or not isinstance(data, dict) or "failures" not in data:
         return
-    
+
     failures = data["failures"]
     if not isinstance(failures, list):
         return
-        
+
     count = 0
     with transaction(conn):
         for f in failures:
             if not isinstance(f, dict):
                 continue
-            
+
             # Dedup by task + agent + date
             created_at = f.get("date") or now
             cursor = conn.execute(
                 "SELECT 1 FROM failures WHERE task_id = ? AND agent = ? AND created_at = ?",
-                (f.get("task"), f.get("agent"), created_at)
+                (f.get("task"), f.get("agent"), created_at),
             )
             if cursor.fetchone():
                 continue
 
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO failures (task_id, agent, pattern, error_snippet, created_at)
                 VALUES (?, ?, ?, ?, ?)
-            """, (
-                f.get("task"), f.get("agent"), f.get("pattern"),
-                f.get("error_snippet"), created_at
-            ))
+            """,
+                (
+                    f.get("task"),
+                    f.get("agent"),
+                    f.get("pattern"),
+                    f.get("error_snippet"),
+                    created_at,
+                ),
+            )
             count += 1
     report_data["failures_imported"] = count
 
-def _migrate_decisions(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[str, Any], now: str) -> None:
+
+def _migrate_decisions(
+    conn: sqlite3.Connection, sh_dir: Path, report_data: dict[str, Any], now: str
+) -> None:
     data = _safe_load_yaml(sh_dir / "decisions.yaml", report_data, conn, now)
     if not data or not isinstance(data, dict) or "decisions" not in data:
         return
-    
+
     decisions = data["decisions"]
     if not isinstance(decisions, list):
         return
-        
+
     count = 0
     with transaction(conn):
         for d in decisions:
             if not isinstance(d, dict):
                 continue
-                
+
             created_at = d.get("date") or now
             cursor = conn.execute(
                 "SELECT 1 FROM decisions WHERE agent = ? AND task_id = ? AND created_at = ?",
-                (d.get("agent"), d.get("task"), created_at)
+                (d.get("agent"), d.get("task"), created_at),
             )
             if cursor.fetchone():
                 continue
 
             alt = json.dumps(d.get("alternatives", []))
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO decisions (agent, task_id, decision, reason, alternatives, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                d.get("agent"), d.get("task"), d.get("decision", "unknown"),
-                d.get("reason"), alt, created_at
-            ))
+            """,
+                (
+                    d.get("agent"),
+                    d.get("task"),
+                    d.get("decision", "unknown"),
+                    d.get("reason"),
+                    alt,
+                    created_at,
+                ),
+            )
             count += 1
     report_data["decisions_imported"] = count
 
-def _migrate_review_store(conn: sqlite3.Connection, sh_dir: Path, report_data: dict[str, Any], now: str) -> None:
+
+def _migrate_review_store(
+    conn: sqlite3.Connection, sh_dir: Path, report_data: dict[str, Any], now: str
+) -> None:
     rev_db = sh_dir / "reviews.db"
     if not rev_db.exists():
         return
-    
+
     try:
         src_conn = sqlite3.connect(rev_db)
         src_conn.row_factory = sqlite3.Row
         cursor = src_conn.execute("SELECT * FROM review_store")
         rows = cursor.fetchall()
-        
+
         count = 0
         with transaction(conn):
             for r in rows:
@@ -454,13 +568,14 @@ def _migrate_review_store(conn: sqlite3.Connection, sh_dir: Path, report_data: d
                 score = r["score"] if "score" in cols else 0.0
                 failed = r["failed"] if "failed" in cols else 0
                 recorded_at = str(r["recorded_at"]) if "recorded_at" in cols else now
-                
-                conn.execute("""
+
+                conn.execute(
+                    """
                     INSERT INTO review_store (owner, task_type, duration_s, score, failed, recorded_at)
                     VALUES (?, ?, ?, ?, ?, ?)
-                """, (
-                    r["owner"], task_type, duration_s, score, failed, recorded_at
-                ))
+                """,
+                    (r["owner"], task_type, duration_s, score, failed, recorded_at),
+                )
                 count += 1
         src_conn.close()
         report_data["review_imported"] = count

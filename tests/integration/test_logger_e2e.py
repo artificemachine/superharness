@@ -3,6 +3,7 @@ the central log captures their activity.
 
 Tests the full pipeline: cli.py bootstrap → propagation → file handler
 → shux logs read-back."""
+
 from __future__ import annotations
 
 import os
@@ -11,7 +12,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 SRC = str(REPO_ROOT / "src")
@@ -30,7 +30,11 @@ def test_running_a_shux_subcommand_creates_log_file(tmp_path):
     """Run a benign shux command and verify the central log file is created."""
     res = subprocess.run(
         [sys.executable, "-m", "superharness.cli", "--version"],
-        capture_output=True, text=True, env=_env(tmp_path), check=False, timeout=15,
+        capture_output=True,
+        text=True,
+        env=_env(tmp_path),
+        check=False,
+        timeout=15,
     )
     assert res.returncode == 0
     log_file = tmp_path / "main.log"
@@ -46,9 +50,18 @@ def test_running_a_shux_subcommand_creates_log_file(tmp_path):
 def test_inbox_dispatch_abort_writes_to_log(tmp_path):
     """Trigger an _abort path in inbox_dispatch and verify it lands in the log."""
     res = subprocess.run(
-        [sys.executable, "-m", "superharness.commands.inbox_dispatch",
-         "--project", str(tmp_path / "nonexistent")],
-        capture_output=True, text=True, env=_env(tmp_path), check=False, timeout=15,
+        [
+            sys.executable,
+            "-m",
+            "superharness.commands.inbox_dispatch",
+            "--project",
+            str(tmp_path / "nonexistent"),
+        ],
+        capture_output=True,
+        text=True,
+        env=_env(tmp_path),
+        check=False,
+        timeout=15,
     )
     assert res.returncode != 0
     log_file = tmp_path / "main.log"
@@ -65,12 +78,20 @@ def test_shux_logs_reads_back_recent_activity(tmp_path):
     # Trigger something that logs
     subprocess.run(
         [sys.executable, "-m", "superharness.cli", "--help"],
-        capture_output=True, text=True, env=_env(tmp_path), check=False, timeout=15,
+        capture_output=True,
+        text=True,
+        env=_env(tmp_path),
+        check=False,
+        timeout=15,
     )
     # Read it back via shux logs
     read = subprocess.run(
         [sys.executable, "-m", "superharness.commands.logs", "-n", "50"],
-        capture_output=True, text=True, env=_env(tmp_path), check=False, timeout=10,
+        capture_output=True,
+        text=True,
+        env=_env(tmp_path),
+        check=False,
+        timeout=10,
     )
     assert read.returncode == 0, f"shux logs failed: {read.stderr}"
     # The format is "<ts> <level> <name>:<func>:<lineno> <msg>"
@@ -91,12 +112,22 @@ def test_audit_log_isolated_from_main_log(tmp_path):
     ) % SRC
     res = subprocess.run(
         [sys.executable, "-c", code],
-        capture_output=True, text=True, env=_env(tmp_path), check=False, timeout=10,
+        capture_output=True,
+        text=True,
+        env=_env(tmp_path),
+        check=False,
+        timeout=10,
     )
     assert res.returncode == 0, f"stderr: {res.stderr}"
 
-    main = (tmp_path / "main.log").read_text() if (tmp_path / "main.log").is_file() else ""
-    audit = (tmp_path / "audit.log").read_text() if (tmp_path / "audit.log").is_file() else ""
+    main = (
+        (tmp_path / "main.log").read_text() if (tmp_path / "main.log").is_file() else ""
+    )
+    audit = (
+        (tmp_path / "audit.log").read_text()
+        if (tmp_path / "audit.log").is_file()
+        else ""
+    )
 
     assert "audit-only-msg" in audit
     assert "audit-only-msg" not in main
@@ -105,10 +136,12 @@ def test_audit_log_isolated_from_main_log(tmp_path):
 
 # ── Iter 8 RED: discussion dispatch exception must be logged ──────────────────
 
+
 def test_discussion_dispatch_exception_logged():
     """When discussion_dispatch.dispatch() raises, inbox_watch must log it (not swallow)."""
     import inspect
     from superharness.commands import inbox_watch as iw
+
     # Find the call site of discussion_dispatch.dispatch in inbox_watch
     src = inspect.getsource(iw)
     # The bare "except Exception: pass" at the discussion dispatch call site must be replaced
@@ -116,11 +149,12 @@ def test_discussion_dispatch_exception_logged():
     # We check that the discussion_dispatch call site logs on exception:
     # Search for the pattern: except Exception after _dd.dispatch call — must not be bare pass
     import re as _re
+
     # Find the specific bare-pass pattern for _dd.dispatch exceptions:
     # "except Exception:" on its own line followed immediately by "        pass" (no logging)
     # After fix: the except block logs via warning() — no bare pass remains
     m = _re.search(
-        r'_dd\.dispatch\(project_dir\)\s+except Exception:\s+pass\b',
+        r"_dd\.dispatch\(project_dir\)\s+except Exception:\s+pass\b",
         src,
     )
     assert m is None, (

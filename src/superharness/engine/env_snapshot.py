@@ -4,6 +4,7 @@ Background daemons (launchd, systemd) run in a sterile environment without
 API keys or user PATH. This module snapshots essential env vars at install
 time and replays them at dispatch time.
 """
+
 from __future__ import annotations
 
 import os
@@ -14,6 +15,7 @@ from pathlib import Path
 import yaml
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 ENV_FILENAME = "watcher-env.yaml"
@@ -112,7 +114,7 @@ def check(project_dir: Path) -> tuple[str, list[str]]:
 
     if not env_file.exists():
         return "WARN", [
-            f"watcher-env.yaml not found — watcher may fail to launch agents",
+            "watcher-env.yaml not found — watcher may fail to launch agents",
             f"Run: shux watcher-worker --project {project_dir} to create it",
         ]
 
@@ -120,7 +122,9 @@ def check(project_dir: Path) -> tuple[str, list[str]]:
     try:
         mode = env_file.stat().st_mode
         if mode & (stat.S_IRGRP | stat.S_IROTH):
-            messages.append("watcher-env.yaml is readable by group/others — should be chmod 600")
+            messages.append(
+                "watcher-env.yaml is readable by group/others — should be chmod 600"
+            )
             messages.append(f"Run: chmod 600 {env_file}")
     except OSError:
         pass
@@ -134,19 +138,27 @@ def check(project_dir: Path) -> tuple[str, list[str]]:
         has_path = bool(env_vars.get("PATH"))
 
         if not has_anthropic and not has_openai:
-            messages.append("watcher-env.yaml has no API keys — agents will fail to authenticate")
-            messages.append("Re-run: shux watcher-worker --project . (with API keys in your shell)")
+            messages.append(
+                "watcher-env.yaml has no API keys — agents will fail to authenticate"
+            )
+            messages.append(
+                "Re-run: shux watcher-worker --project . (with API keys in your shell)"
+            )
             return "WARN", messages
 
         if not has_path:
-            messages.append("watcher-env.yaml missing PATH — agent CLIs may not be found")
+            messages.append(
+                "watcher-env.yaml missing PATH — agent CLIs may not be found"
+            )
 
         captured_at = doc.get("captured_at", "unknown")
         keys = [k for k in env_vars if k != "PATH"]
         status = "PASS"
         if messages:
             status = "WARN"
-        messages.insert(0, f"watcher-env.yaml ok (captured {captured_at}, {len(keys)} keys)")
+        messages.insert(
+            0, f"watcher-env.yaml ok (captured {captured_at}, {len(keys)} keys)"
+        )
         return status, messages
 
     except Exception as e:
@@ -166,4 +178,6 @@ def _ensure_gitignored(project_dir: Path) -> None:
         content += f"# Watcher env snapshot (contains API keys)\n{marker}\n"
         gitignore.write_text(content, encoding="utf-8")
     else:
-        gitignore.write_text(f"# Watcher env snapshot (contains API keys)\n{marker}\n", encoding="utf-8")
+        gitignore.write_text(
+            f"# Watcher env snapshot (contains API keys)\n{marker}\n", encoding="utf-8"
+        )

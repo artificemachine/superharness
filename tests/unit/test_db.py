@@ -1,4 +1,5 @@
 """Iter 13 RED tests: DB backup, PRAGMA, and schema hardening."""
+
 from __future__ import annotations
 
 import os
@@ -25,7 +26,6 @@ def test_init_db_backs_up_live_db(tmp_path, monkeypatch):
     RED: init_db(conn, project_dir) calls _backup_db only when a migration runs.
     The test seeds a db at version 0 so migration v1 fires and backup is created.
     """
-    from superharness.engine.db import CURRENT_SCHEMA_VERSION
 
     monkeypatch.delenv("SUPERHARNESS_STATE_DIR", raising=False)
     project = str(tmp_path / "proj")
@@ -37,12 +37,16 @@ def test_init_db_backs_up_live_db(tmp_path, monkeypatch):
     conn.execute("PRAGMA foreign_keys=ON")
 
     from superharness.engine.db import init_db
+
     init_db(conn, project_dir=project)
     conn.close()
 
     # Verify a backup file was created
-    backup_files = [f for f in os.listdir(os.path.join(project, ".superharness"))
-                    if f.endswith(".bak.v0") or ".bak.v" in f]
+    backup_files = [
+        f
+        for f in os.listdir(os.path.join(project, ".superharness"))
+        if f.endswith(".bak.v0") or ".bak.v" in f
+    ]
     assert backup_files, (
         f"No backup file found in .superharness/ after migration. "
         f"Files present: {os.listdir(os.path.join(project, '.superharness'))}. "
@@ -57,6 +61,7 @@ def test_get_connection_sets_wal_and_fk(tmp_path, monkeypatch):
     _make_legacy_db(project)
 
     from superharness.engine.db import get_connection
+
     conn = get_connection(project)
     try:
         jm = conn.execute("PRAGMA journal_mode").fetchone()[0]
@@ -68,7 +73,9 @@ def test_get_connection_sets_wal_and_fk(tmp_path, monkeypatch):
     assert fk == 1, f"Expected foreign_keys=1 (ON), got {fk!r}"
 
 
-def test_get_connection_refuses_override_conflict_before_creation(tmp_path, monkeypatch):
+def test_get_connection_refuses_override_conflict_before_creation(
+    tmp_path, monkeypatch
+):
     """An explicit state root must not create a second DB beside legacy state."""
     project = str(tmp_path / "proj")
     _make_legacy_db(project)
@@ -132,12 +139,24 @@ def test_init_db_heals_agent_heartbeats_missing_v25_columns(tmp_path):
 
     init_db(conn, project_dir=project)
 
-    cols = {r["name"] for r in conn.execute("PRAGMA table_info(agent_heartbeats)").fetchall()}
+    cols = {
+        r["name"]
+        for r in conn.execute("PRAGMA table_info(agent_heartbeats)").fetchall()
+    }
     conn.close()
 
-    for expected in ("runtime", "active_task", "next_wake_at", "written_at",
-                      "tokens_used", "tokens_limit", "cost_usd"):
-        assert expected in cols, f"init_db did not heal missing column {expected!r}: {cols}"
+    for expected in (
+        "runtime",
+        "active_task",
+        "next_wake_at",
+        "written_at",
+        "tokens_used",
+        "tokens_limit",
+        "cost_usd",
+    ):
+        assert expected in cols, (
+            f"init_db did not heal missing column {expected!r}: {cols}"
+        )
 
 
 def test_init_db_heal_is_noop_when_columns_already_present(tmp_path, monkeypatch):
@@ -156,7 +175,10 @@ def test_init_db_heal_is_noop_when_columns_already_present(tmp_path, monkeypatch
     # Run init_db again — heal check must be a safe no-op, not raise
     init_db(conn, project_dir=project)
 
-    cols = {r["name"] for r in conn.execute("PRAGMA table_info(agent_heartbeats)").fetchall()}
+    cols = {
+        r["name"]
+        for r in conn.execute("PRAGMA table_info(agent_heartbeats)").fetchall()
+    }
     conn.close()
     assert "runtime" in cols
 
@@ -165,10 +187,21 @@ def _make_task_row(**overrides):
     from superharness.engine.tasks_dao import TaskRow
 
     base = dict(
-        id="t-parent", title="Parent", owner="claude-code", status="todo",
-        effort="medium", project_path=None, development_method=None,
-        acceptance_criteria=[], test_types=[], out_of_scope=[], definition_of_done=[],
-        context=None, tdd=None, version=1, created_at="2026-01-01T00:00:00Z",
+        id="t-parent",
+        title="Parent",
+        owner="claude-code",
+        status="todo",
+        effort="medium",
+        project_path=None,
+        development_method=None,
+        acceptance_criteria=[],
+        test_types=[],
+        out_of_scope=[],
+        definition_of_done=[],
+        context=None,
+        tdd=None,
+        version=1,
+        created_at="2026-01-01T00:00:00Z",
     )
     base.update(overrides)
     return TaskRow(**base)
@@ -191,7 +224,9 @@ def test_delete_parent_task_with_subtask_does_not_raise_and_orphans_subtask(tmp_
     conn = get_connection(project)
     init_db(conn, project_dir=project)
     tasks_dao.upsert(conn, _make_task_row(id="t-parent", title="Parent"))
-    tasks_dao.upsert(conn, _make_task_row(id="t-child", title="Child", parent_id="t-parent"))
+    tasks_dao.upsert(
+        conn, _make_task_row(id="t-child", title="Child", parent_id="t-parent")
+    )
     conn.commit()
     conn.close()
 
@@ -200,8 +235,12 @@ def test_delete_parent_task_with_subtask_does_not_raise_and_orphans_subtask(tmp_
     conn = get_connection(project)
     child = tasks_dao.get(conn, "t-child")
     conn.close()
-    assert child is not None, "subtask must survive the parent delete, not cascade-delete"
-    assert child.parent_id is None, "subtask must be orphaned (parent_id -> NULL), not left dangling"
+    assert child is not None, (
+        "subtask must survive the parent delete, not cascade-delete"
+    )
+    assert child.parent_id is None, (
+        "subtask must be orphaned (parent_id -> NULL), not left dangling"
+    )
 
 
 def test_delete_task_nulls_task_id_in_failures_decisions_ledger(tmp_path):
@@ -235,14 +274,26 @@ def test_delete_task_nulls_task_id_in_failures_decisions_ledger(tmp_path):
     task_cmd.delete(project, "t-audit")
 
     conn = get_connection(project)
-    failure_task_id = conn.execute("SELECT task_id FROM failures WHERE pattern='timeout'").fetchone()[0]
-    decision_task_id = conn.execute("SELECT task_id FROM decisions WHERE decision='use X'").fetchone()[0]
-    ledger_task_id = conn.execute("SELECT task_id FROM ledger WHERE action='created'").fetchone()[0]
+    failure_task_id = conn.execute(
+        "SELECT task_id FROM failures WHERE pattern='timeout'"
+    ).fetchone()[0]
+    decision_task_id = conn.execute(
+        "SELECT task_id FROM decisions WHERE decision='use X'"
+    ).fetchone()[0]
+    ledger_task_id = conn.execute(
+        "SELECT task_id FROM ledger WHERE action='created'"
+    ).fetchone()[0]
     conn.close()
 
-    assert failure_task_id is None, "failures.task_id must be nulled by ON DELETE SET NULL, not left dangling"
-    assert decision_task_id is None, "decisions.task_id must be nulled by ON DELETE SET NULL, not left dangling"
-    assert ledger_task_id is None, "ledger.task_id must be nulled by ON DELETE SET NULL, not left dangling"
+    assert failure_task_id is None, (
+        "failures.task_id must be nulled by ON DELETE SET NULL, not left dangling"
+    )
+    assert decision_task_id is None, (
+        "decisions.task_id must be nulled by ON DELETE SET NULL, not left dangling"
+    )
+    assert ledger_task_id is None, (
+        "ledger.task_id must be nulled by ON DELETE SET NULL, not left dangling"
+    )
 
 
 def test_heal_drift_generalizes_beyond_v25_agent_heartbeats(tmp_path):
@@ -287,7 +338,9 @@ def test_heal_drift_generalizes_beyond_v25_agent_heartbeats(tmp_path):
 
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(tasks)").fetchall()}
     conn.close()
-    assert "issue_url" in cols, f"generalized heal did not repair tasks.issue_url: {cols}"
+    assert "issue_url" in cols, (
+        f"generalized heal did not repair tasks.issue_url: {cols}"
+    )
 
 
 def _seed_v32_db_with_orphan(db_path: str, task_id: str = "ghost.task") -> None:
@@ -344,7 +397,10 @@ def test_v33_upgrade_with_preexisting_orphan_completes_cleanly(tmp_path):
     conn.close()
 
     from superharness.engine.db import CURRENT_SCHEMA_VERSION
-    assert version == CURRENT_SCHEMA_VERSION, f"migration did not complete: user_version={version}"
+
+    assert version == CURRENT_SCHEMA_VERSION, (
+        f"migration did not complete: user_version={version}"
+    )
     assert not violations, f"v33 left {len(violations)} FK violation(s): {violations}"
     assert len(orphan_rows) == 1, "the audit row itself must be preserved, not deleted"
     assert orphan_rows[0]["task_id"] is None, (
@@ -374,7 +430,8 @@ def test_fk_violating_migration_rolls_back_instead_of_committing(tmp_path):
         orphan in place — simulating any future migration whose rebuild
         forgets to reconcile dangling references."""
         _db._rebuild_table_with_new_ddl(
-            conn, "ledger",
+            conn,
+            "ledger",
             create_sql_template="""
                 CREATE TABLE {tmp} (
                     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -437,7 +494,9 @@ def test_v34_repairs_orphans_left_by_original_v33(tmp_path):
     )
     conn.commit()
     conn.execute("PRAGMA foreign_keys=ON")
-    assert len(conn.execute("PRAGMA foreign_key_check").fetchall()) == 1, "setup must reproduce the damage"
+    assert len(conn.execute("PRAGMA foreign_key_check").fetchall()) == 1, (
+        "setup must reproduce the damage"
+    )
 
     # Pin to 34 so this only exercises v34's repair, not every migration up
     # to the real CURRENT_SCHEMA_VERSION (35+, see _migration_v35).
@@ -449,7 +508,9 @@ def test_v34_repairs_orphans_left_by_original_v33(tmp_path):
         _db.CURRENT_SCHEMA_VERSION = original
 
     violations = conn.execute("PRAGMA foreign_key_check").fetchall()
-    row = conn.execute("SELECT task_id FROM ledger WHERE action='gate_block'").fetchone()
+    row = conn.execute(
+        "SELECT task_id FROM ledger WHERE action='gate_block'"
+    ).fetchone()
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     conn.close()
 

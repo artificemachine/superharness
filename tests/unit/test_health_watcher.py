@@ -80,7 +80,9 @@ def test_watcher_heartbeat_updates_each_cycle(repo_root: Path, tmp_path: Path) -
 # ---------------------------------------------------------------------------
 
 
-def test_session_start_warns_when_heartbeat_missing(repo_root: Path, tmp_path: Path) -> None:
+def test_session_start_warns_when_heartbeat_missing(
+    repo_root: Path, tmp_path: Path
+) -> None:
     """When no heartbeat file exists, session-start should warn that watcher may be down."""
     project = _setup_project(tmp_path)
 
@@ -94,12 +96,16 @@ def test_session_start_warns_when_heartbeat_missing(repo_root: Path, tmp_path: P
     assert "heartbeat" in ctx.lower() or "watcher" in ctx.lower(), (
         "session-start must mention watcher health when heartbeat is missing"
     )
-    assert "no heartbeat" in ctx.lower() or "not running" in ctx.lower() or "may not be running" in ctx.lower(), (
-        f"session-start must warn about missing heartbeat, got: {ctx}"
-    )
+    assert (
+        "no heartbeat" in ctx.lower()
+        or "not running" in ctx.lower()
+        or "may not be running" in ctx.lower()
+    ), f"session-start must warn about missing heartbeat, got: {ctx}"
 
 
-def test_session_start_warns_when_heartbeat_stale(repo_root: Path, tmp_path: Path) -> None:
+def test_session_start_warns_when_heartbeat_stale(
+    repo_root: Path, tmp_path: Path
+) -> None:
     """When heartbeat is older than 2x expected interval, session-start should warn."""
     project = _setup_project(tmp_path)
     heartbeat = project / ".superharness" / "watcher.heartbeat"
@@ -107,7 +113,9 @@ def test_session_start_warns_when_heartbeat_stale(repo_root: Path, tmp_path: Pat
     stale_time = time.time() - 600
     from datetime import datetime, timezone
 
-    stale_ts = datetime.fromtimestamp(stale_time, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    stale_ts = datetime.fromtimestamp(stale_time, tz=timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     heartbeat.write_text(stale_ts + "\n")
 
     result = run_bash(
@@ -139,8 +147,12 @@ def test_session_start_ok_when_heartbeat_fresh(repo_root: Path, tmp_path: Path) 
     output = parse_json_output(result.stdout)
     ctx = output.get("additionalContext", "")
     # Should NOT contain stale/down warnings
-    assert "stale" not in ctx.lower(), f"fresh heartbeat should not trigger stale warning: {ctx}"
-    assert "not running" not in ctx.lower(), f"fresh heartbeat should not say not running: {ctx}"
+    assert "stale" not in ctx.lower(), (
+        f"fresh heartbeat should not trigger stale warning: {ctx}"
+    )
+    assert "not running" not in ctx.lower(), (
+        f"fresh heartbeat should not say not running: {ctx}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +160,9 @@ def test_session_start_ok_when_heartbeat_fresh(repo_root: Path, tmp_path: Path) 
 # ---------------------------------------------------------------------------
 
 
-def test_watcher_cycle_completes_while_dispatch_runs(repo_root: Path, tmp_path: Path) -> None:
+def test_watcher_cycle_completes_while_dispatch_runs(
+    repo_root: Path, tmp_path: Path
+) -> None:
     """Watcher cycle must return quickly even when dispatch launches a long-running process."""
     project = _setup_project(tmp_path)
     (project / ".superharness" / "inbox.yaml").write_text(
@@ -164,9 +178,7 @@ def test_watcher_cycle_completes_while_dispatch_runs(repo_root: Path, tmp_path: 
 
     fake_dispatch = tmp_path / "fake-dispatch.sh"
     fake_dispatch.write_text(
-        "#!/bin/bash\n"
-        f"echo $$ > {tmp_path}/dispatch.pid\n"
-        "sleep 30\n"
+        f"#!/bin/bash\necho $$ > {tmp_path}/dispatch.pid\nsleep 30\n"
     )
     fake_dispatch.chmod(0o755)
 
@@ -182,9 +194,17 @@ def test_watcher_cycle_completes_while_dispatch_runs(repo_root: Path, tmp_path: 
 
     start = time.monotonic()
     subprocess.run(
-        ["bash", str(repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"),
-         "--project", str(project)],
-        cwd=repo_root, capture_output=True, text=True, timeout=10, env=env,
+        [
+            "bash",
+            str(repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"),
+            "--project",
+            str(project),
+        ],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env=env,
     )
     elapsed = time.monotonic() - start
 
@@ -218,9 +238,7 @@ def test_watcher_lock_released_during_dispatch(repo_root: Path, tmp_path: Path) 
 
     fake_dispatch = tmp_path / "fake-dispatch.sh"
     fake_dispatch.write_text(
-        "#!/bin/bash\n"
-        f"echo $$ >> {tmp_path}/dispatch.pid\n"
-        "sleep 30\n"
+        f"#!/bin/bash\necho $$ >> {tmp_path}/dispatch.pid\nsleep 30\n"
     )
     fake_dispatch.chmod(0o755)
 
@@ -235,15 +253,31 @@ def test_watcher_lock_released_during_dispatch(repo_root: Path, tmp_path: Path) 
     env["RECOVER"] = str(fake_recover)
 
     subprocess.run(
-        ["bash", str(repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"),
-         "--project", str(project)],
-        cwd=repo_root, capture_output=True, text=True, timeout=10, env=env,
+        [
+            "bash",
+            str(repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"),
+            "--project",
+            str(project),
+        ],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env=env,
     )
 
     result2 = subprocess.run(
-        ["bash", str(repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"),
-         "--project", str(project)],
-        cwd=repo_root, capture_output=True, text=True, timeout=10, env=env,
+        [
+            "bash",
+            str(repo_root / "src" / "superharness" / "scripts" / "inbox-watch.sh"),
+            "--project",
+            str(project),
+        ],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env=env,
     )
 
     assert "already running" not in result2.stdout.lower(), (

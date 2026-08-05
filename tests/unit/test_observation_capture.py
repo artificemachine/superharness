@@ -7,12 +7,13 @@ selected summarizer, and insert the result into task_observations.
 The capture is defensive: any internal exception returns None and never
 raises, so a transition cannot be broken by a summarizer fault.
 """
+
 from __future__ import annotations
 
 import pytest
 
 from superharness.engine.db import get_connection, init_db, now_iso
-from superharness.engine import handoffs_dao, observations_dao, tasks_dao
+from superharness.engine import handoffs_dao, observations_dao
 from superharness.engine.observation_capture import capture_observation
 from superharness.engine.summarizer import NoopSummarizer
 
@@ -52,7 +53,9 @@ def test_capture_inserts_observation(conn):
         now=now_iso(),
     )
 
-    obs_id = capture_observation(conn, "t-1", "report_ready", summarizer=NoopSummarizer())
+    obs_id = capture_observation(
+        conn, "t-1", "report_ready", summarizer=NoopSummarizer()
+    )
     assert obs_id is not None and obs_id > 0
 
     row = observations_dao.get_by_id(conn, obs_id)
@@ -64,14 +67,18 @@ def test_capture_inserts_observation(conn):
 
 def test_capture_works_without_report_handoff(conn):
     _seed_task(conn)
-    obs_id = capture_observation(conn, "t-1", "report_ready", summarizer=NoopSummarizer())
+    obs_id = capture_observation(
+        conn, "t-1", "report_ready", summarizer=NoopSummarizer()
+    )
     assert obs_id is not None
     row = observations_dao.get_by_id(conn, obs_id)
     assert "t-1" in row["summary"]
 
 
 def test_capture_returns_none_for_unknown_task(conn):
-    obs_id = capture_observation(conn, "nope", "report_ready", summarizer=NoopSummarizer())
+    obs_id = capture_observation(
+        conn, "nope", "report_ready", summarizer=NoopSummarizer()
+    )
     assert obs_id is None
 
 
@@ -98,7 +105,9 @@ def test_capture_strips_private_tags_from_handoff(conn):
         content="public <private>OPENAI_KEY=sk-leak</private> stuff",
         now=now_iso(),
     )
-    obs_id = capture_observation(conn, "t-1", "report_ready", summarizer=NoopSummarizer())
+    obs_id = capture_observation(
+        conn, "t-1", "report_ready", summarizer=NoopSummarizer()
+    )
     assert obs_id is not None
     row = observations_dao.get_by_id(conn, obs_id)
     assert "sk-leak" not in row["summary"]

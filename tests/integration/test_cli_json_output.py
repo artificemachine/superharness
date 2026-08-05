@@ -1,4 +1,5 @@
 """Integration tests for --json output on task status, enqueue, verify, close, delegate."""
+
 from __future__ import annotations
 
 import json
@@ -31,6 +32,7 @@ tasks:
 """
     (sh / "contract.yaml").write_text(contract)
     from tests.helpers import seed_sqlite_from_yaml
+
     seed_sqlite_from_yaml(tmp_path)
     return tmp_path
 
@@ -56,10 +58,20 @@ def _parse(out: str) -> dict:
 def test_task_status_json_success(project: Path):
     rc, out, err = _run(
         "superharness.commands.task",
-        ["status", "--project", str(project),
-         "--id", "t-json", "--status", "in_progress",
-         "--actor", "claude-code", "--summary", "starting",
-         "--json"],
+        [
+            "status",
+            "--project",
+            str(project),
+            "--id",
+            "t-json",
+            "--status",
+            "in_progress",
+            "--actor",
+            "claude-code",
+            "--summary",
+            "starting",
+            "--json",
+        ],
         project,
     )
     assert rc == 0, f"stderr: {err}"
@@ -75,9 +87,20 @@ def test_task_status_json_success(project: Path):
 def test_task_status_json_error(project: Path):
     rc, out, err = _run(
         "superharness.commands.task",
-        ["status", "--project", str(project),
-         "--id", "does-not-exist", "--status", "in_progress",
-         "--actor", "claude-code", "--summary", "x", "--json"],
+        [
+            "status",
+            "--project",
+            str(project),
+            "--id",
+            "does-not-exist",
+            "--status",
+            "in_progress",
+            "--actor",
+            "claude-code",
+            "--summary",
+            "x",
+            "--json",
+        ],
         project,
     )
     assert rc != 0
@@ -90,8 +113,16 @@ def test_task_status_json_error(project: Path):
 def test_enqueue_json_success(project: Path):
     rc, out, err = _run(
         "superharness.commands.inbox_enqueue",
-        ["--project", str(project), "--to", "claude-code",
-         "--task", "t-json", "--json", "--plan-only"],
+        [
+            "--project",
+            str(project),
+            "--to",
+            "claude-code",
+            "--task",
+            "t-json",
+            "--json",
+            "--plan-only",
+        ],
         project,
     )
     assert rc == 0, f"stderr: {err}"
@@ -108,8 +139,7 @@ def test_enqueue_json_error_owner_mismatch(project: Path):
     # should error out with a JSON payload.
     rc, out, err = _run(
         "superharness.commands.inbox_enqueue",
-        ["--project", str(project), "--to", "codex-cli",
-         "--task", "t-json", "--json"],
+        ["--project", str(project), "--to", "codex-cli", "--task", "t-json", "--json"],
         project,
     )
     assert rc != 0
@@ -121,9 +151,19 @@ def test_enqueue_json_error_owner_mismatch(project: Path):
 def test_verify_json_pass(project: Path):
     rc, out, err = _run(
         "superharness.commands.verify",
-        ["--project", str(project), "--id", "t-json",
-         "--method", "unit tests green", "--result", "pass",
-         "--actor", "claude-code", "--json"],
+        [
+            "--project",
+            str(project),
+            "--id",
+            "t-json",
+            "--method",
+            "unit tests green",
+            "--result",
+            "pass",
+            "--actor",
+            "claude-code",
+            "--json",
+        ],
         project,
     )
     assert rc == 0, f"stderr: {err}"
@@ -138,8 +178,17 @@ def test_close_json_requires_verify_gate(project: Path):
     # Close without verification first — must fail with JSON error
     rc, out, err = _run(
         "superharness.commands.close",
-        ["--project", str(project), "--id", "t-json",
-         "--actor", "claude-code", "--summary", "done", "--json"],
+        [
+            "--project",
+            str(project),
+            "--id",
+            "t-json",
+            "--actor",
+            "claude-code",
+            "--summary",
+            "done",
+            "--json",
+        ],
         project,
     )
     assert rc != 0
@@ -150,26 +199,71 @@ def test_close_json_requires_verify_gate(project: Path):
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_close_json_success_after_verify(project: Path):
     # Move plan_approved → in_progress → report_ready
-    _run("superharness.commands.task",
-         ["status", "--project", str(project), "--id", "t-json",
-          "--status", "in_progress", "--actor", "claude-code",
-          "--summary", "start"],
-         project)
-    _run("superharness.commands.task",
-         ["status", "--project", str(project), "--id", "t-json",
-          "--status", "report_ready", "--actor", "claude-code",
-          "--summary", "ready"],
-         project)
+    _run(
+        "superharness.commands.task",
+        [
+            "status",
+            "--project",
+            str(project),
+            "--id",
+            "t-json",
+            "--status",
+            "in_progress",
+            "--actor",
+            "claude-code",
+            "--summary",
+            "start",
+        ],
+        project,
+    )
+    _run(
+        "superharness.commands.task",
+        [
+            "status",
+            "--project",
+            str(project),
+            "--id",
+            "t-json",
+            "--status",
+            "report_ready",
+            "--actor",
+            "claude-code",
+            "--summary",
+            "ready",
+        ],
+        project,
+    )
     # Verify pass
-    _run("superharness.commands.verify",
-         ["--project", str(project), "--id", "t-json",
-          "--method", "checked", "--result", "pass", "--actor", "claude-code"],
-         project)
+    _run(
+        "superharness.commands.verify",
+        [
+            "--project",
+            str(project),
+            "--id",
+            "t-json",
+            "--method",
+            "checked",
+            "--result",
+            "pass",
+            "--actor",
+            "claude-code",
+        ],
+        project,
+    )
     # Close
     rc, out, err = _run(
         "superharness.commands.close",
-        ["--project", str(project), "--id", "t-json",
-         "--actor", "claude-code", "--summary", "done", "--json"],
+        [
+            "--project",
+            str(project),
+            "--id",
+            "t-json",
+            "--actor",
+            "claude-code",
+            "--summary",
+            "done",
+            "--json",
+        ],
         project,
     )
     assert rc == 0, f"stderr: {err}, stdout: {out}"
@@ -183,8 +277,16 @@ def test_delegate_json_print_only(project: Path):
     # Task already starts in plan_approved, so it's dispatchable
     rc, out, err = _run(
         "superharness.commands.delegate",
-        ["--project", str(project), "--to", "claude-code",
-         "--task", "t-json", "--json", "--skip-preflight"],
+        [
+            "--project",
+            str(project),
+            "--to",
+            "claude-code",
+            "--task",
+            "t-json",
+            "--json",
+            "--skip-preflight",
+        ],
         project,
     )
     # Delegate may return non-zero if gates fail, but JSON must be emitted
@@ -197,9 +299,18 @@ def test_delegate_json_print_only(project: Path):
 
 def test_delegate_json_invalid_target():
     rc = subprocess.run(
-        [sys.executable, "-m", "superharness.commands.delegate",
-         "--to", "invalid-agent", "--task", "x", "--json"],
-        capture_output=True, text=True,
+        [
+            sys.executable,
+            "-m",
+            "superharness.commands.delegate",
+            "--to",
+            "invalid-agent",
+            "--task",
+            "x",
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
     )
     # argparse exits 2 before our code, but if it reaches our guard → JSON
     if rc.stdout.strip():

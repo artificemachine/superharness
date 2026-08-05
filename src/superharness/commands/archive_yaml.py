@@ -3,6 +3,7 @@
 archive-yaml: rename YAML state files to .yaml.bak-<ts>, disable dual-write.
 export yaml:  generate a snapshot YAML from current SQLite state (compat shim).
 """
+
 from __future__ import annotations
 
 import os
@@ -75,7 +76,9 @@ def archive_yaml(project_dir: str, *, dry_run: bool = False) -> int:
     for path in sorted(glob.glob(handoff_pattern)):
         bak = f"{path}.bak-{tag}"
         if dry_run:
-            print(f"  [dry-run] would rename {os.path.relpath(path, project_dir)} → {os.path.basename(bak)}")
+            print(
+                f"  [dry-run] would rename {os.path.relpath(path, project_dir)} → {os.path.basename(bak)}"
+            )
         else:
             try:
                 os.rename(path, bak)
@@ -86,7 +89,9 @@ def archive_yaml(project_dir: str, *, dry_run: bool = False) -> int:
     if not dry_run and not errors:
         # Set STATE_BACKEND=sqlite_only in profile.yaml
         _set_profile_backend(project_dir, "sqlite_only")
-        print(f"archive-yaml: complete — {len(archived)} file(s) archived, STATE_BACKEND=sqlite_only set")
+        print(
+            f"archive-yaml: complete — {len(archived)} file(s) archived, STATE_BACKEND=sqlite_only set"
+        )
 
     if errors:
         print(f"archive-yaml: {len(errors)} error(s):", file=sys.stderr)
@@ -116,6 +121,7 @@ def export_yaml(project_dir: str, *, out_dir: str | None = None) -> int:
         from dataclasses import asdict
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao, tasks_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -143,7 +149,9 @@ def export_yaml(project_dir: str, *, out_dir: str | None = None) -> int:
 
     try:
         with open(contract_path, "w", encoding="utf-8") as f:
-            yaml.dump({"tasks": task_rows}, f, default_flow_style=False, allow_unicode=True)
+            yaml.dump(
+                {"tasks": task_rows}, f, default_flow_style=False, allow_unicode=True
+            )
         print(f"export yaml: contract → {contract_path} ({len(task_rows)} tasks)")
     except OSError as exc:
         print(f"export yaml: failed to write contract: {exc}", file=sys.stderr)
@@ -154,6 +162,7 @@ def export_yaml(project_dir: str, *, out_dir: str | None = None) -> int:
 
 def _set_profile_backend(project_dir: str, backend: str) -> None:
     import yaml
+
     profile_path = os.path.join(project_dir, ".superharness", "profile.yaml")
     if not os.path.exists(profile_path):
         return
@@ -164,7 +173,10 @@ def _set_profile_backend(project_dir: str, backend: str) -> None:
         with open(profile_path, "w", encoding="utf-8") as f:
             yaml.dump(profile, f, default_flow_style=False, allow_unicode=True)
     except Exception as exc:
-        print(f"archive-yaml: warning: could not update profile.yaml: {exc}", file=sys.stderr)
+        print(
+            f"archive-yaml: warning: could not update profile.yaml: {exc}",
+            file=sys.stderr,
+        )
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -179,13 +191,24 @@ def main(argv: list[str] | None = None) -> None:
     )
     sub = parser.add_subparsers(dest="action", required=True)
 
-    arc = sub.add_parser("archive", help="Archive YAML state files (one-shot, irreversible without restore)")
+    arc = sub.add_parser(
+        "archive",
+        help="Archive YAML state files (one-shot, irreversible without restore)",
+    )
     arc.add_argument("--project", "-p", default=".", help="Project directory")
-    arc.add_argument("--dry-run", action="store_true", help="Show what would be archived without doing it")
+    arc.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be archived without doing it",
+    )
 
-    exp = sub.add_parser("export", help="Export a YAML snapshot from SQLite (compat shim)")
+    exp = sub.add_parser(
+        "export", help="Export a YAML snapshot from SQLite (compat shim)"
+    )
     exp.add_argument("--project", "-p", default=".", help="Project directory")
-    exp.add_argument("--out-dir", help="Output directory (default: .superharness/export/)")
+    exp.add_argument(
+        "--out-dir", help="Output directory (default: .superharness/export/)"
+    )
 
     args = parser.parse_args(argv)
     project_dir = os.path.abspath(args.project)

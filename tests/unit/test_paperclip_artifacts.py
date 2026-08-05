@@ -1,4 +1,5 @@
 """Tests for task_artifacts table (paperclip.artifacts feature)."""
+
 from __future__ import annotations
 
 import pytest
@@ -39,7 +40,9 @@ def test_add_defaults_type_to_file(conn):
 
 
 def test_add_normalizes_unknown_type(conn):
-    row = artifacts_dao.add(conn, task_id="t-1", path="/tmp/x", type="unknown_type", now=NOW)
+    row = artifacts_dao.add(
+        conn, task_id="t-1", path="/tmp/x", type="unknown_type", now=NOW
+    )
     assert row.type == "file"
 
 

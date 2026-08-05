@@ -22,12 +22,11 @@ for a boundary that is supposed to catch everything. This file covers the
 handful of sites where the try body does one specific, well-understood
 operation and the catch was narrowed to match.
 """
+
 from __future__ import annotations
 
 import importlib.util
 import os
-import signal
-import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -62,12 +61,18 @@ def _write_contract(project: Path, tasks: list[dict]) -> None:
     )
 
 
-def _launched_item(item_id: str, task_id: str, pid: int, age_hours: float, plan_only: bool) -> dict:
+def _launched_item(
+    item_id: str, task_id: str, pid: int, age_hours: float, plan_only: bool
+) -> dict:
     launched_at = (datetime.now(timezone.utc) - timedelta(hours=age_hours)).isoformat()
     return {
-        "id": item_id, "task": task_id, "status": "launched",
-        "target_agent": "claude-code", "pid": str(pid),
-        "launched_at": launched_at, "plan_only": plan_only,
+        "id": item_id,
+        "task": task_id,
+        "status": "launched",
+        "target_agent": "claude-code",
+        "pid": str(pid),
+        "launched_at": launched_at,
+        "plan_only": plan_only,
     }
 
 
@@ -86,14 +91,23 @@ class TestReconcileZombiesKillNarrowing:
         project = tmp_path / "proj"
         project.mkdir()
         fake_pid = 424242
-        item = _launched_item("plan-001", "plan-task", fake_pid, age_hours=0.34, plan_only=True)
+        item = _launched_item(
+            "plan-001", "plan-task", fake_pid, age_hours=0.34, plan_only=True
+        )
         _write_inbox(project, [item])
-        _write_contract(project, [
-            {"id": "plan-task", "owner": "claude-code", "status": "plan_approved"},
-        ])
+        _write_contract(
+            project,
+            [
+                {"id": "plan-task", "owner": "claude-code", "status": "plan_approved"},
+            ],
+        )
 
-        with patch("superharness.commands.inbox_watch._pid_is_running", return_value=True), \
-             patch("os.kill", side_effect=ProcessLookupError("no such process")):
+        with (
+            patch(
+                "superharness.commands.inbox_watch._pid_is_running", return_value=True
+            ),
+            patch("os.kill", side_effect=ProcessLookupError("no such process")),
+        ):
             # Must not raise — ProcessLookupError is an OSError, still caught.
             reconciled = _reconcile_zombies(str(project))
 
@@ -109,11 +123,20 @@ class TestReconcileZombiesKillNarrowing:
         project = tmp_path / "proj"
         project.mkdir()
         fake_pid = 424243
-        item = _launched_item("plan-002", "plan-task-2", fake_pid, age_hours=0.34, plan_only=True)
+        item = _launched_item(
+            "plan-002", "plan-task-2", fake_pid, age_hours=0.34, plan_only=True
+        )
         _write_inbox(project, [item])
-        _write_contract(project, [
-            {"id": "plan-task-2", "owner": "claude-code", "status": "plan_approved"},
-        ])
+        _write_contract(
+            project,
+            [
+                {
+                    "id": "plan-task-2",
+                    "owner": "claude-code",
+                    "status": "plan_approved",
+                },
+            ],
+        )
 
         # RuntimeError, not TypeError: the age-check block this kill sits
         # inside is itself wrapped in a pre-existing, already-narrow
@@ -121,8 +144,12 @@ class TestReconcileZombiesKillNarrowing:
         # datetime.fromisoformat() parsing) that would otherwise swallow a
         # TypeError too and produce a false pass here — unrelated to, and
         # not fixed by, the os.kill narrowing this test targets.
-        with patch("superharness.commands.inbox_watch._pid_is_running", return_value=True), \
-             patch("os.kill", side_effect=RuntimeError("simulated unrelated bug")):
+        with (
+            patch(
+                "superharness.commands.inbox_watch._pid_is_running", return_value=True
+            ),
+            patch("os.kill", side_effect=RuntimeError("simulated unrelated bug")),
+        ):
             with pytest.raises(RuntimeError, match="simulated unrelated bug"):
                 _reconcile_zombies(str(project))
 
@@ -133,11 +160,16 @@ class TestReconcileZombiesKillNarrowing:
         project = tmp_path / "proj"
         project.mkdir()
         fake_pid = 424244
-        item = _launched_item("long-002", "slow-task-2", fake_pid, age_hours=3.0, plan_only=False)
+        item = _launched_item(
+            "long-002", "slow-task-2", fake_pid, age_hours=3.0, plan_only=False
+        )
         _write_inbox(project, [item])
-        _write_contract(project, [
-            {"id": "slow-task-2", "owner": "claude-code", "status": "in_progress"},
-        ])
+        _write_contract(
+            project,
+            [
+                {"id": "slow-task-2", "owner": "claude-code", "status": "in_progress"},
+            ],
+        )
 
         # RuntimeError, not TypeError: the age-check block this kill sits
         # inside is itself wrapped in a pre-existing, already-narrow
@@ -145,8 +177,12 @@ class TestReconcileZombiesKillNarrowing:
         # datetime.fromisoformat() parsing) that would otherwise swallow a
         # TypeError too and produce a false pass here — unrelated to, and
         # not fixed by, the os.kill narrowing this test targets.
-        with patch("superharness.commands.inbox_watch._pid_is_running", return_value=True), \
-             patch("os.kill", side_effect=RuntimeError("simulated unrelated bug")):
+        with (
+            patch(
+                "superharness.commands.inbox_watch._pid_is_running", return_value=True
+            ),
+            patch("os.kill", side_effect=RuntimeError("simulated unrelated bug")),
+        ):
             with pytest.raises(RuntimeError, match="simulated unrelated bug"):
                 _reconcile_zombies(str(project))
 
@@ -157,7 +193,9 @@ class TestLedgerAppendNarrowing:
     `except Exception` to `except OSError`, since file I/O only raises
     OSError."""
 
-    def test_unexpected_exception_writing_ledger_propagates(self, tmp_path, monkeypatch):
+    def test_unexpected_exception_writing_ledger_propagates(
+        self, tmp_path, monkeypatch
+    ):
         """A non-OSError raised while formatting/writing the ledger line
         must now propagate instead of being silently swallowed as if it
         were a disk-full/permission-denied error."""

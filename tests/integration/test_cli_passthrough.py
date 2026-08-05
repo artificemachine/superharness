@@ -2,6 +2,7 @@
 Iteration 0 — CLI passthrough integration tests (TDD: written before implementation).
 Tests that Python CLI delegates to shell scripts and produces identical output.
 """
+
 import subprocess
 import sys
 import os
@@ -16,15 +17,13 @@ PYTHON_CLI = [sys.executable, "-m", "superharness"]
 
 def _run_shell(args):
     return subprocess.run(
-        [SHELL_WRAPPER] + args,
-        capture_output=True, text=True, cwd=REPO_ROOT
+        [SHELL_WRAPPER] + args, capture_output=True, text=True, cwd=REPO_ROOT
     )
 
 
 def _run_python(args):
     return subprocess.run(
-        PYTHON_CLI + args,
-        capture_output=True, text=True, cwd=REPO_ROOT
+        PYTHON_CLI + args, capture_output=True, text=True, cwd=REPO_ROOT
     )
 
 
@@ -34,9 +33,14 @@ def test_version_output_matches():
     assert shell.returncode == python.returncode == 0
     # Both should contain a version string like x.y.z
     import re
+
     version_pattern = re.compile(r"\d+\.\d+\.\d+")
-    assert version_pattern.search(shell.stdout), "Shell version output missing version number"
-    assert version_pattern.search(python.stdout), "Python version output missing version number"
+    assert version_pattern.search(shell.stdout), (
+        "Shell version output missing version number"
+    )
+    assert version_pattern.search(python.stdout), (
+        "Python version output missing version number"
+    )
 
 
 def test_help_exit_code_matches():

@@ -11,6 +11,7 @@ import pytest
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
+
 def test_session_start_outputs_json_with_context(repo_root, tmp_path) -> None:
     project = tmp_path / "proj"
     project.mkdir()
@@ -22,6 +23,7 @@ def test_session_start_outputs_json_with_context(repo_root, tmp_path) -> None:
     # state_reader (SQLite is the project's SoT; contract.yaml is dead).
     # Seed SQLite from the contract fixture so the hook finds a live project.
     from tests.helpers import seed_sqlite_from_yaml
+
     seed_sqlite_from_yaml(project)
 
     script = repo_root / "adapters" / "claude-code" / "hooks" / "session-start.sh"
@@ -69,7 +71,7 @@ def test_session_start_vault_search_uses_stdin_not_argv(repo_root: Path) -> None
     # (old pattern: closing-quote + "$SEARCH_RESULT" on same line)
     assert not re.search(r'"\s*"\$SEARCH_RESULT"', src), (
         "session-start.sh must not pass $SEARCH_RESULT as sys.argv; "
-        "use stdin (echo \"$SEARCH_RESULT\" | python3 ...) instead."
+        'use stdin (echo "$SEARCH_RESULT" | python3 ...) instead.'
     )
     # Must use stdin instead
     assert "sys.stdin.read()" in src, (

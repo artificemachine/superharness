@@ -13,12 +13,11 @@ cycle sees no active row and queues another. Unbounded.
 Fix: skip enqueue when there's any peer-review row for this task that
 failed within the last 15 minutes.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-
-import pytest
 
 
 TASK_ID = "feat.test-circuit-breaker"
@@ -27,14 +26,14 @@ TASK_ID = "feat.test-circuit-breaker"
 def _make_project(tmp_path: Path) -> Path:
     sh = tmp_path / ".superharness"
     sh.mkdir(parents=True)
-    (sh / "profile.yaml").write_text(
-        "auto_approve_plans: true\nautonomy: ai_driven\n"
-    )
+    (sh / "profile.yaml").write_text("auto_approve_plans: true\nautonomy: ai_driven\n")
     (sh / "inbox.yaml").write_text("items: []\n")
     return tmp_path
 
 
-def _seed_task(project_dir: Path, task_id: str, status: str, owner: str = "claude-code") -> None:
+def _seed_task(
+    project_dir: Path, task_id: str, status: str, owner: str = "claude-code"
+) -> None:
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
 
@@ -84,7 +83,9 @@ def _seed_task(project_dir: Path, task_id: str, status: str, owner: str = "claud
     conn.close()
 
 
-def _seed_failed_peer_review_row(project_dir: Path, task_id: str, age_minutes: int) -> None:
+def _seed_failed_peer_review_row(
+    project_dir: Path, task_id: str, age_minutes: int
+) -> None:
     """Insert a failed peer-review inbox row failed N minutes ago."""
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import inbox_dao
@@ -118,18 +119,32 @@ def _seed_failed_peer_review_row(project_dir: Path, task_id: str, age_minutes: i
     conn.close()
 
 
-def _seed_contract(project_dir: Path, task_id: str, status: str = "plan_proposed") -> None:
+def _seed_contract(
+    project_dir: Path, task_id: str, status: str = "plan_proposed"
+) -> None:
     import yaml as _yaml
+
     contract_file = project_dir / ".superharness" / "contract.yaml"
-    contract_file.write_text(_yaml.safe_dump({
-        "tasks": [{"id": task_id, "status": status,
-                   "owner": "claude-code", "workflow": "implementation"}]
-    }))
+    contract_file.write_text(
+        _yaml.safe_dump(
+            {
+                "tasks": [
+                    {
+                        "id": task_id,
+                        "status": status,
+                        "owner": "claude-code",
+                        "workflow": "implementation",
+                    }
+                ]
+            }
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
 # Circuit breaker: skip when a peer-review row failed recently
 # ---------------------------------------------------------------------------
+
 
 class TestPeerReviewCircuitBreaker:
     def test_skips_when_recent_peer_review_failure_exists(self, tmp_path):

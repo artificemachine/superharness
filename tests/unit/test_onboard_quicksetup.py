@@ -1,7 +1,7 @@
 """RED tests for I4: quick-setup, config version bumping, summary printer."""
+
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -24,9 +24,15 @@ def project(tmp_path):
 @pytest.fixture
 def git_project(tmp_path):
     import subprocess
+
     subprocess.run(["git", "init", str(tmp_path)], capture_output=True)
-    subprocess.run(["git", "-C", str(tmp_path), "config", "user.email", "t@t.com"], capture_output=True)
-    subprocess.run(["git", "-C", str(tmp_path), "config", "user.name", "T"], capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "user.email", "t@t.com"],
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "user.name", "T"], capture_output=True
+    )
     (tmp_path / ".superharness").mkdir()
     return tmp_path
 
@@ -35,6 +41,7 @@ def _seed_state(project: Path, steps: dict, config_version: int | None = None):
     """Seed onboarding state: SQLite SoT first (v1.65.0+), YAML mirror for legacy compat."""
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import onboarding_dao
+
     cv = config_version if config_version is not None else 1
     conn = get_connection(str(project))
     try:
@@ -56,6 +63,7 @@ def _read_state(project: Path) -> dict:
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import onboarding_dao
+
         conn = get_connection(str(project))
         try:
             init_db(conn)
@@ -75,7 +83,8 @@ def _read_state(project: Path) -> dict:
 
 
 def _all_completed(project: Path) -> dict:
-    from superharness.commands.onboard import _STEPS, ONBOARD_CONFIG_VERSION
+    from superharness.commands.onboard import _STEPS
+
     return {s: "completed" for s in _STEPS}
 
 
@@ -83,9 +92,10 @@ def _all_completed(project: Path) -> dict:
 # Quick-setup: skips completed steps silently
 # ---------------------------------------------------------------------------
 
+
 def test_quick_setup_skips_completed_steps(runner, project, tmp_path, monkeypatch):
     """After a full run, --quick produces no detect/init output (already done)."""
-    from superharness.commands.onboard import cmd_onboard, ONBOARD_CONFIG_VERSION
+    from superharness.commands.onboard import cmd_onboard
 
     fake_claude_md = tmp_path / "global_claude.md"
     fake_claude_md.write_text("# superharness\n")
@@ -96,7 +106,9 @@ def test_quick_setup_skips_completed_steps(runner, project, tmp_path, monkeypatc
     assert r1.exit_code == 0, r1.output
 
     # Second run with --quick
-    r2 = runner.invoke(cmd_onboard, ["--project", str(project), "--quick", "--non-interactive"])
+    r2 = runner.invoke(
+        cmd_onboard, ["--project", str(project), "--quick", "--non-interactive"]
+    )
     assert r2.exit_code == 0, r2.output
 
     # Step banners ([detect] / [skip] Step 1 (detect)) must NOT appear — quick skips silently.
@@ -106,7 +118,11 @@ def test_quick_setup_skips_completed_steps(runner, project, tmp_path, monkeypatc
     assert "[init]" not in r2.output
     assert "step 2 (init)" not in r2.output.lower()
     # Summary must still be shown
-    assert "shux contract" in r2.output or "✓" in r2.output or "set up" in r2.output.lower()
+    assert (
+        "shux contract" in r2.output
+        or "✓" in r2.output
+        or "set up" in r2.output.lower()
+    )
 
 
 def test_quick_setup_runs_pending_steps(runner, project, monkeypatch):
@@ -118,18 +134,24 @@ def test_quick_setup_runs_pending_steps(runner, project, monkeypatch):
     monkeypatch.setenv("SUPERHARNESS_GLOBAL_CLAUDE_MD", str(fake_claude_md))
 
     # Seed: detect + init + global_claude completed, git_track pending
-    _seed_state(project, {
-        "detect": "completed",
-        "init": "completed",
-        "global_claude": "completed",
-        "git_track": "pending",
-        "doctor": "pending",
-        "task": "pending",
-        "delegate": "pending",
-        "summary": "pending",
-    }, config_version=ONBOARD_CONFIG_VERSION)
+    _seed_state(
+        project,
+        {
+            "detect": "completed",
+            "init": "completed",
+            "global_claude": "completed",
+            "git_track": "pending",
+            "doctor": "pending",
+            "task": "pending",
+            "delegate": "pending",
+            "summary": "pending",
+        },
+        config_version=ONBOARD_CONFIG_VERSION,
+    )
 
-    result = runner.invoke(cmd_onboard, ["--project", str(project), "--quick", "--non-interactive"])
+    result = runner.invoke(
+        cmd_onboard, ["--project", str(project), "--quick", "--non-interactive"]
+    )
     assert result.exit_code == 0, result.output
 
     # git_track step must have run (output contains "git_track" or "Step 3")
@@ -146,9 +168,10 @@ def test_quick_setup_runs_pending_steps(runner, project, monkeypatch):
 # Config version bumping
 # ---------------------------------------------------------------------------
 
+
 def test_config_version_bump_resets_new_steps(runner, project, monkeypatch):
     """Old onboarding.yaml (config_version=1) causes v2-new steps to re-run."""
-    from superharness.commands.onboard import cmd_onboard, ONBOARD_CONFIG_VERSION, _STEPS_BY_VERSION
+    from superharness.commands.onboard import cmd_onboard, ONBOARD_CONFIG_VERSION
 
     # Use temp file to avoid touching real ~/.claude/CLAUDE.md
     fake_claude_md = project.parent / "fake_claude.md"
@@ -161,7 +184,9 @@ def test_config_version_bump_resets_new_steps(runner, project, monkeypatch):
     # ONBOARD_CONFIG_VERSION must be >= 2 for this test to be meaningful
     assert ONBOARD_CONFIG_VERSION >= 2
 
-    result = runner.invoke(cmd_onboard, ["--project", str(project), "--non-interactive"])
+    result = runner.invoke(
+        cmd_onboard, ["--project", str(project), "--non-interactive"]
+    )
     assert result.exit_code == 0, result.output
 
     # global_claude (introduced in v2) must have run — its output must appear
@@ -176,7 +201,9 @@ def test_config_version_updated_after_run(runner, project, monkeypatch):
     fake_claude_md.write_text("# no superharness yet\n")
     monkeypatch.setenv("SUPERHARNESS_GLOBAL_CLAUDE_MD", str(fake_claude_md))
 
-    result = runner.invoke(cmd_onboard, ["--project", str(project), "--non-interactive"])
+    result = runner.invoke(
+        cmd_onboard, ["--project", str(project), "--non-interactive"]
+    )
     assert result.exit_code == 0, result.output
 
     state = _read_state(project)
@@ -187,6 +214,7 @@ def test_config_version_updated_after_run(runner, project, monkeypatch):
 # Summary printer shows per-step status
 # ---------------------------------------------------------------------------
 
+
 def test_summary_shows_per_step_status(runner, project, monkeypatch):
     """Full non-interactive run: summary output contains ✓ for completed steps + shux contract."""
     from superharness.commands.onboard import cmd_onboard
@@ -195,7 +223,9 @@ def test_summary_shows_per_step_status(runner, project, monkeypatch):
     fake_claude_md.write_text("# no superharness yet\n")
     monkeypatch.setenv("SUPERHARNESS_GLOBAL_CLAUDE_MD", str(fake_claude_md))
 
-    result = runner.invoke(cmd_onboard, ["--project", str(project), "--non-interactive"])
+    result = runner.invoke(
+        cmd_onboard, ["--project", str(project), "--non-interactive"]
+    )
     assert result.exit_code == 0, result.output
 
     # At least 3 "✓" symbols (or "completed") must appear
@@ -217,18 +247,24 @@ def test_summary_shows_skipped_steps(runner, project, monkeypatch):
     monkeypatch.setenv("SUPERHARNESS_GLOBAL_CLAUDE_MD", str(fake_claude_md))
 
     # Seed: git_track completed, doctor pending; non-git project
-    _seed_state(project, {
-        "detect": "completed",
-        "init": "completed",
-        "global_claude": "completed",
-        "git_track": "completed",
-        "doctor": "pending",
-        "task": "pending",
-        "delegate": "pending",
-        "summary": "pending",
-    }, config_version=ONBOARD_CONFIG_VERSION)
+    _seed_state(
+        project,
+        {
+            "detect": "completed",
+            "init": "completed",
+            "global_claude": "completed",
+            "git_track": "completed",
+            "doctor": "pending",
+            "task": "pending",
+            "delegate": "pending",
+            "summary": "pending",
+        },
+        config_version=ONBOARD_CONFIG_VERSION,
+    )
 
-    result = runner.invoke(cmd_onboard, ["--project", str(project), "--non-interactive"])
+    result = runner.invoke(
+        cmd_onboard, ["--project", str(project), "--non-interactive"]
+    )
     assert result.exit_code == 0, result.output
 
     # Summary must mention git_track and doctor with some status indicator

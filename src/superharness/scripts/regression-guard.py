@@ -47,7 +47,9 @@ def _recent_shas(limit: int) -> list[str]:
 
 
 def _has_test_changes(sha: str) -> bool:
-    files = _run(["git", "show", "--name-only", "--pretty=format:", "--no-renames", sha]).splitlines()
+    files = _run(
+        ["git", "show", "--name-only", "--pretty=format:", "--no-renames", sha]
+    ).splitlines()
     for file in files:
         path = file.strip()
         if not path:
@@ -59,9 +61,21 @@ def _has_test_changes(sha: str) -> bool:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Regression guard for fix/bug commits.")
-    ap.add_argument("--limit", type=int, default=50, help="Number of recent fix/bug commits to inspect.")
-    ap.add_argument("--scan-depth", type=int, default=80, help="Number of recent commits to map for nearby checks.")
-    ap.add_argument("--window", type=int, default=3, help="Nearby commit window on each side.")
+    ap.add_argument(
+        "--limit",
+        type=int,
+        default=50,
+        help="Number of recent fix/bug commits to inspect.",
+    )
+    ap.add_argument(
+        "--scan-depth",
+        type=int,
+        default=80,
+        help="Number of recent commits to map for nearby checks.",
+    )
+    ap.add_argument(
+        "--window", type=int, default=3, help="Nearby commit window on each side."
+    )
     ap.add_argument("--json", action="store_true", help="Emit JSON output.")
     args = ap.parse_args()
 

@@ -1,4 +1,5 @@
 """Thread-safe approval state with risk classification and persistence."""
+
 from __future__ import annotations
 
 import json
@@ -7,21 +8,43 @@ import re
 import threading
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
 # Low-risk patterns: read-only or non-destructive commands
 _LOW_RISK_PATTERNS = [
-    r"^echo\s", r"^ls\s", r"^pwd$", r"^cat\s", r"^head\s",
-    r"^tail\s", r"^grep\s", r"^wc\s", r"^sort\s", r"^uniq\s",
-    r"^find\s.*-name", r"^which\s", r"^type\s", r"^env$",
-    r"^printenv", r"^date", r"^whoami", r"^id$",
+    r"^echo\s",
+    r"^ls\s",
+    r"^pwd$",
+    r"^cat\s",
+    r"^head\s",
+    r"^tail\s",
+    r"^grep\s",
+    r"^wc\s",
+    r"^sort\s",
+    r"^uniq\s",
+    r"^find\s.*-name",
+    r"^which\s",
+    r"^type\s",
+    r"^env$",
+    r"^printenv",
+    r"^date",
+    r"^whoami",
+    r"^id$",
 ]
 # High-risk patterns: destructive or dangerous
 _HIGH_RISK_PATTERNS = [
-    r"rm\s+-rf", r"dd\s+if=", r">\s*/dev/sd", r"mkfs\.",
-    r"chmod\s+777", r"chown\s+-R", r"kill\s+-9",
-    r"reboot", r"shutdown", r":\(\)\s*\{",
+    r"rm\s+-rf",
+    r"dd\s+if=",
+    r">\s*/dev/sd",
+    r"mkfs\.",
+    r"chmod\s+777",
+    r"chown\s+-R",
+    r"kill\s+-9",
+    r"reboot",
+    r"shutdown",
+    r":\(\)\s*\{",
 ]
 
 
@@ -79,6 +102,7 @@ class ApprovalState:
         except Exception as e:
             logger.warning("state.py unexpected error: %s", e, exc_info=True)
             pass
+
     def _load(self) -> None:
         try:
             with open(self._config_path) as f:

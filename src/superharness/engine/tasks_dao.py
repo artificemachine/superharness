@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import sqlite3
 import json
-from dataclasses import dataclass, asdict
-from typing import Any, cast
+from dataclasses import dataclass
+from typing import Any
 from collections import defaultdict
 
 from superharness.engine.state_errors import StateError, ConcurrencyError
@@ -17,6 +17,7 @@ from superharness.engine.next_action import ALL_STATUSES
 # between known statuses, but force=True callers (the lifecycle reconciler)
 # bypass that graph entirely and previously had no floor at all.
 VALID_STATUSES: frozenset[str] = frozenset(ALL_STATUSES)
+
 
 @dataclass(frozen=True)
 class TaskRow:
@@ -80,6 +81,7 @@ class TaskRow:
     # written back to by shux (see shux task link / --from-issue).
     issue_url: str | None = None
 
+
 def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
     """Insert or update a task. Bumps version on update."""
     ac = json.dumps(task.acceptance_criteria)
@@ -87,10 +89,11 @@ def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
     oos = json.dumps(task.out_of_scope)
     dod = json.dumps(task.definition_of_done)
     tdd = json.dumps(task.tdd) if task.tdd else None
-    
-    require_tdd_val = (int(task.require_tdd) if task.require_tdd is not None else None)
+
+    require_tdd_val = int(task.require_tdd) if task.require_tdd is not None else None
     try:
-        cursor = conn.execute("""
+        cursor = conn.execute(
+            """
             INSERT INTO tasks (
                 id, title, owner, status, effort, project_path,
                 development_method, acceptance_criteria, test_types,
@@ -144,28 +147,62 @@ def upsert(conn: sqlite3.Connection, task: TaskRow) -> TaskRow:
                 issue_url=excluded.issue_url,
                 version=tasks.version + 1
             RETURNING *
-        """, (
-            task.id, task.title, task.owner, task.status, task.effort, task.project_path,
-            task.development_method, ac, tt, oos, dod, task.context, tdd, task.created_at,
-            task.updated_at,
-            task.plan_proposed_at, task.plan_approved_at, task.in_progress_at,
-            task.report_ready_at, task.review_requested_at, task.done_at, task.cancelled_at,
-            task.version, task.parent_id,
-            int(task.verified), task.verified_at, task.verified_by,
-            task.deadline_minutes,
-            task.failed_at, task.stopped_at, task.failed_reason,
-            task.archived_at, task.archived_reason,
-            task.model_tier, task.pause_reason, task.worktree_path, task.blocked_by_raw,
-            task.locked_contract, task.contract_locked_at,
-            task.workflow, task.autonomy, require_tdd_val, task.estimated_minutes, task.extras_json,
-            task.issue_url,
-        ))
+        """,
+            (
+                task.id,
+                task.title,
+                task.owner,
+                task.status,
+                task.effort,
+                task.project_path,
+                task.development_method,
+                ac,
+                tt,
+                oos,
+                dod,
+                task.context,
+                tdd,
+                task.created_at,
+                task.updated_at,
+                task.plan_proposed_at,
+                task.plan_approved_at,
+                task.in_progress_at,
+                task.report_ready_at,
+                task.review_requested_at,
+                task.done_at,
+                task.cancelled_at,
+                task.version,
+                task.parent_id,
+                int(task.verified),
+                task.verified_at,
+                task.verified_by,
+                task.deadline_minutes,
+                task.failed_at,
+                task.stopped_at,
+                task.failed_reason,
+                task.archived_at,
+                task.archived_reason,
+                task.model_tier,
+                task.pause_reason,
+                task.worktree_path,
+                task.blocked_by_raw,
+                task.locked_contract,
+                task.contract_locked_at,
+                task.workflow,
+                task.autonomy,
+                require_tdd_val,
+                task.estimated_minutes,
+                task.extras_json,
+                task.issue_url,
+            ),
+        )
         row = cursor.fetchone()
         if not row:
             raise StateError("Upsert failed: no row returned")
         return _row_to_task(conn, row)
     except sqlite3.Error as e:
         raise StateError(f"Failed to upsert task '{task.id}': {e}") from e
+
 
 def get(conn: sqlite3.Connection, id: str) -> TaskRow | None:
     """Get a task by ID, including its dependencies."""
@@ -174,6 +211,7 @@ def get(conn: sqlite3.Connection, id: str) -> TaskRow | None:
     if not row:
         return None
     return _row_to_task(conn, row)
+
 
 def get_all(
     conn: sqlite3.Connection,
@@ -193,28 +231,30 @@ def get_all(
         params.append(owner)
     if top_level_only:
         query += " AND parent_id IS NULL"
-    
+
     query += " ORDER BY created_at ASC"
     cursor = conn.execute(query, params)
     rows = cursor.fetchall()
-    
+
     # Optimized: Fetch all dependencies for these tasks in one query
     if not rows:
         return []
-        
+
     task_ids = [r["id"] for r in rows]
     placeholders = ",".join(["?" for _ in task_ids])
     dep_cursor = conn.execute(
         f"SELECT dependent_task_id, prerequisite_task_id FROM task_dependencies WHERE dependent_task_id IN ({placeholders})",
-        task_ids
+        task_ids,
     )
     deps_map = defaultdict(list)
     for dep_row in dep_cursor.fetchall():
         deps_map[dep_row[0]].append(dep_row[1])
-        
+
     return [_row_to_task(conn, row, deps_map[row["id"]]) for row in rows]
 
+
 _CONTRACT_LOCKED_FIELDS = frozenset({"acceptance_criteria", "tdd"})
+
 
 def update(
     conn: sqlite3.Connection,
@@ -224,6 +264,7 @@ def update(
 ) -> TaskRow:
     """Update specific fields of a task with optimistic concurrency check."""
     from superharness.engine.state_errors import ContractLockError
+
     if "status" in changes and changes["status"] not in VALID_STATUSES:
         raise ValueError(
             f"Invalid status {changes['status']!r} for task '{id}'. "
@@ -241,13 +282,19 @@ def update(
             )
     if not changes:
         task = get(conn, id)
-        if not task: raise StateError(f"Task {id} not found")
+        if not task:
+            raise StateError(f"Task {id} not found")
         return task
 
     set_clauses = []
     params: list[Any] = []
     for key, value in changes.items():
-        if key in ("acceptance_criteria", "test_types", "out_of_scope", "definition_of_done"):
+        if key in (
+            "acceptance_criteria",
+            "test_types",
+            "out_of_scope",
+            "definition_of_done",
+        ):
             set_clauses.append(f"{key} = ?")
             params.append(json.dumps(value))
         elif key == "tdd":
@@ -256,11 +303,11 @@ def update(
         else:
             set_clauses.append(f"{key} = ?")
             params.append(value)
-            
+
     set_clauses.append("version = version + 1")
     sql = f"UPDATE tasks SET {', '.join(set_clauses)} WHERE id = ? AND version = ? RETURNING *"
     params.extend([id, version])
-    
+
     try:
         cursor = conn.execute(sql, params)
         row = cursor.fetchone()
@@ -269,7 +316,9 @@ def update(
             cursor = conn.execute("SELECT version FROM tasks WHERE id = ?", (id,))
             existing = cursor.fetchone()
             if existing:
-                raise ConcurrencyError(f"Task '{id}' version mismatch: expected {version}, got {existing['version']}")
+                raise ConcurrencyError(
+                    f"Task '{id}' version mismatch: expected {version}, got {existing['version']}"
+                )
             else:
                 raise StateError(f"Task '{id}' not found")
         return _row_to_task(conn, row)
@@ -298,6 +347,7 @@ def set_status(
     changes = {"status": new_status, **fields}
     return update(conn, task_id, expected_version, changes)
 
+
 def set_dependencies(
     conn: sqlite3.Connection,
     task_id: str,
@@ -305,14 +355,17 @@ def set_dependencies(
 ) -> None:
     """Replace dependencies for a task."""
     try:
-        conn.execute("DELETE FROM task_dependencies WHERE dependent_task_id = ?", (task_id,))
+        conn.execute(
+            "DELETE FROM task_dependencies WHERE dependent_task_id = ?", (task_id,)
+        )
         for prereq in prerequisites:
             conn.execute(
                 "INSERT INTO task_dependencies (dependent_task_id, prerequisite_task_id) VALUES (?, ?)",
-                (task_id, prereq)
+                (task_id, prereq),
             )
     except sqlite3.Error as e:
         raise StateError(f"Failed to set dependencies for task '{task_id}': {e}") from e
+
 
 def get_unblocked(
     conn: sqlite3.Connection,
@@ -332,23 +385,24 @@ def get_unblocked(
     if status_filter:
         query += f" AND t.status IN ({','.join(['?' for _ in status_filter])})"
         params.extend(status_filter)
-        
+
     cursor = conn.execute(query, params)
     rows = cursor.fetchall()
     if not rows:
         return []
-        
+
     task_ids = [r["id"] for r in rows]
     placeholders = ",".join(["?" for _ in task_ids])
     dep_cursor = conn.execute(
         f"SELECT dependent_task_id, prerequisite_task_id FROM task_dependencies WHERE dependent_task_id IN ({placeholders})",
-        task_ids
+        task_ids,
     )
     deps_map = defaultdict(list)
     for dep_row in dep_cursor.fetchall():
         deps_map[dep_row[0]].append(dep_row[1])
 
     return [_row_to_task(conn, row, deps_map[row["id"]]) for row in rows]
+
 
 def _safe_json_load(
     raw: str | None,
@@ -376,7 +430,9 @@ def _safe_json_load(
         return default
 
 
-def _safe_get(row: sqlite3.Row, key: str, default: Any = None, *, coerce: type | None = None) -> Any:
+def _safe_get(
+    row: sqlite3.Row, key: str, default: Any = None, *, coerce: type | None = None
+) -> Any:
     """Get a column value that may not exist on the row (pre-migration DBs)."""
     keys = row.keys() if hasattr(row, "keys") else []
     if key not in keys:
@@ -387,16 +443,18 @@ def _safe_get(row: sqlite3.Row, key: str, default: Any = None, *, coerce: type |
     return val
 
 
-def _row_to_task(conn: sqlite3.Connection, row: sqlite3.Row, blocked_by: list[str] | None = None) -> TaskRow:
+def _row_to_task(
+    conn: sqlite3.Connection, row: sqlite3.Row, blocked_by: list[str] | None = None
+) -> TaskRow:
     if blocked_by is None:
         task_id = row["id"]
         cursor = conn.execute(
             "SELECT prerequisite_task_id FROM task_dependencies WHERE dependent_task_id = ?",
-            (task_id,)
+            (task_id,),
         )
         blocked_by = [r[0] for r in cursor.fetchall()]
-    
-    keys = row.keys() if hasattr(row, "keys") else []
+
+    row.keys() if hasattr(row, "keys") else []
     return TaskRow(
         id=row["id"],
         title=row["title"],
@@ -406,7 +464,10 @@ def _row_to_task(conn: sqlite3.Connection, row: sqlite3.Row, blocked_by: list[st
         project_path=row["project_path"],
         development_method=row["development_method"],
         acceptance_criteria=_safe_json_load(
-            row["acceptance_criteria"], [], task_id=row["id"], column="acceptance_criteria"
+            row["acceptance_criteria"],
+            [],
+            task_id=row["id"],
+            column="acceptance_criteria",
         ),
         test_types=_safe_json_load(
             row["test_types"], [], task_id=row["id"], column="test_types"
@@ -415,7 +476,10 @@ def _row_to_task(conn: sqlite3.Connection, row: sqlite3.Row, blocked_by: list[st
             row["out_of_scope"], [], task_id=row["id"], column="out_of_scope"
         ),
         definition_of_done=_safe_json_load(
-            row["definition_of_done"], [], task_id=row["id"], column="definition_of_done"
+            row["definition_of_done"],
+            [],
+            task_id=row["id"],
+            column="definition_of_done",
         ),
         context=row["context"],
         tdd=_safe_json_load(row["tdd"], task_id=row["id"], column="tdd"),
@@ -446,7 +510,9 @@ def _row_to_task(conn: sqlite3.Connection, row: sqlite3.Row, blocked_by: list[st
         blocked_by_raw=_safe_get(row, "blocked_by_raw"),
         workflow=_safe_get(row, "workflow"),
         autonomy=_safe_get(row, "autonomy"),
-        require_tdd=_safe_get(row, "require_tdd", coerce=bool) if _safe_get(row, "require_tdd") is not None else None,
+        require_tdd=_safe_get(row, "require_tdd", coerce=bool)
+        if _safe_get(row, "require_tdd") is not None
+        else None,
         extras_json=_safe_get(row, "extras_json"),
         locked_contract=_safe_get(row, "locked_contract"),
         contract_locked_at=_safe_get(row, "contract_locked_at"),

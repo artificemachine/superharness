@@ -7,6 +7,7 @@ reproduced here).
 
 See docs/PLAN-steal-omnigent.md iteration 8.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -28,15 +29,28 @@ def _setup(tmp_path: Path) -> tuple[Path, sqlite3.Connection]:
     return tmp_path, conn
 
 
-def _insert_task(conn, task_id, status, created_at, in_progress_at, deadline_minutes=None):
+def _insert_task(
+    conn, task_id, status, created_at, in_progress_at, deadline_minutes=None
+):
     conn.execute(
         "INSERT INTO tasks (id, title, owner, status, created_at, updated_at, "
         "in_progress_at, deadline_minutes, acceptance_criteria, test_types, "
         "out_of_scope, definition_of_done) "
         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-        (task_id, f"Task {task_id}", "claude-code", status,
-         created_at, created_at, in_progress_at, deadline_minutes,
-         "[]", "[]", "[]", "[]"),
+        (
+            task_id,
+            f"Task {task_id}",
+            "claude-code",
+            status,
+            created_at,
+            created_at,
+            in_progress_at,
+            deadline_minutes,
+            "[]",
+            "[]",
+            "[]",
+            "[]",
+        ),
     )
     conn.commit()
 
@@ -54,11 +68,18 @@ def test_active_task_survives_past_deadline_when_events_fresh(tmp_path):
     idle_timeout_minutes=10 -> NOT failed. Events prove liveness; only the
     absolute ceiling (unset here) can kill it."""
     project, conn = _setup(tmp_path)
-    _insert_task(conn, "active", "in_progress",
-                 created_at=_iso(-600), in_progress_at=_iso(-90), deadline_minutes=30)
+    _insert_task(
+        conn,
+        "active",
+        "in_progress",
+        created_at=_iso(-600),
+        in_progress_at=_iso(-90),
+        deadline_minutes=30,
+    )
     _insert_event(conn, "active", _iso(-1))
 
     from superharness.engine.lifecycle_rules import _check_deadlines
+
     failed = _check_deadlines(str(project), {"idle_timeout_minutes": 10})
 
     row = conn.execute("SELECT status FROM tasks WHERE id='active'").fetchone()
@@ -70,11 +91,13 @@ def test_idle_task_fails_at_idle_timeout(tmp_path):
     """in_progress 20m, last event 15m ago, idle_timeout 10 -> failed with
     reason containing 'idle'."""
     project, conn = _setup(tmp_path)
-    _insert_task(conn, "idle-task", "in_progress",
-                 created_at=_iso(-30), in_progress_at=_iso(-20))
+    _insert_task(
+        conn, "idle-task", "in_progress", created_at=_iso(-30), in_progress_at=_iso(-20)
+    )
     _insert_event(conn, "idle-task", _iso(-15))
 
     from superharness.engine.lifecycle_rules import _check_deadlines
+
     failed = _check_deadlines(str(project), {"idle_timeout_minutes": 10})
 
     row = conn.execute(
@@ -89,15 +112,24 @@ def test_absolute_ceiling_kills_even_active(tmp_path):
     """in_progress beyond absolute_ceiling_minutes with fresh events ->
     failed with reason containing 'ceiling'."""
     project, conn = _setup(tmp_path)
-    _insert_task(conn, "long-runner", "in_progress",
-                 created_at=_iso(-600), in_progress_at=_iso(-120))
+    _insert_task(
+        conn,
+        "long-runner",
+        "in_progress",
+        created_at=_iso(-600),
+        in_progress_at=_iso(-120),
+    )
     _insert_event(conn, "long-runner", _iso(-1))
 
     from superharness.engine.lifecycle_rules import _check_deadlines
-    failed = _check_deadlines(str(project), {
-        "idle_timeout_minutes": 10,
-        "absolute_ceiling_minutes": 60,
-    })
+
+    failed = _check_deadlines(
+        str(project),
+        {
+            "idle_timeout_minutes": 10,
+            "absolute_ceiling_minutes": 60,
+        },
+    )
 
     row = conn.execute(
         "SELECT status, failed_reason FROM tasks WHERE id='long-runner'"
@@ -113,11 +145,18 @@ def test_no_events_falls_back_to_pr43_semantics(tmp_path):
     Mirrors test_deadline_in_progress_at.py::
     test_running_task_failed_when_work_actually_overran."""
     project, conn = _setup(tmp_path)
-    _insert_task(conn, "genuinely-overran", "in_progress",
-                 created_at=_iso(-600), in_progress_at=_iso(-90), deadline_minutes=30)
+    _insert_task(
+        conn,
+        "genuinely-overran",
+        "in_progress",
+        created_at=_iso(-600),
+        in_progress_at=_iso(-90),
+        deadline_minutes=30,
+    )
     # No events rows inserted for this task at all.
 
     from superharness.engine.lifecycle_rules import _check_deadlines
+
     failed = _check_deadlines(str(project), {"idle_timeout_minutes": 10})
 
     row = conn.execute(
@@ -134,11 +173,18 @@ def test_both_new_keys_unset_is_byte_identical_to_legacy(tmp_path):
     behavior on the same fixture (PR #43's own recently-started-survives
     case)."""
     project, conn = _setup(tmp_path)
-    _insert_task(conn, "queued-then-run", "in_progress",
-                 created_at=_iso(-600), in_progress_at=_iso(-2), deadline_minutes=30)
+    _insert_task(
+        conn,
+        "queued-then-run",
+        "in_progress",
+        created_at=_iso(-600),
+        in_progress_at=_iso(-2),
+        deadline_minutes=30,
+    )
     _insert_event(conn, "queued-then-run", _iso(-1))  # even with events present
 
     from superharness.engine.lifecycle_rules import _check_deadlines
+
     failed = _check_deadlines(str(project), {})  # no idle/ceiling keys at all
 
     row = conn.execute("SELECT status FROM tasks WHERE id='queued-then-run'").fetchone()
@@ -154,8 +200,14 @@ def test_full_loop_transcript_to_events_to_deadline_spares_active_task(tmp_path)
     from superharness.engine.transcript_tail import tail_step
 
     project, conn = _setup(tmp_path)
-    _insert_task(conn, "watched", "in_progress",
-                 created_at=_iso(-600), in_progress_at=_iso(-90), deadline_minutes=30)
+    _insert_task(
+        conn,
+        "watched",
+        "in_progress",
+        created_at=_iso(-600),
+        in_progress_at=_iso(-90),
+        deadline_minutes=30,
+    )
     conn.close()
 
     events_mod.configure(str(project))
@@ -171,6 +223,7 @@ def test_full_loop_transcript_to_events_to_deadline_spares_active_task(tmp_path)
     assert events_mod.flush(timeout=5) is True
 
     from superharness.engine.lifecycle_rules import _check_deadlines
+
     failed = _check_deadlines(str(project), {"idle_timeout_minutes": 10})
 
     conn = get_connection(str(project))

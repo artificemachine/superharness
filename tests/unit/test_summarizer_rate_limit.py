@@ -4,9 +4,9 @@ Bucket holds timestamps of recent calls in a 1-hour window. Exceeding
 the bucket raises RateLimitExceeded. Env var
 SUPERHARNESS_SUMMARIZER_MAX_PER_HOUR overrides the registry default.
 """
+
 from __future__ import annotations
 
-import time
 
 import pytest
 

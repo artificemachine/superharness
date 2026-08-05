@@ -2,6 +2,7 @@
 
 Reads and writes events.jsonl for per-project event streaming.
 """
+
 from __future__ import annotations
 
 import json
@@ -9,6 +10,7 @@ import os
 from datetime import datetime, timezone
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,6 +60,7 @@ class EventStream:
         log_path = os.path.join(project_path, ".superharness", "runs", f"{task_id}.log")
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
         import time
+
         with open(log_path, "a+", encoding="utf-8", errors="replace") as f:
             f.seek(0, 2)  # seek to end
             while True:

@@ -3,6 +3,7 @@
 Backs `agent_status.write_agent_status` / `read_agent_status` / `read_all_agent_statuses`.
 The YAML files at `.superharness/agents/<runtime>.status.yaml` are export mirrors.
 """
+
 from __future__ import annotations
 
 import json
@@ -50,8 +51,15 @@ def upsert(
                 budget_json=excluded.budget_json,
                 updated_at=excluded.updated_at
             """,
-            (runtime, schema_version, liveness, active_task,
-             next_wake_at, budget_json, updated_at),
+            (
+                runtime,
+                schema_version,
+                liveness,
+                active_task,
+                next_wake_at,
+                budget_json,
+                updated_at,
+            ),
         )
         row = conn.execute(
             "SELECT * FROM agent_runtime_status WHERE runtime = ?", (runtime,)

@@ -7,10 +7,15 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers import REPO_ROOT, run_bash, seed_sqlite_from_yaml, seed_sqlite_handoff, seed_sqlite_heartbeat
+from tests.helpers import (
+    REPO_ROOT,
+    run_bash,
+    seed_sqlite_from_yaml,
+    seed_sqlite_handoff,
+    seed_sqlite_heartbeat,
+)
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
-
 
 
 def _run_discuss_py(cwd, args: list[str] | None = None):
@@ -18,7 +23,9 @@ def _run_discuss_py(cwd, args: list[str] | None = None):
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT / "src")
     cmd = [sys.executable, "-m", "superharness.commands.discuss"] + (args or [])
-    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
+    return subprocess.run(
+        cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False
+    )
 
 
 def _setup_project(tmp_path: Path) -> Path:
@@ -34,12 +41,12 @@ def _setup_project(tmp_path: Path) -> Path:
                 "    title: Needs approval",
                 "    owner: codex-cli",
                 "    status: pending_user_approval",
-                f"    project_path: '{project.as_posix()}'" ,
+                f"    project_path: '{project.as_posix()}'",
                 "  - id: claude-task",
                 "    title: Claude task",
                 "    owner: claude-code",
                 "    status: todo",
-                f"    project_path: '{project.as_posix()}'" ,
+                f"    project_path: '{project.as_posix()}'",
             ]
         )
         + "\n"
@@ -81,20 +88,27 @@ def _setup_project(tmp_path: Path) -> Path:
     )
     seed_sqlite_from_yaml(project)
     from tests.helpers import seed_sqlite_handoff
+
     seed_sqlite_handoff(
-        project, "approval-task", phase="plan", status="pending_user_approval",
+        project,
+        "approval-task",
+        phase="plan",
+        status="pending_user_approval",
         from_agent="codex-cli",
-        content="\n".join([
-            "task: approval-task",
-            "to: codex-cli",
-            "date: 2026-03-11",
-            "status: pending_user_approval",
-            "approval_gate:",
-            "  required: true",
-            "  approved_by_user: false",
-            "  approved_at: null",
-            "markdown_report: .superharness/handoffs/2026-03-11-approval-task.md",
-        ]) + "\n",
+        content="\n".join(
+            [
+                "task: approval-task",
+                "to: codex-cli",
+                "date: 2026-03-11",
+                "status: pending_user_approval",
+                "approval_gate:",
+                "  required: true",
+                "  approved_by_user: false",
+                "  approved_at: null",
+                "markdown_report: .superharness/handoffs/2026-03-11-approval-task.md",
+            ]
+        )
+        + "\n",
         now="2026-03-11T00:00:00Z",
     )
     return project
@@ -113,7 +127,7 @@ def _setup_project_without_paused_item(tmp_path: Path) -> Path:
                 "    title: Needs approval",
                 "    owner: codex-cli",
                 "    status: pending_user_approval",
-                f"    project_path: '{project.as_posix()}'" ,
+                f"    project_path: '{project.as_posix()}'",
             ]
         )
         + "\n"
@@ -146,18 +160,24 @@ def _setup_project_without_paused_item(tmp_path: Path) -> Path:
     )
     seed_sqlite_from_yaml(project)
     seed_sqlite_handoff(
-        project, "approval-task", phase="report", status="pending_user_approval",
-        content="\n".join([
-            "task: approval-task",
-            "to: codex-cli",
-            "date: 2026-03-11",
-            "status: pending_user_approval",
-            "approval_gate:",
-            "  required: true",
-            "  approved_by_user: false",
-            "  approved_at: null",
-            "markdown_report: .superharness/handoffs/2026-03-11-approval-task.md",
-        ]) + "\n",
+        project,
+        "approval-task",
+        phase="report",
+        status="pending_user_approval",
+        content="\n".join(
+            [
+                "task: approval-task",
+                "to: codex-cli",
+                "date: 2026-03-11",
+                "status: pending_user_approval",
+                "approval_gate:",
+                "  required: true",
+                "  approved_by_user: false",
+                "  approved_at: null",
+                "markdown_report: .superharness/handoffs/2026-03-11-approval-task.md",
+            ]
+        )
+        + "\n",
         now="2026-03-11T00:00:00Z",
     )
     return project
@@ -173,17 +193,23 @@ def test_discuss_status_lists_pending_approvals(repo_root, tmp_path) -> None:
     assert "superharness discuss approve --task approval-task" in result.stdout
 
 
-def test_discuss_approve_updates_handoff_contract_and_inbox(repo_root, tmp_path) -> None:
+def test_discuss_approve_updates_handoff_contract_and_inbox(
+    repo_root, tmp_path
+) -> None:
     project = _setup_project(tmp_path)
 
     result = _run_discuss_py(
         repo_root,
         args=[
             "approve",
-            "--project", str(project),
-            "--task", "approval-task",
-            "--by", "owner",
-            "--note", "Approved",
+            "--project",
+            str(project),
+            "--task",
+            "approval-task",
+            "--by",
+            "owner",
+            "--note",
+            "Approved",
         ],
     )
 
@@ -192,15 +218,19 @@ def test_discuss_approve_updates_handoff_contract_and_inbox(repo_root, tmp_path)
 
     # Approval gate is reflected in SQLite (source of truth — YAML is export-only).
     import sqlite3 as _sql2
+
     db2 = _sql2.connect(str(project / ".superharness" / "state.sqlite3"))
     approved_row = db2.execute(
         "SELECT metadata FROM handoffs WHERE task_id='approval-task' AND status='approved' LIMIT 1"
     ).fetchone()
     db2.close()
-    assert approved_row is not None, "No approved handoff found in SQLite after cmd_approve"
+    assert approved_row is not None, (
+        "No approved handoff found in SQLite after cmd_approve"
+    )
 
     # Post-migration: contract + inbox state in SQLite, not YAML.
     import sqlite3 as _sql
+
     db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
     task_status = db.execute(
         "SELECT status FROM tasks WHERE id='approval-task'"
@@ -224,17 +254,23 @@ def test_contract_today_shows_user_approval_required(repo_root, tmp_path) -> Non
     assert "approve: superharness discuss approve" in result.stdout
 
 
-def test_discuss_approve_auto_enqueues_when_no_paused_items(repo_root, tmp_path) -> None:
+def test_discuss_approve_auto_enqueues_when_no_paused_items(
+    repo_root, tmp_path
+) -> None:
     project = _setup_project_without_paused_item(tmp_path)
 
     result = _run_discuss_py(
         repo_root,
         args=[
             "approve",
-            "--project", str(project),
-            "--task", "approval-task",
-            "--by", "owner",
-            "--note", "Approved",
+            "--project",
+            str(project),
+            "--task",
+            "approval-task",
+            "--by",
+            "owner",
+            "--note",
+            "Approved",
         ],
     )
 
@@ -242,6 +278,7 @@ def test_discuss_approve_auto_enqueues_when_no_paused_items(repo_root, tmp_path)
     assert "Auto-enqueued inbox item:" in result.stdout
     # SQLite is the post-migration source of truth.
     import sqlite3 as _sql
+
     db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
     rows = db.execute(
         "SELECT target_agent, status FROM inbox WHERE task_id='approval-task'"
@@ -261,15 +298,18 @@ def test_discuss_start_requires_topic(repo_root, tmp_path) -> None:
 
     assert result.returncode == 2
     # argparse: "the following arguments are required: --topic"
-    assert "--topic" in result.stderr and ("required" in result.stderr or "is required" in result.stderr)
+    assert "--topic" in result.stderr and (
+        "required" in result.stderr or "is required" in result.stderr
+    )
 
 
 def test_discuss_start_enqueues_round_one_for_both_agents(repo_root, tmp_path) -> None:
     project = _setup_project(tmp_path)
     seed_sqlite_from_yaml(project)
-    
+
     # Mock heartbeats for participants (v1.69.5 requirement)
     from datetime import datetime, timezone
+
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     seed_sqlite_heartbeat(project, agent="watcher", status="alive", now=now)
     seed_sqlite_heartbeat(project, agent="claude-code", status="alive", now=now)
@@ -279,9 +319,12 @@ def test_discuss_start_enqueues_round_one_for_both_agents(repo_root, tmp_path) -
         repo_root,
         args=[
             "start",
-            "--project", str(project),
-            "--topic", "Review monitor retry behavior",
-            "--max-rounds", "2",
+            "--project",
+            str(project),
+            "--topic",
+            "Review monitor retry behavior",
+            "--max-rounds",
+            "2",
         ],
     )
 
@@ -292,6 +335,7 @@ def test_discuss_start_enqueues_round_one_for_both_agents(repo_root, tmp_path) -
 
     # Inbox is SQLite-backed post-migration.
     import sqlite3 as _sql
+
     db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
     rows = db.execute(
         "SELECT task_id, target_agent, status FROM inbox "
@@ -309,6 +353,7 @@ def test_discuss_start_enqueues_round_one_for_both_agents(repo_root, tmp_path) -
 def test_discuss_importable_without_fcntl():
     """Regression: discuss.py must be importable even when fcntl is unavailable (Windows)."""
     import unittest.mock
+
     blocked = {"fcntl": None}
     # Remove cached module so the fresh import is attempted with blocked fcntl
     modules_to_remove = [k for k in sys.modules if "superharness.engine.discuss" in k]
@@ -316,6 +361,7 @@ def test_discuss_importable_without_fcntl():
         del sys.modules[m]
     with unittest.mock.patch.dict(sys.modules, blocked):
         import importlib
+
         mod = importlib.import_module("superharness.engine.discuss")
         assert hasattr(mod, "cmd_status")
         assert hasattr(mod, "cmd_approve")

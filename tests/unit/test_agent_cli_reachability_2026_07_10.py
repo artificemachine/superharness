@@ -6,6 +6,7 @@ re-routed to an agent whose binary isn't on PATH, guaranteeing another
 failure. _agent_cli_reachable() closes that gap; the fallback_agents filter
 must also apply it.
 """
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -84,7 +85,10 @@ class TestFallbackSkipsUnreachableAgents:
         def fake_which(binary):
             return None if binary == "codex" else f"/usr/local/bin/{binary}"
 
-        with patch("superharness.engine.model_router.is_agent_quota_limited", return_value=False):
+        with patch(
+            "superharness.engine.model_router.is_agent_quota_limited",
+            return_value=False,
+        ):
             with patch("shutil.which", side_effect=fake_which):
                 _auto_recover_exhausted_failures_sqlite(project)
 
@@ -102,7 +106,10 @@ class TestFallbackSkipsUnreachableAgents:
         _seed_inbox(conn, recovery_count=0, max_retries=3, retry_count=3)
         conn.close()
 
-        with patch("superharness.engine.model_router.is_agent_quota_limited", return_value=False):
+        with patch(
+            "superharness.engine.model_router.is_agent_quota_limited",
+            return_value=False,
+        ):
             with patch("shutil.which", return_value=None):
                 _auto_recover_exhausted_failures_sqlite(project)
 

@@ -2,6 +2,7 @@
 
 Tests mock claude_agent_sdk.query() to avoid real API calls.
 """
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -14,6 +15,7 @@ pytest.importorskip("claude_agent_sdk")
 def _make_result_message(result_text="OK", input_tokens=0, output_tokens=0):
     """Create a mock ResultMessage using the real class."""
     from claude_agent_sdk import ResultMessage
+
     msg = ResultMessage.__new__(ResultMessage)
     object.__setattr__(msg, "result", result_text)
     object.__setattr__(msg, "subtype", "success")
@@ -27,12 +29,15 @@ def _make_result_message(result_text="OK", input_tokens=0, output_tokens=0):
 def _make_stream_event(text=""):
     """Create a mock StreamEvent using the real class."""
     from claude_agent_sdk import StreamEvent
+
     event = StreamEvent.__new__(StreamEvent)
     object.__setattr__(event, "text", text)
     return event
 
 
-async def _mock_query_gen(result_text="OK", input_tokens=10, output_tokens=5, stream_chunks=None):
+async def _mock_query_gen(
+    result_text="OK", input_tokens=10, output_tokens=5, stream_chunks=None
+):
     """Async generator that mimics query() output."""
     if stream_chunks:
         for chunk in stream_chunks:
@@ -41,20 +46,26 @@ async def _mock_query_gen(result_text="OK", input_tokens=10, output_tokens=5, st
 
 
 class TestSDKRunner:
-
     def test_sdk_available_returns_true_when_sdk_installed(self):
         from superharness.engine.sdk_runner import sdk_available
+
         with patch("superharness.engine.sdk_runner._try_import_sdk", return_value=True):
             assert sdk_available() is True
 
     def test_sdk_available_returns_false_when_sdk_missing(self):
         from superharness.engine.sdk_runner import sdk_available
-        with patch("superharness.engine.sdk_runner._try_import_sdk", return_value=False):
+
+        with patch(
+            "superharness.engine.sdk_runner._try_import_sdk", return_value=False
+        ):
             assert sdk_available() is False
 
     def test_runner_raises_runtime_error_if_sdk_unavailable(self, tmp_path):
         from superharness.engine.sdk_runner import SDKRunner
-        with patch("superharness.engine.sdk_runner._try_import_sdk", return_value=False):
+
+        with patch(
+            "superharness.engine.sdk_runner._try_import_sdk", return_value=False
+        ):
             with pytest.raises(RuntimeError, match="claude_agent_sdk is not available"):
                 SDKRunner(project_dir=tmp_path)
 
@@ -63,7 +74,10 @@ class TestSDKRunner:
         from superharness.engine.sdk_runner import SDKRunner
 
         with patch("superharness.engine.sdk_runner._try_import_sdk", return_value=True):
-            with patch("claude_agent_sdk.query", return_value=_mock_query_gen("hello world", 10, 5)):
+            with patch(
+                "claude_agent_sdk.query",
+                return_value=_mock_query_gen("hello world", 10, 5),
+            ):
                 runner = SDKRunner(project_dir=tmp_path)
                 result = runner.run("say hello")
 
@@ -88,13 +102,14 @@ class TestSDKRunner:
 
 
 class TestSDKTokenTracking:
-
     def test_tracks_tokens_from_result(self, tmp_path):
         """run() extracts token usage from ResultMessage."""
         from superharness.engine.sdk_runner import SDKRunner
 
         with patch("superharness.engine.sdk_runner._try_import_sdk", return_value=True):
-            with patch("claude_agent_sdk.query", return_value=_mock_query_gen("ok", 1000, 500)):
+            with patch(
+                "claude_agent_sdk.query", return_value=_mock_query_gen("ok", 1000, 500)
+            ):
                 runner = SDKRunner(project_dir=tmp_path, model="claude-sonnet-4-6")
                 runner.run("test")
 
@@ -126,7 +141,6 @@ class TestSDKTokenTracking:
 
 
 class TestSDKBudgetGuard:
-
     def test_raises_when_budget_exceeded(self, tmp_path):
         """BudgetExceededError raised when cost exceeds max_budget_usd."""
         from superharness.engine.sdk_runner import SDKRunner, BudgetExceededError
@@ -141,7 +155,9 @@ class TestSDKBudgetGuard:
 
         with patch("superharness.engine.sdk_runner._try_import_sdk", return_value=True):
             with patch("claude_agent_sdk.query", side_effect=mock_query):
-                runner = SDKRunner(project_dir=tmp_path, model="claude-sonnet-4-6", max_budget_usd=0.50)
+                runner = SDKRunner(
+                    project_dir=tmp_path, model="claude-sonnet-4-6", max_budget_usd=0.50
+                )
                 runner.run("cheap call")
                 assert runner.total_cost_usd < 0.50
 
@@ -153,14 +169,16 @@ class TestSDKBudgetGuard:
         from superharness.engine.sdk_runner import SDKRunner
 
         with patch("superharness.engine.sdk_runner._try_import_sdk", return_value=True):
-            with patch("claude_agent_sdk.query", return_value=_mock_query_gen("ok", 100000, 50000)):
+            with patch(
+                "claude_agent_sdk.query",
+                return_value=_mock_query_gen("ok", 100000, 50000),
+            ):
                 runner = SDKRunner(project_dir=tmp_path, model="claude-sonnet-4-6")
                 runner.run("big call")
                 assert runner.total_cost_usd > 0
 
 
 class TestSDKLogFile:
-
     def test_creates_log_directory(self, tmp_path):
         """run() creates parent directory for log_file if missing."""
         from superharness.engine.sdk_runner import SDKRunner
@@ -187,13 +205,14 @@ class TestSDKLogFile:
 
 
 class TestSDKSession:
-
     def test_reset_clears_totals(self, tmp_path):
         """reset_session() zeros out token and cost tracking."""
         from superharness.engine.sdk_runner import SDKRunner
 
         with patch("superharness.engine.sdk_runner._try_import_sdk", return_value=True):
-            with patch("claude_agent_sdk.query", return_value=_mock_query_gen("ok", 1000, 500)):
+            with patch(
+                "claude_agent_sdk.query", return_value=_mock_query_gen("ok", 1000, 500)
+            ):
                 runner = SDKRunner(project_dir=tmp_path, model="claude-sonnet-4-6")
                 runner.run("test")
                 assert runner.total_input_tokens == 1000
@@ -205,23 +224,26 @@ class TestSDKSession:
 
 
 class TestSDKCostCalculation:
-
     def test_sonnet_pricing(self):
         from superharness.engine.sdk_runner import _calculate_cost
+
         cost = _calculate_cost("claude-sonnet-4-6", 1_000_000, 1_000_000)
         assert cost == 3.0 + 15.0  # $3/M in + $15/M out
 
     def test_haiku_pricing(self):
         from superharness.engine.sdk_runner import _calculate_cost
+
         cost = _calculate_cost("claude-haiku-4-5-20251001", 1_000_000, 1_000_000)
         assert cost == 0.25 + 1.25
 
     def test_opus_pricing(self):
         from superharness.engine.sdk_runner import _calculate_cost
+
         cost = _calculate_cost("claude-opus-4-6", 1_000_000, 1_000_000)
         assert cost == 5.0 + 25.0
 
     def test_unknown_model_defaults_to_sonnet(self):
         from superharness.engine.sdk_runner import _calculate_cost
+
         cost = _calculate_cost("unknown-model", 1_000_000, 1_000_000)
         assert cost == 3.0 + 15.0

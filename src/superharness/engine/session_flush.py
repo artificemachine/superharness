@@ -2,10 +2,12 @@
 
 Cherry-picked from hermes-agent/gateway/run.py:1033-1069.
 """
+
 import os
 from datetime import datetime, timezone
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -49,8 +51,11 @@ def flush_task(project_dir: str, task_id: str) -> bool:
     """Write current task context to a handoff file before timeout."""
     try:
         from superharness.engine.state_reader import get_tasks
+
         tasks = get_tasks(project_dir)
-        task = next((t for t in tasks if isinstance(t, dict) and t.get("id") == task_id), None)
+        task = next(
+            (t for t in tasks if isinstance(t, dict) and t.get("id") == task_id), None
+        )
         if not task:
             return False
 
@@ -61,14 +66,15 @@ def flush_task(project_dir: str, task_id: str) -> bool:
         path = os.path.join(handoffs_dir, f"{safe_id}-auto-flush-{now[:10]}.yaml")
 
         import yaml
+
         doc = {
             "task": task_id,
             "phase": "auto-flush",
             "status": task.get("status", "in_progress"),
             "date": now,
             "context": f"[auto-flush] Task nearing lifecycle timeout. "
-                       f"Current state: {task.get('status')}. "
-                       f"Partial work preserved for next session.",
+            f"Current state: {task.get('status')}. "
+            f"Partial work preserved for next session.",
             "task_snapshot": {
                 "status": task.get("status"),
                 "acceptance_criteria": task.get("acceptance_criteria", []),

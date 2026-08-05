@@ -31,8 +31,24 @@ def test_record_returns_row_id(db_conn):
 
 def test_record_and_list_for_task_roundtrip(db_conn):
     _make_task(db_conn)
-    usage_dao.record(db_conn, task_id="t1", agent="claude-code", input_tokens=100, output_tokens=50, cost_usd=0.01, now=T0)
-    usage_dao.record(db_conn, task_id="t1", agent="claude-code", input_tokens=200, output_tokens=80, cost_usd=0.02, now=T1)
+    usage_dao.record(
+        db_conn,
+        task_id="t1",
+        agent="claude-code",
+        input_tokens=100,
+        output_tokens=50,
+        cost_usd=0.01,
+        now=T0,
+    )
+    usage_dao.record(
+        db_conn,
+        task_id="t1",
+        agent="claude-code",
+        input_tokens=200,
+        output_tokens=80,
+        cost_usd=0.02,
+        now=T1,
+    )
 
     rows = usage_dao.list_for_task(db_conn, "t1")
     assert len(rows) == 2
@@ -55,9 +71,30 @@ def test_record_defaults_source_to_manual(db_conn):
 def test_totals_by_agent_aggregates_correctly(db_conn):
     _make_task(db_conn, "t1")
     _make_task(db_conn, "t2")
-    usage_dao.record(db_conn, task_id="t1", agent="claude-code", input_tokens=100, output_tokens=50, cost_usd=0.01)
-    usage_dao.record(db_conn, task_id="t1", agent="claude-code", input_tokens=100, output_tokens=50, cost_usd=0.01)
-    usage_dao.record(db_conn, task_id="t2", agent="codex-cli", input_tokens=400, output_tokens=150, cost_usd=0.03)
+    usage_dao.record(
+        db_conn,
+        task_id="t1",
+        agent="claude-code",
+        input_tokens=100,
+        output_tokens=50,
+        cost_usd=0.01,
+    )
+    usage_dao.record(
+        db_conn,
+        task_id="t1",
+        agent="claude-code",
+        input_tokens=100,
+        output_tokens=50,
+        cost_usd=0.01,
+    )
+    usage_dao.record(
+        db_conn,
+        task_id="t2",
+        agent="codex-cli",
+        input_tokens=400,
+        output_tokens=150,
+        cost_usd=0.03,
+    )
 
     totals = usage_dao.totals_by_agent(db_conn)
 

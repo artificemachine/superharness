@@ -249,7 +249,6 @@ description: "Save task handoffs to Obsidian vault — auto-detected, no config 
 enabled: false
 detect:
   any_path:
-    - ~/Documents/OBSIDIAN_ICLOUD/coredev/
     - ~/Documents/Obsidian/
   optional_bin: osm
   optional_mcp: obsidian-semantic

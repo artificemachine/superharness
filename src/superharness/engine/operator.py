@@ -1,4 +1,5 @@
 """Superharness Operator - Guardian of the autonomous engine."""
+
 from __future__ import annotations
 
 import json
@@ -12,12 +13,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import yaml
 
 from superharness.engine.errors import OperationError
 from superharness.engine.process import pid_alive, signal_process_group
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 _OPERATOR_STATE_FILE = ".superharness/operator-state.json"
@@ -41,10 +42,14 @@ class Operator:
         self._python = self._resolve_python()
         self._dashboard_port: int | None = None  # track port for reuse on restart
         self._use_dashboard = False  # only spawn dashboard if True (Opt-in)
-        self._restart_history: dict[str, list[float]] = {}  # component → restart timestamps
+        self._restart_history: dict[
+            str, list[float]
+        ] = {}  # component → restart timestamps
         self._max_restarts = 5  # circuit breaker: max restarts per component in window
         self._restart_window = 600  # 10-minute window for restart counting
-        self._circuit_open_until: dict[str, float] = {}  # component → cooldown deadline (epoch seconds)
+        self._circuit_open_until: dict[
+            str, float
+        ] = {}  # component → cooldown deadline (epoch seconds)
         # The watcher is one-shot: it exits 0 after every tick and the
         # monitor relaunches it. Relaunch is gated on this interval (also
         # passed to inbox_watch as --interval), NOT on the monitor's 5s
@@ -56,11 +61,12 @@ class Operator:
     @staticmethod
     def _resolve_python() -> str:
         """Resolve a stable Python that has superharness installed.
-        
+
         sys.executable can become stale after pipx reinstall (venv is replaced).
         Fall back to shutil.which for resilience.
         """
         import shutil
+
         if os.path.isfile(sys.executable):
             return sys.executable
         for candidate in ("python3", "python"):
@@ -116,12 +122,14 @@ class Operator:
             except OSError as e:
                 logger.error(
                     "operator.py: failed to delete 0-byte SQLite DB %s: %s",
-                    db_file, e,
+                    db_file,
+                    e,
                 )
 
         # Try to initialize the DB to ensure tables exist.
         try:
             from superharness.engine.db import get_connection, init_db
+
             conn = get_connection(str(self.project_dir))
             try:
                 init_db(conn)
@@ -131,10 +139,17 @@ class Operator:
         except Exception as e:
             logger.error(
                 "operator.py: failed to initialize SQLite DB for %s: %s",
-                self.project_dir, e, exc_info=True,
+                self.project_dir,
+                e,
+                exc_info=True,
             )
 
-    def start_stack(self, dashboard_port: int = 8787, no_open: bool = False, use_dashboard: bool = False):
+    def start_stack(
+        self,
+        dashboard_port: int = 8787,
+        no_open: bool = False,
+        use_dashboard: bool = False,
+    ):
         """Start the Superharness stack (Watcher, optional Dashboard)."""
         from superharness.engine.trace import trace_event
 
@@ -162,7 +177,7 @@ class Operator:
             )
 
         self._spawn_watcher()
-        
+
         actual_port = dashboard_port
         if self._use_dashboard:
             # Patch: Try to reclaim the port if it is held by a stale dashboard FROM THIS PROJECT
@@ -170,18 +185,23 @@ class Operator:
             actual_port = self._find_available_port(dashboard_port)
 
             if actual_port != dashboard_port:
-                trace_event(self.project_dir, "port_arbitration", {
-                    "requested": dashboard_port,
-                    "assigned": actual_port,
-                    "reason": "port_busy"
-                })
+                trace_event(
+                    self.project_dir,
+                    "port_arbitration",
+                    {
+                        "requested": dashboard_port,
+                        "assigned": actual_port,
+                        "reason": "port_busy",
+                    },
+                )
             self._spawn_dashboard(actual_port, no_open=no_open)
-            
+
         self._write_daemon_info(actual_port)
 
     def _reclaim_port_if_zombie(self, port: int):
         """If the port is busy by a stale dashboard FROM THIS PROJECT, kill it."""
         import subprocess
+
         try:
             cmd = ["lsof", "-t", f"-i:{port}"]
             res = subprocess.run(cmd, capture_output=True, text=True)
@@ -189,8 +209,10 @@ class Operator:
             for pid_str in pids:
                 pid = int(pid_str)
                 check_cmd = ["ps", "-p", str(pid), "-o", "command="]
-                proc_info = subprocess.run(check_cmd, capture_output=True, text=True).stdout.lower()
-                
+                proc_info = subprocess.run(
+                    check_cmd, capture_output=True, text=True
+                ).stdout.lower()
+
                 # Only kill if it matches our specific project path
                 if "python" in proc_info and "dashboard-ui" in proc_info:
                     if str(self.project_dir).lower() in proc_info:
@@ -199,6 +221,7 @@ class Operator:
         except Exception as e:
             logger.warning("operator.py unexpected error: %s", e, exc_info=True)
             pass
+
     def _find_available_port(self, start_port: int) -> int:
         """Find the next available TCP port."""
         port = start_port
@@ -223,7 +246,7 @@ class Operator:
             "operator_pid": os.getpid(),
             "dashboard_port": port,
             "started_at": time.time(),
-            "project": str(self.project_dir)
+            "project": str(self.project_dir),
         }
         op_file = self.project_dir / _OPERATOR_STATE_FILE
         with open(op_file, "w") as f:
@@ -232,27 +255,41 @@ class Operator:
     def _spawn_watcher(self):
         """Launch the background watcher (one-shot cycle)."""
         cmd = [
-            self._python, "-m", "superharness.commands.inbox_watch",
-            "--project", str(self.project_dir),
-            "--interval", str(int(self._watcher_respawn_interval)),
+            self._python,
+            "-m",
+            "superharness.commands.inbox_watch",
+            "--project",
+            str(self.project_dir),
+            "--interval",
+            str(int(self._watcher_respawn_interval)),
             "--non-interactive",
         ]
         self._watcher_last_spawn = time.time()
         self.processes["watcher"] = subprocess.Popen(
-            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
         )
 
     def _spawn_dashboard(self, port: int, no_open: bool = False):
         """Launch the dashboard UI."""
         cmd = [
-            self._python, "-m", "superharness.scripts.dashboard-ui",
-            "--port", str(port),
-            "--project", str(self.project_dir)
+            self._python,
+            "-m",
+            "superharness.scripts.dashboard-ui",
+            "--port",
+            str(port),
+            "--project",
+            str(self.project_dir),
         ]
         if no_open:
             cmd.append("--no-open")
         self.processes["dashboard"] = subprocess.Popen(
-            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
         )
 
     @staticmethod
@@ -281,6 +318,7 @@ class Operator:
         with 403 orphans at load 373.)
         """
         from superharness.engine.trace import trace_event
+
         try:
             while not self._stopping:
                 try:
@@ -307,10 +345,16 @@ class Operator:
                             continue
 
                         if proc.poll() is not None:
-                            trace_event(self.project_dir, "process_recovery", {
-                                "component": name, "pid": proc.pid,
-                                "exit_code": proc.returncode, "action": "restart"
-                            })
+                            trace_event(
+                                self.project_dir,
+                                "process_recovery",
+                                {
+                                    "component": name,
+                                    "pid": proc.pid,
+                                    "exit_code": proc.returncode,
+                                    "action": "restart",
+                                },
+                            )
                             # Circuit breaker: only count non-zero exits (actual
                             # crashes). The watcher is designed as a one-shot
                             # process — it exits after every tick and the monitor
@@ -331,31 +375,45 @@ class Operator:
                                     self.processes.pop("watcher", None)
                                 elif name == "dashboard" and self._use_dashboard:
                                     if self._dashboard_port is None:
-                                        self._dashboard_port = self._find_available_port(8787)
-                                    self._spawn_dashboard(self._dashboard_port, no_open=True)
+                                        self._dashboard_port = (
+                                            self._find_available_port(8787)
+                                        )
+                                    self._spawn_dashboard(
+                                        self._dashboard_port, no_open=True
+                                    )
                                 continue
                             # Non-zero exit: count toward circuit breaker
                             now_ts = time.time()
                             history = self._restart_history.setdefault(name, [])
-                            history[:] = [t for t in history if now_ts - t < self._restart_window]
+                            history[:] = [
+                                t for t in history if now_ts - t < self._restart_window
+                            ]
                             history.append(now_ts)
                             if len(history) > self._max_restarts:
                                 logger.error(
                                     "operator.py: circuit breaker TRIPPED for %s — "
                                     "%d restarts in %ds. Pausing restarts for %ds.",
-                                    name, len(history), self._restart_window,
+                                    name,
+                                    len(history),
+                                    self._restart_window,
                                     self._restart_window,
                                 )
-                                trace_event(self.project_dir, "circuit_breaker_trip", {
-                                    "component": name,
-                                    "restarts": len(history),
-                                    "window_seconds": self._restart_window,
-                                })
+                                trace_event(
+                                    self.project_dir,
+                                    "circuit_breaker_trip",
+                                    {
+                                        "component": name,
+                                        "restarts": len(history),
+                                        "window_seconds": self._restart_window,
+                                    },
+                                )
                                 # Clear history and set cooldown so we don't
                                 # re-trigger every 5s. The component will not
                                 # be restarted until cooldown expires.
                                 self._restart_history[name] = []
-                                self._circuit_open_until[name] = now_ts + self._restart_window
+                                self._circuit_open_until[name] = (
+                                    now_ts + self._restart_window
+                                )
                                 # Still kill the old process group so orphans
                                 # don't accumulate while the circuit is open.
                                 self._kill_process(proc, name)
@@ -372,13 +430,19 @@ class Operator:
                                 # caused by the old dashboard not releasing
                                 # the port before the new one bound.
                                 if self._dashboard_port is None:
-                                    self._dashboard_port = self._find_available_port(8787)
-                                self._spawn_dashboard(self._dashboard_port, no_open=True)
+                                    self._dashboard_port = self._find_available_port(
+                                        8787
+                                    )
+                                self._spawn_dashboard(
+                                    self._dashboard_port, no_open=True
+                                )
                 except Exception as exc:
                     logger.error(
                         "operator.py monitor_and_recover: unhandled exception in loop — "
                         "continuing in %ss to avoid silent daemon death: %s",
-                        poll_interval, exc, exc_info=True
+                        poll_interval,
+                        exc,
+                        exc_info=True,
                     )
                 time.sleep(poll_interval)
         except KeyboardInterrupt:
@@ -427,7 +491,9 @@ class Operator:
                     except subprocess.TimeoutExpired:
                         logger.warning(
                             "operator.py _kill_process: process group %d for %s did not exit "
-                            "after SIGKILL; abandoning", pgid, name
+                            "after SIGKILL; abandoning",
+                            pgid,
+                            name,
                         )
                 return
 
@@ -493,11 +559,18 @@ class Operator:
         # SQLite primary — source of truth
         try:
             from superharness.engine.heartbeat_contract import read_heartbeat_db
+
             hb = read_heartbeat_db(str(self.project_dir), "watcher")
             if hb is not None and hb.written_at:
-                return self._check_ts_age(hb.written_at, "watcher (sqlite)", stale_threshold_sec)
+                return self._check_ts_age(
+                    hb.written_at, "watcher (sqlite)", stale_threshold_sec
+                )
         except Exception as e:
-            logger.warning("operator.py: failed to read watcher heartbeat from SQLite: %s", e, exc_info=True)
+            logger.warning(
+                "operator.py: failed to read watcher heartbeat from SQLite: %s",
+                e,
+                exc_info=True,
+            )
 
         # YAML fallback (legacy projects)
         hb_yaml = self.harness_dir / "watcher.heartbeat.yaml"
@@ -505,29 +578,52 @@ class Operator:
         if hb_yaml.exists():
             try:
                 import yaml
-                data = yaml.safe_load(hb_yaml.read_text())  # noqa: state-read — YAML fallback when SQLite empty (legacy projects)
+
+                data = yaml.safe_load(hb_yaml.read_text())  # shipguard:ignore state-read: YAML fallback when SQLite is empty for legacy projects
                 ts_str = data.get("written_at")
-                if ts_str: return self._check_ts_age(ts_str, "watcher (yaml)", stale_threshold_sec)
+                if ts_str:
+                    return self._check_ts_age(
+                        ts_str, "watcher (yaml)", stale_threshold_sec
+                    )
             except Exception as e:
-                logger.warning("operator.py: failed to read watcher yaml heartbeat: %s", e, exc_info=True)
+                logger.warning(
+                    "operator.py: failed to read watcher yaml heartbeat: %s",
+                    e,
+                    exc_info=True,
+                )
         if hb_txt.exists():
             try:
                 ts_str = hb_txt.read_text().strip()
-                if ts_str: return self._check_ts_age(ts_str, "watcher (txt)", stale_threshold_sec)
+                if ts_str:
+                    return self._check_ts_age(
+                        ts_str, "watcher (txt)", stale_threshold_sec
+                    )
             except Exception as e:
-                logger.warning("operator.py: failed to read watcher txt heartbeat: %s", e, exc_info=True)
+                logger.warning(
+                    "operator.py: failed to read watcher txt heartbeat: %s",
+                    e,
+                    exc_info=True,
+                )
         return HealthStatus(False, "watcher", "Heartbeat missing")
 
     def _check_ts_age(self, ts_str: str, label: str, threshold: int) -> HealthStatus:
         """Helper to parse ISO timestamp and check age."""
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         try:
             hb_dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
             hb_ts = hb_dt.timestamp()
             diff = time.time() - hb_ts
             if diff > threshold:
-                return HealthStatus(False, "watcher", f"Watcher stale ({int(diff)}s ago)", last_heartbeat=hb_ts)
-            return HealthStatus(True, "watcher", f"Watcher healthy ({label})", last_heartbeat=hb_ts)
+                return HealthStatus(
+                    False,
+                    "watcher",
+                    f"Watcher stale ({int(diff)}s ago)",
+                    last_heartbeat=hb_ts,
+                )
+            return HealthStatus(
+                True, "watcher", f"Watcher healthy ({label})", last_heartbeat=hb_ts
+            )
         except Exception as e:
             return HealthStatus(False, "watcher", f"Error: {str(e)}")
 
@@ -539,7 +635,9 @@ class Operator:
             try:
                 pid = int(lock_file.read_text().strip())
                 if not self._is_pid_alive(pid):
-                    conflicts.append(HealthStatus(False, "lock", f"Stale lock (PID {pid} dead)"))
+                    conflicts.append(
+                        HealthStatus(False, "lock", f"Stale lock (PID {pid} dead)")
+                    )
             except Exception as e:
                 logger.warning("operator.py unexpected error: %s", e, exc_info=True)
                 conflicts.append(HealthStatus(False, "lock", "Malformed lock"))
@@ -553,7 +651,13 @@ class Operator:
             "project": str(self.project_dir),
             "healthy": watcher.is_healthy and len(conflicts) == 0,
             "components": {
-                "watcher": {"ok": watcher.is_healthy, "message": watcher.message, "last_pulse": watcher.last_heartbeat},
-                "conflicts": [{"component": c.component, "message": c.message} for c in conflicts]
-            }
+                "watcher": {
+                    "ok": watcher.is_healthy,
+                    "message": watcher.message,
+                    "last_pulse": watcher.last_heartbeat,
+                },
+                "conflicts": [
+                    {"component": c.component, "message": c.message} for c in conflicts
+                ],
+            },
         }

@@ -1,8 +1,7 @@
 """Unit tests for the TUI module — pure-function layer, no curses required."""
+
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
 
 from superharness.commands.tui import (
     categorize_tasks,
@@ -20,24 +19,26 @@ from superharness.commands.tui import (
 
 # ── Sample task fixtures ────────────────────────────────────────────────────
 
+
 def _task(id: str, status: str, title: str = "", owner: str = "claude-code") -> dict:
     return {"id": id, "status": status, "title": title or id, "owner": owner}
 
 
 SAMPLE_TASKS = [
-    _task("t1", "todo",           "Task One"),
-    _task("t2", "plan_proposed",  "Task Two"),
-    _task("t3", "plan_approved",  "Task Three"),
-    _task("t4", "in_progress",    "Task Four"),
-    _task("t5", "report_ready",   "Task Five"),
-    _task("t6", "review_failed",  "Task Six"),
-    _task("t7", "done",           "Task Seven"),
-    _task("t8", "archived",       "Task Eight"),
-    _task("t9", "cancelled",      "Task Nine"),
+    _task("t1", "todo", "Task One"),
+    _task("t2", "plan_proposed", "Task Two"),
+    _task("t3", "plan_approved", "Task Three"),
+    _task("t4", "in_progress", "Task Four"),
+    _task("t5", "report_ready", "Task Five"),
+    _task("t6", "review_failed", "Task Six"),
+    _task("t7", "done", "Task Seven"),
+    _task("t8", "archived", "Task Eight"),
+    _task("t9", "cancelled", "Task Nine"),
 ]
 
 
 # ── categorize_tasks ────────────────────────────────────────────────────────
+
 
 def test_categorize_tasks_splits_into_five_columns():
     cats = categorize_tasks(SAMPLE_TASKS)
@@ -87,6 +88,7 @@ def test_categorize_unknown_status_goes_to_todo():
 
 # ── get_column_tasks ────────────────────────────────────────────────────────
 
+
 def test_get_column_tasks_returns_correct_column():
     cats = categorize_tasks(SAMPLE_TASKS)
     state = TuiState(col_idx=1)  # plan column
@@ -96,6 +98,7 @@ def test_get_column_tasks_returns_correct_column():
 
 
 # ── filter_tasks ────────────────────────────────────────────────────────────
+
 
 def test_filter_tasks_by_title():
     result = filter_tasks(SAMPLE_TASKS, "two")
@@ -136,6 +139,7 @@ def test_filter_tasks_by_owner():
 
 # ── status_color_name ────────────────────────────────────────────────────────
 
+
 def test_status_color_name_known_statuses():
     assert status_color_name("done") == "green"
     assert status_color_name("in_progress") == "blue"
@@ -150,6 +154,7 @@ def test_status_color_name_unknown_defaults_to_white():
 
 
 # ── action predicates ────────────────────────────────────────────────────────
+
 
 def test_can_approve_plan_proposed():
     t = _task("x", "plan_proposed")
@@ -193,6 +198,7 @@ def test_cannot_delegate_in_progress():
 
 # ── TuiState defaults ────────────────────────────────────────────────────────
 
+
 def test_tui_state_defaults():
     state = TuiState()
     assert state.col_idx == 0
@@ -208,6 +214,7 @@ def test_tui_state_col_idx_bounds():
 
 
 # ── COLUMNS definition ────────────────────────────────────────────────────────
+
 
 def test_columns_has_five_entries():
     assert len(COLUMNS) == 5

@@ -4,6 +4,7 @@ Usage:
     shux operator-memory [--project PATH]        # list all remembered patterns
     shux operator-forget SIG [--project PATH]    # remove a pattern from memory
 """
+
 from __future__ import annotations
 
 import os
@@ -12,12 +13,14 @@ import sys
 
 def _db_path(project_dir: str) -> str:
     from superharness.utils.paths import resolve_active_state_db_path
+
     return resolve_active_state_db_path(project_dir)
 
 
 # ---------------------------------------------------------------------------
 # operator-memory: list
 # ---------------------------------------------------------------------------
+
 
 def cmd_operator_memory(args: list[str] | None = None) -> None:
     """List all operator memory patterns with confidence scores."""
@@ -30,8 +33,9 @@ def cmd_operator_memory(args: list[str] | None = None) -> None:
         prog="shux operator-memory",
         description="List remembered failure patterns and their confidence.",
     )
-    parser.add_argument("--project", "-p", default=os.getcwd(),
-                        help="Project directory (default: cwd)")
+    parser.add_argument(
+        "--project", "-p", default=os.getcwd(), help="Project directory (default: cwd)"
+    )
 
     opts = parser.parse_args(args)
     project_dir = os.path.realpath(opts.project)
@@ -76,6 +80,7 @@ def cmd_operator_memory(args: list[str] | None = None) -> None:
 # operator-forget: remove
 # ---------------------------------------------------------------------------
 
+
 def cmd_operator_forget(args: list[str] | None = None) -> None:
     """Remove a pattern from operator memory."""
     if args is None:
@@ -87,10 +92,15 @@ def cmd_operator_forget(args: list[str] | None = None) -> None:
         prog="shux operator-forget",
         description="Remove a remembered failure pattern.",
     )
-    parser.add_argument("signature", nargs="?", default=None,
-                        help="Pattern signature to forget (e.g., 'import_error')")
-    parser.add_argument("--project", "-p", default=os.getcwd(),
-                        help="Project directory (default: cwd)")
+    parser.add_argument(
+        "signature",
+        nargs="?",
+        default=None,
+        help="Pattern signature to forget (e.g., 'import_error')",
+    )
+    parser.add_argument(
+        "--project", "-p", default=os.getcwd(), help="Project directory (default: cwd)"
+    )
 
     opts = parser.parse_args(args)
     project_dir = os.path.realpath(opts.project)

@@ -43,8 +43,19 @@ def test_codex_watcher_dispatch_smoke(repo_root: Path, tmp_path: Path) -> None:
     init_env = os.environ.copy()
     init_env["PYTHONPATH"] = str(REPO_ROOT / "src")
     init_res = subprocess.run(
-        [sys.executable, "-m", "superharness.commands.init_project", "WatcherTest", "Shell", "active"],
-        cwd=str(project), text=True, capture_output=True, env=init_env, check=False
+        [
+            sys.executable,
+            "-m",
+            "superharness.commands.init_project",
+            "WatcherTest",
+            "Shell",
+            "active",
+        ],
+        cwd=str(project),
+        text=True,
+        capture_output=True,
+        env=init_env,
+        check=False,
     )
     assert init_res.returncode == 0, f"init failed: {init_res.stderr}"
 
@@ -82,12 +93,18 @@ def test_codex_watcher_dispatch_smoke(repo_root: Path, tmp_path: Path) -> None:
     with open(contract_file, "w") as f:
         yaml.dump(contract_doc, f, default_flow_style=False, sort_keys=False)
 
-    enqueue_res = _run_enqueue([
-        "--project", str(project),
-        "--to", "codex-cli",
-        "--task", "smoke-test-task",
-        "--priority", "1",
-    ])
+    enqueue_res = _run_enqueue(
+        [
+            "--project",
+            str(project),
+            "--to",
+            "codex-cli",
+            "--task",
+            "smoke-test-task",
+            "--priority",
+            "1",
+        ]
+    )
     assert enqueue_res.returncode == 0, f"enqueue failed: {enqueue_res.stderr}"
     assert "Enqueued inbox item" in enqueue_res.stdout
 
@@ -172,8 +189,12 @@ PY
         ],
     )
 
-    assert dispatch_res.returncode == 0, f"dispatch failed: {dispatch_res.stderr}\nstdout: {dispatch_res.stdout}"
-    assert "Inbox item updated" in dispatch_res.stdout, "No inbox update in output: " + dispatch_res.stdout
+    assert dispatch_res.returncode == 0, (
+        f"dispatch failed: {dispatch_res.stderr}\nstdout: {dispatch_res.stdout}"
+    )
+    assert "Inbox item updated" in dispatch_res.stdout, (
+        "No inbox update in output: " + dispatch_res.stdout
+    )
 
     with open(contract_file) as f:
         contract_result = yaml.safe_load(f)
@@ -182,7 +203,9 @@ PY
     for task in contract_result.get("tasks", []):
         if task.get("id") == "smoke-test-task":
             task_found = True
-            assert task.get("status") == "done", f"Expected task status 'done', got: {task.get('status')}"
+            assert task.get("status") == "done", (
+                f"Expected task status 'done', got: {task.get('status')}"
+            )
             break
 
     assert task_found, "smoke-test-task not found in contract"
@@ -202,7 +225,9 @@ PY
         for item in inbox_items:
             if item.get("task") == "smoke-test-task":
                 inbox_item_found = True
-                assert item.get("status") == "done", f"Inbox item not marked done: {item.get('status')}"
+                assert item.get("status") == "done", (
+                    f"Inbox item not marked done: {item.get('status')}"
+                )
                 break
 
     assert inbox_item_found, "Inbox item not found for smoke-test-task"

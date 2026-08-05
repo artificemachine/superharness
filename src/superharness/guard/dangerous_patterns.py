@@ -3,6 +3,7 @@
 25 regex patterns detect shell commands that could damage the system.
 Source: hermes-agent/tools/approval.py lines 24-52.
 """
+
 import re
 
 # (compiled_regex, human_label)
@@ -31,9 +32,15 @@ DANGEROUS_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"chmod\s+777\s+/", re.IGNORECASE), "chmod 777 on root path"),
     (re.compile(r"chown\s+-R\s+root", re.IGNORECASE), "chown -R root"),
     # Service disruption
-    (re.compile(r"systemctl\s+stop\s+(sshd|iptables|firewalld)", re.IGNORECASE), "stop critical service"),
+    (
+        re.compile(r"systemctl\s+stop\s+(sshd|iptables|firewalld)", re.IGNORECASE),
+        "stop critical service",
+    ),
     # SQL destruction
-    (re.compile(r"\bDROP\s+(TABLE|DATABASE)\b", re.IGNORECASE), "SQL DROP TABLE/DATABASE"),
+    (
+        re.compile(r"\bDROP\s+(TABLE|DATABASE)\b", re.IGNORECASE),
+        "SQL DROP TABLE/DATABASE",
+    ),
     (re.compile(r"\bTRUNCATE\s+TABLE\b", re.IGNORECASE), "SQL TRUNCATE TABLE"),
     # Config overwrite
     (re.compile(r"tee\s+/etc/", re.IGNORECASE), "tee to /etc"),

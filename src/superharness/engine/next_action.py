@@ -4,6 +4,7 @@ Pure leaf module: no imports from other superharness engine modules.
 Called by adapter_payload to populate next_action per task in schema v1.3.
 Centralizes lifecycle and workflow logic (previously in lifecycle.py).
 """
+
 from __future__ import annotations
 
 import re
@@ -154,29 +155,30 @@ _MAPPING: dict[str, tuple[Optional[str], list[str], str]] = {
 # ---------------------------------------------------------------------------
 
 _STATUS_LABELS: dict[str, str] = {
-    "todo":                  "To Do",
-    "plan_proposed":         "Plan Proposed",
-    "plan_approved":         "Plan Approved",
-    "in_progress":           "In Progress",
+    "todo": "To Do",
+    "plan_proposed": "Plan Proposed",
+    "plan_approved": "Plan Approved",
+    "in_progress": "In Progress",
     "pending_user_approval": "Pending User Approval",
-    "report_ready":          "Report Ready",
-    "review_requested":      "Review Requested",
-    "review_passed":         "Review Passed",
-    "review_failed":         "Review Failed",
-    "pr_open":               "PR Open",
-    "done":                  "Done",
-    "failed":                "Failed",
-    "stopped":               "Stopped",
-    "blocked":               "Blocked",
-    "waiting_input":         "Waiting Input",
-    "paused":                "Paused",
-    "archived":              "Archived",
+    "report_ready": "Report Ready",
+    "review_requested": "Review Requested",
+    "review_passed": "Review Passed",
+    "review_failed": "Review Failed",
+    "pr_open": "PR Open",
+    "done": "Done",
+    "failed": "Failed",
+    "stopped": "Stopped",
+    "blocked": "Blocked",
+    "waiting_input": "Waiting Input",
+    "paused": "Paused",
+    "archived": "Archived",
 }
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class NextAction:
@@ -205,7 +207,9 @@ def next_action(status: str) -> NextAction:
     """
     entry = _MAPPING.get(status)
     if entry is None:
-        return NextAction(recommended=None, legal=[], reason=f"unknown status: {status}")
+        return NextAction(
+            recommended=None, legal=[], reason=f"unknown status: {status}"
+        )
     recommended, legal, reason = entry
     return NextAction(recommended=recommended, legal=legal, reason=reason)
 
@@ -226,7 +230,9 @@ def infer_workflow(task_id: str, task_obj: dict | None) -> str:
     return "implementation"
 
 
-def allowed_statuses_for_workflow(workflow: str, *, for_review: bool = False) -> set[str]:
+def allowed_statuses_for_workflow(
+    workflow: str, *, for_review: bool = False
+) -> set[str]:
     """Return the set of statuses at which a task is dispatchable.
 
     Terminal statuses (done/failed/stopped) are not included here — callers
@@ -271,7 +277,13 @@ def plan_only_allowed_statuses(workflow: str) -> set[str]:
     workflows inherit their normal allowed set (plan-only is a no-op there).
     """
     if workflow == "implementation":
-        return {"todo", "plan_proposed", "plan_approved", "review_failed", "in_progress"}
+        return {
+            "todo",
+            "plan_proposed",
+            "plan_approved",
+            "review_failed",
+            "in_progress",
+        }
     return allowed_statuses_for_workflow(workflow)
 
 
@@ -313,14 +325,34 @@ STATUS_TO_COL: dict[str, str] = {
 # Also serves as the JS STATUS_GROUPS definition
 STATUS_GROUPS: list[dict] = [
     {"key": "archived", "label": "📁 archived", "statuses": ["archived"]},
-    {"key": "done",     "label": "✅ done",     "statuses": ["done"]},
-    {"key": "failed",   "label": "❌ failed",   "statuses": ["failed"]},
-    {"key": "stopped",  "label": "⛔ stopped",   "statuses": ["stopped"]},
-    {"key": "pr_open",  "label": "🔀 pr open",   "statuses": ["pr_open"]},
-    {"key": "review",   "label": "🔍 review",    "statuses": ["report_ready", "review_requested", "review_passed", "review_failed"]},
-    {"key": "in_progress", "label": "🔄 in progress", "statuses": ["in_progress", "launched", "running", "waiting_input", "paused", "pending_user_approval"]},
-    {"key": "plan",     "label": "📋 plan",      "statuses": ["plan_proposed", "plan_approved"]},
-    {"key": "todo",     "label": "🕐 todo",      "statuses": ["todo", "blocked", "pending"]},
+    {"key": "done", "label": "✅ done", "statuses": ["done"]},
+    {"key": "failed", "label": "❌ failed", "statuses": ["failed"]},
+    {"key": "stopped", "label": "⛔ stopped", "statuses": ["stopped"]},
+    {"key": "pr_open", "label": "🔀 pr open", "statuses": ["pr_open"]},
+    {
+        "key": "review",
+        "label": "🔍 review",
+        "statuses": [
+            "report_ready",
+            "review_requested",
+            "review_passed",
+            "review_failed",
+        ],
+    },
+    {
+        "key": "in_progress",
+        "label": "🔄 in progress",
+        "statuses": [
+            "in_progress",
+            "launched",
+            "running",
+            "waiting_input",
+            "paused",
+            "pending_user_approval",
+        ],
+    },
+    {"key": "plan", "label": "📋 plan", "statuses": ["plan_proposed", "plan_approved"]},
+    {"key": "todo", "label": "🕐 todo", "statuses": ["todo", "blocked", "pending"]},
 ]
 
 

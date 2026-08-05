@@ -11,6 +11,7 @@ This test pins the contract: closing a task fires exactly one `on_close` hook
 with a context the obsidian action understands (task_id, summary, project_name,
 actor). It does not assert a vault write — that is module-gated and opt-in.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

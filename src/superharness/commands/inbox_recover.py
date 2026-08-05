@@ -1,8 +1,8 @@
 """Recover stale launched inbox items — reads from SQLite via state_reader."""
+
 from __future__ import annotations
 
 import logging
-import os
 import sys
 from datetime import datetime, timezone
 
@@ -25,12 +25,20 @@ def main(argv: list[str] | None = None) -> None:
         _preview_recover(opts.project, opts.timeout_minutes)
         sys.exit(0)
 
-    sys.exit(_recover(project_dir=opts.project, now=now, timeout_minutes=opts.timeout_minutes, action=opts.action))
+    sys.exit(
+        _recover(
+            project_dir=opts.project,
+            now=now,
+            timeout_minutes=opts.timeout_minutes,
+            action=opts.action,
+        )
+    )
 
 
 def _preview_recover(project_dir: str, timeout_minutes: int) -> None:
     """Print stale launched items without modifying state."""
     from superharness.engine.state_reader import get_inbox_items
+
     items = get_inbox_items(project_dir)
     now = datetime.now(timezone.utc)
     timeout_seconds = timeout_minutes * 60
@@ -47,7 +55,9 @@ def _preview_recover(project_dir: str, timeout_minutes: int) -> None:
         try:
             ts = datetime.fromisoformat(str(launched_at).replace("Z", "+00:00"))
             if (now - ts).total_seconds() >= timeout_seconds:
-                print(f"  would recover: {item.get('id')} ({item.get('task', '')}) launched {launched_at}")
+                print(
+                    f"  would recover: {item.get('id')} ({item.get('task', '')}) launched {launched_at}"
+                )
                 count += 1
         except (ValueError, TypeError):
             pass
@@ -86,10 +96,18 @@ def _recover(*, project_dir: str, now: str, timeout_minutes: int, action: str) -
             conn = get_connection(project_dir)
             try:
                 init_db(conn)
-                inbox_dao.update_status(conn, item.get("id", ""), from_status="launched", to_status=to_status, now=now)
+                inbox_dao.update_status(
+                    conn,
+                    item.get("id", ""),
+                    from_status="launched",
+                    to_status=to_status,
+                    now=now,
+                )
                 conn.commit()
                 updated += 1
-                print(f"recover: {item.get('id')} ({item.get('task', '')}) → {to_status}")
+                print(
+                    f"recover: {item.get('id')} ({item.get('task', '')}) → {to_status}"
+                )
             finally:
                 conn.close()
         except Exception as e:

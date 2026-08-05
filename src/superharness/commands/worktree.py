@@ -1,10 +1,11 @@
 """shux worktree — manual worktree management.
 
-    shux worktree list    [--project PATH]
-    shux worktree create  <task-id> [--project PATH]
-    shux worktree remove  <path>    [--project PATH]
-    shux worktree gc                [--project PATH] [--dry-run]
+shux worktree list    [--project PATH]
+shux worktree create  <task-id> [--project PATH]
+shux worktree remove  <path>    [--project PATH]
+shux worktree gc                [--project PATH] [--dry-run]
 """
+
 from __future__ import annotations
 
 import os
@@ -27,7 +28,9 @@ def _git_worktrees(project_dir: Path) -> list[dict]:
     """Return parsed output of `git worktree list --porcelain`."""
     r = subprocess.run(
         ["git", "-C", str(project_dir), "worktree", "list", "--porcelain"],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     worktrees = []
     current: dict = {}
@@ -69,7 +72,11 @@ def worktree_list(project):
         path = wt.get("path", "")
         branch = wt.get("branch", "")
         head = wt.get("head", "")
-        linked = " [superharness]" if os.path.exists(os.path.join(path, ".superharness")) else ""
+        linked = (
+            " [superharness]"
+            if os.path.exists(os.path.join(path, ".superharness"))
+            else ""
+        )
         click.echo(f"{path:<55} {branch:<30} {head}{linked}")
 
 
@@ -79,16 +86,32 @@ def worktree_list(project):
 def worktree_create(task_id, project):
     """Create an isolated worktree for TASK_ID and print its path."""
     project_dir = _project(project)
-    if not (project_dir / ".git").exists() and not (project_dir / ".superharness").exists():
-        click.echo(f"error: {project_dir} is not a git repo with superharness", err=True)
+    if (
+        not (project_dir / ".git").exists()
+        and not (project_dir / ".superharness").exists()
+    ):
+        click.echo(
+            f"error: {project_dir} is not a git repo with superharness", err=True
+        )
         sys.exit(1)
 
     worktree_dir = os.path.join(WORKTREE_BASE, f"{task_id}-{uuid.uuid4().hex[:8]}")
     os.makedirs(os.path.dirname(worktree_dir), exist_ok=True)
 
     r = subprocess.run(
-        ["git", "-C", str(project_dir), "worktree", "add", "--detach", worktree_dir, "HEAD"],
-        capture_output=True, text=True, check=False,
+        [
+            "git",
+            "-C",
+            str(project_dir),
+            "worktree",
+            "add",
+            "--detach",
+            worktree_dir,
+            "HEAD",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if r.returncode != 0:
         click.echo(f"error: git worktree add failed: {r.stderr.strip()}", err=True)
@@ -115,7 +138,9 @@ def worktree_remove(path, project):
 
     r = subprocess.run(
         ["git", "-C", str(project_dir), "worktree", "remove", "--force", path],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if r.returncode != 0:
         click.echo(f"error: {r.stderr.strip()}", err=True)
@@ -123,17 +148,24 @@ def worktree_remove(path, project):
 
     subprocess.run(
         ["git", "-C", str(project_dir), "worktree", "prune"],
-        capture_output=True, check=False,
+        capture_output=True,
+        check=False,
     )
     click.echo(f"removed: {path}")
 
 
 @cmd_worktree.command(name="gc")
 @click.option("--project", "-p", default=None, help="Project directory (default: cwd)")
-@click.option("--dry-run", is_flag=True, default=False, help="Show what would be removed without removing")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    default=False,
+    help="Show what would be removed without removing",
+)
 def worktree_gc(project, dry_run):
     """Remove orphaned dispatch worktrees."""
     from superharness.commands.worktree_gc import run_worktree_gc
+
     project_dir = _project(project)
     run_worktree_gc(str(project_dir), dry_run=dry_run)
 

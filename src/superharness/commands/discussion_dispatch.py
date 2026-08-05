@@ -3,6 +3,7 @@
 Scans active discussions, checks for round completion, advances or closes,
 and enqueues next-round inbox items for all participants.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,14 +28,18 @@ def _now_id_ts() -> str:
 def _run_engine(args: list[str]) -> "subprocess.CompletedProcess[str]":
     return subprocess.run(
         [sys.executable, "-m", "superharness.engine.discussion"] + args,
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
 def _run_inbox(args: list[str]) -> "subprocess.CompletedProcess[str]":
     return subprocess.run(
         [sys.executable, "-m", "superharness.engine.inbox"] + args,
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
@@ -49,6 +54,7 @@ def _retry_exhausted(project_dir: str, agent: str, task_key: str) -> bool:
     """
     try:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -75,7 +81,14 @@ def _retry_exhausted(project_dir: str, agent: str, task_key: str) -> bool:
         return False
 
 
-def _retry_agent(project_dir: str, agent: str, task_key: str, disc_id: str, round_: int, round_title: str = "") -> bool:
+def _retry_agent(
+    project_dir: str,
+    agent: str,
+    task_key: str,
+    disc_id: str,
+    round_: int,
+    round_title: str = "",
+) -> bool:
     """Re-queue the last failed inbox row for (agent, task_key) with incremented retry_count.
 
     Unlike _enqueue_for_agent (which creates a NEW row with retry_count=0),
@@ -86,6 +99,7 @@ def _retry_agent(project_dir: str, agent: str, task_key: str, disc_id: str, roun
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -102,11 +116,15 @@ def _retry_agent(project_dir: str, agent: str, task_key: str, disc_id: str, roun
             max_retries = int(row["max_retries"] or 3)
             if new_count > max_retries:
                 return False
-            preserved_reason = row["failed_reason"] or f"retry {new_count}/{max_retries}"
+            preserved_reason = (
+                row["failed_reason"] or f"retry {new_count}/{max_retries}"
+            )
             now = _now_utc()
             inbox_dao.set_retry(conn, row["id"], new_count, preserved_reason, now)
             conn.commit()
-            print(f"  Retried round {round_} for {agent}: {row['id']} (attempt {new_count}/{max_retries})")
+            print(
+                f"  Retried round {round_} for {agent}: {row['id']} (attempt {new_count}/{max_retries})"
+            )
             return True
         finally:
             conn.close()
@@ -173,7 +191,7 @@ def _agent_available(
                 (agent,),
             ).fetchone()
             if hb is not None and hb["status"] == "zombie":
-                return False, f"no daemon heartbeat (agent not running)"
+                return False, "no daemon heartbeat (agent not running)"
         finally:
             conn.close()
     except Exception:
@@ -181,8 +199,10 @@ def _agent_available(
 
     # 3. Check if the adapter binary is installed
     import shutil
+
     try:
         from superharness.engine.adapter_registry import load_manifest
+
         manifest = load_manifest(agent)
         required_bin = (manifest.requires or {}).get("bin")
         if required_bin and manifest.validation.get("check_bin", True):
@@ -206,9 +226,9 @@ def _recover_orphaned_dispatches(project_dir: str) -> None:
     last_heartbeat IS NULL or > timeout_ago) and marks them as failed so
     the normal retry mechanism picks them up on the next poll cycle.
     """
-    import sqlite3
     try:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -226,11 +246,17 @@ def _recover_orphaned_dispatches(project_dir: str) -> None:
             for row in stuck:
                 conn.execute(
                     "UPDATE inbox SET status = 'failed', failed_reason = ?, failed_at = ? WHERE id = ?",
-                    ("orphaned_dispatch (watcher restart, no heartbeat)", now, row["id"]),
+                    (
+                        "orphaned_dispatch (watcher restart, no heartbeat)",
+                        now,
+                        row["id"],
+                    ),
                 )
                 _log.warning(
                     "discussion_dispatch: orphaned inbox item %s (agent=%s task=%s) marked failed",
-                    row["id"], row["target_agent"], row["task_id"],
+                    row["id"],
+                    row["target_agent"],
+                    row["task_id"],
                 )
             if stuck:
                 conn.commit()
@@ -238,10 +264,14 @@ def _recover_orphaned_dispatches(project_dir: str) -> None:
         finally:
             conn.close()
     except Exception as e:
-        _log.warning("discussion_dispatch.py orphan recovery error: %s", e, exc_info=True)
+        _log.warning(
+            "discussion_dispatch.py orphan recovery error: %s", e, exc_info=True
+        )
 
 
-def _ensure_round_task(project_dir: str, disc_id: str, round_: int, title: str, owner: str = "claude-code") -> None:
+def _ensure_round_task(
+    project_dir: str, disc_id: str, round_: int, title: str, owner: str = "claude-code"
+) -> None:
     """Create the round task row in tasks if it doesn't already exist.
 
     inbox.task_id is a FK reference to tasks.id — enqueue fails with
@@ -257,6 +287,7 @@ def _ensure_round_task(project_dir: str, disc_id: str, round_: int, title: str, 
     under the wrong owner in shux contract / dashboard.
     """
     from superharness.engine.db import get_connection, init_db
+
     task_id = f"{disc_id}/round-{round_}"
     # Read model_tier and effort from round-1 to propagate to later rounds
     model_tier = "standard"
@@ -285,7 +316,16 @@ def _ensure_round_task(project_dir: str, disc_id: str, round_: int, title: str, 
                 (id, title, owner, status, project_path, created_at, updated_at, workflow, model_tier, effort)
             VALUES (?, ?, ?, 'in_progress', ?, ?, ?, 'discussion', ?, ?)
             """,
-            (task_id, title, owner, project_dir, _now_utc(), _now_utc(), model_tier, effort),
+            (
+                task_id,
+                title,
+                owner,
+                project_dir,
+                _now_utc(),
+                _now_utc(),
+                model_tier,
+                effort,
+            ),
         )
         conn.commit()
     finally:
@@ -300,23 +340,45 @@ def _enqueue_for_agent(
     project_dir: str,
     round_title: str = "",
 ) -> None:
-    _ensure_round_task(project_dir, disc_id, round_, round_title or f"Discussion round {round_}: {disc_id}", owner=agent)
+    _ensure_round_task(
+        project_dir,
+        disc_id,
+        round_,
+        round_title or f"Discussion round {round_}: {disc_id}",
+        owner=agent,
+    )
     item_id = f"{_now_id_ts()}-{disc_id}-r{round_}-{agent}-{os.getpid()}-{secrets.token_hex(3)}"
-    rc = _run_inbox([
-        "enqueue",
-        "--file", inbox_file,
-        "--id", item_id,
-        "--to", agent,
-        "--task", f"{disc_id}/round-{round_}",
-        "--project", project_dir,
-        "--priority", "1",
-        "--created-at", _now_utc(),
-        "--type", "discussion",
-    ])
+    rc = _run_inbox(
+        [
+            "enqueue",
+            "--file",
+            inbox_file,
+            "--id",
+            item_id,
+            "--to",
+            agent,
+            "--task",
+            f"{disc_id}/round-{round_}",
+            "--project",
+            project_dir,
+            "--priority",
+            "1",
+            "--created-at",
+            _now_utc(),
+            "--type",
+            "discussion",
+        ]
+    )
     if rc.returncode == 0:
         print(f"  Enqueued round {round_} for {agent}: {item_id}")
     else:
-        _log.warning("Failed to enqueue %s round %d for %s: %s", disc_id, round_, agent, rc.stderr)
+        _log.warning(
+            "Failed to enqueue %s round %d for %s: %s",
+            disc_id,
+            round_,
+            agent,
+            rc.stderr,
+        )
 
 
 def dispatch(project_dir: str) -> int:
@@ -368,17 +430,19 @@ def dispatch(project_dir: str) -> int:
         if created_at:
             try:
                 from superharness.engine import tasks_dao
+
                 round_1_id = f"{disc_id}/round-1"
                 conn2 = get_connection(project_dir)
                 try:
                     init_db(conn2)
                     task = tasks_dao.get(conn2, round_1_id)
-                    effort = (task.effort if task and task.effort else "medium")
+                    effort = task.effort if task and task.effort else "medium"
                 finally:
                     conn2.close()
 
                 deadline_minutes = {"low": 10, "medium": 20, "high": 30}.get(effort, 20)
                 from datetime import datetime, timezone, timedelta
+
                 created_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
                 deadline_dt = created_dt + timedelta(minutes=deadline_minutes)
                 now = datetime.now(timezone.utc)
@@ -390,24 +454,37 @@ def dispatch(project_dir: str) -> int:
                         f"created={created_at}) — auto-closing"
                     )
                     try:
-                        from superharness.engine.discussion import cmd_close as _cmd_close
+                        from superharness.engine.discussion import (
+                            cmd_close as _cmd_close,
+                        )
+
                         _cmd_close(
                             discussion_dir,
                             outcome="cancelled",
                             reason=f"deadline_exceeded ({deadline_minutes}min, effort={effort})",
                         )
                     except Exception as _ce:
-                        _log.warning("discussion_dispatch: cmd_close failed for %s: %s", disc_id, _ce)
+                        _log.warning(
+                            "discussion_dispatch: cmd_close failed for %s: %s",
+                            disc_id,
+                            _ce,
+                        )
                     continue
             except Exception as e:
-                _log.warning("discussion_dispatch.py deadline check error: %s", e, exc_info=True)
+                _log.warning(
+                    "discussion_dispatch.py deadline check error: %s", e, exc_info=True
+                )
 
         # Check if current round is complete
-        check_result = _run_engine([
-            "check_round",
-            "--discussion-dir", discussion_dir,
-            "--round", str(current_round),
-        ])
+        check_result = _run_engine(
+            [
+                "check_round",
+                "--discussion-dir",
+                discussion_dir,
+                "--round",
+                str(current_round),
+            ]
+        )
         if check_result.returncode != 0:
             continue
         try:
@@ -417,7 +494,9 @@ def dispatch(project_dir: str) -> int:
 
         if check_json.get("complete"):
             # Advance: close with consensus/no_consensus or bump to next round
-            advance_result = _run_engine(["advance", "--discussion-dir", discussion_dir])
+            advance_result = _run_engine(
+                ["advance", "--discussion-dir", discussion_dir]
+            )
             if advance_result.returncode != 0:
                 continue
             try:
@@ -437,20 +516,32 @@ def dispatch(project_dir: str) -> int:
                     # the *current* round (before current_round increments in
                     # the engine) flood the inbox with duplicate dispatches.
                     task_key = f"{disc_id}/round-{next_round}"
-                    has_result = _run_inbox([
-                        "has_active",
-                        "--file", inbox_file,
-                        "--to", agent,
-                        "--task", task_key,
-                    ])
-                    if has_result.returncode == 0 and has_result.stdout.strip() == "true":
+                    has_result = _run_inbox(
+                        [
+                            "has_active",
+                            "--file",
+                            inbox_file,
+                            "--to",
+                            agent,
+                            "--task",
+                            task_key,
+                        ]
+                    )
+                    if (
+                        has_result.returncode == 0
+                        and has_result.stdout.strip() == "true"
+                    ):
                         continue
-                    _enqueue_for_agent(inbox_file, disc_id, next_round, agent, project_dir, round_title)
+                    _enqueue_for_agent(
+                        inbox_file, disc_id, next_round, agent, project_dir, round_title
+                    )
 
             elif action == "closed":
                 reason = advance_json.get("reason", "unknown")
                 round_closed = advance_json.get("round", current_round)
-                print(f"Discussion {disc_id}: closed (reason={reason}, round={round_closed})")
+                print(
+                    f"Discussion {disc_id}: closed (reason={reason}, round={round_closed})"
+                )
 
         else:
             # Round not complete — re-enqueue only agents who have no
@@ -479,33 +570,45 @@ def dispatch(project_dir: str) -> int:
                 # we still catch already-submitted agents here.
                 try:
                     from superharness.engine import discussions_dao as _ddao
+
                     # Fresh connection — the one opened above was closed after the
                     # active-discussion scan, so reusing it raised ProgrammingError
                     # (swallowed) and this guard never actually ran.
                     _check_conn = get_connection(project_dir)
                     try:
                         init_db(_check_conn)
-                        if _ddao.is_submitted(_check_conn, disc_id, current_round, agent):
+                        if _ddao.is_submitted(
+                            _check_conn, disc_id, current_round, agent
+                        ):
                             continue
                     finally:
                         _check_conn.close()
                 except Exception:
                     pass  # don't block on DAO failure
 
-                has_result = _run_inbox([
-                    "has_active",
-                    "--file", inbox_file,
-                    "--to", agent,
-                    "--task", task_key,
-                ])
-                already_active = has_result.returncode == 0 and has_result.stdout.strip() == "true"
+                has_result = _run_inbox(
+                    [
+                        "has_active",
+                        "--file",
+                        inbox_file,
+                        "--to",
+                        agent,
+                        "--task",
+                        task_key,
+                    ]
+                )
+                already_active = (
+                    has_result.returncode == 0 and has_result.stdout.strip() == "true"
+                )
                 if already_active:
                     continue
 
                 # Check if the agent is actually available (binary installed, not rate-limited).
                 # Scope block-check to this specific task + recency window so a stale
                 # block from a different discussion does not disqualify the agent.
-                available, reason = _agent_available(agent, project_dir, task_id=task_key)
+                available, reason = _agent_available(
+                    agent, project_dir, task_id=task_key
+                )
                 if not available:
                     print(
                         f"  Skipping {agent} for round {current_round}: "
@@ -528,10 +631,22 @@ def dispatch(project_dir: str) -> int:
 
                 # Re-queue existing failed row (preserves retry_count + failed_reason).
                 # Falls back to creating a new row if no failed row exists (first launch).
-                if not _retry_agent(project_dir, agent, task_key, disc_id, current_round,
-                                    f"Discussion round {current_round}: {topic}"):
-                    _enqueue_for_agent(inbox_file, disc_id, current_round, agent, project_dir,
-                                       f"Discussion round {current_round}: {topic}")
+                if not _retry_agent(
+                    project_dir,
+                    agent,
+                    task_key,
+                    disc_id,
+                    current_round,
+                    f"Discussion round {current_round}: {topic}",
+                ):
+                    _enqueue_for_agent(
+                        inbox_file,
+                        disc_id,
+                        current_round,
+                        agent,
+                        project_dir,
+                        f"Discussion round {current_round}: {topic}",
+                    )
 
     return 0
 

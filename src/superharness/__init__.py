@@ -1,4 +1,5 @@
 """superharness — multi-agent session handoff framework."""
+
 from importlib.metadata import version as _version, PackageNotFoundError as _PNF
 
 try:

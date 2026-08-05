@@ -11,7 +11,9 @@ import sys
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
 
-def _make_project(tmp_path: Path, task_id: str, owner: str, status: str = "in_progress") -> Path:
+def _make_project(
+    tmp_path: Path, task_id: str, owner: str, status: str = "in_progress"
+) -> Path:
     project = tmp_path / f"proj-{task_id}"
     project.mkdir()
     harness = project / ".superharness"
@@ -23,11 +25,12 @@ def _make_project(tmp_path: Path, task_id: str, owner: str, status: str = "in_pr
         f"    title: Test task\n"
         f"    status: {status}\n"
         f"    owner: {owner}\n"
-        f"    project_path: \"{project}\"\n"
+        f'    project_path: "{project}"\n'
         f"decisions: []\n"
         f"failures: []\n"
     )
     from tests.helpers import seed_sqlite_from_yaml
+
     seed_sqlite_from_yaml(project)
     return project
 
@@ -51,14 +54,22 @@ def _task_sh(repo_root: Path, project: Path, *args: str) -> subprocess.Completed
         ("stopped", "", "", False, "reason"),
         ("todo", "queued", "", True, "status: todo"),
         ("in_progress", "working", "", True, "status: in_progress"),
-        ("pending_user_approval", "awaiting approval", "", True, "status: pending_user_approval"),
+        (
+            "pending_user_approval",
+            "awaiting approval",
+            "",
+            True,
+            "status: pending_user_approval",
+        ),
         ("done", "completed", "", True, "status: done"),
         ("failed", "", "runtime_failure", True, "status: failed"),
         ("stopped", "", "operator_halt", True, "status: stopped"),
     ],
 )
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_task_status_requirements_matrix(repo_root, tmp_path, status, summary, reason, expect_ok, needle) -> None:
+def test_task_status_requirements_matrix(
+    repo_root, tmp_path, status, summary, reason, expect_ok, needle
+) -> None:
     project = _make_project(tmp_path, f"matrix-{status}", "claude-code")
     args = [
         "--id",
@@ -88,11 +99,16 @@ def test_failed_status_records_reason(repo_root, tmp_path) -> None:
     project = _make_project(tmp_path, "my-task", "claude-code")
 
     result = _task_sh(
-        repo_root, project,
-        "--id", "my-task",
-        "--status", "failed",
-        "--actor", "claude-code",
-        "--reason", "orphaned_no_output",
+        repo_root,
+        project,
+        "--id",
+        "my-task",
+        "--status",
+        "failed",
+        "--actor",
+        "claude-code",
+        "--reason",
+        "orphaned_no_output",
     )
 
     assert result.returncode == 0, result.stderr
@@ -107,10 +123,14 @@ def test_failed_status_requires_reason(repo_root, tmp_path) -> None:
     project = _make_project(tmp_path, "my-task2", "claude-code")
 
     result = _task_sh(
-        repo_root, project,
-        "--id", "my-task2",
-        "--status", "failed",
-        "--actor", "claude-code",
+        repo_root,
+        project,
+        "--id",
+        "my-task2",
+        "--status",
+        "failed",
+        "--actor",
+        "claude-code",
     )
 
     assert result.returncode != 0
@@ -123,19 +143,29 @@ def test_failed_status_clears_reason_on_reopen(repo_root, tmp_path) -> None:
     project = _make_project(tmp_path, "my-task3", "claude-code")
 
     _task_sh(
-        repo_root, project,
-        "--id", "my-task3",
-        "--status", "failed",
-        "--actor", "claude-code",
-        "--reason", "some_reason",
+        repo_root,
+        project,
+        "--id",
+        "my-task3",
+        "--status",
+        "failed",
+        "--actor",
+        "claude-code",
+        "--reason",
+        "some_reason",
     )
 
     result = _task_sh(
-        repo_root, project,
-        "--id", "my-task3",
-        "--status", "todo",
-        "--actor", "claude-code",
-        "--summary", "Reopened after false alarm.",
+        repo_root,
+        project,
+        "--id",
+        "my-task3",
+        "--status",
+        "todo",
+        "--actor",
+        "claude-code",
+        "--summary",
+        "Reopened after false alarm.",
     )
     assert result.returncode == 0, result.stderr
 
@@ -150,11 +180,16 @@ def test_stopped_status_records_reason(repo_root, tmp_path) -> None:
     project = _make_project(tmp_path, "my-task-stop", "codex-cli")
 
     result = _task_sh(
-        repo_root, project,
-        "--id", "my-task-stop",
-        "--status", "stopped",
-        "--actor", "codex-cli",
-        "--reason", "operator_manually_halted",
+        repo_root,
+        project,
+        "--id",
+        "my-task-stop",
+        "--status",
+        "stopped",
+        "--actor",
+        "codex-cli",
+        "--reason",
+        "operator_manually_halted",
     )
 
     assert result.returncode == 0, result.stderr
@@ -169,10 +204,14 @@ def test_stopped_status_requires_reason(repo_root, tmp_path) -> None:
     project = _make_project(tmp_path, "my-task-stop2", "codex-cli")
 
     result = _task_sh(
-        repo_root, project,
-        "--id", "my-task-stop2",
-        "--status", "stopped",
-        "--actor", "codex-cli",
+        repo_root,
+        project,
+        "--id",
+        "my-task-stop2",
+        "--status",
+        "stopped",
+        "--actor",
+        "codex-cli",
     )
 
     assert result.returncode != 0
@@ -184,11 +223,16 @@ def test_done_status_records_summary(repo_root, tmp_path) -> None:
     project = _make_project(tmp_path, "my-task-done", "claude-code")
 
     result = _task_sh(
-        repo_root, project,
-        "--id", "my-task-done",
-        "--status", "done",
-        "--actor", "claude-code",
-        "--summary", "Split README into user-guide and architecture docs. PR merged.",
+        repo_root,
+        project,
+        "--id",
+        "my-task-done",
+        "--status",
+        "done",
+        "--actor",
+        "claude-code",
+        "--summary",
+        "Split README into user-guide and architecture docs. PR merged.",
     )
 
     assert result.returncode == 0, result.stderr
@@ -202,11 +246,16 @@ def test_in_progress_status_records_summary(repo_root, tmp_path) -> None:
     project = _make_project(tmp_path, "my-task-wip", "claude-code", status="todo")
 
     result = _task_sh(
-        repo_root, project,
-        "--id", "my-task-wip",
-        "--status", "in_progress",
-        "--actor", "claude-code",
-        "--summary", "Started refactor, blocked on missing fixture.",
+        repo_root,
+        project,
+        "--id",
+        "my-task-wip",
+        "--status",
+        "in_progress",
+        "--actor",
+        "claude-code",
+        "--summary",
+        "Started refactor, blocked on missing fixture.",
     )
 
     assert result.returncode == 0, result.stderr
@@ -219,10 +268,14 @@ def test_summary_is_required_for_done(repo_root, tmp_path) -> None:
     project = _make_project(tmp_path, "my-task-nosummary", "claude-code")
 
     result = _task_sh(
-        repo_root, project,
-        "--id", "my-task-nosummary",
-        "--status", "done",
-        "--actor", "claude-code",
+        repo_root,
+        project,
+        "--id",
+        "my-task-nosummary",
+        "--status",
+        "done",
+        "--actor",
+        "claude-code",
     )
 
     assert result.returncode != 0
@@ -233,10 +286,14 @@ def test_pending_user_approval_status_requires_summary(repo_root, tmp_path) -> N
     project = _make_project(tmp_path, "my-task-approval-summary", "claude-code")
 
     result = _task_sh(
-        repo_root, project,
-        "--id", "my-task-approval-summary",
-        "--status", "pending_user_approval",
-        "--actor", "claude-code",
+        repo_root,
+        project,
+        "--id",
+        "my-task-approval-summary",
+        "--status",
+        "pending_user_approval",
+        "--actor",
+        "claude-code",
     )
 
     assert result.returncode != 0
@@ -248,11 +305,16 @@ def test_pending_user_approval_status_records_summary(repo_root, tmp_path) -> No
     project = _make_project(tmp_path, "my-task-approval", "claude-code")
 
     result = _task_sh(
-        repo_root, project,
-        "--id", "my-task-approval",
-        "--status", "pending_user_approval",
-        "--actor", "claude-code",
-        "--summary", "Consensus reached, awaiting user approval.",
+        repo_root,
+        project,
+        "--id",
+        "my-task-approval",
+        "--status",
+        "pending_user_approval",
+        "--actor",
+        "claude-code",
+        "--summary",
+        "Consensus reached, awaiting user approval.",
     )
 
     assert result.returncode == 0, result.stderr
@@ -281,7 +343,7 @@ def test_deadline_check_sets_contract_failed_reason(repo_root, tmp_path) -> None
         f"    status: in_progress\n"
         f"    owner: claude-code\n"
         f"    deadline_minutes: 1\n"
-        f"    project_path: \"{project}\"\n"
+        f'    project_path: "{project}"\n'
         f"decisions: []\n"
         f"failures: []\n"
     )
@@ -291,7 +353,7 @@ def test_deadline_check_sets_contract_failed_reason(repo_root, tmp_path) -> None
         f"- id: inbox-slow-task\n"
         f"  to: claude-code\n"
         f"  task: slow-task\n"
-        f"  project: \"{project}\"\n"
+        f'  project: "{project}"\n'
         f"  status: launched\n"
         f"  launched_at: 2026-01-01T00:00:00Z\n"
         f"  priority: 1\n"

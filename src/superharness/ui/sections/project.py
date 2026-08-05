@@ -1,4 +1,5 @@
 """Project identity section — reads/writes project_name and stack in profile.yaml."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,6 +17,7 @@ def run(project_dir: Path, non_interactive: bool = False) -> None:
 
     # Read current project_name; default to directory name
     from superharness.engine.profile import read_field
+
     current_name = read_field(project_dir, "project_name") or project_dir.name
 
     print_info(f"Directory: {project_dir.name}")
@@ -34,6 +36,7 @@ def run(project_dir: Path, non_interactive: bool = False) -> None:
 
     # Always persist stack (auto-detected, not prompted)
     from superharness.engine.profile import write_field
+
     write_field(project_dir, "stack", _stack)
     write_field(project_dir, "status", read_field(project_dir, "status") or "active")
 
@@ -41,6 +44,7 @@ def run(project_dir: Path, non_interactive: bool = False) -> None:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _detect_stack(project_dir: Path) -> str:
     if (project_dir / "pyproject.toml").exists() or (project_dir / "setup.py").exists():

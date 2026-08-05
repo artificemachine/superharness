@@ -1,10 +1,10 @@
 """RED tests for the watcher section (ui/sections/watcher.py)."""
+
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-import pytest
 import yaml
 
 
@@ -13,8 +13,11 @@ def _read_profile(project_dir: Path) -> dict:
     return yaml.safe_load(p.read_text()) if p.exists() else {}
 
 
-def _run_watcher(project_dir: Path, platform_name: str = "Darwin", non_interactive: bool = True):
+def _run_watcher(
+    project_dir: Path, platform_name: str = "Darwin", non_interactive: bool = True
+):
     from superharness.ui.sections.watcher import run
+
     with patch("platform.system", return_value=platform_name):
         run(project_dir, non_interactive=non_interactive)
 
@@ -77,6 +80,7 @@ def test_watcher_section_noop_on_unsupported_platform(tmp_path, capsys):
 def test_watcher_section_non_interactive_no_prompt(tmp_path, monkeypatch):
     """non_interactive=True never calls input()."""
     import builtins
+
     (tmp_path / ".superharness").mkdir()
 
     def _no_input(*a, **kw):
@@ -86,4 +90,5 @@ def test_watcher_section_non_interactive_no_prompt(tmp_path, monkeypatch):
 
     with patch("platform.system", return_value="Darwin"):
         from superharness.ui.sections.watcher import run
+
         run(tmp_path, non_interactive=True)

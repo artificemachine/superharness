@@ -3,6 +3,7 @@
 Agents call `shux heartbeat` every 30s to register liveness.
 The watcher reconciler marks rows stale when updated_at is >2 minutes old.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -60,16 +61,27 @@ def upsert(
                     tokens_used=?, tokens_limit=?, cost_usd=?
                 WHERE agent=?
                 """,
-                (task_id, status, pid, now, 
-                 runtime, active_task, next_wake_at, now,
-                 tokens_used, tokens_limit, cost_usd, agent),
+                (
+                    task_id,
+                    status,
+                    pid,
+                    now,
+                    runtime,
+                    active_task,
+                    next_wake_at,
+                    now,
+                    tokens_used,
+                    tokens_limit,
+                    cost_usd,
+                    agent,
+                ),
             )
             row = conn.execute(
                 "SELECT * FROM agent_heartbeats WHERE agent = ?",
                 (agent,),
             ).fetchone()
         else:
-            cursor = conn.execute(
+            conn.execute(
                 """
                 INSERT INTO agent_heartbeats 
                 (agent, task_id, status, pid, updated_at, created_at,
@@ -77,9 +89,21 @@ def upsert(
                  tokens_used, tokens_limit, cost_usd) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (agent, task_id, status, pid, now, now,
-                 runtime, active_task, next_wake_at, now,
-                 tokens_used, tokens_limit, cost_usd),
+                (
+                    agent,
+                    task_id,
+                    status,
+                    pid,
+                    now,
+                    now,
+                    runtime,
+                    active_task,
+                    next_wake_at,
+                    now,
+                    tokens_used,
+                    tokens_limit,
+                    cost_usd,
+                ),
             )
             row = conn.execute(
                 "SELECT * FROM agent_heartbeats WHERE id = last_insert_rowid()"

@@ -7,6 +7,7 @@ still write round-N-<agent>.yaml into it). Result: every post-migration
 discussion fails to dispatch with 'Discussion directory not found',
 triggering the auto-recover runaway loop we observed at max_retries=65.
 """
+
 from __future__ import annotations
 
 import os
@@ -42,6 +43,7 @@ def test_cmd_start_creates_discussion_directory(tmp_path, capsys):
 
     captured = capsys.readouterr()
     import json
+
     out = json.loads(captured.out)
     disc_dir = out["discussion_dir"]
 

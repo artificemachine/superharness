@@ -1,4 +1,5 @@
 """State-path safety tests for Operator database initialization."""
+
 from __future__ import annotations
 
 import os
@@ -14,9 +15,7 @@ from superharness.utils.paths import (
 )
 
 
-def test_operator_override_conflict_is_fatal_and_non_destructive(
-    tmp_path, monkeypatch
-):
+def test_operator_override_conflict_is_fatal_and_non_destructive(tmp_path, monkeypatch):
     project = tmp_path / "project"
     legacy = project / ".superharness" / "state.sqlite3"
     legacy.parent.mkdir(parents=True)

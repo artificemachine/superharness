@@ -3,14 +3,11 @@
 RED: all tests fail before contract_validate.py exists.
 GREEN: all tests pass after implementation.
 """
+
 from __future__ import annotations
 
-import os
 import sys
 import textwrap
-
-import pytest
-import yaml
 
 
 def _run_validate(tmp_path, contract_content: str | None) -> tuple[int, str, str]:
@@ -25,6 +22,7 @@ def _run_validate(tmp_path, contract_content: str | None) -> tuple[int, str, str
         try:
             from superharness.engine.db import get_connection, init_db
             from superharness.engine.migrate_yaml import migrate_all_to_sqlite
+
             conn = get_connection(str(tmp_path))
             init_db(conn)
             migrate_all_to_sqlite(conn, str(tmp_path))

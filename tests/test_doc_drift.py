@@ -24,6 +24,7 @@ Checks:
      creating, recording, or enqueuing to a state-YAML as if it were live state
      (AGENTS.md/CLAUDE.md establish these as export-only artifacts).
 """
+
 from __future__ import annotations
 
 import re
@@ -47,7 +48,9 @@ _STATE_YAMLS = ("contract.yaml", "inbox.yaml", "decisions.yaml", "failures.yaml"
 
 # A state-YAML within ~40 chars of "source of truth" is a stale storage-SoT claim.
 _STALE_SOT = re.compile(
-    r"(" + "|".join(re.escape(y) for y in _STATE_YAMLS) + r")[^\n]{0,40}source of truth",
+    r"("
+    + "|".join(re.escape(y) for y in _STATE_YAMLS)
+    + r")[^\n]{0,40}source of truth",
     re.IGNORECASE,
 )
 
@@ -62,9 +65,13 @@ _NEGATION = re.compile(
 # than an export/tombstone artifact. Ordered to match "<verb> ... <state-yaml>"
 # (the phrasing every real GUIDE.md violation used: "read contract.yaml",
 # "write subtasks to contract.yaml", "Creates a first task in contract.yaml").
-_STATE_OP_VERBS = r"(?:reads?|writes?|written|creates?|records?|recording|append(?:s|ed)?|enqueues?)"
+_STATE_OP_VERBS = (
+    r"(?:reads?|writes?|written|creates?|records?|recording|append(?:s|ed)?|enqueues?)"
+)
 _STALE_STATE_OP = re.compile(
-    r"\b" + _STATE_OP_VERBS + r"\b[^\n]{0,60}(?:"
+    r"\b"
+    + _STATE_OP_VERBS
+    + r"\b[^\n]{0,60}(?:"
     + "|".join(re.escape(y) for y in _STATE_YAMLS)
     + r")(?!\.lock)",
     re.IGNORECASE,
@@ -101,14 +108,18 @@ class TestDocDrift:
         """Every *.py file named in doctrine must resolve on disk."""
         missing: list[str] = []
         for doc in _doctrine_files():
-            for lineno, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
+            for lineno, line in enumerate(
+                doc.read_text(encoding="utf-8").splitlines(), 1
+            ):
                 for ref in _PY_REF.findall(line):
                     if not ref.endswith(".py"):
                         continue
                     if "*" in ref:  # glob pattern (e.g. *_dao.py), not a literal file
                         continue
                     if not _resolves(ref):
-                        missing.append(f"{doc.relative_to(_REPO)}:{lineno}  names '{ref}' (no such file)")
+                        missing.append(
+                            f"{doc.relative_to(_REPO)}:{lineno}  names '{ref}' (no such file)"
+                        )
         if missing:
             pytest.fail(
                 "Doctrine names *.py files that do not exist (delete-the-file-keep-the-doc drift):\n"
@@ -119,7 +130,9 @@ class TestDocDrift:
         """No doctrine file may call a state-YAML the source of truth (SQLite is)."""
         hits: list[str] = []
         for doc in _doctrine_files():
-            for lineno, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
+            for lineno, line in enumerate(
+                doc.read_text(encoding="utf-8").splitlines(), 1
+            ):
                 if _STALE_SOT.search(line) and not _NEGATION.search(line):
                     hits.append(f"{doc.relative_to(_REPO)}:{lineno}  {line.strip()}")
         if hits:
@@ -136,7 +149,9 @@ class TestDocDrift:
         words "source of truth" (e.g. "read contract.yaml + handoffs")."""
         hits: list[str] = []
         for doc in _doctrine_files():
-            for lineno, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
+            for lineno, line in enumerate(
+                doc.read_text(encoding="utf-8").splitlines(), 1
+            ):
                 if _STALE_STATE_OP.search(line) and not _NEGATION.search(line):
                     hits.append(f"{doc.relative_to(_REPO)}:{lineno}  {line.strip()}")
         if hits:

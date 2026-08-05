@@ -6,7 +6,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from tests.helpers import REPO_ROOT, run_cmd, seed_sqlite_from_yaml, seed_sqlite_heartbeat
+from tests.helpers import (
+    REPO_ROOT,
+    run_cmd,
+    seed_sqlite_from_yaml,
+    seed_sqlite_heartbeat,
+)
 import pytest
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
@@ -17,20 +22,29 @@ def _run_discuss_py(cwd, args: list[str] | None = None):
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT / "src")
     cmd = [sys.executable, "-m", "superharness.commands.discuss"] + (args or [])
-    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
+    return subprocess.run(
+        cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False
+    )
 
 
 def _run_dispatch_py(cwd, args: list[str] | None = None):
     """Run discussion_dispatch Python module."""
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT / "src")
-    cmd = [sys.executable, "-m", "superharness.commands.discussion_dispatch"] + (args or [])
-    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
+    cmd = [sys.executable, "-m", "superharness.commands.discussion_dispatch"] + (
+        args or []
+    )
+    return subprocess.run(
+        cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False
+    )
 
 
 def _run_engine(repo_root: Path, args: list[str]):
     import sys
-    return run_cmd([sys.executable, "-m", "superharness.engine.discussion"] + args, cwd=repo_root)
+
+    return run_cmd(
+        [sys.executable, "-m", "superharness.engine.discussion"] + args, cwd=repo_root
+    )
 
 
 def _setup_project(tmp_path: Path) -> Path:
@@ -75,7 +89,9 @@ def _start_discussion(repo_root: Path, project: Path, *, max_rounds: int = 2) ->
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_discussion_dispatch_advances_and_enqueues_next_round(repo_root, tmp_path) -> None:
+def test_discussion_dispatch_advances_and_enqueues_next_round(
+    repo_root, tmp_path
+) -> None:
     project = _setup_project(tmp_path)
     discussion_dir = _start_discussion(repo_root, project, max_rounds=2)
 
@@ -129,6 +145,7 @@ def test_discussion_dispatch_advances_and_enqueues_next_round(repo_root, tmp_pat
 
     # Inbox is SQLite-backed post-migration.
     import sqlite3 as _sql
+
     db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
     n = db.execute(
         "SELECT COUNT(*) FROM inbox WHERE task_id = ?",
@@ -139,7 +156,9 @@ def test_discussion_dispatch_advances_and_enqueues_next_round(repo_root, tmp_pat
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_discussion_dispatch_reenqueues_only_missing_pending_agents(repo_root, tmp_path) -> None:
+def test_discussion_dispatch_reenqueues_only_missing_pending_agents(
+    repo_root, tmp_path
+) -> None:
     project = _setup_project(tmp_path)
     discussion_dir = _start_discussion(repo_root, project, max_rounds=3)
     discussion_id = discussion_dir.name
@@ -171,6 +190,7 @@ def test_discussion_dispatch_reenqueues_only_missing_pending_agents(repo_root, t
     assert "Enqueued round 1 for claude-code" not in dispatch.stdout
 
     import sqlite3 as _sql
+
     db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
     rows = db.execute(
         "SELECT target_agent FROM inbox WHERE task_id = ?",
@@ -184,7 +204,9 @@ def test_discussion_dispatch_reenqueues_only_missing_pending_agents(repo_root, t
 
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_discussion_dispatch_closes_max_rounds_without_enqueuing_next_round(repo_root, tmp_path) -> None:
+def test_discussion_dispatch_closes_max_rounds_without_enqueuing_next_round(
+    repo_root, tmp_path
+) -> None:
     project = _setup_project(tmp_path)
     discussion_dir = _start_discussion(repo_root, project, max_rounds=1)
     discussion_id = discussion_dir.name
@@ -235,6 +257,7 @@ def test_discussion_dispatch_closes_max_rounds_without_enqueuing_next_round(repo
     assert status_json["status"] == "no_consensus"
 
     import sqlite3 as _sql
+
     db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
     n = db.execute(
         "SELECT COUNT(*) FROM inbox WHERE task_id = ?",
@@ -244,7 +267,9 @@ def test_discussion_dispatch_closes_max_rounds_without_enqueuing_next_round(repo
     assert n == 0
 
 
-def _setup_project_with_contract(tmp_path: Path, owners: list[str] | None = None) -> Path:
+def _setup_project_with_contract(
+    tmp_path: Path, owners: list[str] | None = None
+) -> Path:
     """Create a project with contract containing tasks for given owners."""
     if owners is None:
         owners = ["claude-code", "codex-cli"]
@@ -254,13 +279,16 @@ def _setup_project_with_contract(tmp_path: Path, owners: list[str] | None = None
     (harness / "inbox.yaml").write_text("# inbox\n")
     tasks = []
     for i, owner in enumerate(owners):
-        tasks.append(f"  - id: task-{i}\n    owner: {owner}\n    status: todo\n    project_path: \"{project}\"")
+        tasks.append(
+            f'  - id: task-{i}\n    owner: {owner}\n    status: todo\n    project_path: "{project}"'
+        )
     contract = "id: test\ntasks:\n" + ("\n".join(tasks) if tasks else "") + "\n"
     (harness / "contract.yaml").write_text(contract)
     seed_sqlite_from_yaml(project)
 
     # Mock heartbeats for participants (v1.69.5 requirement)
     from datetime import datetime, timezone
+
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     seed_sqlite_heartbeat(project, agent="watcher", status="alive", now=now)
     for owner in owners:
@@ -276,7 +304,15 @@ def test_discuss_start_creates_contract_task_and_enqueues(repo_root, tmp_path) -
 
     result = _run_discuss_py(
         repo_root,
-        args=["start", "--project", str(project), "--topic", "Test topic", "--max-rounds", "2"],
+        args=[
+            "start",
+            "--project",
+            str(project),
+            "--topic",
+            "Test topic",
+            "--max-rounds",
+            "2",
+        ],
     )
     assert result.returncode == 0, result.stderr
     assert "Discussion started:" in result.stdout
@@ -285,6 +321,7 @@ def test_discuss_start_creates_contract_task_and_enqueues(repo_root, tmp_path) -
 
     # Verify contract task was created in SQLite (post-migration source of truth).
     import sqlite3 as _sql
+
     db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
     round_task = db.execute(
         "SELECT id, status FROM tasks WHERE id LIKE '%/round-1' LIMIT 1"
@@ -293,9 +330,12 @@ def test_discuss_start_creates_contract_task_and_enqueues(repo_root, tmp_path) -
     assert round_task[1] == "in_progress"
 
     # Both agents enqueued
-    targets = [r[0] for r in db.execute(
-        "SELECT target_agent FROM inbox WHERE task_id LIKE '%/round-1'"
-    ).fetchall()]
+    targets = [
+        r[0]
+        for r in db.execute(
+            "SELECT target_agent FROM inbox WHERE task_id LIKE '%/round-1'"
+        ).fetchall()
+    ]
     db.close()
     assert "claude-code" in targets
     assert "codex-cli" in targets
@@ -314,12 +354,15 @@ def test_discuss_start_proceeds_with_watcher_active(repo_root, tmp_path) -> None
     assert "watcher is active" in result.stderr
 
 
-def test_discuss_start_allows_explicit_owners_without_contract_owners(repo_root, tmp_path) -> None:
+def test_discuss_start_allows_explicit_owners_without_contract_owners(
+    repo_root, tmp_path
+) -> None:
     """Explicit --owners should bypass the need for 2 distinct owners in the contract."""
     project = _setup_project_with_contract(tmp_path, owners=["codex-cli"])
 
     # Mock heartbeats for explicit participants
     from datetime import datetime, timezone
+
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     seed_sqlite_heartbeat(project, agent="claude-code", status="alive", now=now)
 
@@ -327,9 +370,12 @@ def test_discuss_start_allows_explicit_owners_without_contract_owners(repo_root,
         repo_root,
         args=[
             "start",
-            "--project", str(project),
-            "--topic", "Explicit owners",
-            "--owners", "claude-code,codex-cli",
+            "--project",
+            str(project),
+            "--topic",
+            "Explicit owners",
+            "--owners",
+            "claude-code,codex-cli",
         ],
     )
     assert result.returncode == 0, result.stderr
@@ -339,10 +385,9 @@ def test_discuss_start_allows_explicit_owners_without_contract_owners(repo_root,
     # inferred from the task id pattern via infer_workflow, not stored
     # as a column). Just check the round task exists.
     import sqlite3 as _sql
+
     db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
-    n = db.execute(
-        "SELECT COUNT(*) FROM tasks WHERE id LIKE '%/round-1'"
-    ).fetchone()[0]
+    n = db.execute("SELECT COUNT(*) FROM tasks WHERE id LIKE '%/round-1'").fetchone()[0]
     db.close()
     assert n >= 1
 
@@ -350,6 +395,7 @@ def test_discuss_start_allows_explicit_owners_without_contract_owners(repo_root,
 def test_discuss_start_rejects_no_owners_without_watcher(repo_root, tmp_path) -> None:
     """Without watcher, start fails when no agent heartbeats are present."""
     import sqlite3 as _sql
+
     project = _setup_project_with_contract(tmp_path, owners=[])
     # Nullify the watcher heartbeat so _watcher_is_alive returns False
     db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
@@ -367,13 +413,22 @@ def test_discuss_start_rejects_no_owners_without_watcher(repo_root, tmp_path) ->
 
 def test_discuss_start_exclude_owner(repo_root, tmp_path) -> None:
     """discuss start --exclude removes an owner from participants."""
-    project = _setup_project_with_contract(tmp_path, owners=["claude-code", "codex-cli", "gemini-cli", "opencode"])
+    project = _setup_project_with_contract(
+        tmp_path, owners=["claude-code", "codex-cli", "gemini-cli", "opencode"]
+    )
 
     result = _run_discuss_py(
         repo_root,
         args=[
-            "start", "--project", str(project), "--topic", "Exclude test",
-            "--exclude", "codex-cli", "--max-rounds", "2",
+            "start",
+            "--project",
+            str(project),
+            "--topic",
+            "Exclude test",
+            "--exclude",
+            "codex-cli",
+            "--max-rounds",
+            "2",
         ],
     )
     assert result.returncode == 0, result.stderr
@@ -389,10 +444,14 @@ def test_discuss_start_exclude_owner(repo_root, tmp_path) -> None:
     assert "codex-cli" not in result.stdout.split("Participants:")[1]
 
     import sqlite3 as _sql
+
     db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
-    targets = {r[0] for r in db.execute(
-        "SELECT target_agent FROM inbox WHERE task_id LIKE '%/round-1'"
-    ).fetchall()}
+    targets = {
+        r[0]
+        for r in db.execute(
+            "SELECT target_agent FROM inbox WHERE task_id LIKE '%/round-1'"
+        ).fetchall()
+    }
     db.close()
     assert "claude-code" in targets
     assert "opencode" in targets
@@ -400,10 +459,15 @@ def test_discuss_start_exclude_owner(repo_root, tmp_path) -> None:
     assert "codex-cli" not in targets
 
 
-def test_discuss_start_exclude_too_many_rejects_without_watcher(repo_root, tmp_path) -> None:
+def test_discuss_start_exclude_too_many_rejects_without_watcher(
+    repo_root, tmp_path
+) -> None:
     """Without watcher, --exclude fails if fewer than 2 running agents remain."""
     import sqlite3 as _sql
-    project = _setup_project_with_contract(tmp_path, owners=["claude-code", "codex-cli"])
+
+    project = _setup_project_with_contract(
+        tmp_path, owners=["claude-code", "codex-cli"]
+    )
     # Nullify watcher heartbeat so the gate stays hard
     db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
     db.execute("DELETE FROM agent_heartbeats WHERE agent = 'watcher'")
@@ -413,8 +477,13 @@ def test_discuss_start_exclude_too_many_rejects_without_watcher(repo_root, tmp_p
     result = _run_discuss_py(
         repo_root,
         args=[
-            "start", "--project", str(project), "--topic", "Should fail",
-            "--exclude", "codex-cli",
+            "start",
+            "--project",
+            str(project),
+            "--topic",
+            "Should fail",
+            "--exclude",
+            "codex-cli",
         ],
     )
     # watcher dead → hard reject when < 2 heartbeats
@@ -431,14 +500,18 @@ def test_discuss_start_filters_owner_from_participants(repo_root, tmp_path) -> N
     )
     # opencode is now a PRIMARY_AGENT (always included by default); seed its heartbeat
     from datetime import datetime, timezone
+
     _now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     seed_sqlite_heartbeat(project, agent="opencode", status="alive", now=_now)
 
     result = _run_discuss_py(
         repo_root,
         args=[
-            "start", "--project", str(project),
-            "--topic", "Filter owner test",
+            "start",
+            "--project",
+            str(project),
+            "--topic",
+            "Filter owner test",
         ],
     )
     assert result.returncode == 0, result.stderr
@@ -453,10 +526,14 @@ def test_discuss_start_filters_owner_from_participants(repo_root, tmp_path) -> N
     assert "owner" not in participants_line
 
     import sqlite3 as _sql
+
     db = _sql.connect(str(project / ".superharness" / "state.sqlite3"))
-    targets = {r[0] for r in db.execute(
-        "SELECT target_agent FROM inbox WHERE task_id LIKE '%/round-1'"
-    ).fetchall()}
+    targets = {
+        r[0]
+        for r in db.execute(
+            "SELECT target_agent FROM inbox WHERE task_id LIKE '%/round-1'"
+        ).fetchall()
+    }
     db.close()
     assert "claude-code" in targets
     assert "opencode" in targets
@@ -472,9 +549,13 @@ def test_discuss_start_explicit_owner_only_rejects(repo_root, tmp_path) -> None:
     result = _run_discuss_py(
         repo_root,
         args=[
-            "start", "--project", str(project),
-            "--topic", "Should fail",
-            "--owners", "claude-code,owner",
+            "start",
+            "--project",
+            str(project),
+            "--topic",
+            "Should fail",
+            "--owners",
+            "claude-code,owner",
         ],
     )
     # v1.69.5: returns 1 (only 1 running AI participant remains)
@@ -485,6 +566,7 @@ def test_discuss_start_explicit_owner_only_rejects(repo_root, tmp_path) -> None:
 # ---------------------------------------------------------------------------
 # _retry_agent — preserves retry_count + failed_reason on re-queue
 # ---------------------------------------------------------------------------
+
 
 class TestRetryAgent:
     """Tests that _retry_agent increments retry_count and preserves failed_reason."""
@@ -507,13 +589,17 @@ class TestRetryAgent:
             INSERT INTO inbox (id, task_id, target_agent, status, retry_count, max_retries, failed_reason, created_at)
             VALUES ('test-item', 'disc/round-1', 'gemini-cli', 'failed', 0, 3, 'timeout', '2026-01-01T00:00:00Z')
         """)
-        conn.execute("INSERT OR IGNORE INTO tasks (id, title, status, created_at) VALUES ('disc/round-1', 'Round 1', 'in_progress', '2026-01-01T00:00:00Z')")
+        conn.execute(
+            "INSERT OR IGNORE INTO tasks (id, title, status, created_at) VALUES ('disc/round-1', 'Round 1', 'in_progress', '2026-01-01T00:00:00Z')"
+        )
         conn.commit()
 
-        result = _retry_agent(str(tmp_path), 'gemini-cli', 'disc/round-1', 'disc', 1)
+        result = _retry_agent(str(tmp_path), "gemini-cli", "disc/round-1", "disc", 1)
         assert result is True
 
-        row = conn.execute("SELECT retry_count, failed_reason, status FROM inbox WHERE id='test-item'").fetchone()
+        row = conn.execute(
+            "SELECT retry_count, failed_reason, status FROM inbox WHERE id='test-item'"
+        ).fetchone()
         assert row["retry_count"] == 1
         assert "timeout" in (row["failed_reason"] or "")
         assert row["status"] == "pending"
@@ -536,17 +622,20 @@ class TestRetryAgent:
             INSERT INTO inbox (id, task_id, target_agent, status, retry_count, max_retries, failed_reason, created_at)
             VALUES ('exhausted-item', 'disc/round-1', 'gemini-cli', 'failed', 3, 3, 'timeout', '2026-01-01T00:00:00Z')
         """)
-        conn.execute("INSERT OR IGNORE INTO tasks (id, title, status, created_at) VALUES ('disc/round-1', 'Round 1', 'in_progress', '2026-01-01T00:00:00Z')")
+        conn.execute(
+            "INSERT OR IGNORE INTO tasks (id, title, status, created_at) VALUES ('disc/round-1', 'Round 1', 'in_progress', '2026-01-01T00:00:00Z')"
+        )
         conn.commit()
 
-        result = _retry_agent(str(tmp_path), 'gemini-cli', 'disc/round-1', 'disc', 1)
+        result = _retry_agent(str(tmp_path), "gemini-cli", "disc/round-1", "disc", 1)
         assert result is False  # exhausted, can't retry
         conn.close()
 
     def test_no_failed_row_returns_false(self, tmp_path):
         """_retry_agent returns False when no failed row exists."""
         from superharness.commands.discussion_dispatch import _retry_agent
-        result = _retry_agent(str(tmp_path), 'gemini-cli', 'disc/round-1', 'disc', 1)
+
+        result = _retry_agent(str(tmp_path), "gemini-cli", "disc/round-1", "disc", 1)
         assert result is False
 
     def test_preserves_original_reason(self, tmp_path):
@@ -566,13 +655,17 @@ class TestRetryAgent:
             INSERT INTO inbox (id, task_id, target_agent, status, retry_count, max_retries, failed_reason, created_at)
             VALUES ('reason-item', 'disc/round-1', 'codex-cli', 'failed', 1, 3, 'permanent block (lifecycle gate)', '2026-01-01T00:00:00Z')
         """)
-        conn.execute("INSERT OR IGNORE INTO tasks (id, title, status, created_at) VALUES ('disc/round-1', 'Round 1', 'in_progress', '2026-01-01T00:00:00Z')")
+        conn.execute(
+            "INSERT OR IGNORE INTO tasks (id, title, status, created_at) VALUES ('disc/round-1', 'Round 1', 'in_progress', '2026-01-01T00:00:00Z')"
+        )
         conn.commit()
 
-        result = _retry_agent(str(tmp_path), 'codex-cli', 'disc/round-1', 'disc', 1)
+        result = _retry_agent(str(tmp_path), "codex-cli", "disc/round-1", "disc", 1)
         assert result is True
 
-        row = conn.execute("SELECT failed_reason, retry_count FROM inbox WHERE id='reason-item'").fetchone()
+        row = conn.execute(
+            "SELECT failed_reason, retry_count FROM inbox WHERE id='reason-item'"
+        ).fetchone()
         assert "permanent block" in (row["failed_reason"] or "")
         assert row["retry_count"] == 2
         conn.close()
@@ -581,6 +674,7 @@ class TestRetryAgent:
 # ---------------------------------------------------------------------------
 # Iter 1 — Route discussion rounds through delegate (kill forced session-inject)
 # ---------------------------------------------------------------------------
+
 
 class TestIter1SessionInjectGate:
     """Iter 1 RED tests: discussion rounds must route through _execute_agent,
@@ -602,8 +696,17 @@ class TestIter1SessionInjectGate:
             "INSERT INTO inbox (id, task_id, target_agent, status, priority, "
             "retry_count, max_retries, created_at, project_path) "
             "VALUES (?,?,?,?,?,?,?,?,?)",
-            ("item-iter1", disc_task, "claude-code", "pending", 5, 0, 3,
-             "2026-06-07T00:00:00Z", str(tmp_path)),
+            (
+                "item-iter1",
+                disc_task,
+                "claude-code",
+                "pending",
+                5,
+                0,
+                3,
+                "2026-06-07T00:00:00Z",
+                str(tmp_path),
+            ),
         )
         conn.commit()
         conn.close()
@@ -622,19 +725,28 @@ class TestIter1SessionInjectGate:
 
         execute_called = []
 
-        with patch("superharness.commands.inbox_dispatch._execute_agent",
-                   side_effect=lambda c: execute_called.append(True)), \
-             patch("superharness.commands.inbox_dispatch._prepare_launch_context"), \
-             patch("superharness.commands.inbox_dispatch._skip_already_done_discussion_round",
-                   return_value=False):
+        with (
+            patch(
+                "superharness.commands.inbox_dispatch._execute_agent",
+                side_effect=lambda c: execute_called.append(True),
+            ),
+            patch("superharness.commands.inbox_dispatch._prepare_launch_context"),
+            patch(
+                "superharness.commands.inbox_dispatch._skip_already_done_discussion_round",
+                return_value=False,
+            ),
+        ):
             from superharness.commands.inbox_dispatch import dispatch
+
             dispatch(
                 project_dir=str(tmp_path),
                 target_filter="claude-code",
                 non_interactive=True,
             )
 
-        assert execute_called, "_execute_agent must be called for discussion round dispatch"
+        assert execute_called, (
+            "_execute_agent must be called for discussion round dispatch"
+        )
 
     def test_session_inject_off_by_default(self, tmp_path, monkeypatch):
         """inbox_watch._run_dispatch_cmd must not append --session-inject when
@@ -649,9 +761,12 @@ class TestIter1SessionInjectGate:
             captured.extend(args)
             return MagicMock()
 
-        with patch("superharness.commands.inbox_watch.subprocess.Popen",
-                   side_effect=_fake_popen):
+        with patch(
+            "superharness.commands.inbox_watch.subprocess.Popen",
+            side_effect=_fake_popen,
+        ):
             from superharness.commands.inbox_watch import _run_dispatch_cmd
+
             _run_dispatch_cmd(
                 project_dir=str(tmp_path),
                 target="claude-code",
@@ -678,9 +793,12 @@ class TestIter1SessionInjectGate:
             captured.extend(args)
             return MagicMock()
 
-        with patch("superharness.commands.inbox_watch.subprocess.Popen",
-                   side_effect=_fake_popen):
+        with patch(
+            "superharness.commands.inbox_watch.subprocess.Popen",
+            side_effect=_fake_popen,
+        ):
             from superharness.commands.inbox_watch import _run_dispatch_cmd
+
             _run_dispatch_cmd(
                 project_dir=str(tmp_path),
                 target="gemini-cli",
@@ -694,7 +812,9 @@ class TestIter1SessionInjectGate:
         assert "--project" in captured
         assert "--to" in captured
 
-    def test_is_discussion_routing_skips_session_inject_branch(self, tmp_path, monkeypatch):
+    def test_is_discussion_routing_skips_session_inject_branch(
+        self, tmp_path, monkeypatch
+    ):
         """is_discussion=True items must route directly to _execute_agent.
         Session-injection path has been fully removed."""
         from unittest.mock import patch
@@ -708,12 +828,19 @@ class TestIter1SessionInjectGate:
 
         execute_called = []
 
-        with patch("superharness.commands.inbox_dispatch._execute_agent",
-                   side_effect=lambda c: execute_called.append(True)), \
-             patch("superharness.commands.inbox_dispatch._prepare_launch_context"), \
-             patch("superharness.commands.inbox_dispatch._skip_already_done_discussion_round",
-                   return_value=False):
+        with (
+            patch(
+                "superharness.commands.inbox_dispatch._execute_agent",
+                side_effect=lambda c: execute_called.append(True),
+            ),
+            patch("superharness.commands.inbox_dispatch._prepare_launch_context"),
+            patch(
+                "superharness.commands.inbox_dispatch._skip_already_done_discussion_round",
+                return_value=False,
+            ),
+        ):
             from superharness.commands.inbox_dispatch import dispatch
+
             dispatch(
                 project_dir=str(tmp_path),
                 target_filter="claude-code",
@@ -736,13 +863,19 @@ class TestIter1SessionInjectGate:
         sh.mkdir()
         self._setup_sqlite(tmp_path, disc_task)
 
-        with patch("superharness.commands.inbox_dispatch._execute_agent"), \
-             patch("superharness.commands.inbox_dispatch._prepare_launch_context"), \
-             patch("superharness.commands.inbox_dispatch._skip_already_done_discussion_round",
-                   return_value=False), \
-             patch("superharness.commands.inbox_dispatch._reconcile_state",
-                   return_value=0):
+        with (
+            patch("superharness.commands.inbox_dispatch._execute_agent"),
+            patch("superharness.commands.inbox_dispatch._prepare_launch_context"),
+            patch(
+                "superharness.commands.inbox_dispatch._skip_already_done_discussion_round",
+                return_value=False,
+            ),
+            patch(
+                "superharness.commands.inbox_dispatch._reconcile_state", return_value=0
+            ),
+        ):
             from superharness.commands.inbox_dispatch import dispatch
+
             dispatch(
                 project_dir=str(tmp_path),
                 target_filter="claude-code",
@@ -765,6 +898,7 @@ class TestIter1SessionInjectGate:
 
 # ── Iter 11 RED: session-injection dead code must be removed ──────────────────
 
+
 def test_no_prompt_md_produced_anywhere():
     """_write_discussion_prompt_file must not exist in inbox_dispatch after removal.
 
@@ -773,6 +907,7 @@ def test_no_prompt_md_produced_anywhere():
     """
     import inspect
     from superharness.commands import inbox_dispatch as m
+
     src = inspect.getsource(m)
     assert "_write_discussion_prompt_file" not in src, (
         "_write_discussion_prompt_file still exists in inbox_dispatch. "
@@ -782,12 +917,14 @@ def test_no_prompt_md_produced_anywhere():
 
 # ── Guard: sqlite-only _reconcile_state writes SQLite directly ────────────────
 
+
 class TestReconcileStateSqliteOnly:
     """Guard: in sqlite-only mode, _reconcile_state must update SQLite even when
     inbox.yaml does not contain the item (i.e. YAML write returns False)."""
 
     def _setup_db(self, tmp_path, disc_task: str) -> None:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(str(tmp_path))
         init_db(conn)
         conn.execute(
@@ -797,14 +934,24 @@ class TestReconcileStateSqliteOnly:
         conn.execute(
             "INSERT INTO inbox (id, task_id, target_agent, status, priority, "
             "retry_count, max_retries, created_at, project_path) VALUES (?,?,?,?,?,?,?,?,?)",
-            ("item-guard1", disc_task, "claude-code", "launched", 5, 0, 3,
-             "2026-06-08T00:00:00Z", str(tmp_path)),
+            (
+                "item-guard1",
+                disc_task,
+                "claude-code",
+                "launched",
+                5,
+                0,
+                3,
+                "2026-06-08T00:00:00Z",
+                str(tmp_path),
+            ),
         )
         conn.commit()
         conn.close()
 
     def _read_status(self, tmp_path, item_id: str) -> str:
         import sqlite3
+
         conn = sqlite3.connect(str(tmp_path / ".superharness" / "state.sqlite3"))
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT status FROM inbox WHERE id=?", (item_id,)).fetchone()
@@ -814,16 +961,30 @@ class TestReconcileStateSqliteOnly:
     def test_done_written_to_sqlite_when_yaml_absent(self, tmp_path):
         """After agent rc=0 + submission present, item must be 'done' in SQLite
         even when inbox.yaml does not exist (sqlite-only mode)."""
-        import os
-        from unittest.mock import patch, MagicMock
-        from superharness.commands.inbox_dispatch import DispatchContext, _reconcile_state
+        from unittest.mock import MagicMock
+        from superharness.commands.inbox_dispatch import (
+            DispatchContext,
+            _reconcile_state,
+        )
 
         disc_task = "discuss-guardtest20260608T000000Z-2-222222222/round-1"
         (tmp_path / ".superharness").mkdir()
-        (tmp_path / ".superharness" / "discussions" / "discuss-guardtest20260608T000000Z-2-222222222").mkdir(parents=True)
-        submission = (tmp_path / ".superharness" / "discussions" /
-                      "discuss-guardtest20260608T000000Z-2-222222222" / "round-1-claude-code.yaml")
-        submission.write_text("discussion_id: discuss-guardtest20260608T000000Z-2-222222222\nround: 1\nagent: claude-code\nverdict: consensus\n")
+        (
+            tmp_path
+            / ".superharness"
+            / "discussions"
+            / "discuss-guardtest20260608T000000Z-2-222222222"
+        ).mkdir(parents=True)
+        submission = (
+            tmp_path
+            / ".superharness"
+            / "discussions"
+            / "discuss-guardtest20260608T000000Z-2-222222222"
+            / "round-1-claude-code.yaml"
+        )
+        submission.write_text(
+            "discussion_id: discuss-guardtest20260608T000000Z-2-222222222\nround: 1\nagent: claude-code\nverdict: consensus\n"
+        )
 
         self._setup_db(tmp_path, disc_task)
 
@@ -855,7 +1016,10 @@ class TestReconcileStateSqliteOnly:
         """When submission YAML is missing and no dirty worktree, item must be 'failed'
         in SQLite (not stuck in 'launched') in sqlite-only mode."""
         from unittest.mock import patch, MagicMock
-        from superharness.commands.inbox_dispatch import DispatchContext, _reconcile_state
+        from superharness.commands.inbox_dispatch import (
+            DispatchContext,
+            _reconcile_state,
+        )
 
         disc_task = "discuss-guardfail20260608T000000Z-2-333333333/round-1"
         (tmp_path / ".superharness").mkdir()
@@ -876,7 +1040,10 @@ class TestReconcileStateSqliteOnly:
         ctx.launcher_rc = 0
         ctx.launch_start = 0.0
 
-        with patch("superharness.commands.inbox_dispatch._has_dirty_worktree", return_value=False):
+        with patch(
+            "superharness.commands.inbox_dispatch._has_dirty_worktree",
+            return_value=False,
+        ):
             rc = _reconcile_state(ctx)
 
         status = self._read_status(tmp_path, "item-guard1")
@@ -890,7 +1057,10 @@ class TestReconcileStateSqliteOnly:
         """When final_state is 'pending_user_approval', item must be written as 'paused'
         in SQLite in sqlite-only mode (reconciled=3 path)."""
         from unittest.mock import patch, MagicMock
-        from superharness.commands.inbox_dispatch import DispatchContext, _reconcile_state
+        from superharness.commands.inbox_dispatch import (
+            DispatchContext,
+            _reconcile_state,
+        )
 
         disc_task = "discuss-guardpause20260608T000000Z-2-444444444/round-1"
         (tmp_path / ".superharness").mkdir()
@@ -911,8 +1081,10 @@ class TestReconcileStateSqliteOnly:
         ctx.launcher_rc = 0
         ctx.launch_start = 0.0
 
-        with patch("superharness.engine.state_reader.get_task",
-                   return_value={"status": "pending_user_approval"}):
+        with patch(
+            "superharness.engine.state_reader.get_task",
+            return_value={"status": "pending_user_approval"},
+        ):
             rc = _reconcile_state(ctx)
 
         status = self._read_status(tmp_path, "item-guard1")

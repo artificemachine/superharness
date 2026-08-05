@@ -1,4 +1,5 @@
 """Iteration 3: `shux task create --from-issue` smoke + create-path regression."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -36,12 +37,17 @@ def test_from_issue_prefills_task(tmp_path: Path, monkeypatch) -> None:
     )
 
     with pytest.raises(SystemExit) as exc_info:
-        task_mod.main([
-            "create",
-            "--project", str(project),
-            "--from-issue", "https://github.com/o/r/issues/5",
-            "--owner", "claude-code",
-        ])
+        task_mod.main(
+            [
+                "create",
+                "--project",
+                str(project),
+                "--from-issue",
+                "https://github.com/o/r/issues/5",
+                "--owner",
+                "claude-code",
+            ]
+        )
     assert exc_info.value.code == 0
 
     conn = get_connection(str(project))
@@ -70,13 +76,19 @@ def test_from_issue_explicit_flags_override(tmp_path: Path, monkeypatch) -> None
     )
 
     with pytest.raises(SystemExit) as exc_info:
-        task_mod.main([
-            "create",
-            "--project", str(project),
-            "--from-issue", "https://github.com/o/r/issues/5",
-            "--owner", "claude-code",
-            "--title", "Explicit title",
-        ])
+        task_mod.main(
+            [
+                "create",
+                "--project",
+                str(project),
+                "--from-issue",
+                "https://github.com/o/r/issues/5",
+                "--owner",
+                "claude-code",
+                "--title",
+                "Explicit title",
+            ]
+        )
     assert exc_info.value.code == 0
 
     conn = get_connection(str(project))
@@ -94,12 +106,17 @@ def test_create_without_from_issue_unchanged(tmp_path: Path) -> None:
 
     project = _make_project(tmp_path)
     with pytest.raises(SystemExit) as exc_info:
-        task_mod.main([
-            "create",
-            "--project", str(project),
-            "--title", "Normal task",
-            "--owner", "claude-code",
-        ])
+        task_mod.main(
+            [
+                "create",
+                "--project",
+                str(project),
+                "--title",
+                "Normal task",
+                "--owner",
+                "claude-code",
+            ]
+        )
     assert exc_info.value.code == 0
 
     conn = get_connection(str(project))
@@ -117,9 +134,13 @@ def test_create_without_title_or_from_issue_errors(tmp_path: Path) -> None:
 
     project = _make_project(tmp_path)
     with pytest.raises(SystemExit) as exc_info:
-        task_mod.main([
-            "create",
-            "--project", str(project),
-            "--owner", "claude-code",
-        ])
+        task_mod.main(
+            [
+                "create",
+                "--project",
+                str(project),
+                "--owner",
+                "claude-code",
+            ]
+        )
     assert exc_info.value.code != 0

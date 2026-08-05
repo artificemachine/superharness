@@ -4,6 +4,7 @@ continue resolves the most in-flight resumable task, prints its recommended
 next action, and fires on_continue lifecycle hooks (the remember module's
 refresh_context). It performs no status writes and no dispatch.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,12 +23,15 @@ def _seed(project: Path, tasks: list[dict]) -> None:
     with transaction(conn):
         for t in tasks:
             t.setdefault("project_path", project.as_posix())
-            tasks_dao.upsert(conn, _task_row_from_dict(t, str(project), "2026-01-01T00:00:00Z"))
+            tasks_dao.upsert(
+                conn, _task_row_from_dict(t, str(project), "2026-01-01T00:00:00Z")
+            )
     conn.commit()
     conn.close()
 
 
 # ── _pick_resumable ────────────────────────────────────────────────────────
+
 
 def test_pick_resumable_prefers_in_progress_over_todo():
     tasks = [
@@ -61,13 +65,15 @@ def test_pick_resumable_none_when_all_terminal():
 
 # ── command behavior ─────────────────────────────────────────────────────────
 
+
 def test_continue_fires_on_continue_hook_with_context(tmp_path, monkeypatch):
     project = tmp_path / "proj"
     _seed(project, [{"id": "feat-001", "title": "t", "status": "in_progress"}])
 
     calls = []
     monkeypatch.setattr(
-        runner_mod, "run_hooks",
+        runner_mod,
+        "run_hooks",
         lambda event, ctx, pdir: calls.append((event, ctx, pdir)) or [],
     )
 
@@ -87,7 +93,8 @@ def test_continue_no_resumable_still_fires_hook(tmp_path, monkeypatch):
 
     calls = []
     monkeypatch.setattr(
-        runner_mod, "run_hooks",
+        runner_mod,
+        "run_hooks",
         lambda event, ctx, pdir: calls.append((event, ctx, pdir)) or [],
     )
 

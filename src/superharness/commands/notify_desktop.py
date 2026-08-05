@@ -1,7 +1,7 @@
 """Desktop notifications — native macOS/Linux alerts for task events."""
+
 from __future__ import annotations
 
-import os
 import platform
 import subprocess
 import sys
@@ -12,19 +12,23 @@ def send_notification(title: str, message: str, sound: bool = True) -> bool:
     system = platform.system()
 
     if system == "Darwin":
-        script = f'display notification "{_escape(message)}" with title "{_escape(title)}"'
+        script = (
+            f'display notification "{_escape(message)}" with title "{_escape(title)}"'
+        )
         if sound:
             script += ' sound name "Ping"'
         r = subprocess.run(
             ["osascript", "-e", script],
-            capture_output=True, check=False,
+            capture_output=True,
+            check=False,
         )
         return r.returncode == 0
 
     if system == "Linux":
         r = subprocess.run(
             ["notify-send", title, message],
-            capture_output=True, check=False,
+            capture_output=True,
+            check=False,
         )
         return r.returncode == 0
 
@@ -34,9 +38,14 @@ def send_notification(title: str, message: str, sound: bool = True) -> bool:
 def notify_task_event(task_id: str, status: str, agent: str = "") -> bool:
     """Send a notification for a task status change."""
     icons = {
-        "done": "✅", "failed": "❌", "paused": "⏸",
-        "waiting_input": "🤚", "report_ready": "📝",
-        "review_requested": "🔍", "review_passed": "✅", "review_failed": "❌",
+        "done": "✅",
+        "failed": "❌",
+        "paused": "⏸",
+        "waiting_input": "🤚",
+        "report_ready": "📝",
+        "review_requested": "🔍",
+        "review_passed": "✅",
+        "review_failed": "❌",
     }
     icon = icons.get(status, "📋")
     title = f"{icon} superharness — {status.replace('_', ' ')}"

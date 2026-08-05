@@ -3,6 +3,7 @@
 Sets verified/verified_at/verified_by on the task in SQLite
 and appends a VERIFY entry to ledger.md.
 """
+
 from __future__ import annotations
 
 import os
@@ -18,6 +19,7 @@ _JSON_CTX: dict = {}
 def _abort(msg: str, code: int = 1) -> NoReturn:
     if _JSON_MODE:
         from superharness.utils.json_output import emit_error
+
         emit_error(msg, exit_code=code, **_JSON_CTX)
     print(msg, file=sys.stderr)
     sys.exit(code)
@@ -52,12 +54,17 @@ def verify(
         if task_row is None:
             _abort(f"task '{task_id}' not found")
 
-        tasks_dao.update(conn, task_id, task_row.version, {
-            "verified": gated_pass,
-            "verified_at": now,
-            "verified_by": actor,
-            "updated_at": now,
-        })
+        tasks_dao.update(
+            conn,
+            task_id,
+            task_row.version,
+            {
+                "verified": gated_pass,
+                "verified_at": now,
+                "verified_by": actor,
+                "updated_at": now,
+            },
+        )
         conn.commit()
     finally:
         conn.close()
@@ -146,11 +153,17 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--project", "-p", default=None)
     parser.add_argument("--id", dest="task_id", required=True)
-    parser.add_argument("--method", required=True, help="How the task was verified (free text)")
+    parser.add_argument(
+        "--method", required=True, help="How the task was verified (free text)"
+    )
     parser.add_argument("--result", required=True, choices=["pass", "fail"])
     parser.add_argument("--actor", default="claude-code")
-    parser.add_argument("--json", action="store_true", default=False,
-                        help="Emit machine-readable JSON on stdout instead of human text.")
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="Emit machine-readable JSON on stdout instead of human text.",
+    )
 
     opts = parser.parse_args(argv)
 
@@ -159,10 +172,15 @@ def main(argv: list[str] | None = None) -> None:
     global _JSON_MODE, _JSON_CTX
     if opts.json:
         _JSON_MODE = True
-        _JSON_CTX = {"task_id": opts.task_id, "actor": opts.actor, "result": opts.result}
+        _JSON_CTX = {
+            "task_id": opts.task_id,
+            "actor": opts.actor,
+            "result": opts.result,
+        }
 
     if _JSON_MODE:
         import io
+
         _orig_stdout = sys.stdout
         sys.stdout = io.StringIO()
         try:
@@ -173,14 +191,19 @@ def main(argv: list[str] | None = None) -> None:
         # requested pass, so don't infer it from opts.result.
         actual_verified = _read_verified(project_dir, opts.task_id)
         from superharness.utils.json_output import emit_json
-        emit_json({
-            "task_id": opts.task_id,
-            "actor": opts.actor,
-            "method": opts.method,
-            "result": opts.result,
-            "verified": actual_verified,
-            "blocked": (opts.result == "pass" and not actual_verified),
-        }, ok=(rc == 0), exit_code=rc)
+
+        emit_json(
+            {
+                "task_id": opts.task_id,
+                "actor": opts.actor,
+                "method": opts.method,
+                "result": opts.result,
+                "verified": actual_verified,
+                "blocked": (opts.result == "pass" and not actual_verified),
+            },
+            ok=(rc == 0),
+            exit_code=rc,
+        )
 
     rc = verify(project_dir, opts.task_id, opts.method, opts.result, opts.actor)
     sys.exit(rc)

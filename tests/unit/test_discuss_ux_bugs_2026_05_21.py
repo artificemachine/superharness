@@ -12,6 +12,7 @@ Covers five bugs found and fixed in this session:
           at discussion-start). Fix: _ensure_round_task() upserts the row before
           calling inbox enqueue.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -27,19 +28,34 @@ from tests.helpers import REPO_ROOT, seed_sqlite_from_yaml
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _run_discuss(cwd: Path, args: list[str]) -> subprocess.CompletedProcess:
     env = {**__import__("os").environ, "PYTHONPATH": str(REPO_ROOT / "src")}
     return subprocess.run(
         [sys.executable, "-m", "superharness.commands.discuss"] + args,
-        cwd=str(cwd), text=True, capture_output=True, env=env, check=False,
+        cwd=str(cwd),
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
     )
 
 
 def _run_status(cwd: Path, project: Path) -> subprocess.CompletedProcess:
     env = {**__import__("os").environ, "PYTHONPATH": str(REPO_ROOT / "src")}
     return subprocess.run(
-        [sys.executable, "-m", "superharness.commands.status", "--project", str(project)],
-        cwd=str(cwd), text=True, capture_output=True, env=env, check=False,
+        [
+            sys.executable,
+            "-m",
+            "superharness.commands.status",
+            "--project",
+            str(project),
+        ],
+        cwd=str(cwd),
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
     )
 
 
@@ -71,11 +87,13 @@ def _get_db(project: Path) -> str:
 # Bug I — `shux discussion` alias
 # ---------------------------------------------------------------------------
 
+
 class TestBugI_DiscussionAlias:
     def test_discussion_alias_is_registered(self):
         """CLI must expose 'discussion' as an alias for 'discuss'."""
         from superharness.cli import main
         from click.testing import CliRunner
+
         result = CliRunner().invoke(main, ["discussion", "--help"])
         assert result.exit_code == 0, result.output
         assert "No such command" not in result.output
@@ -84,6 +102,7 @@ class TestBugI_DiscussionAlias:
         """'shux discussion start --help' must show discuss start options."""
         from superharness.cli import main
         from click.testing import CliRunner
+
         result = CliRunner().invoke(main, ["discussion", "start", "--help"])
         # Should not say "Error" or "No such command"
         assert "No such command" not in result.output
@@ -95,13 +114,19 @@ class TestBugI_DiscussionAlias:
 # Bug J — positional disc_id in `discuss status`
 # ---------------------------------------------------------------------------
 
+
 class TestBugJ_StatusPositionalArg:
     def test_status_accepts_positional_disc_id(self, tmp_path: Path):
         """discuss status <disc_id> must not reject the positional argument."""
         project = _setup_project(tmp_path)
         result = _run_discuss(
             REPO_ROOT,
-            ["status", "discuss-20260521T000000Z-99999-123456", "--project", str(project)],
+            [
+                "status",
+                "discuss-20260521T000000Z-99999-123456",
+                "--project",
+                str(project),
+            ],
         )
         # Should not error on unrecognised argument — it's either 0 or 1 (disc not found)
         assert "unrecognized arguments" not in result.stderr
@@ -119,8 +144,16 @@ class TestBugJ_StatusPositionalArg:
 # Bug K — type="discussion" items excluded from retry-alert
 # ---------------------------------------------------------------------------
 
+
 class TestBugK_RetryAlertFalsePositive:
-    def _seed_discussion_inbox_item(self, db_path: str, task_id: str, inbox_id: str, target: str, retry_count: int = 4):
+    def _seed_discussion_inbox_item(
+        self,
+        db_path: str,
+        task_id: str,
+        inbox_id: str,
+        target: str,
+        retry_count: int = 4,
+    ):
         """Insert a type='discussion' inbox item directly into SQLite."""
         conn = sqlite3.connect(db_path)
         conn.execute("PRAGMA foreign_keys=OFF")
@@ -191,8 +224,11 @@ class TestBugK_RetryAlertFalsePositive:
 # Bug L — task_obj NameError in delegate()
 # ---------------------------------------------------------------------------
 
+
 class TestBugL_TaskObjScopeError:
-    def _setup_discussion_task(self, project: Path, disc_id: str, task_id: str, status: str = "in_progress"):
+    def _setup_discussion_task(
+        self, project: Path, disc_id: str, task_id: str, status: str = "in_progress"
+    ):
         """Seed a discussion round task directly into SQLite."""
         db_path = str(project / ".superharness" / "state.sqlite3")
         conn = sqlite3.connect(db_path)
@@ -206,9 +242,13 @@ class TestBugL_TaskObjScopeError:
         conn.commit()
         conn.close()
         # Discussion dir must exist for delegate to not abort early
-        (project / ".superharness" / "discussions" / disc_id).mkdir(parents=True, exist_ok=True)
+        (project / ".superharness" / "discussions" / disc_id).mkdir(
+            parents=True, exist_ok=True
+        )
 
-    def test_delegate_does_not_raise_name_error_for_discussion_task(self, tmp_path: Path):
+    def test_delegate_does_not_raise_name_error_for_discussion_task(
+        self, tmp_path: Path
+    ):
         """delegate() must not crash with NameError on task_obj for a discussion round task.
 
         Before fix: task_obj was defined inside _check_dispatch_gates() but referenced
@@ -245,18 +285,20 @@ class TestBugL_TaskObjScopeError:
 
     def test_delegate_task_obj_defined_after_gate_check(self):
         """Structural check: delegate() must assign task_obj after _check_dispatch_gates()."""
-        import ast, inspect
+        import ast
+        import inspect
         from superharness.commands import delegate as _delegate_mod
+
         src = inspect.getsource(_delegate_mod.delegate)
         tree = ast.parse(src)
 
         # Find all assignments to 'task_obj' in the function body
         assignments = [
-            node for node in ast.walk(tree)
+            node
+            for node in ast.walk(tree)
             if isinstance(node, ast.Assign)
             and any(
-                isinstance(t, ast.Name) and t.id == "task_obj"
-                for t in node.targets
+                isinstance(t, ast.Name) and t.id == "task_obj" for t in node.targets
             )
         ]
         assert assignments, (
@@ -265,8 +307,10 @@ class TestBugL_TaskObjScopeError:
 
     def test_no_task_obj_reference_before_assignment_in_delegate(self):
         """task_obj must not be referenced before it is assigned in delegate()."""
-        import ast, inspect
+        import ast
+        import inspect
         from superharness.commands import delegate as _delegate_mod
+
         src = inspect.getsource(_delegate_mod.delegate)
         tree = ast.parse(src)
 
@@ -279,7 +323,11 @@ class TestBugL_TaskObjScopeError:
                     if isinstance(t, ast.Name) and t.id == "task_obj":
                         if first_assign_line is None:
                             first_assign_line = node.lineno
-            if isinstance(node, ast.Name) and node.id == "task_obj" and isinstance(node.ctx, ast.Load):
+            if (
+                isinstance(node, ast.Name)
+                and node.id == "task_obj"
+                and isinstance(node.ctx, ast.Load)
+            ):
                 references.append(node.lineno)
 
         assert first_assign_line is not None, "task_obj must be assigned in delegate()"
@@ -293,6 +341,7 @@ class TestBugL_TaskObjScopeError:
 # ---------------------------------------------------------------------------
 # Bug M — _enqueue_for_agent FK constraint on round-N tasks
 # ---------------------------------------------------------------------------
+
 
 class TestBugM_EnqueueRoundTaskFKConstraint:
     def test_ensure_round_task_creates_missing_task(self, tmp_path: Path):
@@ -311,8 +360,10 @@ class TestBugM_EnqueueRoundTaskFKConstraint:
         _ensure_round_task(str(project), disc_id, 2, "Discussion round 2: test-bug-m")
 
         conn = get_connection(str(project))
-        cursor = conn.execute("SELECT id, status, workflow FROM tasks WHERE id = ?",
-                              (f"{disc_id}/round-2",))
+        cursor = conn.execute(
+            "SELECT id, status, workflow FROM tasks WHERE id = ?",
+            (f"{disc_id}/round-2",),
+        )
         row = cursor.fetchone()
         conn.close()
 
@@ -337,8 +388,9 @@ class TestBugM_EnqueueRoundTaskFKConstraint:
         _ensure_round_task(str(project), disc_id, 3, "Discussion round 3: idempotent")
 
         conn = get_connection(str(project))
-        cursor = conn.execute("SELECT COUNT(*) FROM tasks WHERE id = ?",
-                              (f"{disc_id}/round-3",))
+        cursor = conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE id = ?", (f"{disc_id}/round-3",)
+        )
         count = cursor.fetchone()[0]
         conn.close()
 

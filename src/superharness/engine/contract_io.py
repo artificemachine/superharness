@@ -15,8 +15,12 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+from typing import TYPE_CHECKING
 
 import yaml
+
+if TYPE_CHECKING:
+    from superharness.engine.tasks_dao import TaskRow
 
 logger = logging.getLogger(__name__)
 
@@ -72,23 +76,54 @@ def _task_row_from_dict(
     import json as _j
 
     task_id = str(t.get("id", ""))
-    
+
     # Identify known columns to separate them from extras
     known_cols = {
-        "id", "title", "owner", "status", "effort", "project_path",
-        "development_method", "acceptance_criteria", "test_types",
-        "out_of_scope", "definition_of_done", "context", "tdd",
-        "version", "created_at", "updated_at", "plan_proposed_at",
-        "plan_approved_at", "in_progress_at", "report_ready_at",
-        "review_requested_at", "done_at", "cancelled_at",
-        "blocked_by", "dependency", "parent_id", "verified",
-        "verified_at", "verified_by", "deadline_minutes",
-        "failed_at", "stopped_at", "failed_reason", "archived_at",
-        "archived_reason", "model_tier", "pause_reason",
-        "workflow", "autonomy", "require_tdd", "estimated_minutes",
-        "locked_contract", "contract_locked_at",
+        "id",
+        "title",
+        "owner",
+        "status",
+        "effort",
+        "project_path",
+        "development_method",
+        "acceptance_criteria",
+        "test_types",
+        "out_of_scope",
+        "definition_of_done",
+        "context",
+        "tdd",
+        "version",
+        "created_at",
+        "updated_at",
+        "plan_proposed_at",
+        "plan_approved_at",
+        "in_progress_at",
+        "report_ready_at",
+        "review_requested_at",
+        "done_at",
+        "cancelled_at",
+        "blocked_by",
+        "dependency",
+        "parent_id",
+        "verified",
+        "verified_at",
+        "verified_by",
+        "deadline_minutes",
+        "failed_at",
+        "stopped_at",
+        "failed_reason",
+        "archived_at",
+        "archived_reason",
+        "model_tier",
+        "pause_reason",
+        "workflow",
+        "autonomy",
+        "require_tdd",
+        "estimated_minutes",
+        "locked_contract",
+        "contract_locked_at",
     }
-    
+
     extras = {k: v for k, v in t.items() if k not in known_cols}
     extras_json = _j.dumps(extras) if extras else None
 
@@ -116,12 +151,13 @@ def _task_row_from_dict(
         review_requested_at=t.get("review_requested_at"),
         done_at=t.get("done_at"),
         cancelled_at=t.get("cancelled_at"),
-        blocked_by=list(t.get("blocked_by") or t.get("dependency") or []) if isinstance(
-            t.get("blocked_by") or t.get("dependency"), list
-        ) else (
+        blocked_by=list(t.get("blocked_by") or t.get("dependency") or [])
+        if isinstance(t.get("blocked_by") or t.get("dependency"), list)
+        else (
             [str(t.get("blocked_by") or t.get("dependency")).strip()]
             if (t.get("blocked_by") or t.get("dependency"))
-            and str(t.get("blocked_by") or t.get("dependency")).strip().lower() not in ("none", "null", "~", "")
+            and str(t.get("blocked_by") or t.get("dependency")).strip().lower()
+            not in ("none", "null", "~", "")
             else []
         ),
         verified=bool(t.get("verified", False)),
@@ -137,7 +173,11 @@ def _task_row_from_dict(
         pause_reason=t.get("pause_reason"),
         workflow=t.get("workflow"),
         autonomy=t.get("autonomy"),
-        require_tdd=(bool(t["require_tdd"]) if "require_tdd" in t and t["require_tdd"] is not None else None),
+        require_tdd=(
+            bool(t["require_tdd"])
+            if "require_tdd" in t and t["require_tdd"] is not None
+            else None
+        ),
         estimated_minutes=t.get("estimated_minutes"),
         parent_id=t.get("parent_id"),
         extras_json=extras_json,
@@ -182,6 +222,7 @@ def _sqlite_sync_tasks(path: str, doc: object) -> None:
             conn.close()
     except Exception as e:
         import sys
+
         logger.warning("_sqlite_sync_tasks failed: %s", e)
         print(f"[WARNING] _sqlite_sync_tasks failed: {e}", file=sys.stderr)
 
@@ -241,6 +282,7 @@ def read_contract(path: str) -> tuple[dict, list]:
 
     if is_sqlite_only():
         from superharness.engine import state_reader
+
         # path is .../.superharness/contract.yaml; project_dir is two levels up.
         project_dir = os.path.dirname(os.path.dirname(os.path.abspath(path)))
         doc = state_reader.get_contract_doc(project_dir)

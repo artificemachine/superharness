@@ -1,8 +1,7 @@
 """inbox normalize command — drop/archive stale inbox rows via SQLite."""
+
 from __future__ import annotations
 
-import os
-import sys
 from datetime import datetime, timezone
 
 
@@ -13,7 +12,9 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("-p", "--project", required=True)
     p.add_argument("--archive", action="store_true")
     p.add_argument("--drop-status", action="append", dest="drop_statuses", default=[])
-    p.add_argument("--drop-id-prefix", action="append", dest="drop_prefixes", default=[])
+    p.add_argument(
+        "--drop-id-prefix", action="append", dest="drop_prefixes", default=[]
+    )
     opts = p.parse_args(argv)
 
     project_dir = opts.project
@@ -21,6 +22,7 @@ def main(argv: list[str] | None = None) -> None:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     from superharness.engine.db import get_connection, init_db
+
     conn = get_connection(project_dir)
     try:
         init_db(conn)
@@ -33,11 +35,14 @@ def main(argv: list[str] | None = None) -> None:
 
         if opts.drop_prefixes:
             prefix_rows = conn.execute(
-                "SELECT id, status FROM inbox WHERE status NOT IN (" + placeholders + ")",
+                "SELECT id, status FROM inbox WHERE status NOT IN ("
+                + placeholders
+                + ")",
                 drop_statuses,
             ).fetchall()
             rows = list(rows) + [
-                r for r in prefix_rows
+                r
+                for r in prefix_rows
                 if any(str(r["id"]).startswith(p) for p in opts.drop_prefixes)
             ]
 
@@ -47,16 +52,22 @@ def main(argv: list[str] | None = None) -> None:
             from_status = row["status"]
             if opts.archive:
                 # Mark as done (tombstone) instead of deleting
-                if conn.execute(
-                    "UPDATE inbox SET status='done', done_at=? WHERE id=? AND status=?",
-                    (now, item_id, from_status)
-                ).rowcount > 0:
+                if (
+                    conn.execute(
+                        "UPDATE inbox SET status='done', done_at=? WHERE id=? AND status=?",
+                        (now, item_id, from_status),
+                    ).rowcount
+                    > 0
+                ):
                     removed += 1
             else:
-                if conn.execute(
-                    "DELETE FROM inbox WHERE id=? AND status=?",
-                    (item_id, from_status)
-                ).rowcount > 0:
+                if (
+                    conn.execute(
+                        "DELETE FROM inbox WHERE id=? AND status=?",
+                        (item_id, from_status),
+                    ).rowcount
+                    > 0
+                ):
                     removed += 1
 
         conn.commit()

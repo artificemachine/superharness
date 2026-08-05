@@ -4,6 +4,7 @@ Covers the rule table (LIFECYCLE_RULES) and the reconcile_lifecycle entry point.
 Tests use the past_iso helper from conftest to set up timeout scenarios without
 requiring time-mocking libraries.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -20,6 +21,7 @@ def _write_inbox(project: Path, items: list[dict]) -> None:
     (project / ".superharness" / "inbox.yaml").write_text(yaml.dump(items))
     # Seed SQLite directly with FK checks off — task row may not exist in tests.
     from superharness.engine.db import get_connection, init_db
+
     conn = get_connection(str(project))
     init_db(conn)
     conn.execute("PRAGMA foreign_keys = OFF")
@@ -60,16 +62,20 @@ def _write_inbox(project: Path, items: list[dict]) -> None:
 
 def _read_inbox(project: Path) -> list[dict]:
     from superharness.engine import state_reader
+
     return state_reader.get_inbox_items(str(project))
 
 
 def _write_contract(project: Path, tasks: list[dict]) -> None:
-    (project / ".superharness" / "contract.yaml").write_text(yaml.dump({"tasks": tasks}))
+    (project / ".superharness" / "contract.yaml").write_text(
+        yaml.dump({"tasks": tasks})
+    )
     seed_sqlite_from_yaml(project)
 
 
 def _read_contract(project: Path) -> dict:
     from superharness.engine import state_reader
+
     return {"tasks": state_reader.get_tasks(str(project))}
 
 
@@ -77,10 +83,18 @@ def test_paused_item_no_reason_after_30m_becomes_failed(clean_harness: Path) -> 
     """The paused-timeout rule from this session: 30m without reason → failed."""
     from superharness.engine.lifecycle_rules import reconcile_lifecycle
 
-    _write_inbox(clean_harness, [{
-        "id": "test-1", "task": "feat.foo", "to": "claude-code",
-        "status": "paused", "paused_at": past_iso(31),
-    }])
+    _write_inbox(
+        clean_harness,
+        [
+            {
+                "id": "test-1",
+                "task": "feat.foo",
+                "to": "claude-code",
+                "status": "paused",
+                "paused_at": past_iso(31),
+            }
+        ],
+    )
     n = reconcile_lifecycle(str(clean_harness))
     assert n >= 1
     items = _read_inbox(clean_harness)
@@ -92,24 +106,41 @@ def test_paused_item_with_reason_is_immune_to_timeout(clean_harness: Path) -> No
     """Manual operator pauses (with reason) must not be auto-failed."""
     from superharness.engine.lifecycle_rules import reconcile_lifecycle
 
-    _write_inbox(clean_harness, [{
-        "id": "test-1", "task": "feat.foo", "to": "claude-code",
-        "status": "paused", "paused_at": past_iso(120),
-        "reason": "manually paused by operator",
-    }])
+    _write_inbox(
+        clean_harness,
+        [
+            {
+                "id": "test-1",
+                "task": "feat.foo",
+                "to": "claude-code",
+                "status": "paused",
+                "paused_at": past_iso(120),
+                "reason": "manually paused by operator",
+            }
+        ],
+    )
     reconcile_lifecycle(str(clean_harness))
     items = _read_inbox(clean_harness)
     assert items[0]["status"] == "paused"  # unchanged
 
 
-def test_review_requested_after_120m_reverts_to_report_ready(clean_harness: Path) -> None:
+def test_review_requested_after_120m_reverts_to_report_ready(
+    clean_harness: Path,
+) -> None:
     """The review timeout rule from this session: 120m → revert to report_ready."""
     from superharness.engine.lifecycle_rules import reconcile_lifecycle
 
-    _write_contract(clean_harness, [{
-        "id": "feat.foo", "owner": "claude-code",
-        "status": "review_requested", "review_requested_at": past_iso(121),
-    }])
+    _write_contract(
+        clean_harness,
+        [
+            {
+                "id": "feat.foo",
+                "owner": "claude-code",
+                "status": "review_requested",
+                "review_requested_at": past_iso(121),
+            }
+        ],
+    )
     n = reconcile_lifecycle(str(clean_harness))
     assert n >= 1
     doc = _read_contract(clean_harness)
@@ -120,10 +151,17 @@ def test_in_progress_task_after_180m_is_archived(clean_harness: Path) -> None:
     """Iter 4 rule: in_progress > 180m gets archived (uses updated_at timestamp)."""
     from superharness.engine.lifecycle_rules import reconcile_lifecycle
 
-    _write_contract(clean_harness, [{
-        "id": "feat.foo", "owner": "claude-code",
-        "status": "in_progress", "updated_at": past_iso(181),
-    }])
+    _write_contract(
+        clean_harness,
+        [
+            {
+                "id": "feat.foo",
+                "owner": "claude-code",
+                "status": "in_progress",
+                "updated_at": past_iso(181),
+            }
+        ],
+    )
     n = reconcile_lifecycle(str(clean_harness))
     assert n >= 1
     doc = _read_contract(clean_harness)
@@ -134,10 +172,17 @@ def test_review_requested_within_timeout_is_unchanged(clean_harness: Path) -> No
     """Reviews within timeout window must not be touched."""
     from superharness.engine.lifecycle_rules import reconcile_lifecycle
 
-    _write_contract(clean_harness, [{
-        "id": "feat.foo", "owner": "claude-code",
-        "status": "review_requested", "review_requested_at": past_iso(60),  # under 120
-    }])
+    _write_contract(
+        clean_harness,
+        [
+            {
+                "id": "feat.foo",
+                "owner": "claude-code",
+                "status": "review_requested",
+                "review_requested_at": past_iso(60),  # under 120
+            }
+        ],
+    )
     reconcile_lifecycle(str(clean_harness))
     doc = _read_contract(clean_harness)
     assert doc["tasks"][0]["status"] == "review_requested"
@@ -176,10 +221,18 @@ def test_reconcile_uses_profile_overrides(clean_harness: Path) -> None:
     profile = clean_harness / ".superharness" / "profile.yaml"
     profile.write_text(profile.read_text() + "\npaused_timeout_minutes: 10\n")
 
-    _write_inbox(clean_harness, [{
-        "id": "test-1", "task": "feat.foo", "to": "claude-code",
-        "status": "paused", "paused_at": past_iso(11),  # over 10m
-    }])
+    _write_inbox(
+        clean_harness,
+        [
+            {
+                "id": "test-1",
+                "task": "feat.foo",
+                "to": "claude-code",
+                "status": "paused",
+                "paused_at": past_iso(11),  # over 10m
+            }
+        ],
+    )
     reconcile_lifecycle(str(clean_harness))
     items = _read_inbox(clean_harness)
     assert items[0]["status"] == "failed"
@@ -194,10 +247,17 @@ def test_waiting_input_task_after_480m_is_failed(clean_harness: Path) -> None:
     """waiting_input > 480m (8h) → failed."""
     from superharness.engine.lifecycle_rules import reconcile_lifecycle
 
-    _write_contract(clean_harness, [{
-        "id": "feat.foo", "owner": "claude-code",
-        "status": "waiting_input", "updated_at": past_iso(481),
-    }])
+    _write_contract(
+        clean_harness,
+        [
+            {
+                "id": "feat.foo",
+                "owner": "claude-code",
+                "status": "waiting_input",
+                "updated_at": past_iso(481),
+            }
+        ],
+    )
     n = reconcile_lifecycle(str(clean_harness))
     assert n >= 1
     doc = _read_contract(clean_harness)
@@ -209,10 +269,17 @@ def test_waiting_input_task_within_timeout_is_unchanged(clean_harness: Path) -> 
     """waiting_input under 480m must not be touched."""
     from superharness.engine.lifecycle_rules import reconcile_lifecycle
 
-    _write_contract(clean_harness, [{
-        "id": "feat.foo", "owner": "claude-code",
-        "status": "waiting_input", "updated_at": past_iso(60),
-    }])
+    _write_contract(
+        clean_harness,
+        [
+            {
+                "id": "feat.foo",
+                "owner": "claude-code",
+                "status": "waiting_input",
+                "updated_at": past_iso(60),
+            }
+        ],
+    )
     reconcile_lifecycle(str(clean_harness))
     doc = _read_contract(clean_harness)
     assert doc["tasks"][0]["status"] == "waiting_input"
@@ -222,10 +289,17 @@ def test_report_ready_after_1440m_is_archived(clean_harness: Path) -> None:
     """report_ready > 1440m (24h) → archived."""
     from superharness.engine.lifecycle_rules import reconcile_lifecycle
 
-    _write_contract(clean_harness, [{
-        "id": "feat.foo", "owner": "claude-code",
-        "status": "report_ready", "report_ready_at": past_iso(1441),
-    }])
+    _write_contract(
+        clean_harness,
+        [
+            {
+                "id": "feat.foo",
+                "owner": "claude-code",
+                "status": "report_ready",
+                "report_ready_at": past_iso(1441),
+            }
+        ],
+    )
     n = reconcile_lifecycle(str(clean_harness))
     assert n >= 1
     doc = _read_contract(clean_harness)
@@ -237,10 +311,17 @@ def test_report_ready_within_timeout_is_unchanged(clean_harness: Path) -> None:
     """report_ready under 1440m must not be touched."""
     from superharness.engine.lifecycle_rules import reconcile_lifecycle
 
-    _write_contract(clean_harness, [{
-        "id": "feat.foo", "owner": "claude-code",
-        "status": "report_ready", "report_ready_at": past_iso(120),
-    }])
+    _write_contract(
+        clean_harness,
+        [
+            {
+                "id": "feat.foo",
+                "owner": "claude-code",
+                "status": "report_ready",
+                "report_ready_at": past_iso(120),
+            }
+        ],
+    )
     reconcile_lifecycle(str(clean_harness))
     doc = _read_contract(clean_harness)
     assert doc["tasks"][0]["status"] == "report_ready"
@@ -250,12 +331,18 @@ def test_deadline_exceeded_task_fails(clean_harness: Path) -> None:
     """in_progress task with deadline_minutes exceeded → failed."""
     from superharness.engine.lifecycle_rules import reconcile_lifecycle
 
-    _write_contract(clean_harness, [{
-        "id": "feat.foo", "owner": "claude-code",
-        "status": "in_progress",
-        "created_at": past_iso(500),  # created 500 min ago
-        "deadline_minutes": 480,     # deadline is 480 min
-    }])
+    _write_contract(
+        clean_harness,
+        [
+            {
+                "id": "feat.foo",
+                "owner": "claude-code",
+                "status": "in_progress",
+                "created_at": past_iso(500),  # created 500 min ago
+                "deadline_minutes": 480,  # deadline is 480 min
+            }
+        ],
+    )
     n = reconcile_lifecycle(str(clean_harness))
     assert n >= 1
     doc = _read_contract(clean_harness)
@@ -267,12 +354,18 @@ def test_deadline_not_exceeded_task_unchanged(clean_harness: Path) -> None:
     """Task with deadline_minutes not yet exceeded stays unchanged."""
     from superharness.engine.lifecycle_rules import reconcile_lifecycle
 
-    _write_contract(clean_harness, [{
-        "id": "feat.foo", "owner": "claude-code",
-        "status": "in_progress",
-        "created_at": past_iso(60),  # created 60 min ago
-        "deadline_minutes": 480,     # deadline is 480 min
-    }])
+    _write_contract(
+        clean_harness,
+        [
+            {
+                "id": "feat.foo",
+                "owner": "claude-code",
+                "status": "in_progress",
+                "created_at": past_iso(60),  # created 60 min ago
+                "deadline_minutes": 480,  # deadline is 480 min
+            }
+        ],
+    )
     reconcile_lifecycle(str(clean_harness))
     doc = _read_contract(clean_harness)
     assert doc["tasks"][0]["status"] == "in_progress"
@@ -282,12 +375,18 @@ def test_deadline_skips_done_tasks(clean_harness: Path) -> None:
     """Done tasks are never flagged by deadline enforcement."""
     from superharness.engine.lifecycle_rules import reconcile_lifecycle
 
-    _write_contract(clean_harness, [{
-        "id": "feat.foo", "owner": "claude-code",
-        "status": "done",
-        "created_at": past_iso(500),
-        "deadline_minutes": 60,  # way past deadline
-    }])
+    _write_contract(
+        clean_harness,
+        [
+            {
+                "id": "feat.foo",
+                "owner": "claude-code",
+                "status": "done",
+                "created_at": past_iso(500),
+                "deadline_minutes": 60,  # way past deadline
+            }
+        ],
+    )
     n = reconcile_lifecycle(str(clean_harness))
     assert n == 0
     doc = _read_contract(clean_harness)
@@ -298,12 +397,18 @@ def test_deadline_skips_task_without_deadline(clean_harness: Path) -> None:
     """Tasks with no deadline_minutes are not affected."""
     from superharness.engine.lifecycle_rules import reconcile_lifecycle
 
-    _write_contract(clean_harness, [{
-        "id": "feat.foo", "owner": "claude-code",
-        "status": "in_progress",
-        "created_at": past_iso(500),
-        # no deadline_minutes set
-    }])
+    _write_contract(
+        clean_harness,
+        [
+            {
+                "id": "feat.foo",
+                "owner": "claude-code",
+                "status": "in_progress",
+                "created_at": past_iso(500),
+                # no deadline_minutes set
+            }
+        ],
+    )
     n = reconcile_lifecycle(str(clean_harness))
     assert n == 0
     doc = _read_contract(clean_harness)
@@ -369,10 +474,17 @@ def test_todo_task_after_120m_is_archived(clean_harness: Path) -> None:
     """todo > 120m → archived (new rule added v1.44.20)."""
     from superharness.engine.lifecycle_rules import reconcile_lifecycle
 
-    _write_contract(clean_harness, [{
-        "id": "feat.stale-todo", "owner": "claude-code",
-        "status": "todo", "created_at": past_iso(121),
-    }])
+    _write_contract(
+        clean_harness,
+        [
+            {
+                "id": "feat.stale-todo",
+                "owner": "claude-code",
+                "status": "todo",
+                "created_at": past_iso(121),
+            }
+        ],
+    )
     n = reconcile_lifecycle(str(clean_harness))
     assert n >= 1
     doc = _read_contract(clean_harness)
@@ -384,10 +496,17 @@ def test_todo_task_within_120m_is_unchanged(clean_harness: Path) -> None:
     """todo under 120m must not be touched."""
     from superharness.engine.lifecycle_rules import reconcile_lifecycle
 
-    _write_contract(clean_harness, [{
-        "id": "feat.fresh-todo", "owner": "claude-code",
-        "status": "todo", "created_at": past_iso(60),
-    }])
+    _write_contract(
+        clean_harness,
+        [
+            {
+                "id": "feat.fresh-todo",
+                "owner": "claude-code",
+                "status": "todo",
+                "created_at": past_iso(60),
+            }
+        ],
+    )
     reconcile_lifecycle(str(clean_harness))
     doc = _read_contract(clean_harness)
     assert doc["tasks"][0]["status"] == "todo"

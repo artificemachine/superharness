@@ -13,12 +13,12 @@ removed rather than reimplemented. If per-point verdicts are wanted later
 they need a schema migration and a deliberate design for how they feed
 `_create_consensus_task`.
 """
+
 from __future__ import annotations
 
 import inspect
 import subprocess
 import sys
-from pathlib import Path
 
 from tests.helpers import REPO_ROOT
 
@@ -27,7 +27,11 @@ def _run(module: str, args: list[str]) -> subprocess.CompletedProcess:
     env = {**__import__("os").environ, "PYTHONPATH": str(REPO_ROOT / "src")}
     return subprocess.run(
         [sys.executable, "-m", module] + args,
-        cwd=str(REPO_ROOT), text=True, capture_output=True, env=env, check=False,
+        cwd=str(REPO_ROOT),
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
     )
 
 
@@ -41,11 +45,24 @@ def test_submit_help_no_longer_advertises_points_file():
 
 def test_submit_rejects_points_file_flag():
     """Passing the removed flag must fail loudly, not be silently ignored."""
-    result = _run("superharness.commands.discuss", [
-        "submit", "--discussion", "d-1", "--agent", "claude-code",
-        "--round", "1", "--verdict", "agree", "--position", "p",
-        "--points-file", "/tmp/nonexistent.yaml",
-    ])
+    result = _run(
+        "superharness.commands.discuss",
+        [
+            "submit",
+            "--discussion",
+            "d-1",
+            "--agent",
+            "claude-code",
+            "--round",
+            "1",
+            "--verdict",
+            "agree",
+            "--position",
+            "p",
+            "--points-file",
+            "/tmp/nonexistent.yaml",
+        ],
+    )
     assert result.returncode == 2, (
         f"removed flag should be rejected by argparse, got rc={result.returncode}"
     )
@@ -54,6 +71,7 @@ def test_submit_rejects_points_file_flag():
 
 def test_cmd_submit_round_has_no_points_file_parameter():
     from superharness.engine.discussion import cmd_submit_round
+
     params = inspect.signature(cmd_submit_round).parameters
     assert "points_file" not in params, (
         f"cmd_submit_round still takes points_file: {list(params)}"

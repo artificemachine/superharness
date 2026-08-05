@@ -4,6 +4,7 @@ Report verification gate: prevents auto_close_report_ready from blindly
 closing reports that lack evidence of completion. Operator only sees reports
 that fail verification.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -14,6 +15,7 @@ import pytest
 @pytest.fixture
 def verify_report():
     from superharness.engine.report_verifier import verify_report
+
     return verify_report
 
 
@@ -41,7 +43,9 @@ def _good_task(**overrides) -> dict:
     return base
 
 
-def test_complete_report_passes_verification(verify_report, clean_harness: Path) -> None:
+def test_complete_report_passes_verification(
+    verify_report, clean_harness: Path
+) -> None:
     r = verify_report(_good_report(), _good_task(), str(clean_harness))
     assert r.passed is True
     assert r.suggested_action == "close"
@@ -55,7 +59,9 @@ def test_report_missing_outcome_is_rejected(verify_report, clean_harness: Path) 
     assert any("outcome" in f.lower() for f in r.failures)
 
 
-def test_report_with_short_outcome_is_rejected(verify_report, clean_harness: Path) -> None:
+def test_report_with_short_outcome_is_rejected(
+    verify_report, clean_harness: Path
+) -> None:
     rep = _good_report(outcome="done")
     r = verify_report(rep, _good_task(), str(clean_harness))
     assert r.passed is False
@@ -70,7 +76,9 @@ def test_report_missing_context_field_warns(verify_report, clean_harness: Path) 
     assert any("context" in f.lower() for f in r.failures)
 
 
-def test_report_with_tests_passed_false_is_rejected(verify_report, clean_harness: Path) -> None:
+def test_report_with_tests_passed_false_is_rejected(
+    verify_report, clean_harness: Path
+) -> None:
     rep = _good_report(tests_passed=False)
     r = verify_report(rep, _good_task(), str(clean_harness))
     assert r.passed is False
@@ -78,7 +86,9 @@ def test_report_with_tests_passed_false_is_rejected(verify_report, clean_harness
     assert any("tests" in f.lower() for f in r.failures)
 
 
-def test_report_referencing_nonexistent_pr_url_is_rejected(verify_report, clean_harness: Path) -> None:
+def test_report_referencing_nonexistent_pr_url_is_rejected(
+    verify_report, clean_harness: Path
+) -> None:
     """If a report claims a PR URL, it should be a valid-looking URL."""
     rep = _good_report(pr_url="not a real url")
     r = verify_report(rep, _good_task(), str(clean_harness))
@@ -102,7 +112,9 @@ def test_verification_returns_typed_result(verify_report, clean_harness: Path) -
     assert r.suggested_action in ("close", "operator_review", "fail")
 
 
-def test_verification_failure_routes_to_operator_review(verify_report, clean_harness: Path) -> None:
+def test_verification_failure_routes_to_operator_review(
+    verify_report, clean_harness: Path
+) -> None:
     rep = _good_report(outcome="done")  # too short
     r = verify_report(rep, _good_task(), str(clean_harness))
     assert r.passed is False

@@ -4,6 +4,7 @@ Usage:
     shux artifact add --task <id> --type <type> <path>
     shux artifact list --task <id> [--json]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -14,6 +15,7 @@ import sys
 from datetime import datetime, timezone
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -51,10 +53,16 @@ def cmd_artifact(argv: list[str] | None = None) -> None:
     # artifact add
     p_add = sub.add_parser("add", help="Register a file artifact for a task.")
     p_add.add_argument("--task", "-t", required=True, help="Task ID")
-    p_add.add_argument("--type", dest="artifact_type", default="file",
-                       choices=["code", "image", "test_report", "binary", "file"],
-                       help="Artifact type (default: file)")
-    p_add.add_argument("--agent", "-a", default=None, help="Agent that produced the artifact")
+    p_add.add_argument(
+        "--type",
+        dest="artifact_type",
+        default="file",
+        choices=["code", "image", "test_report", "binary", "file"],
+        help="Artifact type (default: file)",
+    )
+    p_add.add_argument(
+        "--agent", "-a", default=None, help="Agent that produced the artifact"
+    )
     p_add.add_argument("--no-hash", action="store_true", help="Skip hashing the file")
     p_add.add_argument("path", help="File path to register")
 
@@ -93,15 +101,19 @@ def cmd_artifact(argv: list[str] | None = None) -> None:
             conn.commit()
             if hasattr(opts, "json") and opts.json:
                 from dataclasses import asdict
+
                 print(json.dumps(asdict(row)))
             else:
                 size_str = f" ({size} bytes)" if size else ""
-                print(f"artifact: registered {opts.path}{size_str} for task {opts.task}")
+                print(
+                    f"artifact: registered {opts.path}{size_str} for task {opts.task}"
+                )
 
         elif opts.subcmd == "list":
             rows = artifacts_dao.get_for_task(conn, opts.task)
             if getattr(opts, "json", False):
                 from dataclasses import asdict
+
                 print(json.dumps([asdict(r) for r in rows], indent=2))
             else:
                 if not rows:

@@ -16,11 +16,12 @@ The golden parity value below was captured from the LIVE legacy code path
 record its argv/cwd instead of exec'ing) before the harness adapter existed,
 per the plan's "capture first, hardcode, then extract" instruction.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from superharness.harnesses import KNOWN_HARNESSES, get_harness
+from superharness.harnesses import get_harness
 from superharness.harnesses.base import Invocation
 
 
@@ -55,8 +56,15 @@ def test_claude_invocation_parity():
     )
 
     expected_argv = (
-        "bash", launcher, "--project", "/tmp/proj", "--prompt", "do the thing",
-        "--non-interactive", "--model", "claude-sonnet-4-6",
+        "bash",
+        launcher,
+        "--project",
+        "/tmp/proj",
+        "--prompt",
+        "do the thing",
+        "--non-interactive",
+        "--model",
+        "claude-sonnet-4-6",
     )
     assert invocation.argv == expected_argv
     assert invocation.cwd == "/tmp/proj"

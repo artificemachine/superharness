@@ -8,6 +8,7 @@ Integration:
     Called from commands/delegate.py after status gates and before prompt build.
     Also available standalone: `shux preflight --task <id>`
 """
+
 from __future__ import annotations
 
 import os
@@ -17,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,7 +38,7 @@ STATUS_BLOCK = "block"
 @dataclass
 class PreflightCheck:
     id: str
-    level: str       # info | warn | block
+    level: str  # info | warn | block
     message: str
     detail: str = ""
 
@@ -44,10 +46,10 @@ class PreflightCheck:
 @dataclass
 class PreflightReport:
     task_id: str
-    status: str                           # pass | warn | block
+    status: str  # pass | warn | block
     checks: list[PreflightCheck] = field(default_factory=list)
-    suggested_fanout_n: int = 1           # 1 = single, >1 = parallel/swarm
-    suggested_mode: str = "single"        # single | fanout | swarm
+    suggested_fanout_n: int = 1  # 1 = single, >1 = parallel/swarm
+    suggested_mode: str = "single"  # single | fanout | swarm
     can_dispatch: bool = True
 
     # Convenience views
@@ -70,7 +72,9 @@ class PreflightReport:
             )
         for c in self.checks:
             if verbose or c.level in (LEVEL_WARN, LEVEL_BLOCK):
-                prefix = {"info": "  ·", "warn": "  ⚠", "block": "  ✗"}.get(c.level, "  ?")
+                prefix = {"info": "  ·", "warn": "  ⚠", "block": "  ✗"}.get(
+                    c.level, "  ?"
+                )
                 lines.append(f"{prefix} [{c.id}] {c.message}")
                 if c.detail:
                     lines.append(f"      {c.detail}")
@@ -81,59 +85,84 @@ class PreflightReport:
 # Individual checks
 # ---------------------------------------------------------------------------
 
+
 def _check_spec_complete(task: dict) -> list[PreflightCheck]:
     checks = []
     if not task.get("title"):
-        checks.append(PreflightCheck(
-            id="no_title", level=LEVEL_WARN,
-            message="Task has no title — agent may lack context.",
-        ))
+        checks.append(
+            PreflightCheck(
+                id="no_title",
+                level=LEVEL_WARN,
+                message="Task has no title — agent may lack context.",
+            )
+        )
     if not task.get("owner"):
-        checks.append(PreflightCheck(
-            id="no_owner", level=LEVEL_WARN,
-            message="Task has no owner — dispatch target may be ambiguous.",
-        ))
+        checks.append(
+            PreflightCheck(
+                id="no_owner",
+                level=LEVEL_WARN,
+                message="Task has no owner — dispatch target may be ambiguous.",
+            )
+        )
     return checks
 
 
 def _check_tdd_block(task: dict) -> list[PreflightCheck]:
     tdd = task.get("tdd") or {}
     if not tdd.get("red"):
-        return [PreflightCheck(
-            id="no_tdd_red", level=LEVEL_WARN,
-            message="No TDD red phase defined — agent will code without a failing test first.",
-            detail="Add a tdd.red block describing which tests to write before implementing.",
-        )]
+        return [
+            PreflightCheck(
+                id="no_tdd_red",
+                level=LEVEL_WARN,
+                message="No TDD red phase defined — agent will code without a failing test first.",
+                detail="Add a tdd.red block describing which tests to write before implementing.",
+            )
+        ]
     if not tdd.get("green"):
-        return [PreflightCheck(
-            id="no_tdd_green", level=LEVEL_WARN,
-            message="TDD red phase exists but no green phase — incomplete TDD spec.",
-        )]
-    return [PreflightCheck(
-        id="tdd_ok", level=LEVEL_INFO,
-        message="TDD block present (red + green).",
-    )]
+        return [
+            PreflightCheck(
+                id="no_tdd_green",
+                level=LEVEL_WARN,
+                message="TDD red phase exists but no green phase — incomplete TDD spec.",
+            )
+        ]
+    return [
+        PreflightCheck(
+            id="tdd_ok",
+            level=LEVEL_INFO,
+            message="TDD block present (red + green).",
+        )
+    ]
 
 
 def _check_acceptance_criteria(task: dict) -> list[PreflightCheck]:
     ac = task.get("acceptance_criteria") or []
     if not ac:
-        return [PreflightCheck(
-            id="no_acceptance_criteria", level=LEVEL_WARN,
-            message="No acceptance criteria — agent has no clear definition of done.",
-            detail="Add acceptance_criteria to the task.",
-        )]
+        return [
+            PreflightCheck(
+                id="no_acceptance_criteria",
+                level=LEVEL_WARN,
+                message="No acceptance criteria — agent has no clear definition of done.",
+                detail="Add acceptance_criteria to the task.",
+            )
+        ]
     n = len(ac)
     if n > 6:
-        return [PreflightCheck(
-            id="too_many_criteria", level=LEVEL_WARN,
-            message=f"Task has {n} acceptance criteria — consider decomposing.",
-            detail="Tasks with >6 criteria are often too large for a single dispatch.",
-        )]
-    return [PreflightCheck(
-        id="acceptance_criteria_ok", level=LEVEL_INFO,
-        message=f"{n} acceptance criteria defined.",
-    )]
+        return [
+            PreflightCheck(
+                id="too_many_criteria",
+                level=LEVEL_WARN,
+                message=f"Task has {n} acceptance criteria — consider decomposing.",
+                detail="Tasks with >6 criteria are often too large for a single dispatch.",
+            )
+        ]
+    return [
+        PreflightCheck(
+            id="acceptance_criteria_ok",
+            level=LEVEL_INFO,
+            message=f"{n} acceptance criteria defined.",
+        )
+    ]
 
 
 def _check_dependencies(task: dict, project_dir: str) -> list[PreflightCheck]:
@@ -147,14 +176,18 @@ def _check_dependencies(task: dict, project_dir: str) -> list[PreflightCheck]:
     if isinstance(blocked_by, list):
         dep_ids = [str(d).strip() for d in blocked_by if d and str(d).strip() != "none"]
     else:
-        dep_ids = [d.strip() for d in str(blocked_by).strip("[]").split(",")
-                   if d.strip() and d.strip() != "none"]
+        dep_ids = [
+            d.strip()
+            for d in str(blocked_by).strip("[]").split(",")
+            if d.strip() and d.strip() != "none"
+        ]
 
     if not dep_ids:
         return checks
 
     try:
         from superharness.engine import state_reader as _sr
+
         tasks = _sr.get_tasks(project_dir)
         tasks_by_id = {str(t.get("id", "")): t for t in tasks if isinstance(t, dict)}
     except Exception as e:
@@ -165,11 +198,14 @@ def _check_dependencies(task: dict, project_dir: str) -> list[PreflightCheck]:
         dep = tasks_by_id.get(dep_id)
         dep_status = dep.get("status", "not_found") if dep else "not_found"
         if dep_status not in ("done", "archived"):
-            checks.append(PreflightCheck(
-                id="blocked_dependency", level=LEVEL_BLOCK,
-                message=f"Blocked by '{dep_id}' (status: {dep_status}).",
-                detail="Complete the blocking task before dispatching this one.",
-            ))
+            checks.append(
+                PreflightCheck(
+                    id="blocked_dependency",
+                    level=LEVEL_BLOCK,
+                    message=f"Blocked by '{dep_id}' (status: {dep_status}).",
+                    detail="Complete the blocking task before dispatching this one.",
+                )
+            )
 
     return checks
 
@@ -217,7 +253,9 @@ def _mcp_listing() -> str | None:
     if not claude:
         return None
     try:
-        r = subprocess.run([claude, "mcp", "list"], capture_output=True, text=True, timeout=15)
+        r = subprocess.run(
+            [claude, "mcp", "list"], capture_output=True, text=True, timeout=15
+        )
         _MCP_LIST_CACHE = (r.stdout + r.stderr).lower()
     except Exception as e:
         logger.warning("preflight.py mcp list failed: %s", e)
@@ -245,6 +283,7 @@ def _load_profile_requires(project_dir: str) -> dict | None:
         return None
     try:
         import yaml as _yaml
+
         with open(profile_path) as _f:
             profile = _yaml.safe_load(_f) or {}
         req = profile.get("requires")
@@ -285,7 +324,9 @@ def _merge_requires(base: dict | None, override: dict | None) -> dict | None:
                 combined.append(item)
         if combined:
             merged[key] = combined
-    return merged if any(merged.get(k) for k in ("skills", "cli", "env", "mcp")) else None
+    return (
+        merged if any(merged.get(k) for k in ("skills", "cli", "env", "mcp")) else None
+    )
 
 
 def _derive_signal_requires(task: dict) -> dict | None:
@@ -305,7 +346,9 @@ def _derive_signal_requires(task: dict) -> dict | None:
         return None
     return {
         "fail_mode": "block",
-        "cli": [{"id": cid, "reason": "auto-derived from test_types"} for cid in cli_ids],
+        "cli": [
+            {"id": cid, "reason": "auto-derived from test_types"} for cid in cli_ids
+        ],
     }
 
 
@@ -345,31 +388,41 @@ def _check_requires(task: dict, project_dir: str | None = None) -> list[Prefligh
     for item in req.get("skills") or []:
         sid = item.get("id") if isinstance(item, dict) else str(item)
         if sid and not _skill_present(sid):
-            checks.append(PreflightCheck(
-                id="requires_skill_missing", level=hard_level,
-                message=f"Required skill '{sid}' not found.",
-                detail=_reason(item) or "Install it under ~/.claude/skills or ~/.claude/commands.",
-            ))
+            checks.append(
+                PreflightCheck(
+                    id="requires_skill_missing",
+                    level=hard_level,
+                    message=f"Required skill '{sid}' not found.",
+                    detail=_reason(item)
+                    or "Install it under ~/.claude/skills or ~/.claude/commands.",
+                )
+            )
 
     # CLIs
     for item in req.get("cli") or []:
         cid = item.get("id") if isinstance(item, dict) else str(item)
         if cid and shutil.which(cid) is None:
-            checks.append(PreflightCheck(
-                id="requires_cli_missing", level=hard_level,
-                message=f"Required CLI '{cid}' not on PATH.",
-                detail=_reason(item),
-            ))
+            checks.append(
+                PreflightCheck(
+                    id="requires_cli_missing",
+                    level=hard_level,
+                    message=f"Required CLI '{cid}' not on PATH.",
+                    detail=_reason(item),
+                )
+            )
 
     # Environment variables (presence only — never reads values)
     for item in req.get("env") or []:
         name = item.get("name") if isinstance(item, dict) else str(item)
         if name and not os.environ.get(name):
-            checks.append(PreflightCheck(
-                id="requires_env_missing", level=hard_level,
-                message=f"Required environment variable '{name}' is unset.",
-                detail=_reason(item),
-            ))
+            checks.append(
+                PreflightCheck(
+                    id="requires_env_missing",
+                    level=hard_level,
+                    message=f"Required environment variable '{name}' is unset.",
+                    detail=_reason(item),
+                )
+            )
 
     # MCP servers (best-effort)
     mcp_items = req.get("mcp") or []
@@ -379,21 +432,30 @@ def _check_requires(task: dict, project_dir: str | None = None) -> list[Prefligh
         if not server:
             continue
         if listing is None:
-            checks.append(PreflightCheck(
-                id="requires_mcp_unknown", level=LEVEL_WARN,
-                message=f"Could not verify MCP server '{server}' (claude mcp list unavailable).",
-            ))
+            checks.append(
+                PreflightCheck(
+                    id="requires_mcp_unknown",
+                    level=LEVEL_WARN,
+                    message=f"Could not verify MCP server '{server}' (claude mcp list unavailable).",
+                )
+            )
         elif server.lower() not in listing:
-            checks.append(PreflightCheck(
-                id="requires_mcp_missing", level=hard_level,
-                message=f"Required MCP server '{server}' not registered.",
-            ))
+            checks.append(
+                PreflightCheck(
+                    id="requires_mcp_missing",
+                    level=hard_level,
+                    message=f"Required MCP server '{server}' not registered.",
+                )
+            )
 
     if not checks:
-        checks.append(PreflightCheck(
-            id="requires_ok", level=LEVEL_INFO,
-            message="All declared capability requirements satisfied.",
-        ))
+        checks.append(
+            PreflightCheck(
+                id="requires_ok",
+                level=LEVEL_INFO,
+                message="All declared capability requirements satisfied.",
+            )
+        )
     return checks
 
 
@@ -402,21 +464,31 @@ def _check_git_state(project_dir: str) -> list[PreflightCheck]:
     try:
         r = subprocess.run(
             ["git", "status", "--porcelain"],
-            capture_output=True, text=True, check=False, cwd=project_dir,
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=project_dir,
         )
         if r.returncode != 0:
             return []  # Not a git repo or git not available
         dirty_lines = [line for line in r.stdout.splitlines() if line.strip()]
         if dirty_lines:
-            return [PreflightCheck(
-                id="dirty_worktree", level=LEVEL_WARN,
-                message=f"Working tree has {len(dirty_lines)} uncommitted change(s).",
-                detail="The agent may be confused by existing modifications. Consider committing first.",
-            )]
+            return [
+                PreflightCheck(
+                    id="dirty_worktree",
+                    level=LEVEL_WARN,
+                    message=f"Working tree has {len(dirty_lines)} uncommitted change(s).",
+                    detail="The agent may be confused by existing modifications. Consider committing first.",
+                )
+            ]
     except Exception as e:
         logger.warning("preflight.py unexpected error: %s", e, exc_info=True)
         pass
-    return [PreflightCheck(id="git_clean", level=LEVEL_INFO, message="Working tree is clean.")]
+    return [
+        PreflightCheck(
+            id="git_clean", level=LEVEL_INFO, message="Working tree is clean."
+        )
+    ]
 
 
 def _check_prior_failures(project_dir: str, task_id: str) -> list[PreflightCheck]:
@@ -424,6 +496,7 @@ def _check_prior_failures(project_dir: str, task_id: str) -> list[PreflightCheck
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import failures_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -445,6 +518,7 @@ def _check_prior_failures(project_dir: str, task_id: str) -> list[PreflightCheck
 # Complexity estimate → fanout suggestion
 # ---------------------------------------------------------------------------
 
+
 def _estimate_complexity(task: dict) -> tuple[int, str]:
     """Return (suggested_fanout_n, suggested_mode) based on task scope."""
     ac = task.get("acceptance_criteria") or []
@@ -454,10 +528,22 @@ def _estimate_complexity(task: dict) -> tuple[int, str]:
 
     # Score complexity
     score = 0
-    score += len(ac)                                    # each criterion adds 1
-    score += 2 if len(tdd_text) > 300 else 0           # complex TDD description
-    score += 2 if any(w in title.lower() for w in     # high-complexity signals
-                      ("refactor", "migrate", "rewrite", "architecture", "system")) else 0
+    score += len(ac)  # each criterion adds 1
+    score += 2 if len(tdd_text) > 300 else 0  # complex TDD description
+    score += (
+        2
+        if any(
+            w in title.lower()
+            for w in (  # high-complexity signals
+                "refactor",
+                "migrate",
+                "rewrite",
+                "architecture",
+                "system",
+            )
+        )
+        else 0
+    )
     score += 1 if len(tdd_text) > 100 else 0
 
     if score <= 3:
@@ -485,6 +571,7 @@ def _estimate_complexity(task: dict) -> tuple[int, str]:
 #     test_types: [security, sast]    # security tasks need explicit deps
 # ---------------------------------------------------------------------------
 
+
 def _check_mandate_policy(task: dict, project_dir: str) -> list[PreflightCheck]:
     """Block dispatch if task matches a mandate profile but has no explicit requires: block.
 
@@ -497,6 +584,7 @@ def _check_mandate_policy(task: dict, project_dir: str) -> list[PreflightCheck]:
         return []
     try:
         import yaml as _yaml
+
         with open(profile_path) as _f:
             profile = _yaml.safe_load(_f) or {}
         mandate = profile.get("mandate_requires_for")
@@ -514,6 +602,7 @@ def _check_mandate_policy(task: dict, project_dir: str) -> list[PreflightCheck]:
         if not ship:
             try:
                 import json as _j
+
                 raw = task.get("extras_json")
                 if isinstance(raw, str):
                     ship = _j.loads(raw).get("ship_on_complete")
@@ -547,27 +636,32 @@ def _check_mandate_policy(task: dict, project_dir: str) -> list[PreflightCheck]:
     criteria_str = ", ".join(matched)
     per_task_req = task.get("requires")
     if isinstance(per_task_req, dict) and per_task_req:
-        return [PreflightCheck(
-            id="mandate_requires_satisfied",
-            level=LEVEL_INFO,
-            message=f"Mandate satisfied: task matches {criteria_str} and has an explicit requires: block.",
-        )]
+        return [
+            PreflightCheck(
+                id="mandate_requires_satisfied",
+                level=LEVEL_INFO,
+                message=f"Mandate satisfied: task matches {criteria_str} and has an explicit requires: block.",
+            )
+        ]
 
     task_id = str(task.get("id", "?"))
-    return [PreflightCheck(
-        id="mandate_requires_missing",
-        level=LEVEL_BLOCK,
-        message=f"Mandate: task matches {criteria_str} but has no explicit requires: block.",
-        detail=(
-            f"Declare requirements via: shux task requires --id {task_id} --cli <tool> --env <VAR>"
-            "\nOr opt out: remove 'mandate_requires_for' from .superharness/profile.yaml"
-        ),
-    )]
+    return [
+        PreflightCheck(
+            id="mandate_requires_missing",
+            level=LEVEL_BLOCK,
+            message=f"Mandate: task matches {criteria_str} but has no explicit requires: block.",
+            detail=(
+                f"Declare requirements via: shux task requires --id {task_id} --cli <tool> --env <VAR>"
+                "\nOr opt out: remove 'mandate_requires_for' from .superharness/profile.yaml"
+            ),
+        )
+    ]
 
 
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
+
 
 def run_preflight(
     project_dir: str,
