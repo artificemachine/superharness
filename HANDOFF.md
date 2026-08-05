@@ -1,5 +1,51 @@
 # Handoff — superharness
 
+# Session Handoff — 2026-08-03 (PR #77 triage → 6 PRs merged: #92 closed, talk landed, leak-detection stack shipped, NFS journal mode extracted, branches cleaned)
+Agent: Claude Code (Opus 5) | Branch: main at `3a755123` | Tests: fast subset 895 pass / 6 skip ~40s; targeted suites green (167 db/mcp/operator, 153 contract, 13 nfs-journal) | ALL MERGED, ZERO OPEN PRs
+
+## What happened this session
+
+- **Issue #92 closed via PR #99** (`fix/issue-92-hook-tree-canonical`). Adopted `src/superharness/adapters/claude-code/hooks/` as canonical (SQLite SoT per `state-backend` rule; root copies read dead `contract.yaml`). Copied 5 divergent files src→root → both trees byte-identical; `KNOWN_DIVERGENT_HOOK_FILES` → `{}`. **Found + fixed a real production bug**: `session-stop.sh`/`session-exit.sh` passed `stopped_reason=`/`summary=` to `state_writer.set_task_status()` — no such tasks columns, `sqlite3.OperationalError` silently swallowed by `except Exception: pass`, so **task-stopping never actually wrote to SQLite** since the migration (handoff YAML claimed success fraudulently). Fixed: only `stopped_at` passed. **Found + fixed install-path bug**: `install_hooks.py` lacked legacy-name matching → pre-split installs would get TWO Stop hooks after upgrade; added `LEGACY_HOOK_ALIASES = {"session-turn-end": ("session-stop",)}`. Closed `KNOWN_UNTESTED` (new `tests/unit/test_session_exit.py` 6 tests + `test_session_turn_end.py` 7 tests).
+
+- **PR #78 (`shux talk`, Joe/yjjoeathome-byte) rebased → merged as PR #100** (`feat/talk-rebased`). Original 2026-07-26 commit `3e7a017d` rebased onto current main; CHANGELOG entry flattened to house style (dated bullet, no `## [Unreleased]` header). #78 closed with pointer; Joe credited via Co-Authored-By. All 7 talk tests + 158 contract tests pass.
+
+- **PR #77 (RMDI router + pi adapter + NFS journal mode) triaged → closed, useful part extracted.** Textual conflicts resolved in worktree (only 1 real marker: `mcp/session.py` import — kept both `resolve_active_state_db_path` + `_resolve_journal_mode`). 6 test failures = opencode→pi roster-swap fallout (feature work, not conflicts). **Public-repo exposure found in file contents**: internal hostnames (numbered-vm hosts, workstation ids), a collaborator's NAS workspace username, token-path markers, model IDs embedding hostnames — plus **a live leak already on main**: `docs/RUNBOOK-state-authority-stage1-transition.md` (hostnames, collaborator NAS username, owner's name in prose — committed since PR #79), sanitized to placeholders. NFS journal mode **extracted as PR #103** (4 files: `engine/db.py` + 3 openers; 13 new hermetic tests; fixture uses generic `/mnt/nas` — the ratchet caught my own private-path fixture); Joe credited. #77 closed with full explanation (private-substrate → private repo, or sanitized re-proposal).
+
+- **Security stack built (PR #102 `chore/security-leak-detection`)** — the "best detector/flags/blocker" for the public repo:
+  1. `tests/contract/test_no_infra_topology_leaks.py` — topology ratchet: hostname shapes (numbered-vm hosts, workstation ids, site-style ids, sidecar-style refs), private IPs, NAS mounts, token paths, any real-user home path (placeholder fixture users exempt; small documented `LEAK_ALLOWLIST`). Runs pre-commit (whole `tests/contract/` dir) + CI via `other-tests` → blocks through QA Gate.
+  2. `.security-blocklist.txt` — gitignored exact-string jaw (local machines only; never committed). Currently: the collaborator's NAS-workspace username and the LAN domain. Public GH handle `yjjoeathome-byte` intentionally NOT listed (public knowledge).
+  3. Required **Gitleaks** job — **runs the MIT-licensed binary directly**, NOT gitleaks-action (v2+ requires paid GITLEAKS_LICENSE for org repos; action wrapper fails even SHA-pinned). Scans PR diff `base..HEAD` (full-history flags fake-token fixtures in `tests/unit/test_module_obsidian.py`). Branch protection now requires QA Gate + Windows-Native Release Gate + ShipGuard Scan + Gitleaks.
+  - **Caught by its own ratchet 3×**: my CHANGELOG line echoing pattern shapes, the private-path fixture, and the `/tmp/claude-*` case — proof it works.
+
+- **Joe's #101 merged** (`fix/scope-guard-allow-claude-scratchpad`): scope-guard returned `ask` for `/tmp/claude-<uid>/` (Claude Code's own scratchpad), which per Anthropic's rules can't be suppressed even by `bypassPermissions`. Fix allows `/tmp/claude-*/` after the sensitive-deny, before the general `/tmp/*` warn. +30/-0, 3 files. His second merged contribution.
+
+- **Secret scanning + push protection ENABLED** (owner action, API 404s without `security_events` scope). Settings → Code security and analysis. Full stack now: server-side push protection → Gitleaks → topology ratchet → branch protection.
+
+- **NFS journal mode merged as PR #103** (extracted from #77, credited to Joe). WAL needs `-shm` mmap network filesystems can't provide → corrupts on NFS/CIFS. `_resolve_journal_mode` picks WAL local / PERSIST network (best-effort `/proc/mounts` scan, octal-escape decode, stacked-mount tie-break, autofs=network); `SUPERHARNESS_JOURNAL_MODE` override (closed-set validated, MEMORY/OFF warn); non-WAL open drops stale `-wal`/`-shm` before connecting. Honest limit: SQLite guarantees nothing on NFS — single-writer host is the robust answer. Windows CI caught a real fixture bug: `os.path.realpath` normalizes POSIX paths on Windows → pinned to identity in fixtures.
+
+- **Branch cleanup**: all 25 remote branches deleted (verified merged via ancestry + `git cherry` 0-unapplied; several were already auto-deleted by `--delete-branch`); local `feat/nfs-aware-journal-mode` deleted. Only `origin/main` + local `main` remain (plus pi-agent's `feat/hermeticity-guard` worktree — not ours).
+
+- **CHANGELOG union-driver trap hit 3× this session** (after #102/#100/#99 merges): the `merge=union` driver auto-resolves but orders branch lines BEFORE main's, breaking byte-prefix. Fix pattern each time: `sed -n '<n>p' CHANGELOG.md > /tmp/x.md && sed -i '' '<n>d' CHANGELOG.md && cat /tmp/x.md >> CHANGELOG.md`, verify with `head -c $(wc -c < main) file | cmp - main`. This will recur on EVERY branch that appends to CHANGELOG while another merges first.
+
+## Next session — first moves
+
+1. **Dependabot PRs will re-open** (version bumps are pending per Dependabot's schedule — #75/#76/#91 merged today; expect setup-python/checkout/pypi-publish bump PRs again soon). Merge as they go green.
+2. **Watch the xdist trial decision** — `unit-tests-parallel` non-blocking job (PR #97) has ~a week of data by now; promote pytest-xdist to pyproject + CI flag, or delete the job. `--dist loadfile` is load-bearing (bare `-n auto` crashes the suite).
+3. **Contact Joe re: RMDI/pi stack** — #77 closed with options (private repo mirror, or sanitized re-proposal). His `pr/rmdi-pi-harness` branch remains on `yjjoeathome-byte/superharness-fresh` (couldn't delete — no write access).
+4. **Re-run the PII history sweep if gitleaks full-history is ever wanted** — `tests/unit/test_module_obsidian.py` has fake-token fixtures in history that a full-history gitleaks scan flags; PR-diff scope is the current choice.
+
+### Operational notes
+- **The leak-detection stack is LIVE and BLOCKING** — every new PR must pass the topology ratchet (contract tests) + Gitleaks + ShipGuard + QA Gate. Write test fixtures with generic paths (e.g. `/mnt/nas`, never private NAS paths) and don't echo pattern shapes in CHANGELOG/prose (the ratchet caught all three of these this session).
+- **CHANGELOG union-merge trap is recurring**: after ANY merge of main into a branch that appends to CHANGELOG, verify byte-prefix with `head -c $(wc -c < base) new | cmp - base`. CI's `check-changelog-append-only.sh --base-ref origin/main` also catches it.
+- **gitleaks-action is unusable for org repos** (paid license since v2, fails even SHA-pinned). Use the direct binary (`gitleaks detect --source . --log-opts="<base>..HEAD"`), installed from the v8.30.1 release tarball. `.gitleaks.toml` allows the two fake-credential test fixtures.
+- **Push protection**: remote branch deletions and pushes to `main` need `ALLOW_PUSH=1` (global pre-push hook). `gh pr merge --delete-branch` auto-deletes remote branches without the hook.
+- **PII guard `tests/unit/test_no_tracked_personal_data.py`** only covers maintainer identity; the topology ratchet covers infra — run BOTH before any commit touching docs/CHANGELOG/tests.
+- **New required checks are now in branch protection**: QA Gate, Windows-Native Release Gate, ShipGuard Scan, Gitleaks. Old PRs predating them need an empty-commit re-trigger to register the checks (hit 3× this session: #99/#100/#101).
+- **Joe = `yjjoeathome-byte`**, real admin collaborator (verified 2026-07-30). Public GH handle is fine in-repo; his private identifiers (NAS-workspace username, personal email) are blocklisted.
+- Full CI matrix 10-20 min; Windows Unit 17-19 min. macos E2E had a runner-provisioning flake ("Set up job" 2s fail) — rerun `--failed` once the run completes.
+
+---
+
 # Session Handoff — 2026-08-02/03 (race guards shipped as v1.81.8 on PyPI, enforcement parity landed, lock repaired)
 Agent: Claude Code (Opus 5; Sonnet 5 subagent for the enforcement-parity implementation) | Branch: main at `5e34e7e5` | Tests: fast subset 891 pass / 6 skip ~27s; full unit 3674 pass / 536 skip / 2 xfail in 12:15 (2 known local-only flakes, both green on all 3 CI platforms) | ALL MERGED + RELEASED
 
