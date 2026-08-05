@@ -55,7 +55,7 @@ jobs:
           # Keep in sync with branch protection on main:
           #   gh api repos/${GITHUB_REPOSITORY}/branches/main/protection \
           #     --jq '.required_status_checks.contexts'
-          REQUIRED=("QA Gate" "Windows-Native Release Gate")
+          REQUIRED=("QA Gate" "Windows-Native Release Gate" "ShipGuard Scan" "Gitleaks")
 
           gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100" \
             --paginate --jq '.check_runs[] | {name, conclusion, started_at}' \

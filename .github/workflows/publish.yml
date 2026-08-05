@@ -15,7 +15,58 @@ permissions:
   contents: read
 
 jobs:
+  verify-ci:
+    name: Verify Release Gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Verify required checks are green before publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          REF="${{ inputs.ref || github.event.release.tag_name || github.ref_name }}"
+          echo "Verifying release gate for ref ${REF}"
+
+          # Keep in sync with release.yml verify-ci and branch protection on main.
+          # publish.yml has its own trigger surface (release:published, workflow_dispatch)
+          # independent of release.yml, so it must re-verify rather than trust the caller.
+          REQUIRED=("QA Gate" "Windows-Native Release Gate" "ShipGuard Scan" "Gitleaks")
+
+          gh api "repos/${{ github.repository }}/commits/${REF}/check-runs?per_page=100" \
+            --paginate --jq '.check_runs[] | {name, conclusion, started_at}' \
+            | jq -s '.' > /tmp/check_runs.json
+
+          echo "Found $(jq 'length' /tmp/check_runs.json) check run(s) on ${REF}"
+
+          FAILED=0
+          for name in "${REQUIRED[@]}"; do
+            conclusion="$(jq -r --arg n "$name" \
+              '[.[] | select(.name == $n)] | sort_by(.started_at) | last | .conclusion // "MISSING"' \
+              /tmp/check_runs.json)"
+            if [ "$conclusion" = "success" ]; then
+              echo "  OK       ${name}: success"
+            elif [ "$conclusion" = "MISSING" ] || [ "$conclusion" = "null" ]; then
+              echo "  BLOCKED  ${name}: no check run found on ${REF}"
+              FAILED=1
+            else
+              echo "  BLOCKED  ${name}: ${conclusion}"
+              FAILED=1
+            fi
+          done
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo ""
+            echo "Refusing to publish ${REF} to PyPI — required checks are not green."
+            exit 1
+          fi
+
+          echo ""
+          echo "All required checks green on ${REF} — proceeding with publish."
+
   build:
+    needs: verify-ci
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
