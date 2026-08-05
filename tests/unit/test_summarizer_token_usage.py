@@ -9,13 +9,13 @@ CLI providers (opencode, claude-code) do not have token info in
 stdout; their `last_usage` stays empty and the rate limiter records
 NULL token columns.
 """
+
 from __future__ import annotations
 
 import pytest
 
 from superharness.engine import summarizer_providers as providers
 from superharness.engine.db import get_connection, init_db
-from superharness.engine import summarizer_calls
 from superharness.engine.summarizer import _SQLiteRateLimitedSummarizer
 
 
@@ -114,7 +114,9 @@ def test_missing_usage_defaults_to_none(monkeypatch, sample_context):
     assert s.last_usage["output_tokens"] is None
 
 
-def test_sqlite_limiter_records_tokens_from_inner(monkeypatch, project_dir, sample_context):
+def test_sqlite_limiter_records_tokens_from_inner(
+    monkeypatch, project_dir, sample_context
+):
     """Round-trip: provider sets last_usage, limiter logs into summarizer_calls."""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-fake")
     monkeypatch.setattr(

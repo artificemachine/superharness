@@ -1,4 +1,5 @@
 """Integration tests for the dashboard /api/logs and /api/logs/stream endpoints."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -91,10 +92,15 @@ def _get_json(port: int, path: str, token: str) -> dict:
 
 
 def test_api_logs_returns_recent_lines(dashboard):
-    dashboard["main"].write_text("\n".join([
-        "2026-05-06T12:00:00+0200 INFO superharness.x:fn:1 first",
-        "2026-05-06T12:00:01+0200 ERROR superharness.x:fn:2 second",
-    ]) + "\n")
+    dashboard["main"].write_text(
+        "\n".join(
+            [
+                "2026-05-06T12:00:00+0200 INFO superharness.x:fn:1 first",
+                "2026-05-06T12:00:01+0200 ERROR superharness.x:fn:2 second",
+            ]
+        )
+        + "\n"
+    )
     d = _get_json(dashboard["port"], "/api/logs?n=10", dashboard["token"])
     assert "first" in d["lines"]
     assert "second" in d["lines"]
@@ -102,10 +108,15 @@ def test_api_logs_returns_recent_lines(dashboard):
 
 
 def test_api_logs_filters_by_level(dashboard):
-    dashboard["main"].write_text("\n".join([
-        "2026-05-06T12:00:00+0200 DEBUG superharness.x:fn:1 debug-only",
-        "2026-05-06T12:00:01+0200 ERROR superharness.x:fn:2 error-only",
-    ]) + "\n")
+    dashboard["main"].write_text(
+        "\n".join(
+            [
+                "2026-05-06T12:00:00+0200 DEBUG superharness.x:fn:1 debug-only",
+                "2026-05-06T12:00:01+0200 ERROR superharness.x:fn:2 error-only",
+            ]
+        )
+        + "\n"
+    )
     d = _get_json(dashboard["port"], "/api/logs?n=10&level=ERROR", dashboard["token"])
     assert "debug-only" not in d["lines"]
     assert "error-only" in d["lines"]

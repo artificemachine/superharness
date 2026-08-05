@@ -12,6 +12,7 @@ only. Nothing here depends on it.
 Everything here reads files as data. Nothing is executed, no hook is
 invoked, no agent is spawned, no `.superharness/` state is touched.
 """
+
 from __future__ import annotations
 
 import re
@@ -26,7 +27,9 @@ CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "tests.yml"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 
 HOOKS_DIR_ROOT = REPO_ROOT / "adapters" / "claude-code" / "hooks"
-HOOKS_DIR_SRC = REPO_ROOT / "src" / "superharness" / "adapters" / "claude-code" / "hooks"
+HOOKS_DIR_SRC = (
+    REPO_ROOT / "src" / "superharness" / "adapters" / "claude-code" / "hooks"
+)
 
 # ---------------------------------------------------------------------------
 # Resolved 2026-08-03 (issue #92): the two hook trees are now byte-identical.
@@ -135,8 +138,7 @@ def test_precommit_deselects_network_tests():
         f'-m "not network".'
     )
     assert '-m "not network"' in else_block, (
-        f"{PRECOMMIT_HOOK}: fast-subset branch is missing "
-        f'-m "not network".'
+        f'{PRECOMMIT_HOOK}: fast-subset branch is missing -m "not network".'
     )
 
 

@@ -1,4 +1,5 @@
 """Tests for MCP SessionManager — Iteration 1."""
+
 from __future__ import annotations
 
 import os
@@ -6,7 +7,7 @@ import sqlite3
 import pytest
 from pathlib import Path
 
-from superharness.mcp.session import SessionManager, PolicyError
+from superharness.mcp.session import SessionManager
 from superharness.utils.paths import (
     StateDatabaseConflictError,
     resolve_xdg_state_db_path,
@@ -84,6 +85,7 @@ def test_session_stores_agent_name(tmp_path):
 # XDG path migration (Iteration 3)
 # ---------------------------------------------------------------------------
 
+
 def test_init_session_prefers_xdg_over_legacy(tmp_path, monkeypatch):
     """When state.db exists at the XDG path, it is opened instead of .superharness/."""
     state_dir = str(tmp_path / "xdg_state")
@@ -148,15 +150,16 @@ def test_init_session_honors_state_project_override(tmp_path, monkeypatch):
 
     sm = SessionManager()
     sm.init_session("worktree-1", str(worktree), agent="codex-cli")
-    opened = sm.get_connection("worktree-1").execute(
-        "PRAGMA database_list"
-    ).fetchone()[2]
+    opened = (
+        sm.get_connection("worktree-1").execute("PRAGMA database_list").fetchone()[2]
+    )
 
     expected = original / ".superharness" / "state.sqlite3"
     assert os.path.realpath(opened) == os.path.realpath(expected)
 
 
 # ── Iter 13 RED: MCP session timeout must be seconds, not milliseconds ─────────
+
 
 def test_timeout_is_seconds():
     """sqlite3.connect timeout in session.py must be seconds, not milliseconds.
@@ -166,9 +169,11 @@ def test_timeout_is_seconds():
     """
     import inspect
     import superharness.mcp.session as mod
+
     src = inspect.getsource(mod)
     # timeout=5000 is clearly wrong (5000 seconds). Find any bad value.
     import re
+
     bad = re.search(r"sqlite3\.connect\(.*?timeout\s*=\s*(\d{4,})", src)
     assert bad is None, (
         f"Found timeout={bad.group(1)} in mcp/session.py sqlite3.connect call. "

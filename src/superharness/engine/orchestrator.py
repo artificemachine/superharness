@@ -9,6 +9,7 @@ Orchestrator model selection uses random exploration with quality tracking:
 each model in the chain gets scored on decomposition success rate. Over time,
 preferred models get higher selection weight.
 """
+
 from __future__ import annotations
 
 import json
@@ -35,10 +36,10 @@ DECOMPOSER_FALLBACK = fallback_flagship()  # N-1 fallback within claude
 # Tries the best model from each agent. Randomly shuffled per call so
 # different models get a chance — quality scores accumulate over time.
 _ORCHESTRATOR_CHAIN: list[tuple[str, str, str]] = [
-    ("claude", flagship(),          f"Claude {flagship()} (max)"),
+    ("claude", flagship(), f"Claude {flagship()} (max)"),
     ("claude", fallback_flagship(), f"Claude {fallback_flagship()} (fallback)"),
-    ("codex",  "gpt-5.5",                 "Codex GPT-5.5 (max)"),
-    ("gemini", "gemini-3.1-pro-preview",   "Gemini 3.1 Pro (max)"),
+    ("codex", "gpt-5.5", "Codex GPT-5.5 (max)"),
+    ("gemini", "gemini-3.1-pro-preview", "Gemini 3.1 Pro (max)"),
     ("opencode", "deepseek/deepseek-v4-pro", "DeepSeek V4 Pro (max)"),
 ]
 
@@ -60,6 +61,7 @@ def _build_agent_argv(binary: str, model: str, prompt: str) -> list[str]:
         return [binary, "-m", model, "-p", prompt]
     # claude (and any unknown binary): Claude-style flags
     return [binary, "--model", model, "-p", prompt]
+
 
 # Quality scores per model: {model_id: {successes: int, failures: int, last_used: iso}}
 # Higher success rate = higher selection weight for future decompositions.
@@ -102,6 +104,7 @@ def _shuffle_chain() -> list[tuple[str, str, str]]:
 def _record_orchestrator_score(model: str, success: bool) -> None:
     """Update quality score for an orchestrator model."""
     from datetime import datetime, timezone
+
     score = _orchestrator_scores.setdefault(model, {"successes": 0, "failures": 0})
     if success:
         score["successes"] += 1
@@ -113,11 +116,12 @@ def _record_orchestrator_score(model: str, success: bool) -> None:
 def _log_orchestrator_error(error: str) -> None:
     """Log an orchestrator error to the project's watcher error log. Never raises."""
     try:
-        import logging
         logger.warning("Orchestrator error: %s", error)
     except Exception as e:
         logger.warning("orchestrator.py unexpected error: %s", e, exc_info=True)
         pass
+
+
 _ORCHESTRATOR_MODEL = DECOMPOSER_MODEL
 _DEFAULT_ESTIMATED_TOKENS = 30000
 _FALLBACK_ESTIMATED_TOKENS = 50000
@@ -125,20 +129,20 @@ _ORCHESTRATOR_TIMEOUT = 60
 
 _MODEL_TO_TIER: dict[str, str] = {
     # claude-code
-    "haiku-4-5":     "mini",
-    "sonnet-4-6":    "standard",
-    "sonnet-4-5":    "standard",
-    "opus-4-6":      "max",
-    "opus-4-7":      "max",
-    "opus-4-8":      "max",
+    "haiku-4-5": "mini",
+    "sonnet-4-6": "standard",
+    "sonnet-4-5": "standard",
+    "opus-4-6": "max",
+    "opus-4-7": "max",
+    "opus-4-8": "max",
     # codex-cli
-    "codex-mini":    "mini",
-    "codex":         "standard",
-    "gpt-5.4":       "max",
+    "codex-mini": "mini",
+    "codex": "standard",
+    "gpt-5.4": "max",
     # gemini-cli
-    "gemini-flash":  "mini",
-    "gemini-pro":    "standard",
-    "gemini-ultra":  "max",
+    "gemini-flash": "mini",
+    "gemini-pro": "standard",
+    "gemini-ultra": "max",
 }
 
 _DECOMPOSE_PROMPT = """\
@@ -234,6 +238,7 @@ When decompose is false, return empty subtasks array.
 @dataclass
 class DecompositionResult:
     """Result of orchestrator task decomposition."""
+
     subtasks: list[dict[str, Any]]
     cost_breakdown: list[CostEstimate] = field(default_factory=list)
     total_estimated_cost_usd: float = 0.0
@@ -243,6 +248,7 @@ class DecompositionResult:
 @dataclass
 class SubtaskDispatch:
     """Dispatch instructions for a single sub-agent."""
+
     subtask_id: str
     parent_task_id: str
     model: str
@@ -285,6 +291,7 @@ class SubtaskDispatch:
 @dataclass
 class RoutingPlan:
     """Full routing decision: owner + tier + effort + decomposition."""
+
     owner: str
     tier: str
     effort: str
@@ -363,20 +370,30 @@ class Orchestrator:
                     st_owner = st.get("owner", owner)
                     st_tier = st.get("tier", tier)
                     st_effort = st.get("effort", effort)
-                    subtasks.append({
-                        "id": str(st.get("id", f"{task.get('id', 'task')}.st{len(subtasks)+1}")),
-                        "title": str(st.get("title", "subtask")),
-                        "owner": st_owner,
-                        "model_tier": st_tier,
-                        "effort": st_effort,
-                        "blocked_by": st.get("blocked_by"),
-                        "estimated_tokens": int(st.get("estimated_tokens", 0)),
-                    })
+                    subtasks.append(
+                        {
+                            "id": str(
+                                st.get(
+                                    "id",
+                                    f"{task.get('id', 'task')}.st{len(subtasks) + 1}",
+                                )
+                            ),
+                            "title": str(st.get("title", "subtask")),
+                            "owner": st_owner,
+                            "model_tier": st_tier,
+                            "effort": st_effort,
+                            "blocked_by": st.get("blocked_by"),
+                            "estimated_tokens": int(st.get("estimated_tokens", 0)),
+                        }
+                    )
 
         # Enrich with cost estimates
         if subtasks:
             cost_input = [
-                {"model_tier": st["model_tier"], "estimated_tokens": st["estimated_tokens"]}
+                {
+                    "model_tier": st["model_tier"],
+                    "estimated_tokens": st["estimated_tokens"],
+                }
                 for st in subtasks
             ]
             task_estimate = estimate_task_cost(cost_input)
@@ -409,7 +426,9 @@ class Orchestrator:
 
     def _build_decompose_prompt(self, task: dict[str, Any]) -> str:
         criteria = task.get("acceptance_criteria") or []
-        criteria_str = "\n".join(f"    - {c}" for c in criteria) if criteria else "    (none)"
+        criteria_str = (
+            "\n".join(f"    - {c}" for c in criteria) if criteria else "    (none)"
+        )
 
         out_of_scope = task.get("out_of_scope") or []
         out_str = ", ".join(out_of_scope) if out_of_scope else "none"
@@ -425,7 +444,8 @@ class Orchestrator:
             test_types=test_str,
             criteria=criteria_str,
             out_of_scope=out_str,
-            definition_of_done=", ".join(task.get("definition_of_done") or []) or "none",
+            definition_of_done=", ".join(task.get("definition_of_done") or [])
+            or "none",
             context=task.get("context") or "none",
         )
 
@@ -436,7 +456,6 @@ class Orchestrator:
         and tries each model in order. First successful response wins.
         Quality scores are recorded for future selection weighting.
         """
-        from datetime import datetime, timezone
 
         chain = _shuffle_chain()
         for binary, model, label in chain:
@@ -456,7 +475,10 @@ class Orchestrator:
                     return result.stdout.strip()
                 logger.debug(
                     "Orchestrator: %s (%s) failed (rc=%d): %.200s",
-                    label, model, result.returncode, result.stderr
+                    label,
+                    model,
+                    result.returncode,
+                    result.stderr,
                 )
             except FileNotFoundError:
                 _record_orchestrator_score(model, False)
@@ -473,7 +495,7 @@ class Orchestrator:
         self, raw: str, task: dict[str, Any]
     ) -> list[dict[str, Any]]:
         """Parse JSON decomposition, with fallback to single-subtask."""
-        task_id = task.get("id", "unknown")
+        task.get("id", "unknown")
 
         if not raw:
             return self._fallback_subtask(task)

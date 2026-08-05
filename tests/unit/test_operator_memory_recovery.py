@@ -1,9 +1,7 @@
 """Unit tests for _learn_from_recovery and _prune_operator_memory hooks."""
+
 from __future__ import annotations
 
-import os
-import sqlite3
-from pathlib import Path
 
 import pytest
 
@@ -13,6 +11,7 @@ from superharness.engine.operator_memory import OperatorMemory
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def project_with_failures_and_done_task(tmp_path):
@@ -30,15 +29,25 @@ def project_with_failures_and_done_task(tmp_path):
 
     # Insert a done task
     task_dict = {
-        "id": "task-abc", "title": "Test task", "owner": "claude-code",
-        "status": "done", "project_path": str(tmp_path),
+        "id": "task-abc",
+        "title": "Test task",
+        "owner": "claude-code",
+        "status": "done",
+        "project_path": str(tmp_path),
     }
-    tasks_dao.upsert(conn, _task_row_from_dict(task_dict, str(tmp_path), "2026-01-01T00:00:00Z"))
+    tasks_dao.upsert(
+        conn, _task_row_from_dict(task_dict, str(tmp_path), "2026-01-01T00:00:00Z")
+    )
 
     # Record a failure for this task
-    failures_dao.record(conn, task_id="task-abc", agent="claude-code",
-                        pattern="import_error", error_snippet="ModuleNotFoundError",
-                        now="2026-01-01T00:01:00Z")
+    failures_dao.record(
+        conn,
+        task_id="task-abc",
+        agent="claude-code",
+        pattern="import_error",
+        error_snippet="ModuleNotFoundError",
+        now="2026-01-01T00:01:00Z",
+    )
 
     conn.commit()
     conn.close()
@@ -70,14 +79,24 @@ def project_with_only_failed_tasks(tmp_path):
 
     # Task still failed, not recovered
     task_dict = {
-        "id": "task-xyz", "title": "Failed task", "owner": "claude-code",
-        "status": "failed", "project_path": str(tmp_path),
+        "id": "task-xyz",
+        "title": "Failed task",
+        "owner": "claude-code",
+        "status": "failed",
+        "project_path": str(tmp_path),
     }
-    tasks_dao.upsert(conn, _task_row_from_dict(task_dict, str(tmp_path), "2026-01-01T00:00:00Z"))
+    tasks_dao.upsert(
+        conn, _task_row_from_dict(task_dict, str(tmp_path), "2026-01-01T00:00:00Z")
+    )
 
-    failures_dao.record(conn, task_id="task-xyz", agent="claude-code",
-                        pattern="import_error", error_snippet="ModuleNotFoundError",
-                        now="2026-01-01T00:01:00Z")
+    failures_dao.record(
+        conn,
+        task_id="task-xyz",
+        agent="claude-code",
+        pattern="import_error",
+        error_snippet="ModuleNotFoundError",
+        now="2026-01-01T00:01:00Z",
+    )
 
     conn.commit()
     conn.close()
@@ -95,13 +114,16 @@ def project_with_only_failed_tasks(tmp_path):
 # _learn_from_recovery
 # ---------------------------------------------------------------------------
 
+
 def test_learn_from_recovery_records_hits(project_with_failures_and_done_task):
     """A task that was failed and is now done gets hit recorded for its patterns."""
     from superharness.commands.inbox_watch import _learn_from_recovery
 
     _learn_from_recovery(str(project_with_failures_and_done_task))
 
-    db_path = str(project_with_failures_and_done_task / ".superharness" / "state.sqlite3")
+    db_path = str(
+        project_with_failures_and_done_task / ".superharness" / "state.sqlite3"
+    )
     om = OperatorMemory(db_path)
     result = om.find_pattern("import_error")
     assert result is not None
@@ -133,6 +155,7 @@ def test_learn_from_recovery_no_db(tmp_path, capsys):
 # _prune_operator_memory
 # ---------------------------------------------------------------------------
 
+
 def test_prune_removes_low_confidence(tmp_path):
     """Low-confidence patterns get pruned."""
     sh = tmp_path / ".superharness"
@@ -152,6 +175,7 @@ def test_prune_removes_low_confidence(tmp_path):
     # hit=1, miss=0 → confidence 1.0
 
     from superharness.commands.inbox_watch import _prune_operator_memory
+
     _prune_operator_memory(str(tmp_path))
 
     remaining = om.list_all()
@@ -163,5 +187,6 @@ def test_prune_removes_low_confidence(tmp_path):
 def test_prune_no_db_graceful(tmp_path):
     """No state.sqlite3 — returns without error."""
     from superharness.commands.inbox_watch import _prune_operator_memory
+
     _prune_operator_memory(str(tmp_path))
     # No crash = pass

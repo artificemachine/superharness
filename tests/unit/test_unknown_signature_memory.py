@@ -9,6 +9,7 @@ The original behavior had two failure modes:
    pid == 'unknown', so the learning subsystem was structurally blind
    to repeated environmental failures.
 """
+
 from __future__ import annotations
 
 from superharness.engine.failure_patterns import (
@@ -21,6 +22,7 @@ from superharness.engine.db import get_connection, init_db
 
 def _setup(tmp_path):
     import sqlite3 as _sq
+
     project = tmp_path / "proj"
     (project / ".superharness").mkdir(parents=True)
     # Pre-touch legacy path so get_connection uses it (test isolation).

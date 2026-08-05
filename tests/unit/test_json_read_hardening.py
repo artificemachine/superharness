@@ -11,6 +11,7 @@ Also covers arch A6: two CREATE INDEX statements in db.py's migration v1
 IF NOT EXISTS, the only ones of ~30 index statements without it — running
 init_db twice on the same connection raised "index already exists".
 """
+
 from __future__ import annotations
 
 import logging
@@ -88,6 +89,7 @@ def test_well_formed_json_column_still_parses_normally(tmp_path):
 # ---------------------------------------------------------------------------
 # arch A6 — CREATE INDEX IF NOT EXISTS for idx_failures_*
 # ---------------------------------------------------------------------------
+
 
 def test_failures_indexes_are_idempotent(tmp_path):
     """_migration_v1 (which creates idx_failures_task/idx_failures_agent_pattern)

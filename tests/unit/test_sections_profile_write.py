@@ -1,15 +1,15 @@
 """RED tests for write_field() in engine/profile.py."""
+
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
-import pytest
 import yaml
 
 
 def _write_field(project_dir: Path, field: str, value: str) -> None:
     from superharness.engine.profile import write_field
+
     write_field(project_dir, field, value)
 
 
@@ -39,7 +39,9 @@ def test_write_field_mutates_existing_key_in_place(tmp_path):
     sh = tmp_path / ".superharness"
     sh.mkdir()
     profile = sh / "profile.yaml"
-    profile.write_text(yaml.dump({"autonomy": "supervised", "primary_agent": "claude-code"}))
+    profile.write_text(
+        yaml.dump({"autonomy": "supervised", "primary_agent": "claude-code"})
+    )
 
     _write_field(tmp_path, "autonomy", "full-auto")
 
@@ -52,7 +54,15 @@ def test_write_field_preserves_other_keys(tmp_path):
     sh = tmp_path / ".superharness"
     sh.mkdir()
     profile = sh / "profile.yaml"
-    profile.write_text(yaml.dump({"autonomy": "supervised", "primary_agent": "codex-cli", "team_size": "small"}))
+    profile.write_text(
+        yaml.dump(
+            {
+                "autonomy": "supervised",
+                "primary_agent": "codex-cli",
+                "team_size": "small",
+            }
+        )
+    )
 
     _write_field(tmp_path, "autonomy", "full-auto")
 

@@ -9,6 +9,7 @@ Usage:
     shux daemon status [--project PATH]
     shux daemon restart [--project PATH]
 """
+
 from __future__ import annotations
 
 import json
@@ -33,9 +34,10 @@ def _state_file(project_dir: Path) -> Path:
 
 def _find_superharness_python() -> str:
     """Find the Python executable from the superharness pipx venv. Never fails."""
-    import shutil
     # Try the dev venv Python first (for development — ensures we use current code)
-    dev_venv_python = os.path.join(os.path.dirname(__file__), "..", "..", "..", ".venv", "bin", "python3")
+    dev_venv_python = os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", ".venv", "bin", "python3"
+    )
     dev_venv_python = os.path.abspath(dev_venv_python)
     if os.path.isfile(dev_venv_python):
         return dev_venv_python
@@ -76,7 +78,8 @@ def _find_watch_script() -> Path | None:
     try:
         result = subprocess.run(
             [sys.executable, "-m", "superharness.commands.watcher_worker", "--help"],
-            capture_output=True, check=False,
+            capture_output=True,
+            check=False,
         )
         if result.returncode in (0, 2):
             return None  # Use module invocation
@@ -102,9 +105,13 @@ def _start_daemon(project_dir: Path, interval: int) -> None:
         # Use superharness binary to ensure correct Python env with all dependencies
         python = _find_superharness_python()
         cmd = [
-            python, "-m", "superharness.commands.inbox_watch",
-            "--project", str(project_dir),
-            "--interval", str(interval),
+            python,
+            "-m",
+            "superharness.commands.inbox_watch",
+            "--project",
+            str(project_dir),
+            "--interval",
+            str(interval),
             "--once",
         ]
         env = os.environ.copy()
@@ -122,19 +129,28 @@ def _start_daemon(project_dir: Path, interval: int) -> None:
         )
 
     from superharness.logging_utils import get_logger, get_audit_logger
+
     log = get_logger("daemon")
     audit = get_audit_logger()
 
     proc = _spawn_watcher()
 
-    _write_state(project_dir, {
-        "pid": proc.pid,
-        "project": str(project_dir),
-        "interval": interval,
-        "log_out": str(out_log),
-        "log_err": str(err_log),
-    })
-    log.info("daemon started: pid=%d interval=%ds project=%s", proc.pid, interval, project_dir)
+    _write_state(
+        project_dir,
+        {
+            "pid": proc.pid,
+            "project": str(project_dir),
+            "interval": interval,
+            "log_out": str(out_log),
+            "log_err": str(err_log),
+        },
+    )
+    log.info(
+        "daemon started: pid=%d interval=%ds project=%s",
+        proc.pid,
+        interval,
+        project_dir,
+    )
     audit.info("daemon spawn: pid=%d project=%s", proc.pid, project_dir)
     click.echo(f"daemon: started  pid={proc.pid}  interval={interval}s")
     click.echo(f"  logs: {out_log}")
@@ -157,9 +173,14 @@ def _start_daemon(project_dir: Path, interval: int) -> None:
     # Monitor writes its own PID to state file on start
 
     _monitor_argv = [
-        _find_superharness_python(), "-m", "superharness.commands.daemon_monitor",
-        str(project_dir), str(interval),
-        str(out_log), str(err_log), str(proc.pid),
+        _find_superharness_python(),
+        "-m",
+        "superharness.commands.daemon_monitor",
+        str(project_dir),
+        str(interval),
+        str(out_log),
+        str(err_log),
+        str(proc.pid),
     ]
     if hasattr(os, "fork"):
         # POSIX: double-fork so the grandchild reparents to init/launchd
@@ -231,11 +252,19 @@ def _stop_daemon(project_dir: Path) -> None:
     # monitor never reaches it; it must be terminated directly or it
     # survives as a permanent orphan holding the lock.
     if monitor_alive:
-        terminate_group(pid, escalate_after=_STOP_POLL_TIMEOUT_S, poll_interval=_STOP_POLL_INTERVAL_S)
+        terminate_group(
+            pid,
+            escalate_after=_STOP_POLL_TIMEOUT_S,
+            poll_interval=_STOP_POLL_INTERVAL_S,
+        )
         click.echo(f"daemon: sent SIGTERM to pid={pid}")
 
     if watcher_alive:
-        terminate_group(watcher_pid, escalate_after=_STOP_POLL_TIMEOUT_S, poll_interval=_STOP_POLL_INTERVAL_S)
+        terminate_group(
+            watcher_pid,
+            escalate_after=_STOP_POLL_TIMEOUT_S,
+            poll_interval=_STOP_POLL_INTERVAL_S,
+        )
         click.echo(f"daemon: sent SIGTERM to watcher pid={watcher_pid}")
 
     _state_file(project_dir).unlink(missing_ok=True)
@@ -267,8 +296,12 @@ def cmd_daemon():
 
 
 @cmd_daemon.command(name="start")
-@click.option("--project", "project_str", default=None, help="Project directory (default: cwd).")
-@click.option("--interval", default=30, show_default=True, help="Poll interval in seconds.")
+@click.option(
+    "--project", "project_str", default=None, help="Project directory (default: cwd)."
+)
+@click.option(
+    "--interval", default=30, show_default=True, help="Poll interval in seconds."
+)
 def cmd_daemon_start(project_str, interval):
     """Start the watcher daemon in the background."""
     project_dir = Path(project_str or os.getcwd()).resolve()
@@ -280,7 +313,9 @@ def cmd_daemon_start(project_str, interval):
 
 
 @cmd_daemon.command(name="stop")
-@click.option("--project", "project_str", default=None, help="Project directory (default: cwd).")
+@click.option(
+    "--project", "project_str", default=None, help="Project directory (default: cwd)."
+)
 def cmd_daemon_stop(project_str):
     """Stop the running watcher daemon."""
     project_dir = Path(project_str or os.getcwd()).resolve()
@@ -288,7 +323,9 @@ def cmd_daemon_stop(project_str):
 
 
 @cmd_daemon.command(name="status")
-@click.option("--project", "project_str", default=None, help="Project directory (default: cwd).")
+@click.option(
+    "--project", "project_str", default=None, help="Project directory (default: cwd)."
+)
 def cmd_daemon_status(project_str):
     """Show daemon status (running / stopped)."""
     project_dir = Path(project_str or os.getcwd()).resolve()
@@ -296,8 +333,12 @@ def cmd_daemon_status(project_str):
 
 
 @cmd_daemon.command(name="restart")
-@click.option("--project", "project_str", default=None, help="Project directory (default: cwd).")
-@click.option("--interval", default=30, show_default=True, help="Poll interval in seconds.")
+@click.option(
+    "--project", "project_str", default=None, help="Project directory (default: cwd)."
+)
+@click.option(
+    "--interval", default=30, show_default=True, help="Poll interval in seconds."
+)
 def cmd_daemon_restart(project_str, interval):
     """Restart the watcher daemon."""
     project_dir = Path(project_str or os.getcwd()).resolve()
@@ -308,20 +349,27 @@ def cmd_daemon_restart(project_str, interval):
 def _check_version_and_upgrade(project_dir):
     """Check if a newer pipx version is installed and auto-restart if so."""
     try:
-        import importlib.metadata, subprocess
-        current = importlib.metadata.version('superharness')
+        import importlib.metadata
+
+        current = importlib.metadata.version("superharness")
         # Check if we should track version
-        state_file = os.path.join(str(project_dir), '.superharness', 'daemon-state.json')
+        state_file = os.path.join(
+            str(project_dir), ".superharness", "daemon-state.json"
+        )
         import json
+
         if os.path.isfile(state_file):
             state = json.load(open(state_file))
-            last_version = state.get('version', '')
+            last_version = state.get("version", "")
             if last_version and last_version != current:
                 import sys
-                print(f'daemon: version upgraded {last_version} -> {current}, restarting...')
+
+                print(
+                    f"daemon: version upgraded {last_version} -> {current}, restarting..."
+                )
                 os.execv(sys.executable, [sys.executable] + sys.argv)
-            state['version'] = current
-            json.dump(state, open(state_file, 'w'))
+            state["version"] = current
+            json.dump(state, open(state_file, "w"))
     except Exception as e:
         logger.warning("daemon.py unexpected error: %s", e, exc_info=True)
         pass

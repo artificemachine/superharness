@@ -1,4 +1,5 @@
 """Discord notification module actions — send notifications on task events."""
+
 from __future__ import annotations
 
 import logging
@@ -9,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import requests
+
     HAS_REQUESTS = True
 except ImportError:
     HAS_REQUESTS = False
@@ -102,9 +104,19 @@ def discord_trigger(settings: dict[str, Any]) -> dict[str, Any]:
     limit = int(settings.get("limit", 10))
 
     if not token:
-        return {"success": False, "message": f"{token_env} not set", "triggers": [], "skipped": True}
+        return {
+            "success": False,
+            "message": f"{token_env} not set",
+            "triggers": [],
+            "skipped": True,
+        }
     if not channel_id:
-        return {"success": False, "message": f"{channel_env} not set", "triggers": [], "skipped": True}
+        return {
+            "success": False,
+            "message": f"{channel_env} not set",
+            "triggers": [],
+            "skipped": True,
+        }
 
     url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
     headers = {"Authorization": f"Bot {token}"}
@@ -127,4 +139,8 @@ def discord_trigger(settings: dict[str, Any]) -> dict[str, Any]:
             if task_id:
                 triggers.append({"task_id": task_id, "agent": agent, "raw": content})
 
-    return {"success": True, "triggers": triggers, "message": f"{len(triggers)} trigger(s) found"}
+    return {
+        "success": True,
+        "triggers": triggers,
+        "message": f"{len(triggers)} trigger(s) found",
+    }

@@ -1,11 +1,17 @@
 """Additional state machine tests — edge cases and coverage gaps."""
+
 from __future__ import annotations
 
 import pytest
-from superharness.engine.next_action import validate_status_transition, _MAPPING, NextAction, ALL_STATUSES
+from superharness.engine.next_action import (
+    validate_status_transition,
+    _MAPPING,
+    NextAction,
+)
 
 
 # ── Self-transition tests (10 tests) ──────────────────────────────────────────
+
 
 class TestSelfTransitions:
     """Transitioning to the same status should either be allowed or clearly rejected."""
@@ -20,6 +26,7 @@ class TestSelfTransitions:
 
 
 # ── Boundary tests (10 tests) ─────────────────────────────────────────────────
+
 
 class TestStatusBoundaries:
     """Edge cases around status transitions."""
@@ -53,6 +60,10 @@ class TestStatusBoundaries:
         """Every status except terminal should have legal transitions."""
         action = NextAction.compute(status)
         if status in ("done", "archived"):
-            assert len(action.legal) == 0, f"Terminal status {status} should have no legal transitions"
+            assert len(action.legal) == 0, (
+                f"Terminal status {status} should have no legal transitions"
+            )
         else:
-            assert len(action.legal) > 0, f"Status {status} should have legal transitions"
+            assert len(action.legal) > 0, (
+                f"Status {status} should have legal transitions"
+            )

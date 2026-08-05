@@ -11,6 +11,7 @@ test's own file-scanning logic) match raw file bytes, not evaluated Python —
 writing the token whole here would make this very file the next tracked
 occurrence the test has to reject.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -30,7 +31,10 @@ _SELF = "tests/unit/test_no_tracked_personal_data.py"
 def _tracked_files() -> list[str]:
     out = subprocess.run(
         ["git", "ls-files"],
-        cwd=_REPO_ROOT, capture_output=True, text=True, check=True,
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     return [line for line in out.stdout.splitlines() if line]
 
@@ -73,7 +77,8 @@ def test_no_maintainer_username_in_tracked_files():
         if rel == ".shipguard.yml":
             # Permitted only inside an env-var reference on the same line.
             bad_lines = [
-                line for line in text.splitlines()
+                line
+                for line in text.splitlines()
                 if _MAINTAINER in line and "${" not in line
             ]
             if bad_lines:

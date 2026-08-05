@@ -1,4 +1,5 @@
 """Python-native tests for superharness.engine.discussion."""
+
 from __future__ import annotations
 import pytest
 
@@ -21,13 +22,21 @@ def _run_discussion(cmd: str, args: list[str]) -> subprocess.CompletedProcess:
 
 
 def _start(discussions_dir: Path, topic: str = "Should we proceed?") -> dict:
-    r = _run_discussion("start", [
-        "--discussions-dir", str(discussions_dir),
-        "--topic", topic,
-        "--participant", "agent-a",
-        "--participant", "agent-b",
-        "--project", "/test/project",
-    ])
+    r = _run_discussion(
+        "start",
+        [
+            "--discussions-dir",
+            str(discussions_dir),
+            "--topic",
+            topic,
+            "--participant",
+            "agent-a",
+            "--participant",
+            "agent-b",
+            "--project",
+            "/test/project",
+        ],
+    )
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout)
 
@@ -49,13 +58,21 @@ def test_submit_round_creates_position_file(tmp_path: Path) -> None:
     discussions_dir.mkdir()
     info = _start(discussions_dir)
     disc_dir = info["discussion_dir"]
-    r = _run_discussion("submit_round", [
-        "--discussion-dir", disc_dir,
-        "--round", "1",
-        "--agent", "agent-a",
-        "--verdict", "agree",
-        "--position", "I think we should proceed.",
-    ])
+    r = _run_discussion(
+        "submit_round",
+        [
+            "--discussion-dir",
+            disc_dir,
+            "--round",
+            "1",
+            "--agent",
+            "agent-a",
+            "--verdict",
+            "agree",
+            "--position",
+            "I think we should proceed.",
+        ],
+    )
     assert r.returncode == 0
     result = json.loads(r.stdout)
     assert result["submitted"] is True
@@ -69,11 +86,21 @@ def test_check_round_all_done(tmp_path: Path) -> None:
     info = _start(discussions_dir)
     disc_dir = info["discussion_dir"]
     for agent in ("agent-a", "agent-b"):
-        _run_discussion("submit_round", [
-            "--discussion-dir", disc_dir,
-            "--round", "1", "--agent", agent,
-            "--verdict", "agree", "--position", "yes",
-        ])
+        _run_discussion(
+            "submit_round",
+            [
+                "--discussion-dir",
+                disc_dir,
+                "--round",
+                "1",
+                "--agent",
+                agent,
+                "--verdict",
+                "agree",
+                "--position",
+                "yes",
+            ],
+        )
     r = _run_discussion("check_round", ["--discussion-dir", disc_dir, "--round", "1"])
     assert r.returncode == 0
     result = json.loads(r.stdout)
@@ -88,11 +115,21 @@ def test_check_round_pending(tmp_path: Path) -> None:
     discussions_dir.mkdir()
     info = _start(discussions_dir)
     disc_dir = info["discussion_dir"]
-    _run_discussion("submit_round", [
-        "--discussion-dir", disc_dir,
-        "--round", "1", "--agent", "agent-a",
-        "--verdict", "agree", "--position", "yes",
-    ])
+    _run_discussion(
+        "submit_round",
+        [
+            "--discussion-dir",
+            disc_dir,
+            "--round",
+            "1",
+            "--agent",
+            "agent-a",
+            "--verdict",
+            "agree",
+            "--position",
+            "yes",
+        ],
+    )
     r = _run_discussion("check_round", ["--discussion-dir", disc_dir, "--round", "1"])
     assert r.returncode == 0
     result = json.loads(r.stdout)
@@ -107,11 +144,21 @@ def test_check_consensus_agree(tmp_path: Path) -> None:
     info = _start(discussions_dir)
     disc_dir = info["discussion_dir"]
     for agent in ("agent-a", "agent-b"):
-        _run_discussion("submit_round", [
-            "--discussion-dir", disc_dir,
-            "--round", "1", "--agent", agent,
-            "--verdict", "agree", "--position", "yes",
-        ])
+        _run_discussion(
+            "submit_round",
+            [
+                "--discussion-dir",
+                disc_dir,
+                "--round",
+                "1",
+                "--agent",
+                agent,
+                "--verdict",
+                "agree",
+                "--position",
+                "yes",
+            ],
+        )
     r = _run_discussion("check_consensus", ["--discussion-dir", disc_dir])
     assert r.returncode == 0
     result = json.loads(r.stdout)
@@ -124,16 +171,36 @@ def test_check_consensus_disagree(tmp_path: Path) -> None:
     discussions_dir.mkdir()
     info = _start(discussions_dir)
     disc_dir = info["discussion_dir"]
-    _run_discussion("submit_round", [
-        "--discussion-dir", disc_dir,
-        "--round", "1", "--agent", "agent-a",
-        "--verdict", "agree", "--position", "yes",
-    ])
-    _run_discussion("submit_round", [
-        "--discussion-dir", disc_dir,
-        "--round", "1", "--agent", "agent-b",
-        "--verdict", "disagree", "--position", "no",
-    ])
+    _run_discussion(
+        "submit_round",
+        [
+            "--discussion-dir",
+            disc_dir,
+            "--round",
+            "1",
+            "--agent",
+            "agent-a",
+            "--verdict",
+            "agree",
+            "--position",
+            "yes",
+        ],
+    )
+    _run_discussion(
+        "submit_round",
+        [
+            "--discussion-dir",
+            disc_dir,
+            "--round",
+            "1",
+            "--agent",
+            "agent-b",
+            "--verdict",
+            "disagree",
+            "--position",
+            "no",
+        ],
+    )
     r = _run_discussion("check_consensus", ["--discussion-dir", disc_dir])
     assert r.returncode == 0
     result = json.loads(r.stdout)
@@ -147,11 +214,21 @@ def test_advance_consensus_closes(tmp_path: Path) -> None:
     info = _start(discussions_dir)
     disc_dir = info["discussion_dir"]
     for agent in ("agent-a", "agent-b"):
-        _run_discussion("submit_round", [
-            "--discussion-dir", disc_dir,
-            "--round", "1", "--agent", agent,
-            "--verdict", "agree", "--position", "yes",
-        ])
+        _run_discussion(
+            "submit_round",
+            [
+                "--discussion-dir",
+                disc_dir,
+                "--round",
+                "1",
+                "--agent",
+                agent,
+                "--verdict",
+                "agree",
+                "--position",
+                "yes",
+            ],
+        )
     r = _run_discussion("advance", ["--discussion-dir", disc_dir])
     assert r.returncode == 0
     result = json.loads(r.stdout)
@@ -165,16 +242,36 @@ def test_advance_no_consensus_advances_round(tmp_path: Path) -> None:
     discussions_dir.mkdir()
     info = _start(discussions_dir)
     disc_dir = info["discussion_dir"]
-    _run_discussion("submit_round", [
-        "--discussion-dir", disc_dir,
-        "--round", "1", "--agent", "agent-a",
-        "--verdict", "agree", "--position", "yes",
-    ])
-    _run_discussion("submit_round", [
-        "--discussion-dir", disc_dir,
-        "--round", "1", "--agent", "agent-b",
-        "--verdict", "disagree", "--position", "no",
-    ])
+    _run_discussion(
+        "submit_round",
+        [
+            "--discussion-dir",
+            disc_dir,
+            "--round",
+            "1",
+            "--agent",
+            "agent-a",
+            "--verdict",
+            "agree",
+            "--position",
+            "yes",
+        ],
+    )
+    _run_discussion(
+        "submit_round",
+        [
+            "--discussion-dir",
+            disc_dir,
+            "--round",
+            "1",
+            "--agent",
+            "agent-b",
+            "--verdict",
+            "disagree",
+            "--position",
+            "no",
+        ],
+    )
     r = _run_discussion("advance", ["--discussion-dir", disc_dir])
     assert r.returncode == 0
     result = json.loads(r.stdout)
@@ -187,23 +284,42 @@ def test_advance_max_rounds_closes(tmp_path: Path) -> None:
     discussions_dir = tmp_path / "discussions"
     discussions_dir.mkdir()
     # Start with max_rounds=1
-    r_start = _run_discussion("start", [
-        "--discussions-dir", str(discussions_dir),
-        "--topic", "test",
-        "--participant", "agent-a",
-        "--participant", "agent-b",
-        "--project", "/test",
-        "--max-rounds", "1",
-    ])
+    r_start = _run_discussion(
+        "start",
+        [
+            "--discussions-dir",
+            str(discussions_dir),
+            "--topic",
+            "test",
+            "--participant",
+            "agent-a",
+            "--participant",
+            "agent-b",
+            "--project",
+            "/test",
+            "--max-rounds",
+            "1",
+        ],
+    )
     info = json.loads(r_start.stdout)
     disc_dir = info["discussion_dir"]
     # Both disagree
     for agent in ("agent-a", "agent-b"):
-        _run_discussion("submit_round", [
-            "--discussion-dir", disc_dir,
-            "--round", "1", "--agent", agent,
-            "--verdict", "disagree", "--position", "no",
-        ])
+        _run_discussion(
+            "submit_round",
+            [
+                "--discussion-dir",
+                disc_dir,
+                "--round",
+                "1",
+                "--agent",
+                agent,
+                "--verdict",
+                "disagree",
+                "--position",
+                "no",
+            ],
+        )
     r = _run_discussion("advance", ["--discussion-dir", disc_dir])
     assert r.returncode == 0
     result = json.loads(r.stdout)
@@ -234,9 +350,7 @@ def test_list_state_conflict_is_clean_cli_error(
     selected_state = tmp_path / "selected-state"
     monkeypatch.setenv("SUPERHARNESS_STATE_DIR", str(selected_state))
 
-    result = _run_discussion(
-        "list", ["--discussions-dir", str(discussions_dir)]
-    )
+    result = _run_discussion("list", ["--discussions-dir", str(discussions_dir)])
 
     assert result.returncode == 1
     assert "Refusing to create or open another state database" in result.stderr
@@ -250,7 +364,9 @@ def test_close_discussion(tmp_path: Path) -> None:
     discussions_dir.mkdir()
     info = _start(discussions_dir)
     disc_dir = info["discussion_dir"]
-    r = _run_discussion("close", ["--discussion-dir", disc_dir, "--outcome", "cancelled"])
+    r = _run_discussion(
+        "close", ["--discussion-dir", disc_dir, "--outcome", "cancelled"]
+    )
     assert r.returncode == 0
     result = json.loads(r.stdout)
     assert result["closed"] is True
@@ -263,6 +379,7 @@ def test_close_discussion(tmp_path: Path) -> None:
 
 # ── Iter 13 RED: consensus task project_path must be the real project dir ─────
 
+
 def test_consensus_task_project_path_correct(tmp_path):
     """_create_consensus_task must use the real project directory, not the XDG hash dir.
 
@@ -271,13 +388,12 @@ def test_consensus_task_project_path_correct(tmp_path):
     twice gives ~/.local/state/superharness/<hash>, not the project directory.
     GREEN: pass project_dir as a parameter to _create_consensus_task.
     """
-    import sqlite3
-    import sys
     from superharness.engine.db import get_connection, init_db
-    from superharness.engine import discussions_dao, tasks_dao
+    from superharness.engine import discussions_dao
 
     project = str(tmp_path / "real_project")
     import os
+
     os.makedirs(os.path.join(project, ".superharness"), exist_ok=True)
 
     conn = get_connection(project)
@@ -299,6 +415,7 @@ def test_consensus_task_project_path_correct(tmp_path):
     conn.commit()
 
     from superharness.engine.discussion import _create_consensus_task
+
     disc_row = discussions_dao.DiscussionRow(
         id=disc_id,
         topic="Refactor auth module",
@@ -313,7 +430,9 @@ def test_consensus_task_project_path_correct(tmp_path):
 
     # The consensus task should have project_path = the real project dir
     task_id = f"impl-{disc_id[:30]}"
-    row = conn.execute("SELECT project_path FROM tasks WHERE id = ?", (task_id,)).fetchone()
+    row = conn.execute(
+        "SELECT project_path FROM tasks WHERE id = ?", (task_id,)
+    ).fetchone()
     assert row is not None, f"Consensus task '{task_id}' was not created"
     assert row["project_path"] == project, (
         f"Consensus task project_path is {row['project_path']!r}, expected real project {project!r}. "
@@ -324,6 +443,7 @@ def test_consensus_task_project_path_correct(tmp_path):
 
 # ── Iter 14 RED: max_rounds must be persisted and honored ─────────────────────
 
+
 def test_max_rounds_honored(tmp_path):
     """cmd_advance must close the discussion after max_rounds rounds.
 
@@ -331,8 +451,6 @@ def test_max_rounds_honored(tmp_path):
     but ignored. GREEN: store max_rounds in the discussions table and read it
     in cmd_advance.
     """
-    import json as _json
-    import sqlite3
     import os as _os
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import discussions_dao
@@ -343,13 +461,13 @@ def test_max_rounds_honored(tmp_path):
     init_db(conn, project_dir=project)
 
     disc_id = "discuss-maxrounds-test20260607T000000Z-1-111111111"
-    now = "2026-06-07T00:00:00Z"
 
     # Start discussion with max_rounds=2
     disc_dir = _os.path.join(project, ".superharness", "discussions", disc_id)
     _os.makedirs(disc_dir, exist_ok=True)
 
     from superharness.engine.discussion import cmd_start
+
     # cmd_start creates the discussion
     rc = cmd_start(
         discussions_dir=_os.path.join(project, ".superharness", "discussions"),
@@ -363,8 +481,14 @@ def test_max_rounds_honored(tmp_path):
     assert rc == 0
 
     # Fetch the stored max_rounds
-    disc = discussions_dao.get(conn, disc_id if False else
-        conn.execute("SELECT id FROM discussions ORDER BY created_at DESC LIMIT 1").fetchone()[0])
+    discussions_dao.get(
+        conn,
+        disc_id
+        if False
+        else conn.execute(
+            "SELECT id FROM discussions ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()[0],
+    )
     stored_max = conn.execute(
         "SELECT max_rounds FROM discussions ORDER BY created_at DESC LIMIT 1"
     ).fetchone()

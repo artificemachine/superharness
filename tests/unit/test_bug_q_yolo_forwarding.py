@@ -9,6 +9,7 @@ Fix: thread `yolo: bool = False` through:
   → delegate() signature
   → both CLI call sites (JSON mode + normal mode)
 """
+
 from __future__ import annotations
 
 import ast
@@ -20,10 +21,12 @@ from unittest.mock import MagicMock, patch
 # Structural checks — verify the fix is wired at all levels
 # ---------------------------------------------------------------------------
 
+
 class TestStructural_YoloInLaunchAgent:
     def test_launch_agent_has_yolo_parameter(self):
         """`_launch_agent` must accept a `yolo` keyword argument."""
         from superharness.commands import delegate as _mod
+
         sig = inspect.signature(_mod._launch_agent)
         assert "yolo" in sig.parameters, (
             "_launch_agent() missing `yolo` parameter — Bug Q regression"
@@ -52,20 +55,27 @@ class TestStructural_YoloInLaunchAgent:
                 if isinstance(node, ast.If):
                     test = node.test
                     if isinstance(test, ast.Name) and test.id == "yolo":
-                        for body_node in ast.walk(ast.Module(body=node.body, type_ignores=[])):
-                            if isinstance(body_node, ast.Constant) and body_node.value == "--yolo":
+                        for body_node in ast.walk(
+                            ast.Module(body=node.body, type_ignores=[])
+                        ):
+                            if (
+                                isinstance(body_node, ast.Constant)
+                                and body_node.value == "--yolo"
+                            ):
                                 return True
             return False
 
-        found = _has_yolo_append(inspect.getsource(_base_mod.build_generic_invocation)) or \
-            _has_yolo_append(inspect.getsource(_claude_mod.ClaudeHarness.build_invocation))
-        assert found, (
-            "no harness adapter appends '--yolo' to argv when yolo=True"
+        found = _has_yolo_append(
+            inspect.getsource(_base_mod.build_generic_invocation)
+        ) or _has_yolo_append(
+            inspect.getsource(_claude_mod.ClaudeHarness.build_invocation)
         )
+        assert found, "no harness adapter appends '--yolo' to argv when yolo=True"
 
     def test_delegate_function_has_yolo_parameter(self):
         """`delegate()` must accept a `yolo` keyword argument."""
         from superharness.commands.delegate import delegate
+
         sig = inspect.signature(delegate)
         assert "yolo" in sig.parameters, (
             "delegate() missing `yolo` parameter — Bug Q regression"
@@ -75,6 +85,7 @@ class TestStructural_YoloInLaunchAgent:
 class TestStructural_YoloPropagation:
     def _get_delegate_source(self):
         from superharness.commands import delegate as _mod
+
         return inspect.getsource(_mod.delegate)
 
     def test_delegate_passes_yolo_to_launch_agent(self):
@@ -104,6 +115,7 @@ class TestStructural_YoloPropagation:
     def test_cli_entrypoint_passes_yolo_to_delegate(self):
         """`opts.yolo` must be forwarded to both `delegate()` CLI call sites."""
         from superharness.commands import delegate as _mod
+
         src = inspect.getsource(_mod)
         tree = ast.parse(src)
 
@@ -129,24 +141,36 @@ class TestStructural_YoloPropagation:
 # Behavioural check — launch_args actually contains --yolo
 # ---------------------------------------------------------------------------
 
+
 class TestBehavioural_LaunchArgsContainYolo:
     def _run_launch_agent(self, tmp_path, yolo: bool) -> list:
         from superharness.commands import delegate as _mod
+
         captured_args: list = []
 
         try:
             with (
-                patch("superharness.engine.adapter_registry.resolve_launcher",
-                      return_value="/fake/delegate-to-gemini.sh"),
-                patch("superharness.engine.platform_runtime.launch_agent",
-                      side_effect=lambda args, **_kw: captured_args.extend(args) or 0),
+                patch(
+                    "superharness.engine.adapter_registry.resolve_launcher",
+                    return_value="/fake/delegate-to-gemini.sh",
+                ),
+                patch(
+                    "superharness.engine.platform_runtime.launch_agent",
+                    side_effect=lambda args, **_kw: captured_args.extend(args) or 0,
+                ),
                 patch("superharness.engine.platform_runtime.expand_agent_path"),
-                patch("superharness.logging_utils.get_logger", return_value=MagicMock()),
-                patch("superharness.logging_utils.get_audit_logger",
-                      return_value=MagicMock()),
+                patch(
+                    "superharness.logging_utils.get_logger", return_value=MagicMock()
+                ),
+                patch(
+                    "superharness.logging_utils.get_audit_logger",
+                    return_value=MagicMock(),
+                ),
                 patch("superharness.logging_utils.redact", side_effect=lambda s: s),
-                patch("superharness.utils.model_routing.apply_model_prefix",
-                      side_effect=lambda m: m),
+                patch(
+                    "superharness.utils.model_routing.apply_model_prefix",
+                    side_effect=lambda m: m,
+                ),
             ):
                 _mod._launch_agent(
                     target="gemini-cli",
@@ -164,13 +188,9 @@ class TestBehavioural_LaunchArgsContainYolo:
     def test_yolo_flag_ends_up_in_launch_args(self, tmp_path):
         """`_launch_agent(..., yolo=True)` must include '--yolo' in the shell args."""
         args = self._run_launch_agent(tmp_path, yolo=True)
-        assert "--yolo" in args, (
-            f"'--yolo' missing from launch_args: {args}"
-        )
+        assert "--yolo" in args, f"'--yolo' missing from launch_args: {args}"
 
     def test_no_yolo_flag_absent_from_launch_args(self, tmp_path):
         """When yolo=False, '--yolo' must NOT appear in launch_args."""
         args = self._run_launch_agent(tmp_path, yolo=False)
-        assert "--yolo" not in args, (
-            f"'--yolo' unexpectedly in launch_args: {args}"
-        )
+        assert "--yolo" not in args, f"'--yolo' unexpectedly in launch_args: {args}"

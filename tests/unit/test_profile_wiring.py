@@ -2,14 +2,14 @@ from __future__ import annotations
 
 """Tests for profile.yaml wiring into delegate.py, task.sh, and contract-today.sh — Phase 1c"""
 
-import os
-import subprocess
-import sys
-from pathlib import Path
+import os  # noqa: E402
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+from pathlib import Path  # noqa: E402
 
-import pytest
+import pytest  # noqa: E402
 
-from tests.helpers import REPO_ROOT, run_bash
+from tests.helpers import REPO_ROOT, run_bash  # noqa: E402
 
 _skip_win = pytest.mark.skipif(sys.platform == "win32", reason="requires bash")
 
@@ -30,11 +30,19 @@ def _run_delegate_py(cwd, args: list[str] | None = None, env: dict | None = None
     # Windows treats NUL as a console device and isatty() returns True,
     # causing _confirm_*_risk() to print the interactive prompt instead of the
     # expected "Set <ENV>=YES" refusal message.
-    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=merged,
-                          check=False, input="")
+    return subprocess.run(
+        cmd,
+        cwd=str(cwd),
+        text=True,
+        capture_output=True,
+        env=merged,
+        check=False,
+        input="",
+    )
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
 
 def _setup_project(tmp_path: Path, *, owner: str = "codex-cli") -> Path:
     project = tmp_path / "proj"
@@ -49,12 +57,13 @@ def _setup_project(tmp_path: Path, *, owner: str = "codex-cli") -> Path:
                 "  - id: task-1",
                 f"    owner: {owner}",
                 "    status: plan_approved",
-                f"    project_path: '{project.as_posix()}'" ,
+                f"    project_path: '{project.as_posix()}'",
             ]
         )
         + "\n"
     )
     from tests.helpers import seed_sqlite_from_yaml
+
     seed_sqlite_from_yaml(project)
     return project
 
@@ -97,6 +106,7 @@ def _make_path(bin_dir: Path) -> str:
 
 # ── delegate.sh: autonomy → env vars ─────────────────────────────────────────
 
+
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_delegate_autonomous_sets_both_env_vars(repo_root, tmp_path) -> None:
     """autonomy=autonomous sets SUPERHARNESS_CONFIRM_NON_INTERACTIVE and CONFIRM_SKIP_PERMISSIONS."""
@@ -106,7 +116,15 @@ def test_delegate_autonomous_sets_both_env_vars(repo_root, tmp_path) -> None:
 
     result = _run_delegate_py(
         repo_root,
-        args=["--to", "codex-cli", "--project", str(project), "--task", "task-1", "--non-interactive"],
+        args=[
+            "--to",
+            "codex-cli",
+            "--project",
+            str(project),
+            "--task",
+            "task-1",
+            "--non-interactive",
+        ],
         env={
             "PATH": _make_path(bin_dir),
             # Clear these so profile controls them
@@ -128,7 +146,17 @@ def test_delegate_supervised_sets_non_interactive_only(repo_root, tmp_path) -> N
 
     result = _run_delegate_py(
         repo_root,
-        args=["--to", "claude-code", "--project", str(project), "--task", "task-1", "--non-interactive", "--via", "cli"],
+        args=[
+            "--to",
+            "claude-code",
+            "--project",
+            str(project),
+            "--task",
+            "task-1",
+            "--non-interactive",
+            "--via",
+            "cli",
+        ],
         env={
             "PATH": _make_path(bin_dir),
             "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": None,
@@ -149,7 +177,15 @@ def test_delegate_approval_gated_sets_no_env_vars(repo_root, tmp_path) -> None:
 
     result = _run_delegate_py(
         repo_root,
-        args=["--to", "codex-cli", "--project", str(project), "--task", "task-1", "--non-interactive"],
+        args=[
+            "--to",
+            "codex-cli",
+            "--project",
+            str(project),
+            "--task",
+            "task-1",
+            "--non-interactive",
+        ],
         env={
             "PATH": _make_path(bin_dir),
             "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": None,
@@ -170,7 +206,15 @@ def test_delegate_existing_env_not_overridden_by_profile(repo_root, tmp_path) ->
 
     result = _run_delegate_py(
         repo_root,
-        args=["--to", "codex-cli", "--project", str(project), "--task", "task-1", "--non-interactive"],
+        args=[
+            "--to",
+            "codex-cli",
+            "--project",
+            str(project),
+            "--task",
+            "task-1",
+            "--non-interactive",
+        ],
         env={
             "PATH": _make_path(bin_dir),
             "SUPERHARNESS_CONFIRM_NON_INTERACTIVE": "YES",
@@ -179,7 +223,9 @@ def test_delegate_existing_env_not_overridden_by_profile(repo_root, tmp_path) ->
     )
     # NON_INTERACTIVE check passes (caller set it), skip-permissions not set → codex runs
     # codex-cli non-interactive doesn't require skip-permissions so should succeed
-    assert result.returncode == 0, f"Expected success (existing env respected), stderr:\n{result.stderr}"
+    assert result.returncode == 0, (
+        f"Expected success (existing env respected), stderr:\n{result.stderr}"
+    )
 
 
 def test_delegate_no_profile_no_crash(repo_root, tmp_path) -> None:
@@ -188,7 +234,15 @@ def test_delegate_no_profile_no_crash(repo_root, tmp_path) -> None:
     # No profile.yaml written
     result = _run_delegate_py(
         repo_root,
-        args=["--to", "codex-cli", "--project", str(project), "--task", "task-1", "--print-only"],
+        args=[
+            "--to",
+            "codex-cli",
+            "--project",
+            str(project),
+            "--task",
+            "task-1",
+            "--print-only",
+        ],
         env={"PATH": "/usr/bin:/bin"},
     )
     assert result.returncode == 0, f"Crashed without profile:\n{result.stderr}"
@@ -196,28 +250,39 @@ def test_delegate_no_profile_no_crash(repo_root, tmp_path) -> None:
 
 # ── task.sh: owner from profile ───────────────────────────────────────────────
 
+
 @_skip_win
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-def test_task_create_uses_profile_primary_agent_when_no_owner(repo_root, tmp_path) -> None:
+def test_task_create_uses_profile_primary_agent_when_no_owner(
+    repo_root, tmp_path
+) -> None:
     """task create with no --owner picks up primary_agent from profile.yaml."""
     project = tmp_path / "proj"
     project.mkdir()
     harness = project / ".superharness"
     harness.mkdir()
-    (harness / "contract.yaml").write_text(
-        "id: test-contract\ntasks: []\n"
-    )
+    (harness / "contract.yaml").write_text("id: test-contract\ntasks: []\n")
     _write_profile(harness, primary_agent="claude-code")
 
     result = run_bash(
         repo_root / "src" / "superharness" / "scripts" / "task.sh",
         cwd=repo_root,
-        args=["create", "--project", str(project), "--id", "t-profile-1", "--title", "Test task"],
+        args=[
+            "create",
+            "--project",
+            str(project),
+            "--id",
+            "t-profile-1",
+            "--title",
+            "Test task",
+        ],
         # No --owner flag; stdin empty so prompt read gets empty → but profile should fill it
         stdin="",
     )
     # Should succeed with owner=claude-code from profile
-    assert result.returncode == 0, f"task create failed:\n{result.stderr}\n{result.stdout}"  # shipguard:ignore PY-007
+    assert result.returncode == 0, (
+        f"task create failed:\n{result.stderr}\n{result.stdout}"
+    )  # shipguard:ignore PY-007
     contract = (harness / "contract.yaml").read_text()
     assert "claude-code" in contract
 
@@ -230,22 +295,28 @@ def test_task_create_explicit_owner_ignores_profile(repo_root, tmp_path) -> None
     project.mkdir()
     harness = project / ".superharness"
     harness.mkdir()
-    (harness / "contract.yaml").write_text(
-        "id: test-contract\ntasks: []\n"
-    )
+    (harness / "contract.yaml").write_text("id: test-contract\ntasks: []\n")
     _write_profile(harness, primary_agent="claude-code")
 
     result = run_bash(
         repo_root / "src" / "superharness" / "scripts" / "task.sh",
         cwd=repo_root,
         args=[
-            "create", "--project", str(project),
-            "--id", "t-explicit-1", "--title", "Explicit owner task",
-            "--owner", "codex-cli",
+            "create",
+            "--project",
+            str(project),
+            "--id",
+            "t-explicit-1",
+            "--title",
+            "Explicit owner task",
+            "--owner",
+            "codex-cli",
         ],
         stdin="",
     )
-    assert result.returncode == 0, f"task create failed:\n{result.stderr}"  # shipguard:ignore PY-007
+    assert result.returncode == 0, (
+        f"task create failed:\n{result.stderr}"
+    )  # shipguard:ignore PY-007
     contract = (harness / "contract.yaml").read_text()
     assert "codex-cli" in contract
 
@@ -258,24 +329,33 @@ def test_task_create_no_owner_no_profile_prompts_user(repo_root, tmp_path) -> No
     project.mkdir()
     harness = project / ".superharness"
     harness.mkdir()
-    (harness / "contract.yaml").write_text(
-        "id: test-contract\ntasks: []\n"
-    )
+    (harness / "contract.yaml").write_text("id: test-contract\ntasks: []\n")
     # No profile written
 
     result = run_bash(
         repo_root / "src" / "superharness" / "scripts" / "task.sh",
         cwd=repo_root,
-        args=["create", "--project", str(project), "--id", "t-prompt-1", "--title", "Prompted task"],
+        args=[
+            "create",
+            "--project",
+            str(project),
+            "--id",
+            "t-prompt-1",
+            "--title",
+            "Prompted task",
+        ],
         # Pipe owner answer via stdin
         stdin="codex-cli\n",
     )
-    assert result.returncode == 0, f"task create with stdin prompt failed:\n{result.stderr}"  # shipguard:ignore PY-007
+    assert result.returncode == 0, (
+        f"task create with stdin prompt failed:\n{result.stderr}"
+    )  # shipguard:ignore PY-007
     contract = (harness / "contract.yaml").read_text()
     assert "codex-cli" in contract
 
 
 # ── contract-today.sh: team_size gates delegation suggestion ──────────────────
+
 
 def _setup_contract_today_project(tmp_path: Path) -> Path:
     project = tmp_path / "proj"
@@ -283,15 +363,18 @@ def _setup_contract_today_project(tmp_path: Path) -> Path:
     harness = project / ".superharness"
     harness.mkdir()
     (harness / "contract.yaml").write_text(
-        "\n".join([
-            "id: ct-contract",
-            "goal: Test goal",
-            "tasks:",
-            "  - id: ct-task-1",
-            "    title: A task",
-            "    owner: codex-cli",
-            "    status: plan_approved",
-        ]) + "\n"
+        "\n".join(
+            [
+                "id: ct-contract",
+                "goal: Test goal",
+                "tasks:",
+                "  - id: ct-task-1",
+                "    title: A task",
+                "    owner: codex-cli",
+                "    status: plan_approved",
+            ]
+        )
+        + "\n"
     )
     return project
 

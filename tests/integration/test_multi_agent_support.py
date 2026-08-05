@@ -1,12 +1,16 @@
 from __future__ import annotations
 
-import os
 import pytest
 import yaml
 from pathlib import Path
-from superharness.engine.adapter_registry import list_adapters, load_manifest, clear_manifest_cache
+from superharness.engine.adapter_registry import (
+    list_adapters,
+    load_manifest,
+    clear_manifest_cache,
+)
 from superharness.engine.model_router import resolve_model
 from superharness.commands.delegate import delegate
+
 
 def _setup_minimal_project(tmp_path: Path):
     project = tmp_path / "multi_agent_proj"
@@ -15,7 +19,7 @@ def _setup_minimal_project(tmp_path: Path):
     harness.mkdir()
     (harness / "handoffs").mkdir()
     (harness / "launcher-logs").mkdir()
-    
+
     contract = {
         "id": "multi-agent-test",
         "tasks": [
@@ -24,24 +28,26 @@ def _setup_minimal_project(tmp_path: Path):
                 "title": "A generic test task",
                 "status": "plan_approved",
                 "owner": "placeholder",
-                "project_path": str(project)
+                "project_path": str(project),
             }
-        ]
+        ],
     }
     (harness / "contract.yaml").write_text(yaml.dump(contract))
     (harness / "inbox.yaml").write_text("[]\n")
     return project
+
 
 @pytest.mark.parametrize("agent_name", list_adapters())
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_agent_lifecycle_compatibility(agent_name, tmp_path):
     """Verify that every registered agent can resolve models and generate prompts."""
     from superharness.engine.adapter_registry import MANIFEST_DIR
+
     print(f"DEBUG: MANIFEST_DIR={MANIFEST_DIR}")
     clear_manifest_cache()
     project = _setup_minimal_project(tmp_path)
     contract_file = project / ".superharness" / "contract.yaml"
-    
+
     # 1. Update owner to the current agent under test
     content = yaml.safe_load(contract_file.read_text())
     content["tasks"][0]["owner"] = agent_name
@@ -51,17 +57,19 @@ def test_agent_lifecycle_compatibility(agent_name, tmp_path):
     # This caught the "Gemini defaulting to Sonnet" bug earlier.
     model = resolve_model(agent_name, "standard")
     manifest = load_manifest(agent_name)
-    
+
     # Use the manifest's own resolution logic to verify
     expected = manifest.resolve_tier_version("standard")
-    assert model == expected["id"], f"Agent '{agent_name}' resolved to model '{model}' but manifest standard tier is '{expected['id']}'"
+    assert model == expected["id"], (
+        f"Agent '{agent_name}' resolved to model '{model}' but manifest standard tier is '{expected['id']}'"
+    )
 
     # 3. Verify Prompt Generation (Delegate)
     # This ensures prompt templates are defined for the agent.
     # We use print_only=True to avoid actual dispatch.
     import sys
     from io import StringIO
-    
+
     _orig_stdout = sys.stdout
     sys.stdout = StringIO()
     try:
@@ -71,7 +79,7 @@ def test_agent_lifecycle_compatibility(agent_name, tmp_path):
             task_id="test-task",
             print_only=True,
             non_interactive=True,
-            codex_bypass=False
+            codex_bypass=False,
         )
         output = sys.stdout.getvalue()
         assert rc == 0
@@ -82,22 +90,34 @@ def test_agent_lifecycle_compatibility(agent_name, tmp_path):
     finally:
         sys.stdout = _orig_stdout
 
+
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_prevent_duplicate_task_different_agents(tmp_path):
     """Verify that the engine blocks enqueuing the same task to different agents."""
     from superharness.engine.inbox import enqueue
+
     inbox_file = str(tmp_path / "inbox.yaml")
-    
+
     # 1. Enqueue task-1 for claude-code
     rc = enqueue(
-        file=inbox_file, id="item-1", to="claude-code", task="task-1",
-        project="/tmp", priority=2, created_at="2026-04-23T12:00:00Z"
+        file=inbox_file,
+        id="item-1",
+        to="claude-code",
+        task="task-1",
+        project="/tmp",
+        priority=2,
+        created_at="2026-04-23T12:00:00Z",
     )
     assert rc == 0
-    
+
     # 2. Try to enqueue same task-1 for gemini-cli (SHOULD FAIL)
     rc = enqueue(
-        file=inbox_file, id="item-2", to="gemini-cli", task="task-1",
-        project="/tmp", priority=2, created_at="2026-04-23T12:05:00Z"
+        file=inbox_file,
+        id="item-2",
+        to="gemini-cli",
+        task="task-1",
+        project="/tmp",
+        priority=2,
+        created_at="2026-04-23T12:05:00Z",
     )
-    assert rc == 2 # 2 is the 'duplicate_task' error code
+    assert rc == 2  # 2 is the 'duplicate_task' error code

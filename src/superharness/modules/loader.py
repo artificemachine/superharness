@@ -1,4 +1,5 @@
 """Module loader — loads YAML module definitions."""
+
 from __future__ import annotations
 
 import logging
@@ -10,6 +11,7 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+
 # Avoid circular import: import validator lazily inside load_modules
 def _validate(data: dict[str, Any], file_name: str) -> bool:
     """Validate manifest data against SDK v1 schema.
@@ -17,7 +19,7 @@ def _validate(data: dict[str, Any], file_name: str) -> bool:
     Returns True if valid, False (and logs a warning) if invalid.
     """
     try:
-        from .validator import ManifestValidationError, validate_manifest
+        from .validator import validate_manifest
 
         validate_manifest(data)
         return True

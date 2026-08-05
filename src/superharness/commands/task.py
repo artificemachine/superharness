@@ -2,6 +2,7 @@
 
 Output format is byte-for-byte identical to the Ruby version.
 """
+
 from __future__ import annotations
 
 import os
@@ -16,6 +17,7 @@ from superharness.engine.next_action import ALL_STATUSES
 from superharness.utils.paths import is_project_initialized
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -24,12 +26,20 @@ logger = logging.getLogger(__name__)
 
 VALID_OWNERS = {"owner", "claude-code", "codex-cli", "gemini-cli", "opencode"}
 VALID_CREATE_STATUSES = {"todo", "in_progress", "pending_user_approval", "done"}
-VALID_WORKFLOWS = {"implementation", "quick", "discussion", "review", "approval", "note"}
+VALID_WORKFLOWS = {
+    "implementation",
+    "quick",
+    "discussion",
+    "review",
+    "approval",
+    "note",
+}
 TOKEN_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 
 def _profile_autonomy_is_ai_driven(profile: dict) -> bool:
     from superharness.engine.profile import normalize_autonomy
+
     return normalize_autonomy(profile.get("autonomy")) == "ai_driven"
 
 
@@ -40,6 +50,7 @@ def _load_require_tdd_from_profile(project_path: str) -> bool:
         return True
     try:
         import yaml as _yaml
+
         with open(profile_path) as _f:
             profile = _yaml.safe_load(_f) or {}
     except Exception as e:
@@ -87,6 +98,7 @@ _JSON_CTX: dict = {}
 def _abort(msg: str, code: int = 1) -> None:
     if _JSON_MODE:
         from superharness.utils.json_output import emit_error
+
         emit_error(msg, exit_code=code, **_JSON_CTX)
     print(msg, file=sys.stderr)
     sys.exit(code)
@@ -96,6 +108,7 @@ def _abort(msg: str, code: int = 1) -> None:
 # ---------------------------------------------------------------------------
 # Operations
 # ---------------------------------------------------------------------------
+
 
 def _parse_blocked_by(value: str | list | None) -> str | list:
     """Normalise blocked_by input to 'none', a single ID, or a list."""
@@ -203,6 +216,7 @@ def create(
                 tdd_dict["refactor"] = tdd_refactor
 
         import json as _json
+
         extras: dict = {}
         if ship_on_complete:
             extras["ship_on_complete"] = True
@@ -239,7 +253,9 @@ def create(
     finally:
         conn.close()
 
-    print(f"Created task '{task_id}' (owner={owner}, status={status}, blocked_by={blocked})")
+    print(
+        f"Created task '{task_id}' (owner={owner}, status={status}, blocked_by={blocked})"
+    )
     return 0
 
 
@@ -266,11 +282,16 @@ def archive_done(project_dir: str, ids: list[str] | None = None) -> int:
                 continue
             if row.status != "done":
                 continue
-            tasks_dao.update(conn, row.id, row.version, {
-                "status": "archived",
-                "archived_at": now,
-                "updated_at": now,
-            })
+            tasks_dao.update(
+                conn,
+                row.id,
+                row.version,
+                {
+                    "status": "archived",
+                    "archived_at": now,
+                    "updated_at": now,
+                },
+            )
             flipped.append(row.id)
         if flipped:
             conn.commit()
@@ -298,7 +319,10 @@ def delete(project_dir: str, task_id: str) -> int:
         init_db(conn)
         if tasks_dao.get(conn, task_id) is None:
             _abort(f"task '{task_id}' not found")
-        conn.execute("DELETE FROM task_dependencies WHERE dependent_task_id=? OR prerequisite_task_id=?", (task_id, task_id))
+        conn.execute(
+            "DELETE FROM task_dependencies WHERE dependent_task_id=? OR prerequisite_task_id=?",
+            (task_id, task_id),
+        )
         conn.execute("DELETE FROM tasks WHERE id=?", (task_id,))
         conn.commit()
     finally:
@@ -316,6 +340,7 @@ def _cascade_unblocked_tasks(project_dir: str, finished_task_id: str) -> None:
         return
     try:
         import yaml as _yaml
+
         with open(profile_file) as _f:
             profile = _yaml.safe_load(_f) or {}
         if not profile.get("auto_dispatch"):
@@ -338,10 +363,7 @@ def _cascade_unblocked_tasks(project_dir: str, finished_task_id: str) -> None:
         init_db(conn)
         rows = tasks_dao.get_all(conn)
 
-        dependents = [
-            r for r in rows
-            if finished_task_id in (r.blocked_by or [])
-        ]
+        dependents = [r for r in rows if finished_task_id in (r.blocked_by or [])]
         if not dependents:
             return
 
@@ -355,13 +377,23 @@ def _cascade_unblocked_tasks(project_dir: str, finished_task_id: str) -> None:
                 continue
 
             item_id = f"cascade-{uuid.uuid4().hex[:6]}"
-            plan_only = (row.status == "todo")
+            plan_only = row.status == "todo"
             owner = row.owner or "claude-code"
             try:
-                inbox_dao.enqueue(conn, id=item_id, task_id=row.id, target_agent=owner,
-                                  priority=2, project_path=project_dir, plan_only=plan_only, now=now)
+                inbox_dao.enqueue(
+                    conn,
+                    id=item_id,
+                    task_id=row.id,
+                    target_agent=owner,
+                    priority=2,
+                    project_path=project_dir,
+                    plan_only=plan_only,
+                    now=now,
+                )
                 conn.commit()
-                print(f"cascading-dispatch: task {row.id} unblocked and enqueued (item {item_id}, plan_only={plan_only})")
+                print(
+                    f"cascading-dispatch: task {row.id} unblocked and enqueued (item {item_id}, plan_only={plan_only})"
+                )
             except _StateError:
                 pass
     finally:
@@ -373,6 +405,7 @@ def _load_latest_plan_handoff(project_dir: str, task_id: str) -> dict | None:
     try:
         from superharness.engine import state_reader as _sr_t
         import yaml as _yaml_t
+
         rows = _sr_t.get_handoffs(project_dir, task_id=task_id)
         plan_rows = [r for r in rows if str(r.get("phase", "")) == "plan"]
         if not plan_rows:
@@ -409,10 +442,20 @@ def _enqueue_for_implementation(project_dir: str, task_id: str) -> None:
         owner = row.owner or "claude-code"
         item_id = f"auto-impl-{uuid.uuid4().hex[:6]}"
         try:
-            inbox_dao.enqueue(conn, id=item_id, task_id=task_id, target_agent=owner,
-                              priority=2, project_path=project_dir, plan_only=False, now=now)
+            inbox_dao.enqueue(
+                conn,
+                id=item_id,
+                task_id=task_id,
+                target_agent=owner,
+                priority=2,
+                project_path=project_dir,
+                plan_only=False,
+                now=now,
+            )
             conn.commit()
-            print(f"auto-dispatch: task {task_id} enqueued for implementation (item {item_id})")
+            print(
+                f"auto-dispatch: task {task_id} enqueued for implementation (item {item_id})"
+            )
         except _StateError:
             pass
     finally:
@@ -437,7 +480,9 @@ def set_owner(project_dir: str, task_id: str, new_owner: str) -> int:
             print(f"Task '{task_id}' is already owned by '{new_owner}'")
             return 0
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        _tdao.update(conn_t, task_id, task_row.version, {"owner": new_owner, "updated_at": now})
+        _tdao.update(
+            conn_t, task_id, task_row.version, {"owner": new_owner, "updated_at": now}
+        )
         conn_t.commit()
     finally:
         conn_t.close()
@@ -446,6 +491,7 @@ def set_owner(project_dir: str, task_id: str, new_owner: str) -> int:
 
     # Cancel active inbox rows that were dispatched to the old owner.
     from superharness.utils.paths import resolve_active_state_db_path
+
     db_path = resolve_active_state_db_path(project_dir)
 
     if not os.path.exists(db_path):
@@ -456,6 +502,7 @@ def set_owner(project_dir: str, task_id: str, new_owner: str) -> int:
 
     try:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -490,7 +537,9 @@ def set_owner(project_dir: str, task_id: str, new_owner: str) -> int:
         print(f"  warning: inbox cleanup failed: {exc}", file=sys.stderr)
 
     if removed_ids:
-        print(f"  canceled {len(removed_ids)} inbox item(s) for old owner '{old_owner}': {', '.join(removed_ids)}")
+        print(
+            f"  canceled {len(removed_ids)} inbox item(s) for old owner '{old_owner}': {', '.join(removed_ids)}"
+        )
 
     # Re-enqueue to the new owner when the task is dispatch-ready.
     if removed_ids:
@@ -521,9 +570,14 @@ def set_owner(project_dir: str, task_id: str, new_owner: str) -> int:
                 print(f"  re-enqueued '{task_id}' to '{new_owner}'{suffix}")
             except SystemExit as exc:
                 if exc.code != 0:
-                    print(f"  warning: re-enqueue failed — task is reassigned but not in inbox", file=sys.stderr)
+                    print(
+                        "  warning: re-enqueue failed — task is reassigned but not in inbox",
+                        file=sys.stderr,
+                    )
         else:
-            print(f"  task status '{task_status}' is not dispatch-ready — not re-enqueued")
+            print(
+                f"  task status '{task_status}' is not dispatch-ready — not re-enqueued"
+            )
 
     return 0
 
@@ -545,7 +599,10 @@ def status_update(
     if status in ("failed", "stopped") and not reason:
         _abort(f"error: --reason is required when status={status}", 2)
 
-    if status in ("todo", "in_progress", "pending_user_approval", "done") and not summary:
+    if (
+        status in ("todo", "in_progress", "pending_user_approval", "done")
+        and not summary
+    ):
         _abort(f"error: --summary is required when status={status}", 2)
 
     from superharness.engine.db import get_connection, init_db
@@ -563,11 +620,14 @@ def status_update(
             _abort(f"task '{task_id}' has no owner set")
 
         if actor != owner and not _recursion_guard:
-            _abort(f"forbidden: actor '{actor}' cannot update task '{task_id}' owned by '{owner}'")  # shipguard:ignore PY-007
+            _abort(
+                f"forbidden: actor '{actor}' cannot update task '{task_id}' owned by '{owner}'"
+            )  # shipguard:ignore PY-007
 
         # Validate against the legal status transition graph
         try:
             from superharness.engine.next_action import validate_status_transition
+
             validate_status_transition(str(task_row.status or ""), status)
         except ValueError as _e:
             _abort(f"status transition rejected: {_e}", 2)
@@ -620,12 +680,17 @@ def status_update(
     # Only fires for the implementation workflow — quick/note/review/discussion tasks
     # have no plan cycle, and auto-approving them causes a permanent dispatch block
     # because plan_approved is not in their allowed dispatch status set.
-    if status == "plan_proposed" and not _recursion_guard and task_row.workflow == "implementation":
+    if (
+        status == "plan_proposed"
+        and not _recursion_guard
+        and task_row.workflow == "implementation"
+    ):
         profile_path = os.path.join(project_dir, ".superharness", "profile.yaml")
         auto_approve = False
         if os.path.exists(profile_path):
             try:
                 import yaml as _yaml
+
                 with open(profile_path) as _f:
                     profile = _yaml.safe_load(_f) or {}
                     auto_approve = bool(profile.get("auto_approve_plans", False))
@@ -635,10 +700,15 @@ def status_update(
         if auto_approve:
             try:
                 from superharness.engine.plan_validator import validate_plan
+
                 plan_handoff = _load_latest_plan_handoff(project_dir, task_id)
                 if plan_handoff:
-                    task_dict = {"id": task_row.id, "acceptance_criteria": task_row.acceptance_criteria,
-                                 "tdd": task_row.tdd, "owner": task_row.owner}
+                    task_dict = {
+                        "id": task_row.id,
+                        "acceptance_criteria": task_row.acceptance_criteria,
+                        "tdd": task_row.tdd,
+                        "owner": task_row.owner,
+                    }
                     result = validate_plan(plan_handoff, task_dict)  # type: ignore[arg-type]
                     if not result.passed:
                         print(
@@ -651,7 +721,9 @@ def status_update(
 
             print(f"Auto-approving task '{task_id}' (auto-approved per project policy)")
             status_update(
-                project_dir, task_id, "plan_approved",
+                project_dir,
+                task_id,
+                "plan_approved",
                 actor="ai-autonomy",
                 summary="auto-approved per project policy",
                 _recursion_guard=True,
@@ -669,6 +741,7 @@ def status_update(
                 evaluate_subtask_gate_from_disk,
                 format_gate_error,
             )
+
             task_dict = {"id": task_row.id, "extras_json": task_row.extras_json}
             gate = evaluate_subtask_gate_from_disk(task_dict, project_dir)
             if gate.enabled and gate.blocking:
@@ -680,7 +753,10 @@ def status_update(
     if status == "done":
         ac = task_row.acceptance_criteria
         if ac:
-            print(f"Warning: task '{task_id}' has acceptance criteria — verify before closing:", file=sys.stderr)
+            print(
+                f"Warning: task '{task_id}' has acceptance criteria — verify before closing:",
+                file=sys.stderr,
+            )
             for c in ac:
                 print(f"  - {c}", file=sys.stderr)
 
@@ -691,8 +767,14 @@ def status_update(
 
         try:
             from superharness.engine.skill_extractor import record_skill
-            task_dict = {"id": task_row.id, "title": task_row.title, "owner": task_row.owner,
-                         "status": task_row.status, "tdd": task_row.tdd}
+
+            task_dict = {
+                "id": task_row.id,
+                "title": task_row.title,
+                "owner": task_row.owner,
+                "status": task_row.status,
+                "tdd": task_row.tdd,
+            }
             skill = record_skill(project_dir, task_dict)
             if skill:
                 print(f"Skill recorded: [{skill.category}] {skill.title}")
@@ -706,6 +788,7 @@ def status_update(
 # ---------------------------------------------------------------------------
 # Capability requirements (requires: block) — set/show on a task's extras_json
 # ---------------------------------------------------------------------------
+
 
 def set_requires(
     project_dir: str,
@@ -742,6 +825,7 @@ def set_requires(
         if show:
             if req:
                 import yaml as _yaml
+
                 print(f"requires: for '{task_id}':")
                 print(_yaml.safe_dump(req, default_flow_style=False).rstrip())
             else:
@@ -770,7 +854,9 @@ def set_requires(
                 return
             existing = list(req.get(key) or [])
             existing_ids = {
-                (i.get("id") or i.get("name") or i.get("server") or "") if isinstance(i, dict) else str(i)
+                (i.get("id") or i.get("name") or i.get("server") or "")
+                if isinstance(i, dict)
+                else str(i)
                 for i in existing
             }
             for item_id in ids:
@@ -784,8 +870,10 @@ def set_requires(
                 return
             remove_set = set(ids)
             req[key] = [
-                i for i in (req.get(key) or [])
-                if (i.get("id") or i.get("name") or i.get("server") or str(i)) not in remove_set
+                i
+                for i in (req.get(key) or [])
+                if (i.get("id") or i.get("name") or i.get("server") or str(i))
+                not in remove_set
             ]
             if not req[key]:
                 del req[key]
@@ -809,6 +897,7 @@ def set_requires(
         conn.close()
 
     import yaml as _yaml
+
     print(f"requires: for '{task_id}':")
     print(_yaml.safe_dump(req, default_flow_style=False).rstrip())
     return 0
@@ -846,10 +935,15 @@ def link(
             return 2
 
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        updated = tasks_dao.update(conn, task_id, row.version, {
-            "issue_url": new_url,
-            "updated_at": now,
-        })
+        updated = tasks_dao.update(
+            conn,
+            task_id,
+            row.version,
+            {
+                "issue_url": new_url,
+                "updated_at": now,
+            },
+        )
         conn.commit()
     finally:
         conn.close()
@@ -864,6 +958,7 @@ def link(
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def main(argv: list[str] | None = None) -> None:
     import argparse
@@ -881,59 +976,140 @@ def main(argv: list[str] | None = None) -> None:
     # create
     p_create = sub.add_parser("create", add_help=True)
     p_create.add_argument("--project", "-p", default=None)
-    p_create.add_argument("--id", dest="task_id", default=None,
-                          help="Task ID (auto-generated as t-XXXXXX if omitted)")
-    p_create.add_argument("--title", default=None,
-                          help="Required unless --from-issue supplies a title")
+    p_create.add_argument(
+        "--id",
+        dest="task_id",
+        default=None,
+        help="Task ID (auto-generated as t-XXXXXX if omitted)",
+    )
+    p_create.add_argument(
+        "--title", default=None, help="Required unless --from-issue supplies a title"
+    )
     p_create.add_argument("--owner", default=None)
     p_create.add_argument("--status", default="todo")
     p_create.add_argument("--dependency", default="")
-    p_create.add_argument("--blocked-by", dest="blocked_by", default=None,
-                          help="Task ID(s) this task is blocked by (comma-separated, or 'none')")
-    p_create.add_argument("--tdd-red", dest="tdd_red", default="",
-                          help="TDD red phase: failing tests that define done")
-    p_create.add_argument("--tdd-green", dest="tdd_green", default="",
-                          help="TDD green phase: minimal code to make tests pass")
-    p_create.add_argument("--tdd-refactor", dest="tdd_refactor", default="",
-                          help="TDD refactor phase: cleanup after green, no new behaviour")
-    p_create.add_argument("--workflow", default="implementation",
-                          help="Optional workflow template: implementation, quick, discussion, review, approval, note (default: implementation)")
-    p_create.add_argument("--development-method", dest="development_method", default="",
-                          help="Optional development method: tdd, bdd, sdd, none")
-    p_create.add_argument("--criteria", action="append", default=[], metavar="CRITERION",
-                          help="Acceptance criterion (repeat for multiple)")
-    p_create.add_argument("--effort", default="medium",
-                          help="Effort level: low, medium, high, max (default: medium)")
-    p_create.add_argument("--test-types", dest="test_types", default=None,
-                          help="Comma-separated test types (e.g. unit,integration,e2e)")
-    p_create.add_argument("--out-of-scope", dest="out_of_scope", action="append", default=[],
-                          help="Out of scope item (repeat for multiple)")
-    p_create.add_argument("--definition-of-done", dest="definition_of_done", action="append", default=[],
-                          help="Definition of done item (repeat for multiple)")
-    p_create.add_argument("--context", default=None,
-                          help="Operator-authored context string injected into dispatch prompt")
-    p_create.add_argument("--timeout-minutes", dest="timeout_minutes", type=int, default=None,
-                          help="Timeout in minutes for task execution")
-    p_create.add_argument("--bdd-given", dest="bdd_given", default="",
-                          help="BDD given phase")
-    p_create.add_argument("--bdd-when", dest="bdd_when", default="",
-                          help="BDD when phase")
-    p_create.add_argument("--bdd-then", dest="bdd_then", default="",
-                          help="BDD then phase")
-    p_create.add_argument("--ship-on-complete", dest="ship_on_complete",
-                          action="store_true", default=False,
-                          help="Agent must run /ship commit before report_ready; watcher validates PR URL")
-    p_create.add_argument("--require-tdd", dest="require_tdd",
-                          action="store_true", default=None,
-                          help="Force require_tdd=true on this task (default: read from profile)")
-    p_create.add_argument("--no-require-tdd", dest="require_tdd",
-                          action="store_false", default=None,
-                          help="Force require_tdd=false on this task")
-    p_create.add_argument("--issue", dest="issue_url", default=None,
-                          help="Linked GitHub/GitLab issue URL (one-way snapshot pointer)")
-    p_create.add_argument("--from-issue", dest="from_issue", default=None,
-                          help="Import title/context/acceptance_criteria from a GitHub/GitLab "
-                               "issue URL via gh/glab (one-way snapshot; explicit flags override)")
+    p_create.add_argument(
+        "--blocked-by",
+        dest="blocked_by",
+        default=None,
+        help="Task ID(s) this task is blocked by (comma-separated, or 'none')",
+    )
+    p_create.add_argument(
+        "--tdd-red",
+        dest="tdd_red",
+        default="",
+        help="TDD red phase: failing tests that define done",
+    )
+    p_create.add_argument(
+        "--tdd-green",
+        dest="tdd_green",
+        default="",
+        help="TDD green phase: minimal code to make tests pass",
+    )
+    p_create.add_argument(
+        "--tdd-refactor",
+        dest="tdd_refactor",
+        default="",
+        help="TDD refactor phase: cleanup after green, no new behaviour",
+    )
+    p_create.add_argument(
+        "--workflow",
+        default="implementation",
+        help="Optional workflow template: implementation, quick, discussion, review, approval, note (default: implementation)",
+    )
+    p_create.add_argument(
+        "--development-method",
+        dest="development_method",
+        default="",
+        help="Optional development method: tdd, bdd, sdd, none",
+    )
+    p_create.add_argument(
+        "--criteria",
+        action="append",
+        default=[],
+        metavar="CRITERION",
+        help="Acceptance criterion (repeat for multiple)",
+    )
+    p_create.add_argument(
+        "--effort",
+        default="medium",
+        help="Effort level: low, medium, high, max (default: medium)",
+    )
+    p_create.add_argument(
+        "--test-types",
+        dest="test_types",
+        default=None,
+        help="Comma-separated test types (e.g. unit,integration,e2e)",
+    )
+    p_create.add_argument(
+        "--out-of-scope",
+        dest="out_of_scope",
+        action="append",
+        default=[],
+        help="Out of scope item (repeat for multiple)",
+    )
+    p_create.add_argument(
+        "--definition-of-done",
+        dest="definition_of_done",
+        action="append",
+        default=[],
+        help="Definition of done item (repeat for multiple)",
+    )
+    p_create.add_argument(
+        "--context",
+        default=None,
+        help="Operator-authored context string injected into dispatch prompt",
+    )
+    p_create.add_argument(
+        "--timeout-minutes",
+        dest="timeout_minutes",
+        type=int,
+        default=None,
+        help="Timeout in minutes for task execution",
+    )
+    p_create.add_argument(
+        "--bdd-given", dest="bdd_given", default="", help="BDD given phase"
+    )
+    p_create.add_argument(
+        "--bdd-when", dest="bdd_when", default="", help="BDD when phase"
+    )
+    p_create.add_argument(
+        "--bdd-then", dest="bdd_then", default="", help="BDD then phase"
+    )
+    p_create.add_argument(
+        "--ship-on-complete",
+        dest="ship_on_complete",
+        action="store_true",
+        default=False,
+        help="Agent must run /ship commit before report_ready; watcher validates PR URL",
+    )
+    p_create.add_argument(
+        "--require-tdd",
+        dest="require_tdd",
+        action="store_true",
+        default=None,
+        help="Force require_tdd=true on this task (default: read from profile)",
+    )
+    p_create.add_argument(
+        "--no-require-tdd",
+        dest="require_tdd",
+        action="store_false",
+        default=None,
+        help="Force require_tdd=false on this task",
+    )
+    p_create.add_argument(
+        "--issue",
+        dest="issue_url",
+        default=None,
+        help="Linked GitHub/GitLab issue URL (one-way snapshot pointer)",
+    )
+    p_create.add_argument(
+        "--from-issue",
+        dest="from_issue",
+        default=None,
+        help="Import title/context/acceptance_criteria from a GitHub/GitLab "
+        "issue URL via gh/glab (one-way snapshot; explicit flags override)",
+    )
 
     # delete
     p_delete = sub.add_parser("delete", add_help=True)
@@ -941,24 +1117,40 @@ def main(argv: list[str] | None = None) -> None:
     p_delete.add_argument("--id", dest="task_id", required=True)
 
     # archive-done: bulk-flip every done task to archived
-    p_archive = sub.add_parser("archive-done", add_help=True,
-                                help="Move every done task (or specific --id) to archived")
+    p_archive = sub.add_parser(
+        "archive-done",
+        add_help=True,
+        help="Move every done task (or specific --id) to archived",
+    )
     p_archive.add_argument("--project", "-p", default=None)
-    p_archive.add_argument("--id", action="append", dest="ids", default=None,
-                           help="Specific task id(s) to archive (repeat). Default: all done tasks.")
+    p_archive.add_argument(
+        "--id",
+        action="append",
+        dest="ids",
+        default=None,
+        help="Specific task id(s) to archive (repeat). Default: all done tasks.",
+    )
 
     # status
     p_status = sub.add_parser("status", add_help=True)
     p_status.add_argument("--project", "-p", default=None)
     p_status.add_argument("--id", dest="task_id", required=True)
     _valid_status_hint = "{" + "|".join(sorted(ALL_STATUSES)) + "}"
-    p_status.add_argument("--status", required=True, metavar=_valid_status_hint,
-                          help=f"Lifecycle status. One of: {', '.join(sorted(ALL_STATUSES))}")
+    p_status.add_argument(
+        "--status",
+        required=True,
+        metavar=_valid_status_hint,
+        help=f"Lifecycle status. One of: {', '.join(sorted(ALL_STATUSES))}",
+    )
     p_status.add_argument("--actor", required=True)
     p_status.add_argument("--reason", default="")
     p_status.add_argument("--summary", default="")
-    p_status.add_argument("--json", action="store_true", default=False,
-                          help="Emit machine-readable JSON on stdout instead of human text.")
+    p_status.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="Emit machine-readable JSON on stdout instead of human text.",
+    )
 
     # set-owner
     p_owner = sub.add_parser("set-owner", help="Change the owner (agent) of a task")
@@ -973,29 +1165,89 @@ def main(argv: list[str] | None = None) -> None:
     )
     p_req.add_argument("--project", "-p", default=None)
     p_req.add_argument("--id", dest="task_id", required=True)
-    p_req.add_argument("--show", action="store_true", default=False,
-                       help="Print current requires: block and exit")
-    p_req.add_argument("--clear", action="store_true", default=False,
-                       help="Remove the entire requires: block")
-    p_req.add_argument("--fail-mode", dest="fail_mode", default=None,
-                       choices=["block", "warn"],
-                       help="Dispatch behaviour on unmet deps: block (default) or warn")
-    p_req.add_argument("--cli", dest="cli_add", action="append", default=None,
-                       metavar="ID", help="Require CLI binary on PATH (repeatable)")
-    p_req.add_argument("--rm-cli", dest="cli_remove", action="append", default=None,
-                       metavar="ID", help="Remove CLI requirement (repeatable)")
-    p_req.add_argument("--env", dest="env_add", action="append", default=None,
-                       metavar="NAME", help="Require env var to be set (repeatable)")
-    p_req.add_argument("--rm-env", dest="env_remove", action="append", default=None,
-                       metavar="NAME", help="Remove env var requirement (repeatable)")
-    p_req.add_argument("--skill", dest="skill_add", action="append", default=None,
-                       metavar="ID", help="Require skill/command to be installed (repeatable)")
-    p_req.add_argument("--rm-skill", dest="skill_remove", action="append", default=None,
-                       metavar="ID", help="Remove skill requirement (repeatable)")
-    p_req.add_argument("--mcp", dest="mcp_add", action="append", default=None,
-                       metavar="SERVER", help="Require MCP server to be registered (repeatable)")
-    p_req.add_argument("--rm-mcp", dest="mcp_remove", action="append", default=None,
-                       metavar="SERVER", help="Remove MCP server requirement (repeatable)")
+    p_req.add_argument(
+        "--show",
+        action="store_true",
+        default=False,
+        help="Print current requires: block and exit",
+    )
+    p_req.add_argument(
+        "--clear",
+        action="store_true",
+        default=False,
+        help="Remove the entire requires: block",
+    )
+    p_req.add_argument(
+        "--fail-mode",
+        dest="fail_mode",
+        default=None,
+        choices=["block", "warn"],
+        help="Dispatch behaviour on unmet deps: block (default) or warn",
+    )
+    p_req.add_argument(
+        "--cli",
+        dest="cli_add",
+        action="append",
+        default=None,
+        metavar="ID",
+        help="Require CLI binary on PATH (repeatable)",
+    )
+    p_req.add_argument(
+        "--rm-cli",
+        dest="cli_remove",
+        action="append",
+        default=None,
+        metavar="ID",
+        help="Remove CLI requirement (repeatable)",
+    )
+    p_req.add_argument(
+        "--env",
+        dest="env_add",
+        action="append",
+        default=None,
+        metavar="NAME",
+        help="Require env var to be set (repeatable)",
+    )
+    p_req.add_argument(
+        "--rm-env",
+        dest="env_remove",
+        action="append",
+        default=None,
+        metavar="NAME",
+        help="Remove env var requirement (repeatable)",
+    )
+    p_req.add_argument(
+        "--skill",
+        dest="skill_add",
+        action="append",
+        default=None,
+        metavar="ID",
+        help="Require skill/command to be installed (repeatable)",
+    )
+    p_req.add_argument(
+        "--rm-skill",
+        dest="skill_remove",
+        action="append",
+        default=None,
+        metavar="ID",
+        help="Remove skill requirement (repeatable)",
+    )
+    p_req.add_argument(
+        "--mcp",
+        dest="mcp_add",
+        action="append",
+        default=None,
+        metavar="SERVER",
+        help="Require MCP server to be registered (repeatable)",
+    )
+    p_req.add_argument(
+        "--rm-mcp",
+        dest="mcp_remove",
+        action="append",
+        default=None,
+        metavar="SERVER",
+        help="Remove MCP server requirement (repeatable)",
+    )
 
     # link
     p_link = sub.add_parser(
@@ -1005,8 +1257,12 @@ def main(argv: list[str] | None = None) -> None:
     p_link.add_argument("--project", "-p", default=None)
     p_link.add_argument("--id", dest="task_id", required=True)
     p_link.add_argument("--url", default=None, help="Issue URL to attach")
-    p_link.add_argument("--clear", action="store_true", default=False,
-                        help="Remove the linked issue URL")
+    p_link.add_argument(
+        "--clear",
+        action="store_true",
+        default=False,
+        help="Remove the linked issue URL",
+    )
 
     opts = parser.parse_args(argv)
     if not opts.subcmd:
@@ -1025,6 +1281,7 @@ def main(argv: list[str] | None = None) -> None:
             if os.path.exists(profile_file):
                 try:
                     import yaml as _yaml
+
                     with open(profile_file) as _f:
                         _profile = _yaml.safe_load(_f) or {}
                     owner = str(_profile.get("primary_agent") or "")
@@ -1050,7 +1307,11 @@ def main(argv: list[str] | None = None) -> None:
         imported_criteria: list[str] = []
         imported_issue_url = None
         if opts.from_issue:
-            from superharness.commands.issue_import import _fetch_issue, _issue_to_task_fields
+            from superharness.commands.issue_import import (
+                _fetch_issue,
+                _issue_to_task_fields,
+            )
+
             try:
                 issue = _fetch_issue(opts.from_issue)
             except RuntimeError as e:
@@ -1122,7 +1383,11 @@ def main(argv: list[str] | None = None) -> None:
         global _JSON_MODE, _JSON_CTX
         if getattr(opts, "json", False):
             _JSON_MODE = True
-            _JSON_CTX = {"task_id": opts.task_id, "new_status": opts.status, "actor": opts.actor}
+            _JSON_CTX = {
+                "task_id": opts.task_id,
+                "new_status": opts.status,
+                "actor": opts.actor,
+            }
 
         # Capture old status for the JSON payload
         old_status = None
@@ -1130,6 +1395,7 @@ def main(argv: list[str] | None = None) -> None:
             try:
                 from superharness.engine.db import get_connection, init_db
                 from superharness.engine import tasks_dao as _tdao
+
                 _conn = get_connection(project_dir)
                 try:
                     init_db(_conn)
@@ -1146,12 +1412,16 @@ def main(argv: list[str] | None = None) -> None:
         # Pre-validate before calling status_update so shell exit codes match
         if opts.status in ("failed", "stopped") and not opts.reason:
             _abort(f"error: --reason is required when status={opts.status}", 2)
-        if opts.status in ("todo", "in_progress", "pending_user_approval", "done") and not opts.summary:
+        if (
+            opts.status in ("todo", "in_progress", "pending_user_approval", "done")
+            and not opts.summary
+        ):
             _abort(f"error: --summary is required when status={opts.status}", 2)
 
         # In JSON mode, temporarily suppress stdout prints from status_update
         if _JSON_MODE:
             import io
+
             _orig_stdout = sys.stdout
             sys.stdout = io.StringIO()
             try:
@@ -1167,12 +1437,17 @@ def main(argv: list[str] | None = None) -> None:
                 sys.stdout = _orig_stdout
             _sync_inbox_after_status(project_dir, opts.task_id, opts.status)
             from superharness.utils.json_output import emit_json
-            emit_json({
-                "task_id": opts.task_id,
-                "old_status": old_status,
-                "new_status": opts.status,
-                "actor": opts.actor,
-            }, ok=(rc == 0), exit_code=rc)
+
+            emit_json(
+                {
+                    "task_id": opts.task_id,
+                    "old_status": old_status,
+                    "new_status": opts.status,
+                    "actor": opts.actor,
+                },
+                ok=(rc == 0),
+                exit_code=rc,
+            )
 
         rc = status_update(
             project_dir,
@@ -1219,6 +1494,7 @@ def _sync_inbox_after_status(project_dir: str, task_id: str, status: str) -> Non
         return
     try:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -1232,7 +1508,10 @@ def _sync_inbox_after_status(project_dir: str, task_id: str, status: str) -> Non
         finally:
             conn.close()
     except Exception as e:
-        print(f"Warning: failed to sync inbox task status for '{task_id}': {e}", file=sys.stderr)
+        print(
+            f"Warning: failed to sync inbox task status for '{task_id}': {e}",
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":

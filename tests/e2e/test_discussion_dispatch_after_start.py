@@ -3,6 +3,7 @@ delegate abort. Verifies the YAML→SQLite migration regression is
 closed end-to-end (cmd_start creates dir → delegate's isdir check
 passes → round YAML submission path is writable).
 """
+
 from __future__ import annotations
 
 import json
@@ -13,7 +14,6 @@ import sys
 import pytest
 
 from superharness.engine.db import get_connection, init_db
-from superharness.engine.discussion import cmd_start
 
 
 @pytest.fixture
@@ -31,15 +31,29 @@ def _start_discussion(project_path) -> dict:
     # Capture cmd_start's stdout via subprocess so we get the JSON cleanly
     # without fighting pytest's capsys teardown semantics.
     result = subprocess.run(
-        [sys.executable, "-m", "superharness.engine.discussion", "start",
-         "--discussions-dir", discussions_dir,
-         "--topic", "Test topic",
-         "--max-rounds", "3",
-         "--project", str(project_path),
-         "--created-by", "claude-code",
-         "--participant", "claude-code",
-         "--participant", "codex-cli"],
-        capture_output=True, text=True, check=False,
+        [
+            sys.executable,
+            "-m",
+            "superharness.engine.discussion",
+            "start",
+            "--discussions-dir",
+            discussions_dir,
+            "--topic",
+            "Test topic",
+            "--max-rounds",
+            "3",
+            "--project",
+            str(project_path),
+            "--created-by",
+            "claude-code",
+            "--participant",
+            "claude-code",
+            "--participant",
+            "codex-cli",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
@@ -79,12 +93,21 @@ def test_e2e_round_context_works_for_fresh_discussion(project):
     disc_dir = disc["discussion_dir"]
 
     result = subprocess.run(
-        [sys.executable, "-m", "superharness.engine.discussion",
-         "round_context",
-         "--discussion-dir", disc_dir,
-         "--round", "1",
-         "--agent", "claude-code"],
-        capture_output=True, text=True, check=False,
+        [
+            sys.executable,
+            "-m",
+            "superharness.engine.discussion",
+            "round_context",
+            "--discussion-dir",
+            disc_dir,
+            "--round",
+            "1",
+            "--agent",
+            "claude-code",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert result.returncode == 0, result.stderr
     ctx = json.loads(result.stdout)

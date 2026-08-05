@@ -24,6 +24,7 @@ addressed by Phase 1 of the refactor and could get a sibling write-guard later.
 Emitted by /bulletproof --emit-guard on 2026-05-22. Mutation-checked (literal,
 variable, and helper-indirection forms).
 """
+
 from __future__ import annotations
 
 import ast
@@ -43,10 +44,19 @@ _SCAN_DIRS = ("commands", "engine", "mcp", "scripts")
 # "handoff" (singular) taints function parameters named handoff_dir/handoff_file.
 # Config files (workflow.yaml, schedule.yaml, profile.yaml) remain excluded —
 # they are static input read at startup, not runtime state.
-_STATE_TOKENS = ("handoffs", "handoff", "ledger.md", "discussions", "contract.yaml",
-                 "inbox.yaml", "state.yaml",
-                 "watcher.heartbeat.yaml", ".heartbeat.yaml",
-                 ".status.yaml", "agent-pulse.yaml")
+_STATE_TOKENS = (
+    "handoffs",
+    "handoff",
+    "ledger.md",
+    "discussions",
+    "contract.yaml",
+    "inbox.yaml",
+    "state.yaml",
+    "watcher.heartbeat.yaml",
+    ".heartbeat.yaml",
+    ".status.yaml",
+    "agent-pulse.yaml",
+)
 
 # Per-line opt-out for false positives (instruction strings, not real reads).
 _IGNORE = re.compile(r"shipguard:ignore|export only|noqa: state-read")
@@ -57,7 +67,7 @@ _VIOLATION_PATTERNS = [
     re.compile(r"listdir\([^)]*(handoffs|discussions)"),
     re.compile(r"glob\.(glob|iglob)\([^)]*(handoffs|discussions)"),
     re.compile(r"ledger[A-Za-z_]*\.(read_text|readlines)\("),
-    re.compile(r'open\([^)]*ledger[^)]*\.md'),
+    re.compile(r"open\([^)]*ledger[^)]*\.md"),
     re.compile(r'ledger\.md"\s*\)?\s*\.\s*read'),
 ]
 
@@ -96,16 +106,21 @@ def _is_state_expr(node: ast.AST, tainted: set[str], producers: set[str]) -> boo
     if isinstance(node, ast.Name):
         return node.id in tainted
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):  # pathlib `/`
-        return (_is_state_expr(node.left, tainted, producers)
-                or _is_state_expr(node.right, tainted, producers))
+        return _is_state_expr(node.left, tainted, producers) or _is_state_expr(
+            node.right, tainted, producers
+        )
     if isinstance(node, ast.JoinedStr):  # f-string with a literal state segment
-        return any(isinstance(v, ast.Constant) and isinstance(v.value, str)
-                   and _str_has_state(v.value) for v in node.values)
+        return any(
+            isinstance(v, ast.Constant)
+            and isinstance(v.value, str)
+            and _str_has_state(v.value)
+            for v in node.values
+        )
     if isinstance(node, ast.Call):
         name = _attr_name(node.func)
         if name in _PATH_BUILDERS:  # os.path.join(...), Path(...)
             return any(_is_state_expr(a, tainted, producers) for a in node.args)
-        if name in producers:       # call to a helper that returns a state path
+        if name in producers:  # call to a helper that returns a state path
             return True
     return False
 
@@ -118,10 +133,16 @@ def _producers(tree: ast.AST) -> set[str]:
     while changed:
         changed = False
         for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name not in producers:
+            if (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name not in producers
+            ):
                 for sub in ast.walk(node):
-                    if isinstance(sub, ast.Return) and sub.value is not None \
-                            and _is_state_expr(sub.value, set(), producers):
+                    if (
+                        isinstance(sub, ast.Return)
+                        and sub.value is not None
+                        and _is_state_expr(sub.value, set(), producers)
+                    ):
                         producers.add(node.name)
                         changed = True
                         break
@@ -168,18 +189,32 @@ def _read_lineno(node: ast.Call, tainted: set[str], producers: set[str]) -> int 
         if node.args and _is_state_expr(node.args[0], tainted, producers):
             return node.lineno
     # os.listdir(arg) / listdir(arg)
-    if _attr_name(f) == "listdir" and node.args and _is_state_expr(node.args[0], tainted, producers):
+    if (
+        _attr_name(f) == "listdir"
+        and node.args
+        and _is_state_expr(node.args[0], tainted, producers)
+    ):
         return node.lineno
     # builtin open(arg, mode) — only READ modes count (w/a/x/+ are writes)
-    if isinstance(f, ast.Name) and f.id == "open" and node.args \
-            and _is_state_expr(node.args[0], tainted, producers):
+    if (
+        isinstance(f, ast.Name)
+        and f.id == "open"
+        and node.args
+        and _is_state_expr(node.args[0], tainted, producers)
+    ):
         mode = None
-        if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant) \
-                and isinstance(node.args[1].value, str):
+        if (
+            len(node.args) >= 2
+            and isinstance(node.args[1], ast.Constant)
+            and isinstance(node.args[1].value, str)
+        ):
             mode = node.args[1].value
         for kw in node.keywords:
-            if kw.arg == "mode" and isinstance(kw.value, ast.Constant) \
-                    and isinstance(kw.value.value, str):
+            if (
+                kw.arg == "mode"
+                and isinstance(kw.value, ast.Constant)
+                and isinstance(kw.value.value, str)
+            ):
                 mode = kw.value.value
         if mode is None or not re.search(r"[wax+]", mode):
             return node.lineno
@@ -194,7 +229,9 @@ def _ast_offenders(source: str) -> list[int]:
     producers = _producers(tree)
     tainted = _tainted_vars(tree, producers)
     lines = {
-        ln for node in ast.walk(tree) if isinstance(node, ast.Call)
+        ln
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
         if (ln := _read_lineno(node, tainted, producers)) is not None
     }
     return sorted(lines)
@@ -203,13 +240,13 @@ def _ast_offenders(source: str) -> list[int]:
 # Files that legitimately touch state paths: export WRITERS and one-time
 # migration/import bridges. These are not "reads as source of truth".
 _ALLOWLIST = {
-    "engine/state_writer.py",      # DB->YAML export writer
-    "commands/handoff_write.py",   # handoff writer (write path)
-    "engine/migrate_yaml.py",      # one-time YAML->DB migration import
-    "commands/yaml_io.py",         # migration/import plumbing
-    "commands/archive_yaml.py",    # archives YAML exports
-    "engine/yaml_sync.py",         # inert no-op stubs
-    "engine/pack.py",              # portable export/import tool (reads everything by design)
+    "engine/state_writer.py",  # DB->YAML export writer
+    "commands/handoff_write.py",  # handoff writer (write path)
+    "engine/migrate_yaml.py",  # one-time YAML->DB migration import
+    "commands/yaml_io.py",  # migration/import plumbing
+    "commands/archive_yaml.py",  # archives YAML exports
+    "engine/yaml_sync.py",  # inert no-op stubs
+    "engine/pack.py",  # portable export/import tool (reads everything by design)
 }
 
 # All known violations resolved 2026-05-24 — ratchet is now clean.
@@ -241,13 +278,15 @@ def _scan_offenders() -> dict[str, list[int]]:
             source = path.read_text(errors="replace")
             lines = source.splitlines()
             hits = {
-                i for i, ln in enumerate(lines, 1)
+                i
+                for i, ln in enumerate(lines, 1)
                 if not _IGNORE.search(ln)
                 and any(p.search(ln) for p in _VIOLATION_PATTERNS)
             }
-            # Apply noqa suppression to AST hits too, so # noqa: state-read works uniformly.
+            # Apply per-line state-read suppressions to AST hits too.
             hits.update(
-                i for i in _ast_offenders(source)
+                i
+                for i in _ast_offenders(source)
                 if i <= len(lines) and not _IGNORE.search(lines[i - 1])
             )
             if hits:

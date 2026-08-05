@@ -1,4 +1,5 @@
 """Integration tests for the `archived` task status and bulk archive-done."""
+
 from __future__ import annotations
 
 import os
@@ -100,7 +101,11 @@ def test_archive_done_specific_ids(project: Path):
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_archive_done_noop_when_nothing_done(project: Path):
     # First archive everything
-    _run("superharness.commands.task", ["archive-done", "--project", str(project)], project)
+    _run(
+        "superharness.commands.task",
+        ["archive-done", "--project", str(project)],
+        project,
+    )
     # Second run should be a no-op
     rc, out, err = _run(
         "superharness.commands.task",
@@ -113,7 +118,11 @@ def test_archive_done_noop_when_nothing_done(project: Path):
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_contract_hides_archived_by_default(project: Path):
-    _run("superharness.commands.task", ["archive-done", "--project", str(project)], project)
+    _run(
+        "superharness.commands.task",
+        ["archive-done", "--project", str(project)],
+        project,
+    )
     rc, out, err = _run(
         "superharness.commands.contract_today",
         ["--project", str(project)],
@@ -131,7 +140,11 @@ def test_contract_hides_archived_by_default(project: Path):
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_contract_include_archived_flag(project: Path):
-    _run("superharness.commands.task", ["archive-done", "--project", str(project)], project)
+    _run(
+        "superharness.commands.task",
+        ["archive-done", "--project", str(project)],
+        project,
+    )
     rc, out, err = _run(
         "superharness.commands.contract_today",
         ["--project", str(project), "--include-archived"],
@@ -146,7 +159,11 @@ def test_contract_include_archived_flag(project: Path):
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_adapter_payload_emits_archived_status(project: Path):
-    _run("superharness.commands.task", ["archive-done", "--project", str(project)], project)
+    _run(
+        "superharness.commands.task",
+        ["archive-done", "--project", str(project)],
+        project,
+    )
     rc, out, err = _run(
         "superharness.commands.adapter_payload",
         ["--json", "--project", str(project)],
@@ -154,6 +171,7 @@ def test_adapter_payload_emits_archived_status(project: Path):
     )
     assert rc == 0
     import json
+
     doc = json.loads(out)
     tasks = {t["id"]: t for t in doc["tasks"]}
     assert tasks["t-done-1"]["status"] == "archived"

@@ -1,4 +1,5 @@
 """CLI for agent memory management — shux memory roots <add|list|remove>."""
+
 from __future__ import annotations
 
 import sys
@@ -13,7 +14,9 @@ def cmd_memory_roots(args: list[str]) -> None:
       shux memory roots remove <path>     — remove a directory
     """
     from superharness.engine.agent_memory import (
-        list_project_roots, add_project_root, remove_project_root,
+        list_project_roots,
+        add_project_root,
+        remove_project_root,
     )
 
     if not args or args[0] == "list":
@@ -33,7 +36,10 @@ def cmd_memory_roots(args: list[str]) -> None:
         if add_project_root(path):
             print(f"Added: {path}")
         else:
-            print(f"Error: '{path}' is not a valid directory or already added", file=sys.stderr)
+            print(
+                f"Error: '{path}' is not a valid directory or already added",
+                file=sys.stderr,
+            )
             sys.exit(1)
     elif subcmd == "remove" and len(args) >= 2:
         path = args[1]

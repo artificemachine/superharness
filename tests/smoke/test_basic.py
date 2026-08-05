@@ -1,12 +1,11 @@
 """Smoke tests — parametrized across all CLI commands, engine modules, and DAOs.
 Guarantees >100 tests in this category.
 """
+
 from __future__ import annotations
 
 import importlib
-import os
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -56,11 +55,14 @@ class TestCLICommands:
     @pytest.mark.parametrize("command", ["shux", "superharness"])
     def test_main_binaries(self, command):
         """Main binaries are on PATH."""
-        r = subprocess.run([command, "--version"], capture_output=True, text=True, timeout=5)
+        r = subprocess.run(
+            [command, "--version"], capture_output=True, text=True, timeout=5
+        )
         assert r.returncode == 0, f"{command} --version failed"
 
 
 # ── Engine module imports (expect ~80 tests) ──────────────────────────────────
+
 
 def _engine_modules() -> list[str]:
     """All non-private .py files in engine/ and commands/."""
@@ -72,7 +74,11 @@ def _engine_modules() -> list[str]:
             for f in d.glob("*.py"):
                 if not f.name.startswith("_") and not f.name.startswith("."):
                     # Convert path to import: src/superharness/engine/db.py → superharness.engine.db
-                    mod_path = str(f.relative_to(base.parent)).replace("/", ".").replace(".py", "")
+                    mod_path = (
+                        str(f.relative_to(base.parent))
+                        .replace("/", ".")
+                        .replace(".py", "")
+                    )
                     modules.append(mod_path)
     return sorted(modules)
 
@@ -88,6 +94,7 @@ class TestEngineImports:
 
 
 # ── DAO coverage (expect ~12 tests) ───────────────────────────────────────────
+
 
 def _dao_modules() -> list[str]:
     """All DAO modules."""
@@ -114,8 +121,10 @@ class TestDAOCoverage:
 
 # ── Status coverage (expect ~17 tests) ────────────────────────────────────────
 
+
 def _all_statuses() -> list[str]:
     from superharness.engine.schemas import TaskStatus
+
     return [s.value for s in TaskStatus]
 
 
@@ -124,6 +133,7 @@ class TestStatusCoverage:
     def test_status_in_transition_graph(self, status):
         """Every TaskStatus appears in the transition graph."""
         from superharness.engine.next_action import _MAPPING
+
         assert status in _MAPPING or status in ("launched", "running"), (
             f"Status '{status}' not in transition graph"
         )
@@ -132,5 +142,6 @@ class TestStatusCoverage:
     def test_status_has_label(self, status):
         """Every status has a display label."""
         from superharness.engine.next_action import _STATUS_LABELS
+
         if status not in ("launched", "running"):
             assert status in _STATUS_LABELS, f"No label for status '{status}'"

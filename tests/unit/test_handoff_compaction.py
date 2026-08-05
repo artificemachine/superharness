@@ -4,9 +4,8 @@ Each handoff must include a `compaction` section with 5 keys that give
 the next agent session enough context to continue without re-reading the
 full contract or prior handoffs.
 """
-from __future__ import annotations
 
-import pytest
+from __future__ import annotations
 
 
 def _make_task(**kwargs):
@@ -27,7 +26,10 @@ class TestCompactionBlock:
     def _gen(self, task, tmp_path):
         from superharness.engine.handoff_generator import generate_handoff
         from unittest.mock import patch
-        with patch("superharness.engine.handoff_generator._load_task", return_value=task):
+
+        with patch(
+            "superharness.engine.handoff_generator._load_task", return_value=task
+        ):
             return generate_handoff(str(tmp_path), task["id"])
 
     def test_compaction_key_present(self, tmp_path):
@@ -53,11 +55,17 @@ class TestCompactionBlock:
 
     def test_progress_reflects_status(self, tmp_path):
         c = self._gen(_make_task(status="report_ready"), tmp_path)["compaction"]
-        assert "report_ready" in c["progress"].lower() or "complete" in c["progress"].lower()
+        assert (
+            "report_ready" in c["progress"].lower()
+            or "complete" in c["progress"].lower()
+        )
 
     def test_progress_includes_tdd_phase(self, tmp_path):
         c = self._gen(_make_task(status="in_progress"), tmp_path)["compaction"]
-        assert any(word in c["progress"].lower() for word in ("green", "red", "refactor", "tdd", "implement"))
+        assert any(
+            word in c["progress"].lower()
+            for word in ("green", "red", "refactor", "tdd", "implement")
+        )
 
     def test_decisions_is_list(self, tmp_path):
         c = self._gen(_make_task(), tmp_path)["compaction"]
@@ -74,7 +82,9 @@ class TestCompactionBlock:
     def test_next_steps_for_plan_approved(self, tmp_path):
         c = self._gen(_make_task(status="plan_approved"), tmp_path)["compaction"]
         combined = " ".join(c["next_steps"]).lower()
-        assert any(w in combined for w in ("implement", "test", "run", "verify", "report"))
+        assert any(
+            w in combined for w in ("implement", "test", "run", "verify", "report")
+        )
 
     def test_no_tdd_still_produces_compaction(self, tmp_path):
         c = self._gen(_make_task(tdd=None), tmp_path)["compaction"]

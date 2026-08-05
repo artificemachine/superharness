@@ -10,6 +10,7 @@ Steps:
   6. delegate      — enqueue the task to inbox.yaml
   7. summary       — print next steps
 """
+
 from __future__ import annotations
 
 import os
@@ -24,10 +25,10 @@ import click
 import yaml
 
 from superharness.engine.db import get_connection, init_db
-from superharness.engine import tasks_dao, inbox_dao
-from superharness.engine.tasks_dao import TaskRow
+from superharness.engine import inbox_dao
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,7 +36,16 @@ logger = logging.getLogger(__name__)
 # Step status helpers
 # ---------------------------------------------------------------------------
 
-_STEPS = ["detect", "init", "global_claude", "git_track", "doctor", "task", "delegate", "summary"]
+_STEPS = [
+    "detect",
+    "init",
+    "global_claude",
+    "git_track",
+    "doctor",
+    "task",
+    "delegate",
+    "summary",
+]
 
 # ---------------------------------------------------------------------------
 # Config version — increment when new wizard steps are introduced.
@@ -94,6 +104,7 @@ def _load_state(sh: Path) -> dict:
     sqlite_ts = ""
     try:
         from superharness.engine import onboarding_dao
+
         project_dir = _project_dir_from_sh(sh)
         conn = get_connection(project_dir)
         try:
@@ -116,13 +127,14 @@ def _load_state(sh: Path) -> dict:
     state_file = sh / "onboarding.yaml"
     if state_file.exists():
         try:
-            raw = yaml.safe_load(state_file.read_text()) or {}  # noqa: state-read — YAML compare-or-fallback (legacy + crash dumps)
+            raw = yaml.safe_load(state_file.read_text()) or {}  # shipguard:ignore state-read: YAML compare-or-fallback for legacy projects and crash dumps
             if isinstance(raw, dict) and "steps" in raw:
                 yaml_doc = raw
                 # YAML mirror doesn't store updated_at; we treat its mtime as the timestamp
                 # so a fresh crash-dump (just written) wins over stale SQLite.
                 try:
                     import datetime as _dt
+
                     yaml_ts = _dt.datetime.utcfromtimestamp(
                         state_file.stat().st_mtime
                     ).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -157,6 +169,7 @@ def _save_state(sh: Path, state: dict) -> None:
     sqlite_ok = False
     try:
         from superharness.engine import onboarding_dao
+
         project_dir = _project_dir_from_sh(sh)
         conn = get_connection(project_dir)
         try:
@@ -173,12 +186,15 @@ def _save_state(sh: Path, state: dict) -> None:
         finally:
             conn.close()
     except Exception as e:
-        logger.error("onboard: SQLite SoT write failed — falling back to YAML crash dump: %s", e)
+        logger.error(
+            "onboard: SQLite SoT write failed — falling back to YAML crash dump: %s", e
+        )
 
     # YAML mirror: skip only when SQLite succeeded AND sqlite_only mode is active.
     # If SQLite failed, write YAML regardless (C-DURABLE fallback).
     try:
         from superharness.engine.sqlite_only import is_sqlite_only
+
         if sqlite_ok and is_sqlite_only(project_dir=_project_dir_from_sh(sh)):
             return
     except Exception as e:
@@ -198,6 +214,7 @@ def _mark(state: dict, step: str) -> None:
 # ---------------------------------------------------------------------------
 # Detect helpers
 # ---------------------------------------------------------------------------
+
 
 def _detect_stack(project: Path) -> str:
     """Heuristic stack detection."""
@@ -229,6 +246,7 @@ def _is_git_repo(project: Path) -> bool:
 # Step implementations
 # ---------------------------------------------------------------------------
 
+
 def _step_detect(project: Path, state: dict) -> None:
     if _is_completed(state, "detect"):
         click.echo("[skip] Step 1 (detect): already completed")
@@ -237,7 +255,9 @@ def _step_detect(project: Path, state: dict) -> None:
     is_git = _is_git_repo(project)
     git_label = "git repo" if is_git else "no git"
     click.echo(f"[detect] Project stack: {stack} ({git_label}) — found at {project}")
-    click.echo(f"  → superharness will use this to tailor agent instructions and task defaults.")
+    click.echo(
+        "  → superharness will use this to tailor agent instructions and task defaults."
+    )
     _mark(state, "detect")
 
 
@@ -281,6 +301,7 @@ def _step_init(project: Path, state: dict) -> None:
         click.echo("[skip] Step 2 (init): already completed")
         return
     from superharness.utils.paths import is_project_initialized
+
     already_existed = is_project_initialized(str(project))
     if already_existed:
         click.echo("[skip] Step 2 (init): .superharness/ already exists")
@@ -292,7 +313,7 @@ def _step_init(project: Path, state: dict) -> None:
             ledger.write_text("# Ledger\n", encoding="utf-8")
         handoffs = sh / "handoffs"
         handoffs.mkdir(exist_ok=True)
-        
+
         # Initialize SQLite DB
         try:
             conn = get_connection(str(project))
@@ -303,7 +324,9 @@ def _step_init(project: Path, state: dict) -> None:
             click.echo(f"[init] Warning: could not initialize SQLite database: {e}")
 
         click.echo("[init] Initialized .superharness/")
-        click.echo("  → state.sqlite3  tracks every task and its status (use 'shux contract').")
+        click.echo(
+            "  → state.sqlite3  tracks every task and its status (use 'shux contract')."
+        )
         click.echo("  → ledger.md      is the session history agents read first.")
 
     # Always write AGENTS.md if missing — this is what tells Claude/Codex to use shux
@@ -311,7 +334,9 @@ def _step_init(project: Path, state: dict) -> None:
     if not agents_md.exists():
         agents_md.write_text(_AGENTS_MD_TEMPLATE, encoding="utf-8")
         click.echo("[init] Wrote AGENTS.md")
-        click.echo("  → AGENTS.md tells Claude Code and Codex CLI to use shux commands.")
+        click.echo(
+            "  → AGENTS.md tells Claude Code and Codex CLI to use shux commands."
+        )
         click.echo("  → Without it, agents won't know superharness is installed.")
 
     _mark(state, "init")
@@ -347,14 +372,20 @@ def _step_global_claude_md(state: dict) -> None:
     path = _global_claude_md_path()
 
     if not path.exists():
-        click.echo("[skip] Step 2b (global_claude): ~/.claude/CLAUDE.md not found — skipping")
-        click.echo("  → If you use a global CLAUDE.md, add a superharness section manually.")
+        click.echo(
+            "[skip] Step 2b (global_claude): ~/.claude/CLAUDE.md not found — skipping"
+        )
+        click.echo(
+            "  → If you use a global CLAUDE.md, add a superharness section manually."
+        )
         _mark(state, "global_claude")
         return
 
     content = path.read_text(encoding="utf-8")
     if "superharness" in content.lower():
-        click.echo("[skip] Step 2b (global_claude): superharness already in global CLAUDE.md")
+        click.echo(
+            "[skip] Step 2b (global_claude): superharness already in global CLAUDE.md"
+        )
         _mark(state, "global_claude")
         return
 
@@ -387,12 +418,16 @@ def _step_git_track(project: Path, state: dict, git_mode: str) -> None:
             with gitignore.open("a") as f:
                 f.write("\n# superharness — local only\n.superharness/\n")
         click.echo("[git_track] Added .superharness/ to root .gitignore (solo mode)")
-        click.echo("  → solo mode: task state is local only, not shared with teammates.")
+        click.echo(
+            "  → solo mode: task state is local only, not shared with teammates."
+        )
         click.echo("  → Use --git-mode team to commit task state for shared projects.")
     else:
         # team mode: ensure .superharness is NOT in root .gitignore
         click.echo("[git_track] Team mode: .superharness/ will be committed")
-        click.echo("  → team mode: task state is committed — your whole team shares it.")
+        click.echo(
+            "  → team mode: task state is committed — your whole team shares it."
+        )
 
     # Inner .gitignore always created
     inner = sh / ".gitignore"
@@ -405,7 +440,9 @@ def _step_git_track(project: Path, state: dict, git_mode: str) -> None:
     if added or not inner.exists():
         inner.write_text("\n".join(sorted(inner_lines)) + "\n")
     click.echo("[git_track] Created/updated .superharness/.gitignore")
-    click.echo("  → Runtime files (logs, daemon pid, watcher env) excluded from commits.")
+    click.echo(
+        "  → Runtime files (logs, daemon pid, watcher env) excluded from commits."
+    )
 
     _mark(state, "git_track")
 
@@ -417,12 +454,23 @@ def _step_doctor(project: Path, state: dict) -> None:
     # Run doctor non-blocking — warnings are informational only
     try:
         r = subprocess.run(
-            [sys.executable, "-m", "superharness.commands.doctor", "--project", str(project)],
-            capture_output=True, text=True,
+            [
+                sys.executable,
+                "-m",
+                "superharness.commands.doctor",
+                "--project",
+                str(project),
+            ],
+            capture_output=True,
+            text=True,
         )
         if r.returncode != 0:
-            click.echo(f"[doctor] Warning: some checks failed (non-blocking):\n{r.stdout.strip()}")
-            click.echo("  → These won't stop you — proceed and run 'shux doctor' to fix later.")
+            click.echo(
+                f"[doctor] Warning: some checks failed (non-blocking):\n{r.stdout.strip()}"
+            )
+            click.echo(
+                "  → These won't stop you — proceed and run 'shux doctor' to fix later."
+            )
         else:
             click.echo("[doctor] All checks passed")
             click.echo("  → Your environment is ready for agent dispatch.")
@@ -440,13 +488,14 @@ def _step_task(project: Path, state: dict, task_title: Optional[str]) -> Optiona
 
     if not task_title:
         click.echo("[task] Skipped (no --task-title provided)")
-        click.echo("  → Add your first task later: shux task create --title \"...\"")
+        click.echo('  → Add your first task later: shux task create --title "..."')
         _mark(state, "task")
         return None
 
     sh = project / ".superharness"
     try:
         from superharness.engine import state_reader as _sr
+
         doc = _sr.get_contract_doc(str(project))
     except Exception as e:
         logger.warning("onboard.py unexpected error: %s", e, exc_info=True)
@@ -469,19 +518,24 @@ def _step_task(project: Path, state: dict, task_title: Optional[str]) -> Optiona
     # Write contract through canonical path (syncs YAML + SQLite)
     try:
         from superharness.engine.contract_io import write_contract as _wc
+
         _wc(str(sh / "contract.yaml"), doc)
     except Exception as e:
         click.echo(f"[task] Warning: could not write contract: {e}")
 
     click.echo(f"[task] Created task '{task_title}' (id: {task_id})")
-    click.echo(f"  → Task lives in project state. Run 'shux contract' to see it.")
-    click.echo(f"  → Next: approve the plan, then 'shux delegate {task_id}' to dispatch.")
+    click.echo("  → Task lives in project state. Run 'shux contract' to see it.")
+    click.echo(
+        f"  → Next: approve the plan, then 'shux delegate {task_id}' to dispatch."
+    )
     _mark(state, "task")
     state["task_id"] = task_id
     return task_id
 
 
-def _step_delegate(project: Path, state: dict, enqueue: bool, task_id: Optional[str]) -> None:
+def _step_delegate(
+    project: Path, state: dict, enqueue: bool, task_id: Optional[str]
+) -> None:
     if _is_completed(state, "delegate"):
         click.echo("[skip] Step 6 (delegate): already completed")
         return
@@ -492,7 +546,7 @@ def _step_delegate(project: Path, state: dict, enqueue: bool, task_id: Optional[
         _mark(state, "delegate")
         return
 
-    sh = project / ".superharness"
+    project / ".superharness"
 
     now = datetime.now(timezone.utc).isoformat()
 
@@ -514,14 +568,16 @@ def _step_delegate(project: Path, state: dict, enqueue: bool, task_id: Optional[
 
     click.echo(f"[delegate] Enqueued task {task_id} to inbox")
     click.echo("  → The watcher picks this up within 30s and launches the agent.")
-    click.echo("  → Run 'shux daemon start' to keep the watcher running in the background.")
+    click.echo(
+        "  → Run 'shux daemon start' to keep the watcher running in the background."
+    )
     _mark(state, "delegate")
 
 
 _STEP_SYMBOLS: dict[str, str] = {
     "completed": "✓",
-    "skipped":   "–",
-    "pending":   "○",
+    "skipped": "–",
+    "pending": "○",
 }
 
 
@@ -600,11 +656,14 @@ def _ensure_config_version(project: Path) -> dict:
 # Section implementations (I3) — delegate to ui/sections/*
 # ---------------------------------------------------------------------------
 
+
 def _section_project(project: Path, config: dict, non_interactive: bool) -> None:
     from superharness.ui.sections.project import run as _run
+
     _run(project, non_interactive=non_interactive)
     # Sync in-memory config from profile.yaml so later steps see updated values
     from superharness.engine.profile import read_field
+
     config["project_name"] = read_field(project, "project_name") or project.name
     config["stack"] = read_field(project, "stack") or _detect_stack(project)
     config.setdefault("status", "active")
@@ -612,40 +671,51 @@ def _section_project(project: Path, config: dict, non_interactive: bool) -> None
 
 def _section_agent(project: Path, config: dict, non_interactive: bool) -> None:
     from superharness.ui.sections.agent import run as _run
+
     _run(project, non_interactive=non_interactive)
     from superharness.engine.profile import read_field
+
     config["autonomy"] = read_field(project, "autonomy")
     config["default_agent"] = read_field(project, "primary_agent")
 
 
 def _section_git(project: Path, config: dict, non_interactive: bool) -> None:
     from superharness.ui.sections.git import run as _run
+
     _run(project, non_interactive=non_interactive)
     from superharness.engine.profile import read_field
-    config["git_mode"] = read_field(project, "git_mode") or config.get("git_mode", "team")
+
+    config["git_mode"] = read_field(project, "git_mode") or config.get(
+        "git_mode", "team"
+    )
 
 
 def _section_hooks(project: Path, config: dict, non_interactive: bool) -> None:
     from superharness.ui.sections.hooks import run as _run
+
     _run(project, non_interactive=non_interactive)
 
 
 def _section_watcher(project: Path, config: dict, non_interactive: bool) -> None:
     from superharness.ui.sections.watcher import run as _run
+
     _run(project, non_interactive=non_interactive)
     from superharness.engine.profile import read_field
+
     config["watcher_backend"] = read_field(project, "watcher_backend")
 
 
 def _section_gateway(project: Path, config: dict, non_interactive: bool) -> None:
     from superharness.ui.sections.gateway import run as _run
+
     _run(project, non_interactive=non_interactive)
 
 
 def _section_task(project: Path, config: dict, non_interactive: bool) -> None:
     from superharness.ui.prompts import print_header, print_info
+
     print_header("First task")
-    print_info("Add your first task: shux task create --title \"...\"")
+    print_info('Add your first task: shux task create --title "..."')
 
 
 def _section_fleet(project: Path, config: dict, non_interactive: bool) -> None:
@@ -659,7 +729,7 @@ def _section_fleet(project: Path, config: dict, non_interactive: bool) -> None:
     import json as _json
     from pathlib import Path
 
-    from superharness.ui.prompts import print_header, print_info, print_success, print_warning
+    from superharness.ui.prompts import print_header, print_info, print_success
 
     # Always use the explicit IPv4 loopback address here, never the ambiguous
     # hostname form: on machines running a second OpenAI-compatible server on
@@ -678,6 +748,7 @@ def _section_fleet(project: Path, config: dict, non_interactive: bool) -> None:
     if fleet_path.exists():
         try:
             import yaml
+
             existing = yaml.safe_load(fleet_path.read_text()) or {}
             if existing.get("fleet", {}).get("models"):
                 print_info(f"Fleet config already exists: {fleet_path}")
@@ -699,21 +770,33 @@ def _section_fleet(project: Path, config: dict, non_interactive: bool) -> None:
             models = [m["name"] for m in tags.get("models", [])]
             if models:
                 ollama_found = True
-                print_success(f"Ollama detected ({len(models)} models): {', '.join(models[:5])}")
+                print_success(
+                    f"Ollama detected ({len(models)} models): {', '.join(models[:5])}"
+                )
                 # Map largest available model to max tier, smallest to mini
                 fleet_config["fleet"]["endpoints"]["all"] = f"{_OLLAMA_BASE}/v1"
                 if any("70b" in m or "32b" in m for m in models):
-                    fleet_config["fleet"]["models"]["max"] = next(m for m in models if "70b" in m or "32b" in m)
+                    fleet_config["fleet"]["models"]["max"] = next(
+                        m for m in models if "70b" in m or "32b" in m
+                    )
                 elif any("14b" in m or "13b" in m for m in models):
-                    fleet_config["fleet"]["models"]["max"] = next(m for m in models if "14b" in m or "13b" in m)
-                fleet_config["fleet"]["models"]["standard"] = next((m for m in models if "8b" in m or "7b" in m), models[0])
-                fleet_config["fleet"]["models"]["mini"] = fleet_config["fleet"]["models"]["standard"]
+                    fleet_config["fleet"]["models"]["max"] = next(
+                        m for m in models if "14b" in m or "13b" in m
+                    )
+                fleet_config["fleet"]["models"]["standard"] = next(
+                    (m for m in models if "8b" in m or "7b" in m), models[0]
+                )
+                fleet_config["fleet"]["models"]["mini"] = fleet_config["fleet"][
+                    "models"
+                ]["standard"]
     except Exception:
         pass
 
     if not ollama_found and not non_interactive:
         print_info("No local models detected.")
-        print_info("You can configure providers now or later in ~/.config/superharness/fleet.yaml")
+        print_info(
+            "You can configure providers now or later in ~/.config/superharness/fleet.yaml"
+        )
         print_info("Options: ollama | vllm | cloud | skip")
 
     # 2. Ask about vLLM fleet or cloud
@@ -722,30 +805,55 @@ def _section_fleet(project: Path, config: dict, non_interactive: bool) -> None:
         if choice == "ollama":
             endpoint = input(f"  Ollama URL [{_OLLAMA_BASE}/v1]: ").strip()
             fleet_config["fleet"]["endpoints"]["all"] = endpoint or f"{_OLLAMA_BASE}/v1"
-            fleet_config["fleet"]["models"]["max"] = input("  Model for max tier [llama3:70b]: ").strip() or "llama3:70b"
-            fleet_config["fleet"]["models"]["standard"] = input("  Model for standard tier [llama3:8b]: ").strip() or "llama3:8b"
-            fleet_config["fleet"]["models"]["mini"] = input("  Model for mini tier [llama3:8b]: ").strip() or "llama3:8b"
+            fleet_config["fleet"]["models"]["max"] = (
+                input("  Model for max tier [llama3:70b]: ").strip() or "llama3:70b"
+            )
+            fleet_config["fleet"]["models"]["standard"] = (
+                input("  Model for standard tier [llama3:8b]: ").strip() or "llama3:8b"
+            )
+            fleet_config["fleet"]["models"]["mini"] = (
+                input("  Model for mini tier [llama3:8b]: ").strip() or "llama3:8b"
+            )
         elif choice == "vllm":
-            fleet_config["fleet"]["endpoints"]["max"] = input("  vLLM endpoint (max tier) [http://10.0.0.1:8000/v1]: ").strip()
-            fleet_config["fleet"]["models"]["max"] = input("  Model for max tier [qwopus-27b]: ").strip()
-            fleet_config["fleet"]["endpoints"]["standard"] = input("  vLLM endpoint (standard tier) [same]: ").strip()
-            fleet_config["fleet"]["models"]["standard"] = input("  Model for standard tier [qwen3-32b]: ").strip()
-            fleet_config["fleet"]["endpoints"]["mini"] = input("  vLLM endpoint (mini tier) [same]: ").strip()
-            fleet_config["fleet"]["models"]["mini"] = input("  Model for mini tier [qwen3-14b]: ").strip()
+            fleet_config["fleet"]["endpoints"]["max"] = input(
+                "  vLLM endpoint (max tier) [http://10.0.0.1:8000/v1]: "
+            ).strip()
+            fleet_config["fleet"]["models"]["max"] = input(
+                "  Model for max tier [qwopus-27b]: "
+            ).strip()
+            fleet_config["fleet"]["endpoints"]["standard"] = input(
+                "  vLLM endpoint (standard tier) [same]: "
+            ).strip()
+            fleet_config["fleet"]["models"]["standard"] = input(
+                "  Model for standard tier [qwen3-32b]: "
+            ).strip()
+            fleet_config["fleet"]["endpoints"]["mini"] = input(
+                "  vLLM endpoint (mini tier) [same]: "
+            ).strip()
+            fleet_config["fleet"]["models"]["mini"] = input(
+                "  Model for mini tier [qwen3-14b]: "
+            ).strip()
         elif choice == "cloud":
-            print_info("Using default cloud models (Claude, GPT, Gemini). No fleet config needed.")
+            print_info(
+                "Using default cloud models (Claude, GPT, Gemini). No fleet config needed."
+            )
             return
         else:
-            print_info("Skipped. Configure later: edit ~/.config/superharness/fleet.yaml")
+            print_info(
+                "Skipped. Configure later: edit ~/.config/superharness/fleet.yaml"
+            )
             return
 
     # 3. Write fleet config
     if fleet_config["fleet"]["models"]:
         fleet_dir.mkdir(parents=True, exist_ok=True)
         import yaml
+
         fleet_path.write_text(yaml.dump(fleet_config, default_flow_style=False))
         print_success(f"Fleet config written: {fleet_path}")
-        print_info("All agent tiers now route to local models. Run 'shux doctor' to verify.")
+        print_info(
+            "All agent tiers now route to local models. Run 'shux doctor' to verify."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -753,14 +861,14 @@ def _section_fleet(project: Path, config: dict, non_interactive: bool) -> None:
 # ---------------------------------------------------------------------------
 
 ONBOARD_SECTIONS: list[tuple[str, str, object]] = [
-    ("project",  "Project identity",        _section_project),
-    ("agent",    "Agent settings",          _section_agent),
-    ("fleet",    "AI model providers",      _section_fleet),
-    ("git",      "Git & tracking",          _section_git),
-    ("hooks",    "Hooks",                   _section_hooks),
-    ("watcher",  "Watcher daemon",          _section_watcher),
-    ("gateway",  "Notifications",           _section_gateway),
-    ("task",     "First task",              _section_task),
+    ("project", "Project identity", _section_project),
+    ("agent", "Agent settings", _section_agent),
+    ("fleet", "AI model providers", _section_fleet),
+    ("git", "Git & tracking", _section_git),
+    ("hooks", "Hooks", _section_hooks),
+    ("watcher", "Watcher daemon", _section_watcher),
+    ("gateway", "Notifications", _section_gateway),
+    ("task", "First task", _section_task),
 ]
 
 _SECTION_KEYS = [k for k, _, _ in ONBOARD_SECTIONS]
@@ -768,6 +876,7 @@ _SECTION_KEYS = [k for k, _, _ in ONBOARD_SECTIONS]
 
 def _is_returning_user(project: Path) -> bool:
     from superharness.utils.paths import is_project_initialized
+
     return is_project_initialized(str(project))
 
 
@@ -775,7 +884,9 @@ def _print_noninteractive_guidance(project: Path) -> None:
     click.echo("")
     click.echo("superharness -- non-interactive mode")
     click.echo("  Configure using flags:")
-    click.echo("    shux onboard --non-interactive --git-mode team --autonomy supervised")
+    click.echo(
+        "    shux onboard --non-interactive --git-mode team --autonomy supervised"
+    )
     click.echo("  Or edit .superharness/profile.yaml directly.")
     click.echo("  Run 'shux onboard' in an interactive terminal for the full wizard.")
     click.echo("")
@@ -805,9 +916,12 @@ def _run_onboard_wizard(
     if section is not None:
         if section not in _SECTION_KEYS:
             valid = ", ".join(_SECTION_KEYS)
-            click.echo(f"Unknown section: '{section}'. Valid sections: {valid}", err=True)
+            click.echo(
+                f"Unknown section: '{section}'. Valid sections: {valid}", err=True
+            )
             raise SystemExit(1)
         from superharness.ui.prompts import is_interactive_stdin
+
         _is_headless = non_interactive or not is_interactive_stdin()
         for key, _label, func in ONBOARD_SECTIONS:
             if key == section:
@@ -818,13 +932,16 @@ def _run_onboard_wizard(
 
     # Headless / intro banner — suppressed in quick mode
     from superharness.ui.prompts import is_interactive_stdin
+
     if not quick and (non_interactive or not is_interactive_stdin()):
         _print_noninteractive_guidance(project_path)
     elif not quick and _is_returning_user(project_path):
         click.echo("")
         click.echo("Existing superharness project detected.")
         click.echo("  Quick setup / Full setup / Section-only available.")
-        click.echo("  Run 'shux onboard --section <name>' to reconfigure a single section.")
+        click.echo(
+            "  Run 'shux onboard --section <name>' to reconfigure a single section."
+        )
         click.echo("  Continuing with full setup...")
 
     # Full run — load state (includes version-migration) then execute each step.
@@ -876,27 +993,56 @@ def _run_onboard_wizard(
 # Step 8: behavioral profile bootstrap
 # ---------------------------------------------------------------------------
 
+
 def _bootstrap_behavioral_profile(project_path: str, non_interactive: bool) -> None:
     """Seed the behavioral profile with onboarding answers (cold-start fix)."""
     import json as _json
-    upath = os.path.join(os.path.expanduser("~"), ".config", "superharness", "behavioral")
+
+    upath = os.path.join(
+        os.path.expanduser("~"), ".config", "superharness", "behavioral"
+    )
     os.makedirs(upath, exist_ok=True)
 
     bootstrap = {
-        "task_style": {"default_effort": "medium", "tdd_required": True, "confidence": "seed", "sample_count": 0},
+        "task_style": {
+            "default_effort": "medium",
+            "tdd_required": True,
+            "confidence": "seed",
+            "sample_count": 0,
+        },
     }
 
     if not non_interactive:
         click.echo("")
         click.secho("Behavioral Profile (optional)", fg="cyan", bold=True)
-        click.echo("The system learns your patterns automatically. Seed it with 2 quick answers:")
+        click.echo(
+            "The system learns your patterns automatically. Seed it with 2 quick answers:"
+        )
         click.echo("")
 
-        ans = click.prompt("  1. Review style? (strict/balanced/lenient)", default="balanced", show_default=True)
-        bootstrap["review_style"] = {"strictness": {"strict": 0.8, "balanced": 0.5, "lenient": 0.3}.get(ans, 0.5), "confidence": "seed", "sample_count": 0}
+        ans = click.prompt(
+            "  1. Review style? (strict/balanced/lenient)",
+            default="balanced",
+            show_default=True,
+        )
+        bootstrap["review_style"] = {
+            "strictness": {"strict": 0.8, "balanced": 0.5, "lenient": 0.3}.get(
+                ans, 0.5
+            ),
+            "confidence": "seed",
+            "sample_count": 0,
+        }
 
-        ans2 = click.prompt("  2. Communication style? (direct/detailed/concise)", default="direct", show_default=True)
-        bootstrap["communication"] = {"style": ans2, "confidence": "seed", "sample_count": 0}
+        ans2 = click.prompt(
+            "  2. Communication style? (direct/detailed/concise)",
+            default="direct",
+            show_default=True,
+        )
+        bootstrap["communication"] = {
+            "style": ans2,
+            "confidence": "seed",
+            "sample_count": 0,
+        }
 
     bootstrap_path = os.path.join(upath, "_bootstrap.json")
     with open(bootstrap_path, "w") as f:
@@ -913,16 +1059,26 @@ def _bootstrap_behavioral_profile(project_path: str, non_interactive: bool) -> N
 # CLI entry point
 # ---------------------------------------------------------------------------
 
+
 @click.command(name="onboard")
 @click.option("--project", default=None, help="Project directory (default: cwd)")
 @click.option("--non-interactive", "non_interactive", is_flag=True, default=False)
-@click.option("--quick", "--quick-setup", "quick", is_flag=True, default=False,
-              help="Skip already-completed steps silently; run only pending ones.")
-@click.option("--git-mode", "git_mode", type=click.Choice(["team", "solo"]), default="team")
+@click.option(
+    "--quick",
+    "--quick-setup",
+    "quick",
+    is_flag=True,
+    default=False,
+    help="Skip already-completed steps silently; run only pending ones.",
+)
+@click.option(
+    "--git-mode", "git_mode", type=click.Choice(["team", "solo"]), default="team"
+)
 @click.option("--task-title", "task_title", default=None)
 @click.option("--enqueue", is_flag=True, default=False)
-@click.option("--section", default=None,
-              help=f"Run a single section: {', '.join(_SECTION_KEYS)}")
+@click.option(
+    "--section", default=None, help=f"Run a single section: {', '.join(_SECTION_KEYS)}"
+)
 def cmd_onboard(
     project: Optional[str],
     non_interactive: bool,

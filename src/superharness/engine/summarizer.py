@@ -24,6 +24,7 @@ Calls into a rate-limited summarizer that exceed the bucket raise
 None, so a rate-limit hit silently skips that snapshot without
 breaking the lifecycle transition.
 """
+
 from __future__ import annotations
 
 import os
@@ -35,6 +36,7 @@ from typing import Any, Protocol, runtime_checkable
 from superharness.utils.privacy import strip_private_tags
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,8 +56,7 @@ class RateLimitExceeded(SummarizerError):
 class Summarizer(Protocol):
     """Protocol every summarizer must implement."""
 
-    def summarize(self, context: dict[str, Any]) -> str:
-        ...
+    def summarize(self, context: dict[str, Any]) -> str: ...
 
 
 class NoopSummarizer:
@@ -92,6 +93,7 @@ class SummarizerConfig:
     default_model is passed to the provider class as `model=` if set;
     providers that take no model argument should ignore it.
     """
+
     provider_class: type
     max_per_hour: int | None = None
     default_model: str | None = None
@@ -133,9 +135,7 @@ class _RateLimitedSummarizer:
         while self._calls and self._calls[0] < cutoff:
             self._calls.popleft()
         if len(self._calls) >= self._max:
-            raise RateLimitExceeded(
-                f"summarizer rate limit reached: {self._max}/hour"
-            )
+            raise RateLimitExceeded(f"summarizer rate limit reached: {self._max}/hour")
         self._calls.append(now)
         return self._inner.summarize(context)
 
@@ -171,6 +171,7 @@ class _SQLiteRateLimitedSummarizer:
         try:
             from superharness.engine.db import get_connection, init_db
             from superharness.engine import summarizer_calls
+
             conn = get_connection(self._project_dir)
             try:
                 init_db(conn)
@@ -201,6 +202,7 @@ class _SQLiteRateLimitedSummarizer:
         try:
             from superharness.engine.db import get_connection, init_db
             from superharness.engine import summarizer_calls
+
             conn = get_connection(self._project_dir)
             try:
                 init_db(conn)
@@ -281,9 +283,7 @@ def get_summarizer(
     except SummarizerError:
         raise
     except Exception as e:
-        raise SummarizerError(
-            f"failed to construct {chosen} summarizer: {e}"
-        ) from e
+        raise SummarizerError(f"failed to construct {chosen} summarizer: {e}") from e
 
     max_per_hour = _resolve_max_per_hour(config)
     if max_per_hour is not None and max_per_hour > 0:

@@ -2,27 +2,28 @@
 
 Tests via subprocess: python3 -m superharness.commands.inbox_dispatch
 """
+
 from __future__ import annotations
 
 import os
 import subprocess
 import sys
 from pathlib import Path
-from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
+from tests.helpers import seed_sqlite_from_yaml
 
 import pytest
 
 PYTHON = sys.executable
 
 INBOX_HEADER = (
-    "# Delegation inbox\n"
-    "# status: pending|launched|running|done|failed|stale\n"
+    "# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n"
 )
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_project(tmp_path: Path, *, inbox_items: list[dict] | None = None) -> Path:
     project = tmp_path / "proj"
@@ -58,7 +59,9 @@ def _make_project(tmp_path: Path, *, inbox_items: list[dict] | None = None) -> P
     return project
 
 
-def _fake_launcher_script(tmp_path: Path, name: str, exit_code: int = 0, sleep: float = 0) -> Path:
+def _fake_launcher_script(
+    tmp_path: Path, name: str, exit_code: int = 0, sleep: float = 0
+) -> Path:
     """Create a fake launcher script."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -72,7 +75,12 @@ def _fake_launcher_script(tmp_path: Path, name: str, exit_code: int = 0, sleep: 
     return bin_dir
 
 
-def _run_dispatch(project: Path, args: list[str] | None = None, bin_dir: Path | None = None, extra_env: dict | None = None) -> subprocess.CompletedProcess:
+def _run_dispatch(
+    project: Path,
+    args: list[str] | None = None,
+    bin_dir: Path | None = None,
+    extra_env: dict | None = None,
+) -> subprocess.CompletedProcess:
     env = os.environ.copy()
     if bin_dir is not None:
         env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
@@ -84,8 +92,14 @@ def _run_dispatch(project: Path, args: list[str] | None = None, bin_dir: Path | 
     if extra_env:
         env.update(extra_env)
     return subprocess.run(
-        [PYTHON, "-m", "superharness.commands.inbox_dispatch",
-         "--project", str(project)] + (args or []),
+        [
+            PYTHON,
+            "-m",
+            "superharness.commands.inbox_dispatch",
+            "--project",
+            str(project),
+        ]
+        + (args or []),
         capture_output=True,
         text=True,
         check=False,
@@ -109,7 +123,9 @@ def _run_dispatch(project: Path, args: list[str] | None = None, bin_dir: Path | 
 _AGENT_CLIS = ("claude", "codex", "gemini", "opencode")
 
 
-def _stub_agent_bins(bin_dir: Path, script: str = "#!/bin/bash\necho fake-agent\n") -> None:
+def _stub_agent_bins(
+    bin_dir: Path, script: str = "#!/bin/bash\necho fake-agent\n"
+) -> None:
     """Stub every agent CLI in bin_dir so no test can reach a real provider."""
     for name in _AGENT_CLIS:
         path = bin_dir / name
@@ -119,9 +135,12 @@ def _stub_agent_bins(bin_dir: Path, script: str = "#!/bin/bash\necho fake-agent\
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_dispatch_picks_next_pending(tmp_path: Path) -> None:
-    project = _make_project(tmp_path, inbox_items=[
-        {"id": "item-001", "to": "claude-code", "priority": 1},
-    ])
+    project = _make_project(
+        tmp_path,
+        inbox_items=[
+            {"id": "item-001", "to": "claude-code", "priority": 1},
+        ],
+    )
     bin_dir = _fake_launcher_script(tmp_path, "claude")
     r = _run_dispatch(project, ["--to", "claude-code", "--print-only"], bin_dir)
     assert r.returncode == 0, r.stderr
@@ -139,10 +158,13 @@ def test_dispatch_no_pending_exits_zero(tmp_path: Path) -> None:
 
 
 def test_dispatch_lock_prevents_concurrent(tmp_path: Path) -> None:
-    project = _make_project(tmp_path, inbox_items=[
-        {"id": "lock-item", "to": "codex-cli"},
-    ])
-    inbox_file = project / ".superharness" / "inbox.yaml"
+    project = _make_project(
+        tmp_path,
+        inbox_items=[
+            {"id": "lock-item", "to": "codex-cli"},
+        ],
+    )
+    project / ".superharness" / "inbox.yaml"
     lock_dir = project / ".superharness" / "inbox.yaml.lock.d"
     lock_dir.mkdir()
 
@@ -157,9 +179,17 @@ def test_dispatch_lock_prevents_concurrent(tmp_path: Path) -> None:
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_dispatch_retry_limit_marks_failed(tmp_path: Path) -> None:
-    project = _make_project(tmp_path, inbox_items=[
-        {"id": "exhaust-item", "to": "codex-cli", "retry_count": 3, "max_retries": 3},
-    ])
+    project = _make_project(
+        tmp_path,
+        inbox_items=[
+            {
+                "id": "exhaust-item",
+                "to": "codex-cli",
+                "retry_count": 3,
+                "max_retries": 3,
+            },
+        ],
+    )
     r = _run_dispatch(project, ["--to", "codex-cli"])
     assert r.returncode == 1
     assert "retry limit reached" in r.stdout
@@ -170,9 +200,12 @@ def test_dispatch_retry_limit_marks_failed(tmp_path: Path) -> None:
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_dispatch_state_reconcile_done(tmp_path: Path) -> None:
     """When launcher exits 0 and contract task is done, inbox item becomes done."""
-    project = _make_project(tmp_path, inbox_items=[
-        {"id": "reconcile-done", "to": "codex-cli", "task": "test-task"},
-    ])
+    project = _make_project(
+        tmp_path,
+        inbox_items=[
+            {"id": "reconcile-done", "to": "codex-cli", "task": "test-task"},
+        ],
+    )
     # Set task to done before dispatch so reconcile sees it
     contract = project / ".superharness" / "contract.yaml"
     contract.write_text(
@@ -194,9 +227,12 @@ def test_dispatch_state_reconcile_done(tmp_path: Path) -> None:
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_dispatch_state_reconcile_failed(tmp_path: Path) -> None:
     """When launcher exits non-zero, inbox item becomes failed."""
-    project = _make_project(tmp_path, inbox_items=[
-        {"id": "reconcile-fail", "to": "codex-cli", "task": "test-task"},
-    ])
+    project = _make_project(
+        tmp_path,
+        inbox_items=[
+            {"id": "reconcile-fail", "to": "codex-cli", "task": "test-task"},
+        ],
+    )
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -210,19 +246,41 @@ def test_dispatch_state_reconcile_failed(tmp_path: Path) -> None:
 
 def test_dispatch_dirty_worktree_uses_worktree(tmp_path: Path) -> None:
     """Dirty worktree + non-interactive -> dispatches in a temporary worktree."""
-    project = _make_project(tmp_path, inbox_items=[
-        {"id": "dirty-item", "to": "codex-cli", "task": "test-task"},
-    ])
+    project = _make_project(
+        tmp_path,
+        inbox_items=[
+            {"id": "dirty-item", "to": "codex-cli", "task": "test-task"},
+        ],
+    )
 
     # Initialize a git repo and make it dirty
     subprocess.run(["git", "init"], cwd=project, check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "t@test.com"], cwd=project, check=True, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "tester"], cwd=project, check=True, capture_output=True)
-    subprocess.run(["git", "config", "core.hooksPath", "/dev/null"], cwd=project, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "t@test.com"],
+        cwd=project,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "tester"],
+        cwd=project,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "core.hooksPath", "/dev/null"],
+        cwd=project,
+        check=True,
+        capture_output=True,
+    )
     tracked = project / "tracked.txt"
     tracked.write_text("base\n")
-    subprocess.run(["git", "add", "tracked.txt"], cwd=project, check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "init"], cwd=project, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "add", "tracked.txt"], cwd=project, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "init"], cwd=project, check=True, capture_output=True
+    )
     tracked.write_text("dirty\n")
 
     bin_dir = tmp_path / "bin"

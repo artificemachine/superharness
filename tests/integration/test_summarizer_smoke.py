@@ -14,6 +14,7 @@ These tests cost a few cents at most per run if executed against all
 providers. The OpenCode smoke test also skips when the `opencode`
 binary is not on PATH.
 """
+
 from __future__ import annotations
 
 import os

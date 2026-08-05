@@ -6,6 +6,7 @@ consumption by Morpheme (and any future adapter that reads superharness data).
 Schema version: 1.0
 Spec: docs/adapter-payload-spec.md
 """
+
 from __future__ import annotations
 
 import argparse
@@ -24,6 +25,7 @@ from superharness.engine.normalization import normalize_blocked_by
 from superharness.engine import state_reader
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 SCHEMA_VERSION = "1.4"
@@ -31,6 +33,7 @@ SCHEMA_VERSION = "1.4"
 # ---------------------------------------------------------------------------
 # Project settings
 # ---------------------------------------------------------------------------
+
 
 def _default_project_settings() -> dict:
     return {
@@ -49,6 +52,7 @@ def _load_project_settings(sh_dir: Path) -> dict:
         return _default_project_settings()
     try:
         import yaml as _yaml
+
         profile = _yaml.safe_load(profile_path.read_text()) or {}
     except Exception as e:
         logger.warning("adapter_payload.py unexpected error: %s", e, exc_info=True)
@@ -75,20 +79,20 @@ def _load_project_settings(sh_dir: Path) -> dict:
 # ---------------------------------------------------------------------------
 
 _STATUS_MAP: dict[str, tuple[str, str]] = {
-    "todo":             ("pending",    "#6b7280"),
-    "plan_proposed":    ("pending",    "#c8922a"),
-    "plan_approved":    ("generating", "#4e8098"),
-    "in_progress":      ("generating", "#4e8098"),
-    "report_ready":     ("validating", "#8b5cf6"),
+    "todo": ("pending", "#6b7280"),
+    "plan_proposed": ("pending", "#c8922a"),
+    "plan_approved": ("generating", "#4e8098"),
+    "in_progress": ("generating", "#4e8098"),
+    "report_ready": ("validating", "#8b5cf6"),
     "review_requested": ("validating", "#8b5cf6"),
-    "review_passed":    ("validating", "#10b981"),
-    "review_failed":    ("failed",     "#ef4444"),
-    "done":             ("done",       "#10b981"),
-    "failed":           ("failed",     "#ef4444"),
-    "stopped":          ("failed",     "#ef4444"),
-    "blocked":          ("pending",    "#6b7280"),
-    "waiting_input":    ("paused",     "#f59e0b"),
-    "paused":           ("paused",     "#f59e0b"),
+    "review_passed": ("validating", "#10b981"),
+    "review_failed": ("failed", "#ef4444"),
+    "done": ("done", "#10b981"),
+    "failed": ("failed", "#ef4444"),
+    "stopped": ("failed", "#ef4444"),
+    "blocked": ("pending", "#6b7280"),
+    "waiting_input": ("paused", "#f59e0b"),
+    "paused": ("paused", "#f59e0b"),
 }
 
 
@@ -98,21 +102,24 @@ def _display_status(raw_status: str) -> tuple[str, str]:
 
 
 _OWNER_DISPLAY = {
-    "owner":       "@you",
+    "owner": "@you",
     "claude-code": "claude-code",
-    "codex-cli":   "codex-cli",
-    "openclaw":    "openclaw",
+    "codex-cli": "codex-cli",
+    "openclaw": "openclaw",
 }
 
 
 def _owner_label(raw_owner: str) -> str:
     """Return a human-readable label for an owner value."""
-    return _OWNER_DISPLAY.get(str(raw_owner or "").strip(), str(raw_owner or "").strip())
+    return _OWNER_DISPLAY.get(
+        str(raw_owner or "").strip(), str(raw_owner or "").strip()
+    )
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _coerce_date(value: Any) -> str:
     """Coerce date / datetime / string to ISO 8601 string."""
@@ -129,13 +136,16 @@ def _coerce_date(value: Any) -> str:
 # Handoff loading
 # ---------------------------------------------------------------------------
 
+
 def _load_handoffs(sh_dir: Path) -> dict[str, list[dict]]:
     """Load all handoffs from SQLite, grouped by task ID, oldest first."""
     project_dir = sh_dir.parent
     try:
         rows = state_reader.get_handoffs(str(project_dir))
     except Exception as e:
-        logger.warning("adapter_payload._load_handoffs SQLite failed: %s", e, exc_info=True)
+        logger.warning(
+            "adapter_payload._load_handoffs SQLite failed: %s", e, exc_info=True
+        )
         return {}
 
     by_task: dict[str, list[dict]] = {}
@@ -178,18 +188,26 @@ def _normalize_handoff(raw: dict) -> dict:
     files = raw.get("files_changed") or raw.get("files_touched")
 
     entry: dict = {
-        "phase":    raw.get("phase", "report"),
-        "from":     raw.get("from", raw.get("from_", "")),
-        "to":       raw.get("to", ""),
-        "date":     _coerce_date(raw.get("date") or raw.get("closed_at")),
-        "status":   raw.get("status", ""),
+        "phase": raw.get("phase", "report"),
+        "from": raw.get("from", raw.get("from_", "")),
+        "to": raw.get("to", ""),
+        "date": _coerce_date(raw.get("date") or raw.get("closed_at")),
+        "status": raw.get("status", ""),
         "verified": bool(raw.get("verified", False)),
     }
 
     # Optional fields — only include when present in source
-    for key in ("summary", "plan", "tdd", "risks",
-                "outcome", "context", "outcomes",
-                "tests_passed", "test_types"):
+    for key in (
+        "summary",
+        "plan",
+        "tdd",
+        "risks",
+        "outcome",
+        "context",
+        "outcomes",
+        "tests_passed",
+        "test_types",
+    ):
         if key in raw:
             entry[key] = raw[key]
 
@@ -208,9 +226,7 @@ def _normalize_handoff(raw: dict) -> dict:
 _RE_DASH = re.compile(
     r"^-?\s*(?P<ts>\d{4}-\d{2}-\d{2}T[\d:]+Z)\s+—\s+(?P<agent>[^—]+?)\s+—\s+(?P<desc>.+)$"
 )
-_RE_BARE = re.compile(
-    r"^(?P<ts>\d{4}-\d{2}-\d{2}T[\d:]+Z)\s+(?P<desc>.+)$"
-)
+_RE_BARE = re.compile(r"^(?P<ts>\d{4}-\d{2}-\d{2}T[\d:]+Z)\s+(?P<desc>.+)$")
 
 
 def _classify_ledger(desc: str) -> tuple[str, str | None]:
@@ -220,8 +236,16 @@ def _classify_ledger(desc: str) -> tuple[str, str | None]:
     if "modified:" in desc or "created:" in desc:
         return "file", None
     # Task lifecycle keywords — try to extract task ID
-    for kw in ("verified:", "closed:", "delegated:", "report submitted",
-               "plan approved", "plan proposed", "status →", "reconciled"):
+    for kw in (
+        "verified:",
+        "closed:",
+        "delegated:",
+        "report submitted",
+        "plan approved",
+        "plan proposed",
+        "status →",
+        "reconciled",
+    ):
         if kw in desc.lower():
             for tok in desc.split():
                 tok = tok.rstrip(":,")
@@ -239,7 +263,9 @@ def _parse_ledger(sh_dir: Path, limit: int = 200) -> list[dict]:
     try:
         entries_raw = state_reader.get_ledger_entries(str(project_dir), limit=limit)
     except Exception as e:
-        logger.warning("adapter_payload._parse_ledger SQLite failed: %s", e, exc_info=True)
+        logger.warning(
+            "adapter_payload._parse_ledger SQLite failed: %s", e, exc_info=True
+        )
         return []
 
     entries: list[dict] = []
@@ -249,8 +275,8 @@ def _parse_ledger(sh_dir: Path, limit: int = 200) -> list[dict]:
         action = str(e.get("action") or "")
         kind, task_id = _classify_ledger(action)
         entry: dict = {
-            "timestamp":   str(e.get("created_at") or ""),
-            "type":        kind,
+            "timestamp": str(e.get("created_at") or ""),
+            "type": kind,
             "description": action,
         }
         agent = str(e.get("agent") or "")
@@ -265,6 +291,7 @@ def _parse_ledger(sh_dir: Path, limit: int = 200) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Failures / Decisions / Inbox
 # ---------------------------------------------------------------------------
+
 
 def _load_failures(sh_dir: Path) -> list[dict]:
     """Load failures from SQLite first, fall back to failures.yaml.
@@ -283,20 +310,24 @@ def _load_failures(sh_dir: Path) -> list[dict]:
     try:
         from superharness.engine.db import get_connection
         from superharness.engine import failures_dao
+
         conn = get_connection(str(project_dir))
         try:
             rows = failures_dao.get_recent(conn, limit=100)
         finally:
             conn.close()
         if rows:
-            return [{
-                "task":          r.task_id or "",
-                "severity":      "minor",
-                "error_snippet": r.error_snippet or "",
-                "patterns":      [r.pattern] if r.pattern else [],
-                "agent":         r.agent or "",
-                "date":          _coerce_date(r.created_at or ""),
-            } for r in rows]
+            return [
+                {
+                    "task": r.task_id or "",
+                    "severity": "minor",
+                    "error_snippet": r.error_snippet or "",
+                    "patterns": [r.pattern] if r.pattern else [],
+                    "agent": r.agent or "",
+                    "date": _coerce_date(r.created_at or ""),
+                }
+                for r in rows
+            ]
     except Exception as e:
         logger.warning("adapter_payload.py unexpected error: %s", e, exc_info=True)
         pass
@@ -318,21 +349,25 @@ def _load_decisions(sh_dir: Path) -> list[dict]:
     try:
         from superharness.engine.db import get_connection
         from superharness.engine import decisions_dao
+
         conn = get_connection(str(project_dir))
         try:
             rows = decisions_dao.get_recent(conn, limit=100)
         finally:
             conn.close()
         if rows:
-            return [{
-                "id":           str(r.id),
-                "what":         r.decision or "",
-                "why":          r.reason or "",
-                "alternatives": list(r.alternatives or []),
-                "status":       "accepted",
-                "by":           r.agent or "",
-                "date":         _coerce_date(r.created_at or ""),
-            } for r in rows]
+            return [
+                {
+                    "id": str(r.id),
+                    "what": r.decision or "",
+                    "why": r.reason or "",
+                    "alternatives": list(r.alternatives or []),
+                    "status": "accepted",
+                    "by": r.agent or "",
+                    "date": _coerce_date(r.created_at or ""),
+                }
+                for r in rows
+            ]
     except Exception as e:
         logger.warning("adapter_payload.py unexpected error: %s", e, exc_info=True)
         pass
@@ -356,6 +391,7 @@ def _load_inbox(sh_dir: Path) -> list[dict]:
     try:
         from superharness.engine.db import get_connection
         from superharness.engine import inbox_dao
+
         conn = get_connection(str(project_dir))
         try:
             rows = []
@@ -364,16 +400,19 @@ def _load_inbox(sh_dir: Path) -> list[dict]:
         finally:
             conn.close()
         if rows:
-            return [{
-                "id":          r.id,
-                "task":        r.task_id,
-                "status":      r.status,
-                "to":          r.target_agent,
-                "priority":    r.priority,
-                "retry_count": getattr(r, "retry_count", 0),
-                "max_retries": getattr(r, "max_retries", 3),
-                "created_at":  _coerce_date(r.created_at or ""),
-            } for r in rows]
+            return [
+                {
+                    "id": r.id,
+                    "task": r.task_id,
+                    "status": r.status,
+                    "to": r.target_agent,
+                    "priority": r.priority,
+                    "retry_count": getattr(r, "retry_count", 0),
+                    "max_retries": getattr(r, "max_retries", 3),
+                    "created_at": _coerce_date(r.created_at or ""),
+                }
+                for r in rows
+            ]
     except Exception as e:
         logger.warning("adapter_payload.py unexpected error: %s", e, exc_info=True)
         pass
@@ -383,6 +422,7 @@ def _load_inbox(sh_dir: Path) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Agent pulse
 # ---------------------------------------------------------------------------
+
 
 def _load_agent_pulse(sh_dir: Path) -> dict | None:
     """Load agent pulse: prefer fresher of SQLite vs YAML crash dump.
@@ -394,6 +434,7 @@ def _load_agent_pulse(sh_dir: Path) -> dict | None:
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import agent_pulse_dao
+
         project_dir = str(sh_dir.parent)
         conn = get_connection(project_dir)
         try:
@@ -403,12 +444,12 @@ def _load_agent_pulse(sh_dir: Path) -> dict | None:
             conn.close()
         if row is not None:
             sqlite_data = {
-                "task_id":   row.task_id,
-                "agent":     row.agent,
-                "status":    row.status,
-                "last_seen": row.last_seen,    # raw ISO timestamp for compare
-                "message":   row.message,
-                "pid":       row.pid,
+                "task_id": row.task_id,
+                "agent": row.agent,
+                "status": row.status,
+                "last_seen": row.last_seen,  # raw ISO timestamp for compare
+                "message": row.message,
+                "pid": row.pid,
             }
     except Exception as e:
         logger.debug("adapter_payload: pulse SQLite read failed: %s", e)
@@ -417,15 +458,15 @@ def _load_agent_pulse(sh_dir: Path) -> dict | None:
     path = sh_dir / "agent-pulse.yaml"
     if path.exists():
         try:
-            raw = yaml.safe_load(path.read_text(errors="replace"))  # noqa: state-read — YAML compare-or-fallback (legacy + crash dumps)
+            raw = yaml.safe_load(path.read_text(errors="replace"))  # shipguard:ignore state-read: YAML compare-or-fallback for legacy projects and crash dumps
             if isinstance(raw, dict):
                 yaml_data = {
-                    "task_id":   raw.get("task_id"),
-                    "agent":     raw.get("agent"),
-                    "status":    raw.get("status"),
+                    "task_id": raw.get("task_id"),
+                    "agent": raw.get("agent"),
+                    "status": raw.get("status"),
                     "last_seen": raw.get("last_seen"),
-                    "message":   raw.get("message"),
-                    "pid":       raw.get("pid"),
+                    "message": raw.get("message"),
+                    "pid": raw.get("pid"),
                 }
         except Exception as e:
             logger.warning("adapter_payload.py unexpected error: %s", e, exc_info=True)
@@ -440,12 +481,15 @@ def _load_agent_pulse(sh_dir: Path) -> dict | None:
         # Sub-second-safe freshness: file mtime vs SQLite ISO timestamp.
         from datetime import datetime as _dt, timezone as _tz
         import os as _os
+
         yaml_newer = False
         try:
             yaml_mtime = _os.path.getmtime(str(path))
             sqlite_ts = str(sqlite_data.get("last_seen") or "")
             if sqlite_ts:
-                sqlite_dt = _dt.strptime(sqlite_ts.rstrip("Z"), "%Y-%m-%dT%H:%M:%S").replace(tzinfo=_tz.utc)
+                sqlite_dt = _dt.strptime(
+                    sqlite_ts.rstrip("Z"), "%Y-%m-%dT%H:%M:%S"
+                ).replace(tzinfo=_tz.utc)
                 yaml_newer = yaml_mtime > sqlite_dt.timestamp()
             else:
                 yaml_newer = True
@@ -454,18 +498,19 @@ def _load_agent_pulse(sh_dir: Path) -> dict | None:
         chosen = yaml_data if yaml_newer else sqlite_data
     assert chosen is not None
     return {
-        "task_id":   chosen.get("task_id"),
-        "agent":     chosen.get("agent"),
-        "status":    chosen.get("status"),
+        "task_id": chosen.get("task_id"),
+        "agent": chosen.get("agent"),
+        "status": chosen.get("status"),
         "last_seen": _coerce_date(chosen.get("last_seen")),
-        "message":   chosen.get("message"),
-        "pid":       chosen.get("pid"),
+        "message": chosen.get("message"),
+        "pid": chosen.get("pid"),
     }
 
 
 # ---------------------------------------------------------------------------
 # Task + Edge building
 # ---------------------------------------------------------------------------
+
 
 def _blockers(task: dict) -> list[str]:
     """Return normalized blocked_by / dependency list for a task."""
@@ -492,14 +537,19 @@ def _build_classifier_block(task: dict) -> dict:
     raw = task.get("classifier")
     if isinstance(raw, dict):
         return {
-            "invoked":          bool(raw.get("invoked", False)),
-            "decided_by":       raw.get("decided_by"),
+            "invoked": bool(raw.get("invoked", False)),
+            "decided_by": raw.get("decided_by"),
             "heuristic_reason": raw.get("heuristic_reason"),
-            "cost_usd":         raw.get("cost_usd"),
-            "duration_ms":      raw.get("duration_ms"),
+            "cost_usd": raw.get("cost_usd"),
+            "duration_ms": raw.get("duration_ms"),
         }
-    return {"invoked": False, "decided_by": None, "heuristic_reason": None,
-            "cost_usd": None, "duration_ms": None}
+    return {
+        "invoked": False,
+        "decided_by": None,
+        "heuristic_reason": None,
+        "cost_usd": None,
+        "duration_ms": None,
+    }
 
 
 def _build_decomposer_block(task: dict) -> dict:
@@ -507,15 +557,21 @@ def _build_decomposer_block(task: dict) -> dict:
     raw = task.get("decomposer")
     if isinstance(raw, dict):
         return {
-            "invoked":       bool(raw.get("invoked", False)),
-            "model":         raw.get("model"),
-            "rationale":     raw.get("rationale"),
-            "cost_usd":      raw.get("cost_usd"),
-            "duration_ms":   raw.get("duration_ms"),
+            "invoked": bool(raw.get("invoked", False)),
+            "model": raw.get("model"),
+            "rationale": raw.get("rationale"),
+            "cost_usd": raw.get("cost_usd"),
+            "duration_ms": raw.get("duration_ms"),
             "subtask_count": int(raw.get("subtask_count") or 0),
         }
-    return {"invoked": False, "model": None, "rationale": None,
-            "cost_usd": None, "duration_ms": None, "subtask_count": 0}
+    return {
+        "invoked": False,
+        "model": None,
+        "rationale": None,
+        "cost_usd": None,
+        "duration_ms": None,
+        "subtask_count": 0,
+    }
 
 
 def _build_retry_block(task: dict) -> dict:
@@ -523,8 +579,8 @@ def _build_retry_block(task: dict) -> dict:
     raw = task.get("retry")
     if isinstance(raw, dict):
         return {
-            "count":               int(raw.get("count") or 0),
-            "escalation_history":  list(raw.get("escalation_history") or []),
+            "count": int(raw.get("count") or 0),
+            "escalation_history": list(raw.get("escalation_history") or []),
         }
     return {"count": 0, "escalation_history": []}
 
@@ -534,27 +590,28 @@ def _build_tasks(raw_tasks: list, handoffs_by_task: dict) -> list[dict]:
     for t in raw_tasks:
         if not isinstance(t, dict):
             continue
-        task_id    = t.get("id", "")
+        task_id = t.get("id", "")
         raw_status = str(t.get("status", "todo"))
         display, color = _display_status(raw_status)
         from superharness.engine.subtask import resolve_subtask_status
+
         raw_subtasks = t.get("subtasks") or []
         subtasks = []
         for s in raw_subtasks:
             if not isinstance(s, dict):
                 continue
             sub_owner = s.get("owner", "")
-            sub_tier  = s.get("model_tier")
+            sub_tier = s.get("model_tier")
             sub_entry = {
-                "id":                  s.get("id", ""),
-                "title":               s.get("title", ""),
-                "status":              resolve_subtask_status(s, raw_status),
-                "model_tier":          sub_tier,
-                "owner":               sub_owner,
-                "owner_label":         _owner_label(sub_owner),
-                "estimated_tokens":    s.get("estimated_tokens"),
-                "estimated_cost_usd":  s.get("estimated_cost_usd"),
-                "rationale":           s.get("rationale"),
+                "id": s.get("id", ""),
+                "title": s.get("title", ""),
+                "status": resolve_subtask_status(s, raw_status),
+                "model_tier": sub_tier,
+                "owner": sub_owner,
+                "owner_label": _owner_label(sub_owner),
+                "estimated_tokens": s.get("estimated_tokens"),
+                "estimated_cost_usd": s.get("estimated_cost_usd"),
+                "rationale": s.get("rationale"),
             }
             sub_resolved = _resolved_model_for(sub_owner, sub_tier)
             if sub_resolved is not None:
@@ -562,41 +619,41 @@ def _build_tasks(raw_tasks: list, handoffs_by_task: dict) -> list[dict]:
             subtasks.append(sub_entry)
 
         owner = t.get("owner", "")
-        tier  = t.get("model_tier")
+        tier = t.get("model_tier")
         entry: dict = {
-            "id":                  task_id,
-            "title":               t.get("title", ""),
-            "status":              raw_status,
-            "display_status":      display,
-            "color":               color,
-            "owner":               owner,
-            "owner_label":         _owner_label(owner),
-            "cost":                t.get("estimated_cost_usd"),
-            "blocked_by":          _blockers(t),
-            "effort":              t.get("effort"),
+            "id": task_id,
+            "title": t.get("title", ""),
+            "status": raw_status,
+            "display_status": display,
+            "color": color,
+            "owner": owner,
+            "owner_label": _owner_label(owner),
+            "cost": t.get("estimated_cost_usd"),
+            "blocked_by": _blockers(t),
+            "effort": t.get("effort"),
             "acceptance_criteria": t.get("acceptance_criteria") or [],
-            "handoffs":            handoffs_by_task.get(task_id, []),
-            "subtasks":            subtasks,
+            "handoffs": handoffs_by_task.get(task_id, []),
+            "subtasks": subtasks,
             # Backwards compat: keep `model_tier` string for clients on schema
             # 1.0 (e.g. Morpheme falling back to its rawParser path).
-            "model_tier":          tier,
+            "model_tier": tier,
         }
         resolved = _resolved_model_for(owner, tier)
         if resolved is not None:
             entry["resolved_model"] = resolved
-        entry["classifier"]         = _build_classifier_block(t)
-        entry["decomposer"]         = _build_decomposer_block(t)
-        entry["retry"]              = _build_retry_block(t)
-        entry["next_action"]        = _next_action(raw_status).as_dict()
+        entry["classifier"] = _build_classifier_block(t)
+        entry["decomposer"] = _build_decomposer_block(t)
+        entry["retry"] = _build_retry_block(t)
+        entry["next_action"] = _next_action(raw_status).as_dict()
         # Schema v1.4 per-task policy fields
-        entry["workflow"]           = t.get("workflow") or None
+        entry["workflow"] = t.get("workflow") or None
         entry["development_method"] = t.get("development_method") or None
         raw_autonomy = t.get("autonomy")
-        entry["autonomy"]           = str(raw_autonomy) if raw_autonomy else "ai_driven"
+        entry["autonomy"] = str(raw_autonomy) if raw_autonomy else "ai_driven"
         raw_rtdd = t.get("require_tdd")
-        entry["require_tdd"]        = bool(raw_rtdd) if raw_rtdd is not None else True
+        entry["require_tdd"] = bool(raw_rtdd) if raw_rtdd is not None else True
         # Visual context: list of image/screenshot paths attached to this task
-        entry["visual_context"]     = list(t.get("visual_context") or [])
+        entry["visual_context"] = list(t.get("visual_context") or [])
         result.append(entry)
     return result
 
@@ -606,7 +663,9 @@ def _build_edges(tasks: list[dict]) -> list[dict]:
     for t in tasks:
         blockers = t["blocked_by"]
         if not blockers:
-            edges.append({"source": "__contract__", "target": t["id"], "type": "contract"})
+            edges.append(
+                {"source": "__contract__", "target": t["id"], "type": "contract"}
+            )
         else:
             for b in blockers:
                 edges.append({"source": b, "target": t["id"], "type": "dependency"})
@@ -617,6 +676,7 @@ def _build_edges(tasks: list[dict]) -> list[dict]:
 # Payload builder
 # ---------------------------------------------------------------------------
 
+
 def build_payload(project_path: str) -> dict:
     """Build and return the full adapter payload for a project."""
     sh_dir = Path(project_path).resolve() / ".superharness"
@@ -625,26 +685,26 @@ def build_payload(project_path: str) -> dict:
     # for legacy projects. Previously read contract.yaml directly, which is a
     # tombstone in sqlite_only mode and drifts from the canonical SQLite state.
     contract_doc = state_reader.get_contract_doc(project_path)
-    raw_tasks    = contract_doc.get("tasks") or []
+    raw_tasks = contract_doc.get("tasks") or []
 
-    handoffs_by_task  = _load_handoffs(sh_dir)
-    tasks             = _build_tasks(raw_tasks, handoffs_by_task)
-    project_settings  = _load_project_settings(sh_dir)
+    handoffs_by_task = _load_handoffs(sh_dir)
+    tasks = _build_tasks(raw_tasks, handoffs_by_task)
+    project_settings = _load_project_settings(sh_dir)
 
     return {
-        "schema_version":   SCHEMA_VERSION,
+        "schema_version": SCHEMA_VERSION,
         "project_settings": project_settings,
-        "contract_id":      contract_doc.get("id") or "",
-        "goal":             contract_doc.get("goal") or "",
-        "tasks":            tasks,
-        "edges":            _build_edges(tasks),
-        "ledger":           _parse_ledger(sh_dir),
-        "failures":         _load_failures(sh_dir),
-        "decisions":        _load_decisions(sh_dir),
-        "inbox":            _load_inbox(sh_dir),
-        "agent_pulse":      _load_agent_pulse(sh_dir),
-        "rules":            _load_rules(str(sh_dir.parent)),
-        "artifacts":        _load_artifacts(project_path),
+        "contract_id": contract_doc.get("id") or "",
+        "goal": contract_doc.get("goal") or "",
+        "tasks": tasks,
+        "edges": _build_edges(tasks),
+        "ledger": _parse_ledger(sh_dir),
+        "failures": _load_failures(sh_dir),
+        "decisions": _load_decisions(sh_dir),
+        "inbox": _load_inbox(sh_dir),
+        "agent_pulse": _load_agent_pulse(sh_dir),
+        "rules": _load_rules(str(sh_dir.parent)),
+        "artifacts": _load_artifacts(project_path),
         "agent_heartbeats": _load_heartbeats(project_path),
     }
 
@@ -652,9 +712,7 @@ def build_payload(project_path: str) -> dict:
 def _load_artifacts(project_path: str) -> list[dict]:
     """Return all task artifacts from SQLite, grouped by task_id."""
     try:
-        from dataclasses import asdict
         from superharness.engine.db import get_connection, init_db
-        from superharness.engine import artifacts_dao
 
         conn = get_connection(project_path)
         try:
@@ -694,6 +752,7 @@ def _load_rules(project_path: str) -> list[dict]:
     """Return active project rules for adapter payload consumers."""
     try:
         from superharness.commands.rules import list_rules
+
         return list_rules(project_path)
     except Exception as e:
         logger.warning("adapter_payload.py unexpected error: %s", e, exc_info=True)
@@ -704,6 +763,7 @@ def _load_rules(project_path: str) -> list[dict]:
 # CLI entry point
 # ---------------------------------------------------------------------------
 
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="superharness adapter-payload",
@@ -713,11 +773,16 @@ def main(argv=None):
         ),
     )
     parser.add_argument(
-        "--json", dest="as_json", action="store_true", default=True,
+        "--json",
+        dest="as_json",
+        action="store_true",
+        default=True,
         help="Output as JSON (default; included for explicitness)",
     )
     parser.add_argument(
-        "--project", "-p", default=".",
+        "--project",
+        "-p",
+        default=".",
         metavar="PATH",
         help="Path to the project root containing .superharness/ (default: .)",
     )
@@ -727,6 +792,7 @@ def main(argv=None):
     # not silently emit an empty payload (the adapter contract is "fail
     # nonzero with a stderr error" so callers don't trust empty data).
     import os as _os
+
     proj = _os.path.abspath(opts.project)
     if not _os.path.isdir(proj):
         print(f"error: project not found: {proj}", file=sys.stderr)

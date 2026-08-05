@@ -1,4 +1,5 @@
 """heartbeat command — run proactive checks for the superharness watcher."""
+
 from __future__ import annotations
 
 import os
@@ -9,6 +10,7 @@ from pathlib import Path
 import yaml
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -19,12 +21,16 @@ def _read_state(state_file: str) -> dict:
     try:
         return yaml.safe_load(p.read_text(encoding="utf-8")) or {}
     except Exception as e:
-        print(f"heartbeat: could not read state file {state_file}: {e}", file=sys.stderr)
+        print(
+            f"heartbeat: could not read state file {state_file}: {e}", file=sys.stderr
+        )
         return {}
 
 
 def _write_state(state_file: str, state: dict) -> None:
-    Path(state_file).write_text(yaml.dump(state, default_flow_style=False), encoding="utf-8")
+    Path(state_file).write_text(
+        yaml.dump(state, default_flow_style=False), encoding="utf-8"
+    )
 
 
 def _run_idle_warning(project_dir: str, now_epoch: float) -> None:
@@ -36,24 +42,32 @@ def _run_idle_warning(project_dir: str, now_epoch: float) -> None:
     age = int(now_epoch - mtime)
     threshold = 48 * 3600
     if age > threshold:
-        print(f"heartbeat: idle-warning: no ledger activity in {age // 3600}h (threshold: 48h)")
+        print(
+            f"heartbeat: idle-warning: no ledger activity in {age // 3600}h (threshold: 48h)"
+        )
 
 
 def _run_stale_recovery(project_dir: str) -> None:
     from superharness.commands.inbox_recover import main as recover_main
-    recover_main(["--project", project_dir, "--timeout-minutes", "30", "--action", "stale"])
+
+    recover_main(
+        ["--project", project_dir, "--timeout-minutes", "30", "--action", "stale"]
+    )
 
 
 def _run_hygiene_check(project_dir: str) -> None:
     from superharness.engine.validate import run_validate
+
     run_validate(project_dir)
 
 
 def main(argv: list[str] | None = None) -> None:
     import argparse
 
-    p = argparse.ArgumentParser(prog="heartbeat",
-        description="Run proactive checks defined in .superharness/heartbeat.yaml.")
+    p = argparse.ArgumentParser(
+        prog="heartbeat",
+        description="Run proactive checks defined in .superharness/heartbeat.yaml.",
+    )
     p.add_argument("-p", "--project", required=True)
     opts = p.parse_args(argv)
 

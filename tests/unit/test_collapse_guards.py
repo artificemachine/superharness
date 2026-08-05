@@ -11,6 +11,7 @@ chore.collapse-guards-next-action:
 
 RED → fails before the refactor; GREEN → passes after.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -19,6 +20,7 @@ import inspect
 # ---------------------------------------------------------------------------
 # Single-source-of-truth structural tests
 # ---------------------------------------------------------------------------
+
 
 def test_delegate_disc_round_re_not_defined_locally():
     """delegate.py must not define its own _DISC_ROUND_RE via re.compile.
@@ -61,34 +63,51 @@ def test_contract_today_has_no_local_infer_workflow():
 # Behaviour-unchanged tests for _is_delegate_candidate
 # ---------------------------------------------------------------------------
 
+
 def test_is_delegate_candidate_impl_plan_approved():
     from superharness.commands.contract_today import _is_delegate_candidate
-    assert _is_delegate_candidate({"id": "feat.x", "status": "plan_approved", "workflow": "implementation"})
+
+    assert _is_delegate_candidate(
+        {"id": "feat.x", "status": "plan_approved", "workflow": "implementation"}
+    )
 
 
 def test_is_delegate_candidate_impl_in_progress():
     from superharness.commands.contract_today import _is_delegate_candidate
-    assert _is_delegate_candidate({"id": "feat.x", "status": "in_progress", "workflow": "implementation"})
+
+    assert _is_delegate_candidate(
+        {"id": "feat.x", "status": "in_progress", "workflow": "implementation"}
+    )
 
 
 def test_is_delegate_candidate_impl_todo_is_false():
     from superharness.commands.contract_today import _is_delegate_candidate
-    assert not _is_delegate_candidate({"id": "feat.x", "status": "todo", "workflow": "implementation"})
+
+    assert not _is_delegate_candidate(
+        {"id": "feat.x", "status": "todo", "workflow": "implementation"}
+    )
 
 
 def test_is_delegate_candidate_quick_todo():
     from superharness.commands.contract_today import _is_delegate_candidate
-    assert _is_delegate_candidate({"id": "chore.x", "status": "todo", "workflow": "quick"})
+
+    assert _is_delegate_candidate(
+        {"id": "chore.x", "status": "todo", "workflow": "quick"}
+    )
 
 
 def test_is_delegate_candidate_note_todo():
     from superharness.commands.contract_today import _is_delegate_candidate
-    assert _is_delegate_candidate({"id": "note.x", "status": "todo", "workflow": "note"})
+
+    assert _is_delegate_candidate(
+        {"id": "note.x", "status": "todo", "workflow": "note"}
+    )
 
 
 def test_is_delegate_candidate_discussion_todo_is_false():
     """Discussion-round tasks with status=todo are not dispatchable."""
     from superharness.commands.contract_today import _is_delegate_candidate
+
     assert not _is_delegate_candidate({"id": "discuss-abc/round-1", "status": "todo"})
 
 
@@ -99,12 +118,18 @@ def test_is_delegate_candidate_discussion_always_false():
     returns False for all statuses of the discussion workflow.
     """
     from superharness.commands.contract_today import _is_delegate_candidate
-    assert not _is_delegate_candidate({"id": "discuss-abc/round-1", "status": "in_progress"})
+
+    assert not _is_delegate_candidate(
+        {"id": "discuss-abc/round-1", "status": "in_progress"}
+    )
     assert not _is_delegate_candidate({"id": "discuss-abc/round-1", "status": "todo"})
 
 
 def test_is_delegate_candidate_workflow_inferred_from_id_pattern():
     """When no workflow field is set, discussion-round id pattern drives inference."""
     from superharness.commands.contract_today import _is_delegate_candidate
+
     # No explicit workflow field — must be inferred via next_action.infer_workflow
-    assert not _is_delegate_candidate({"id": "discuss-topic/round-5", "status": "plan_approved"})
+    assert not _is_delegate_candidate(
+        {"id": "discuss-topic/round-5", "status": "plan_approved"}
+    )

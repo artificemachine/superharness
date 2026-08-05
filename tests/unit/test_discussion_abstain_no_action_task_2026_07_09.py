@@ -17,6 +17,7 @@ Fix: filter on membership in `_CONSENSUS_VERDICTS`, not equality with
 "agree". `disagree`/`partial` remain actionable (reachable here only from
 non-participant submissions or direct calls).
 """
+
 from __future__ import annotations
 
 import os
@@ -38,7 +39,13 @@ def _setup(tmp_path, disc_id: str, owners: list[str]):
     init_db(conn, project_dir=project)
     conn.execute(
         "INSERT INTO discussions (id, topic, status, owners, created_at) VALUES (?,?,?,?,?)",
-        (disc_id, "Refactor auth module", "open", '["' + '","'.join(owners) + '"]', NOW),
+        (
+            disc_id,
+            "Refactor auth module",
+            "open",
+            '["' + '","'.join(owners) + '"]',
+            NOW,
+        ),
     )
     conn.commit()
     return project, conn
@@ -46,8 +53,14 @@ def _setup(tmp_path, disc_id: str, owners: list[str]):
 
 def _disc_row(disc_id: str, owners: list[str]):
     return discussions_dao.DiscussionRow(
-        id=disc_id, topic="Refactor auth module", status="open", owners=owners,
-        consensus=None, created_at=NOW, closed_at=None, task_id=None,
+        id=disc_id,
+        topic="Refactor auth module",
+        status="open",
+        owners=owners,
+        consensus=None,
+        created_at=NOW,
+        closed_at=None,
+        task_id=None,
     )
 
 
@@ -75,7 +88,9 @@ def test_consensus_verdicts_create_no_action_tasks(tmp_path, verdict):
     for agent in owners:
         _submit(conn, disc_id, agent, verdict)
 
-    _create_consensus_task(conn, _disc_row(disc_id, owners), 1, set(owners), project_dir=project)
+    _create_consensus_task(
+        conn, _disc_row(disc_id, owners), 1, set(owners), project_dir=project
+    )
 
     assert _action_task_ids(conn) == [], (
         f"verdict '{verdict}' permits consensus but generated action tasks: "
@@ -94,7 +109,9 @@ def test_blocking_verdicts_still_create_action_tasks(tmp_path, verdict):
 
     _submit(conn, disc_id, "claude-code", verdict)
 
-    _create_consensus_task(conn, _disc_row(disc_id, owners), 1, set(owners), project_dir=project)
+    _create_consensus_task(
+        conn, _disc_row(disc_id, owners), 1, set(owners), project_dir=project
+    )
 
     assert _action_task_ids(conn), (
         f"verdict '{verdict}' blocks consensus and must still yield an action task"

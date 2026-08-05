@@ -1,4 +1,5 @@
 """Python port of engine/discuss.rb — approval gate (status + approve commands)."""
+
 from __future__ import annotations
 
 import os
@@ -10,9 +11,15 @@ from typing import Iterator
 import yaml
 
 import logging
+
 logger = logging.getLogger(__name__)
 
-from superharness.engine.errors import OperationError, SuperharnessError, UsageError, handle_cli_error
+from superharness.engine.errors import (  # noqa: E402
+    OperationError,
+    SuperharnessError,
+    UsageError,
+    handle_cli_error,
+)
 
 
 def _atomic_write(path: str, content: str) -> None:
@@ -65,12 +72,15 @@ def _file_lock(path: str, timeout: float = 5.0) -> Iterator[None]:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
-def _find_pending_handoff(handoff_dir: str, task_id: str, project_dir: str | None = None) -> tuple[str, dict] | None:
+def _find_pending_handoff(
+    handoff_dir: str, task_id: str, project_dir: str | None = None
+) -> tuple[str, dict] | None:
     """Find a pending approval handoff for task_id by querying SQLite."""
     pd = project_dir or os.path.dirname(os.path.dirname(os.path.abspath(handoff_dir)))
     try:
         from superharness.engine.db import managed_connection
         from superharness.engine import handoffs_dao
+
         with managed_connection(pd) as conn:
             rows = handoffs_dao.get_all(conn)
         for row in rows:
@@ -79,9 +89,10 @@ def _find_pending_handoff(handoff_dir: str, task_id: str, project_dir: str | Non
             meta = row.metadata or {}
             status = str(row.status or "")
             gate = meta.get("approval_gate")
-            pending = (
-                status == "pending_user_approval"
-                or (isinstance(gate, dict) and gate.get("required") and not gate.get("approved_by_user"))
+            pending = status == "pending_user_approval" or (
+                isinstance(gate, dict)
+                and gate.get("required")
+                and not gate.get("approved_by_user")
             )
             if not pending:
                 continue
@@ -102,6 +113,7 @@ def cmd_status(handoff_dir: str, task_filter: str | None = None) -> list[dict]:
     project_dir = os.path.dirname(os.path.dirname(os.path.abspath(handoff_dir)))
     try:
         from superharness.engine import state_reader
+
         all_handoffs = state_reader.get_handoffs(project_dir)
     except Exception as e:
         logger.warning("cmd_status: SQLite error: %s", e)
@@ -114,9 +126,10 @@ def cmd_status(handoff_dir: str, task_filter: str | None = None) -> list[dict]:
             meta = {}
         status = str(h.get("status") or meta.get("status") or "")
         gate = meta.get("approval_gate")
-        pending = (
-            status == "pending_user_approval"
-            or (isinstance(gate, dict) and gate.get("required") and not gate.get("approved_by_user"))
+        pending = status == "pending_user_approval" or (
+            isinstance(gate, dict)
+            and gate.get("required")
+            and not gate.get("approved_by_user")
         )
         if not pending:
             continue
@@ -129,8 +142,12 @@ def cmd_status(handoff_dir: str, task_filter: str | None = None) -> list[dict]:
                 "task_id": task,
                 "status": status,
                 "required": gate.get("required") if isinstance(gate, dict) else True,
-                "approved_by_user": gate.get("approved_by_user") if isinstance(gate, dict) else False,
-                "approved_at": gate.get("approved_at") if isinstance(gate, dict) else None,
+                "approved_by_user": gate.get("approved_by_user")
+                if isinstance(gate, dict)
+                else False,
+                "approved_at": gate.get("approved_at")
+                if isinstance(gate, dict)
+                else None,
                 "markdown_report": str(meta.get("markdown_report", "") or ""),
             }
         )
@@ -147,7 +164,7 @@ def cmd_status(handoff_dir: str, task_filter: str | None = None) -> list[dict]:
         )
         print(
             f"  Approve: superharness discuss approve --task {r['task']}"
-            f" --by owner --note \"Approved\""
+            f' --by owner --note "Approved"'
         )
     return rows
 
@@ -186,7 +203,9 @@ def cmd_approve(
     current_status = str(handoff_doc.get("status", ""))
     gate = handoff_doc.get("approval_gate")
     is_pending = current_status == "pending_user_approval" or (
-        isinstance(gate, dict) and gate.get("required") and not gate.get("approved_by_user")
+        isinstance(gate, dict)
+        and gate.get("required")
+        and not gate.get("approved_by_user")
     )
     if not is_pending:
         print(
@@ -204,7 +223,13 @@ def cmd_approve(
         lock_files.append(inbox_file)
 
     def _do_approve() -> None:
-        nonlocal handoff_doc, task_owner, task_status_val, task_project, resumed_count, enqueued_id
+        nonlocal \
+            handoff_doc, \
+            task_owner, \
+            task_status_val, \
+            task_project, \
+            resumed_count, \
+            enqueued_id
 
         # Use the pre-loaded doc (authoritative from SQLite); verify task still matches.
         if not handoff_doc or str(handoff_doc.get("task", "")) != task_id:
@@ -222,9 +247,12 @@ def cmd_approve(
         # Write to SQLite (source of truth).
         try:
             from superharness.engine.state_writer import write_handoff_to_db
+
             write_handoff_to_db(project_dir, handoff_doc)
         except Exception as _e:
-            logger.warning("_do_approve: failed to sync approval_gate to SQLite: %s", _e)
+            logger.warning(
+                "_do_approve: failed to sync approval_gate to SQLite: %s", _e
+            )
 
         # Update YAML export only if the file already exists on disk.
         if handoff_file and os.path.exists(handoff_file):
@@ -232,8 +260,11 @@ def cmd_approve(
 
         if contract_file and os.path.exists(contract_file):
             from superharness.engine.yaml_helpers import safe_load
+
             contract_doc = safe_load(contract_file, dict)
-            if isinstance(contract_doc, dict) and isinstance(contract_doc.get("tasks"), list):
+            if isinstance(contract_doc, dict) and isinstance(
+                contract_doc.get("tasks"), list
+            ):
                 for t in contract_doc["tasks"]:
                     if not isinstance(t, dict):
                         continue
@@ -253,10 +284,15 @@ def cmd_approve(
                     if tp:
                         task_project = tp
                     if note.strip():
-                        t["summary"] = f"User approval granted at {now} by {actor}: {note}"
+                        t["summary"] = (
+                            f"User approval granted at {now} by {actor}: {note}"
+                        )
                     else:
                         t["summary"] = f"User approval granted at {now} by {actor}"
-                from superharness.engine.contract_io import write_contract as _write_contract
+                from superharness.engine.contract_io import (
+                    write_contract as _write_contract,
+                )
+
                 _write_contract(contract_file, contract_doc)
 
         changed = False
@@ -273,22 +309,40 @@ def cmd_approve(
                 for row in paused_items:
                     if str(row.task_id) != task_id:
                         continue
-                    _idao.update_status(_conn, row.id, from_status="paused",
-                                       to_status="pending", now=now)
+                    _idao.update_status(
+                        _conn,
+                        row.id,
+                        from_status="paused",
+                        to_status="pending",
+                        now=now,
+                    )
                     resumed_count += 1
                     changed = True
 
-                if resumed_count == 0 and task_owner and task_status_val in ("todo", "in_progress"):
+                if (
+                    resumed_count == 0
+                    and task_owner
+                    and task_status_val in ("todo", "in_progress")
+                ):
                     active = any(
-                        str(r.task_id) == task_id and r.status in ("pending", "paused", "launched", "running")
+                        str(r.task_id) == task_id
+                        and r.status in ("pending", "paused", "launched", "running")
                         for r in _idao.get_all(_conn)
                     )
                     if not active:
                         enqueued_id = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{task_id}-{os.getpid()}-{random.randint(0, 999999999)}"
-                        _idao.enqueue(_conn, id=enqueued_id, task_id=task_id,
-                                     target_agent=str(task_owner), priority=1,
-                                     max_retries=3, project_path=str(task_project),
-                                     plan_only=False, now=now, model_override="")
+                        _idao.enqueue(
+                            _conn,
+                            id=enqueued_id,
+                            task_id=task_id,
+                            target_agent=str(task_owner),
+                            priority=1,
+                            max_retries=3,
+                            project_path=str(task_project),
+                            plan_only=False,
+                            now=now,
+                            model_override="",
+                        )
                         changed = True
 
                 if changed:
@@ -296,15 +350,27 @@ def cmd_approve(
             finally:
                 _conn.close()
 
-            if not changed and task_owner and task_status_val in ("todo", "in_progress"):
+            if (
+                not changed
+                and task_owner
+                and task_status_val in ("todo", "in_progress")
+            ):
                 _conn2 = _gci(project_dir)
                 try:
                     _idbi(_conn2)
                     enqueued_id = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{task_id}-{os.getpid()}-{random.randint(0, 999999999)}"
-                    _idao.enqueue(_conn2, id=enqueued_id, task_id=task_id,
-                                 target_agent=str(task_owner), priority=1,
-                                 max_retries=3, project_path=str(task_project),
-                                 plan_only=False, now=now, model_override="")
+                    _idao.enqueue(
+                        _conn2,
+                        id=enqueued_id,
+                        task_id=task_id,
+                        target_agent=str(task_owner),
+                        priority=1,
+                        max_retries=3,
+                        project_path=str(task_project),
+                        plan_only=False,
+                        now=now,
+                        model_override="",
+                    )
                     _conn2.commit()
                 finally:
                     _conn2.close()
@@ -326,7 +392,9 @@ def cmd_approve(
     if resumed_count > 0:
         print(f"Resumed {resumed_count} paused inbox item(s) awaiting approval.")
     elif enqueued_id:
-        print(f"Auto-enqueued inbox item: {enqueued_id} (to={task_owner}, task={task_id}, priority=1)")
+        print(
+            f"Auto-enqueued inbox item: {enqueued_id} (to={task_owner}, task={task_id}, priority=1)"
+        )
     else:
         print("No inbox action needed.")
     return 0
@@ -366,7 +434,11 @@ def main(argv: list[str] | None = None) -> None:
         parser.add_argument("--by", default="owner")
         parser.add_argument("--note", default="")
         opts = parser.parse_args(rest)
-        missing = [k for k in ("handoff_dir", "task", "project_dir") if not getattr(opts, k, None)]
+        missing = [
+            k
+            for k in ("handoff_dir", "task", "project_dir")
+            if not getattr(opts, k, None)
+        ]
         if missing:
             flags = ", ".join(f"--{k.replace('_', '-')}" for k in missing)
             raise UsageError(f"Missing required flags: {flags}", exit_code=1)

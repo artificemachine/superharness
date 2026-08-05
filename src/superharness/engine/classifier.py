@@ -6,12 +6,17 @@
   Stage 3: apply_safety_floor() — file count guard, budget guard, 1M auto-promote
   classify()                    — composes all three stages
 """
+
 from __future__ import annotations
 
 import subprocess
 import warnings
 
-from superharness.engine.adapter_registry import fallback_flagship, flagship, flagship_1m
+from superharness.engine.adapter_registry import (
+    fallback_flagship,
+    flagship,
+    flagship_1m,
+)
 from superharness.engine.taxonomy import EFFORT_ORDER, OPUS_KEYWORDS, VALID_EFFORTS
 
 _FALLBACK_EFFORT = "medium"
@@ -27,18 +32,20 @@ _FLAGSHIP = flagship()
 _FLAGSHIP_1M = flagship_1m()
 _FALLBACK = fallback_flagship()
 
+
 def _is_opus_model(model_id: str) -> bool:
     """Return True if model_id is any Claude Opus variant (any generation)."""
     return model_id.startswith("claude-opus-")
 
+
 _LLM_MODEL_MAP: dict[str, str] = {
     "sonnet-4-6": "claude-sonnet-4-6",
-    "opus-4-6":   _FLAGSHIP,  # alias — route to latest flagship
-    "opus-4-7":   _FALLBACK,  # version pin
-    "opus-4-8":   _FLAGSHIP,
-    "mini":       "claude-haiku-4-5-20251001",
-    "standard":   "claude-sonnet-4-6",
-    "max":        _FLAGSHIP,
+    "opus-4-6": _FLAGSHIP,  # alias — route to latest flagship
+    "opus-4-7": _FALLBACK,  # version pin
+    "opus-4-8": _FLAGSHIP,
+    "mini": "claude-haiku-4-5-20251001",
+    "standard": "claude-sonnet-4-6",
+    "max": _FLAGSHIP,
 }
 
 _LLM_CLASSIFY_PROMPT = (
@@ -97,7 +104,10 @@ def heuristic_classify(
             return (_FLAGSHIP, "xhigh")
 
     # Low demote: trivial-title prefixes with few AC
-    if any(title_lower.startswith(p) for p in _LOW_TITLE_PREFIXES) and criteria_count <= 2:
+    if (
+        any(title_lower.startswith(p) for p in _LOW_TITLE_PREFIXES)
+        and criteria_count <= 2
+    ):
         return ("claude-sonnet-4-6", "low")
 
     # Medium demote: unit-only tests with few files
@@ -132,7 +142,15 @@ def llm_classify(
 
     try:
         result = subprocess.run(
-            ["claude", "--model", "claude-sonnet-4-6", "-p", prompt, "--max-tokens", "20"],
+            [
+                "claude",
+                "--model",
+                "claude-sonnet-4-6",
+                "-p",
+                prompt,
+                "--max-tokens",
+                "20",
+            ],
             capture_output=True,
             text=True,
             timeout=15,
@@ -175,8 +193,12 @@ def apply_safety_floor(
         effort_idx = high_idx
 
     # Budget guard: downgrade one effort step when cost exceeds remaining
-    if (budget_remaining is not None and estimated_cost is not None
-            and estimated_cost > budget_remaining and effort_idx > 0):
+    if (
+        budget_remaining is not None
+        and estimated_cost is not None
+        and estimated_cost > budget_remaining
+        and effort_idx > 0
+    ):
         effort_idx -= 1
         effort = EFFORT_ORDER[effort_idx]
         warnings.warn(

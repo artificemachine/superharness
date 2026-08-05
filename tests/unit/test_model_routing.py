@@ -1,9 +1,9 @@
 """Unit tests for Iter 3: ModelRouter — role-based model selection."""
+
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 from superharness.engine.adapter_registry import flagship
 from superharness.engine.model_router_roles import ModelRouter, _DEFAULT_ROUTING

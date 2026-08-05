@@ -2,15 +2,21 @@
 
 Wraps superharness.engine.discuss and superharness.engine.discussion.
 """
+
 from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime, timezone
 
 from superharness.commands.task import VALID_OWNERS
-from superharness.engine.errors import OperationError, SuperharnessError, handle_cli_error
+from superharness.engine.errors import (
+    OperationError,
+    SuperharnessError,
+    handle_cli_error,
+)
 from superharness.engine.state_errors import StateError
 from superharness.utils.paths import (
     StateDatabaseConflictError,
@@ -18,6 +24,7 @@ from superharness.utils.paths import (
 )
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 # Primary agents always included in discussions by default (before contract-owner
@@ -38,11 +45,13 @@ def _now_utc() -> str:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _watcher_is_alive(project_dir: str) -> bool:
     """Return True when the watcher has a live (non-zombie) heartbeat."""
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import heartbeat_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -58,12 +67,14 @@ def _watcher_is_alive(project_dir: str) -> bool:
 # Subcommand handlers
 # ---------------------------------------------------------------------------
 
+
 def cmd_status(handoff_dir: str, task_id: str | None = None) -> int:
     if not os.path.isdir(handoff_dir):
         print("No handoffs directory", file=sys.stderr)
         return 0
 
     from superharness.engine.discuss import cmd_status as engine_status
+
     engine_status(handoff_dir, task_filter=task_id or None)
     return 0
 
@@ -81,6 +92,7 @@ def cmd_approve(
         _abort("No handoffs directory", 1)
 
     from superharness.engine.discuss import cmd_approve as engine_approve
+
     return engine_approve(
         handoff_dir=handoff_dir,
         contract_file=contract_file,
@@ -97,9 +109,11 @@ def _read_contract_owners(contract_file: str) -> list[str]:
     seen: dict[str, None] = {}
     try:
         import os
+
         project_dir = os.path.dirname(os.path.dirname(os.path.abspath(contract_file)))
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import tasks_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -150,6 +164,7 @@ def cmd_start(
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import heartbeat_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -171,6 +186,7 @@ def cmd_start(
     norm_owners = _normalize_owners(owners)
     if "all" in norm_owners:
         from superharness.engine.adapter_registry import list_adapters
+
         all_owners = list_adapters()
     elif not norm_owners:
         contract_owners = _read_contract_owners(contract_file)
@@ -188,6 +204,7 @@ def cmd_start(
     # Human roles like "owner" are never dispatched via inbox and would permanently
     # block verdict collection and auto-consensus.
     from superharness.engine.adapter_registry import list_adapters
+
     _ai_agents = set(list_adapters())
     non_agents = [o for o in candidates if o not in _ai_agents]
     participants = [o for o in candidates if o in _ai_agents]
@@ -208,6 +225,7 @@ def cmd_start(
     unavailable_agents = []
     try:
         from datetime import datetime, timezone
+
         conn2 = get_connection(project_dir)
         try:
             init_db(conn2)
@@ -216,9 +234,14 @@ def cmd_start(
                 hb = heartbeat_dao.get(conn2, p)
                 if hb and hb.written_at:
                     try:
-                        hb_ts = datetime.fromisoformat(str(hb.written_at).replace("Z", "+00:00"))
+                        hb_ts = datetime.fromisoformat(
+                            str(hb.written_at).replace("Z", "+00:00")
+                        )
                         age = (now - hb_ts).total_seconds()
-                        if age < AGENT_HEARTBEAT_STALE_SECONDS and hb.status not in ("zombie", None):
+                        if age < AGENT_HEARTBEAT_STALE_SECONDS and hb.status not in (
+                            "zombie",
+                            None,
+                        ):
                             available_agents.append(p)
                             continue
                     except (ValueError, TypeError):
@@ -250,12 +273,12 @@ def cmd_start(
                 file=sys.stderr,
             )
             print(
-                f"At least 2 running agents are required for a valid discussion. "
-                f"Use --force to override.",
+                "At least 2 running agents are required for a valid discussion. "
+                "Use --force to override.",
                 file=sys.stderr,
             )
             print(
-                f"\nTip: submit verdicts manually via CLI — no agent session needed:",
+                "\nTip: submit verdicts manually via CLI — no agent session needed:",
                 file=sys.stderr,
             )
             for agent in participants:
@@ -292,7 +315,8 @@ def cmd_start(
         if non_agents:
             print(f"Non-agent (removed): {' '.join(non_agents)}", file=sys.stderr)
         print(
-            "Pass --owners " + " ".join(available)
+            "Pass --owners "
+            + " ".join(available)
             + f" (at least {required} required).",
             file=sys.stderr,
         )
@@ -302,6 +326,7 @@ def cmd_start(
     unavailable = []
     try:
         from superharness.commands.discussion_dispatch import _agent_available
+
         for agent in participants:
             ok, reason = _agent_available(agent, project_dir)
             if not ok:
@@ -329,12 +354,22 @@ def cmd_start(
         participant_args += ["--participant", p]
 
     result = subprocess.run(
-        [sys.executable, "-m", "superharness.engine.discussion", "start",
-         "--discussions-dir", discussions_dir,
-         "--topic", topic,
-         "--max-rounds", str(max_rounds),
-         "--project", project_dir,
-         "--created-by", actor]
+        [
+            sys.executable,
+            "-m",
+            "superharness.engine.discussion",
+            "start",
+            "--discussions-dir",
+            discussions_dir,
+            "--topic",
+            topic,
+            "--max-rounds",
+            str(max_rounds),
+            "--project",
+            project_dir,
+            "--created-by",
+            actor,
+        ]
         + participant_args
         + (["--task", task_id] if task_id else []),
         capture_output=True,
@@ -363,16 +398,30 @@ def cmd_start(
 
     # Create contract task for round 1
     round_task_id = f"{disc_id}/round-1"
-    round_task_owner = next((p for p in participants if p in VALID_OWNERS), participants[0])
+    round_task_owner = next(
+        (p for p in participants if p in VALID_OWNERS), participants[0]
+    )
     subprocess.run(
-        [sys.executable, "-m", "superharness.commands.task", "create",
-         "--project", project_dir,
-         "--id", round_task_id,
-         "--title", f"Discussion round 1: {topic}",
-         "--owner", round_task_owner,
-         "--status", "in_progress",
-         "--workflow", "discussion"],
-        capture_output=True, check=False,
+        [
+            sys.executable,
+            "-m",
+            "superharness.commands.task",
+            "create",
+            "--project",
+            project_dir,
+            "--id",
+            round_task_id,
+            "--title",
+            f"Discussion round 1: {topic}",
+            "--owner",
+            round_task_owner,
+            "--status",
+            "in_progress",
+            "--workflow",
+            "discussion",
+        ],
+        capture_output=True,
+        check=False,
     )
 
     # Classify the discussion topic to determine model tier and effort.
@@ -448,8 +497,8 @@ def cmd_start(
         print(f"  {agent}:")
         print(f"    shux discuss submit --project {project_dir} \\")
         print(f"      --discussion {disc_id} --agent {agent} --round 1 \\")
-        print(f'      --verdict <agree|disagree|partial|consensus|abstain> \\')
-        print(f'      --position "your analysis here"')
+        print("      --verdict <agree|disagree|partial|consensus|abstain> \\")
+        print('      --position "your analysis here"')
         print()
     print(f"Status: shux discuss list --project {project_dir}")
     print("═" * 60)
@@ -496,14 +545,22 @@ def _enqueue_sqlite_shadow(
     except Exception as e:
         logger.warning("discuss.py unexpected error: %s", e, exc_info=True)
         pass
+
+
 def cmd_rounds(discussions_dir: str, disc_id: str) -> int:
     disc_dir = os.path.join(discussions_dir, disc_id)
     if not os.path.isdir(disc_dir):
         _abort(f"Discussion not found: {disc_id}")
 
     result = _subprocess_run_capture(
-        [sys.executable, "-m", "superharness.engine.discussion", "status",
-         "--discussion-dir", disc_dir]
+        [
+            sys.executable,
+            "-m",
+            "superharness.engine.discussion",
+            "status",
+            "--discussion-dir",
+            disc_dir,
+        ]
     )
     if result.returncode != 0:
         print(result.stderr, file=sys.stderr)
@@ -528,7 +585,9 @@ def cmd_rounds(discussions_dir: str, disc_id: str) -> int:
             print("    (no submissions yet)")
         else:
             for s in subs:
-                print(f"    {s.get('agent', '')}: verdict={s.get('verdict', '')} ({s.get('submitted_at', '')})")
+                print(
+                    f"    {s.get('agent', '')}: verdict={s.get('verdict', '')} ({s.get('submitted_at', '')})"
+                )
                 print(f"      {s.get('position', '')}")
     return 0
 
@@ -539,8 +598,14 @@ def cmd_consensus(discussions_dir: str, disc_id: str) -> int:
         _abort(f"Discussion not found: {disc_id}")
 
     result = _subprocess_run_capture(
-        [sys.executable, "-m", "superharness.engine.discussion", "check_consensus",
-         "--discussion-dir", disc_dir]
+        [
+            sys.executable,
+            "-m",
+            "superharness.engine.discussion",
+            "check_consensus",
+            "--discussion-dir",
+            disc_dir,
+        ]
     )
     if result.returncode != 0:
         print(result.stderr, file=sys.stderr)
@@ -565,8 +630,14 @@ def cmd_list(discussions_dir: str) -> int:
     os.makedirs(discussions_dir, exist_ok=True)
 
     result = _subprocess_run_capture(
-        [sys.executable, "-m", "superharness.engine.discussion", "list",
-         "--discussions-dir", discussions_dir]
+        [
+            sys.executable,
+            "-m",
+            "superharness.engine.discussion",
+            "list",
+            "--discussions-dir",
+            discussions_dir,
+        ]
     )
     if result.returncode != 0:
         print(result.stderr, file=sys.stderr)
@@ -657,8 +728,14 @@ def cmd_summary(discussions_dir: str, disc_id: str, handoff_dir: str) -> int:
 
     # Load discussion state via engine
     result = _subprocess_run_capture(
-        [sys.executable, "-m", "superharness.engine.discussion", "status",
-         "--discussion-dir", disc_dir]
+        [
+            sys.executable,
+            "-m",
+            "superharness.engine.discussion",
+            "status",
+            "--discussion-dir",
+            disc_dir,
+        ]
     )
     if result.returncode != 0:
         print(result.stderr, file=sys.stderr)
@@ -667,7 +744,7 @@ def cmd_summary(discussions_dir: str, disc_id: str, handoff_dir: str) -> int:
     try:
         d = json.loads(result.stdout)
     except json.JSONDecodeError:
-        print(f"discuss summary: could not parse discussion state", file=sys.stderr)
+        print("discuss summary: could not parse discussion state", file=sys.stderr)
         return 1
 
     topic = d.get("topic", "unknown")
@@ -679,7 +756,7 @@ def cmd_summary(discussions_dir: str, disc_id: str, handoff_dir: str) -> int:
     verdicts: dict[str, list[str]] = {}
     notes: list[str] = []
     for r in rounds:
-        for sub in (r.get("submissions") or []):
+        for sub in r.get("submissions") or []:
             agent = sub.get("agent", "unknown")
             verdict = sub.get("verdict", "")
             note = sub.get("note", "")
@@ -687,8 +764,11 @@ def cmd_summary(discussions_dir: str, disc_id: str, handoff_dir: str) -> int:
             if note:
                 notes.append(f"{agent} (round {r.get('round', '?')}): {note}")
 
-    outcome_lines = [f"Topic: {topic}", f"Status: {status}",
-                     f"Participants: {', '.join(participants)}"]
+    outcome_lines = [
+        f"Topic: {topic}",
+        f"Status: {status}",
+        f"Participants: {', '.join(participants)}",
+    ]
     for agent, vs in verdicts.items():
         vs_str = ", ".join(str(v) for v in vs)
         outcome_lines.append(f"  {agent}: {vs_str}")
@@ -706,8 +786,7 @@ def cmd_summary(discussions_dir: str, disc_id: str, handoff_dir: str) -> int:
         f"from: discuss\n"
         f"to: owner\n"
         f"date: {now}\n"
-        f"outcome: |\n"
-        + "\n".join(f"  {line}" for line in outcome_lines) + "\n"
+        f"outcome: |\n" + "\n".join(f"  {line}" for line in outcome_lines) + "\n"
     )
     if notes:
         content += "notes:\n" + "\n".join(f"  - |\n    {n}" for n in notes) + "\n"
@@ -721,12 +800,14 @@ def cmd_summary(discussions_dir: str, disc_id: str, handoff_dir: str) -> int:
 
 def _subprocess_run_capture(cmd: list[str]) -> "subprocess.CompletedProcess":
     import subprocess
+
     return subprocess.run(cmd, capture_output=True, text=True, check=False)
 
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def main(argv: list[str] | None = None) -> None:
     import argparse
@@ -743,8 +824,12 @@ def main(argv: list[str] | None = None) -> None:
 
     # status
     p = sub.add_parser("status", add_help=True)
-    p.add_argument("disc_id", nargs="?", default=None,
-                   help="Optional discussion ID to filter output")
+    p.add_argument(
+        "disc_id",
+        nargs="?",
+        default=None,
+        help="Optional discussion ID to filter output",
+    )
     p.add_argument("--project", "-p", default=None)
     p.add_argument("--task", default=None)
 
@@ -761,14 +846,26 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--topic", required=True)
     p.add_argument("--task", default=None)
     p.add_argument("--max-rounds", type=int, default=3)
-    p.add_argument("--tier", default=None, choices=["mini", "standard", "max"],
-                   help="Force discussion tier (bypasses auto-classification)")
-    p.add_argument("--effort", default=None, choices=["low", "medium", "high"],
-                   help="Force discussion effort (bypasses auto-classification)")
+    p.add_argument(
+        "--tier",
+        default=None,
+        choices=["mini", "standard", "max"],
+        help="Force discussion tier (bypasses auto-classification)",
+    )
+    p.add_argument(
+        "--effort",
+        default=None,
+        choices=["low", "medium", "high"],
+        help="Force discussion effort (bypasses auto-classification)",
+    )
     p.add_argument("--owners", action="append", default=[], metavar="OWNER[,OWNER...]")
     p.add_argument("--exclude", action="append", default=[], metavar="OWNER")
-    p.add_argument("--force", action="store_true", default=False,
-                   help="Allow discussion with fewer than 2 running agents")
+    p.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help="Allow discussion with fewer than 2 running agents",
+    )
 
     # rounds
     p = sub.add_parser("rounds", add_help=True)
@@ -795,32 +892,47 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--json", action="store_true", dest="as_json")
 
     # summary
-    p = sub.add_parser("summary", add_help=True,
-                       help="Write a handoff YAML from a concluded discussion")
+    p = sub.add_parser(
+        "summary",
+        add_help=True,
+        help="Write a handoff YAML from a concluded discussion",
+    )
     p.add_argument("--project", "-p", default=None)
     p.add_argument("--id", "--discussion", required=True, dest="disc_id")
 
     # submit
-    p = sub.add_parser("submit", add_help=True,
-                       help="Submit a discussion round response")
+    p = sub.add_parser(
+        "submit", add_help=True, help="Submit a discussion round response"
+    )
     p.add_argument("--project", "-p", default=None)
     p.add_argument("--discussion", "--id", required=True, dest="disc_id")
     p.add_argument("--agent", required=True)
     p.add_argument("--round", type=int, required=True)
-    p.add_argument("--verdict", required=True, help="agree|disagree|partial|consensus|abstain")
+    p.add_argument(
+        "--verdict", required=True, help="agree|disagree|partial|consensus|abstain"
+    )
     p.add_argument("--position", required=True, help="Your position statement")
 
     # close — first-class way to terminate an active discussion AND cancel
     # any pending inbox items for its rounds. Bug G follow-up
     # (docs/bugs/2026-05-11_discuss_dispatch_bugs.md §8).
-    p = sub.add_parser("close", add_help=True,
-                       help="Close an active discussion and cancel its pending rounds")
+    p = sub.add_parser(
+        "close",
+        add_help=True,
+        help="Close an active discussion and cancel its pending rounds",
+    )
     p.add_argument("--project", "-p", default=None)
     p.add_argument("--id", "--discussion", required=True, dest="disc_id")
-    p.add_argument("--outcome", default="closed",
-                   help="Status to set: closed|cancelled|failed|consensus (default: closed)")
-    p.add_argument("--reason", default="",
-                   help="Free-text reason recorded on each cancelled inbox item")
+    p.add_argument(
+        "--outcome",
+        default="closed",
+        help="Status to set: closed|cancelled|failed|consensus (default: closed)",
+    )
+    p.add_argument(
+        "--reason",
+        default="",
+        help="Free-text reason recorded on each cancelled inbox item",
+    )
 
     opts = parser.parse_args(argv)
     if not opts.subcmd:
@@ -893,6 +1005,7 @@ def main(argv: list[str] | None = None) -> None:
 
     elif opts.subcmd == "submit":
         from superharness.engine.discussion import cmd_submit_round
+
         disc_dir = os.path.join(discussions_dir, opts.disc_id)
         rc = cmd_submit_round(
             discussion_dir=disc_dir,
@@ -904,6 +1017,7 @@ def main(argv: list[str] | None = None) -> None:
 
     elif opts.subcmd == "close":
         from superharness.engine.discussion import cmd_close
+
         disc_dir = os.path.join(discussions_dir, opts.disc_id)
         rc = cmd_close(
             discussion_dir=disc_dir,

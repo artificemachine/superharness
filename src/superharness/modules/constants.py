@@ -1,4 +1,5 @@
 """Module system constants — shared across loader, runner, and validator."""
+
 from __future__ import annotations
 
 # Stable lifecycle events that modules can hook into (SDK v1 contract)

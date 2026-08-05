@@ -1,6 +1,4 @@
 """Tests for plan-only timeout and discussion dispatch (anti-hang guards)."""
-import pytest
-
 
 
 class TestPlanOnlyTimeout:
@@ -13,29 +11,38 @@ class TestPlanOnlyTimeout:
 
         # Read the function source to verify the check exists
         import inspect
+
         source = inspect.getsource(enqueue_func)
-        assert '"/round-" in str(task_id)' in source or "'/round-' in str(task_id)" in source, \
-            "_enqueue must detect discussion round tasks"
-        assert 'plan_only = False' in source, \
+        assert (
+            '"/round-" in str(task_id)' in source
+            or "'/round-' in str(task_id)" in source
+        ), "_enqueue must detect discussion round tasks"
+        assert "plan_only = False" in source, (
             "must set plan_only=False for discussion tasks"
+        )
 
     def test_plan_only_detected_in_zombie_reconciler(self):
         """Zombie reconciler must kill stuck plan-only tasks."""
         import inspect
         from superharness.commands import inbox_watch
+
         source = inspect.getsource(inbox_watch)
-        assert 'plan_only' in source, \
+        assert "plan_only" in source, (
             "watcher must check plan_only field for stuck tasks"
-        assert 'PLAN_ONLY_TIMEOUT' in source or '900' in source or 'SIGTERM' in source, \
-            "must have a plan-only timeout that kills stuck processes"
+        )
+        assert (
+            "PLAN_ONLY_TIMEOUT" in source or "900" in source or "SIGTERM" in source
+        ), "must have a plan-only timeout that kills stuck processes"
 
     def test_plan_only_timeout_is_reasonable(self):
         """Plan-only timeout must be between 5-30 minutes."""
         import inspect
         from superharness.commands import inbox_watch
+
         source = inspect.getsource(inbox_watch)
-        assert 'SIGTERM' in source or 'kill' in source.lower(), \
+        assert "SIGTERM" in source or "kill" in source.lower(), (
             "must kill stuck processes"
+        )
 
 
 class TestInteractiveInputGuard:
@@ -61,9 +68,11 @@ class TestInteractiveInputGuard:
         """Self-diagnosis must check for stuck launched tasks."""
         import inspect
         from superharness.commands.inbox_watch import _self_diagnosis
+
         source = inspect.getsource(_self_diagnosis)
-        assert 'yaml' in source or 'pyyaml' in source, \
+        assert "yaml" in source or "pyyaml" in source, (
             "self-diagnosis must check for yaml module"
+        )
 
 
 class TestTaskLogAnalyzer:
@@ -73,8 +82,11 @@ class TestTaskLogAnalyzer:
         """Log analyzer function must exist."""
         import inspect
         from superharness.commands.inbox_watch import _analyze_task_logs
+
         source = inspect.getsource(_analyze_task_logs)
-        assert 'STALE' in source or 'stale' in source, \
+        assert "STALE" in source or "stale" in source, (
             "log analyzer must check for stale tasks"
-        assert 'activity' in source or 'active' in source, \
+        )
+        assert "activity" in source or "active" in source, (
             "log analyzer must check for task activity"
+        )

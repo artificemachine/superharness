@@ -64,7 +64,7 @@ def test_default_model_keys_equal_valid_efforts():
 
 def test_valid_efforts_single_source():
     from superharness.engine import taxonomy
-    from superharness.commands import task, delegate, auto_dispatch
+    from superharness.commands import task
     from superharness.engine import model_router, validate
 
     assert task.VALID_EFFORTS is taxonomy.VALID_EFFORTS

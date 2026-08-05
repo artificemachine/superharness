@@ -1,5 +1,5 @@
 """Tests for dangerous command detection (cherry-picked from hermes-agent)."""
-import pytest
+
 from superharness.guard.detector import detect_dangerous_command, DANGEROUS_PATTERNS
 
 
@@ -50,6 +50,7 @@ class TestDangerousDetection:
     def test_patterns_are_compiled_regex(self):
         """All patterns must be valid compiled regex."""
         import re
+
         for pattern, _ in DANGEROUS_PATTERNS:
             assert isinstance(pattern, re.Pattern)
 
@@ -57,11 +58,13 @@ class TestDangerousDetection:
 class TestApprovalState:
     def test_session_approved_starts_empty(self):
         from superharness.guard.state import ApprovalState
+
         state = ApprovalState()
         assert state.is_approved("rm -rf /") is False
 
     def test_approve_once(self):
         from superharness.guard.state import ApprovalState
+
         state = ApprovalState()
         state.approve("rm -rf /tmp/test", scope="once")
         assert state.is_approved("rm -rf /tmp/test") is True
@@ -69,6 +72,7 @@ class TestApprovalState:
 
     def test_approve_session(self):
         from superharness.guard.state import ApprovalState
+
         state = ApprovalState()
         state.approve("rm", scope="session")
         assert state.is_approved("rm -rf /tmp/test") is True
@@ -76,18 +80,21 @@ class TestApprovalState:
 
     def test_auto_approve_low_risk(self):
         from superharness.guard.state import ApprovalState
+
         state = ApprovalState()
         assert state.check_risk("echo hello") == "low"
         assert state.check_risk("ls -la") == "low"
 
     def test_high_risk(self):
         from superharness.guard.state import ApprovalState
+
         state = ApprovalState()
         assert state.check_risk("rm -rf /") == "high"
         assert state.check_risk("chmod 777 /etc") == "high"
 
     def test_permanent_approval_persists(self, tmp_path):
         from superharness.guard.state import ApprovalState
+
         config_file = tmp_path / "approvals.json"
         state = ApprovalState(config_path=str(config_file))
         state.approve("rm", scope="permanent")
@@ -96,6 +103,7 @@ class TestApprovalState:
 
     def test_reset_clears_once_and_session(self):
         from superharness.guard.state import ApprovalState
+
         state = ApprovalState()
         state.approve("rm -rf /tmp", scope="once")
         state.approve("git push", scope="session")

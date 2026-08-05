@@ -3,6 +3,7 @@
 Each agent gets an isolated worktree branch, runs independently, and results
 are collected for merge or voting.
 """
+
 from __future__ import annotations
 
 import os
@@ -11,12 +12,12 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 import logging
+
 logger = logging.getLogger(__name__)
 
-from superharness.engine.worktree_ops import (
+from superharness.engine.worktree_ops import (  # noqa: E402
     WorktreeSlot,
     copy_superharness_state,
     create_worktree,
@@ -35,6 +36,7 @@ _copy_superharness_state = copy_superharness_state
 @dataclass
 class FanoutResult:
     """Aggregated result from parallel dispatch."""
+
     slots: list[WorktreeSlot]
     total_cost_usd: float = 0.0
     total_duration_seconds: float = 0.0
@@ -53,6 +55,7 @@ def _run_sdk_in_worktree(
     slot.status = "running"
     try:
         from superharness.engine.sdk_runner import SDKRunner
+
         runner = SDKRunner(
             project_dir=Path(slot.worktree_path),
             model=model,
@@ -76,14 +79,18 @@ def _run_sdk_in_worktree(
     if slot.status == "failed" and slot.error and slot.project_dir:
         try:
             from superharness.engine.failure_patterns import record_failure
+
             record_failure(slot.project_dir, f"parallel-slot-{slot.index}", slot.error)
         except Exception as e:
-            logger.warning("parallel_dispatch.py unexpected error: %s", e, exc_info=True)
+            logger.warning(
+                "parallel_dispatch.py unexpected error: %s", e, exc_info=True
+            )
             pass
     # Record benchmark entry for this slot
     if slot.project_dir:
         try:
             from superharness.engine.benchmark import record_dispatch
+
             record_dispatch(
                 slot.project_dir,
                 task_id=f"parallel-slot-{slot.index}",
@@ -94,8 +101,12 @@ def _run_sdk_in_worktree(
                 slot_index=slot.index,
             )
         except Exception as e:
-            logger.warning("parallel_dispatch.py unexpected error: %s", e, exc_info=True)
+            logger.warning(
+                "parallel_dispatch.py unexpected error: %s", e, exc_info=True
+            )
             pass
+
+
 def _collect_diffs(project_dir: str, slots: list[WorktreeSlot]) -> list[dict]:
     """Collect git diffs from each completed worktree slot."""
     diffs = []
@@ -104,21 +115,27 @@ def _collect_diffs(project_dir: str, slots: list[WorktreeSlot]) -> list[dict]:
             continue
         r = subprocess.run(
             ["git", "diff", "HEAD", "--stat"],
-            capture_output=True, text=True, check=False,
+            capture_output=True,
+            text=True,
+            check=False,
             cwd=slot.worktree_path,
         )
         diff_detail = subprocess.run(
             ["git", "diff", "HEAD"],
-            capture_output=True, text=True, check=False,
+            capture_output=True,
+            text=True,
+            check=False,
             cwd=slot.worktree_path,
         )
-        diffs.append({
-            "index": slot.index,
-            "branch": slot.branch,
-            "stat": r.stdout.strip(),
-            "diff": diff_detail.stdout[:10000],  # Cap at 10KB
-            "cost_usd": slot.cost_usd,
-        })
+        diffs.append(
+            {
+                "index": slot.index,
+                "branch": slot.branch,
+                "stat": r.stdout.strip(),
+                "diff": diff_detail.stdout[:10000],  # Cap at 10KB
+                "cost_usd": slot.cost_usd,
+            }
+        )
     return diffs
 
 
@@ -126,20 +143,29 @@ def _try_merge(project_dir: str, branch: str) -> tuple[bool, str]:
     """Try to merge a worktree branch back to HEAD. Returns (success, message)."""
     r = subprocess.run(
         ["git", "merge", "--no-commit", "--no-ff", branch],
-        capture_output=True, text=True, check=False, cwd=project_dir,
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=project_dir,
     )
     if r.returncode == 0:
         # Commit the merge
         subprocess.run(
             ["git", "commit", "-m", f"merge: parallel dispatch slot from {branch}"],
-            capture_output=True, text=True, check=False, cwd=project_dir,
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=project_dir,
         )
         return True, "merged"
     else:
         # Abort the merge
         subprocess.run(
             ["git", "merge", "--abort"],
-            capture_output=True, text=True, check=False, cwd=project_dir,
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=project_dir,
         )
         return False, r.stderr.strip() or r.stdout.strip()
 
@@ -185,12 +211,14 @@ def fanout_dispatch(
 
         _copy_superharness_state(project_dir, wt_path)
 
-        slots.append(WorktreeSlot(
-            index=i,
-            branch=branch,
-            worktree_path=wt_path,
-            project_dir=project_dir,
-        ))
+        slots.append(
+            WorktreeSlot(
+                index=i,
+                branch=branch,
+                worktree_path=wt_path,
+                project_dir=project_dir,
+            )
+        )
 
     if not slots:
         return FanoutResult(slots=[], merge_conflicts=["failed to create worktrees"])
@@ -213,7 +241,9 @@ def fanout_dispatch(
         # Collect results
         result = FanoutResult(slots=slots)
         result.total_cost_usd = sum(s.cost_usd for s in slots)
-        result.total_duration_seconds = max(s.duration_seconds for s in slots) if slots else 0
+        result.total_duration_seconds = (
+            max(s.duration_seconds for s in slots) if slots else 0
+        )
     finally:
         # Clean up worktrees even on exception
         for slot in slots:

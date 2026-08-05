@@ -46,7 +46,6 @@ import json
 import secrets
 import socket
 import threading
-import time
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
@@ -62,17 +61,20 @@ import importlib.util
 import sys
 from pathlib import Path as _Path
 
-_dashboard_src = _Path(__file__).parents[2] / "src" / "superharness" / "scripts" / "dashboard-ui.py"
+_dashboard_src = (
+    _Path(__file__).parents[2] / "src" / "superharness" / "scripts" / "dashboard-ui.py"
+)
 _spec = importlib.util.spec_from_file_location("dashboard_ui", _dashboard_src)
 dashboard_ui = importlib.util.module_from_spec(_spec)
 sys.modules["dashboard_ui"] = dashboard_ui
 _spec.loader.exec_module(dashboard_ui)
 
 Handler = dashboard_ui.Handler
-from superharness.engine.db import get_connection, init_db
+from superharness.engine.db import get_connection, init_db  # noqa: E402
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
 
 def _free_port() -> int:
     with socket.socket() as s:
@@ -89,13 +91,16 @@ def _harness(tmp_path: Path) -> Path:
 
 def _write_contract(harness: Path, tasks: list[dict] | None = None) -> None:
     f = harness / "contract.yaml"
-    f.write_text(yaml.dump({"id": "test", "tasks": tasks or []}, default_flow_style=False))
+    f.write_text(
+        yaml.dump({"id": "test", "tasks": tasks or []}, default_flow_style=False)
+    )
 
 
 def _write_inbox(harness: Path, items: list[dict] | None = None) -> None:
     f = harness / "inbox.yaml"
     f.write_text(
-        "# inbox\n" + yaml.dump(items or [], default_flow_style=False, allow_unicode=True)
+        "# inbox\n"
+        + yaml.dump(items or [], default_flow_style=False, allow_unicode=True)
     )
 
 
@@ -105,7 +110,9 @@ def _init_db(tmp_path: Path) -> None:
     conn.close()
 
 
-def _insert_task(tmp_path: Path, task_id: str, status: str, owner: str = "claude-code") -> None:
+def _insert_task(
+    tmp_path: Path, task_id: str, status: str, owner: str = "claude-code"
+) -> None:
     conn = get_connection(str(tmp_path))
     conn.execute("PRAGMA foreign_keys = OFF")
     now = "2026-04-27T00:00:00Z"
@@ -118,6 +125,7 @@ def _insert_task(tmp_path: Path, task_id: str, status: str, owner: str = "claude
 
 
 # ── server fixture ────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def server(tmp_path):
@@ -148,6 +156,7 @@ def server(tmp_path):
 
 # ── request helpers ───────────────────────────────────────────────────────────
 
+
 def _get(base: str, path: str, token: str | None = None) -> tuple[int, dict]:
     url = base + path
     req = urllib.request.Request(url, method="GET")
@@ -160,7 +169,9 @@ def _get(base: str, path: str, token: str | None = None) -> tuple[int, dict]:
         return e.code, json.loads(e.read())
 
 
-def _post_action(base: str, token: str, action: str, payload: dict | None = None) -> tuple[int, dict]:
+def _post_action(
+    base: str, token: str, action: str, payload: dict | None = None
+) -> tuple[int, dict]:
     body = json.dumps({"action": action, **(payload or {})}).encode()
     req = urllib.request.Request(
         base + "/api/action",
@@ -201,6 +212,7 @@ def _post_owners(base: str, token: str, action: str, owner: str) -> tuple[int, d
 
 
 # ── GET endpoint tests ────────────────────────────────────────────────────────
+
 
 class TestGetEndpoints:
     def test_root_returns_html(self, server):
@@ -297,6 +309,7 @@ class TestGetEndpoints:
 
 # ── GET auth tests (I2: read-only /api/* routes require the token) ───────────
 
+
 class TestReadOnlyAuth:
     def test_logs_endpoint_requires_token(self, server):
         base, token = server
@@ -310,6 +323,7 @@ class TestReadOnlyAuth:
 
 # ── POST auth tests ───────────────────────────────────────────────────────────
 
+
 class TestPostAuth:
     def test_no_token_returns_403(self, server):
         base, _ = server
@@ -318,7 +332,10 @@ class TestPostAuth:
             base + "/api/action",
             data=body,
             method="POST",
-            headers={"Content-Type": "application/json", "Content-Length": str(len(body))},
+            headers={
+                "Content-Type": "application/json",
+                "Content-Length": str(len(body)),
+            },
         )
         try:
             urllib.request.urlopen(req, timeout=5)
@@ -339,13 +356,16 @@ class TestPostAuth:
 
 # ── POST /api/action — subprocess-delegating (mocked _run_cmd) ───────────────
 
+
 class TestSubprocessActions:
     """Actions that shell out — mock _run_cmd so tests don't spawn real processes."""
 
     def _mock_run(self, exit_code: int = 0, stdout: str = "ok") -> dict:
         return {"exit_code": exit_code, "stdout": stdout, "stderr": "", "cmd": "mocked"}
 
-    @pytest.mark.parametrize("action", ["dispatch_print_codex", "dispatch_print_claude"])
+    @pytest.mark.parametrize(
+        "action", ["dispatch_print_codex", "dispatch_print_claude"]
+    )
     def test_dispatch_print_returns_200(self, server, action):
         base, token = server
         with patch.object(Handler, "_run_cmd", return_value=self._mock_run()):
@@ -368,7 +388,9 @@ class TestSubprocessActions:
     def test_approve_report_delegates_to_close_cmd(self, server, tmp_path):
         base, token = server
         _insert_task(tmp_path, "t-close", "report_ready")
-        with patch.object(Handler, "_run_cmd", return_value=self._mock_run()) as mock_cmd:
+        with patch.object(
+            Handler, "_run_cmd", return_value=self._mock_run()
+        ) as mock_cmd:
             status, _ = _post_action(base, token, "approve_report:t-close")
         assert status == 200
         # Verify close command was called with correct task id
@@ -379,7 +401,9 @@ class TestSubprocessActions:
     def test_close_task_delegates_to_close_cmd(self, server, tmp_path):
         base, token = server
         _insert_task(tmp_path, "t-close2", "done")
-        with patch.object(Handler, "_run_cmd", return_value=self._mock_run()) as mock_cmd:
+        with patch.object(
+            Handler, "_run_cmd", return_value=self._mock_run()
+        ) as mock_cmd:
             status, _ = _post_action(base, token, "close_task:t-close2")
         assert status == 200
         call_args = mock_cmd.call_args[0][0]
@@ -400,6 +424,7 @@ class TestSubprocessActions:
 
 
 # ── POST /api/action — logic-bearing (no subprocess mock needed) ──────────────
+
 
 class TestLogicActions:
     def test_recover_failed_no_items_returns_recovered_0(self, server):
@@ -431,7 +456,9 @@ class TestLogicActions:
         assert status == 200
         assert body.get("ok") is True
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_disable_task_sets_stopped(self, server, tmp_path):
         base, token = server
         _insert_task(tmp_path, "t-dis", "todo")
@@ -509,6 +536,7 @@ class TestLogicActions:
 
 # ── POST /api/owners ──────────────────────────────────────────────────────────
 
+
 class TestOwnersEndpoint:
     def test_invalid_owner_name_returns_400(self, server):
         base, token = server
@@ -545,7 +573,10 @@ class TestOwnersEndpoint:
             base + "/api/owners",
             data=body,
             method="POST",
-            headers={"Content-Type": "application/json", "Content-Length": str(len(body))},
+            headers={
+                "Content-Type": "application/json",
+                "Content-Length": str(len(body)),
+            },
         )
         try:
             urllib.request.urlopen(req, timeout=5)

@@ -12,6 +12,7 @@ Fix: _reconcile_yaml_submissions() is called inside cmd_advance before the
 completion check. It inserts any missing SQLite rows from on-disk YAMLs so
 both views agree at the moment of state transition.
 """
+
 from __future__ import annotations
 
 import json
@@ -34,6 +35,7 @@ from superharness.engine.errors import SuperharnessError
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
@@ -65,22 +67,34 @@ def _disc_dir(project: Path, disc_id: str) -> Path:
     return project / ".superharness" / "discussions" / disc_id
 
 
-def _write_yaml(project: Path, disc_id: str, round_: int, agent: str,
-                verdict: str = "agree", position: str = "") -> Path:
+def _write_yaml(
+    project: Path,
+    disc_id: str,
+    round_: int,
+    agent: str,
+    verdict: str = "agree",
+    position: str = "",
+) -> Path:
     d = _disc_dir(project, disc_id)
     d.mkdir(parents=True, exist_ok=True)
     path = d / f"round-{round_}-{agent}.yaml"
-    path.write_text(yaml.dump({
-        "discussion_id": disc_id,
-        "round": round_,
-        "agent": agent,
-        "verdict": verdict,
-        "position": position or f"Position by {agent}",
-    }))
+    path.write_text(
+        yaml.dump(
+            {
+                "discussion_id": disc_id,
+                "round": round_,
+                "agent": agent,
+                "verdict": verdict,
+                "position": position or f"Position by {agent}",
+            }
+        )
+    )
     return path
 
 
-def _register_in_db(conn, disc_id: str, round_: int, agent: str, verdict: str = "agree"):
+def _register_in_db(
+    conn, disc_id: str, round_: int, agent: str, verdict: str = "agree"
+):
     conn.execute(
         "INSERT INTO discussion_rounds "
         "(discussion_id, round_number, agent, content, verdict, created_at) "
@@ -93,6 +107,7 @@ def _register_in_db(conn, disc_id: str, round_: int, agent: str, verdict: str = 
 # ---------------------------------------------------------------------------
 # _reconcile_yaml_submissions unit tests
 # ---------------------------------------------------------------------------
+
 
 class TestReconcileYamlSubmissions:
     def test_inserts_missing_yaml_submission(self, project: Path):
@@ -121,9 +136,7 @@ class TestReconcileYamlSubmissions:
         disc = _create_discussion(conn, project, disc_id, ["agent-a"])
         _write_yaml(project, disc_id, 1, "agent-a", verdict="partial")
 
-        _reconcile_yaml_submissions(
-            conn, disc, str(_disc_dir(project, disc_id)), 1
-        )
+        _reconcile_yaml_submissions(conn, disc, str(_disc_dir(project, disc_id)), 1)
         conn.commit()
 
         rounds = discussions_dao.get_rounds(conn, disc_id)
@@ -186,6 +199,7 @@ class TestReconcileYamlSubmissions:
 # ---------------------------------------------------------------------------
 # cmd_advance integration tests (the stuck-discussion scenario)
 # ---------------------------------------------------------------------------
+
 
 class TestCmdAdvanceReconciles:
     def _make_discussion_dir(self, project: Path, disc_id: str) -> str:
@@ -293,6 +307,7 @@ class TestCmdAdvanceReconciles:
 # Bug O regression tests: advance marker idempotency + current_round detection
 # ---------------------------------------------------------------------------
 
+
 class TestBugO_AdvanceMarkerIdempotency:
     """Bug O: cmd_advance stored advance marker at fixed round_number=-2.
 
@@ -317,7 +332,9 @@ class TestBugO_AdvanceMarkerIdempotency:
 
     def test_status_shows_round_2_after_advance(self, project: Path):
         """cmd_status must return current_round=2 after advancing from round 1."""
-        import io, contextlib
+        import io
+        import contextlib
+
         disc_id = "disc-bug-o-status"
         disc_dir = self._setup(project, disc_id, ["agent-a", "agent-b"])
 
@@ -343,7 +360,9 @@ class TestBugO_AdvanceMarkerIdempotency:
     def test_advance_is_idempotent(self, project: Path):
         """Calling cmd_advance twice must not insert duplicate advance markers
         and must return next_round=2 both times without error."""
-        import io, contextlib
+        import io
+        import contextlib
+
         disc_id = "disc-bug-o-idempotent"
         disc_dir = self._setup(project, disc_id, ["agent-a"])
 
@@ -362,19 +381,24 @@ class TestBugO_AdvanceMarkerIdempotency:
         assert r1["next_round"] == r2["next_round"] == 2
 
         # Only one advance marker row must exist in the DB
-        conn = _make_db(project)  # reuses existing DB via same project path
+        _make_db(project)  # reuses existing DB via same project path
         from superharness.engine.db import get_connection
+
         conn2 = get_connection(str(project))
         markers = conn2.execute(
             "SELECT COUNT(*) FROM discussion_rounds WHERE discussion_id=? AND agent='_advance'",
             (disc_id,),
         ).fetchone()[0]
         conn2.close()
-        assert markers == 1, f"Expected 1 advance marker, got {markers} (Bug O idempotency)"
+        assert markers == 1, (
+            f"Expected 1 advance marker, got {markers} (Bug O idempotency)"
+        )
 
     def test_status_round_2_still_correct_after_double_advance(self, project: Path):
         """Status must show current_round=2 even when advance was called twice."""
-        import io, contextlib
+        import io
+        import contextlib
+
         disc_id = "disc-bug-o-double"
         disc_dir = self._setup(project, disc_id, ["agent-a", "agent-b"])
 
@@ -393,7 +417,8 @@ class TestBugO_AdvanceMarkerIdempotency:
         """When advance marker exists for round N but round-N submissions are YAML-only,
         advance must reconcile them and advance to round N+1 (the stuck-discussion
         cascade scenario: round 1 advanced via DB, round-2 YAMLs written but no DB rows)."""
-        import io, contextlib
+        import io
+        import contextlib
 
         conn = _make_db(project)
         disc_id = "disc-bug-o-cascade"
@@ -403,6 +428,7 @@ class TestBugO_AdvanceMarkerIdempotency:
         _register_in_db(conn, disc_id, 1, "agent-b", "partial")
         # Advance marker at round 2 (round 1 was already advanced)
         from superharness.engine.db import now_iso
+
         conn.execute(
             "INSERT INTO discussion_rounds (discussion_id, round_number, agent, content, verdict, created_at)"
             " VALUES (?, 2, '_advance', NULL, NULL, ?)",
@@ -431,6 +457,7 @@ class TestBugO_AdvanceMarkerIdempotency:
 # (BUGREPORT-discussion-consensus-single-participant)
 # ---------------------------------------------------------------------------
 
+
 class TestRegisterYamlSubmissionRejectsPromptCopy:
     """register_yaml_submission must reject YAML files whose verdict field
     is an unparsed prompt copy (e.g. 'agree or disagree or partial')
@@ -458,7 +485,12 @@ class TestRegisterYamlSubmissionRejectsPromptCopy:
 
         now = now_iso()
         result = discussions_dao.register_yaml_submission(
-            conn, disc_id, 1, "codex-cli", str(disc_dir), now,
+            conn,
+            disc_id,
+            1,
+            "codex-cli",
+            str(disc_dir),
+            now,
         )
         assert not result, "prompt-copy verdict must be rejected (return False)"
 
@@ -478,7 +510,12 @@ class TestRegisterYamlSubmissionRejectsPromptCopy:
 
         now = now_iso()
         result = discussions_dao.register_yaml_submission(
-            conn, disc_id, 1, "codex-cli", str(disc_dir), now,
+            conn,
+            disc_id,
+            1,
+            "codex-cli",
+            str(disc_dir),
+            now,
         )
         assert not result, "unrecognized verdict must be rejected"
 
@@ -497,7 +534,12 @@ class TestRegisterYamlSubmissionRejectsPromptCopy:
 
         now = now_iso()
         result = discussions_dao.register_yaml_submission(
-            conn, disc_id, 1, "codex-cli", str(disc_dir), now,
+            conn,
+            disc_id,
+            1,
+            "codex-cli",
+            str(disc_dir),
+            now,
         )
         assert result, "valid verdict 'agree' must be accepted"
 
@@ -517,7 +559,12 @@ class TestRegisterYamlSubmissionRejectsPromptCopy:
 
         now = now_iso()
         result = discussions_dao.register_yaml_submission(
-            conn, disc_id, 1, "codex-cli", str(disc_dir), now,
+            conn,
+            disc_id,
+            1,
+            "codex-cli",
+            str(disc_dir),
+            now,
         )
         assert result, "valid verdict 'abstain' must be accepted"
 

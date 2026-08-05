@@ -15,11 +15,22 @@ CLAUDE_TEMPLATE = TEMPLATE_DIR / "CLAUDE.md.template"
 AGENTS_TEMPLATE = TEMPLATE_DIR / "AGENTS.md.template"
 
 
-def _run_init(project: Path, project_name: str = "SoulTest") -> subprocess.CompletedProcess[str]:
+def _run_init(
+    project: Path, project_name: str = "SoulTest"
+) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT / "src")
-    cmd = [sys.executable, "-m", "superharness.commands.init_project", project_name, "Python", "greenfield"]
-    return subprocess.run(cmd, cwd=str(project), text=True, capture_output=True, env=env, check=False)
+    cmd = [
+        sys.executable,
+        "-m",
+        "superharness.commands.init_project",
+        project_name,
+        "Python",
+        "greenfield",
+    ]
+    return subprocess.run(
+        cmd, cwd=str(project), text=True, capture_output=True, env=env, check=False
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -32,7 +43,9 @@ def test_soul_template_exists() -> None:
 
 
 def test_soul_template_has_guardrails() -> None:
-    assert SOUL_TEMPLATE.exists(), "Template not found — run test_soul_template_exists first"
+    assert SOUL_TEMPLATE.exists(), (
+        "Template not found — run test_soul_template_exists first"
+    )
     text = SOUL_TEMPLATE.read_text()
     assert "Guardrails" in text, "SOUL.md.template must contain a 'Guardrails' section"
 
@@ -79,7 +92,9 @@ def test_init_skips_soul_md_if_exists(fresh_project: Path) -> None:
 
     result = _run_init(fresh_project)
     assert result.returncode == 0, result.stderr
-    assert soul.read_text() == sentinel, "init_project.py must not overwrite an existing SOUL.md"
+    assert soul.read_text() == sentinel, (
+        "init_project.py must not overwrite an existing SOUL.md"
+    )
     assert "Skipped: SOUL.md" in result.stdout, "init should report 'Skipped: SOUL.md'"
 
 
@@ -90,7 +105,9 @@ def test_soul_md_has_operating_constraints(fresh_project: Path) -> None:
     assert soul.exists()
     content = soul.read_text()
     has_constraints = "Operating Constraints" in content or "Guardrails" in content
-    assert has_constraints, "SOUL.md must contain 'Operating Constraints' or 'Guardrails'"
+    assert has_constraints, (
+        "SOUL.md must contain 'Operating Constraints' or 'Guardrails'"
+    )
 
 
 # ---------------------------------------------------------------------------

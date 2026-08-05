@@ -7,6 +7,7 @@ Usage:
     python3 -m superharness.engine.detect --project /path/to/project
     python3 -m superharness.engine.detect --project . --output /path/to/detected.yaml
 """
+
 from __future__ import annotations
 
 import glob as glob_mod
@@ -21,41 +22,42 @@ from pathlib import Path
 from superharness.engine.errors import SuperharnessError, UsageError, handle_cli_error
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 # --- Stack detection table ---
 STACK_SIGNALS = [
-    ("package.json",       "Node"),
-    ("tsconfig.json",      "TypeScript"),
-    ("pyproject.toml",     "Python"),
-    ("requirements.txt",   "Python"),
-    ("setup.py",           "Python"),
-    ("Gemfile",            "Ruby"),
-    ("go.mod",             "Go"),
-    ("Cargo.toml",         "Rust"),
-    ("pom.xml",            "Java"),
-    ("build.gradle",       "Kotlin/Java"),
-    ("build.gradle.kts",   "Kotlin"),
+    ("package.json", "Node"),
+    ("tsconfig.json", "TypeScript"),
+    ("pyproject.toml", "Python"),
+    ("requirements.txt", "Python"),
+    ("setup.py", "Python"),
+    ("Gemfile", "Ruby"),
+    ("go.mod", "Go"),
+    ("Cargo.toml", "Rust"),
+    ("pom.xml", "Java"),
+    ("build.gradle", "Kotlin/Java"),
+    ("build.gradle.kts", "Kotlin"),
     ("docker-compose.yml", "Docker"),
-    ("docker-compose.yaml","Docker"),
-    ("Dockerfile",         "Docker"),
-    ("Makefile",           "Make"),
-    ("Justfile",           "Just"),
-    ("serverless.yml",     "Serverless"),
-    ("serverless.yaml",    "Serverless"),
+    ("docker-compose.yaml", "Docker"),
+    ("Dockerfile", "Docker"),
+    ("Makefile", "Make"),
+    ("Justfile", "Just"),
+    ("serverless.yml", "Serverless"),
+    ("serverless.yaml", "Serverless"),
 ]
 
 CI_SIGNALS = [
     (".github/workflows", "github-actions"),
-    (".gitlab-ci.yml",    "gitlab-ci"),
-    ("Jenkinsfile",       "jenkins"),
-    (".circleci",         "circleci"),
+    (".gitlab-ci.yml", "gitlab-ci"),
+    ("Jenkinsfile", "jenkins"),
+    (".circleci", "circleci"),
 ]
 
 HARNESS_SIGNALS = [
-    ("CLAUDE.md",                       "claude-md"),
-    ("AGENTS.md",                       "agents-md"),
-    (".cursor/rules",                   "cursor-rules"),
+    ("CLAUDE.md", "claude-md"),
+    ("AGENTS.md", "agents-md"),
+    (".cursor/rules", "cursor-rules"),
     (".github/copilot-instructions.md", "copilot-instructions"),
 ]
 
@@ -86,6 +88,7 @@ def detect_agents() -> list[str]:
 
 def _which(cmd: str) -> bool:
     import shutil
+
     return shutil.which(cmd) is not None
 
 
@@ -95,7 +98,10 @@ def detect_repo(project_dir: Path) -> str:
     try:
         result = subprocess.run(
             ["git", "remote", "get-url", "origin"],
-            cwd=project_dir, capture_output=True, text=True, check=False,
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         url = result.stdout.strip()
         if not url:
@@ -125,10 +131,14 @@ def detect_team_size(project_dir: Path) -> str:
         return "solo"
     try:
         from datetime import timedelta
+
         since = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d")
         result = subprocess.run(
             ["git", "log", "--format=%ae", f"--since={since}"],
-            cwd=project_dir, capture_output=True, text=True, check=False,
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         authors = list({a for a in result.stdout.strip().splitlines() if a})
         count = len(authors)
@@ -161,7 +171,10 @@ def detect_status(project_dir: Path) -> str:
     try:
         result = subprocess.run(
             ["git", "rev-list", "--count", "HEAD"],
-            cwd=project_dir, capture_output=True, text=True, check=False,
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         commits = int(result.stdout.strip() or "0")
         if commits <= 1:
@@ -193,7 +206,11 @@ def detect_project_name(project_dir: Path) -> str:
     pyproject = project_dir / "pyproject.toml"
     if pyproject.exists():
         content = pyproject.read_text(errors="replace")
-        m = re.search(r"^\[project\].*?^name\s*=\s*\"([^\"]+)\"", content, re.MULTILINE | re.DOTALL)
+        m = re.search(
+            r"^\[project\].*?^name\s*=\s*\"([^\"]+)\"",
+            content,
+            re.MULTILINE | re.DOTALL,
+        )
         if m:
             return m.group(1)
 
@@ -201,7 +218,11 @@ def detect_project_name(project_dir: Path) -> str:
     cargo = project_dir / "Cargo.toml"
     if cargo.exists():
         content = cargo.read_text(errors="replace")
-        m = re.search(r"^\[package\].*?^name\s*=\s*\"([^\"]+)\"", content, re.MULTILINE | re.DOTALL)
+        m = re.search(
+            r"^\[package\].*?^name\s*=\s*\"([^\"]+)\"",
+            content,
+            re.MULTILINE | re.DOTALL,
+        )
         if m:
             return m.group(1)
 
@@ -219,7 +240,9 @@ def run(project_dir: Path, output_path: Path | None = None) -> None:
     name = detect_project_name(project_dir)
     already_initialized = (project_dir / ".superharness").is_dir()
 
-    now = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    now = (
+        datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    )
 
     def _list(items: list[str]) -> str:
         if not items:
@@ -259,8 +282,12 @@ def main(argv: list[str] | None = None) -> None:
         prog="detect",
         description="Environment detection for superharness agent-install.",
     )
-    p.add_argument("-p", "--project", default=os.getcwd(), help="Project directory (default: cwd)")
-    p.add_argument("-o", "--output", default=None, help="Write YAML to file instead of stdout")
+    p.add_argument(
+        "-p", "--project", default=os.getcwd(), help="Project directory (default: cwd)"
+    )
+    p.add_argument(
+        "-o", "--output", default=None, help="Write YAML to file instead of stdout"
+    )
     opts = p.parse_args(argv)
 
     project_dir = Path(opts.project).resolve()

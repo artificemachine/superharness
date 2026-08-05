@@ -3,6 +3,7 @@
 Watches the inbox and dispatches pending items. Supports single-cycle
 (launchd) and foreground (polling) modes.
 """
+
 from __future__ import annotations
 
 import importlib.resources as _importlib_resources
@@ -12,6 +13,10 @@ import subprocess
 import sys
 import time
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from superharness.engine import live_state
 
 
 def _now_utc() -> str:
@@ -20,14 +25,15 @@ def _now_utc() -> str:
 
 def _profile_autonomy(profile: dict) -> str:
     from superharness.engine.profile import normalize_autonomy
-    return normalize_autonomy(profile.get("autonomy", "ai_driven"))
 
+    return normalize_autonomy(profile.get("autonomy", "ai_driven"))
 
 
 def _load_tasks(project_dir: str) -> list[dict]:
     """Return all contract tasks via state_reader (SQLite)."""
     try:
         from superharness.engine.state_reader import get_tasks
+
         return get_tasks(project_dir)
     except Exception as e:
         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
@@ -36,7 +42,10 @@ def _load_tasks(project_dir: str) -> list[dict]:
 
 def _deps_satisfied_from_tasks(tasks: list[dict], task_id: str) -> bool:
     """Dependency check using an already-loaded task list (no file I/O)."""
-    task = next((t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == task_id), None)
+    task = next(
+        (t for t in tasks if isinstance(t, dict) and str(t.get("id", "")) == task_id),
+        None,
+    )
     if task is None:
         return True
     blocked_by = task.get("blocked_by")
@@ -48,7 +57,11 @@ def _deps_satisfied_from_tasks(tasks: list[dict], task_id: str) -> bool:
         dep_ids = [str(d).strip() for d in blocked_by if str(d).strip()]
     else:
         return True
-    status_map = {str(t.get("id", "")): str(t.get("status", "")) for t in tasks if isinstance(t, dict)}
+    status_map = {
+        str(t.get("id", "")): str(t.get("status", ""))
+        for t in tasks
+        if isinstance(t, dict)
+    }
     return all(status_map.get(dep_id, "") == "done" for dep_id in dep_ids)
 
 
@@ -56,15 +69,19 @@ def _ensure_task_in_sqlite(conn, task_id: str, project_dir: str, now: str) -> No
     """No-op if the task is already in SQLite; silently returns if not found."""
     try:
         from superharness.engine import tasks_dao
+
         tasks_dao.get(conn, task_id)
     except Exception as e:
         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
+
+
 def _sqlite_mirror_inbox_enqueue(project_dir: str, items: list[dict], now: str) -> None:
     """Mirror new inbox items to SQLite. Never raises."""
     try:
         from superharness.engine.db import get_connection, init_db, transaction
         from superharness.engine import inbox_dao, ledger_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -84,14 +101,19 @@ def _sqlite_mirror_inbox_enqueue(project_dir: str, items: list[dict], now: str) 
                         now=item.get("created_at", now),
                     )
                 ledger_dao.record(
-                    conn, agent="watcher", action="auto_enqueue",
-                    details={"count": len(items)}, now=now,
+                    conn,
+                    agent="watcher",
+                    action="auto_enqueue",
+                    details={"count": len(items)},
+                    now=now,
                 )
         finally:
             conn.close()
     except Exception as e:
         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
+
+
 _INBOX_RETRY_WRITERS: dict[str, "live_state.LiveStateWriter"] = {}
 _TASK_STATUS_WRITERS: dict[str, "live_state.LiveStateWriter"] = {}
 
@@ -104,20 +126,31 @@ def _get_inbox_retry_writer(project_dir: str):
 
     writer = _INBOX_RETRY_WRITERS.get(project_dir)
     if writer is None:
+
         def _write_fn(key: str, value: str) -> None:
             import json
             from superharness.engine.db import get_connection, init_db, transaction
             from superharness.engine import inbox_dao, ledger_dao
+
             payload = json.loads(value)
             conn = get_connection(project_dir)
             try:
                 init_db(conn)
                 with transaction(conn):
                     for item in payload["items"]:
-                        inbox_dao.set_retry(conn, str(item["id"]), int(item["retry_count"]), None, payload["now"])
+                        inbox_dao.set_retry(
+                            conn,
+                            str(item["id"]),
+                            int(item["retry_count"]),
+                            None,
+                            payload["now"],
+                        )
                     ledger_dao.record(
-                        conn, agent="watcher", action="auto_retry",
-                        details={"ids": [i["id"] for i in payload["items"]]}, now=payload["now"],
+                        conn,
+                        agent="watcher",
+                        action="auto_retry",
+                        details={"ids": [i["id"] for i in payload["items"]]},
+                        now=payload["now"],
                     )
             finally:
                 conn.close()
@@ -127,7 +160,9 @@ def _get_inbox_retry_writer(project_dir: str):
     return writer
 
 
-def _sqlite_mirror_inbox_retry(project_dir: str, retried_items: list[dict], now: str) -> None:
+def _sqlite_mirror_inbox_retry(
+    project_dir: str, retried_items: list[dict], now: str
+) -> None:
     """Mirror inbox retry resets to SQLite via the ordered live-state
     chokepoint (engine/live_state.py). Never raises — write failures are
     logged inside the chokepoint, not propagated here.
@@ -135,13 +170,17 @@ def _sqlite_mirror_inbox_retry(project_dir: str, retried_items: list[dict], now:
     Each entry in retried_items must have 'id' and 'retry_count'.
     """
     import json
+
     if not retried_items:
         return
     writer = _get_inbox_retry_writer(project_dir)
     key = "inbox_retry:" + ",".join(sorted(str(i["id"]) for i in retried_items))
     value = json.dumps(
         {
-            "items": [{"id": str(i["id"]), "retry_count": int(i.get("retry_count", 0))} for i in retried_items],
+            "items": [
+                {"id": str(i["id"]), "retry_count": int(i.get("retry_count", 0))}
+                for i in retried_items
+            ],
             "now": now,
         },
         sort_keys=True,
@@ -157,10 +196,12 @@ def _get_task_status_writer(project_dir: str):
 
     writer = _TASK_STATUS_WRITERS.get(project_dir)
     if writer is None:
+
         def _write_fn(key: str, value: str) -> None:
             import json
             from superharness.engine.db import get_connection, init_db, transaction
             from superharness.engine import tasks_dao, ledger_dao
+
             payload = json.loads(value)
             conn = get_connection(project_dir)
             try:
@@ -169,11 +210,18 @@ def _get_task_status_writer(project_dir: str):
                     task = tasks_dao.get(conn, key)
                     if task is None:
                         return
-                    changes: dict = {"status": payload["status"], **(payload.get("extra") or {})}
+                    changes: dict = {
+                        "status": payload["status"],
+                        **(payload.get("extra") or {}),
+                    }
                     tasks_dao.update(conn, key, task.version, changes=changes)
                     ledger_dao.record(
-                        conn, agent="watcher", action="task_status_change",
-                        task_id=key, details={"status": payload["status"]}, now=payload["now"],
+                        conn,
+                        agent="watcher",
+                        action="task_status_change",
+                        task_id=key,
+                        details={"status": payload["status"]},
+                        now=payload["now"],
                     )
             finally:
                 conn.close()
@@ -190,10 +238,15 @@ def _sqlite_mirror_task_status(
     chokepoint (engine/live_state.py). Never raises — write failures are
     logged inside the chokepoint, not propagated here."""
     import json
+
     writer = _get_task_status_writer(project_dir)
-    value = json.dumps({"status": status, "now": now, "extra": extra or {}}, sort_keys=True)
+    value = json.dumps(
+        {"status": status, "now": now, "extra": extra or {}}, sort_keys=True
+    )
     writer.publish(task_id, value)
     writer.flush(timeout=5.0)
+
+
 def _poll_operator_commands(project_dir: str) -> None:
     """Drain pending operator_commands rows and apply approve/reject transitions.
 
@@ -206,11 +259,11 @@ def _poll_operator_commands(project_dir: str) -> None:
 
     _COMMAND_MAP = {
         "approve": "plan_approved",
-        "reject":  "stopped",
+        "reject": "stopped",
     }
     _VALID_FROM = {
         "approve": {"plan_proposed"},
-        "reject":  {"plan_proposed", "plan_approved"},
+        "reject": {"plan_proposed", "plan_approved"},
     }
 
     now = _now_utc()
@@ -224,7 +277,8 @@ def _poll_operator_commands(project_dir: str) -> None:
             if cmd.command not in _COMMAND_MAP:
                 with transaction(conn):
                     operator_commands_dao.update_status(
-                        conn, cmd.id,
+                        conn,
+                        cmd.id,
                         status="failed",
                         result={"message": f"unknown command: {cmd.command!r}"},
                         now=now,
@@ -246,28 +300,40 @@ def _poll_operator_commands(project_dir: str) -> None:
             if task.status not in valid_from:
                 with transaction(conn):
                     operator_commands_dao.update_status(
-                        conn, cmd.id,
+                        conn,
+                        cmd.id,
                         status="skipped",
-                        result={"message": f"task status {task.status!r} not in {valid_from!r}"},
+                        result={
+                            "message": f"task status {task.status!r} not in {valid_from!r}"
+                        },
                         now=now,
                     )
                 continue
 
             with transaction(conn):
-                tasks_dao.update(conn, cmd.task_id, task.version, {"status": target_status})
+                tasks_dao.update(
+                    conn, cmd.task_id, task.version, {"status": target_status}
+                )
                 ledger_dao.record(
-                    conn, agent="watcher", action="operator_command",
+                    conn,
+                    agent="watcher",
+                    action="operator_command",
                     task_id=cmd.task_id,
                     details={"command": cmd.command, "new_status": target_status},
                     now=now,
                 )
                 operator_commands_dao.update_status(
-                    conn, cmd.id,
+                    conn,
+                    cmd.id,
                     status="executed",
-                    result={"message": f"watcher applied {cmd.command} → {target_status}"},
+                    result={
+                        "message": f"watcher applied {cmd.command} → {target_status}"
+                    },
                     now=now,
                 )
-            print(f"operator_commands: {cmd.command} → {cmd.task_id!r} transitioned to {target_status}")
+            print(
+                f"operator_commands: {cmd.command} → {cmd.task_id!r} transitioned to {target_status}"
+            )
     finally:
         conn.close()
 
@@ -275,6 +341,7 @@ def _poll_operator_commands(project_dir: str) -> None:
 def _log_watcher_error(project_dir, component, error):
     """Write watcher errors to a log file."""
     from datetime import datetime, timezone
+
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     log_path = os.path.join(project_dir, ".superharness", "watcher-errors.log")
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
@@ -284,6 +351,7 @@ def _log_watcher_error(project_dir, component, error):
 
 def _abort(msg: str, code: int = 1) -> None:
     from superharness.logging_utils import get_logger
+
     get_logger("inbox_watch").error("abort: %s", msg)
     print(msg, file=sys.stderr)
     sys.exit(code)
@@ -293,8 +361,10 @@ def _abort(msg: str, code: int = 1) -> None:
 # Lock (directory-based)
 # ---------------------------------------------------------------------------
 
+
 def _lock_dir_path(project_dir: str) -> str:
     from superharness.engine.platform_runtime import watcher_lock_path
+
     return watcher_lock_path(project_dir)
 
 
@@ -322,6 +392,7 @@ def _read_lock_pid(lock_dir: str) -> int | None:
 
 def _pid_is_running(pid: int | None) -> bool:
     from superharness.engine.process import pid_alive
+
     if pid is None:
         return False
     return pid_alive(pid)
@@ -393,20 +464,22 @@ def _auto_break_stale_lock(
 
     lock_pid = _read_lock_pid(lock_dir)
     if lock_pid is not None and not _pid_is_running(lock_pid):
-        print(f"Auto-breaking orphaned watcher lock (pid {lock_pid} not running): {lock_dir}")
+        print(
+            f"Auto-breaking orphaned watcher lock (pid {lock_pid} not running): {lock_dir}"
+        )
         _remove_lock_dir(lock_dir)
         return True
 
     try:
         stat = os.stat(lock_dir)
         lock_age = time.time() - stat.st_mtime
-        if (
-            project_dir
-            and heartbeat_stale_seconds is not None
-            and lock_pid is None
-        ):
+        if project_dir and heartbeat_stale_seconds is not None and lock_pid is None:
             hb_age = _heartbeat_age_seconds(project_dir)
-            if hb_age is not None and hb_age >= heartbeat_stale_seconds and lock_age >= heartbeat_stale_seconds:
+            if (
+                hb_age is not None
+                and hb_age >= heartbeat_stale_seconds
+                and lock_age >= heartbeat_stale_seconds
+            ):
                 print(
                     f"Auto-breaking orphaned watcher lock "
                     f"(stale heartbeat: {hb_age}s, no lock pid): {lock_dir}"
@@ -447,6 +520,7 @@ def _release_watcher_lock(lock_dir: str) -> None:
 # Worker sync
 # ---------------------------------------------------------------------------
 
+
 def _sync_worker_copy(project_dir: str) -> None:
     worker_dir = os.path.join(
         os.path.expanduser("~"), ".superharness-workers", os.path.basename(project_dir)
@@ -456,12 +530,14 @@ def _sync_worker_copy(project_dir: str) -> None:
     if not os.path.isdir(os.path.join(project_dir, ".git")):
         return
     from superharness.engine.platform_runtime import sync_worker_copy
+
     sync_worker_copy(project_dir, worker_dir)
 
 
 # ---------------------------------------------------------------------------
 # Single cycle
 # ---------------------------------------------------------------------------
+
 
 def _run_dispatch_cmd(
     project_dir: str,
@@ -486,16 +562,32 @@ def _run_dispatch_cmd(
         if launcher_timeout > 0:
             args += ["--launcher-timeout", str(launcher_timeout)]
         # Run in background (detached), like old Bash script used `... &`
-        subprocess.Popen(args, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         start_new_session=True)
+        subprocess.Popen(
+            args,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
         return
 
-    args = [sys.executable, "-m", "superharness.commands.inbox_dispatch",
-            "--project", project_dir, "--to", target]
+    args = [
+        sys.executable,
+        "-m",
+        "superharness.commands.inbox_dispatch",
+        "--project",
+        project_dir,
+        "--to",
+        target,
+    ]
 
     # Ensure spawned process uses the same source as the watcher
-    src_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    env["PYTHONPATH"] = f"{src_dir}{os.pathsep}{env.get('PYTHONPATH', '')}".strip(os.pathsep)
+    src_dir = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
+    env["PYTHONPATH"] = f"{src_dir}{os.pathsep}{env.get('PYTHONPATH', '')}".strip(
+        os.pathsep
+    )
 
     if print_only:
         args.append("--print-only")
@@ -510,8 +602,13 @@ def _run_dispatch_cmd(
         subprocess.run(args, check=False, env=env)
         return
 
-    subprocess.Popen(args, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                     start_new_session=True)
+    subprocess.Popen(
+        args,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
 
 
 def _run_scripts_heartbeat(project_dir: str) -> None:
@@ -527,14 +624,27 @@ def _run_scripts_heartbeat(project_dir: str) -> None:
 
     # Heartbeat contract v1: YAML heartbeat — runtime-agnostic, consumed by dashboard
     try:
-        from superharness.engine.heartbeat_contract import AgentHeartbeat, write_heartbeat
-        write_heartbeat(project_dir, AgentHeartbeat(
-            agent_id="watcher", runtime="native", status="idle", pid=os.getpid(),
-        ))
+        from superharness.engine.heartbeat_contract import (
+            AgentHeartbeat,
+            write_heartbeat,
+        )
+
+        write_heartbeat(
+            project_dir,
+            AgentHeartbeat(
+                agent_id="watcher",
+                runtime="native",
+                status="idle",
+                pid=os.getpid(),
+            ),
+        )
     except Exception as e:
         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
+
+
 _STALE_NO_HANDOFF_HOURS = 4  # archive tasks with no handoff after this many hours
+
 
 def _auto_archive_stale_tasks(project_dir: str) -> int:
     """Archive tasks stuck in non-terminal states with no handoff file.
@@ -543,12 +653,12 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
     STALE_NO_HANDOFF_HOURS. These are tasks where agents were dispatched
     but never produced output — dead processes, lost sessions, etc.
     """
-    import glob
     from datetime import datetime, timezone
 
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import tasks_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -560,15 +670,20 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
         return 0
 
     now = datetime.now(timezone.utc)
-    handoff_dir = os.path.join(project_dir, ".superharness", "handoffs")
+    os.path.join(project_dir, ".superharness", "handoffs")
     archived = 0
 
     for task in all_tasks:
         if task.status in ("done", "archived", "stopped", "failed"):
             continue
         # Check if task has been in this state long enough
-        ts_str = (task.report_ready_at or task.plan_proposed_at or
-                  task.in_progress_at or task.created_at or "")
+        ts_str = (
+            task.report_ready_at
+            or task.plan_proposed_at
+            or task.in_progress_at
+            or task.created_at
+            or ""
+        )
         if not ts_str:
             continue
         try:
@@ -582,11 +697,19 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
         # Check if a report/completion handoff exists (plan-phase handoffs don't count)
         try:
             from superharness.engine import state_reader as _sr_iw
+
             task_handoffs = _sr_iw.get_handoffs(project_dir, task_id=task.id)
-            report_handoffs = [h for h in task_handoffs
-                               if str(h.get("phase", "")) in ("report", "done")]
+            report_handoffs = [
+                h
+                for h in task_handoffs
+                if str(h.get("phase", "")) in ("report", "done")
+            ]
         except Exception:
-            logger.warning("_auto_archive_stale_tasks: unexpected error: %s", sys.exc_info()[1], exc_info=True)
+            logger.warning(
+                "_auto_archive_stale_tasks: unexpected error: %s",
+                sys.exc_info()[1],
+                exc_info=True,
+            )
             report_handoffs = []
         if report_handoffs:
             continue  # Has a completion handoff — agent produced output
@@ -596,28 +719,40 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
             conn2 = get_connection(project_dir)
             try:
                 init_db(conn2)
-                tasks_dao.upsert(conn2, tasks_dao.TaskRow(
-                    id=task.id, title=task.title, owner=task.owner,
-                    status="archived", effort=task.effort,
-                    project_path=task.project_path,
-                    development_method=task.development_method,
-                    acceptance_criteria=task.acceptance_criteria,
-                    test_types=task.test_types,
-                    out_of_scope=task.out_of_scope,
-                    definition_of_done=task.definition_of_done,
-                    context=(task.context or "") +
-                        f"\n[auto-clean] archived: no handoff after {hours:.0f}h in {task.status}",
-                    tdd=task.tdd, version=task.version,
-                    created_at=task.created_at, blocked_by=task.blocked_by,
-                    parent_id=task.parent_id,
-                ))
+                tasks_dao.upsert(
+                    conn2,
+                    tasks_dao.TaskRow(
+                        id=task.id,
+                        title=task.title,
+                        owner=task.owner,
+                        status="archived",
+                        effort=task.effort,
+                        project_path=task.project_path,
+                        development_method=task.development_method,
+                        acceptance_criteria=task.acceptance_criteria,
+                        test_types=task.test_types,
+                        out_of_scope=task.out_of_scope,
+                        definition_of_done=task.definition_of_done,
+                        context=(task.context or "")
+                        + f"\n[auto-clean] archived: no handoff after {hours:.0f}h in {task.status}",
+                        tdd=task.tdd,
+                        version=task.version,
+                        created_at=task.created_at,
+                        blocked_by=task.blocked_by,
+                        parent_id=task.parent_id,
+                    ),
+                )
                 conn2.commit()
                 archived += 1
-                print(f"auto-clean: archived '{task.id}' (no handoff, {hours:.0f}h in {task.status})")
+                print(
+                    f"auto-clean: archived '{task.id}' (no handoff, {hours:.0f}h in {task.status})"
+                )
             finally:
                 conn2.close()
         except Exception as e:
-            logger.warning("_auto_archive_stale_tasks: unexpected error: %s", e, exc_info=True)
+            logger.warning(
+                "_auto_archive_stale_tasks: unexpected error: %s", e, exc_info=True
+            )
             print(f"auto-clean: failed to archive '{task.id}': {e}", file=sys.stderr)
 
     if archived:
@@ -627,8 +762,8 @@ def _auto_archive_stale_tasks(project_dir: str) -> int:
 
 _PEER_AGENTS: dict[str, str] = {
     "claude-code": "gemini-cli",  # Claude proposes → Gemini reviews
-    "gemini-cli":  "codex-cli",   # Gemini proposes → Codex reviews
-    "codex-cli":   "claude-code", # Codex proposes → Claude reviews
+    "gemini-cli": "codex-cli",  # Gemini proposes → Codex reviews
+    "codex-cli": "claude-code",  # Codex proposes → Claude reviews
 }
 
 # Cooldown window after a peer-review row fails. Prevents the auto-spawn loop
@@ -658,6 +793,7 @@ Your job as peer reviewer (max-tier model):
 
 Verdict:"""
 
+
 def _auto_peer_approve_plans(project_dir: str) -> int:
     """Find plan_proposed tasks and dispatch to a different max-tier agent for review.
 
@@ -675,6 +811,7 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
         return 0
     try:
         import yaml as _yaml
+
         profile = _yaml.safe_load(open(profile_file, encoding="utf-8").read()) or {}
     except Exception as e:
         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
@@ -694,8 +831,14 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
     active_tasks: set[str] = set()
     try:
         from superharness.engine.state_reader import get_inbox_items
+
         for item in get_inbox_items(project_dir):
-            if isinstance(item, dict) and item.get("status") in ("pending", "launched", "running", "paused"):
+            if isinstance(item, dict) and item.get("status") in (
+                "pending",
+                "launched",
+                "running",
+                "paused",
+            ):
                 task_id = item.get("task", item.get("task_id", ""))
                 if task_id:
                     active_tasks.add(str(task_id))
@@ -710,10 +853,14 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
     recent_peer_failure_tasks: set[str] = set()
     try:
         from superharness.engine.db import get_connection, init_db as _init_db
+
         _conn = get_connection(project_dir)
         try:
             _init_db(_conn)
-            cutoff = (datetime.now(timezone.utc) - timedelta(minutes=_PEER_REVIEW_COOLDOWN_MIN)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            cutoff = (
+                datetime.now(timezone.utc)
+                - timedelta(minutes=_PEER_REVIEW_COOLDOWN_MIN)
+            ).strftime("%Y-%m-%dT%H:%M:%SZ")
             for (tid,) in _conn.execute(
                 "SELECT DISTINCT task_id FROM inbox "
                 "WHERE id LIKE 'peer-review-%' AND status='failed' "
@@ -731,6 +878,7 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     from superharness.engine.next_action import infer_workflow as _infer_workflow
+
     for task in tasks:
         if not isinstance(task, dict):
             continue
@@ -758,8 +906,10 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
 
         # Build review prompt
         criteria = task.get("acceptance_criteria") or []
-        criteria_str = "\n".join(f"  - {c}" for c in criteria) if criteria else "  (none)"
-        review_prompt = _PEER_REVIEW_PROMPT.format(
+        criteria_str = (
+            "\n".join(f"  - {c}" for c in criteria) if criteria else "  (none)"
+        )
+        _PEER_REVIEW_PROMPT.format(
             owner=owner,
             task_title=task.get("title", task_id),
             criteria=criteria_str,
@@ -772,12 +922,15 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
             from superharness.engine.db import get_connection, init_db
             from superharness.engine import inbox_dao
             from superharness.engine.burst_guard import task_burst_suppressed
+
             conn = get_connection(project_dir)
             try:
                 init_db(conn)
                 if task_burst_suppressed(conn, task_id):
                     continue
-                item_id = f"peer-review-{task_id.replace('.','-')}-{uuid.uuid4().hex[:8]}"
+                item_id = (
+                    f"peer-review-{task_id.replace('.', '-')}-{uuid.uuid4().hex[:8]}"
+                )
                 inbox_dao.enqueue(
                     conn,
                     id=item_id,
@@ -795,7 +948,9 @@ def _auto_peer_approve_plans(project_dir: str) -> int:
             finally:
                 conn.close()
         except Exception as e:
-            logger.warning("_auto_peer_approve_plans: unexpected error: %s", e, exc_info=True)
+            logger.warning(
+                "_auto_peer_approve_plans: unexpected error: %s", e, exc_info=True
+            )
             print(f"peer-approve: failed to enqueue '{task_id}': {e}", file=sys.stderr)
 
     if enqueued:
@@ -812,6 +967,7 @@ def _find_pr_url_in_handoff(handoff_dir: str, task_id: str) -> str | None:
     try:
         from superharness.engine.db import managed_connection
         from superharness.engine import handoffs_dao
+
         with managed_connection(project_dir) as conn:
             rows = handoffs_dao.search(conn, task_id)
         for row in rows:
@@ -832,44 +988,49 @@ def _find_pr_url_in_handoff(handoff_dir: str, task_id: str) -> str | None:
 
 def _select_reviewers(task: dict, candidates: list[str], profile: dict) -> list[str]:
     """Filter candidate reviewers based on cross-pollination and model-tier gates."""
-    from superharness.engine.model_budget import reviewer_meets_tier, AGENT_DEFAULT_TIERS
-    
+    from superharness.engine.model_budget import (
+        reviewer_meets_tier,
+        AGENT_DEFAULT_TIERS,
+    )
+
     owner = str(task.get("owner", ""))
     # author tier: 1. task field, 2. owner default, 3. standard
     author_tier = str(task.get("model_tier") or "")
     if not author_tier:
         author_tier = AGENT_DEFAULT_TIERS.get(owner, "standard")
-    
+
     # 1. Cross-pollination guard: owner cannot review own task
     peers = [a for a in candidates if a != owner]
-    
+
     # 2. Model-tier gate: reviewer must be >= author tier
-    qualified = [
-        a for a in peers 
-        if reviewer_meets_tier(a, author_tier, profile)
-    ]
-    
+    qualified = [a for a in peers if reviewer_meets_tier(a, author_tier, profile)]
+
     return qualified
 
 
 def _trigger_auto_review(project_dir: str, task_id: str, reviewers: list[str]) -> bool:
     """Transition task to review_requested and enqueue multiple reviewers."""
-    from superharness.engine.contract_io import write_contract
-    import yaml as _yaml
     import subprocess
-    
+
     # 1. Enqueue each reviewer first (while task is still in report_ready)
     success_count = 0
     enqueued = []
     import time
+
     for target in reviewers:
         try:
             cmd = [
-                sys.executable, "-m", "superharness.commands.inbox_enqueue",
-                "--project", project_dir,
-                "--to", target,
-                "--task", task_id,
-                "--priority", "1",
+                sys.executable,
+                "-m",
+                "superharness.commands.inbox_enqueue",
+                "--project",
+                project_dir,
+                "--to",
+                target,
+                "--task",
+                task_id,
+                "--priority",
+                "1",
                 "--force-reassign",
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, check=False)
@@ -877,25 +1038,36 @@ def _trigger_auto_review(project_dir: str, task_id: str, reviewers: list[str]) -
                 success_count += 1
                 enqueued.append(target)
             else:
-                print(f"auto-review: failed to enqueue {task_id} for {target}: {result.stdout.strip()} {result.stderr.strip()}", file=sys.stderr)
+                print(
+                    f"auto-review: failed to enqueue {task_id} for {target}: {result.stdout.strip()} {result.stderr.strip()}",
+                    file=sys.stderr,
+                )
             # Small sleep to ensure file-based inbox lock settles
             time.sleep(0.1)
         except Exception as e:
-            logger.warning("_trigger_auto_review: unexpected error: %s", e, exc_info=True)
-            print(f"auto-review: error enqueuing {task_id} for {target}: {e}", file=sys.stderr)
-            
+            logger.warning(
+                "_trigger_auto_review: unexpected error: %s", e, exc_info=True
+            )
+            print(
+                f"auto-review: error enqueuing {task_id} for {target}: {e}",
+                file=sys.stderr,
+            )
+
     if success_count == 0:
         return False
 
     # 2. Update task status to review_requested via SQLite
     try:
         from superharness.engine.state_writer import set_task_status
+
         set_task_status(project_dir, task_id, "review_requested")
     except Exception as e:
         logger.warning("_trigger_auto_review: unexpected error: %s", e, exc_info=True)
-        print(f"auto-review: failed to update status for {task_id}: {e}", file=sys.stderr)
+        print(
+            f"auto-review: failed to update status for {task_id}: {e}", file=sys.stderr
+        )
         return False
-        
+
     print(f"auto-review: triggered reviews for {task_id} via {', '.join(enqueued)}")
     return True
 
@@ -908,7 +1080,6 @@ def _auto_close_review_passed(project_dir: str) -> None:
     import yaml as _yaml
     import re as _re
     from superharness.commands.close import close_task
-    from superharness.engine.state_writer import mirror_task_dict
 
     profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
     profile: dict = {}
@@ -930,6 +1101,7 @@ def _auto_close_review_passed(project_dir: str) -> None:
         return
 
     from superharness.engine import state_reader as _sr
+
     try:
         inbox_items = _sr.get_inbox_items(project_dir)
     except Exception as e:
@@ -949,7 +1121,7 @@ def _auto_close_review_passed(project_dir: str) -> None:
                 continue
             if item.get("task") == task_id and item.get("status") == "done":
                 outcome_raw = item.get("outcome")
-                
+
                 # F14: If outcome missing from item, check handoffs as fallback
                 if not outcome_raw:
                     try:
@@ -957,36 +1129,53 @@ def _auto_close_review_passed(project_dir: str) -> None:
                         if history:
                             # Check the latest report/handoff from this agent
                             agent = str(item.get("to") or "")
-                            latest = next((h for h in history if h.get("from_agent") == agent), None)
+                            latest = next(
+                                (h for h in history if h.get("from_agent") == agent),
+                                None,
+                            )
                             if latest:
                                 outcome_raw = str(latest.get("content") or "")
                     except Exception as e:
-                        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
+                        logger.warning(
+                            "inbox_watch unexpected error: %s", e, exc_info=True
+                        )
                         pass
                 if not outcome_raw:
                     continue
 
                 outcome_str = str(outcome_raw).upper()
-                
+
                 # Check 1: Structured YAML verdict (highest precision)
-                if isinstance(outcome_raw, str) and ("review_verdict:" in outcome_raw or "verdict:" in outcome_raw):
+                if isinstance(outcome_raw, str) and (
+                    "review_verdict:" in outcome_raw or "verdict:" in outcome_raw
+                ):
                     try:
                         # Try full YAML load first
                         parsed = _yaml.safe_load(outcome_raw)
                         if isinstance(parsed, dict):
-                            v_val = str(parsed.get("review_verdict") or parsed.get("verdict") or "").lower()
+                            v_val = str(
+                                parsed.get("review_verdict")
+                                or parsed.get("verdict")
+                                or ""
+                            ).lower()
                             if v_val in ("lgtm", "rejected", "fail"):
                                 verdict = "lgtm" if v_val == "lgtm" else "rejected"
                                 reviewer = str(item.get("to") or "reviewer")
                                 break
                     except Exception as e:
-                        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
+                        logger.warning(
+                            "inbox_watch unexpected error: %s", e, exc_info=True
+                        )
                         # Fallback to regex if YAML load fails (e.g. mixed content)
                         pass
 
                 # Check 2: Regex extraction (robust against mixed text/YAML)
                 if not verdict and isinstance(outcome_raw, str):
-                    m = _re.search(r"(?:review_verdict|verdict):\s*(lgtm|rejected|fail)", outcome_raw, _re.IGNORECASE)
+                    m = _re.search(
+                        r"(?:review_verdict|verdict):\s*(lgtm|rejected|fail)",
+                        outcome_raw,
+                        _re.IGNORECASE,
+                    )
                     if m:
                         v_val = m.group(1).lower()
                         verdict = "lgtm" if v_val == "lgtm" else "rejected"
@@ -1005,10 +1194,13 @@ def _auto_close_review_passed(project_dir: str) -> None:
                         break
 
         if verdict == "lgtm":
-            print(f"auto-close: review passed for '{task_id}' (detected LGTM from {reviewer})")
-            
+            print(
+                f"auto-close: review passed for '{task_id}' (detected LGTM from {reviewer})"
+            )
+
             # 1. Transition to review_passed first (required by close_task gate)
             from superharness.engine.state_writer import set_task_status
+
             set_task_status(project_dir, task_id, "review_passed")
 
             # 2. Call close_task
@@ -1021,12 +1213,20 @@ def _auto_close_review_passed(project_dir: str) -> None:
                     skip_verify=True,
                 )
             except Exception as e:
-                logger.warning("_auto_close_review_passed: unexpected error: %s", e, exc_info=True)
-                print(f"auto-close: failed to close task '{task_id}': {e}", file=sys.stderr)
+                logger.warning(
+                    "_auto_close_review_passed: unexpected error: %s", e, exc_info=True
+                )
+                print(
+                    f"auto-close: failed to close task '{task_id}': {e}",
+                    file=sys.stderr,
+                )
 
         elif verdict == "rejected":
-            print(f"auto-close: review REJECTED for '{task_id}' (detected REJECTION from {reviewer})")
+            print(
+                f"auto-close: review REJECTED for '{task_id}' (detected REJECTION from {reviewer})"
+            )
             from superharness.engine.state_writer import set_task_status
+
             if set_task_status(project_dir, task_id, "review_failed"):
                 # Append to ledger
                 ledger_file = os.path.join(project_dir, ".superharness", "ledger.md")
@@ -1041,6 +1241,8 @@ def _auto_close_review_passed(project_dir: str) -> None:
                     # propagate instead of being reported as "ledger write
                     # failed".
                     logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
+
+
 def _auto_close_report_ready(project_dir: str) -> None:
     """Auto-close report_ready tasks whose latest report handoff has tests_passed: true.
 
@@ -1085,6 +1287,7 @@ def _auto_close_report_ready(project_dir: str) -> None:
             from superharness.engine.db import managed_connection
             from superharness.engine import handoffs_dao
             from dataclasses import asdict
+
             with managed_connection(project_dir) as _conn:
                 row = handoffs_dao.get_latest(_conn, task_id, "report")
                 if row:
@@ -1092,7 +1295,9 @@ def _auto_close_report_ready(project_dir: str) -> None:
                     # Flatten metadata into handoff dict for downstream consumers.
                     handoff.update(handoff.pop("metadata", {}) or {})
         except Exception as e:
-            logger.warning("inbox_watch handoffs_dao.get_latest failed: %s", e, exc_info=True)
+            logger.warning(
+                "inbox_watch handoffs_dao.get_latest failed: %s", e, exc_info=True
+            )
 
         if not handoff:
             continue
@@ -1105,7 +1310,10 @@ def _auto_close_report_ready(project_dir: str) -> None:
         # iter 6: report verification gate. Stamps verification_failures on
         # the task and routes per suggested_action.
         try:
-            from superharness.engine.report_verifier import verify_report as _verify_report
+            from superharness.engine.report_verifier import (
+                verify_report as _verify_report,
+            )
+
             verification = _verify_report(handoff, task, project_dir)
             if not verification.passed:
                 # Stamp verification_failures so dashboard surfaces them
@@ -1113,18 +1321,27 @@ def _auto_close_report_ready(project_dir: str) -> None:
                 # Persist verification failures to SQLite
                 try:
                     from superharness.engine.state_writer import mirror_task_dict
+
                     mirror_task_dict(project_dir, task)
                 except Exception as e:
                     logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                     pass
                 if verification.suggested_action == "fail":
-                    print(f"auto-close: task '{task_id}' failed verification: " + "; ".join(verification.failures))
+                    print(
+                        f"auto-close: task '{task_id}' failed verification: "
+                        + "; ".join(verification.failures)
+                    )
                     # Leave for operator (do not auto-fail to avoid surprise)
                 else:
-                    print(f"auto-close: task '{task_id}' needs operator review: " + "; ".join(verification.failures))
+                    print(
+                        f"auto-close: task '{task_id}' needs operator review: "
+                        + "; ".join(verification.failures)
+                    )
                 continue
         except Exception as e:
-            logger.warning("_auto_close_report_ready: unexpected error: %s", e, exc_info=True)
+            logger.warning(
+                "_auto_close_report_ready: unexpected error: %s", e, exc_info=True
+            )
             print(f"Warning: report verification skipped: {e}", file=sys.stderr)
 
         # NEW: Auto-review logic (Human-in-the-loop bypass)
@@ -1143,16 +1360,23 @@ def _auto_close_report_ready(project_dir: str) -> None:
             if peers:
                 peer_reviewers = [peers[0]]
 
-        if peer_reviewers and (auto_review_all or (threshold > 0 and cost_usd <= threshold) or autonomy == "ai_driven"):
+        if peer_reviewers and (
+            auto_review_all
+            or (threshold > 0 and cost_usd <= threshold)
+            or autonomy == "ai_driven"
+        ):
             # Reasoning: Reviewer must use a higher or equal model tier than the author
             author_tier = str(task.get("model_tier") or "standard")
             if author_tier == "mini":
-                task["model_tier"] = "standard"  # Upgrade to at least standard for review
-            
+                task["model_tier"] = (
+                    "standard"  # Upgrade to at least standard for review
+                )
+
             if _trigger_auto_review(project_dir, task_id, peer_reviewers):
                 # Persist tier upgrade to SQLite
                 try:
                     from superharness.engine.state_writer import mirror_task_dict
+
                     mirror_task_dict(project_dir, task)
                 except Exception as e:
                     logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
@@ -1163,6 +1387,7 @@ def _auto_close_report_ready(project_dir: str) -> None:
         try:
             from superharness.engine.db import get_connection as _gc3, init_db as _idb3
             from superharness.engine import tasks_dao as _td3
+
             conn3 = _gc3(project_dir)
             try:
                 _idb3(conn3)
@@ -1176,32 +1401,42 @@ def _auto_close_report_ready(project_dir: str) -> None:
                         f"Review: verify changes, check tests pass, approve or request changes."
                     )
                     new_context = (existing.context or "") + review_note
-                    _td3.upsert(conn3, _td3.TaskRow(
-                        id=task_id, title=existing.title,
-                        owner=existing.owner or "watcher", status="done",
-                        effort=existing.effort, project_path=project_dir,
-                        development_method=existing.development_method,
-                        acceptance_criteria=existing.acceptance_criteria,
-                        test_types=existing.test_types,
-                        out_of_scope=existing.out_of_scope,
-                        definition_of_done=existing.definition_of_done,
-                        context=new_context, tdd=existing.tdd,
-                        version=existing.version + 1,
-                        created_at=existing.created_at,
-                        blocked_by=existing.blocked_by,
-                        parent_id=existing.parent_id,
-                        report_ready_at=existing.report_ready_at,
-                    ))
+                    _td3.upsert(
+                        conn3,
+                        _td3.TaskRow(
+                            id=task_id,
+                            title=existing.title,
+                            owner=existing.owner or "watcher",
+                            status="done",
+                            effort=existing.effort,
+                            project_path=project_dir,
+                            development_method=existing.development_method,
+                            acceptance_criteria=existing.acceptance_criteria,
+                            test_types=existing.test_types,
+                            out_of_scope=existing.out_of_scope,
+                            definition_of_done=existing.definition_of_done,
+                            context=new_context,
+                            tdd=existing.tdd,
+                            version=existing.version + 1,
+                            created_at=existing.created_at,
+                            blocked_by=existing.blocked_by,
+                            parent_id=existing.parent_id,
+                            report_ready_at=existing.report_ready_at,
+                        ),
+                    )
                     conn3.commit()
                     close_count += 1
                     summary = str(handoff.get("outcome") or "auto-closed by watcher")
-                    print(f"auto-close: '{task_id}' → done: {summary.split(chr(10))[0][:120]}")
+                    print(
+                        f"auto-close: '{task_id}' → done: {summary.split(chr(10))[0][:120]}"
+                    )
             finally:
                 conn3.close()
         except Exception as exc:
-            logger.warning("_auto_close_report_ready: unexpected error: %s", exc, exc_info=True)
+            logger.warning(
+                "_auto_close_report_ready: unexpected error: %s", exc, exc_info=True
+            )
             print(f"auto-close: failed to close '{task_id}': {exc}", file=sys.stderr)
-
 
     if close_count:
         _fire_hook("task:completed", {"count": close_count}, project_dir)
@@ -1216,7 +1451,6 @@ def _auto_retry_failed(project_dir: str) -> None:
     failures surface in the dashboard for operator review.
     """
     import yaml as _yaml
-    from superharness.engine.inbox import _inbox_lock
 
     profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
     profile: dict = {}
@@ -1241,6 +1475,7 @@ def _auto_retry_failed_sqlite(project_dir: str) -> None:
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao
+
         now = _now_utc()
         conn = get_connection(project_dir)
         try:
@@ -1250,18 +1485,32 @@ def _auto_retry_failed_sqlite(project_dir: str) -> None:
                 if row.retry_count < row.max_retries:
                     new_count = row.retry_count + 1
                     # Preserve the original failure reason so operator can see it
-                    preserved_reason = row.failed_reason or "auto-retry (reason unavailable)"
+                    preserved_reason = (
+                        row.failed_reason or "auto-retry (reason unavailable)"
+                    )
                     inbox_dao.set_retry(conn, row.id, new_count, preserved_reason, now)
                     try:
-                        from superharness.engine.ledger_dao import record as _ledger_record
+                        from superharness.engine.ledger_dao import (
+                            record as _ledger_record,
+                        )
+
                         _now = now
-                        import json as _json
-                        _ledger_record(conn, task_id=row.task_id, agent="watcher",
-                                       action="auto_retry",
-                                       details={"reason": preserved_reason, "attempt": f"{new_count}/{row.max_retries}", "item_id": row.id},
-                                       now=_now)
+                        _ledger_record(
+                            conn,
+                            task_id=row.task_id,
+                            agent="watcher",
+                            action="auto_retry",
+                            details={
+                                "reason": preserved_reason,
+                                "attempt": f"{new_count}/{row.max_retries}",
+                                "item_id": row.id,
+                            },
+                            now=_now,
+                        )
                     except Exception as e:
-                        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
+                        logger.warning(
+                            "inbox_watch unexpected error: %s", e, exc_info=True
+                        )
                         pass
                     # Discussion round tasks must not be plan_only
                     if "/round-" in str(row.task_id) or "round-" in str(row.task_id):
@@ -1274,15 +1523,17 @@ def _auto_retry_failed_sqlite(project_dir: str) -> None:
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("_auto_retry_failed_sqlite: unexpected error: %s", exc, exc_info=True)
+        logger.warning(
+            "_auto_retry_failed_sqlite: unexpected error: %s", exc, exc_info=True
+        )
         print(f"auto-retry (sqlite): error: {exc}", file=sys.stderr)
 
 
 _AGENT_FALLBACK: dict[str, list[str]] = {
     "claude-code": ["codex-cli", "gemini-cli", "opencode"],
-    "gemini-cli":  ["claude-code", "codex-cli", "opencode"],
-    "codex-cli":   ["claude-code", "gemini-cli", "opencode"],
-    "opencode":    ["claude-code", "codex-cli", "gemini-cli"],
+    "gemini-cli": ["claude-code", "codex-cli", "opencode"],
+    "codex-cli": ["claude-code", "gemini-cli", "opencode"],
+    "opencode": ["claude-code", "codex-cli", "gemini-cli"],
 }
 
 # Ordered preference for fallback when tried_agents is derived from inbox history
@@ -1301,16 +1552,24 @@ def _rank_fallback_agents(conn, candidates: list[str]) -> list[str]:
     """
     try:
         from superharness.engine import review_dao
+
         ranked = review_dao.rank_owners(conn)
         rank_index = {stats.owner: i for i, stats in enumerate(ranked)}
     except Exception:
-        logger.warning("_rank_fallback_agents: unexpected error: %s", sys.exc_info()[1], exc_info=True)
+        logger.warning(
+            "_rank_fallback_agents: unexpected error: %s",
+            sys.exc_info()[1],
+            exc_info=True,
+        )
         return candidates
     if not rank_index:
         return candidates
     return sorted(
         candidates,
-        key=lambda agent: (rank_index.get(agent, len(rank_index)), candidates.index(agent)),
+        key=lambda agent: (
+            rank_index.get(agent, len(rank_index)),
+            candidates.index(agent),
+        ),
     )
 
 
@@ -1331,6 +1590,7 @@ def _agent_cli_reachable(agent: str) -> bool:
     fallback path from re-routing a task to an agent that can't even run.
     """
     import shutil
+
     binary = _AGENT_CLI_BINARY.get(agent, agent)
     return shutil.which(binary) is not None
 
@@ -1360,7 +1620,9 @@ def _has_identical_failure_loop(conn, task_id: str) -> bool:
     return len(snippets) == 1 and next(iter(snippets)) != ""
 
 
-def _with_task_lock(conn, task_id: str, changes: dict, *, guard=None, context: str = ""):
+def _with_task_lock(
+    conn, task_id: str, changes: dict, *, guard=None, context: str = ""
+):
     """Apply `changes` (status and/or other columns) to `task_id` through
     `tasks_dao.set_status`/`update` — the version-checked writer — instead
     of a raw, unversioned SQL update statement against the tasks table.
@@ -1392,14 +1654,17 @@ def _with_task_lock(conn, task_id: str, changes: dict, *, guard=None, context: s
             if "status" in changes:
                 status = changes["status"]
                 extra = {k: v for k, v in changes.items() if k != "status"}
-                return tasks_dao.set_status(conn, task_id, status, task.version, **extra)
+                return tasks_dao.set_status(
+                    conn, task_id, status, task.version, **extra
+                )
             return tasks_dao.update(conn, task_id, task.version, changes)
         except ConcurrencyError:
             if attempt == 0:
                 continue  # re-read the fresh version and retry once
             logger.warning(
-                "inbox_watch: skipping task '%s' after repeated version "
-                "conflict (%s)", task_id, context or sorted(changes.keys()),
+                "inbox_watch: skipping task '%s' after repeated version conflict (%s)",
+                task_id,
+                context or sorted(changes.keys()),
             )
             return None
     return None
@@ -1412,12 +1677,14 @@ def _escalate_runaway_inbox(conn, row, reason_label: str, now: str) -> None:
     try:
         from superharness.engine import tasks_dao
         from superharness.engine.next_action import validate_status_transition
+
         task = tasks_dao.get(conn, row.task_id)
         if task and task.status in ("in_progress", "todo"):
             try:
                 validate_status_transition(task.status, "waiting_input")
                 _with_task_lock(
-                    conn, row.task_id,
+                    conn,
+                    row.task_id,
                     {
                         "status": "waiting_input",
                         "in_progress_at": None,
@@ -1429,13 +1696,18 @@ def _escalate_runaway_inbox(conn, row, reason_label: str, now: str) -> None:
                 logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                 pass
         from superharness.engine import inbox_dao as _inbox_dao_esc
-        _inbox_dao_esc.mark_failed(conn, row.id, reason=f"escalated: {reason_label}", now=now)
+
+        _inbox_dao_esc.mark_failed(
+            conn, row.id, reason=f"escalated: {reason_label}", now=now
+        )
         print(
             f"auto-recover: ESCALATED '{row.task_id}' → waiting_input "
             f"(reason: {reason_label})"
         )
     except Exception as exc:
-        logger.warning("_escalate_runaway_inbox: unexpected error: %s", exc, exc_info=True)
+        logger.warning(
+            "_escalate_runaway_inbox: unexpected error: %s", exc, exc_info=True
+        )
         print(f"auto-recover: escalation failed for {row.id}: {exc}", file=sys.stderr)
 
 
@@ -1461,6 +1733,7 @@ def _auto_fallback_owner_reassign(project_dir: str) -> None:
     Never raises.
     """
     import yaml as _yaml
+
     profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
     profile: dict = {}
     if os.path.isfile(profile_file):
@@ -1490,6 +1763,7 @@ def _auto_fallback_owner_reassign(project_dir: str) -> None:
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao, tasks_dao
+
         now = _now_utc()
         conn = get_connection(project_dir)
         try:
@@ -1513,7 +1787,9 @@ def _auto_fallback_owner_reassign(project_dir: str) -> None:
                     continue
 
                 _with_task_lock(
-                    conn, row.task_id, {"owner": fallback_owner},
+                    conn,
+                    row.task_id,
+                    {"owner": fallback_owner},
                     context="auto_fallback_owner",
                 )
                 inbox_dao.reassign(
@@ -1530,8 +1806,11 @@ def _auto_fallback_owner_reassign(project_dir: str) -> None:
                 )
                 try:
                     from superharness.engine.ledger_dao import record as _ledger_record
+
                     _ledger_record(
-                        conn, task_id=row.task_id, agent="watcher",
+                        conn,
+                        task_id=row.task_id,
+                        agent="watcher",
                         action="auto_fallback_owner",
                         details={
                             "from_owner": current_owner,
@@ -1554,7 +1833,9 @@ def _auto_fallback_owner_reassign(project_dir: str) -> None:
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("_auto_fallback_owner_reassign: unexpected error: %s", exc, exc_info=True)
+        logger.warning(
+            "_auto_fallback_owner_reassign: unexpected error: %s", exc, exc_info=True
+        )
         print(f"auto-fallback-owner: error: {exc}", file=sys.stderr)
 
 
@@ -1572,6 +1853,7 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao, tasks_dao
+
         now = _now_utc()
         conn = get_connection(project_dir)
         try:
@@ -1588,6 +1870,7 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                 # failed_reason overwrites). Fall back to legacy parse for
                 # rows that pre-date the migration backfill.
                 import re
+
                 recovery_count = getattr(row, "recovery_count", 0) or 0
                 reason = (row.failed_reason or "").lower()
                 if recovery_count == 0:
@@ -1599,16 +1882,28 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                 # But revert stuck in_progress tasks so they can be re-dispatched.
                 # EXCEPTION: discussion rounds (/round-N) are multi-agent —
                 # one agent's permanent block must not freeze the entire round.
-                if "permanent_block" in reason or "no_op" in reason or "permanent block" in reason:
+                if (
+                    "permanent_block" in reason
+                    or "no_op" in reason
+                    or "permanent block" in reason
+                ):
                     is_discussion_round = "/round-" in row.task_id
                     task_pb = tasks_dao.get(conn, row.task_id)
-                    if task_pb and task_pb.status in ("in_progress", "todo") and not is_discussion_round:
+                    if (
+                        task_pb
+                        and task_pb.status in ("in_progress", "todo")
+                        and not is_discussion_round
+                    ):
                         try:
-                            from superharness.engine.next_action import validate_status_transition
+                            from superharness.engine.next_action import (
+                                validate_status_transition,
+                            )
+
                             validate_status_transition(task_pb.status, "waiting_input")
                             gate_reason = row.failed_reason or "lifecycle gate rejected"
                             _with_task_lock(
-                                conn, row.task_id,
+                                conn,
+                                row.task_id,
                                 {
                                     "status": "waiting_input",
                                     "in_progress_at": None,
@@ -1623,17 +1918,33 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                                 f"in_progress → waiting_input (lifecycle gate)"
                             )
                             try:
-                                from superharness.engine.ledger_dao import record as _ledger_record2
-                                _ledger_record2(conn, task_id=row.task_id, agent="watcher",
-                                               action="escalate",
-                                               details={"reason": gate_reason, "from_status": "in_progress", "to_status": "waiting_input", "item_id": row.id},
-                                               now=now)
+                                from superharness.engine.ledger_dao import (
+                                    record as _ledger_record2,
+                                )
+
+                                _ledger_record2(
+                                    conn,
+                                    task_id=row.task_id,
+                                    agent="watcher",
+                                    action="escalate",
+                                    details={
+                                        "reason": gate_reason,
+                                        "from_status": "in_progress",
+                                        "to_status": "waiting_input",
+                                        "item_id": row.id,
+                                    },
+                                    now=now,
+                                )
                             except Exception as e:
-                                logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
+                                logger.warning(
+                                    "inbox_watch unexpected error: %s", e, exc_info=True
+                                )
                                 pass
                             recovered += 1
                         except Exception as e:
-                            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
+                            logger.warning(
+                                "inbox_watch unexpected error: %s", e, exc_info=True
+                            )
                             pass
                     continue
 
@@ -1656,22 +1967,33 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                     pass
                 tried_agents.add(current_agent)
                 try:
-                    from superharness.engine.model_router import is_agent_quota_limited as _is_quota
+                    from superharness.engine.model_router import (
+                        is_agent_quota_limited as _is_quota,
+                    )
+
                     fallback_agents = [
-                        a for a in _FALLBACK_ORDER
+                        a
+                        for a in _FALLBACK_ORDER
                         if a not in tried_agents
                         and not _is_quota(str(project_dir), a)
                         and _agent_cli_reachable(a)
                     ]
                 except Exception:
-                    logger.warning("_auto_recover_exhausted_failures_sqlite: unexpected error: %s", sys.exc_info()[1], exc_info=True)
-                    fallback_agents = [a for a in _FALLBACK_ORDER if a not in tried_agents]
+                    logger.warning(
+                        "_auto_recover_exhausted_failures_sqlite: unexpected error: %s",
+                        sys.exc_info()[1],
+                        exc_info=True,
+                    )
+                    fallback_agents = [
+                        a for a in _FALLBACK_ORDER if a not in tried_agents
+                    ]
                 fallback_agents = _rank_fallback_agents(conn, fallback_agents)
                 if not fallback_agents:
                     # All known owners exhausted — escalate with rich context
                     per_owner_summary = ", ".join(sorted(tried_agents))
                     _escalate_runaway_inbox(
-                        conn, row,
+                        conn,
+                        row,
                         f"all_owners_exhausted (tried: {per_owner_summary})",
                         now,
                     )
@@ -1682,13 +2004,18 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                     # task to waiting_input when it was in_progress/todo.
                     try:
                         _with_task_lock(
-                            conn, row.task_id,
-                            {"failed_reason": f"all_owners_exhausted: {per_owner_summary}"},
+                            conn,
+                            row.task_id,
+                            {
+                                "failed_reason": f"all_owners_exhausted: {per_owner_summary}"
+                            },
                             guard=lambda t: t.status == "waiting_input",
                             context="tag_all_owners_exhausted",
                         )
                     except Exception as e:
-                        logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
+                        logger.warning(
+                            "inbox_watch unexpected error: %s", e, exc_info=True
+                        )
                         pass
                     escalated += 1
                     continue
@@ -1711,31 +2038,38 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                     )
 
                     if is_architecture_bug:
-                        context_note = (
+                        (
                             f"\n[auto-recovery] INFRA ESCALATION: task failed on "
                             f"{', '.join(agents_tried)} with: "
                             f"{row.failed_reason or 'unknown error'}. "
                             f"Check launcher logs, CLI availability, and superharness hooks."
                         )
-                        new_status = "waiting_input"
                         # Record to failures ledger for diagnostics
                         try:
                             from superharness.engine import failures_dao
+
                             failures_dao.record(
                                 conn,
                                 agent=row.target_agent,
                                 error=f"[auto-recovery] infra escalation: "
-                                      f"task {row.task_id} failed on {agents_tried}",
-                                details={"task_id": row.task_id, "agents": agents_tried,
-                                        "reason": row.failed_reason},
+                                f"task {row.task_id} failed on {agents_tried}",
+                                details={
+                                    "task_id": row.task_id,
+                                    "agents": agents_tried,
+                                    "reason": row.failed_reason,
+                                },
                             )
                         except Exception as e:
-                            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
+                            logger.warning(
+                                "inbox_watch unexpected error: %s", e, exc_info=True
+                            )
                             pass
                 # Hard cap absolute retry budget so a runaway loop can't
                 # bump max_retries indefinitely (was the cause of max_retries=65).
                 if row.max_retries >= _ABSOLUTE_MAX_RETRIES:
-                    _escalate_runaway_inbox(conn, row, "absolute retry ceiling reached", now)
+                    _escalate_runaway_inbox(
+                        conn, row, "absolute retry ceiling reached", now
+                    )
                     escalated += 1
                     continue
 
@@ -1743,7 +2077,9 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
                 # repeated >= _IDENTICAL_FAILURE_THRESHOLD times for this
                 # task, no agent reroute will help — escalate to operator.
                 if _has_identical_failure_loop(conn, row.task_id):
-                    _escalate_runaway_inbox(conn, row, "identical-error loop detected", now)
+                    _escalate_runaway_inbox(
+                        conn, row, "identical-error loop detected", now
+                    )
                     escalated += 1
                     continue
 
@@ -1775,7 +2111,11 @@ def _auto_recover_exhausted_failures_sqlite(project_dir: str) -> None:
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("_auto_recover_exhausted_failures_sqlite: unexpected error: %s", exc, exc_info=True)
+        logger.warning(
+            "_auto_recover_exhausted_failures_sqlite: unexpected error: %s",
+            exc,
+            exc_info=True,
+        )
         print(f"auto-recover: error: {exc}", file=sys.stderr)
 
 
@@ -1799,15 +2139,23 @@ def _reconcile_permanent_blocks(project_dir: str) -> int:
                 if row.retry_count < row.max_retries:
                     continue
                 reason = (row.failed_reason or "").lower()
-                if "permanent_block" not in reason and "no_op" not in reason and "permanent block" not in reason:
+                if (
+                    "permanent_block" not in reason
+                    and "no_op" not in reason
+                    and "permanent block" not in reason
+                ):
                     continue
                 task = tasks_dao.get(conn, row.task_id)
                 if not task or task.status not in ("in_progress", "todo"):
                     continue
-                from superharness.engine.next_action import validate_status_transition as _vst2
+                from superharness.engine.next_action import (
+                    validate_status_transition as _vst2,
+                )
+
                 _vst2(task.status, "waiting_input")
                 _with_task_lock(
-                    conn, row.task_id,
+                    conn,
+                    row.task_id,
                     {
                         "status": "waiting_input",
                         "in_progress_at": None,
@@ -1825,7 +2173,9 @@ def _reconcile_permanent_blocks(project_dir: str) -> int:
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("_reconcile_permanent_blocks: unexpected error: %s", exc, exc_info=True)
+        logger.warning(
+            "_reconcile_permanent_blocks: unexpected error: %s", exc, exc_info=True
+        )
         print(f"reconcile-permanent-block: error: {exc}", file=sys.stderr)
     return count
 
@@ -1853,6 +2203,7 @@ def _auto_bootstrap_empty_tasks(project_dir: str) -> int:
                 infer_workflow as _infer_workflow,
                 plan_only_allowed_statuses as _plan_only_allowed,
             )
+
             for task in tasks:
                 # Bootstrap demotes status to plan_proposed and dispatches a
                 # plan-only inbox row. That's safe only when plan_proposed is
@@ -1884,10 +2235,14 @@ def _auto_bootstrap_empty_tasks(project_dir: str) -> int:
                     now=now,
                 )
                 # Revert task to plan_proposed so watcher can auto-dispatch it
-                from superharness.engine.next_action import validate_status_transition as _vst3
+                from superharness.engine.next_action import (
+                    validate_status_transition as _vst3,
+                )
+
                 _vst3("waiting_input", "plan_proposed")
                 _with_task_lock(
-                    conn, task.id,
+                    conn,
+                    task.id,
                     {
                         "status": "plan_proposed",
                         "failed_reason": None,
@@ -1902,10 +2257,18 @@ def _auto_bootstrap_empty_tasks(project_dir: str) -> int:
                 )
                 try:
                     from superharness.engine.ledger_dao import record as _lr
-                    _lr(conn, task_id=task.id, agent="watcher",
+
+                    _lr(
+                        conn,
+                        task_id=task.id,
+                        agent="watcher",
                         action="auto_bootstrap",
-                        details={"reason": task.failed_reason or "empty content", "item_id": item_id},
-                        now=now)
+                        details={
+                            "reason": task.failed_reason or "empty content",
+                            "item_id": item_id,
+                        },
+                        now=now,
+                    )
                 except Exception as e:
                     logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                     pass
@@ -1913,7 +2276,9 @@ def _auto_bootstrap_empty_tasks(project_dir: str) -> int:
         finally:
             conn.close()
     except Exception as exc:
-        logger.warning("_auto_bootstrap_empty_tasks: unexpected error: %s", exc, exc_info=True)
+        logger.warning(
+            "_auto_bootstrap_empty_tasks: unexpected error: %s", exc, exc_info=True
+        )
         print(f"auto-bootstrap: error: {exc}", file=sys.stderr)
     return count
 
@@ -1946,7 +2311,9 @@ def _check_ship_on_complete_tasks(project_dir: str) -> None:
                 f"in handoff outcomes — marking failed.",
                 file=sys.stderr,
             )
-            state_writer.set_task_status(project_dir, task_id, "failed", from_status="report_ready")
+            state_writer.set_task_status(
+                project_dir, task_id, "failed", from_status="report_ready"
+            )
 
 
 def run_once(
@@ -1984,9 +2351,12 @@ def _run_gc_if_due(project_dir: str, cycle_count: int) -> bool:
     if os.path.isfile(profile_file):
         try:
             import yaml as _yaml
+
             with open(profile_file) as f:
                 profile = _yaml.safe_load(f) or {}
-            gc_interval = int(profile.get("gc_interval_cycles", DEFAULT_GC_INTERVAL_CYCLES))
+            gc_interval = int(
+                profile.get("gc_interval_cycles", DEFAULT_GC_INTERVAL_CYCLES)
+            )
         except Exception as e:
             logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
             pass
@@ -1995,6 +2365,7 @@ def _run_gc_if_due(project_dir: str, cycle_count: int) -> bool:
     if cycle_count % gc_interval != 0:
         return False
     from superharness.commands.inbox_gc import run_gc
+
     result = run_gc(project_dir)
     return result.get("reconciled", 0) >= 0
 
@@ -2003,16 +2374,20 @@ def _fire_hook(event: str, data: dict, project_dir: str | None = None) -> None:
     """Fire an event hook. Never raises."""
     try:
         from superharness.engine.hooks import get_registry
+
         get_registry().fire(event, data)
     except Exception as e:
         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
+
+
 def _sqlite_singleton_acquire(project_dir: str) -> None:
     """Acquire the SQLite watcher singleton lease. Never raises."""
     try:
         import socket
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import watcher_singleton
+
         now = _now_utc()
         conn = get_connection(project_dir)
         try:
@@ -2026,11 +2401,14 @@ def _sqlite_singleton_acquire(project_dir: str) -> None:
     except Exception as e:
         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
+
+
 def _sqlite_singleton_release(project_dir: str) -> None:
     """Release the SQLite watcher singleton lease. Never raises."""
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import watcher_singleton
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -2041,6 +2419,8 @@ def _sqlite_singleton_release(project_dir: str) -> None:
     except Exception as e:
         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
+
+
 def _sqlite_tick(project_dir: str, now: str) -> None:
     """Run SQLite-side per-tick operations: record watcher heartbeat and
     flag stale agent_heartbeats as zombie.
@@ -2052,6 +2432,7 @@ def _sqlite_tick(project_dir: str, now: str) -> None:
         from superharness.engine import watcher_singleton
         from superharness.engine import heartbeat_dao
         from superharness.engine import liveness
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -2064,6 +2445,8 @@ def _sqlite_tick(project_dir: str, now: str) -> None:
     except Exception as e:
         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
+
+
 def _self_diagnosis(project_dir: str) -> list[str]:
     """Check environment health before running auto-mode. Returns list of warnings."""
     warnings = []
@@ -2076,6 +2459,7 @@ def _self_diagnosis(project_dir: str) -> list[str]:
 
     # Check SQLite DB exists and is writable
     from superharness.utils.paths import resolve_active_state_db_path
+
     db_path = resolve_active_state_db_path(project_dir)
     if not os.path.isfile(db_path):
         warnings.append(f"MISSING: {db_path} — run shux init or start watcher first")
@@ -2110,12 +2494,11 @@ def _self_diagnosis(project_dir: str) -> list[str]:
 
 def auto_enqueue_todo(project_dir: str) -> int:
     """Scan contract for todo tasks and enqueue them for planning.
-    
+
     Only runs if auto_dispatch=True and autonomy=(autonomous OR ai_driven) in profile.yaml.
     """
     import uuid
-    from datetime import datetime, timezone
-    from superharness.engine import state_reader, state_writer
+    from superharness.engine import state_reader
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import inbox_dao
 
@@ -2124,6 +2507,7 @@ def auto_enqueue_todo(project_dir: str) -> int:
         return 0
     try:
         import yaml as _yaml
+
         profile = _yaml.safe_load(open(profile_file, encoding="utf-8").read()) or {}
     except Exception as e:
         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
@@ -2147,14 +2531,15 @@ def auto_enqueue_todo(project_dir: str) -> int:
     # Track tasks already in inbox (active)
     active_tasks: set[str] = set()
     for item in inbox_items:
-        if not isinstance(item, dict): continue
+        if not isinstance(item, dict):
+            continue
         if item.get("status") in ("pending", "launched", "running", "paused"):
             active_tasks.add(str(item.get("task", "")))
 
     added = 0
     now = _now_utc()
     new_items = []
-    
+
     conn = get_connection(project_dir)
     try:
         init_db(conn)
@@ -2164,7 +2549,7 @@ def auto_enqueue_todo(project_dir: str) -> int:
             task_id = str(task.get("id", ""))
             if not task_id or task_id in active_tasks:
                 continue
-            
+
             # Check dependencies
             if not _deps_satisfied_from_tasks(tasks, task_id):
                 continue
@@ -2181,6 +2566,7 @@ def auto_enqueue_todo(project_dir: str) -> int:
                 if created:
                     try:
                         from datetime import datetime as _dt, timezone as _tz
+
                         t = _dt.fromisoformat(str(created).replace("Z", "+00:00"))
                         now_dt = _dt.now(_tz.utc)
                         age = (now_dt - t).total_seconds() / 60
@@ -2191,43 +2577,61 @@ def auto_enqueue_todo(project_dir: str) -> int:
 
             owner = str(task.get("owner", "claude-code"))
             item_id = f"auto-{uuid.uuid4().hex[:6]}"
-            
+
             # 1. Mirror task to SQLite if missing
             _ensure_task_in_sqlite(conn, task_id, project_dir, now)
 
             # 2. Burst guard: skip if this task has had too many recent failures
             from superharness.engine.burst_guard import task_burst_suppressed
+
             if task_burst_suppressed(conn, task_id):
                 continue
 
             # 3. Enqueue in SQLite
-            inbox_dao.enqueue(conn, id=item_id, task_id=task_id,
-                              target_agent=owner, priority=2, max_retries=3,
-                              project_path=project_dir, plan_only=True, now=now)
-            
-            new_items.append({
-                "id": item_id, "task": task_id, "to": owner, "status": "pending",
-                "priority": 2, "retry_count": 0, "max_retries": 3, "created_at": now,
-                "project": project_dir, "plan_only": True
-            })
+            inbox_dao.enqueue(
+                conn,
+                id=item_id,
+                task_id=task_id,
+                target_agent=owner,
+                priority=2,
+                max_retries=3,
+                project_path=project_dir,
+                plan_only=True,
+                now=now,
+            )
+
+            new_items.append(
+                {
+                    "id": item_id,
+                    "task": task_id,
+                    "to": owner,
+                    "status": "pending",
+                    "priority": 2,
+                    "retry_count": 0,
+                    "max_retries": 3,
+                    "created_at": now,
+                    "project": project_dir,
+                    "plan_only": True,
+                }
+            )
             active_tasks.add(task_id)
             added += 1
             print(f"auto-dispatch: enqueued todo {task_id} for planning → {owner}")
-        
+
         conn.commit()
     finally:
         conn.close()
 
     return added
 
+
 def auto_enqueue_approved(project_dir: str) -> int:
     """Scan contract for plan_approved tasks and enqueue them.
-    
+
     Only runs if auto_dispatch=True and autonomy=(autonomous OR oversight OR ai_driven) in profile.yaml.
     """
     import uuid
-    from datetime import datetime, timezone
-    from superharness.engine import state_reader, state_writer
+    from superharness.engine import state_reader
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import inbox_dao
 
@@ -2236,6 +2640,7 @@ def auto_enqueue_approved(project_dir: str) -> int:
         return 0
     try:
         import yaml as _yaml
+
         profile = _yaml.safe_load(open(profile_file, encoding="utf-8").read()) or {}
     except Exception as e:
         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
@@ -2259,7 +2664,8 @@ def auto_enqueue_approved(project_dir: str) -> int:
     # Track tasks already in inbox (active)
     active_tasks: set[str] = set()
     for item in inbox_items:
-        if not isinstance(item, dict): continue
+        if not isinstance(item, dict):
+            continue
         if item.get("status") in ("pending", "launched", "running", "paused"):
             active_tasks.add(str(item.get("task", "")))
 
@@ -2271,6 +2677,7 @@ def auto_enqueue_approved(project_dir: str) -> int:
     failed_counts: dict[str, int] = {}
     _default_max_retries = 3
     from superharness.utils.paths import resolve_active_state_db_path as _rap
+
     _db_path = _rap(project_dir)
     if os.path.isfile(_db_path):
         try:
@@ -2311,7 +2718,7 @@ def auto_enqueue_approved(project_dir: str) -> int:
             max_retries = int(task.get("max_retries", _default_max_retries))
             if failed_counts.get(task_id, 0) >= max_retries:
                 continue
-            
+
             # Check dependencies
             if not _deps_satisfied_from_tasks(tasks, task_id):
                 continue
@@ -2328,6 +2735,7 @@ def auto_enqueue_approved(project_dir: str) -> int:
                 if created:
                     try:
                         from datetime import datetime as _dt, timezone as _tz
+
                         t = _dt.fromisoformat(str(created).replace("Z", "+00:00"))
                         now_dt = _dt.now(_tz.utc)
                         age = (now_dt - t).total_seconds() / 60
@@ -2338,30 +2746,51 @@ def auto_enqueue_approved(project_dir: str) -> int:
 
             owner = str(task.get("owner", "claude-code"))
             item_id = f"auto-{uuid.uuid4().hex[:6]}"
-            
+
             # 1. Mirror task to SQLite if missing
             _ensure_task_in_sqlite(conn, task_id, project_dir, now)
-            
+
             # 2. Enqueue in SQLite; catch duplicate if another process raced us.
             try:
-                inbox_dao.enqueue(conn, id=item_id, task_id=task_id,
-                                  target_agent=owner, priority=2, max_retries=3,
-                                  project_path=project_dir, plan_only=False, now=now)
+                inbox_dao.enqueue(
+                    conn,
+                    id=item_id,
+                    task_id=task_id,
+                    target_agent=owner,
+                    priority=2,
+                    max_retries=3,
+                    project_path=project_dir,
+                    plan_only=False,
+                    now=now,
+                )
             except Exception as _enq_err:
-                logger.warning("auto_enqueue_approved: unexpected error: %s", _enq_err, exc_info=True)
+                logger.warning(
+                    "auto_enqueue_approved: unexpected error: %s",
+                    _enq_err,
+                    exc_info=True,
+                )
                 # StateError (duplicate) or any other DB error — skip silently.
                 active_tasks.add(task_id)
                 continue
 
-            new_items.append({
-                "id": item_id, "task": task_id, "to": owner, "status": "pending",
-                "priority": 2, "retry_count": 0, "max_retries": 3, "created_at": now,
-                "project": project_dir, "plan_only": False
-            })
+            new_items.append(
+                {
+                    "id": item_id,
+                    "task": task_id,
+                    "to": owner,
+                    "status": "pending",
+                    "priority": 2,
+                    "retry_count": 0,
+                    "max_retries": 3,
+                    "created_at": now,
+                    "project": project_dir,
+                    "plan_only": False,
+                }
+            )
             active_tasks.add(task_id)
             added += 1
             print(f"auto-dispatch: enqueued approved {task_id} → {owner}")
-        
+
         conn.commit()
     finally:
         conn.close()
@@ -2369,25 +2798,30 @@ def auto_enqueue_approved(project_dir: str) -> int:
     return added
 
 
-
 _LAUNCHER_LOG_MAX_FILES = 200
+
 
 def _rotate_launcher_logs_if_needed(project_dir: str) -> None:
     """Remove old launcher logs if there are too many. Never raises."""
     import glob
+
     try:
-        log_dir = os.path.join(project_dir, '.superharness', 'launcher-logs')
+        log_dir = os.path.join(project_dir, ".superharness", "launcher-logs")
         if not os.path.isdir(log_dir):
             return
-        logs = sorted(glob.glob(os.path.join(log_dir, '*.log')), key=os.path.getmtime)
+        logs = sorted(glob.glob(os.path.join(log_dir, "*.log")), key=os.path.getmtime)
         if len(logs) > _LAUNCHER_LOG_MAX_FILES:
             to_remove = len(logs) - _LAUNCHER_LOG_MAX_FILES
             for lf in logs[:to_remove]:
                 os.remove(lf)
-            print(f'disk-guard: removed {to_remove} old launcher log(s) ({len(logs)} -> {_LAUNCHER_LOG_MAX_FILES})')
+            print(
+                f"disk-guard: removed {to_remove} old launcher log(s) ({len(logs)} -> {_LAUNCHER_LOG_MAX_FILES})"
+            )
     except Exception as e:
         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
+
+
 def _run_scripts(
     project_dir: str,
     *,
@@ -2423,8 +2857,11 @@ def _run_scripts(
     # Deadline check
     deadline_check = os.path.join(script_dir, "inbox-deadline-check.sh")
     if os.path.isfile(deadline_check) and os.access(deadline_check, os.X_OK):
-        subprocess.run(["bash", deadline_check, "--project", project_dir],
-                       check=False, capture_output=False)
+        subprocess.run(
+            ["bash", deadline_check, "--project", project_dir],
+            check=False,
+            capture_output=False,
+        )
 
     # Heartbeat: write legacy timestamp + structured contract heartbeat
     _run_scripts_heartbeat(project_dir)
@@ -2433,6 +2870,7 @@ def _run_scripts(
     try:
         from pathlib import Path
         from superharness.modules.runner import run_hooks
+
         run_hooks("on_watcher_tick", {"project_dir": project_dir}, Path(project_dir))
     except Exception as e:
         logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
@@ -2453,8 +2891,10 @@ def _run_scripts(
     if _watcher_cycle_count[0] % 10 == 0:
         try:
             from superharness.engine.behavioral import (
-                refresh_behavioral_profile, evaluate_all_open_trials,
+                refresh_behavioral_profile,
+                evaluate_all_open_trials,
             )
+
             if refresh_behavioral_profile(project_dir):
                 completed = evaluate_all_open_trials(project_dir)
                 if completed:
@@ -2467,6 +2907,7 @@ def _run_scripts(
     if _watcher_cycle_count[0] % 20 == 0:
         try:
             from superharness.engine.agent_memory import promote_all_project_memory
+
             promoted = promote_all_project_memory(project_dir)
             if promoted:
                 print(f"memory: promoted {promoted} file(s) to global")
@@ -2500,7 +2941,9 @@ def _run_scripts(
 
     # Auto-bootstrap: dispatch AC-proposal for tasks escalated with empty content
     try:
-        if _should_run(project_dir, "auto_bootstrap", cooldown=30) and not _circuit_breaker_tripped(project_dir):
+        if _should_run(
+            project_dir, "auto_bootstrap", cooldown=30
+        ) and not _circuit_breaker_tripped(project_dir):
             _auto_bootstrap_empty_tasks(project_dir)
     except Exception as e:
         logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
@@ -2543,7 +2986,9 @@ def _run_scripts(
             _reconcile_discussion_contract(project_dir)
     except Exception as e:
         logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
-        print(f"Warning: discussion contract reconciliation failed: {e}", file=sys.stderr)
+        print(
+            f"Warning: discussion contract reconciliation failed: {e}", file=sys.stderr
+        )
 
     # review_requested timeout is handled by reconcile_lifecycle (above, after dispatch reconciliation)
 
@@ -2557,7 +3002,9 @@ def _run_scripts(
 
     # Auto-enqueue todo tasks for planning when auto_dispatch=True and autonomy=autonomous
     try:
-        if _should_run(project_dir, "auto_enqueue_todo", cooldown=15) and not _circuit_breaker_tripped(project_dir):
+        if _should_run(
+            project_dir, "auto_enqueue_todo", cooldown=15
+        ) and not _circuit_breaker_tripped(project_dir):
             auto_enqueue_todo(project_dir)
     except Exception as e:
         logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
@@ -2565,7 +3012,9 @@ def _run_scripts(
 
     # Auto peer-approve plan_proposed tasks: dispatch to a different max-tier agent for review
     try:
-        if _should_run(project_dir, "auto_peer_approve", cooldown=30) and not _circuit_breaker_tripped(project_dir):
+        if _should_run(
+            project_dir, "auto_peer_approve", cooldown=30
+        ) and not _circuit_breaker_tripped(project_dir):
             _auto_peer_approve_plans(project_dir)
     except Exception as e:
         logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
@@ -2573,7 +3022,9 @@ def _run_scripts(
 
     # Auto-enqueue plan_approved tasks when auto_dispatch=True in profile.yaml
     try:
-        if _should_run(project_dir, "auto_enqueue_approved", cooldown=15) and not _circuit_breaker_tripped(project_dir):
+        if _should_run(
+            project_dir, "auto_enqueue_approved", cooldown=15
+        ) and not _circuit_breaker_tripped(project_dir):
             auto_enqueue_approved(project_dir)
     except Exception as e:
         logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
@@ -2614,18 +3065,22 @@ def _run_scripts(
         from dataclasses import asdict
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao
+
         conn_paused = get_connection(project_dir)
         try:
             init_db(conn_paused)
-            paused_items = [asdict(r) for r in inbox_dao.get_all(conn_paused, status="paused")]
+            paused_items = [
+                asdict(r) for r in inbox_dao.get_all(conn_paused, status="paused")
+            ]
             if _reconcile_paused_dead_pids(paused_items):
                 for item in paused_items:
                     if isinstance(item, dict) and item.get("status") != "paused":
                         inbox_dao.update_status(
-                            conn_paused, item.get("id", ""),
+                            conn_paused,
+                            item.get("id", ""),
                             from_status="paused",
                             to_status=item.get("status", "failed"),
-                            now=_now_utc()
+                            now=_now_utc(),
                         )
                 conn_paused.commit()
         finally:
@@ -2638,6 +3093,7 @@ def _run_scripts(
     # advancement takes priority over the simple revert behavior.
     try:
         from superharness.engine.review_escalation import escalate_stale_reviews
+
         escalate_stale_reviews(project_dir)
     except Exception as e:
         logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
@@ -2647,6 +3103,7 @@ def _run_scripts(
     # any review_requested without a review_chain that the escalation pass left)
     try:
         from superharness.engine.lifecycle_rules import reconcile_lifecycle
+
         reconcile_lifecycle(project_dir)
     except Exception as e:
         logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
@@ -2655,6 +3112,7 @@ def _run_scripts(
     # Proactive session flush: save partial work before lifecycle timeout
     try:
         from superharness.engine.session_flush import check_expiring, flush_task
+
         expiring = check_expiring(project_dir)
         for task_id in expiring:
             flush_task(project_dir, task_id)
@@ -2713,6 +3171,7 @@ def _run_scripts(
     if target == "both":
         try:
             from superharness.engine.adapter_registry import list_adapters
+
             targets = list_adapters()
         except Exception as e:
             logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
@@ -2723,9 +3182,12 @@ def _run_scripts(
     # Budget gate: skip dispatch if daily budget is exceeded (strict mode)
     try:
         from superharness.engine.model_budget import check_budget, BudgetStatus
+
         budget = check_budget(project_dir)
         if budget.status == BudgetStatus.BLOCK:
-            print(f"budget-gate: BLOCKED — daily budget exceeded (${budget.used_today:.2f} / ${budget.daily_limit:.2f}). Skipping dispatch.")
+            print(
+                f"budget-gate: BLOCKED — daily budget exceeded (${budget.used_today:.2f} / ${budget.daily_limit:.2f}). Skipping dispatch."
+            )
             return
         elif budget.status == BudgetStatus.WARN:
             print(f"budget-gate: WARN — {budget.message}")
@@ -2733,17 +3195,24 @@ def _run_scripts(
         logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
         _log_watcher_error(project_dir, "watcher", str(e))
 
-
     for t in targets:
         # Per-agent budget check: skip agents over their limit
         try:
-            from superharness.engine.model_budget import check_agent_budget, BudgetStatus
+            from superharness.engine.model_budget import (
+                check_agent_budget,
+                BudgetStatus,
+            )
+
             agent_budget = check_agent_budget(project_dir, t)
             if agent_budget.status == BudgetStatus.BLOCK:
-                print(f"budget-gate: skipping {t} — per-agent budget exceeded (${agent_budget.used_today:.2f} / ${agent_budget.daily_limit:.2f})")
+                print(
+                    f"budget-gate: skipping {t} — per-agent budget exceeded (${agent_budget.used_today:.2f} / ${agent_budget.daily_limit:.2f})"
+                )
                 continue
             elif agent_budget.status == BudgetStatus.WARN:
-                print(f"budget-gate: {t} WARN — ${agent_budget.used_today:.2f} / ${agent_budget.daily_limit:.2f}")
+                print(
+                    f"budget-gate: {t} WARN — ${agent_budget.used_today:.2f} / ${agent_budget.daily_limit:.2f}"
+                )
         except Exception as e:
             logger.warning("_run_scripts: unexpected error: %s", e, exc_info=True)
             _log_watcher_error(project_dir, "watcher", str(e))
@@ -2751,6 +3220,7 @@ def _run_scripts(
         # Loop detection: stateful warn→block using LoopGuard
         try:
             from superharness.engine.loop_detector import detect_loop, LoopGuard
+
             sh_dir = os.path.join(project_dir, ".superharness")
             guard = LoopGuard(state_dir=sh_dir)
             log_dir = os.path.join(sh_dir, "launcher-logs")
@@ -2762,11 +3232,18 @@ def _run_scripts(
                         decision = guard.check(t, loop)
                         _loop_action = decision["action"]
                         if _loop_action == "warn":
-                            print(f"loop-guard: WARN {t} — {decision['reason']} (pattern: {loop['pattern']})")
+                            print(
+                                f"loop-guard: WARN {t} — {decision['reason']} (pattern: {loop['pattern']})"
+                            )
                         elif _loop_action == "block":
-                            from superharness.engine.policy_gate import check_agent_policy
+                            from superharness.engine.policy_gate import (
+                                check_agent_policy,
+                            )
+
                             check_agent_policy(t, loop_detected=True)
-                            print(f"loop-guard: BLOCKED {t} — {decision['reason']} (pattern: {loop['pattern']})")
+                            print(
+                                f"loop-guard: BLOCKED {t} — {decision['reason']} (pattern: {loop['pattern']})"
+                            )
                         break
             if _loop_action == "block":
                 continue
@@ -2786,11 +3263,15 @@ def _run_scripts(
     # Discussion dispatch — call Python module directly (shell script no longer used)
     try:
         from superharness.commands import discussion_dispatch as _dd
+
         _dd.dispatch(project_dir)
     except Exception as _exc:
         import logging as _logging
+
         _logging.getLogger(__name__).warning(
-            "inbox_watch: discussion_dispatch raised an exception: %s", _exc, exc_info=True
+            "inbox_watch: discussion_dispatch raised an exception: %s",
+            _exc,
+            exc_info=True,
         )
 
 
@@ -2801,6 +3282,7 @@ _TASK_LOG_STALE_MINUTES = 15  # mark as failed if no activity for this long
 # Operator memory check
 # ---------------------------------------------------------------------------
 
+
 def _check_operator_memory(project_dir: str) -> None:
     """Scan inbox items with failed_reason against operator_memory.
 
@@ -2808,6 +3290,7 @@ def _check_operator_memory(project_dir: str) -> None:
     This runs before auto-retry so the watcher can surface known solutions.
     """
     from superharness.utils.paths import resolve_active_state_db_path
+
     db_path = resolve_active_state_db_path(project_dir)
     if not os.path.isfile(db_path):
         return
@@ -2821,6 +3304,7 @@ def _check_operator_memory(project_dir: str) -> None:
     # Read inbox items (SQLite)
     try:
         from superharness.engine.state_reader import get_inbox_items
+
         items = get_inbox_items(project_dir)
     except Exception as e:
         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
@@ -2838,6 +3322,7 @@ def _check_operator_memory(project_dir: str) -> None:
         # signature lets memory learn about repeated environmental
         # failures (missing dirs/CLIs) the regex library doesn't catch.
         from superharness.engine.failure_patterns import unknown_signature
+
         matched = match_patterns(failed_reason)
         signatures = [p.id for p in matched]
         if not signatures:
@@ -2858,6 +3343,7 @@ def _check_operator_memory(project_dir: str) -> None:
             # successful recovery.
             om.record_match(sig, success=False)
 
+
 def _learn_from_recovery(project_dir: str) -> None:
     """Record hits for failure patterns whose tasks have since recovered.
 
@@ -2865,6 +3351,7 @@ def _learn_from_recovery(project_dir: str) -> None:
     are now done. Records a hit for each pattern, raising confidence.
     """
     from superharness.utils.paths import resolve_active_state_db_path
+
     db_path = resolve_active_state_db_path(project_dir)
     if not os.path.isfile(db_path):
         return
@@ -2904,6 +3391,7 @@ def _learn_from_recovery(project_dir: str) -> None:
                     candidates.append(pid)
                 if (not candidates) and getattr(row, "error_snippet", None):
                     from superharness.engine.failure_patterns import unknown_signature
+
                     candidates.append(unknown_signature(row.error_snippet))
 
                 for sig in candidates:
@@ -2913,21 +3401,27 @@ def _learn_from_recovery(project_dir: str) -> None:
                         recorded.add(task_id)
 
             if recorded:
-                print(f"operator-memory: learned from {len(recorded)} recovered task(s)")
+                print(
+                    f"operator-memory: learned from {len(recorded)} recovered task(s)"
+                )
         finally:
             conn.close()
     except Exception as e:
         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
+
+
 def _prune_operator_memory(project_dir: str) -> None:
     """Remove low-confidence patterns from operator memory."""
     from superharness.utils.paths import resolve_active_state_db_path
+
     db_path = resolve_active_state_db_path(project_dir)
     if not os.path.isfile(db_path):
         return
 
     try:
         from superharness.engine.operator_memory import OperatorMemory
+
         om = OperatorMemory(db_path)
         om.ensure_table()
         removed = om.prune_stale(threshold=0.3)
@@ -2936,6 +3430,8 @@ def _prune_operator_memory(project_dir: str) -> None:
     except Exception as e:
         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
+
+
 def _analyze_task_logs(project_dir: str) -> None:
     """Check launched task logs for activity. Stale tasks get marked failed."""
     import glob
@@ -2977,8 +3473,16 @@ def _analyze_task_logs(project_dir: str) -> None:
             logs = sorted(glob.glob(log_pattern), key=os.path.getmtime, reverse=True)
             if not logs:
                 # No log file at all → likely never started
-                inbox_dao.update_status(conn, item.id, from_status="launched", to_status="failed", now=_now_utc())
-                print(f"log-analyzer: '{item.task_id}' → failed (no log file after {int(age_minutes)}m)")
+                inbox_dao.update_status(
+                    conn,
+                    item.id,
+                    from_status="launched",
+                    to_status="failed",
+                    now=_now_utc(),
+                )
+                print(
+                    f"log-analyzer: '{item.task_id}' → failed (no log file after {int(age_minutes)}m)"
+                )
                 escalated += 1
                 continue
 
@@ -2991,52 +3495,85 @@ def _analyze_task_logs(project_dir: str) -> None:
             # failing the inbox item — prevents infinite retry loops.
             try:
                 from superharness.engine.loop_detector import detect_loop, LoopGuard
+
                 loop_result = detect_loop(latest_log)
                 if loop_result.get("loop_detected"):
-                    guard = LoopGuard(
-                        os.path.join(project_dir, ".superharness")
-                    )
+                    guard = LoopGuard(os.path.join(project_dir, ".superharness"))
                     action = guard.check(item.task_id, loop_result)
                     if action["action"] == "block":
                         # Block the task (not just the inbox item)
                         from superharness.engine.state_writer import set_task_status
-                        block_reason = action.get("reason", loop_result.get("reason", "tool-loop detected"))
-                        set_task_status(project_dir, item.task_id, "blocked",
-                                       force=True, failed_reason=block_reason)
-                        inbox_dao.update_status(conn, item.id, from_status="launched",
-                                               to_status="failed", now=_now_utc(),
-                                               reason=f"blocked: {block_reason}")
+
+                        block_reason = action.get(
+                            "reason", loop_result.get("reason", "tool-loop detected")
+                        )
+                        set_task_status(
+                            project_dir,
+                            item.task_id,
+                            "blocked",
+                            force=True,
+                            failed_reason=block_reason,
+                        )
+                        inbox_dao.update_status(
+                            conn,
+                            item.id,
+                            from_status="launched",
+                            to_status="failed",
+                            now=_now_utc(),
+                            reason=f"blocked: {block_reason}",
+                        )
                         # Record to agent memory so future dispatches learn
                         try:
                             from superharness.engine.agent_memory import append
+
                             pattern = loop_result.get("pattern", "unknown")
-                            append(project_dir, "pitfalls.md",
-                                   f"Tool loop detected: {pattern} — {block_reason}. "
-                                   "Avoid repeating the same tool call without progress.")
+                            append(
+                                project_dir,
+                                "pitfalls.md",
+                                f"Tool loop detected: {pattern} — {block_reason}. "
+                                "Avoid repeating the same tool call without progress.",
+                            )
                         except Exception as e:
-                            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
+                            logger.warning(
+                                "inbox_watch unexpected error: %s", e, exc_info=True
+                            )
                             pass
-                        from superharness.engine.ledger_dao import record as _ledger_record2
-                        _ledger_record2(conn, task_id=item.task_id, agent="watcher",
-                                       action="block_loop",
-                                       details={"pattern": loop_result.get("pattern"),
-                                                "reason": block_reason,
-                                                "count": loop_result.get("count")},
-                                       now=_now_utc())
-                        print(f"log-analyzer: '{item.task_id}' → BLOCKED (tool-loop: "
-                              f"{loop_result.get('pattern')} — {block_reason})")
+                        from superharness.engine.ledger_dao import (
+                            record as _ledger_record2,
+                        )
+
+                        _ledger_record2(
+                            conn,
+                            task_id=item.task_id,
+                            agent="watcher",
+                            action="block_loop",
+                            details={
+                                "pattern": loop_result.get("pattern"),
+                                "reason": block_reason,
+                                "count": loop_result.get("count"),
+                            },
+                            now=_now_utc(),
+                        )
+                        print(
+                            f"log-analyzer: '{item.task_id}' → BLOCKED (tool-loop: "
+                            f"{loop_result.get('pattern')} — {block_reason})"
+                        )
                         escalated += 1
                         continue
                     elif action["action"] == "warn":
-                        print(f"log-analyzer: '{item.task_id}' — tool-loop WARNING "
-                              f"({loop_result.get('pattern')}, cycle {action.get('reason', '')})")
+                        print(
+                            f"log-analyzer: '{item.task_id}' — tool-loop WARNING "
+                            f"({loop_result.get('pattern')}, cycle {action.get('reason', '')})"
+                        )
             except Exception as e:
                 logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                 pass
             # ── End tool-loop guardrail ─────────────────────────────────
 
             try:
-                log_mtime = datetime.fromtimestamp(os.path.getmtime(latest_log), tz=timezone.utc)
+                log_mtime = datetime.fromtimestamp(
+                    os.path.getmtime(latest_log), tz=timezone.utc
+                )
                 inactive_minutes = (now - log_mtime).total_seconds() / 60
             except Exception as e:
                 logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
@@ -3046,10 +3583,14 @@ def _analyze_task_logs(project_dir: str) -> None:
             has_activity = False
             try:
                 import subprocess
+
                 r = subprocess.run(
                     ["git", "diff", "--stat", "HEAD"],
-                    capture_output=True, text=True, check=False, timeout=5,
-                    cwd=project_dir
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=5,
+                    cwd=project_dir,
                 )
                 if r.stdout.strip():
                     has_activity = True
@@ -3057,12 +3598,22 @@ def _analyze_task_logs(project_dir: str) -> None:
                 logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
                 pass
             if has_activity:
-                print(f"log-analyzer: '{item.task_id}' active (files changing, {int(age_minutes)}m elapsed)")
+                print(
+                    f"log-analyzer: '{item.task_id}' active (files changing, {int(age_minutes)}m elapsed)"
+                )
                 continue
 
             if inactive_minutes >= _TASK_LOG_STALE_MINUTES:
-                inbox_dao.update_status(conn, item.id, from_status="launched", to_status="failed", now=_now_utc())
-                print(f"log-analyzer: '{item.task_id}' → failed (no log activity for {int(inactive_minutes)}m, {int(age_minutes)}m total)")
+                inbox_dao.update_status(
+                    conn,
+                    item.id,
+                    from_status="launched",
+                    to_status="failed",
+                    now=_now_utc(),
+                )
+                print(
+                    f"log-analyzer: '{item.task_id}' → failed (no log activity for {int(inactive_minutes)}m, {int(age_minutes)}m total)"
+                )
                 escalated += 1
 
         if escalated:
@@ -3101,6 +3652,7 @@ def _run_transcript_tail_if_enabled(project_dir: str) -> None:
         enabled = False
         if os.path.isfile(profile_file):
             import yaml as _yaml
+
             with open(profile_file) as f:
                 profile = _yaml.safe_load(f) or {}
             enabled = bool(profile.get("transcript_tail", False))
@@ -3133,6 +3685,8 @@ def _run_transcript_tail_if_enabled(project_dir: str) -> None:
     except Exception as e:
         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
+
+
 def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
     """Reconcile launched inbox items that have no running process.
 
@@ -3145,12 +3699,13 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
 
     Returns count of reconciled items.
     """
-    harness = os.path.join(project_dir, ".superharness")
+    os.path.join(project_dir, ".superharness")
 
     # Read from SQLite via state_reader
     items = []
     try:
         from superharness.engine.state_reader import get_inbox_items
+
         items = get_inbox_items(project_dir)
     except Exception as e:
         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
@@ -3161,6 +3716,7 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
     contract_statuses: dict[str, str] = {}
     try:
         from superharness.engine.state_reader import get_tasks
+
         for t in get_tasks(project_dir):
             if isinstance(t, dict) and t.get("id"):
                 contract_statuses[str(t["id"])] = str(t.get("status", ""))
@@ -3208,7 +3764,9 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
                 item["pid"] = ""
                 reconciled += 1
                 changed = True
-                print(f"zombie-reconcile: {item_id} ({task_id}) → failed (pid {pid} dead)")
+                print(
+                    f"zombie-reconcile: {item_id} ({task_id}) → failed (pid {pid} dead)"
+                )
             # Check 2b: plan-only task alive but timed out → kill and fail
             elif item.get("plan_only") and launched_at:
                 _PLAN_ONLY_TIMEOUT = 900  # 15 minutes
@@ -3224,14 +3782,20 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
                             # or PermissionError). Anything else propagates
                             # instead of being silently treated as "already
                             # dead", per CONTRIBUTING.md's exception policy.
-                            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
+                            logger.warning(
+                                "inbox_watch unexpected error: %s", e, exc_info=True
+                            )
                         item["status"] = "failed"
                         item["failed_at"] = _now_utc()
                         item["pid"] = ""
-                        item["failed_reason"] = f"plan-only timeout ({int(age)}s > {_PLAN_ONLY_TIMEOUT}s)"
+                        item["failed_reason"] = (
+                            f"plan-only timeout ({int(age)}s > {_PLAN_ONLY_TIMEOUT}s)"
+                        )
                         reconciled += 1
                         changed = True
-                        print(f"zombie-reconcile: {item_id} ({task_id}) → failed (plan-only timeout, {int(age)}s)")
+                        print(
+                            f"zombie-reconcile: {item_id} ({task_id}) → failed (plan-only timeout, {int(age)}s)"
+                        )
                 except (ValueError, TypeError):
                     pass
             # Check 2c: non-plan-only task alive but running beyond max wall-clock cap → kill and fail
@@ -3246,14 +3810,20 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
                         except OSError as e:
                             # See the plan-only-timeout branch above: os.kill
                             # only raises OSError; anything else propagates.
-                            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
+                            logger.warning(
+                                "inbox_watch unexpected error: %s", e, exc_info=True
+                            )
                         item["status"] = "failed"
                         item["failed_at"] = _now_utc()
                         item["pid"] = ""
-                        item["failed_reason"] = f"max launch age exceeded ({int(age)}s > {_MAX_LAUNCH_AGE_SECONDS}s)"
+                        item["failed_reason"] = (
+                            f"max launch age exceeded ({int(age)}s > {_MAX_LAUNCH_AGE_SECONDS}s)"
+                        )
                         reconciled += 1
                         changed = True
-                        print(f"zombie-reconcile: {item_id} ({task_id}) → failed (max age, {int(age)}s)")
+                        print(
+                            f"zombie-reconcile: {item_id} ({task_id}) → failed (max age, {int(age)}s)"
+                        )
                 except (ValueError, TypeError):
                     pass
             continue
@@ -3268,7 +3838,9 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
                     item["failed_at"] = _now_utc()
                     reconciled += 1
                     changed = True
-                    print(f"zombie-reconcile: {item_id} ({task_id}) → failed (no pid, {int(age)}s old)")
+                    print(
+                        f"zombie-reconcile: {item_id} ({task_id}) → failed (no pid, {int(age)}s old)"
+                    )
             except (ValueError, TypeError):
                 pass
 
@@ -3276,6 +3848,7 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
         # Write changes directly to SQLite (post-migration)
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -3288,13 +3861,16 @@ def _reconcile_zombies(project_dir: str, max_age_seconds: int = 300) -> int:
                             row = inbox_dao.get(conn, item_id)
                             if row:
                                 inbox_dao.update_status(
-                                    conn, item_id,
+                                    conn,
+                                    item_id,
                                     from_status="launched",
                                     to_status=new_status,
-                                    now=_now_utc()
+                                    now=_now_utc(),
                                 )
                         except Exception as e:
-                            logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
+                            logger.warning(
+                                "inbox_watch unexpected error: %s", e, exc_info=True
+                            )
                             # Fallback: direct DAO single-field update
                             inbox_dao.set_field(conn, item_id, "status", new_status)
             conn.commit()
@@ -3315,7 +3891,14 @@ def _reconcile_discussion_contract(project_dir: str) -> int:
     from superharness.engine import state_reader, state_writer
     from superharness.engine.db import get_connection, init_db
 
-    terminal = ("cancelled", "closed", "consensus", "deadlock", "failed", "failed_participant")
+    terminal = (
+        "cancelled",
+        "closed",
+        "consensus",
+        "deadlock",
+        "failed",
+        "failed_participant",
+    )
 
     # Collect terminal discussion IDs from SQLite. Build placeholders
     # dynamically so adding/removing terminal statuses can't desync from
@@ -3353,16 +3936,20 @@ def _reconcile_discussion_contract(project_dir: str) -> int:
         tid = str(task.get("id", ""))
         for disc_id in terminal_disc_ids:
             if tid.startswith(disc_id + "/") or tid == disc_id:
-                if state_writer.set_task_status(project_dir, tid, "archived",
-                                                from_status="in_progress", force=True):
+                if state_writer.set_task_status(
+                    project_dir, tid, "archived", from_status="in_progress", force=True
+                ):
                     updated += 1
-                    print(f"discussion-reconcile: {tid} → archived (discussion {disc_id} is terminal)")
+                    print(
+                        f"discussion-reconcile: {tid} → archived (discussion {disc_id} is terminal)"
+                    )
                 break
 
     # Always clean up inbox items for terminal discussions (even if tasks already archived)
     if terminal_disc_ids:
         try:
             from superharness.engine.state_reader import get_inbox_items
+
             inbox = get_inbox_items(project_dir)
             inbox_cleaned = 0
             for item in inbox:
@@ -3379,22 +3966,29 @@ def _reconcile_discussion_contract(project_dir: str) -> int:
                         inbox_cleaned += 1
                         break
             if inbox_cleaned > 0:
-                print(f"discussion-reconcile: cleaned {inbox_cleaned} inbox item(s) for terminal discussions")
+                print(
+                    f"discussion-reconcile: cleaned {inbox_cleaned} inbox item(s) for terminal discussions"
+                )
         except Exception as e:
-            logger.warning("_reconcile_discussion_contract: unexpected error: %s", e, exc_info=True)
+            logger.warning(
+                "_reconcile_discussion_contract: unexpected error: %s", e, exc_info=True
+            )
             print(f"discussion-reconcile: inbox cleanup failed: {e}", file=sys.stderr)
 
     return updated
 
 
 _CONSENSUS_GRACE_MINUTES = 60  # auto-close consensus discussions after 1h
-_ORPHAN_ROUND_GRACE_MINUTES = 5  # advance orphaned rounds (inbox done, no verdicts) after 5m
+_ORPHAN_ROUND_GRACE_MINUTES = (
+    5  # advance orphaned rounds (inbox done, no verdicts) after 5m
+)
 _CONSENSUS_PENDING_REVIEW_PREFIX = "auto-pending-review:"
 _CIRCUIT_BREAKER_THRESHOLD = 20  # consecutive failures in 5 minutes trips breaker
 
-import re as _re
+import re as _re  # noqa: E402
 
-import logging
+import logging  # noqa: E402
+
 logger = logging.getLogger(__name__)
 _ZERO_VERDICT_RE = _re.compile(r"\b0/\d+\b")
 
@@ -3402,6 +3996,8 @@ _ZERO_VERDICT_RE = _re.compile(r"\b0/\d+\b")
 def _consensus_has_zero_verdicts(consensus_msg: str) -> bool:
     """Return True when the pending-review message indicates zero verdicts (0/N)."""
     return bool(_ZERO_VERDICT_RE.search(consensus_msg))
+
+
 _CIRCUIT_BREAKER_WINDOW_MINUTES = 5
 
 # === Auto-action cooldown tracking ===
@@ -3419,6 +4015,7 @@ _CIRCUIT_BREAKER_WINDOW_MINUTES = 5
 # minutes. time.time() (wall clock), not time.monotonic() — monotonic's
 # epoch is arbitrary per-process and is not comparable across processes.
 _AUTO_DEFAULT_COOLDOWN = 10  # seconds — most auto-actions need at least this
+
 
 def _should_run(project_dir: str, action: str, cooldown: int = 0) -> bool:
     """Return True if enough time has passed since last run of this action
@@ -3452,9 +4049,12 @@ def _should_run(project_dir: str, action: str, cooldown: int = 0) -> bool:
         finally:
             conn.close()
     except Exception:
-        logger.warning("_should_run(%s) cooldown check failed; skipping this tick", action, exc_info=True)
+        logger.warning(
+            "_should_run(%s) cooldown check failed; skipping this tick",
+            action,
+            exc_info=True,
+        )
         return False
-
 
 
 _ACTIVE_DISCUSSION_TIMEOUT_HOURS = 24  # auto-close active discussions after 24h
@@ -3463,6 +4063,7 @@ _ACTIVE_DISCUSSION_TIMEOUT_HOURS = 24  # auto-close active discussions after 24h
 def _circuit_breaker_tripped(project_dir: str) -> bool:
     try:
         from superharness.engine.db import get_connection, init_db, now_iso
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -3472,7 +4073,9 @@ def _circuit_breaker_tripped(project_dir: str) -> bool:
                 (now, f"-{_CIRCUIT_BREAKER_WINDOW_MINUTES}"),
             ).fetchone()[0]
             if count >= _CIRCUIT_BREAKER_THRESHOLD:
-                print(f"circuit-breaker: TRIPPED — {count} failures in {_CIRCUIT_BREAKER_WINDOW_MINUTES}min")
+                print(
+                    f"circuit-breaker: TRIPPED — {count} failures in {_CIRCUIT_BREAKER_WINDOW_MINUTES}min"
+                )
                 return True
             return False
         finally:
@@ -3550,7 +4153,9 @@ def _auto_advance_orphaned_rounds(project_dir: str) -> int:
             dispatched = {r["target_agent"] for r in round_items}
             if not dispatched:
                 continue
-            agents_done = {r["target_agent"] for r in round_items if r["status"] == "done"}
+            agents_done = {
+                r["target_agent"] for r in round_items if r["status"] == "done"
+            }
             if not dispatched.issubset(agents_done):
                 continue
 
@@ -3568,7 +4173,9 @@ def _auto_advance_orphaned_rounds(project_dir: str) -> int:
             # Without this, discussions whose agents wrote YAMLs but whose
             # DB rows are absent stay stuck forever (cmd_advance checks SQLite
             # only and exits "Round N is not complete").
-            disc_dir = os.path.join(project_dir, ".superharness", "discussions", disc.id)
+            disc_dir = os.path.join(
+                project_dir, ".superharness", "discussions", disc.id
+            )
             _now_ts = now.strftime("%Y-%m-%dT%H:%M:%SZ")
             registered_any = False
             for agent in dispatched:
@@ -3579,7 +4186,8 @@ def _auto_advance_orphaned_rounds(project_dir: str) -> int:
 
             # Re-read verdict_agents from SQLite (now includes just-registered rows).
             verdict_agents = {
-                rr.agent for rr in discussions_dao.get_rounds(conn, disc.id)
+                rr.agent
+                for rr in discussions_dao.get_rounds(conn, disc.id)
                 if rr.round_number == round_n
             }
             if registered_any:
@@ -3606,7 +4214,11 @@ def _auto_advance_orphaned_rounds(project_dir: str) -> int:
                     (disc.id,),
                 )
                 advanced += 1
-                reason = "0 verdicts" if not verdict_agents else f"{len(verdict_agents)}/{n_dispatched} verdicts (need {required})"
+                reason = (
+                    "0 verdicts"
+                    if not verdict_agents
+                    else f"{len(verdict_agents)}/{n_dispatched} verdicts (need {required})"
+                )
                 print(
                     f"discussion-orphan-advance: {disc.id} → failed_participant "
                     f"(round {round_n} inbox complete, {reason})",
@@ -3636,7 +4248,9 @@ def _auto_advance_orphaned_rounds(project_dir: str) -> int:
         if advanced:
             conn.commit()
     except Exception as e:
-        logger.warning("_auto_advance_orphaned_rounds: unexpected error: %s", e, exc_info=True)
+        logger.warning(
+            "_auto_advance_orphaned_rounds: unexpected error: %s", e, exc_info=True
+        )
         print(f"discussion-orphan-advance: error: {e}", file=sys.stderr)
     finally:
         conn.close()
@@ -3710,7 +4324,8 @@ def _auto_close_consensus_discussions(project_dir: str) -> int:
                     continue
 
             discussions_dao.close(
-                conn, disc_id,
+                conn,
+                disc_id,
                 consensus=row.consensus or "consensus",
                 now=now_str,
             )
@@ -3721,7 +4336,9 @@ def _auto_close_consensus_discussions(project_dir: str) -> int:
 
         conn.commit()
     except Exception as e:
-        logger.warning("_auto_close_consensus_discussions: unexpected error: %s", e, exc_info=True)
+        logger.warning(
+            "_auto_close_consensus_discussions: unexpected error: %s", e, exc_info=True
+        )
         print(f"discussion-auto-close: error: {e}", file=sys.stderr)
     finally:
         conn.close()
@@ -3729,7 +4346,9 @@ def _auto_close_consensus_discussions(project_dir: str) -> int:
     return closed
 
 
-_STALE_INBOX_DELETE_AGE_HOURS = 1  # delete items marked stale after 1h (they've had time for review)
+_STALE_INBOX_DELETE_AGE_HOURS = (
+    1  # delete items marked stale after 1h (they've had time for review)
+)
 
 
 def _auto_delete_stale_inbox(project_dir: str) -> int:
@@ -3749,7 +4368,10 @@ def _auto_delete_stale_inbox(project_dir: str) -> int:
         conn = get_connection(project_dir)
         try:
             init_db(conn)
-            cutoff = (datetime.now(timezone.utc) - timedelta(hours=_STALE_INBOX_DELETE_AGE_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            cutoff = (
+                datetime.now(timezone.utc)
+                - timedelta(hours=_STALE_INBOX_DELETE_AGE_HOURS)
+            ).strftime("%Y-%m-%dT%H:%M:%SZ")
             # Delete stale items where the last update was before the cutoff
             cursor = conn.execute(
                 "DELETE FROM inbox WHERE status='stale' AND (failed_at IS NULL OR failed_at < ?)",
@@ -3763,7 +4385,9 @@ def _auto_delete_stale_inbox(project_dir: str) -> int:
         finally:
             conn.close()
     except Exception as e:
-        logger.warning("_auto_delete_stale_inbox: unexpected error: %s", e, exc_info=True)
+        logger.warning(
+            "_auto_delete_stale_inbox: unexpected error: %s", e, exc_info=True
+        )
         print(f"auto-delete-stale: failed: {e}", file=sys.stderr)
         return 0
 
@@ -3777,10 +4401,13 @@ _REINFORCE_FAILURE_THRESHOLD = 3  # auto-pause agent after N failures in window
 _REINFORCE_TRACE_TAIL_LINES = 5000  # cap on trace.jsonl history scanned per tick
 
 
-def _maybe_pause_agent(conn, agent: str, failure_count: int, now, project_dir: str) -> None:
+def _maybe_pause_agent(
+    conn, agent: str, failure_count: int, now, project_dir: str
+) -> None:
     """Pause all pending/launched items for an agent if not already paused."""
     from datetime import timedelta
     from superharness.engine.trace import trace_event
+
     window_start = (now - timedelta(minutes=_REINFORCE_WINDOW_MINUTES)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
@@ -3795,17 +4422,27 @@ def _maybe_pause_agent(conn, agent: str, failure_count: int, now, project_dir: s
     cursor = conn.execute(
         """UPDATE inbox SET status='paused', paused_at=?, failed_reason=?
            WHERE target_agent=? AND status IN ('pending','launched')""",
-        (paused_now,
-         f"reinforce: fleet-classified permanent_block after {failure_count} failures",
-         agent),
+        (
+            paused_now,
+            f"reinforce: fleet-classified permanent_block after {failure_count} failures",
+            agent,
+        ),
     )
     if cursor.rowcount and cursor.rowcount > 0:
         conn.commit()
-        trace_event(project_dir, "reinforce_agent_pause", {
-            "agent": agent, "failure_count": failure_count,
-            "classification": "permanent_block",
-        })
-        print(f"reinforce: paused {agent} — fleet classified as permanent_block", file=sys.stderr)
+        trace_event(
+            project_dir,
+            "reinforce_agent_pause",
+            {
+                "agent": agent,
+                "failure_count": failure_count,
+                "classification": "permanent_block",
+            },
+        )
+        print(
+            f"reinforce: paused {agent} — fleet classified as permanent_block",
+            file=sys.stderr,
+        )
 
 
 def _tail_lines(path, n: int) -> list[str]:
@@ -3823,6 +4460,7 @@ def _tail_lines(path, n: int) -> list[str]:
     of how much history precedes the tail.
     """
     from pathlib import Path
+
     p = Path(path)
     if not p.exists():
         return []
@@ -3849,7 +4487,9 @@ def _tail_lines(path, n: int) -> list[str]:
     # rstrip \r before the emptiness check: files with CRLF line endings
     # (written in text mode on Windows) would otherwise leave every line
     # carrying a trailing \r into the caller's json.loads/string comparisons.
-    lines = [line.rstrip("\r") for line in data.decode("utf-8", errors="replace").split("\n")]
+    lines = [
+        line.rstrip("\r") for line in data.decode("utf-8", errors="replace").split("\n")
+    ]
     if lines and lines[-1] == "":
         lines = lines[:-1]  # trailing newline produces a trailing empty element
     lines = [line for line in lines if line.strip()]
@@ -3897,11 +4537,13 @@ def _reinforce_loop(project_dir: str) -> None:
             ).fetchall()
             for row in rows:
                 agent = row["target_agent"]
-                agent_failures.setdefault(agent, []).append({
-                    "task": row["task_id"] or "",
-                    "error": row["failed_reason"] or "unknown",
-                    "at": row["failed_at"] or "",
-                })
+                agent_failures.setdefault(agent, []).append(
+                    {
+                        "task": row["task_id"] or "",
+                        "error": row["failed_reason"] or "unknown",
+                        "at": row["failed_at"] or "",
+                    }
+                )
 
             for agent, failures in agent_failures.items():
                 if len(failures) < 2:
@@ -3916,6 +4558,7 @@ def _reinforce_loop(project_dir: str) -> None:
                 # Ask the fleet to analyze, then try to self-heal
                 try:
                     from superharness.engine.model_router import analyze_failure
+
                     classification = analyze_failure(
                         agent=agent,
                         task=latest["task"],
@@ -3923,7 +4566,11 @@ def _reinforce_loop(project_dir: str) -> None:
                         history=history,
                     )
                 except Exception:
-                    logger.warning("_reinforce_loop: unexpected error: %s", sys.exc_info()[1], exc_info=True)
+                    logger.warning(
+                        "_reinforce_loop: unexpected error: %s",
+                        sys.exc_info()[1],
+                        exc_info=True,
+                    )
                     classification = "unknown"
 
                 # Try self-healing BEFORE pausing — fix the problem if we can
@@ -3933,20 +4580,29 @@ def _reinforce_loop(project_dir: str) -> None:
                         f"reinforce: self-healed {agent} — {heal_msg}",
                         file=sys.stderr,
                     )
-                    trace_event(project_dir, "reinforce_self_heal", {
-                        "agent": agent, "action": heal_msg,
-                        "error": latest["error"][:200],
-                    })
+                    trace_event(
+                        project_dir,
+                        "reinforce_self_heal",
+                        {
+                            "agent": agent,
+                            "action": heal_msg,
+                            "error": latest["error"][:200],
+                        },
+                    )
                     continue  # skip pause — agent should work now
 
-                trace_event(project_dir, "reinforce_analysis", {
-                    "agent": agent,
-                    "failures": len(failures),
-                    "classification": classification,
-                    "self_heal_attempted": True,
-                    "self_heal_result": heal_msg,
-                    "latest_error": latest["error"][:200],
-                })
+                trace_event(
+                    project_dir,
+                    "reinforce_analysis",
+                    {
+                        "agent": agent,
+                        "failures": len(failures),
+                        "classification": classification,
+                        "self_heal_attempted": True,
+                        "self_heal_result": heal_msg,
+                        "latest_error": latest["error"][:200],
+                    },
+                )
 
                 if classification == "permanent_block":
                     _maybe_pause_agent(conn, agent, len(failures), now, project_dir)
@@ -3975,6 +4631,7 @@ def _reinforce_loop(project_dir: str) -> None:
             try:
                 import json as _json
                 from pathlib import Path
+
                 trace_file = Path(project_dir) / ".superharness" / "trace.jsonl"
                 tail = _tail_lines(trace_file, _REINFORCE_TRACE_TAIL_LINES)
                 if tail:
@@ -3985,30 +4642,42 @@ def _reinforce_loop(project_dir: str) -> None:
                             if event.get("type") == "reinforce_agent_pause":
                                 agent = event.get("agent", "")
                                 if agent:
-                                    agent_pause_counts[agent] = agent_pause_counts.get(agent, 0) + 1
+                                    agent_pause_counts[agent] = (
+                                        agent_pause_counts.get(agent, 0) + 1
+                                    )
                         except _json.JSONDecodeError:
                             continue
                     recent_tail = tail[-50:]
                     for agent, count in agent_pause_counts.items():
                         if count >= 3:
                             already_logged = any(
-                                f'"agent":"{agent}"' in line and '"learning":"agent_deprioritized"' in line
+                                f'"agent":"{agent}"' in line
+                                and '"learning":"agent_deprioritized"' in line
                                 for line in recent_tail
                             )
                             if not already_logged:
-                                trace_event(project_dir, "reinforce_learning", {
-                                    "learning": "agent_deprioritized",
-                                    "agent": agent,
-                                    "reason": f"paused {count} times",
-                                    "action": "profile_update",
-                                })
+                                trace_event(
+                                    project_dir,
+                                    "reinforce_learning",
+                                    {
+                                        "learning": "agent_deprioritized",
+                                        "agent": agent,
+                                        "reason": f"paused {count} times",
+                                        "action": "profile_update",
+                                    },
+                                )
             except Exception:
-                logger.warning("_reinforce_loop: unexpected error: %s", sys.exc_info()[1], exc_info=True)
+                logger.warning(
+                    "_reinforce_loop: unexpected error: %s",
+                    sys.exc_info()[1],
+                    exc_info=True,
+                )
                 pass
 
             # ── 3. Consensus extraction ─────────────────────────────────
             try:
                 from superharness.engine import discussions_dao
+
                 consensus_discs = discussions_dao.get_all(conn, status="consensus")
                 for disc in consensus_discs:
                     existing = conn.execute(
@@ -4023,14 +4692,29 @@ def _reinforce_loop(project_dir: str) -> None:
                         "INSERT OR IGNORE INTO tasks (id, title, owner, status, "
                         "created_at, acceptance_criteria, workflow) "
                         "VALUES (?, ?, ?, 'todo', ?, '[]', 'implementation')",
-                        (task_id, f"Consensus: {topic}", "owner", now.strftime("%Y-%m-%dT%H:%M:%SZ")),
+                        (
+                            task_id,
+                            f"Consensus: {topic}",
+                            "owner",
+                            now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        ),
                     )
                     conn.commit()
-                    trace_event(project_dir, "reinforce_consensus_task", {
-                        "discussion_id": disc.id, "task_id": task_id, "topic": topic,
-                    })
+                    trace_event(
+                        project_dir,
+                        "reinforce_consensus_task",
+                        {
+                            "discussion_id": disc.id,
+                            "task_id": task_id,
+                            "topic": topic,
+                        },
+                    )
             except Exception:
-                logger.warning("_reinforce_loop: unexpected error: %s", sys.exc_info()[1], exc_info=True)
+                logger.warning(
+                    "_reinforce_loop: unexpected error: %s",
+                    sys.exc_info()[1],
+                    exc_info=True,
+                )
                 pass
 
         finally:
@@ -4046,7 +4730,11 @@ _HEAL_PATTERNS: list[tuple[str, str, str]] = [
     (r"No module named '([^']+)'", "module_not_found", "pip_install"),
     (r"No module named \"([^\"]+)\"", "module_not_found", "pip_install"),
     (r"No such file or directory: '([^']+)'", "file_not_found", "check_path"),
-    (r"Address already in use|port.*already in use|Errno 48", "port_conflict", "kill_orphan"),
+    (
+        r"Address already in use|port.*already in use|Errno 48",
+        "port_conflict",
+        "kill_orphan",
+    ),
     (r"database is locked|database locked", "db_locked", "retry_db"),
     (r"email\.message|importlib\.metadata", "py314_incompat", "downgrade_python"),
 ]
@@ -4054,52 +4742,86 @@ _HEAL_PATTERNS: list[tuple[str, str, str]] = [
 
 def _self_heal(project_dir: str, agent: str, error: str) -> tuple[bool, str]:
     """Attempt to auto-heal a known failure pattern.
-    
+
     Returns (healed, action_description). Never raises — all errors caught.
     Only attempts safe fixes: install missing modules, kill orphan processes,
     clean up stale locks. Does NOT modify code or configuration.
     """
     import re
     from superharness.engine.trace import trace_event
-    
+
     for pattern, desc, action in _HEAL_PATTERNS:
         m = re.search(pattern, error, re.IGNORECASE)
         if not m:
             continue
-        
+
         if action == "pip_install":
             module_name = m.group(1).split(".")[0]  # top-level module only
-            if module_name in ("email", "importlib", "os", "sys", "json", "re", "time",
-                               "pathlib", "subprocess", "logging", "typing", "collections"):
+            if module_name in (
+                "email",
+                "importlib",
+                "os",
+                "sys",
+                "json",
+                "re",
+                "time",
+                "pathlib",
+                "subprocess",
+                "logging",
+                "typing",
+                "collections",
+            ):
                 # stdlib module — not fixable via pip
-                trace_event(project_dir, "self_heal_skip", {
-                    "error": desc, "detail": f"stdlib module '{module_name}' — not pip-installable"
-                })
+                trace_event(
+                    project_dir,
+                    "self_heal_skip",
+                    {
+                        "error": desc,
+                        "detail": f"stdlib module '{module_name}' — not pip-installable",
+                    },
+                )
                 return False, f"stdlib module '{module_name}' cannot be pip-installed"
-            
+
             # Try pip install
             try:
                 import subprocess as _sp
+
                 python = os.environ.get("PYTHON", "python3")
                 result = _sp.run(
                     [python, "-m", "pip", "install", module_name],
-                    capture_output=True, text=True, timeout=30,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
                 )
                 if result.returncode == 0:
-                    trace_event(project_dir, "self_heal_success", {
-                        "action": "pip_install", "module": module_name, "agent": agent,
-                    })
+                    trace_event(
+                        project_dir,
+                        "self_heal_success",
+                        {
+                            "action": "pip_install",
+                            "module": module_name,
+                            "agent": agent,
+                        },
+                    )
                     return True, f"pip installed '{module_name}'"
                 else:
-                    trace_event(project_dir, "self_heal_fail", {
-                        "action": "pip_install", "module": module_name,
-                        "stderr": result.stderr[:200],
-                    })
-                    return False, f"pip install '{module_name}' failed: {result.stderr[:100]}"
+                    trace_event(
+                        project_dir,
+                        "self_heal_fail",
+                        {
+                            "action": "pip_install",
+                            "module": module_name,
+                            "stderr": result.stderr[:200],
+                        },
+                    )
+                    return (
+                        False,
+                        f"pip install '{module_name}' failed: {result.stderr[:100]}",
+                    )
             except Exception as e:
                 logger.warning("_self_heal: unexpected error: %s", e, exc_info=True)
                 return False, f"pip install failed: {e}"
-        
+
         if action == "kill_orphan":
             # Find port from error or use a common port
             port_match = re.search(r":(\d{4,5})", error)
@@ -4108,8 +4830,14 @@ def _self_heal(project_dir: str, agent: str, error: str) -> tuple[bool, str]:
             if port:
                 try:
                     import subprocess as _sp
+
                     # lsof -ti :port → PIDs using that port
-                    result = _sp.run(["lsof", "-ti", f":{port}"], capture_output=True, text=True, timeout=5)
+                    result = _sp.run(
+                        ["lsof", "-ti", f":{port}"],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
                     for pid_str in result.stdout.strip().split():
                         try:
                             os.kill(int(pid_str), 9)
@@ -4117,55 +4845,87 @@ def _self_heal(project_dir: str, agent: str, error: str) -> tuple[bool, str]:
                         except (OSError, ProcessLookupError, ValueError):
                             pass
                 except Exception:
-                    logger.warning("_self_heal: unexpected error: %s", sys.exc_info()[1], exc_info=True)
+                    logger.warning(
+                        "_self_heal: unexpected error: %s",
+                        sys.exc_info()[1],
+                        exc_info=True,
+                    )
                     pass
             if killed > 0:
-                trace_event(project_dir, "self_heal_success", {
-                    "action": "kill_orphan", "port": port, "killed": killed,
-                })
+                trace_event(
+                    project_dir,
+                    "self_heal_success",
+                    {
+                        "action": "kill_orphan",
+                        "port": port,
+                        "killed": killed,
+                    },
+                )
                 return True, f"killed {killed} process(es) on port {port}"
             return False, "no orphan processes found to kill"
-        
+
         if action == "retry_db":
             # Try PRAGMA to unlock SQLite
             try:
                 from superharness.engine.db import get_connection
+
                 conn = get_connection(project_dir)
                 try:
                     conn.execute("PRAGMA busy_timeout=10000")
                     conn.execute("ROLLBACK")
-                    trace_event(project_dir, "self_heal_success", {
-                        "action": "db_unlock",
-                    })
+                    trace_event(
+                        project_dir,
+                        "self_heal_success",
+                        {
+                            "action": "db_unlock",
+                        },
+                    )
                     return True, "SQLite pragma executed — retry may succeed"
                 finally:
                     conn.close()
             except Exception:
-                logger.warning("_self_heal: unexpected error: %s", sys.exc_info()[1], exc_info=True)
+                logger.warning(
+                    "_self_heal: unexpected error: %s", sys.exc_info()[1], exc_info=True
+                )
                 return False, "SQLite pragma failed"
-        
+
         if action == "downgrade_python":
-            trace_event(project_dir, "self_heal_skip", {
-                "error": desc, "detail": "Python 3.14 incompatibility — cannot auto-fix"
-            })
+            trace_event(
+                project_dir,
+                "self_heal_skip",
+                {
+                    "error": desc,
+                    "detail": "Python 3.14 incompatibility — cannot auto-fix",
+                },
+            )
             return False, "Python 3.14 incompatibility — use Python 3.11/3.12 instead"
-        
+
         if action == "check_path":
             path = m.group(1)
             if os.path.exists(path):
                 return False, f"path '{path}' exists — not a missing file issue"
             # Check if it's a stale pipx venv path
             if "pipx/venvs" in path:
-                trace_event(project_dir, "self_heal_skip", {
-                    "error": desc, "detail": "stale pipx venv path — reinstalling fixes this"
-                })
+                trace_event(
+                    project_dir,
+                    "self_heal_skip",
+                    {
+                        "error": desc,
+                        "detail": "stale pipx venv path — reinstalling fixes this",
+                    },
+                )
                 return False, "stale pipx venv path — run: pipx install superharness"
             return False, f"file '{path}' not found — check path"
-    
+
     # Unknown error pattern — don't attempt fix
-    trace_event(project_dir, "self_heal_unknown", {
-        "error": error[:200], "agent": agent,
-    })
+    trace_event(
+        project_dir,
+        "self_heal_unknown",
+        {
+            "error": error[:200],
+            "agent": agent,
+        },
+    )
     return False, "unknown error pattern — no auto-fix available"
 
 
@@ -4198,10 +4958,12 @@ def _comprehensive_gc(project_dir: str) -> dict[str, int]:
 
 # ── Gap 2: duplicate inbox cleanup ────────────────────────────────────────────
 
+
 def _gc_duplicate_inbox(project_dir: str) -> int:
     """Merge duplicate pending inbox items: keep newest, cancel older ones."""
     try:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -4239,11 +5001,13 @@ def _gc_duplicate_inbox(project_dir: str) -> int:
 
 # ── Gap 3: zombie reconciler for running/pending ──────────────────────────────
 
+
 def _gc_zombie_running(project_dir: str) -> int:
     """Mark running items as failed if no dispatcher process is active."""
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -4256,8 +5020,12 @@ def _gc_zombie_running(project_dir: str) -> int:
                 pid = row["pid"]
                 if pid and not _pid_alive(int(pid)):
                     inbox_dao.update_status(
-                        conn, row["id"], from_status="running", to_status="failed",
-                        now=now, reason="gc: dispatcher process died",
+                        conn,
+                        row["id"],
+                        from_status="running",
+                        to_status="failed",
+                        now=now,
+                        reason="gc: dispatcher process died",
                     )
                     cleaned += 1
             if cleaned:
@@ -4275,6 +5043,7 @@ def _gc_zombie_pending(project_dir: str) -> int:
     try:
         from datetime import datetime, timezone, timedelta
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -4299,6 +5068,7 @@ def _gc_zombie_pending(project_dir: str) -> int:
 
 # ── Gap 1: discussion deadlock detection ──────────────────────────────────────
 
+
 def _gc_discussion_deadlock(project_dir: str) -> int:
     """Auto-close discussion rounds where required agents can't submit.
 
@@ -4311,6 +5081,7 @@ def _gc_discussion_deadlock(project_dir: str) -> int:
         from datetime import datetime, timezone, timedelta
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import discussions_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -4356,18 +5127,29 @@ def _gc_discussion_deadlock(project_dir: str) -> int:
 
                 # Count submitted vs required
                 submissions = discussions_dao.get_rounds(conn, disc.id)
-                submitted = len([s for s in submissions if s.round_number == current_round])
+                submitted = len(
+                    [s for s in submissions if s.round_number == current_round]
+                )
                 # Parse participants from owners JSON
                 import json as _json
-                participants = _json.loads(disc.owners) if isinstance(disc.owners, str) else (disc.owners or [])
+
+                participants = (
+                    _json.loads(disc.owners)
+                    if isinstance(disc.owners, str)
+                    else (disc.owners or [])
+                )
                 total_participants = len(participants)
-                required = max(2, total_participants - 1) if total_participants > 1 else 2
+                required = (
+                    max(2, total_participants - 1) if total_participants > 1 else 2
+                )
 
                 if submitted >= required:
                     continue  # enough submitted, normal advance
 
                 # Check if remaining agents are dead
-                submitted_agents = {s.agent for s in submissions if s.round_number == current_round}
+                submitted_agents = {
+                    s.agent for s in submissions if s.round_number == current_round
+                }
                 missing_agents = set(participants) - submitted_agents
 
                 # Fast-close: if all missing agents have no daemon heartbeat, close now.
@@ -4441,16 +5223,19 @@ def _gc_discussion_deadlock(project_dir: str) -> int:
 
 # ── Gap 4: discussion inbox cleanup ───────────────────────────────────────────
 
+
 def _gc_orphaned_discussion_inbox(project_dir: str) -> int:
     """Cancel inbox items for discussions that are already closed/failed."""
     try:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
             # Find closed/failed discussions (anything not active or consensus)
             closed_ids = [
-                r["id"] for r in conn.execute(
+                r["id"]
+                for r in conn.execute(
                     "SELECT id FROM discussions WHERE status NOT IN ('active','consensus')"
                 ).fetchall()
             ]
@@ -4478,11 +5263,13 @@ def _gc_orphaned_discussion_inbox(project_dir: str) -> int:
 
 # ── Gap 7: stuck waiting_input timeout ────────────────────────────────────────
 
+
 def _gc_stuck_waiting_input(project_dir: str) -> int:
     """Auto-archive tasks stuck in waiting_input > 30 minutes."""
     try:
         from datetime import datetime, timezone, timedelta
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -4502,7 +5289,8 @@ def _gc_stuck_waiting_input(project_dir: str) -> int:
             cleaned = 0
             for row in stuck_rows:
                 result = _with_task_lock(
-                    conn, row["id"],
+                    conn,
+                    row["id"],
                     {
                         "status": "archived",
                         "archived_reason": "gc: waiting_input timeout (>30min)",
@@ -4530,6 +5318,7 @@ def _pid_alive(pid: int) -> bool:
     process as dead on Windows.
     """
     from superharness.engine.process import pid_alive
+
     return pid_alive(pid)
 
 
@@ -4543,21 +5332,26 @@ def _cancel_undispatchable_agents(project_dir: str) -> int:
     known_agents = set()
     try:
         from superharness.engine.adapter_registry import list_adapters
+
         known_agents.update(list_adapters())
     except Exception as e:
         logger.warning("inbox_watch unexpected error: %s", e, exc_info=True)
         pass
     if not known_agents:
         import glob as _glob
+
         scripts_dir = _find_scripts_dir()
         for script in _glob.glob(os.path.join(scripts_dir, "delegate-to-*.sh")):
-            name = os.path.basename(script).replace("delegate-to-", "").replace(".sh", "")
+            name = (
+                os.path.basename(script).replace("delegate-to-", "").replace(".sh", "")
+            )
             known_agents.add(name)
         known_agents.update(["claude-code", "codex-cli", "gemini-cli", "opencode"])
 
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -4568,17 +5362,23 @@ def _cancel_undispatchable_agents(project_dir: str) -> int:
             ).fetchall()
             canceled = 0
             for row in rows:
-                inbox_dao.mark_stale(conn, row[0], reason=f"agent '{row[1]}' has no dispatch adapter")
+                inbox_dao.mark_stale(
+                    conn, row[0], reason=f"agent '{row[1]}' has no dispatch adapter"
+                )
                 canceled += 1
             if canceled > 0:
                 conn.commit()
                 agents = set(r[1] for r in rows)
-                print(f"undispatchable-cleanup: canceled {canceled} item(s) for unknown agent(s): {agents}")
+                print(
+                    f"undispatchable-cleanup: canceled {canceled} item(s) for unknown agent(s): {agents}"
+                )
             return canceled
         finally:
             conn.close()
     except Exception as e:
-        logger.warning("_cancel_undispatchable_agents: unexpected error: %s", e, exc_info=True)
+        logger.warning(
+            "_cancel_undispatchable_agents: unexpected error: %s", e, exc_info=True
+        )
         print(f"undispatchable-cleanup: failed: {e}", file=sys.stderr)
         return 0
 
@@ -4593,6 +5393,7 @@ def _find_scripts_dir() -> str:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def watch(
     project_dir: str,
@@ -4625,7 +5426,9 @@ def watch(
     if not os.path.isdir(harness_dir):
         _abort(f"Not a superharness project (missing .superharness/): {project_dir}")
     if not os.access(harness_dir, os.W_OK):
-        _abort(f"error: .superharness/ is not writable — check permissions: {harness_dir}")
+        _abort(
+            f"error: .superharness/ is not writable — check permissions: {harness_dir}"
+        )
 
     lock_dir = _lock_dir_path(project_dir)
 
@@ -4652,6 +5455,7 @@ def watch(
             sys.exit(0)
 
     import atexit
+
     atexit.register(_on_exit)
     signal.signal(signal.SIGTERM, _on_exit)
     if hasattr(signal, "SIGHUP"):
@@ -4687,7 +5491,10 @@ def watch(
             if hasattr(signal, "SIGHUP"):
                 signal.signal(signal.SIGHUP, _stop)
 
-            print(f"superharness watcher (foreground) — project: {project_dir}", flush=True)
+            print(
+                f"superharness watcher (foreground) — project: {project_dir}",
+                flush=True,
+            )
             print(f"Polling every {interval}s. Press Ctrl+C to stop.", flush=True)
 
             while running[0]:
@@ -4723,16 +5530,26 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--print-only", action="store_true", default=False)
     parser.add_argument("--non-interactive", action="store_true", default=True)
     parser.add_argument("--codex-bypass", action="store_true", default=False)
-    parser.add_argument("--recover-timeout-minutes", default="20", dest="recover_timeout_minutes")
+    parser.add_argument(
+        "--recover-timeout-minutes", default="20", dest="recover_timeout_minutes"
+    )
     parser.add_argument("--recover-action", default="stale")
     parser.add_argument("--launcher-timeout", default="0")
     parser.add_argument("--lock-stale-minutes", default="30")
     parser.add_argument("--foreground", "-f", action="store_true", default=False)
-    parser.add_argument("--loop", action="store_true", default=False,
-                        help="Run in a foreground loop (alias for --foreground)")
+    parser.add_argument(
+        "--loop",
+        action="store_true",
+        default=False,
+        help="Run in a foreground loop (alias for --foreground)",
+    )
     parser.add_argument("--interval", "-i", default="30")
-    parser.add_argument("--once", action="store_true", default=False,
-                        help="Run a single cycle and exit (same as single-cycle / launchd mode)")
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        default=False,
+        help="Run a single cycle and exit (same as single-cycle / launchd mode)",
+    )
 
     opts = parser.parse_args(argv)
 
@@ -4755,15 +5572,27 @@ def main(argv: list[str] | None = None) -> None:
         except (ValueError, TypeError):
             _abort(f"{name} must be a positive integer", 2)
 
-    if opts.target not in ("both", "claude-code", "codex-cli", "gemini-cli", "opencode"):
-        _abort("--to must be one of: both, claude-code, codex-cli, gemini-cli, opencode", 2)
+    if opts.target not in (
+        "both",
+        "claude-code",
+        "codex-cli",
+        "gemini-cli",
+        "opencode",
+    ):
+        _abort(
+            "--to must be one of: both, claude-code, codex-cli, gemini-cli, opencode", 2
+        )
 
     if opts.recover_action not in ("stale", "retry"):
         _abort("--recover-action must be one of: stale, retry", 2)
 
-    recover_timeout_minutes = _parse_nonneg_int("--recover-timeout-minutes", opts.recover_timeout_minutes)
+    recover_timeout_minutes = _parse_nonneg_int(
+        "--recover-timeout-minutes", opts.recover_timeout_minutes
+    )
     launcher_timeout = _parse_nonneg_int("--launcher-timeout", opts.launcher_timeout)
-    lock_stale_minutes = _parse_nonneg_int("--lock-stale-minutes", opts.lock_stale_minutes)
+    lock_stale_minutes = _parse_nonneg_int(
+        "--lock-stale-minutes", opts.lock_stale_minutes
+    )
     interval = _parse_pos_int("--interval", opts.interval)
 
     rc = watch(
@@ -4785,4 +5614,3 @@ def main(argv: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main()
-

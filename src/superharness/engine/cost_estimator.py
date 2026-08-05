@@ -3,6 +3,7 @@
 Estimates token usage and cost per subtask based on model tier,
 using the same pricing table as sdk_runner.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -11,13 +12,13 @@ from superharness.engine.sdk_runner import MODEL_PRICING as PRICING
 from superharness.engine.adapter_registry import flagship, flagship_1m
 
 _TIER_TO_MODEL: dict[str, str] = {
-    "mini":     "claude-haiku-4-5-20251001",
+    "mini": "claude-haiku-4-5-20251001",
     "standard": "claude-sonnet-4-6",
-    "max":      flagship(),
-    "max-1m":   flagship_1m(),
-    "flash":    "flash",
-    "pro":      "pro",
-    "ultra":    "ultra",
+    "max": flagship(),
+    "max-1m": flagship_1m(),
+    "flash": "flash",
+    "pro": "pro",
+    "ultra": "ultra",
 }
 
 _DEFAULT_INPUT_RATIO = 0.6  # 60% input, 40% output
@@ -31,6 +32,7 @@ def tier_to_model_id(tier: str) -> str:
 @dataclass
 class CostEstimate:
     """Cost estimate for a single subtask."""
+
     model_id: str
     tier: str
     estimated_input_tokens: int
@@ -41,6 +43,7 @@ class CostEstimate:
 @dataclass
 class TaskCostEstimate:
     """Aggregated cost estimate for a full task with subtasks."""
+
     subtask_estimates: list[CostEstimate] = field(default_factory=list)
     total_estimated_cost_usd: float = 0.0
     recommended_budget_usd: float = 0.0
@@ -58,8 +61,9 @@ def estimate_subtask_cost(
     input_tokens = int(estimated_tokens * input_ratio)
     output_tokens = estimated_tokens - input_tokens
 
-    cost = (input_tokens / 1_000_000) * pricing["input"] + \
-           (output_tokens / 1_000_000) * pricing["output"]
+    cost = (input_tokens / 1_000_000) * pricing["input"] + (
+        output_tokens / 1_000_000
+    ) * pricing["output"]
 
     return CostEstimate(
         model_id=model_id,

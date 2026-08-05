@@ -1,4 +1,5 @@
 """ntfy notification module actions — send notifications on task events."""
+
 from __future__ import annotations
 
 import logging
@@ -10,6 +11,7 @@ logger = logging.getLogger(__name__)
 # Try to import requests, but don't fail if not available
 try:
     import requests
+
     HAS_REQUESTS = True
 except ImportError:
     HAS_REQUESTS = False
@@ -40,7 +42,9 @@ def ntfy_send(context: dict[str, Any], settings: dict[str, Any]) -> dict[str, An
     topic = os.environ.get(topic_env)
 
     if not topic:
-        logger.debug(f"Environment variable {topic_env} not set, skipping ntfy notification")
+        logger.debug(
+            f"Environment variable {topic_env} not set, skipping ntfy notification"
+        )
         return {
             "success": False,
             "message": f"{topic_env} not set",
@@ -93,7 +97,9 @@ def ntfy_send(context: dict[str, Any], settings: dict[str, Any]) -> dict[str, An
                 "message": f"Notification sent to {topic}",
             }
         else:
-            logger.warning(f"ntfy notification failed: {response.status_code} {response.text}")
+            logger.warning(
+                f"ntfy notification failed: {response.status_code} {response.text}"
+            )
             return {
                 "success": False,
                 "message": f"ntfy server returned {response.status_code}",

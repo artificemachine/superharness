@@ -7,11 +7,11 @@ Verifies that when profile.yaml configures `auto_fallback_owner`:
 - Invalid fallback_owner values are rejected gracefully
 - Escalation to waiting_input only happens after the fallback also exhausts retries
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 import yaml
 
 from superharness.engine.db import get_connection, init_db, now_iso
@@ -26,8 +26,15 @@ def _make_project(tmp_path: Path, profile: dict | None = None) -> Path:
     return project
 
 
-def _seed(project: Path, *, task_owner: str, inbox_agent: str,
-          retry_count: int, max_retries: int, task_status: str = "in_progress") -> tuple[str, str]:
+def _seed(
+    project: Path,
+    *,
+    task_owner: str,
+    inbox_agent: str,
+    retry_count: int,
+    max_retries: int,
+    task_status: str = "in_progress",
+) -> tuple[str, str]:
     conn = get_connection(str(project))
     init_db(conn)
     now = now_iso()
@@ -37,15 +44,33 @@ def _seed(project: Path, *, task_owner: str, inbox_agent: str,
         "INSERT INTO tasks (id, title, owner, status, created_at, "
         "acceptance_criteria, test_types, out_of_scope, definition_of_done) "
         "VALUES (?,?,?,?,?,?,?,?,?)",
-        (task_id, "Fallback Test Task", task_owner, task_status, now,
-         "[]", "[]", "[]", "[]"),
+        (
+            task_id,
+            "Fallback Test Task",
+            task_owner,
+            task_status,
+            now,
+            "[]",
+            "[]",
+            "[]",
+            "[]",
+        ),
     )
     conn.execute(
         "INSERT INTO inbox (id, task_id, target_agent, status, retry_count, "
         "max_retries, failed_reason, created_at, project_path) "
         "VALUES (?,?,?,?,?,?,?,?,?)",
-        (inbox_id, task_id, inbox_agent, "failed",
-         retry_count, max_retries, "transient error", now, str(project)),
+        (
+            inbox_id,
+            task_id,
+            inbox_agent,
+            "failed",
+            retry_count,
+            max_retries,
+            "transient error",
+            now,
+            str(project),
+        ),
     )
     conn.commit()
     conn.close()
@@ -60,7 +85,8 @@ def _read_state(project: Path, task_id: str, inbox_id: str) -> tuple[dict, dict]
     ).fetchone()
     inbox_row = conn.execute(
         "SELECT status, target_agent, retry_count, max_retries, failed_reason "
-        "FROM inbox WHERE id=?", (inbox_id,)
+        "FROM inbox WHERE id=?",
+        (inbox_id,),
     ).fetchone()
     conn.close()
     task = dict(task_row) if task_row else {}
@@ -81,10 +107,13 @@ class TestAutoFallbackOwnerReassign:
         )
 
         from superharness.commands.inbox_watch import _auto_fallback_owner_reassign
+
         _auto_fallback_owner_reassign(str(project))
 
         task, inbox = _read_state(project, task_id, inbox_id)
-        assert task["owner"] == "codex-cli", f"Expected task owner=codex-cli, got {task['owner']}"
+        assert task["owner"] == "codex-cli", (
+            f"Expected task owner=codex-cli, got {task['owner']}"
+        )
         assert inbox["status"] == "pending"
         assert inbox["target_agent"] == "codex-cli"
         assert inbox["retry_count"] == 0
@@ -103,10 +132,13 @@ class TestAutoFallbackOwnerReassign:
         )
 
         from superharness.commands.inbox_watch import _auto_fallback_owner_reassign
+
         _auto_fallback_owner_reassign(str(project))
 
         task, inbox = _read_state(project, task_id, inbox_id)
-        assert inbox["status"] == "failed", "Should remain failed for auto_recover to escalate"
+        assert inbox["status"] == "failed", (
+            "Should remain failed for auto_recover to escalate"
+        )
         assert task["owner"] == "codex-cli"
 
     def test_does_not_touch_tasks_with_retries_remaining(self, tmp_path: Path):
@@ -121,6 +153,7 @@ class TestAutoFallbackOwnerReassign:
         )
 
         from superharness.commands.inbox_watch import _auto_fallback_owner_reassign
+
         _auto_fallback_owner_reassign(str(project))
 
         _, inbox = _read_state(project, task_id, inbox_id)
@@ -139,6 +172,7 @@ class TestAutoFallbackOwnerReassign:
         )
 
         from superharness.commands.inbox_watch import _auto_fallback_owner_reassign
+
         _auto_fallback_owner_reassign(str(project))
 
         _, inbox = _read_state(project, task_id, inbox_id)
@@ -157,6 +191,7 @@ class TestAutoFallbackOwnerReassign:
         )
 
         from superharness.commands.inbox_watch import _auto_fallback_owner_reassign
+
         _auto_fallback_owner_reassign(str(project))
 
         _, inbox = _read_state(project, task_id, inbox_id)
@@ -176,6 +211,7 @@ class TestAutoFallbackOwnerReassign:
         )
 
         from superharness.commands.inbox_watch import _auto_fallback_owner_reassign
+
         _auto_fallback_owner_reassign(str(project))
 
         _, inbox = _read_state(project, task_id, inbox_id)
@@ -187,7 +223,10 @@ class TestAutoFallbackOwnerReassign:
         """auto_fallback_max_retries controls the retry budget given to fallback owner."""
         project = _make_project(
             tmp_path,
-            profile={"auto_fallback_owner": "codex-cli", "auto_fallback_max_retries": 5},
+            profile={
+                "auto_fallback_owner": "codex-cli",
+                "auto_fallback_max_retries": 5,
+            },
         )
         task_id, inbox_id = _seed(
             project,
@@ -198,6 +237,7 @@ class TestAutoFallbackOwnerReassign:
         )
 
         from superharness.commands.inbox_watch import _auto_fallback_owner_reassign
+
         _auto_fallback_owner_reassign(str(project))
 
         _, inbox = _read_state(project, task_id, inbox_id)
@@ -215,21 +255,40 @@ class TestAutoFallbackOwnerReassign:
                 "(id, title, owner, status, created_at, acceptance_criteria, "
                 "test_types, out_of_scope, definition_of_done) "
                 "VALUES (?,?,?,?,?,?,?,?,?)",
-                (f"t-{terminal_status}", f"Task {terminal_status}", "claude-code",
-                 terminal_status, now, "[]", "[]", "[]", "[]"),
+                (
+                    f"t-{terminal_status}",
+                    f"Task {terminal_status}",
+                    "claude-code",
+                    terminal_status,
+                    now,
+                    "[]",
+                    "[]",
+                    "[]",
+                    "[]",
+                ),
             )
             conn.execute(
                 "INSERT OR REPLACE INTO inbox "
                 "(id, task_id, target_agent, status, retry_count, max_retries, "
                 "failed_reason, created_at, project_path) "
                 "VALUES (?,?,?,?,?,?,?,?,?)",
-                (f"inbox-{terminal_status}", f"t-{terminal_status}",
-                 "claude-code", "failed", 3, 3, "error", now, str(project)),
+                (
+                    f"inbox-{terminal_status}",
+                    f"t-{terminal_status}",
+                    "claude-code",
+                    "failed",
+                    3,
+                    3,
+                    "error",
+                    now,
+                    str(project),
+                ),
             )
             conn.commit()
             conn.close()
 
         from superharness.commands.inbox_watch import _auto_fallback_owner_reassign
+
         _auto_fallback_owner_reassign(str(project))
 
         conn = get_connection(str(project))
@@ -239,8 +298,9 @@ class TestAutoFallbackOwnerReassign:
                 "SELECT target_agent FROM inbox WHERE id=?",
                 (f"inbox-{terminal_status}",),
             ).fetchone()
-            assert row["target_agent"] == "claude-code", \
+            assert row["target_agent"] == "claude-code", (
                 f"Terminal task ({terminal_status}) should not be reassigned"
+            )
         conn.close()
 
     def test_ledger_records_reassignment(self, tmp_path: Path):
@@ -255,6 +315,7 @@ class TestAutoFallbackOwnerReassign:
         )
 
         from superharness.commands.inbox_watch import _auto_fallback_owner_reassign
+
         _auto_fallback_owner_reassign(str(project))
 
         conn = get_connection(str(project))
@@ -282,6 +343,7 @@ class TestFallbackOwnerEscalationAfterExhaustion:
         )
 
         from superharness.commands.inbox_watch import _auto_fallback_owner_reassign
+
         _auto_fallback_owner_reassign(str(project))
 
         # auto_fallback_owner must not touch this — it's up to auto_recover

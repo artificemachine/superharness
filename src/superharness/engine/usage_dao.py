@@ -7,6 +7,7 @@ from typing import cast
 from superharness.engine.db import now_iso
 from superharness.engine.state_errors import StateError
 
+
 @dataclass(frozen=True)
 class UsageRow:
     id: int
@@ -18,6 +19,7 @@ class UsageRow:
     output_tokens: int | None
     cost_usd: float | None
     recorded_at: str
+
 
 def record(
     conn: sqlite3.Connection,
@@ -40,12 +42,24 @@ def record(
                 task_id, agent, source, model, input_tokens, output_tokens, cost_usd, recorded_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (task_id, agent, source, model, input_tokens, output_tokens, cost_usd, recorded_at),
+            (
+                task_id,
+                agent,
+                source,
+                model,
+                input_tokens,
+                output_tokens,
+                cost_usd,
+                recorded_at,
+            ),
         )
         conn.commit()
         return cast(int, cursor.lastrowid)
     except sqlite3.Error as e:
-        raise StateError(f"Failed to record task_usage for task '{task_id}': {e}") from e
+        raise StateError(
+            f"Failed to record task_usage for task '{task_id}': {e}"
+        ) from e
+
 
 def list_for_task(conn: sqlite3.Connection, task_id: str) -> list[UsageRow]:
     """Return all usage rows for a task, ordered by recorded_at ASC."""
@@ -54,6 +68,7 @@ def list_for_task(conn: sqlite3.Connection, task_id: str) -> list[UsageRow]:
         (task_id,),
     )
     return [_row_to_usage(row) for row in cursor.fetchall()]
+
 
 def totals_by_agent(conn: sqlite3.Connection) -> dict[str, dict[str, float | int]]:
     """Aggregate input_tokens, output_tokens, cost_usd, and distinct task_count per agent.
@@ -81,6 +96,7 @@ def totals_by_agent(conn: sqlite3.Connection) -> dict[str, dict[str, float | int
             "task_count": row["task_count"],
         }
     return totals
+
 
 def _row_to_usage(row: sqlite3.Row) -> UsageRow:
     return UsageRow(

@@ -1,4 +1,5 @@
 """Smoke test for issue_url — schema column presence and create() persistence."""
+
 from __future__ import annotations
 
 from superharness.engine.db import get_connection, init_db

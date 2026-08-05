@@ -33,6 +33,7 @@ A caller that needs to kill an entire child tree on Windows (not just one
 pid) needs `taskkill /T`, which this module does not attempt to replicate —
 see `engine/discussion.py`'s `_terminate_process_tree` for that case.
 """
+
 from __future__ import annotations
 
 import os

@@ -15,13 +15,13 @@ Gap 4: Bug B test (clean-exit log) is static-only. Add a runtime test
        that actually executes the monitor-script template with rc=0 and
        rc=7 and asserts the log message.
 """
+
 from __future__ import annotations
 
 import os
 import re
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -33,6 +33,7 @@ SRC = str(REPO_ROOT / "src")
 # ---------------------------------------------------------------------------
 # Gap 1 — watcher_worker exits non-zero and does NOT print "ready" on install fail
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
 def test_watcher_worker_fails_loud_when_install_fails(tmp_path):
@@ -53,7 +54,9 @@ def test_watcher_worker_fails_loud_when_install_fails(tmp_path):
     fail_install.write_text("#!/bin/bash\necho 'simulated failure' >&2\nexit 7\n")
     fail_install.chmod(0o755)
     fail_install_systemd = project_scripts / "install-systemd-inbox-watcher.sh"
-    fail_install_systemd.write_text("#!/bin/bash\necho 'simulated failure' >&2\nexit 7\n")
+    fail_install_systemd.write_text(
+        "#!/bin/bash\necho 'simulated failure' >&2\nexit 7\n"
+    )
     fail_install_systemd.chmod(0o755)
 
     env = os.environ.copy()
@@ -61,9 +64,18 @@ def test_watcher_worker_fails_loud_when_install_fails(tmp_path):
     env["SUPERHARNESS_PYTHON"] = sys.executable
 
     res = subprocess.run(
-        [sys.executable, "-m", "superharness.commands.watcher_worker",
-         "-p", str(project)],
-        capture_output=True, text=True, env=env, check=False, timeout=30,
+        [
+            sys.executable,
+            "-m",
+            "superharness.commands.watcher_worker",
+            "-p",
+            str(project),
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+        timeout=30,
     )
 
     assert res.returncode != 0, (
@@ -80,6 +92,7 @@ def test_watcher_worker_fails_loud_when_install_fails(tmp_path):
 # ---------------------------------------------------------------------------
 # Gap 2 — conftest must set SUPERHARNESS_NO_AUTO_INSTALL=1
 # ---------------------------------------------------------------------------
+
 
 def test_conftest_sets_no_auto_install():
     """tests/conftest.py must export SUPERHARNESS_NO_AUTO_INSTALL=1
@@ -102,6 +115,7 @@ def test_conftest_sets_no_auto_install():
 # Gap 3 — runtime guard: no new com.superharness.inbox.* plists appear
 # ---------------------------------------------------------------------------
 
+
 def test_no_new_launchagents_appear_during_test_run():
     """Snapshot ~/Library/LaunchAgents/ at module import time and assert
     no new com.superharness.inbox.*.plist appeared while the suite ran.
@@ -120,16 +134,13 @@ def test_no_new_launchagents_appear_during_test_run():
     snapshot_file.parent.mkdir(parents=True, exist_ok=True)
 
     current = sorted(
-        p.name for p in la_dir.iterdir()
-        if p.name.startswith("com.superharness.inbox.")
+        p.name for p in la_dir.iterdir() if p.name.startswith("com.superharness.inbox.")
     )
     if not snapshot_file.exists():
         snapshot_file.write_text("\n".join(current) + "\n")
         pytest.skip("first run — snapshot recorded")
 
-    baseline = [
-        line for line in snapshot_file.read_text().splitlines() if line.strip()
-    ]
+    baseline = [line for line in snapshot_file.read_text().splitlines() if line.strip()]
     new_plists = sorted(set(current) - set(baseline))
     assert not new_plists, (
         f"New com.superharness.inbox.*.plist files appeared during the "
@@ -142,6 +153,7 @@ def test_no_new_launchagents_appear_during_test_run():
 # ---------------------------------------------------------------------------
 # Gap 4 — runtime test of daemon monitor log on clean exit vs crash
 # ---------------------------------------------------------------------------
+
 
 def test_daemon_monitor_logs_clean_exit_at_runtime(tmp_path):
     """Execute the real daemon monitor's restart-message logic, feeding it a

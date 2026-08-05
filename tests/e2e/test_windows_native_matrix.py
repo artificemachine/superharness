@@ -6,6 +6,7 @@ pipeline on every supported OS without requiring agent CLIs to be installed.
 These tests must pass on ``ubuntu-latest``, ``macos-latest``, and ``windows-latest``
 in CI.  They are explicitly NOT skipped on Windows — that is the point.
 """
+
 from __future__ import annotations
 
 import os
@@ -18,7 +19,9 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _run(args: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def _run(
+    args: list[str], *, cwd: Path, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     merged = os.environ.copy()
     merged["PYTHONPATH"] = str(REPO_ROOT / "src")
     merged["PYTHONUTF8"] = "1"
@@ -34,7 +37,9 @@ def _run(args: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> su
     )
 
 
-def _shux(args: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def _shux(
+    args: list[str], *, cwd: Path, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     return _run([sys.executable, "-m", "superharness"] + args, cwd=cwd, env=env)
 
 
@@ -46,11 +51,19 @@ def _shux(args: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> s
 class TestInitCrossPlatform:
     """shux init must create .superharness/ on all OSes without bash."""
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_init_creates_harness_directory(self, tmp_path):
         result = _run(
-            [sys.executable, "-m", "superharness.commands.init_project",
-             "Matrix Test", "Python", "active"],
+            [
+                sys.executable,
+                "-m",
+                "superharness.commands.init_project",
+                "Matrix Test",
+                "Python",
+                "active",
+            ],
             cwd=tmp_path,
         )
         assert result.returncode == 0, f"init failed: {result.stderr}"
@@ -59,22 +72,39 @@ class TestInitCrossPlatform:
 
     def test_init_creates_claude_and_agents_md(self, tmp_path):
         _run(
-            [sys.executable, "-m", "superharness.commands.init_project",
-             "Matrix Test", "Python", "active"],
+            [
+                sys.executable,
+                "-m",
+                "superharness.commands.init_project",
+                "Matrix Test",
+                "Python",
+                "active",
+            ],
             cwd=tmp_path,
         )
         assert (tmp_path / "CLAUDE.md").is_file()
         assert (tmp_path / "AGENTS.md").is_file()
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_init_contract_has_valid_yaml(self, tmp_path):
         _run(
-            [sys.executable, "-m", "superharness.commands.init_project",
-             "Matrix Test", "Python", "active"],
+            [
+                sys.executable,
+                "-m",
+                "superharness.commands.init_project",
+                "Matrix Test",
+                "Python",
+                "active",
+            ],
             cwd=tmp_path,
         )
         import yaml
-        contract = yaml.safe_load((tmp_path / ".superharness" / "contract.yaml").read_text())
+
+        contract = yaml.safe_load(
+            (tmp_path / ".superharness" / "contract.yaml").read_text()
+        )
         assert "id" in contract
         assert "tasks" in contract
 
@@ -89,30 +119,50 @@ class TestTaskCrossPlatform:
 
     def _init(self, tmp_path: Path) -> Path:
         _run(
-            [sys.executable, "-m", "superharness.commands.init_project",
-             "Matrix Test", "Python", "active"],
+            [
+                sys.executable,
+                "-m",
+                "superharness.commands.init_project",
+                "Matrix Test",
+                "Python",
+                "active",
+            ],
             cwd=tmp_path,
         )
         return tmp_path
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_task_create_succeeds(self, tmp_path):
         project = self._init(tmp_path)
         result = _run(
-            [sys.executable, "-m", "superharness.commands.task",
-             "create",
-             "--id", "WIN-001",
-             "--title", "Windows native test task",
-             "--owner", "claude-code",
-             "--status", "todo",
-             "--workflow", "quick",
-             "--project", str(project),
-             "--criteria", "Must pass on Windows"],
+            [
+                sys.executable,
+                "-m",
+                "superharness.commands.task",
+                "create",
+                "--id",
+                "WIN-001",
+                "--title",
+                "Windows native test task",
+                "--owner",
+                "claude-code",
+                "--status",
+                "todo",
+                "--workflow",
+                "quick",
+                "--project",
+                str(project),
+                "--criteria",
+                "Must pass on Windows",
+            ],
             cwd=project,
         )
         assert result.returncode == 0, f"task create failed:\n{result.stderr}"
 
         import yaml
+
         contract = yaml.safe_load(
             (project / ".superharness" / "contract.yaml").read_text()
         )
@@ -122,8 +172,13 @@ class TestTaskCrossPlatform:
     def test_status_command_shows_contract(self, tmp_path):
         project = self._init(tmp_path)
         result = _run(
-            [sys.executable, "-m", "superharness.commands.status",
-             "--project", str(project)],
+            [
+                sys.executable,
+                "-m",
+                "superharness.commands.status",
+                "--project",
+                str(project),
+            ],
             cwd=project,
         )
         # status may exit non-zero on minimal project but should not crash
@@ -142,43 +197,66 @@ class TestEnqueueCrossPlatform:
 
     def _setup(self, tmp_path: Path) -> Path:
         _run(
-            [sys.executable, "-m", "superharness.commands.init_project",
-             "Matrix Test", "Python", "active"],
+            [
+                sys.executable,
+                "-m",
+                "superharness.commands.init_project",
+                "Matrix Test",
+                "Python",
+                "active",
+            ],
             cwd=tmp_path,
         )
         _run(
-            [sys.executable, "-m", "superharness.commands.task",
-             "create",
-             "--id", "WIN-002",
-             "--title", "Enqueue test task",
-             "--owner", "claude-code",
-             "--status", "todo",
-             "--workflow", "quick",
-             "--project", str(tmp_path)],
+            [
+                sys.executable,
+                "-m",
+                "superharness.commands.task",
+                "create",
+                "--id",
+                "WIN-002",
+                "--title",
+                "Enqueue test task",
+                "--owner",
+                "claude-code",
+                "--status",
+                "todo",
+                "--workflow",
+                "quick",
+                "--project",
+                str(tmp_path),
+            ],
             cwd=tmp_path,
         )
         return tmp_path
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_enqueue_writes_inbox(self, tmp_path):
         project = self._setup(tmp_path)
         result = _run(
-            [sys.executable, "-m", "superharness.commands.inbox_enqueue",
-             "--task", "WIN-002",
-             "--to", "claude-code",
-             "--project", str(project)],
+            [
+                sys.executable,
+                "-m",
+                "superharness.commands.inbox_enqueue",
+                "--task",
+                "WIN-002",
+                "--to",
+                "claude-code",
+                "--project",
+                str(project),
+            ],
             cwd=project,
         )
         assert result.returncode == 0, f"enqueue failed:\n{result.stderr}"
 
         import yaml
-        inbox = yaml.safe_load(
-            (project / ".superharness" / "inbox.yaml").read_text()
-        )
+
+        inbox = yaml.safe_load((project / ".superharness" / "inbox.yaml").read_text())
         assert isinstance(inbox, list)
         assert any(
-            isinstance(item, dict) and item.get("task") == "WIN-002"
-            for item in inbox
+            isinstance(item, dict) and item.get("task") == "WIN-002" for item in inbox
         )
 
 
@@ -192,50 +270,84 @@ class TestDelegateCrossPlatform:
 
     def _setup(self, tmp_path: Path) -> Path:
         _run(
-            [sys.executable, "-m", "superharness.commands.init_project",
-             "Matrix Test", "Python", "active"],
+            [
+                sys.executable,
+                "-m",
+                "superharness.commands.init_project",
+                "Matrix Test",
+                "Python",
+                "active",
+            ],
             cwd=tmp_path,
         )
         _run(
-            [sys.executable, "-m", "superharness.commands.task",
-             "create",
-             "--id", "WIN-003",
-             "--title", "Delegate print-only test",
-             "--owner", "claude-code",
-             "--status", "todo",
-             "--workflow", "quick",
-             "--project", str(tmp_path)],
+            [
+                sys.executable,
+                "-m",
+                "superharness.commands.task",
+                "create",
+                "--id",
+                "WIN-003",
+                "--title",
+                "Delegate print-only test",
+                "--owner",
+                "claude-code",
+                "--status",
+                "todo",
+                "--workflow",
+                "quick",
+                "--project",
+                str(tmp_path),
+            ],
             cwd=tmp_path,
         )
         return tmp_path
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_delegate_print_only_exits_cleanly(self, tmp_path):
         project = self._setup(tmp_path)
         result = _run(
-            [sys.executable, "-m", "superharness.commands.delegate",
-             "--to", "claude-code",
-             "--task", "WIN-003",
-             "--project", str(project),
-             "--print-only",
-             "--no-auto-model"],
+            [
+                sys.executable,
+                "-m",
+                "superharness.commands.delegate",
+                "--to",
+                "claude-code",
+                "--task",
+                "WIN-003",
+                "--project",
+                str(project),
+                "--print-only",
+                "--no-auto-model",
+            ],
             cwd=project,
         )
         assert result.returncode == 0, f"delegate failed:\n{result.stderr}"
         assert "WIN-003" in result.stdout
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_delegate_does_not_use_execvp(self, tmp_path):
         """After --print-only returns, the test process must still be running (no execvp)."""
         project = self._setup(tmp_path)
         # If os.execvp were still used, this subprocess would never return cleanly
         result = _run(
-            [sys.executable, "-m", "superharness.commands.delegate",
-             "--to", "claude-code",
-             "--task", "WIN-003",
-             "--project", str(project),
-             "--print-only",
-             "--no-auto-model"],
+            [
+                sys.executable,
+                "-m",
+                "superharness.commands.delegate",
+                "--to",
+                "claude-code",
+                "--task",
+                "WIN-003",
+                "--project",
+                str(project),
+                "--print-only",
+                "--no-auto-model",
+            ],
             cwd=project,
         )
         # We got here — process returned normally
@@ -252,8 +364,14 @@ class TestWatchSingleCycleCrossPlatform:
 
     def _setup(self, tmp_path: Path) -> Path:
         _run(
-            [sys.executable, "-m", "superharness.commands.init_project",
-             "Matrix Test", "Python", "active"],
+            [
+                sys.executable,
+                "-m",
+                "superharness.commands.init_project",
+                "Matrix Test",
+                "Python",
+                "active",
+            ],
             cwd=tmp_path,
         )
         return tmp_path
@@ -262,10 +380,15 @@ class TestWatchSingleCycleCrossPlatform:
         """watch --once completes without error when inbox is empty."""
         project = self._setup(tmp_path)
         result = _run(
-            [sys.executable, "-m", "superharness.commands.inbox_watch",
-             "--project", str(project),
-             "--once",
-             "--print-only"],
+            [
+                sys.executable,
+                "-m",
+                "superharness.commands.inbox_watch",
+                "--project",
+                str(project),
+                "--once",
+                "--print-only",
+            ],
             cwd=project,
         )
         # Empty inbox → exit 0 (nothing to dispatch)
@@ -293,7 +416,6 @@ class TestLockCrossPlatform:
         from superharness.commands.inbox_watch import (
             _acquire_watcher_lock,
             _release_watcher_lock,
-            _auto_break_stale_lock,
         )
 
         lock = watcher_lock_path(str(tmp_path))

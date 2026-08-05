@@ -2,6 +2,7 @@
 
 Checks cost limits, loop detection, and action limits before dispatch.
 """
+
 from __future__ import annotations
 
 
@@ -18,7 +19,10 @@ def check_agent_policy(
     """
     # Loop detection always blocks
     if loop_detected:
-        return {"blocked": True, "reason": f"Agent '{agent}' blocked: tool-loop detected"}
+        return {
+            "blocked": True,
+            "reason": f"Agent '{agent}' blocked: tool-loop detected",
+        }
 
     # Cost limit check
     if max_cost_usd is not None and cost_usd > max_cost_usd:

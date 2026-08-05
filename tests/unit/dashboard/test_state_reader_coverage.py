@@ -5,7 +5,6 @@ needs to replace direct DAO access. They assume the functions do NOT yet exist,
 so the initial run should fail with AttributeError.
 """
 
-import json
 from pathlib import Path
 
 import pytest
@@ -15,6 +14,7 @@ from superharness.engine import failures_dao, decisions_dao, ledger_dao
 
 
 # ── fixtures ───────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def seeded_project(tmp_path: Path) -> Path:
@@ -39,31 +39,46 @@ def seeded_project(tmp_path: Path) -> Path:
             )
         # Seed failures
         failures_dao.record(
-            conn, task_id="task-1", agent="claude-code",
-            pattern="timeout", error_snippet="Connection timed out",
+            conn,
+            task_id="task-1",
+            agent="claude-code",
+            pattern="timeout",
+            error_snippet="Connection timed out",
             now="2026-04-30T10:00:00Z",
         )
         failures_dao.record(
-            conn, task_id="task-2", agent="codex-cli",
-            pattern="parse_error", error_snippet="Unexpected token at line 12",
+            conn,
+            task_id="task-2",
+            agent="codex-cli",
+            pattern="parse_error",
+            error_snippet="Unexpected token at line 12",
             now="2026-04-30T11:00:00Z",
         )
         # Seed decisions
         decisions_dao.record(
-            conn, agent="claude-code", task_id="task-1",
-            decision="retry", reason="Transient network error",
+            conn,
+            agent="claude-code",
+            task_id="task-1",
+            decision="retry",
+            reason="Transient network error",
             alternatives=["fail", "skip"],
             now="2026-04-30T10:05:00Z",
         )
         # Seed ledger
         ledger_dao.record(
-            conn, task_id="task-1", agent="claude-code",
-            action="delegate", details={"target": "codex-cli"},
+            conn,
+            task_id="task-1",
+            agent="claude-code",
+            action="delegate",
+            details={"target": "codex-cli"},
             now="2026-04-30T09:55:00Z",
         )
         ledger_dao.record(
-            conn, task_id="task-2", agent="codex-cli",
-            action="close", details={"resolution": "completed"},
+            conn,
+            task_id="task-2",
+            agent="codex-cli",
+            action="close",
+            details={"resolution": "completed"},
             now="2026-04-30T12:00:00Z",
         )
         conn.commit()
@@ -73,6 +88,7 @@ def seeded_project(tmp_path: Path) -> Path:
 
 
 # ── RED tests: get_failures ────────────────────────────────────────────────────
+
 
 def test_get_failures_returns_empty_list_for_empty_db(tmp_path: Path):
     """A fresh DB with no failures should return an empty list."""
@@ -118,6 +134,7 @@ def test_get_failures_returns_seeded_rows(seeded_project: Path):
 
 # ── RED tests: get_decisions ───────────────────────────────────────────────────
 
+
 def test_get_decisions_returns_empty_list_for_empty_db(tmp_path: Path):
     """A fresh DB with no decisions should return an empty list."""
     from superharness.engine.state_reader import get_decisions
@@ -156,6 +173,7 @@ def test_get_decisions_returns_seeded_rows(seeded_project: Path):
 
 
 # ── RED tests: get_ledger_entries ──────────────────────────────────────────────
+
 
 def test_get_ledger_entries_returns_empty_list_for_empty_db(tmp_path: Path):
     """A fresh DB with no ledger entries should return an empty list."""

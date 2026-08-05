@@ -12,13 +12,13 @@ Usage:
 
 from __future__ import annotations
 
-import os
 import re
 import sys
 from pathlib import Path
 from typing import Any
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -73,12 +73,14 @@ def list_rules(project_dir: str | None = None) -> list[dict[str, Any]]:
     for f in sorted(rules_dir.glob("*.md")):
         rule = _parse_rule(f)
         if rule:
-            rules.append({
-                "id": rule.get("id", f.stem),
-                "title": rule.get("title", f.stem),
-                "status": rule.get("status", "active"),
-                "since": rule.get("since", ""),
-            })
+            rules.append(
+                {
+                    "id": rule.get("id", f.stem),
+                    "title": rule.get("title", f.stem),
+                    "status": rule.get("status", "active"),
+                    "since": rule.get("since", ""),
+                }
+            )
     return rules
 
 
@@ -106,11 +108,14 @@ def search_rules(keyword: str, project_dir: str | None = None) -> list[dict[str,
             continue
         text = (rule.get("title", "") + " " + rule.get("_body", "")).lower()
         if kw in text:
-            results.append({
-                "id": rule.get("id", f.stem),
-                "title": rule.get("title", f.stem),
-                "snippet": rule["_body"][:200] + ("..." if len(rule["_body"]) > 200 else ""),
-            })
+            results.append(
+                {
+                    "id": rule.get("id", f.stem),
+                    "title": rule.get("title", f.stem),
+                    "snippet": rule["_body"][:200]
+                    + ("..." if len(rule["_body"]) > 200 else ""),
+                }
+            )
     return results
 
 

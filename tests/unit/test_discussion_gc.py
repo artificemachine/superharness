@@ -17,11 +17,16 @@ from superharness.engine import discussions_dao
 from superharness.commands.inbox_watch import (
     _auto_close_consensus_discussions,
     _reconcile_discussion_contract,
-    _CONSENSUS_GRACE_MINUTES,
 )
 
-def _raw_create_task(conn: sqlite3.Connection, task_id: str, status: str = "in_progress",
-                     owner: str = "claude-code", now: str | None = None) -> None:
+
+def _raw_create_task(
+    conn: sqlite3.Connection,
+    task_id: str,
+    status: str = "in_progress",
+    owner: str = "claude-code",
+    now: str | None = None,
+) -> None:
     """Insert a task directly (bypassing the complex upsert signature)."""
     ts = now or now_iso()
     conn.execute(
@@ -30,8 +35,14 @@ def _raw_create_task(conn: sqlite3.Connection, task_id: str, status: str = "in_p
         (task_id, task_id, owner, status, ts),
     )
 
-def _raw_create_inbox(conn: sqlite3.Connection, inbox_id: str, task_id: str,
-                       target_agent: str = "claude-code", now: str | None = None) -> None:
+
+def _raw_create_inbox(
+    conn: sqlite3.Connection,
+    inbox_id: str,
+    task_id: str,
+    target_agent: str = "claude-code",
+    now: str | None = None,
+) -> None:
     """Insert an inbox item directly."""
     ts = now or now_iso()
     conn.execute(
@@ -61,13 +72,13 @@ def _create_yaml_decoys(project: Path, disc_id: str, yaml_status: str) -> None:
     disc_dir = project / ".superharness" / "discussions" / disc_id
     disc_dir.mkdir(parents=True, exist_ok=True)
     (disc_dir / "state.yaml").write_text(
-        f"status: {yaml_status}\n"
-        f"topic: decoy\n"
-        f"created_at: '2025-01-01T00:00:00Z'\n"
+        f"status: {yaml_status}\ntopic: decoy\ncreated_at: '2025-01-01T00:00:00Z'\n"
     )
 
 
-def _write_contract_yaml(project: Path, task_id: str, status: str = "in_progress") -> None:
+def _write_contract_yaml(
+    project: Path, task_id: str, status: str = "in_progress"
+) -> None:
     """Write a contract.yaml entry so state_reader.get_tasks() finds the task in test mode."""
     contract_path = project / ".superharness" / "contract.yaml"
     existing = ""
@@ -89,6 +100,7 @@ def _write_contract_yaml(project: Path, task_id: str, status: str = "in_progress
 # ---------------------------------------------------------------------------
 # _auto_close_consensus_discussions
 # ---------------------------------------------------------------------------
+
 
 class TestAutoCloseConsensusDiscussions:
     def test_closes_consensus_past_grace_period(self, project_with_db: Path):
@@ -154,7 +166,9 @@ class TestAutoCloseConsensusDiscussions:
         _create_yaml_decoys(project, "ghost-consensus", "consensus")
 
         # Touch the YAML to make mtime fresh (otherwise age calculation varies)
-        yaml_path = project / ".superharness" / "discussions" / "ghost-consensus" / "state.yaml"
+        yaml_path = (
+            project / ".superharness" / "discussions" / "ghost-consensus" / "state.yaml"
+        )
         os.utime(yaml_path, None)
 
         n = _auto_close_consensus_discussions(str(project))
@@ -165,8 +179,11 @@ class TestAutoCloseConsensusDiscussions:
 # _reconcile_discussion_contract
 # ---------------------------------------------------------------------------
 
+
 class TestReconcileDiscussionContract:
-    def test_reconciles_archives_tasks_for_closed_discussion(self, project_with_db: Path):
+    def test_reconciles_archives_tasks_for_closed_discussion(
+        self, project_with_db: Path
+    ):
         """Contract tasks linked to closed discussions in SQLite get archived."""
         project = project_with_db
         conn = get_connection(str(project))
@@ -197,10 +214,13 @@ class TestReconcileDiscussionContract:
 
         # Verify task was archived via state_reader (canonical test-mode path)
         from superharness.engine.state_reader import get_tasks
+
         tasks = get_tasks(str(project))
         task = next((t for t in tasks if t.get("id") == f"{disc_id}/round-1"), None)
         assert task is not None, "task not found"
-        assert task.get("status") == "archived", f"expected archived, got {task.get('status')}"
+        assert task.get("status") == "archived", (
+            f"expected archived, got {task.get('status')}"
+        )
         conn.close()
 
     def test_reconciles_finds_terminal_from_sqlite_only(self, project_with_db: Path):

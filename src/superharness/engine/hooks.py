@@ -2,11 +2,13 @@
 
 Cherry-picked from hermes-agent/gateway/hooks.py.
 """
+
 import os
 import yaml
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -37,14 +39,18 @@ class HookRegistry:
             except Exception as e:
                 logger.warning("hooks.py unexpected error: %s", e, exc_info=True)
                 pass
+
     def _execute_handler(self, path: str, data: dict) -> None:
         """Execute a handler script with event data as JSON env var."""
         import json
         import subprocess
+
         subprocess.run(
             [os.path.expanduser(path)],
             env={**os.environ, "HOOK_EVENT_DATA": json.dumps(data)},
-            capture_output=True, timeout=30, check=False,
+            capture_output=True,
+            timeout=30,
+            check=False,
         )
 
 

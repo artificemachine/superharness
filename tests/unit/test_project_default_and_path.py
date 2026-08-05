@@ -3,6 +3,7 @@ Tests for:
 1. shux hygiene defaults --project to cwd when omitted
 2. delegate._expand_path augments PATH with common user-local dirs
 """
+
 from __future__ import annotations
 
 import os
@@ -15,11 +16,14 @@ from tests.helpers import REPO_ROOT, seed_sqlite_from_yaml
 
 # ── helpers ────────────────────────────────────────────────────────────────
 
+
 def _run_hygiene(cwd, args: list[str] | None = None):
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT / "src")
     cmd = [sys.executable, "-m", "superharness.engine.validate"] + (args or [])
-    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False)
+    return subprocess.run(
+        cmd, cwd=str(cwd), text=True, capture_output=True, env=env, check=False
+    )
 
 
 def _make_valid_project(path):
@@ -38,10 +42,11 @@ def _make_valid_project(path):
 
 # ── hygiene: --project defaults to cwd ────────────────────────────────────
 
+
 def test_hygiene_uses_cwd_when_project_not_given(tmp_path):
     """shux hygiene with no --project should run against cwd, not error."""
     _make_valid_project(tmp_path)
-    result = _run_hygiene(tmp_path)   # no --project arg
+    result = _run_hygiene(tmp_path)  # no --project arg
     assert result.returncode == 0, f"stderr: {result.stderr}\nstdout: {result.stdout}"
     assert "passed" in result.stdout.lower()
 
@@ -64,8 +69,10 @@ def test_hygiene_no_project_no_superharness_dir_fails_gracefully(tmp_path):
 
 # ── delegate: PATH expansion ───────────────────────────────────────────────
 
+
 def test_expand_path_adds_local_bin_when_missing():
     from superharness.commands.delegate import _expand_path
+
     original_path = os.environ.get("PATH", "")
     try:
         # Strip ~/.local/bin from PATH to simulate launchd environment
@@ -84,6 +91,7 @@ def test_expand_path_adds_local_bin_when_missing():
 
 def test_expand_path_does_not_duplicate_existing_entries():
     from superharness.commands.delegate import _expand_path
+
     original_path = os.environ.get("PATH", "")
     try:
         local_bin = os.path.expanduser("~/.local/bin")
@@ -99,6 +107,7 @@ def test_expand_path_does_not_duplicate_existing_entries():
 def test_expand_path_only_adds_existing_dirs(tmp_path):
     """Non-existent dirs must not be added to PATH."""
     from superharness.commands.delegate import _expand_path
+
     original_path = os.environ.get("PATH", "")
     try:
         # /usr/bin:/bin don't exist on Windows; use a guaranteed-existing dir
@@ -108,7 +117,9 @@ def test_expand_path_only_adds_existing_dirs(tmp_path):
         _expand_path()
         new_entries = os.environ["PATH"].split(os.pathsep)
         for entry in new_entries:
-            assert os.path.isdir(entry) or entry == "", f"Non-existent dir in PATH: {entry}"
+            assert os.path.isdir(entry) or entry == "", (
+                f"Non-existent dir in PATH: {entry}"
+            )
     finally:
         os.environ["PATH"] = original_path
 
@@ -116,5 +127,6 @@ def test_expand_path_only_adds_existing_dirs(tmp_path):
 def test_cmd_exists_finds_python_after_path_expansion():
     """After expansion, well-known binaries on the system should be findable."""
     from superharness.commands.delegate import _cmd_exists
+
     # python3 is always available in our test env
     assert _cmd_exists("python3") or _cmd_exists("python")

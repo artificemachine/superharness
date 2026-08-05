@@ -3,6 +3,7 @@
 Backs `shux agent-pulse write/read/clear`. The YAML file at
 `.superharness/agent-pulse.yaml` is an export mirror.
 """
+
 from __future__ import annotations
 
 import sqlite3

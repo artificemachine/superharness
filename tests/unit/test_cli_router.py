@@ -2,6 +2,7 @@
 Iteration 0 — CLI router unit tests (TDD: written before implementation).
 Tests that each known subcommand is recognized and dispatched.
 """
+
 import pytest
 from click.testing import CliRunner
 from superharness.cli import main
@@ -17,8 +18,8 @@ KNOWN_SUBCOMMANDS = [
     "uninstall",
     "dashboard",
     "dashboard-ui",
-    "monitor",       # compat alias
-    "monitor-ui",    # compat alias
+    "monitor",  # compat alias
+    "monitor-ui",  # compat alias
     "doctor",
     "install-wrapper",
     "recover",
@@ -30,8 +31,8 @@ KNOWN_SUBCOMMANDS = [
     "daemon",
     "diff",
     "explain",
-    "why",   # alias
-    "wtf",   # alias
+    "why",  # alias
+    "wtf",  # alias
     "onboard",
     "config",
     "version",

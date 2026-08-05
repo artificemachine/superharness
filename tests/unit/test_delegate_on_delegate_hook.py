@@ -4,6 +4,7 @@ Wires `run_hooks("on_delegate", ...)` into the delegate command via a small
 helper so openclaw routing (conditional) and telegram notify actually fire on
 dispatch. Previously on_delegate was a declared-but-never-fired event.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,7 +16,8 @@ from superharness.commands import delegate as delegate_mod
 def test_fire_on_delegate_passes_target_and_event(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        runner_mod, "run_hooks",
+        runner_mod,
+        "run_hooks",
         lambda event, ctx, pdir: calls.append((event, ctx, pdir)) or [],
     )
     # _get_task_title reads project state; stub it so the helper stays unit-scoped.
@@ -37,6 +39,7 @@ def test_fire_on_delegate_passes_target_and_event(monkeypatch):
 
 def test_fire_on_delegate_swallows_hook_errors(monkeypatch):
     """A failing on_delegate hook must never break dispatch."""
+
     def _boom(event, ctx, pdir):
         raise RuntimeError("hook exploded")
 

@@ -11,6 +11,7 @@ read for form only. Nothing here depends on it.
 
 Reads the hooks directory and tests/unit/ as data only.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -37,8 +38,7 @@ def _hook_files() -> list[Path]:
     """Executable hook sources — *.sh and *.py only. hooks.json is config,
     not executable, and is excluded by this pattern deliberately."""
     return sorted(
-        p for p in HOOKS_DIR.iterdir()
-        if p.is_file() and p.suffix in (".sh", ".py")
+        p for p in HOOKS_DIR.iterdir() if p.is_file() and p.suffix in (".sh", ".py")
     )
 
 
@@ -75,8 +75,7 @@ def test_allowlist_entries_are_still_untested():
     forces the allowlist entry to be deleted — a stale allowlist entry
     can't silently linger once it's no longer true."""
     now_tested = [
-        name for name in KNOWN_UNTESTED
-        if _candidate_test_path(name).is_file()
+        name for name in KNOWN_UNTESTED if _candidate_test_path(name).is_file()
     ]
     assert not now_tested, (
         f"KNOWN_UNTESTED entries that now have a test file and must be "
@@ -89,6 +88,5 @@ def test_allowlist_names_real_hooks():
     real_hook_names = {p.name for p in _hook_files()}
     stale = set(KNOWN_UNTESTED) - real_hook_names
     assert not stale, (
-        f"KNOWN_UNTESTED name(s) that no longer exist in {HOOKS_DIR}: "
-        f"{stale}"
+        f"KNOWN_UNTESTED name(s) that no longer exist in {HOOKS_DIR}: {stale}"
     )

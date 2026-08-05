@@ -4,10 +4,10 @@ recover_launched() must hold _inbox_lock for the entire read-modify-write
 cycle to prevent a concurrent dispatcher's claim() from clobbering
 stale-recovery writes.
 """
+
 from __future__ import annotations
 
 import threading
-import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -23,12 +23,16 @@ def _make_inbox(tmp_path: Path, items: list[dict]) -> Path:
     harness = project / ".superharness"
     harness.mkdir(parents=True)
     inbox = harness / "inbox.yaml"
-    inbox.write_text(HEADER + yaml.dump(items, default_flow_style=False, allow_unicode=True))
+    inbox.write_text(
+        HEADER + yaml.dump(items, default_flow_style=False, allow_unicode=True)
+    )
     return project
 
 
 def _stale_ts() -> str:
-    return (datetime.now(timezone.utc) - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return (datetime.now(timezone.utc) - timedelta(hours=1)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
 
 
 def _now_ts() -> str:
@@ -38,22 +42,29 @@ def _now_ts() -> str:
 class TestRecoverLaunchedHoldsLock:
     """Verify that recover_launched uses _inbox_lock so it is re-entrant safe."""
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_recover_launched_uses_inbox_lock(self, tmp_path):
         """recover_launched should acquire _inbox_lock — importing and calling it
         should not raise even when the lock is briefly held by another thread."""
-        from superharness.engine.inbox import recover_launched, _inbox_lock
+        from superharness.engine.inbox import recover_launched
 
-        project = _make_inbox(tmp_path, items=[{
-            "id": "I-1",
-            "task": "T-1",
-            "to": "claude-code",
-            "project": str(tmp_path / "proj"),
-            "status": "launched",
-            "launched_at": _stale_ts(),
-            "priority": 1,
-            "pid": None,
-        }])
+        project = _make_inbox(
+            tmp_path,
+            items=[
+                {
+                    "id": "I-1",
+                    "task": "T-1",
+                    "to": "claude-code",
+                    "project": str(tmp_path / "proj"),
+                    "status": "launched",
+                    "launched_at": _stale_ts(),
+                    "priority": 1,
+                    "pid": None,
+                }
+            ],
+        )
         inbox_file = str(project / ".superharness" / "inbox.yaml")
 
         # Should run without error and mark the item stale
@@ -68,35 +79,40 @@ class TestRecoverLaunchedHoldsLock:
         items = yaml.safe_load(open(inbox_file)) or []
         assert items[0]["status"] == "stale"
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_recover_launched_does_not_corrupt_concurrent_claim(self, tmp_path):
         """When recover_launched and claim run concurrently, the final state must
         be consistent — each item should have exactly one status, not a mix of
         stale+pending or a missing entry."""
-        from superharness.engine.inbox import recover_launched, claim, _inbox_lock
+        from superharness.engine.inbox import recover_launched, claim
 
-        project = _make_inbox(tmp_path, items=[
-            {
-                "id": "I-2",
-                "task": "T-2",
-                "to": "claude-code",
-                "project": str(tmp_path / "proj"),
-                "status": "launched",
-                "launched_at": _stale_ts(),
-                "priority": 1,
-                "pid": None,
-            },
-            {
-                "id": "I-3",
-                "task": "T-3",
-                "to": "claude-code",
-                "project": str(tmp_path / "proj"),
-                "status": "pending",
-                "launched_at": None,
-                "priority": 1,
-                "pid": None,
-            },
-        ])
+        project = _make_inbox(
+            tmp_path,
+            items=[
+                {
+                    "id": "I-2",
+                    "task": "T-2",
+                    "to": "claude-code",
+                    "project": str(tmp_path / "proj"),
+                    "status": "launched",
+                    "launched_at": _stale_ts(),
+                    "priority": 1,
+                    "pid": None,
+                },
+                {
+                    "id": "I-3",
+                    "task": "T-3",
+                    "to": "claude-code",
+                    "project": str(tmp_path / "proj"),
+                    "status": "pending",
+                    "launched_at": None,
+                    "priority": 1,
+                    "pid": None,
+                },
+            ],
+        )
         inbox_file = str(project / ".superharness" / "inbox.yaml")
 
         errors: list[Exception] = []
@@ -137,26 +153,37 @@ class TestRecoverLaunchedHoldsLock:
 
         # Each item must have a valid status
         statuses = {item["id"]: item["status"] for item in items}
-        assert statuses["I-2"] in ("stale", "pending", "launched"), f"I-2 status={statuses['I-2']}"
-        assert statuses["I-3"] in ("claimed", "pending", "launched"), f"I-3 status={statuses['I-3']}"
+        assert statuses["I-2"] in ("stale", "pending", "launched"), (
+            f"I-2 status={statuses['I-2']}"
+        )
+        assert statuses["I-3"] in ("claimed", "pending", "launched"), (
+            f"I-3 status={statuses['I-3']}"
+        )
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_recover_launched_with_retry_action(self, tmp_path):
         """retry action should reset stale items to pending, not stale."""
         from superharness.engine.inbox import recover_launched
 
-        project = _make_inbox(tmp_path, items=[{
-            "id": "I-4",
-            "task": "T-4",
-            "to": "claude-code",
-            "project": str(tmp_path / "proj"),
-            "status": "launched",
-            "launched_at": _stale_ts(),
-            "priority": 1,
-            "pid": None,
-            "retry_count": 0,
-            "max_retries": 3,
-        }])
+        project = _make_inbox(
+            tmp_path,
+            items=[
+                {
+                    "id": "I-4",
+                    "task": "T-4",
+                    "to": "claude-code",
+                    "project": str(tmp_path / "proj"),
+                    "status": "launched",
+                    "launched_at": _stale_ts(),
+                    "priority": 1,
+                    "pid": None,
+                    "retry_count": 0,
+                    "max_retries": 3,
+                }
+            ],
+        )
         inbox_file = str(project / ".superharness" / "inbox.yaml")
 
         rc = recover_launched(
@@ -170,22 +197,31 @@ class TestRecoverLaunchedHoldsLock:
         items = yaml.safe_load(open(inbox_file)) or []
         assert items[0]["status"] == "pending"
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_recover_launched_fresh_items_not_marked_stale(self, tmp_path):
         """Items launched recently (within timeout) must not be touched."""
         from superharness.engine.inbox import recover_launched
 
-        recent = (datetime.now(timezone.utc) - timedelta(minutes=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        project = _make_inbox(tmp_path, items=[{
-            "id": "I-5",
-            "task": "T-5",
-            "to": "claude-code",
-            "project": str(tmp_path / "proj"),
-            "status": "launched",
-            "launched_at": recent,
-            "priority": 1,
-            "pid": None,
-        }])
+        recent = (datetime.now(timezone.utc) - timedelta(minutes=2)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        project = _make_inbox(
+            tmp_path,
+            items=[
+                {
+                    "id": "I-5",
+                    "task": "T-5",
+                    "to": "claude-code",
+                    "project": str(tmp_path / "proj"),
+                    "status": "launched",
+                    "launched_at": recent,
+                    "priority": 1,
+                    "pid": None,
+                }
+            ],
+        )
         inbox_file = str(project / ".superharness" / "inbox.yaml")
 
         rc = recover_launched(

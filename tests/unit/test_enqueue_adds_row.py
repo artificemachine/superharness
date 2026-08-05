@@ -2,6 +2,7 @@
 
 Tests via subprocess: python3 -m superharness.commands.inbox_enqueue
 """
+
 from __future__ import annotations
 import pytest
 
@@ -13,14 +14,14 @@ from pathlib import Path
 PYTHON = sys.executable
 
 INBOX_HEADER = (
-    "# Delegation inbox\n"
-    "# status: pending|launched|running|done|failed|stale\n"
+    "# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n"
 )
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_project(tmp_path: Path, contract_yaml: str | None = None) -> Path:
     project = tmp_path / "proj"
@@ -31,7 +32,6 @@ def _make_project(tmp_path: Path, contract_yaml: str | None = None) -> Path:
         (harness / "contract.yaml").write_text(contract_yaml)
     else:
         # Inbox has FK to tasks — need at least one task row.
-        from tests.helpers import REPO_ROOT
         (harness / "contract.yaml").write_text(
             "id: test-contract\n"
             "tasks:\n"
@@ -49,6 +49,7 @@ def _make_project(tmp_path: Path, contract_yaml: str | None = None) -> Path:
             "    status: plan_approved\n"
         )
     from tests.helpers import seed_sqlite_from_yaml
+
     seed_sqlite_from_yaml(project)
     return project
 
@@ -73,15 +74,23 @@ def _inbox_text(project: Path) -> str:
 # Tests
 # ---------------------------------------------------------------------------
 
+
 def test_enqueue_adds_to_inbox(tmp_path: Path) -> None:
     project = _make_project(tmp_path)
-    r = _run_enqueue([
-        "--project", str(project),
-        "--to", "claude-code",
-        "--task", "my-task",
-        "--id", "item-001",
-        "--priority", "1",
-    ])
+    r = _run_enqueue(
+        [
+            "--project",
+            str(project),
+            "--to",
+            "claude-code",
+            "--task",
+            "my-task",
+            "--id",
+            "item-001",
+            "--priority",
+            "1",
+        ]
+    )
     assert r.returncode == 0, r.stderr
     assert "Enqueued inbox item:" in r.stdout
     assert "id: item-001" in r.stdout
@@ -92,6 +101,7 @@ def test_enqueue_adds_to_inbox(tmp_path: Path) -> None:
     assert "id: item-001" in r.stdout or "id: item-001" in _inbox_text(project)
     # Verify the inbox item landed in SQLite
     import sqlite3
+
     db = sqlite3.connect(str(project / ".superharness" / "state.sqlite3"))
     rows = db.execute("SELECT id, status FROM inbox WHERE id='item-001'").fetchall()
     db.close()
@@ -101,98 +111,151 @@ def test_enqueue_adds_to_inbox(tmp_path: Path) -> None:
 
 def test_enqueue_duplicate_id_rejected(tmp_path: Path) -> None:
     project = _make_project(tmp_path)
-    _run_enqueue([
-        "--project", str(project),
-        "--to", "claude-code",
-        "--task", "my-task",
-        "--id", "dup-id",
-    ])
-    r = _run_enqueue([
-        "--project", str(project),
-        "--to", "codex-cli",
-        "--task", "other-task",
-        "--id", "dup-id",
-    ])
+    _run_enqueue(
+        [
+            "--project",
+            str(project),
+            "--to",
+            "claude-code",
+            "--task",
+            "my-task",
+            "--id",
+            "dup-id",
+        ]
+    )
+    r = _run_enqueue(
+        [
+            "--project",
+            str(project),
+            "--to",
+            "codex-cli",
+            "--task",
+            "other-task",
+            "--id",
+            "dup-id",
+        ]
+    )
     assert r.returncode == 1
     assert "UNIQUE constraint failed" in r.stderr or "already exists" in r.stderr
 
 
 def test_enqueue_validates_target(tmp_path: Path) -> None:
     project = _make_project(tmp_path)
-    r = _run_enqueue([
-        "--project", str(project),
-        "--to", "bad-agent",
-        "--task", "my-task",
-    ])
+    r = _run_enqueue(
+        [
+            "--project",
+            str(project),
+            "--to",
+            "bad-agent",
+            "--task",
+            "my-task",
+        ]
+    )
     assert r.returncode == 2
     assert "must be one of:" in r.stderr
 
 
 def test_enqueue_validates_task_token(tmp_path: Path) -> None:
     project = _make_project(tmp_path)
-    r = _run_enqueue([
-        "--project", str(project),
-        "--to", "claude-code",
-        "--task", "bad|task",
-    ])
+    r = _run_enqueue(
+        [
+            "--project",
+            str(project),
+            "--to",
+            "claude-code",
+            "--task",
+            "bad|task",
+        ]
+    )
     assert r.returncode == 2
     assert "task id must match" in r.stderr
 
 
 def test_enqueue_priority_default(tmp_path: Path) -> None:
     project = _make_project(tmp_path)
-    r = _run_enqueue([
-        "--project", str(project),
-        "--to", "claude-code",
-        "--task", "my-task",
-        "--id", "default-prio",
-    ])
+    r = _run_enqueue(
+        [
+            "--project",
+            str(project),
+            "--to",
+            "claude-code",
+            "--task",
+            "my-task",
+            "--id",
+            "default-prio",
+        ]
+    )
     assert r.returncode == 0, r.stderr
     assert "priority: 2" in r.stdout
 
 
-@pytest.mark.skip(reason="seed_sqlite_from_yaml always sets project_path=project_dir; needs direct SQLite seed to test mismatch scenario (see PR #208)")
+@pytest.mark.skip(
+    reason="seed_sqlite_from_yaml always sets project_path=project_dir; needs direct SQLite seed to test mismatch scenario (see PR #208)"
+)
 def test_enqueue_validates_contract_project_path(tmp_path: Path) -> None:
     other = tmp_path / "other"
     other.mkdir()
-    project = _make_project(tmp_path, contract_yaml="\n".join([
-        "id: test-contract",
-        "tasks:",
-        "  - id: checked-task",
-        "    title: Test",
-        "    owner: claude-code",
-        "    status: plan_approved",
-        f"    project_path: '{other.as_posix()}'",
-    ]) + "\n")
-    r = _run_enqueue([
-        "--project", str(project),
-        "--to", "claude-code",
-        "--task", "checked-task",
-        "--id", "item-path-check",
-    ])
+    project = _make_project(
+        tmp_path,
+        contract_yaml="\n".join(
+            [
+                "id: test-contract",
+                "tasks:",
+                "  - id: checked-task",
+                "    title: Test",
+                "    owner: claude-code",
+                "    status: plan_approved",
+                f"    project_path: '{other.as_posix()}'",
+            ]
+        )
+        + "\n",
+    )
+    r = _run_enqueue(
+        [
+            "--project",
+            str(project),
+            "--to",
+            "claude-code",
+            "--task",
+            "checked-task",
+            "--id",
+            "item-path-check",
+        ]
+    )
     assert r.returncode == 1
     assert "project_path mismatch" in r.stderr
 
 
 def test_enqueue_auto_generates_id(tmp_path: Path) -> None:
     project = _make_project(tmp_path)
-    r = _run_enqueue([
-        "--project", str(project),
-        "--to", "codex-cli",
-        "--task", "auto-id-task",
-    ])
+    r = _run_enqueue(
+        [
+            "--project",
+            str(project),
+            "--to",
+            "codex-cli",
+            "--task",
+            "auto-id-task",
+        ]
+    )
     assert r.returncode == 0, r.stderr
     assert "id:" in r.stdout
 
 
 def test_enqueue_outputs_item_details(tmp_path: Path) -> None:
     project = _make_project(tmp_path)
-    r = _run_enqueue([
-        "--project", str(project),
-        "--to", "claude-code",
-        "--task", "my-task",
-        "--id", "file-path-test",
-    ])
+    r = _run_enqueue(
+        [
+            "--project",
+            str(project),
+            "--to",
+            "claude-code",
+            "--task",
+            "my-task",
+            "--id",
+            "file-path-test",
+        ]
+    )
     assert r.returncode == 0, r.stderr
     assert "id: file-path-test" in r.stdout
     assert "to: claude-code" in r.stdout

@@ -3,11 +3,10 @@
 These tests document invariants that the auto-mode-gap-plan iterations must
 preserve. They use the `clean_harness` and `frozen_time` fixtures.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
-
-import pytest
 
 
 def test_clean_harness_creates_valid_workspace(clean_harness: Path) -> None:

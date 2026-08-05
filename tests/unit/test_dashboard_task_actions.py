@@ -32,16 +32,16 @@ Covers the task-level buttons visible in the tasks panel:
 
 import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
 
 from superharness.engine.db import get_connection, init_db
-from superharness.engine import inbox_dao, tasks_dao
+from superharness.engine import inbox_dao
 
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
+
 
 def _harness(tmp_path: Path) -> Path:
     h = tmp_path / ".superharness"
@@ -58,9 +58,7 @@ def _write_contract(harness: Path, tasks: list[dict]) -> Path:
 
 def _make_task_db(tmp_path: Path, tasks: list[dict]) -> None:
     """Write tasks into SQLite via tasks_dao."""
-    from superharness.engine.db import get_connection, init_db
-    from superharness.engine import tasks_dao
-    from superharness.engine.tasks_dao import TaskRow
+    from superharness.engine.db import get_connection
 
     conn = get_connection(str(tmp_path))
     init_db(conn)
@@ -71,8 +69,13 @@ def _make_task_db(tmp_path: Path, tasks: list[dict]) -> None:
             """INSERT OR REPLACE INTO tasks
                (id, title, status, owner, created_at)
                VALUES (?, ?, ?, ?, ?)""",
-            (t["id"], t.get("title", t["id"]), t["status"],
-             t.get("owner", "claude-code"), now),
+            (
+                t["id"],
+                t.get("title", t["id"]),
+                t["status"],
+                t.get("owner", "claude-code"),
+                now,
+            ),
         )
     conn.commit()
     conn.close()
@@ -87,12 +90,13 @@ def _db_task_status(tmp_path: Path, task_id: str) -> str | None:
 
 # ── _set_task_status helper (mirrors the handler logic) ───────────────────────
 
+
 def _set_task_status_logic(
     tmp_path: Path, task_id: str, to_status: str, from_status: str | None = None
 ) -> dict:
     """Replicate the core of _set_task_status: update SQLite with optional from guard."""
     conn = get_connection(str(tmp_path))
-    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     if from_status:
         rows = conn.execute(
             "UPDATE tasks SET status=? WHERE id=? AND status=? RETURNING id",
@@ -110,18 +114,23 @@ def _set_task_status_logic(
 
 # ── approve_plan ──────────────────────────────────────────────────────────────
 
+
 class TestApprovePlan:
     """approve_plan: plan_proposed → plan_approved."""
 
     def test_transitions_plan_proposed_to_approved(self, tmp_path):
         _make_task_db(tmp_path, [{"id": "t1", "status": "plan_proposed"}])
-        result = _set_task_status_logic(tmp_path, "t1", "plan_approved", from_status="plan_proposed")
+        result = _set_task_status_logic(
+            tmp_path, "t1", "plan_approved", from_status="plan_proposed"
+        )
         assert result["ok"]
         assert _db_task_status(tmp_path, "t1") == "plan_approved"
 
     def test_rejects_wrong_from_status(self, tmp_path):
         _make_task_db(tmp_path, [{"id": "t1", "status": "todo"}])
-        result = _set_task_status_logic(tmp_path, "t1", "plan_approved", from_status="plan_proposed")
+        result = _set_task_status_logic(
+            tmp_path, "t1", "plan_approved", from_status="plan_proposed"
+        )
         assert not result["ok"]
         assert _db_task_status(tmp_path, "t1") == "todo"
 
@@ -135,11 +144,14 @@ class TestApprovePlan:
 
     def test_unknown_task_returns_no_rows(self, tmp_path):
         _make_task_db(tmp_path, [{"id": "t1", "status": "plan_proposed"}])
-        result = _set_task_status_logic(tmp_path, "ghost", "plan_approved", from_status="plan_proposed")
+        result = _set_task_status_logic(
+            tmp_path, "ghost", "plan_approved", from_status="plan_proposed"
+        )
         assert not result["ok"]
 
 
 # ── mark_done ─────────────────────────────────────────────────────────────────
+
 
 class TestMarkDone:
     """mark_done: todo → done."""
@@ -158,6 +170,7 @@ class TestMarkDone:
 
 
 # ── disable_task / enable_task ────────────────────────────────────────────────
+
 
 class TestDisableEnableTask:
     def test_disable_sets_stopped(self, tmp_path):
@@ -186,12 +199,19 @@ class TestDisableEnableTask:
 
 # ── request_review guards ─────────────────────────────────────────────────────
 
+
 class TestRequestReviewGuards:
     """request_review requires status=report_ready, no active inbox item, and valid task."""
 
     def test_wrong_status_returns_400(self):
         """Handler rejects tasks that are not in report_ready."""
-        for bad_status in ["todo", "in_progress", "plan_proposed", "done", "review_requested"]:
+        for bad_status in [
+            "todo",
+            "in_progress",
+            "plan_proposed",
+            "done",
+            "review_requested",
+        ]:
             task = {"id": "t1", "status": bad_status}
             if task.get("status") != "report_ready":
                 code = 400
@@ -237,18 +257,23 @@ class TestRequestReviewGuards:
 
 # ── cancel_review ─────────────────────────────────────────────────────────────
 
+
 class TestCancelReview:
     """cancel_review: review_requested → report_ready."""
 
     def test_transitions_review_requested_to_report_ready(self, tmp_path):
         _make_task_db(tmp_path, [{"id": "t1", "status": "review_requested"}])
-        result = _set_task_status_logic(tmp_path, "t1", "report_ready", from_status="review_requested")
+        result = _set_task_status_logic(
+            tmp_path, "t1", "report_ready", from_status="review_requested"
+        )
         assert result["ok"]
         assert _db_task_status(tmp_path, "t1") == "report_ready"
 
     def test_rejects_wrong_from_status(self, tmp_path):
         _make_task_db(tmp_path, [{"id": "t1", "status": "report_ready"}])
-        result = _set_task_status_logic(tmp_path, "t1", "report_ready", from_status="review_requested")
+        result = _set_task_status_logic(
+            tmp_path, "t1", "report_ready", from_status="review_requested"
+        )
         assert not result["ok"]
 
     def test_missing_id_guard(self):
@@ -258,12 +283,16 @@ class TestCancelReview:
 
 # ── set_owner ─────────────────────────────────────────────────────────────────
 
+
 class TestSetOwner:
     """set_owner:<task_id>:<agent> — updates task owner in contract.yaml."""
 
     def test_updates_owner(self, tmp_path):
         harness = _harness(tmp_path)
-        _write_contract(harness, [{"id": "t1", "title": "T1", "status": "todo", "owner": "claude-code"}])
+        _write_contract(
+            harness,
+            [{"id": "t1", "title": "T1", "status": "todo", "owner": "claude-code"}],
+        )
 
         contract_file = harness / "contract.yaml"
         task_id, new_owner = "t1", "codex-cli"
@@ -277,15 +306,24 @@ class TestSetOwner:
                 found = True
                 break
         assert found
-        contract_file.write_text(yaml.safe_dump(doc, default_flow_style=False, sort_keys=False))
+        contract_file.write_text(
+            yaml.safe_dump(doc, default_flow_style=False, sort_keys=False)
+        )
 
         updated = yaml.safe_load(contract_file.read_text())
-        owners = {t["id"]: t.get("owner") for t in updated.get("tasks", []) if isinstance(t, dict)}
+        owners = {
+            t["id"]: t.get("owner")
+            for t in updated.get("tasks", [])
+            if isinstance(t, dict)
+        }
         assert owners["t1"] == "codex-cli"
 
     def test_task_not_found_returns_404(self, tmp_path):
         harness = _harness(tmp_path)
-        _write_contract(harness, [{"id": "t1", "title": "T1", "status": "todo", "owner": "claude-code"}])
+        _write_contract(
+            harness,
+            [{"id": "t1", "title": "T1", "status": "todo", "owner": "claude-code"}],
+        )
         contract_file = harness / "contract.yaml"
         doc = yaml.safe_load(contract_file.read_text()) or {}
         tasks = doc.get("tasks", [])
@@ -344,10 +382,16 @@ class TestEnqueueTaskGuards:
     def test_missing_fields_guard(self):
         for bad_action in ["enqueue_task:", "enqueue_task:only"]:
             parts = bad_action.split(":", 2)
-            missing = len(parts) < 3 or not parts[1] or not parts[2] if len(parts) == 3 else True
+            missing = (
+                len(parts) < 3 or not parts[1] or not parts[2]
+                if len(parts) == 3
+                else True
+            )
             assert missing, f"'{bad_action}' must trigger missing-fields guard"
 
-    @pytest.mark.parametrize("task_id,target", [("t1", "claude-code"), ("t2", "codex-cli")])
+    @pytest.mark.parametrize(
+        "task_id,target", [("t1", "claude-code"), ("t2", "codex-cli")]
+    )
     def test_valid_enqueue_format(self, task_id, target):
         action = f"enqueue_task:{task_id}:{target}"
         parts = action.split(":", 2)
@@ -359,19 +403,23 @@ class TestEnqueueTaskGuards:
 
 # ── /api/owners add/remove validation ────────────────────────────────────────
 
+
 class TestOwnerValidation:
     """Owner name must be alphanumeric + hyphens/underscores only."""
 
-    @pytest.mark.parametrize("name,valid", [
-        ("claude-code", True),
-        ("codex_cli", True),
-        ("agent123", True),
-        ("bad name", False),
-        ("bad.name", False),
-        ("bad@name", False),
-        ("", False),
-        ("a/b", False),
-    ])
+    @pytest.mark.parametrize(
+        "name,valid",
+        [
+            ("claude-code", True),
+            ("codex_cli", True),
+            ("agent123", True),
+            ("bad name", False),
+            ("bad.name", False),
+            ("bad@name", False),
+            ("", False),
+            ("a/b", False),
+        ],
+    )
     def test_owner_name_validation(self, name, valid):
         is_valid = bool(name) and all(c.isalnum() or c in "-_" for c in name)
         assert is_valid == valid, f"owner='{name}' expected valid={valid}"
@@ -408,12 +456,12 @@ class TestOwnerValidation:
 
 # ── pause_item ────────────────────────────────────────────────────────────────
 
+
 class TestPauseItem:
     """pause_item: pending → paused via DAO from_status guard."""
 
     def test_pending_transitions_to_paused(self, tmp_path):
-        from superharness.engine.db import get_connection, init_db
-        from superharness.engine import inbox_dao
+        from superharness.engine.db import get_connection
 
         harness = tmp_path / ".superharness"
         harness.mkdir(exist_ok=True)
@@ -427,7 +475,9 @@ class TestPauseItem:
         )
         conn.commit()
 
-        ok = inbox_dao.update_status(conn, "i1", from_status="pending", to_status="paused", now=now)
+        ok = inbox_dao.update_status(
+            conn, "i1", from_status="pending", to_status="paused", now=now
+        )
         conn.commit()
         conn.close()
 
@@ -438,8 +488,7 @@ class TestPauseItem:
         assert row[0] == "paused"
 
     def test_non_pending_not_paused(self, tmp_path):
-        from superharness.engine.db import get_connection, init_db
-        from superharness.engine import inbox_dao
+        from superharness.engine.db import get_connection
 
         harness = tmp_path / ".superharness"
         harness.mkdir(exist_ok=True)
@@ -453,7 +502,9 @@ class TestPauseItem:
         )
         conn.commit()
 
-        ok = inbox_dao.update_status(conn, "i1", from_status="pending", to_status="paused", now=now)
+        ok = inbox_dao.update_status(
+            conn, "i1", from_status="pending", to_status="paused", now=now
+        )
         conn.commit()
         conn.close()
 
@@ -466,6 +517,7 @@ class TestPauseItem:
 
 # ── resume_task / retry_task ──────────────────────────────────────────────────
 
+
 class TestResumeTaskRetryTask:
     """resume_task and retry_task find an inbox item by task_id and status."""
 
@@ -474,13 +526,19 @@ class TestResumeTaskRetryTask:
             {"id": "i1", "task": "t1", "status": "paused"},
             {"id": "i2", "task": "t1", "status": "done"},
         ]
-        target = next((i for i in inbox if i.get("task") == "t1" and i.get("status") == "paused"), None)
+        target = next(
+            (i for i in inbox if i.get("task") == "t1" and i.get("status") == "paused"),
+            None,
+        )
         assert target is not None
         assert target["id"] == "i1"
 
     def test_resume_task_missing_returns_404(self):
         inbox = [{"id": "i1", "task": "t1", "status": "running"}]
-        target = next((i for i in inbox if i.get("task") == "t1" and i.get("status") == "paused"), None)
+        target = next(
+            (i for i in inbox if i.get("task") == "t1" and i.get("status") == "paused"),
+            None,
+        )
         assert target is None
 
     def test_retry_task_finds_stale_item(self):
@@ -488,32 +546,60 @@ class TestResumeTaskRetryTask:
             {"id": "i1", "task": "t1", "status": "stale"},
             {"id": "i2", "task": "t1", "status": "done"},
         ]
-        target = next((i for i in inbox if i.get("task") == "t1" and i.get("status") in ("stale", "failed", "stopped")), None)
+        target = next(
+            (
+                i
+                for i in inbox
+                if i.get("task") == "t1"
+                and i.get("status") in ("stale", "failed", "stopped")
+            ),
+            None,
+        )
         assert target is not None
         assert target["id"] == "i1"
 
     @pytest.mark.parametrize("status", ["stale", "failed", "stopped"])
     def test_retry_task_finds_any_retryable(self, status):
         inbox = [{"id": "i1", "task": "t1", "status": status}]
-        target = next((i for i in inbox if i.get("task") == "t1" and i.get("status") in ("stale", "failed", "stopped")), None)
+        target = next(
+            (
+                i
+                for i in inbox
+                if i.get("task") == "t1"
+                and i.get("status") in ("stale", "failed", "stopped")
+            ),
+            None,
+        )
         assert target is not None
 
     def test_retry_task_missing_returns_404(self):
         inbox = [{"id": "i1", "task": "t1", "status": "done"}]
-        target = next((i for i in inbox if i.get("task") == "t1" and i.get("status") in ("stale", "failed", "stopped")), None)
+        target = next(
+            (
+                i
+                for i in inbox
+                if i.get("task") == "t1"
+                and i.get("status") in ("stale", "failed", "stopped")
+            ),
+            None,
+        )
         assert target is None
 
 
 # ── remove_task ───────────────────────────────────────────────────────────────
 
+
 class TestRemoveTask:
     """remove_task:<id> — removes task from SQLite."""
 
     def test_removes_from_sqlite(self, tmp_path):
-        _make_task_db(tmp_path, [
-            {"id": "t1", "status": "done"},
-            {"id": "t2", "status": "todo"},
-        ])
+        _make_task_db(
+            tmp_path,
+            [
+                {"id": "t1", "status": "done"},
+                {"id": "t2", "status": "todo"},
+            ],
+        )
         conn = get_connection(str(tmp_path))
         conn.execute("PRAGMA foreign_keys = OFF")
         conn.execute("DELETE FROM tasks WHERE id=?", ("t1",))

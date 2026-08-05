@@ -2,6 +2,7 @@
 
 Dispatches the next pending inbox item to its target launcher.
 """
+
 from __future__ import annotations
 
 import importlib.resources as _importlib_resources
@@ -21,14 +22,16 @@ _log = logging.getLogger(__name__)
 DIRTY_WORKTREE_REASON = "dirty_worktree_requires_user_confirmation"
 
 # Effort → timeout mapping (in seconds)
-TIMEOUT_LOW_EFFORT = 900       # 15 minutes
-TIMEOUT_MEDIUM_EFFORT = 1800   # 30 minutes
-TIMEOUT_HIGH_EFFORT = 3600     # 60 minutes
+TIMEOUT_LOW_EFFORT = 900  # 15 minutes
+TIMEOUT_MEDIUM_EFFORT = 1800  # 30 minutes
+TIMEOUT_HIGH_EFFORT = 3600  # 60 minutes
 
-DISCUSSION_ROUND_TIMEOUT_SECONDS = 900  # 15 min hard cap per discussion round (fallback)
-DISCUSSION_TIMEOUT_LOW = 600           # 10 min
-DISCUSSION_TIMEOUT_MEDIUM = 1200       # 20 min
-DISCUSSION_TIMEOUT_HIGH = 1800         # 30 min
+DISCUSSION_ROUND_TIMEOUT_SECONDS = (
+    900  # 15 min hard cap per discussion round (fallback)
+)
+DISCUSSION_TIMEOUT_LOW = 600  # 10 min
+DISCUSSION_TIMEOUT_MEDIUM = 1200  # 20 min
+DISCUSSION_TIMEOUT_HIGH = 1800  # 30 min
 
 
 @dataclass
@@ -96,6 +99,7 @@ def _safe_task_id_for_path(task_id: str) -> str:
 # Lock helpers (mkdir-based, same semantics as shell version)
 # ---------------------------------------------------------------------------
 
+
 class _MkdirLock:
     """Non-blocking mutex using a directory with PID-based orphan detection."""
 
@@ -133,7 +137,9 @@ class _MkdirLock:
             return False
         pid = self._read_pid()
         if pid is not None and not self._pid_alive(pid):
-            print(f"Auto-breaking orphaned dispatch lock (pid {pid} not running): {self.path}")
+            print(
+                f"Auto-breaking orphaned dispatch lock (pid {pid} not running): {self.path}"
+            )
             self._remove()
             return True
         if pid is None:
@@ -142,7 +148,9 @@ class _MkdirLock:
             except OSError:
                 return False
             if age >= self._stale_seconds:
-                print(f"Auto-breaking stale dispatch lock (age: {int(age)}s, no pid): {self.path}")
+                print(
+                    f"Auto-breaking stale dispatch lock (age: {int(age)}s, no pid): {self.path}"
+                )
                 self._remove()
                 return True
         return False
@@ -199,13 +207,16 @@ def _git_worktree_add(project_dir: str, task_id: str) -> str | None:
     # so the join below cannot escape the worktree root.
     safe_task_id = sanitize_task_id(task_id)
     worktree_dir = os.path.join(
-        tempfile.gettempdir(), "superharness-worktrees",
+        tempfile.gettempdir(),
+        "superharness-worktrees",
         f"{safe_task_id}-{uuid.uuid4().hex[:8]}",
     )
     os.makedirs(os.path.dirname(worktree_dir), exist_ok=True)
     r = subprocess.run(
         ["git", "-C", project_dir, "worktree", "add", "--detach", worktree_dir, "HEAD"],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if r.returncode != 0:
         print(f"git worktree add failed: {r.stderr.strip()}", file=sys.stderr)
@@ -228,12 +239,16 @@ def _git_worktree_add(project_dir: str, task_id: str) -> str | None:
                 # Replace an unintended real dir (likely created by a hook).
                 # Only safe because worktrees are always under tempfile.gettempdir().
                 import shutil as _shutil
+
                 _shutil.rmtree(dst_harness, ignore_errors=True)
                 os.symlink(src_harness, dst_harness)
             elif not os.path.exists(dst_harness):
                 os.symlink(src_harness, dst_harness)
         except OSError as e:
-            print(f"warning: failed to symlink .superharness/ in worktree: {e}", file=sys.stderr)
+            print(
+                f"warning: failed to symlink .superharness/ in worktree: {e}",
+                file=sys.stderr,
+            )
     return worktree_dir
 
 
@@ -245,7 +260,9 @@ def _git_worktree_remove(project_dir: str, worktree_dir: str) -> bool:
         os.unlink(dst_harness)
     r = subprocess.run(
         ["git", "-C", project_dir, "worktree", "remove", "--force", worktree_dir],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if r.returncode != 0:
         print(f"git worktree remove failed: {r.stderr.strip()}", file=sys.stderr)
@@ -257,14 +274,26 @@ def _has_dirty_worktree(project_dir: str) -> bool:
     try:
         r = subprocess.run(
             ["git", "-C", project_dir, "rev-parse", "--is-inside-work-tree"],
-            capture_output=True, text=True, check=False,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if r.returncode != 0:
             return False
         r2 = subprocess.run(
-            ["git", "-C", project_dir, "status", "--porcelain",
-             "--untracked-files=normal", "--", ":!.superharness/"],
-            capture_output=True, text=True, check=False,
+            [
+                "git",
+                "-C",
+                project_dir,
+                "status",
+                "--porcelain",
+                "--untracked-files=normal",
+                "--",
+                ":!.superharness/",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
         )
         return bool(r2.stdout.strip())
     except FileNotFoundError:
@@ -275,23 +304,29 @@ def _has_dirty_worktree(project_dir: str) -> bool:
 # Inbox engine helpers
 # ---------------------------------------------------------------------------
 
+
 def _inbox_cmd(args: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(
         [_get_python(), "-m", "superharness.engine.inbox"] + args,
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
 def _contract_cmd(args: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(
         [_get_python(), "-m", "superharness.engine.contract"] + args,
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
 # ---------------------------------------------------------------------------
 # Task effort → timeout calculation
 # ---------------------------------------------------------------------------
+
 
 def _get_task_effort_timeout(project_dir: str, task_id: str) -> int:
     """Calculate launcher timeout based on task effort estimate.
@@ -304,6 +339,7 @@ def _get_task_effort_timeout(project_dir: str, task_id: str) -> int:
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import tasks_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -336,14 +372,41 @@ def _get_task_effort_timeout(project_dir: str, task_id: str) -> int:
 
 
 def _set_inbox_field(inbox_file: str, item_id: str, key: str, value: str) -> None:
-    _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", key, "--value", value])
+    _inbox_cmd(
+        [
+            "set_field",
+            "--file",
+            inbox_file,
+            "--id",
+            item_id,
+            "--key",
+            key,
+            "--value",
+            value,
+        ]
+    )
 
 
-def _set_inbox_status(inbox_file: str, item_id: str, from_: str, to: str, now: str, stamp_key: str) -> bool:
-    r = _inbox_cmd([
-        "set_status", "--file", inbox_file, "--id", item_id,
-        "--from", from_, "--to", to, "--now", now, "--stamp-key", stamp_key,
-    ])
+def _set_inbox_status(
+    inbox_file: str, item_id: str, from_: str, to: str, now: str, stamp_key: str
+) -> bool:
+    r = _inbox_cmd(
+        [
+            "set_status",
+            "--file",
+            inbox_file,
+            "--id",
+            item_id,
+            "--from",
+            from_,
+            "--to",
+            to,
+            "--now",
+            now,
+            "--stamp-key",
+            stamp_key,
+        ]
+    )
     return r.returncode == 0
 
 
@@ -351,8 +414,16 @@ def _set_inbox_status(inbox_file: str, item_id: str, from_: str, to: str, now: s
 # Timeout subprocess runner
 # ---------------------------------------------------------------------------
 
-def _run_with_timeout(timeout_secs: int, cmd: list[str], inbox_file: str = "", item_id: str = "",
-                      env: dict | None = None, stdout=None, stderr=None) -> int:
+
+def _run_with_timeout(
+    timeout_secs: int,
+    cmd: list[str],
+    inbox_file: str = "",
+    item_id: str = "",
+    env: dict | None = None,
+    stdout=None,
+    stderr=None,
+) -> int:
     """Run a command with a timeout; returns exit code (124 = timed out).
 
     Uses SIGALRM on POSIX (macOS/Linux). Falls back to a threading.Timer on
@@ -362,13 +433,28 @@ def _run_with_timeout(timeout_secs: int, cmd: list[str], inbox_file: str = "", i
 
     # preexec_fn is POSIX-only; skip on Windows
     preexec = os.setsid if hasattr(os, "setsid") else None
-    proc = subprocess.Popen(cmd, preexec_fn=preexec, env=env, stdout=stdout, stderr=stderr)
+    proc = subprocess.Popen(
+        cmd, preexec_fn=preexec, env=env, stdout=stdout, stderr=stderr
+    )
     if inbox_file and item_id:
-        _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", str(proc.pid)])
+        _inbox_cmd(
+            [
+                "set_field",
+                "--file",
+                inbox_file,
+                "--id",
+                item_id,
+                "--key",
+                "pid",
+                "--value",
+                str(proc.pid),
+            ]
+        )
 
     timed_out = [False]
 
     if _use_sigalrm:
+
         def _on_alarm(signum: int, frame: object) -> None:
             timed_out[0] = True
             signal_process_group(proc.pid, signal.SIGTERM)
@@ -387,7 +473,19 @@ def _run_with_timeout(timeout_secs: int, cmd: list[str], inbox_file: str = "", i
             signal.signal(signal.SIGALRM, old_alarm)  # type: ignore[attr-defined]
             signal.signal(signal.SIGTERM, old_term)
             if inbox_file and item_id:
-                _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", ""])
+                _inbox_cmd(
+                    [
+                        "set_field",
+                        "--file",
+                        inbox_file,
+                        "--id",
+                        item_id,
+                        "--key",
+                        "pid",
+                        "--value",
+                        "",
+                    ]
+                )
     else:
         # Windows / SIGALRM-unavailable fallback: threading.Timer
         import threading
@@ -406,7 +504,19 @@ def _run_with_timeout(timeout_secs: int, cmd: list[str], inbox_file: str = "", i
         finally:
             timer.cancel()
             if inbox_file and item_id:
-                _inbox_cmd(["set_field", "--file", inbox_file, "--id", item_id, "--key", "pid", "--value", ""])
+                _inbox_cmd(
+                    [
+                        "set_field",
+                        "--file",
+                        inbox_file,
+                        "--id",
+                        item_id,
+                        "--key",
+                        "pid",
+                        "--value",
+                        "",
+                    ]
+                )
 
     if timed_out[0]:
         return 124
@@ -417,29 +527,42 @@ def _run_with_timeout(timeout_secs: int, cmd: list[str], inbox_file: str = "", i
 # mark_item_failed / paused
 # ---------------------------------------------------------------------------
 
-def _mark_item_failed(inbox_file: str, item_id: str, failed_at: str, lock: _MkdirLock, reason: str = "") -> bool:
+
+def _mark_item_failed(
+    inbox_file: str, item_id: str, failed_at: str, lock: _MkdirLock, reason: str = ""
+) -> bool:
     if not lock.acquire_with_retry(50, 0.1):
-        print(f"Failed to acquire inbox lock while marking failure for {item_id}", file=sys.stderr)
+        print(
+            f"Failed to acquire inbox lock while marking failure for {item_id}",
+            file=sys.stderr,
+        )
         return False
 
-    ok = (
-        _set_inbox_status(inbox_file, item_id, "launched", "failed", failed_at, "failed_at")
-        or _set_inbox_status(inbox_file, item_id, "running", "failed", failed_at, "failed_at")
+    ok = _set_inbox_status(
+        inbox_file, item_id, "launched", "failed", failed_at, "failed_at"
+    ) or _set_inbox_status(
+        inbox_file, item_id, "running", "failed", failed_at, "failed_at"
     )
     if ok and reason:
         _set_inbox_field(inbox_file, item_id, "failed_reason", reason)
     lock.release()
     if ok:
-        print(f"Inbox item updated: {item_id} -> failed{' (' + reason + ')' if reason else ''}")
+        print(
+            f"Inbox item updated: {item_id} -> failed{' (' + reason + ')' if reason else ''}"
+        )
     else:
         print(f"Failed to mark inbox item as failed for {item_id}", file=sys.stderr)
     return ok
 
 
 def _mark_item_paused_dirty(inbox_file: str, item_id: str, paused_at: str) -> bool:
-    if _set_inbox_status(inbox_file, item_id, "pending", "paused", paused_at, "paused_at"):
+    if _set_inbox_status(
+        inbox_file, item_id, "pending", "paused", paused_at, "paused_at"
+    ):
         _set_inbox_field(inbox_file, item_id, "pause_reason", DIRTY_WORKTREE_REASON)
-        print(f"Inbox item updated: {item_id} -> paused (dirty worktree requires interactive confirmation)")
+        print(
+            f"Inbox item updated: {item_id} -> paused (dirty worktree requires interactive confirmation)"
+        )
         return True
     return False
 
@@ -457,12 +580,18 @@ def _sqlite_record_review(
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import review_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
             review_dao.record(
-                conn, owner=owner, task_type=task_type,
-                duration_s=duration_s, score=score, failed=failed, now=now,
+                conn,
+                owner=owner,
+                task_type=task_type,
+                duration_s=duration_s,
+                score=score,
+                failed=failed,
+                now=now,
             )
             conn.commit()
         finally:
@@ -470,6 +599,8 @@ def _sqlite_record_review(
     except Exception as e:
         _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         pass
+
+
 def _sqlite_mirror_dispatch(
     project_dir: str,
     item_id: str,
@@ -484,27 +615,35 @@ def _sqlite_mirror_dispatch(
     try:
         from superharness.engine.db import get_connection, init_db, transaction
         from superharness.engine import inbox_dao, ledger_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
             with transaction(conn):
                 ledger_dao.record(
-                    conn, agent=agent, action=f"dispatch_{to_status}",
-                    task_id=task_id, now=now,
+                    conn,
+                    agent=agent,
+                    action=f"dispatch_{to_status}",
+                    task_id=task_id,
+                    now=now,
                 )
                 updated = False
                 for _from in ("pending", "launched", "running"):
                     if inbox_dao.update_status(
-                        conn, item_id,
-                        from_status=_from, to_status=to_status,
-                        now=now, reason=reason or None,
+                        conn,
+                        item_id,
+                        from_status=_from,
+                        to_status=to_status,
+                        now=now,
+                        reason=reason or None,
                     ):
                         updated = True
                         break
                 if not updated:
                     _log.warning(
                         "_sqlite_mirror_dispatch: no row matched for item=%s to_status=%s",
-                        item_id, to_status,
+                        item_id,
+                        to_status,
                     )
         finally:
             conn.close()
@@ -513,16 +652,24 @@ def _sqlite_mirror_dispatch(
         # (with exc_info=True) could never run, since the first already
         # matches every Exception subclass. Merged into one, keeping the
         # more specific message and adding exc_info=True.
-        _log.warning("_sqlite_mirror_dispatch failed for %s: %s", item_id, e, exc_info=True)
+        _log.warning(
+            "_sqlite_mirror_dispatch failed for %s: %s", item_id, e, exc_info=True
+        )
+
+
 # ---------------------------------------------------------------------------
 # Cost extraction helper
 # ---------------------------------------------------------------------------
+
 
 def _read_context_cache_cost(project_dir: str, task_id: str) -> float:
     """Read cost_usd from the context-cache snapshot written by delegate after SDK dispatch."""
     try:
         import yaml
-        cache_path = os.path.join(project_dir, ".superharness", "context-cache", f"{task_id}.yaml")
+
+        cache_path = os.path.join(
+            project_dir, ".superharness", "context-cache", f"{task_id}.yaml"
+        )
         if not os.path.isfile(cache_path):
             return 0.0
         with open(cache_path, encoding="utf-8") as fh:
@@ -537,6 +684,7 @@ def _read_context_cache_cost(project_dir: str, task_id: str) -> float:
 # Main dispatch logic
 # ---------------------------------------------------------------------------
 
+
 def _sqlite_claim_next(project_dir: str, target_agent: str, now: str) -> dict | None:
     """Claim the next pending inbox item via inbox_dao (SQLite-native). Never raises.
 
@@ -546,10 +694,13 @@ def _sqlite_claim_next(project_dir: str, target_agent: str, now: str) -> dict | 
         from dataclasses import asdict
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import inbox_dao
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
-            row = inbox_dao.claim_next(conn, target_agent=target_agent, pid=os.getpid(), now=now)
+            row = inbox_dao.claim_next(
+                conn, target_agent=target_agent, pid=os.getpid(), now=now
+            )
             if row is None:
                 return None
             conn.commit()
@@ -590,6 +741,7 @@ def dispatch(
     if not _sqlite_primary:
         try:
             from superharness.engine.sqlite_only import is_sqlite_only
+
             # Must pass project_dir so detection can fall back to checking
             # for state.sqlite3 — without it, returns False and dispatch
             # silently takes the broken YAML path.
@@ -692,7 +844,10 @@ def _do_dispatch(
         if _git_worktree_remove(ctx.project_dir, ctx.worktree_dir):
             print(f"Worktree removed: {ctx.worktree_dir}")
         else:
-            print(f"Warning: worktree cleanup failed for {ctx.worktree_dir} — remove manually", file=sys.stderr)
+            print(
+                f"Warning: worktree cleanup failed for {ctx.worktree_dir} — remove manually",
+                file=sys.stderr,
+            )
 
     # 7. Post-process
     if ctx.launcher_rc != 0:
@@ -716,7 +871,9 @@ def _claim_next_item(ctx: DispatchContext) -> int | None:
         if item is None:
             return 0
         # Log the claim (inbox.yaml transition skipped in sqlite_only)
-        print(f"Inbox item claimed from SQLite: {item['id']} → {item['task']} (sqlite_only mode)")
+        print(
+            f"Inbox item claimed from SQLite: {item['id']} → {item['task']} (sqlite_only mode)"
+        )
     else:
         print(
             "inbox_dispatch: SQLite required but not active. "
@@ -746,30 +903,59 @@ def _transition_to_launched(ctx: DispatchContext, lock: _MkdirLock) -> int | Non
     if ctx.sqlite_primary:
         lock.release()
         new_retry_count = int(ctx.item.get("retry_count", 0))
-        print(f"Inbox item updated: {ctx.item_id} -> launched (priority={item_priority}, retries={new_retry_count}/{item_max_retries})")
+        print(
+            f"Inbox item updated: {ctx.item_id} -> launched (priority={item_priority}, retries={new_retry_count}/{item_max_retries})"
+        )
     else:
         lr = subprocess.run(
-            [_get_python(), "-m", "superharness.engine.inbox", "launch",
-             "--file", ctx.inbox_file, "--id", ctx.item_id, "--now", launch_now],
-            capture_output=True, text=True, check=False,
+            [
+                _get_python(),
+                "-m",
+                "superharness.engine.inbox",
+                "launch",
+                "--file",
+                ctx.inbox_file,
+                "--id",
+                ctx.item_id,
+                "--now",
+                launch_now,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
         )
         launch_rc = lr.returncode
 
         lock.release()  # Release before spawning launcher
 
         if launch_rc == 4:
-            print(f"Inbox item updated: {ctx.item_id} -> failed (retry limit reached: {ctx.item.get('retry_count', 0)}/{item_max_retries})")
+            print(
+                f"Inbox item updated: {ctx.item_id} -> failed (retry limit reached: {ctx.item.get('retry_count', 0)}/{item_max_retries})"
+            )
             return 1
 
         if launch_rc != 0:
-            print(f"Failed to launch inbox item transition for {ctx.item_id}: {lr.stdout.strip()}", file=sys.stderr)
+            print(
+                f"Failed to launch inbox item transition for {ctx.item_id}: {lr.stdout.strip()}",
+                file=sys.stderr,
+            )
             return 1
 
         import re
+
         m = re.search(r"retry_count=(\d+)", lr.stdout)
         new_retry_count = int(m.group(1)) if m else int(ctx.item.get("retry_count", 0))
-        print(f"Inbox item updated: {ctx.item_id} -> launched (priority={item_priority}, retries={new_retry_count}/{item_max_retries})")
-        _sqlite_mirror_dispatch(ctx.project_dir, ctx.item_id, ctx.item_task, ctx.item_to, "launched", launch_now)
+        print(
+            f"Inbox item updated: {ctx.item_id} -> launched (priority={item_priority}, retries={new_retry_count}/{item_max_retries})"
+        )
+        _sqlite_mirror_dispatch(
+            ctx.project_dir,
+            ctx.item_id,
+            ctx.item_task,
+            ctx.item_to,
+            "launched",
+            launch_now,
+        )
 
     return None
 
@@ -780,7 +966,10 @@ def _reconcile_state(ctx: DispatchContext) -> int:
         reconcile_now = _now_utc()
         new_lock = _MkdirLock(ctx.inbox_file + ".lock.d")
         if not new_lock.acquire_with_retry(50, 0.1):
-            print(f"Failed to acquire inbox lock while reconciling status for {ctx.item_id}", file=sys.stderr)
+            print(
+                f"Failed to acquire inbox lock while reconciling status for {ctx.item_id}",
+                file=sys.stderr,
+            )
             return 1
 
         final_state = ""
@@ -792,8 +981,11 @@ def _reconcile_state(ctx: DispatchContext) -> int:
             if len(parts) == 2:
                 discuss_id, round_slug = parts
                 submission_path = os.path.join(
-                    ctx.exec_project, ".superharness", "discussions",
-                    discuss_id, f"{round_slug}-{ctx.item_to}.yaml"
+                    ctx.exec_project,
+                    ".superharness",
+                    "discussions",
+                    discuss_id,
+                    f"{round_slug}-{ctx.item_to}.yaml",
                 )
                 if os.path.exists(submission_path):
                     final_state = "done"
@@ -808,9 +1000,15 @@ def _reconcile_state(ctx: DispatchContext) -> int:
                         except (IndexError, ValueError):
                             round_num = -1
                         if round_num > 0 and _recover_yaml_from_log(
-                            ctx.task_log, submission_path, discuss_id, round_num, ctx.item_to
+                            ctx.task_log,
+                            submission_path,
+                            discuss_id,
+                            round_num,
+                            ctx.item_to,
                         ):
-                            print(f"  [recover-yaml] recovered submission from log -> {submission_path}")
+                            print(
+                                f"  [recover-yaml] recovered submission from log -> {submission_path}"
+                            )
                             final_state = "done"
                     # Bug T fix: if YAML is still absent, fail immediately.
                     # Dirty worktree is irrelevant for discussion agents — they don't
@@ -822,63 +1020,178 @@ def _reconcile_state(ctx: DispatchContext) -> int:
         else:
             try:
                 from superharness.engine import state_reader as _sr
+
                 _task_row = _sr.get_task(ctx.project_dir, ctx.item_task)
                 if _task_row:
                     final_state = str(_task_row.get("status", ""))
             except Exception as _e:
-                _log.warning("_reconcile_state: could not read SQLite task status: %s", _e, exc_info=True)
+                _log.warning(
+                    "_reconcile_state: could not read SQLite task status: %s",
+                    _e,
+                    exc_info=True,
+                )
 
         reconciled = 0
 
         if final_state == "done":
-            if (_set_inbox_status(ctx.inbox_file, ctx.item_id, "launched", "done", reconcile_now, "done_at")
-                    or _set_inbox_status(ctx.inbox_file, ctx.item_id, "running", "done", reconcile_now, "done_at")):
+            if _set_inbox_status(
+                ctx.inbox_file,
+                ctx.item_id,
+                "launched",
+                "done",
+                reconcile_now,
+                "done_at",
+            ) or _set_inbox_status(
+                ctx.inbox_file, ctx.item_id, "running", "done", reconcile_now, "done_at"
+            ):
                 reconciled = 1
         elif final_state == "failed":
-            if (_set_inbox_status(ctx.inbox_file, ctx.item_id, "launched", "failed", reconcile_now, "failed_at")
-                    or _set_inbox_status(ctx.inbox_file, ctx.item_id, "running", "failed", reconcile_now, "failed_at")):
+            if _set_inbox_status(
+                ctx.inbox_file,
+                ctx.item_id,
+                "launched",
+                "failed",
+                reconcile_now,
+                "failed_at",
+            ) or _set_inbox_status(
+                ctx.inbox_file,
+                ctx.item_id,
+                "running",
+                "failed",
+                reconcile_now,
+                "failed_at",
+            ):
                 reconciled = 1
         elif final_state == "pending_user_approval":
-            if (_set_inbox_status(ctx.inbox_file, ctx.item_id, "launched", "paused", reconcile_now, "paused_at")
-                    or _set_inbox_status(ctx.inbox_file, ctx.item_id, "running", "paused", reconcile_now, "paused_at")):
-                _set_inbox_field(ctx.inbox_file, ctx.item_id, "pause_reason", "awaiting_user_approval")
+            if _set_inbox_status(
+                ctx.inbox_file,
+                ctx.item_id,
+                "launched",
+                "paused",
+                reconcile_now,
+                "paused_at",
+            ) or _set_inbox_status(
+                ctx.inbox_file,
+                ctx.item_id,
+                "running",
+                "paused",
+                reconcile_now,
+                "paused_at",
+            ):
+                _set_inbox_field(
+                    ctx.inbox_file,
+                    ctx.item_id,
+                    "pause_reason",
+                    "awaiting_user_approval",
+                )
                 reconciled = 3
         else:
             if _has_dirty_worktree(ctx.exec_project):
-                if (_set_inbox_status(ctx.inbox_file, ctx.item_id, "launched", "paused", reconcile_now, "paused_at")
-                        or _set_inbox_status(ctx.inbox_file, ctx.item_id, "running", "paused", reconcile_now, "paused_at")):
-                    _set_inbox_field(ctx.inbox_file, ctx.item_id, "pause_reason", DIRTY_WORKTREE_REASON)
+                if _set_inbox_status(
+                    ctx.inbox_file,
+                    ctx.item_id,
+                    "launched",
+                    "paused",
+                    reconcile_now,
+                    "paused_at",
+                ) or _set_inbox_status(
+                    ctx.inbox_file,
+                    ctx.item_id,
+                    "running",
+                    "paused",
+                    reconcile_now,
+                    "paused_at",
+                ):
+                    _set_inbox_field(
+                        ctx.inbox_file,
+                        ctx.item_id,
+                        "pause_reason",
+                        DIRTY_WORKTREE_REASON,
+                    )
                     reconciled = 2
             else:
-                if (_set_inbox_status(ctx.inbox_file, ctx.item_id, "launched", "failed", reconcile_now, "failed_at")
-                        or _set_inbox_status(ctx.inbox_file, ctx.item_id, "running", "failed", reconcile_now, "failed_at")):
+                if _set_inbox_status(
+                    ctx.inbox_file,
+                    ctx.item_id,
+                    "launched",
+                    "failed",
+                    reconcile_now,
+                    "failed_at",
+                ) or _set_inbox_status(
+                    ctx.inbox_file,
+                    ctx.item_id,
+                    "running",
+                    "failed",
+                    reconcile_now,
+                    "failed_at",
+                ):
                     reconciled = 1
 
         new_lock.release()
 
         if reconciled > 0:
-            _r_status = "paused" if reconciled in (2, 3) else ("done" if final_state == "done" else "failed")
-            _sqlite_mirror_dispatch(ctx.project_dir, ctx.item_id, ctx.item_task, ctx.item_to, _r_status, reconcile_now)
-        elif ctx.sqlite_primary and final_state in ("done", "failed", "pending_user_approval"):
+            _r_status = (
+                "paused"
+                if reconciled in (2, 3)
+                else ("done" if final_state == "done" else "failed")
+            )
+            _sqlite_mirror_dispatch(
+                ctx.project_dir,
+                ctx.item_id,
+                ctx.item_task,
+                ctx.item_to,
+                _r_status,
+                reconcile_now,
+            )
+        elif ctx.sqlite_primary and final_state in (
+            "done",
+            "failed",
+            "pending_user_approval",
+        ):
             # sqlite-only mode: the item was claimed from SQLite, not inbox.yaml, so
             # _set_inbox_status returned False and reconciled stayed 0. Mirror to
             # SQLite directly so the item doesn't stay stuck in 'launched' forever.
-            _r_status = "paused" if final_state == "pending_user_approval" else final_state
-            _sqlite_mirror_dispatch(ctx.project_dir, ctx.item_id, ctx.item_task, ctx.item_to, _r_status, reconcile_now)
+            _r_status = (
+                "paused" if final_state == "pending_user_approval" else final_state
+            )
+            _sqlite_mirror_dispatch(
+                ctx.project_dir,
+                ctx.item_id,
+                ctx.item_task,
+                ctx.item_to,
+                _r_status,
+                reconcile_now,
+            )
             reconciled = 3 if final_state == "pending_user_approval" else 1
-        elif ctx.sqlite_primary and final_state not in ("done", "failed", "pending_user_approval") and final_state:
+        elif (
+            ctx.sqlite_primary
+            and final_state not in ("done", "failed", "pending_user_approval")
+            and final_state
+        ):
             # sqlite-only: fallback state (dirty worktree → paused, else failed).
             _r_status = "paused" if _has_dirty_worktree(ctx.exec_project) else "failed"
-            _sqlite_mirror_dispatch(ctx.project_dir, ctx.item_id, ctx.item_task, ctx.item_to, _r_status, reconcile_now)
+            _sqlite_mirror_dispatch(
+                ctx.project_dir,
+                ctx.item_id,
+                ctx.item_task,
+                ctx.item_to,
+                _r_status,
+                reconcile_now,
+            )
             reconciled = 2 if _r_status == "paused" else 1
 
         if reconciled == 2:
-            print(f"Inbox item updated: {ctx.item_id} -> paused ({DIRTY_WORKTREE_REASON})")
+            print(
+                f"Inbox item updated: {ctx.item_id} -> paused ({DIRTY_WORKTREE_REASON})"
+            )
             return 0
         if reconciled == 3:
-            print(f"Inbox item updated: {ctx.item_id} -> paused (awaiting_user_approval)")
+            print(
+                f"Inbox item updated: {ctx.item_id} -> paused (awaiting_user_approval)"
+            )
             try:
                 from superharness.commands.notify_desktop import notify_task_event
+
                 notify_task_event(ctx.item_task, "waiting_input", ctx.item_to)
             except Exception as e:
                 _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
@@ -886,38 +1199,74 @@ def _reconcile_state(ctx: DispatchContext) -> int:
             return 0
         if reconciled == 1:
             import time as _time
+
             _elapsed = _time.time() - ctx.launch_start
             if final_state == "done":
-                print(f"Inbox item updated: {ctx.item_id} -> done (reconciled from contract task status)")
+                print(
+                    f"Inbox item updated: {ctx.item_id} -> done (reconciled from contract task status)"
+                )
                 try:
                     from superharness.commands.notify_desktop import notify_task_event
+
                     notify_task_event(ctx.item_task, "done", ctx.item_to)
                 except Exception as e:
-                    _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
+                    _log.warning(
+                        "inbox_dispatch.py unexpected error: %s", e, exc_info=True
+                    )
                     pass
                 try:
                     from superharness.engine.benchmark import record_dispatch
+
                     _cost = _read_context_cache_cost(ctx.exec_project, ctx.item_task)
-                    record_dispatch(ctx.exec_project, ctx.item_task, ctx.item_to, "done", _elapsed, cost_usd=_cost)
+                    record_dispatch(
+                        ctx.exec_project,
+                        ctx.item_task,
+                        ctx.item_to,
+                        "done",
+                        _elapsed,
+                        cost_usd=_cost,
+                    )
                 except Exception as e:
-                    _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
+                    _log.warning(
+                        "inbox_dispatch.py unexpected error: %s", e, exc_info=True
+                    )
                     pass
                 _sqlite_record_review(
-                    ctx.project_dir, owner=ctx.item_to, task_type="dispatch",
-                    duration_s=_elapsed, score=1.0, failed=False, now=reconcile_now,
+                    ctx.project_dir,
+                    owner=ctx.item_to,
+                    task_type="dispatch",
+                    duration_s=_elapsed,
+                    score=1.0,
+                    failed=False,
+                    now=reconcile_now,
                 )
                 return 0
-            print(f"Inbox item updated: {ctx.item_id} -> failed (non-interactive launch exited without done/failed)")
+            print(
+                f"Inbox item updated: {ctx.item_id} -> failed (non-interactive launch exited without done/failed)"
+            )
             try:
                 from superharness.engine.benchmark import record_dispatch
+
                 _cost = _read_context_cache_cost(ctx.exec_project, ctx.item_task)
-                record_dispatch(ctx.exec_project, ctx.item_task, ctx.item_to, "failed", _elapsed, cost_usd=_cost)
+                record_dispatch(
+                    ctx.exec_project,
+                    ctx.item_task,
+                    ctx.item_to,
+                    "failed",
+                    _elapsed,
+                    cost_usd=_cost,
+                )
             except Exception as e:
                 _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
                 pass
             _sqlite_record_review(
-                ctx.project_dir, owner=ctx.item_to, task_type="dispatch",
-                duration_s=_elapsed, score=0.0, failed=True, now=reconcile_now,
+                ctx.project_dir,
+                owner=ctx.item_to,
+                task_type="dispatch",
+                duration_s=_elapsed,
+                score=0.0,
+                failed=True,
+                now=reconcile_now,
             )
             return 1
 
@@ -940,6 +1289,7 @@ def _recover_yaml_from_log(
 
     Returns True if a valid submission was recovered and written."""
     import re
+
     try:
         import yaml as _yaml
     except ImportError:
@@ -976,7 +1326,11 @@ def _recover_yaml_from_log(
         try:
             data = _yaml.safe_load(candidate)
         except Exception:
-            _log.warning("_recover_yaml_from_log: unexpected error: %s", sys.exc_info()[1], exc_info=True)
+            _log.warning(
+                "_recover_yaml_from_log: unexpected error: %s",
+                sys.exc_info()[1],
+                exc_info=True,
+            )
             continue
         if not isinstance(data, dict):
             continue
@@ -994,7 +1348,13 @@ def _recover_yaml_from_log(
         os.makedirs(os.path.dirname(submission_path), exist_ok=True)
         try:
             with open(submission_path, "w", encoding="utf-8") as fh:
-                _yaml.dump(data, fh, allow_unicode=True, default_flow_style=False, sort_keys=False)
+                _yaml.dump(
+                    data,
+                    fh,
+                    allow_unicode=True,
+                    default_flow_style=False,
+                    sort_keys=False,
+                )
             return True
         except OSError:
             return False
@@ -1017,8 +1377,11 @@ def _handle_failure(ctx: DispatchContext) -> int:
         if len(parts) == 2:
             discuss_id, round_slug = parts
             submission_path = os.path.join(
-                ctx.exec_project, ".superharness", "discussions",
-                discuss_id, f"{round_slug}-{ctx.item_to}.yaml"
+                ctx.exec_project,
+                ".superharness",
+                "discussions",
+                discuss_id,
+                f"{round_slug}-{ctx.item_to}.yaml",
             )
             yaml_on_disk = os.path.isfile(submission_path)
             if not yaml_on_disk and ctx.task_log and os.path.isfile(ctx.task_log):
@@ -1030,16 +1393,35 @@ def _handle_failure(ctx: DispatchContext) -> int:
                     ctx.task_log, submission_path, discuss_id, round_num, ctx.item_to
                 ):
                     yaml_on_disk = True
-                    print(f"  [recover-yaml] recovered submission from log -> {submission_path}")
+                    print(
+                        f"  [recover-yaml] recovered submission from log -> {submission_path}"
+                    )
             if yaml_on_disk:
                 new_lock = _MkdirLock(ctx.inbox_file + ".lock.d")
                 if new_lock.acquire_with_retry(50, 0.1):
                     try:
-                        if (_set_inbox_status(ctx.inbox_file, ctx.item_id, "launched", "done", fail_now, "done_at")
-                                or _set_inbox_status(ctx.inbox_file, ctx.item_id, "running", "done", fail_now, "done_at")):
+                        if _set_inbox_status(
+                            ctx.inbox_file,
+                            ctx.item_id,
+                            "launched",
+                            "done",
+                            fail_now,
+                            "done_at",
+                        ) or _set_inbox_status(
+                            ctx.inbox_file,
+                            ctx.item_id,
+                            "running",
+                            "done",
+                            fail_now,
+                            "done_at",
+                        ):
                             _sqlite_mirror_dispatch(
-                                ctx.project_dir, ctx.item_id, ctx.item_task,
-                                ctx.item_to, "done", fail_now,
+                                ctx.project_dir,
+                                ctx.item_id,
+                                ctx.item_task,
+                                ctx.item_to,
+                                "done",
+                                fail_now,
                             )
                             print(
                                 f"Inbox item updated: {ctx.item_id} -> done "
@@ -1061,7 +1443,12 @@ def _handle_failure(ctx: DispatchContext) -> int:
     if os.path.isfile(ctx.task_log):
         try:
             from pathlib import Path as _P
-            _lines = _P(ctx.task_log).read_text(encoding="utf-8", errors="replace").splitlines()
+
+            _lines = (
+                _P(ctx.task_log)
+                .read_text(encoding="utf-8", errors="replace")
+                .splitlines()
+            )
             log_tail_text = "\n".join(_lines[-50:])
         except Exception as e:
             _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
@@ -1070,6 +1457,7 @@ def _handle_failure(ctx: DispatchContext) -> int:
     # Classify the failure
     try:
         from superharness.engine.failure_classifier import classify as _classify_failure
+
         _classification = _classify_failure(
             launcher_rc=ctx.launcher_rc, error_text="", log_tail=log_tail_text
         )
@@ -1082,29 +1470,40 @@ def _handle_failure(ctx: DispatchContext) -> int:
 
     if ctx.launcher_rc == 124:
         fail_reason = f"launcher timed out after {ctx.effective_timeout}s"
-        print(f"Launcher timed out after {ctx.effective_timeout}s for {ctx.item_id}", file=sys.stderr)
+        print(
+            f"Launcher timed out after {ctx.effective_timeout}s for {ctx.item_id}",
+            file=sys.stderr,
+        )
         # Discussion round timeouts are silent failures today — log FATAL
         # so operators can trace which agent/round was affected.
         if ctx.is_discussion:
             _log.error(
                 "FATAL: discussion round dispatch timed out — "
                 "agent=%s discussion=%s round_task=%s timeout=%ds",
-                ctx.item_to, ctx.item_task.split("/round-")[0],
-                ctx.item_task, ctx.effective_timeout,
+                ctx.item_to,
+                ctx.item_task.split("/round-")[0],
+                ctx.item_task,
+                ctx.effective_timeout,
             )
     elif ctx.launcher_rc < 0:
         # Signal death: killed by SIGKILL (-9), SIGTERM (-15), etc.
         import signal as _signal_mod
+
         sig_name = ""
         try:
             sig_name = _signal_mod.Signals(-ctx.launcher_rc).name
         except (ValueError, AttributeError):
             sig_name = str(ctx.launcher_rc)
         fail_reason = f"launcher killed by signal {sig_name}"
-        print(f"Launcher killed by signal {sig_name} for {ctx.item_id}", file=sys.stderr)
+        print(
+            f"Launcher killed by signal {sig_name} for {ctx.item_id}", file=sys.stderr
+        )
     elif permanent_block:
         fail_reason = f"permanent block (lifecycle gate): {failure_explain}"
-        print(f"Permanent block for {ctx.item_id}: lifecycle gate rejected. Not retrying.", file=sys.stderr)
+        print(
+            f"Permanent block for {ctx.item_id}: lifecycle gate rejected. Not retrying.",
+            file=sys.stderr,
+        )
     else:
         fail_reason = f"{failure_class}: {failure_explain}"
 
@@ -1116,34 +1515,43 @@ def _handle_failure(ctx: DispatchContext) -> int:
     if failure_class == "auth_mismatch":
         try:
             from superharness.engine.model_router import persist_agent_auth_state
+
             if ctx.item_to == "codex-cli":
                 from superharness.engine.model_router import (
                     reset_codex_auth_cache,
                     detect_codex_auth_mode,
                 )
+
                 reset_codex_auth_cache()
                 new_auth_mode = detect_codex_auth_mode()
-                persist_agent_auth_state(str(ctx.project_dir), "codex-cli", new_auth_mode)
+                persist_agent_auth_state(
+                    str(ctx.project_dir), "codex-cli", new_auth_mode
+                )
                 _log.warning(
                     "inbox_dispatch: auth_mismatch for codex-cli — cache reset, "
                     "re-detected auth_mode=%s, will retry with override model",
                     new_auth_mode,
                 )
             else:
-                persist_agent_auth_state(str(ctx.project_dir), ctx.item_to, "auth_failure")
+                persist_agent_auth_state(
+                    str(ctx.project_dir), ctx.item_to, "auth_failure"
+                )
                 _log.warning(
                     "inbox_dispatch: auth_mismatch for %s — persisted failure state; "
                     "ensure credentials are valid for this agent and retry",
                     ctx.item_to,
                 )
         except Exception as _auth_err:
-            _log.warning("inbox_dispatch: auth state reset failed: %s", _auth_err, exc_info=True)
+            _log.warning(
+                "inbox_dispatch: auth state reset failed: %s", _auth_err, exc_info=True
+            )
 
     # quota: record a cooldown window so the watcher skips this agent during
     # fallback routing until the quota resets.  Default cooldown is 60 minutes.
     if failure_class == "quota":
         try:
             from superharness.engine.model_router import set_agent_quota_limited
+
             set_agent_quota_limited(str(ctx.project_dir), ctx.item_to, reset_minutes=60)
             _log.warning(
                 "inbox_dispatch: quota exceeded for %s — marked quota-limited for 60 min; "
@@ -1151,11 +1559,16 @@ def _handle_failure(ctx: DispatchContext) -> int:
                 ctx.item_to,
             )
         except Exception as _quota_err:
-            _log.warning("inbox_dispatch: quota state write failed: %s", _quota_err, exc_info=True)
+            _log.warning(
+                "inbox_dispatch: quota state write failed: %s",
+                _quota_err,
+                exc_info=True,
+            )
 
     if failure_class == "unknown" and ctx.launcher_rc == 1:
         try:
             from superharness.engine.db import get_connection, init_db
+
             conn = get_connection(ctx.project_dir)
             try:
                 init_db(conn)
@@ -1170,7 +1583,11 @@ def _handle_failure(ctx: DispatchContext) -> int:
             finally:
                 conn.close()
         except Exception:
-            _log.warning("_handle_failure: unexpected error: %s", sys.exc_info()[1], exc_info=True)
+            _log.warning(
+                "_handle_failure: unexpected error: %s",
+                sys.exc_info()[1],
+                exc_info=True,
+            )
             pass
     # Append structured diagnostic to the task log file so operators can trace
     # which agent/round failed and why — the Python logger is not visible to them.
@@ -1188,53 +1605,104 @@ def _handle_failure(ctx: DispatchContext) -> int:
                     f"--- end diagnostic ---\n"
                 )
         except Exception as _diag_err:
-            _log.warning("inbox_dispatch.py: could not write failure diagnostic: %s", _diag_err, exc_info=True)
+            _log.warning(
+                "inbox_dispatch.py: could not write failure diagnostic: %s",
+                _diag_err,
+                exc_info=True,
+            )
     new_lock = _MkdirLock(ctx.inbox_file + ".lock.d")
     # Record failure in decision ledger for debugging
     try:
         from superharness.engine.ledger_dao import decision_log
-        decision_log(ctx.project_dir, "dispatch_failed", task_id=ctx.item_task,
-                     agent=ctx.item_to,
-                     reason=fail_reason,
-                     details={"exit_code": ctx.launcher_rc, "item_id": ctx.item_id,
-                              "classification": failure_class})
+
+        decision_log(
+            ctx.project_dir,
+            "dispatch_failed",
+            task_id=ctx.item_task,
+            agent=ctx.item_to,
+            reason=fail_reason,
+            details={
+                "exit_code": ctx.launcher_rc,
+                "item_id": ctx.item_id,
+                "classification": failure_class,
+            },
+        )
     except Exception as e:
         _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         pass
-    _mark_item_failed(ctx.inbox_file, ctx.item_id, fail_now, new_lock, reason=fail_reason)
+    _mark_item_failed(
+        ctx.inbox_file, ctx.item_id, fail_now, new_lock, reason=fail_reason
+    )
     # Stamp structured failure metadata for auto_retry and dashboard surface
     try:
-        _inbox_cmd([
-            "set_field", "--file", ctx.inbox_file, "--id", ctx.item_id,
-            "--key", "failure_class", "--value", failure_class,
-        ])
-        _inbox_cmd([
-            "set_field", "--file", ctx.inbox_file, "--id", ctx.item_id,
-            "--key", "failure_explain", "--value", failure_explain,
-        ])
+        _inbox_cmd(
+            [
+                "set_field",
+                "--file",
+                ctx.inbox_file,
+                "--id",
+                ctx.item_id,
+                "--key",
+                "failure_class",
+                "--value",
+                failure_class,
+            ]
+        )
+        _inbox_cmd(
+            [
+                "set_field",
+                "--file",
+                ctx.inbox_file,
+                "--id",
+                ctx.item_id,
+                "--key",
+                "failure_explain",
+                "--value",
+                failure_explain,
+            ]
+        )
     except Exception as e:
         _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         pass
-    _sqlite_mirror_dispatch(ctx.project_dir, ctx.item_id, ctx.item_task, ctx.item_to, "failed", fail_now, reason=fail_reason)
+    _sqlite_mirror_dispatch(
+        ctx.project_dir,
+        ctx.item_id,
+        ctx.item_task,
+        ctx.item_to,
+        "failed",
+        fail_now,
+        reason=fail_reason,
+    )
 
     item_max_retries = int(ctx.item.get("max_retries", 3))
     try:
         from superharness.engine.failure_classifier import classify as _classify_failure
+
         _classification = _classify_failure(
             launcher_rc=ctx.launcher_rc, error_text="", log_tail=log_tail_text
         )
         if permanent_block or not _classification.retryable:
             # Push retry_count to max_retries so the watcher's next pass sees it as
             # retry-exhausted and does not pick it up again.
-            _inbox_cmd([
-                "set_field", "--file", ctx.inbox_file, "--id", ctx.item_id,
-                "--key", "retry_count", "--value", str(item_max_retries),
-            ])
+            _inbox_cmd(
+                [
+                    "set_field",
+                    "--file",
+                    ctx.inbox_file,
+                    "--id",
+                    ctx.item_id,
+                    "--key",
+                    "retry_count",
+                    "--value",
+                    str(item_max_retries),
+                ]
+            )
     except Exception as e:
         _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         pass
     try:
         from superharness.commands.notify_desktop import notify_task_event
+
         notify_task_event(ctx.item_task, "failed", ctx.item_to)
     except Exception as e:
         _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
@@ -1242,28 +1710,38 @@ def _handle_failure(ctx: DispatchContext) -> int:
     # Record failure pattern for next dispatch
     try:
         from superharness.engine.failure_patterns import record_failure
+
         error_snippet = log_tail_text
         if ctx.launcher_rc == 124:
             error_snippet = f"timed out\n{error_snippet}"
         if error_snippet:
-            record_failure(ctx.exec_project, ctx.item_task, error_snippet, agent=ctx.item_to)
+            record_failure(
+                ctx.exec_project, ctx.item_task, error_snippet, agent=ctx.item_to
+            )
     except Exception as e:
         _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         pass
     import time as _time
+
     _elapsed = _time.time() - ctx.launch_start
 
     # Record benchmark for failed launch
     try:
         from superharness.engine.benchmark import record_dispatch
+
         outcome = "timeout" if ctx.launcher_rc == 124 else "failed"
         record_dispatch(ctx.exec_project, ctx.item_task, ctx.item_to, outcome, _elapsed)
     except Exception as e:
         _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         pass
     _sqlite_record_review(
-        ctx.project_dir, owner=ctx.item_to, task_type="dispatch",
-        duration_s=_elapsed, score=0.0, failed=True, now=fail_now,
+        ctx.project_dir,
+        owner=ctx.item_to,
+        task_type="dispatch",
+        duration_s=_elapsed,
+        score=0.0,
+        failed=True,
+        now=fail_now,
     )
 
     return 1
@@ -1289,8 +1767,11 @@ def _skip_already_done_discussion_round(ctx: DispatchContext) -> bool:
         return False
     discuss_id, round_slug = parts
     submission_path = os.path.join(
-        ctx.exec_project, ".superharness", "discussions",
-        discuss_id, f"{round_slug}-{ctx.item_to}.yaml",
+        ctx.exec_project,
+        ".superharness",
+        "discussions",
+        discuss_id,
+        f"{round_slug}-{ctx.item_to}.yaml",
     )
     yaml_exists = os.path.isfile(submission_path)
 
@@ -1298,6 +1779,7 @@ def _skip_already_done_discussion_round(ctx: DispatchContext) -> bool:
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import discussions_dao
+
         conn = get_connection(ctx.project_dir)
         try:
             init_db(conn)
@@ -1315,22 +1797,37 @@ def _skip_already_done_discussion_round(ctx: DispatchContext) -> bool:
         return False
 
     skip_reason = (
-        "submission YAML already present" if yaml_exists
-        else f"discussion not active (status check)"
+        "submission YAML already present"
+        if yaml_exists
+        else "discussion not active (status check)"
     )
     now = _now_utc()
     new_lock = _MkdirLock(ctx.inbox_file + ".lock.d")
     if not new_lock.acquire_with_retry(50, 0.1):
         return False
     try:
-        if (_set_inbox_status(ctx.inbox_file, ctx.item_id, "launched", "done", now, "done_at")
-                or _set_inbox_status(ctx.inbox_file, ctx.item_id, "running", "done", now, "done_at")
-                or _set_inbox_status(ctx.inbox_file, ctx.item_id, "pending", "done", now, "done_at")):
-            _set_inbox_field(ctx.inbox_file, ctx.item_id, "failed_reason",
-                             f"skipped: {skip_reason}")
+        if (
+            _set_inbox_status(
+                ctx.inbox_file, ctx.item_id, "launched", "done", now, "done_at"
+            )
+            or _set_inbox_status(
+                ctx.inbox_file, ctx.item_id, "running", "done", now, "done_at"
+            )
+            or _set_inbox_status(
+                ctx.inbox_file, ctx.item_id, "pending", "done", now, "done_at"
+            )
+        ):
+            _set_inbox_field(
+                ctx.inbox_file, ctx.item_id, "failed_reason", f"skipped: {skip_reason}"
+            )
             _sqlite_mirror_dispatch(
-                ctx.project_dir, ctx.item_id, ctx.item_task,
-                ctx.item_to, "done", now, reason=f"skipped: {skip_reason}",
+                ctx.project_dir,
+                ctx.item_id,
+                ctx.item_task,
+                ctx.item_to,
+                "done",
+                now,
+                reason=f"skipped: {skip_reason}",
             )
             print(
                 f"Inbox item updated: {ctx.item_id} -> done "
@@ -1351,16 +1848,48 @@ def _execute_agent(ctx: DispatchContext) -> None:
         print(f"[print-only] would launch: {' '.join(ctx.launch_args)}")
     else:
         import time as _time
+
         ctx.launch_start = _time.time()
         if ctx.effective_timeout > 0:
-            ctx.launcher_rc = _run_with_timeout(ctx.effective_timeout, ctx.wrapped_args, inbox_file=ctx.inbox_file, item_id=ctx.item_id,
-                                            env=ctx.spawn_env)
+            ctx.launcher_rc = _run_with_timeout(
+                ctx.effective_timeout,
+                ctx.wrapped_args,
+                inbox_file=ctx.inbox_file,
+                item_id=ctx.item_id,
+                env=ctx.spawn_env,
+            )
         else:
             _preexec = os.setsid if hasattr(os, "setsid") else None
-            proc = subprocess.Popen(ctx.wrapped_args, preexec_fn=_preexec, env=ctx.spawn_env)
-            _inbox_cmd(["set_field", "--file", ctx.inbox_file, "--id", ctx.item_id, "--key", "pid", "--value", str(proc.pid)])
+            proc = subprocess.Popen(
+                ctx.wrapped_args, preexec_fn=_preexec, env=ctx.spawn_env
+            )
+            _inbox_cmd(
+                [
+                    "set_field",
+                    "--file",
+                    ctx.inbox_file,
+                    "--id",
+                    ctx.item_id,
+                    "--key",
+                    "pid",
+                    "--value",
+                    str(proc.pid),
+                ]
+            )
             ctx.launcher_rc = proc.wait()
-        _inbox_cmd(["set_field", "--file", ctx.inbox_file, "--id", ctx.item_id, "--key", "pid", "--value", ""])
+        _inbox_cmd(
+            [
+                "set_field",
+                "--file",
+                ctx.inbox_file,
+                "--id",
+                ctx.item_id,
+                "--key",
+                "pid",
+                "--value",
+                "",
+            ]
+        )
 
     return None
 
@@ -1370,19 +1899,29 @@ def _prepare_execution(ctx: DispatchContext) -> None:
     # builds the proper prompt from the task context, then resolves the target's
     # launcher script via adapter_registry.
     launch_args = [
-        _get_python(), "-m", "superharness.commands.delegate",
-        "--to", ctx.item_to,
-        "--project", ctx.exec_project,
-        "--task", ctx.item_task
+        _get_python(),
+        "-m",
+        "superharness.commands.delegate",
+        "--to",
+        ctx.item_to,
+        "--project",
+        ctx.exec_project,
+        "--task",
+        ctx.item_task,
     ]
     task_status = ""
     try:
         from superharness.engine import state_reader as _sr
+
         _task_row = _sr.get_task(ctx.project_dir, ctx.item_task)
         if _task_row:
             task_status = str(_task_row.get("status", ""))
     except Exception as _e:
-        _log.warning("_prepare_execution: could not read SQLite task status: %s", _e, exc_info=True)
+        _log.warning(
+            "_prepare_execution: could not read SQLite task status: %s",
+            _e,
+            exc_info=True,
+        )
     if task_status == "review_requested":
         launch_args.append("--for-review")
     if bool(ctx.item.get("plan_only", False)):
@@ -1405,11 +1944,14 @@ def _prepare_execution(ctx: DispatchContext) -> None:
     os.makedirs(launcher_log_dir, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     safe_item_task = _safe_task_id_for_path(ctx.item_task)
-    ctx.task_log = os.path.join(launcher_log_dir, f"{safe_item_task}-{ctx.item_to}-{timestamp}.log")
+    ctx.task_log = os.path.join(
+        launcher_log_dir, f"{safe_item_task}-{ctx.item_to}-{timestamp}.log"
+    )
 
     # Rotate old logs (keep last 5 per task+agent)
     from pathlib import Path
     from superharness.commands.delegate import _rotate_launcher_logs
+
     _rotate_launcher_logs(Path(launcher_log_dir), safe_item_task, ctx.item_to, keep=5)
 
     # Pass log path to delegate so SDK runner's JSONL tailer writes to the same file
@@ -1428,13 +1970,22 @@ def _prepare_execution(ctx: DispatchContext) -> None:
 
     # Wrap in `script` to capture PTY output (bash launcher needs a terminal).
     import platform
+
     if os.environ.get("SUPERHARNESS_NO_PTY_WRAP", "").strip() in ("1", "true", "yes"):
         ctx.wrapped_args = launch_args
     elif platform.system() == "Darwin":
         ctx.wrapped_args = ["script", "-q", "-F", ctx.task_log] + launch_args
     else:
         import shlex
-        ctx.wrapped_args = ["script", "-q", "-f", "-c", shlex.join(launch_args), ctx.task_log]
+
+        ctx.wrapped_args = [
+            "script",
+            "-q",
+            "-f",
+            "-c",
+            shlex.join(launch_args),
+            ctx.task_log,
+        ]
 
     return None
 
@@ -1443,8 +1994,12 @@ def _resolve_execution_context(ctx: DispatchContext) -> int | None:
     # Determine execution project (worker mode)
     exec_project = ctx.item_project
     try:
-        proj_harness_real = os.path.realpath(os.path.join(ctx.project_dir, ".superharness"))
-        item_harness_real = os.path.realpath(os.path.join(ctx.item_project, ".superharness"))
+        proj_harness_real = os.path.realpath(
+            os.path.join(ctx.project_dir, ".superharness")
+        )
+        item_harness_real = os.path.realpath(
+            os.path.join(ctx.item_project, ".superharness")
+        )
         if (
             proj_harness_real == item_harness_real
             and ctx.project_dir != ctx.item_project
@@ -1461,15 +2016,25 @@ def _resolve_execution_context(ctx: DispatchContext) -> int | None:
         ctx.effective_timeout = _get_task_effort_timeout(ctx.project_dir, ctx.item_task)
 
     # Worktree isolation: if dirty, dispatch in a temporary worktree.
-    ctx.is_discussion = "/round-" in ctx.item_task or ctx.item_task.startswith("discuss-")
-    if not ctx.is_discussion and ctx.non_interactive and not ctx.print_only and _has_dirty_worktree(ctx.exec_project):
+    ctx.is_discussion = "/round-" in ctx.item_task or ctx.item_task.startswith(
+        "discuss-"
+    )
+    if (
+        not ctx.is_discussion
+        and ctx.non_interactive
+        and not ctx.print_only
+        and _has_dirty_worktree(ctx.exec_project)
+    ):
         ctx.worktree_dir = _git_worktree_add(ctx.exec_project, ctx.item_task)
         if ctx.worktree_dir:
-            print(f"Dispatching in worktree: {ctx.worktree_dir} (main worktree is dirty)")
+            print(
+                f"Dispatching in worktree: {ctx.worktree_dir} (main worktree is dirty)"
+            )
             ctx.exec_project = ctx.worktree_dir
             # Record worktree path on task for dashboard visibility
             try:
                 from superharness.engine.db import get_connection, init_db
+
                 conn = get_connection(ctx.project_dir)
                 init_db(conn)
                 conn.execute(
@@ -1494,6 +2059,7 @@ def _log_dispatch_error(project_dir: str, error: str) -> None:
     """Log a dispatch error to the project's watcher error log. Never raises."""
     try:
         from datetime import datetime, timezone
+
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         log_path = os.path.join(project_dir, ".superharness", "watcher-errors.log")
         with open(log_path, "a", encoding="utf-8") as f:
@@ -1501,9 +2067,12 @@ def _log_dispatch_error(project_dir: str, error: str) -> None:
     except Exception as e:
         _log.warning("inbox_dispatch.py unexpected error: %s", e, exc_info=True)
         pass
+
+
 # ---------------------------------------------------------------------------
 # Discussion dispatch helpers
 # ---------------------------------------------------------------------------
+
 
 def _classify_launch_failure(exit_code: int, log_tail: str) -> dict:
     """Classify a launcher failure by exit code and log output.
@@ -1572,7 +2141,10 @@ def _prepare_launch_context(ctx: DispatchContext) -> None:
         if tier == "standard":
             try:
                 from superharness.commands.config import get_config_value
-                profile_tier = get_config_value(ctx.project_dir, "discussion_model_tier")
+
+                profile_tier = get_config_value(
+                    ctx.project_dir, "discussion_model_tier"
+                )
                 if profile_tier and str(profile_tier) in ("mini", "standard", "max"):
                     tier = str(profile_tier)
             except Exception as e:
@@ -1580,7 +2152,9 @@ def _prepare_launch_context(ctx: DispatchContext) -> None:
 
         # Timeout from effort (env var override wins)
         if ctx.effective_timeout == 0:
-            _override = os.environ.get("SUPERHARNESS_DISCUSSION_ROUND_TIMEOUT_SECONDS", "").strip()
+            _override = os.environ.get(
+                "SUPERHARNESS_DISCUSSION_ROUND_TIMEOUT_SECONDS", ""
+            ).strip()
             if _override:
                 try:
                     ctx.effective_timeout = int(_override)
@@ -1598,7 +2172,11 @@ def _prepare_launch_context(ctx: DispatchContext) -> None:
         # full classified tier; secondary agents (gemini, codex) are capped
         # at standard for cost efficiency on max-tier topics.
         try:
-            from superharness.engine.model_router import resolve_model, route_discussion_tier
+            from superharness.engine.model_router import (
+                resolve_model,
+                route_discussion_tier,
+            )
+
             agent_tier = route_discussion_tier(tier, ctx.item_to)
             model = resolve_model(ctx.item_to, agent_tier)
         except Exception as e:
@@ -1606,7 +2184,7 @@ def _prepare_launch_context(ctx: DispatchContext) -> None:
             model = "claude-sonnet-4-6"  # absolute last-resort fallback
 
         # Env var override (agent-specific, back compat)
-        env_key = f"SUPERHARNESS_{ctx.item_to.upper().replace('-','_')}_MODEL"
+        env_key = f"SUPERHARNESS_{ctx.item_to.upper().replace('-', '_')}_MODEL"
         if ctx.item_to == "claude-code":
             env_key = "SUPERHARNESS_CLAUDE_MODEL"  # legacy short name
         elif ctx.item_to == "gemini-cli":
@@ -1619,6 +2197,7 @@ def _prepare_launch_context(ctx: DispatchContext) -> None:
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def main(argv: list[str] | None = None) -> None:
     import argparse
@@ -1656,9 +2235,13 @@ def main(argv: list[str] | None = None) -> None:
 
     if opts.target_filter:
         from superharness.engine.adapter_registry import list_adapters
+
         valid_targets = list_adapters()
         if opts.target_filter not in valid_targets:
-            print(f"--to must be one of: {', '.join(valid_targets) or 'none'}", file=sys.stderr)
+            print(
+                f"--to must be one of: {', '.join(valid_targets) or 'none'}",
+                file=sys.stderr,
+            )
             sys.exit(2)
 
     try:

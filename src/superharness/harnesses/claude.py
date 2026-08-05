@@ -10,6 +10,7 @@ environment (see platform_runtime.launch_agent, which has no env parameter).
 
 See docs/PLAN-steal-omnigent.md iteration 5.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -34,7 +35,14 @@ class ClaudeHarness:
         yolo = bool(task.get("yolo", False))
         codex_bypass = bool(task.get("codex_bypass", False))
 
-        argv: list[str] = ["bash", launcher, "--project", project_dir, "--prompt", prompt]
+        argv: list[str] = [
+            "bash",
+            launcher,
+            "--project",
+            project_dir,
+            "--prompt",
+            prompt,
+        ]
         if non_interactive:
             argv.append("--non-interactive")
         if yolo:

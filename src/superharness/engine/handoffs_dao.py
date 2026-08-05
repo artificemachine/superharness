@@ -3,9 +3,10 @@ from __future__ import annotations
 import sqlite3
 import json
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 from superharness.engine.state_errors import StateError
+
 
 @dataclass(frozen=True)
 class HandoffRow:
@@ -18,6 +19,7 @@ class HandoffRow:
     content: str | None
     metadata: dict[str, Any]
     created_at: str
+
 
 def append(
     conn: sqlite3.Connection,
@@ -41,7 +43,7 @@ def append(
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING *
             """,
-            (task_id, phase, status, from_agent, to_agent, content, meta_json, now)
+            (task_id, phase, status, from_agent, to_agent, content, meta_json, now),
         )
         row = cursor.fetchone()
         if not row:
@@ -50,6 +52,7 @@ def append(
     except sqlite3.Error as e:
         raise StateError(f"Failed to append handoff for task '{task_id}': {e}") from e
 
+
 def get_history(
     conn: sqlite3.Connection,
     task_id: str,
@@ -57,9 +60,10 @@ def get_history(
     """Return all handoffs for a task, ordered by created_at ASC."""
     cursor = conn.execute(
         "SELECT * FROM handoffs WHERE task_id = ? ORDER BY created_at ASC, id ASC",
-        (task_id,)
+        (task_id,),
     )
     return [_row_to_handoff(row) for row in cursor.fetchall()]
+
 
 def get_all(
     conn: sqlite3.Connection,
@@ -75,6 +79,7 @@ def get_all(
     cursor = conn.execute(sql, params)
     return [_row_to_handoff(row) for row in cursor.fetchall()]
 
+
 def get_for_agent(
     conn: sqlite3.Connection,
     to_agent: str,
@@ -82,9 +87,10 @@ def get_for_agent(
     """Return handoffs addressed to a given agent, newest first."""
     cursor = conn.execute(
         "SELECT * FROM handoffs WHERE to_agent = ? ORDER BY created_at DESC, id DESC",
-        (to_agent,)
+        (to_agent,),
     )
     return [_row_to_handoff(row) for row in cursor.fetchall()]
+
 
 def search(
     conn: sqlite3.Connection,
@@ -95,9 +101,10 @@ def search(
     cursor = conn.execute(
         "SELECT * FROM handoffs WHERE content LIKE ? OR metadata LIKE ? "
         "ORDER BY created_at DESC, id DESC",
-        (like, like)
+        (like, like),
     )
     return [_row_to_handoff(row) for row in cursor.fetchall()]
+
 
 def get_latest(
     conn: sqlite3.Connection,
@@ -107,10 +114,11 @@ def get_latest(
     """Return the most recent handoff of the given phase for this task."""
     cursor = conn.execute(
         "SELECT * FROM handoffs WHERE task_id = ? AND phase = ? ORDER BY created_at DESC, id DESC LIMIT 1",
-        (task_id, phase)
+        (task_id, phase),
     )
     row = cursor.fetchone()
     return _row_to_handoff(row) if row else None
+
 
 def _row_to_handoff(row: sqlite3.Row) -> HandoffRow:
     metadata_raw = row["metadata"]
@@ -127,5 +135,5 @@ def _row_to_handoff(row: sqlite3.Row) -> HandoffRow:
         to_agent=row["to_agent"],
         content=row["content"],
         metadata=metadata,
-        created_at=row["created_at"]
+        created_at=row["created_at"],
     )

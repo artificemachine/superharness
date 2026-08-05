@@ -18,6 +18,7 @@ migrated in iteration 3 of docs/PLAN-steal-omnigent.md.
 
 See docs/PLAN-steal-omnigent.md iteration 3.
 """
+
 from __future__ import annotations
 
 import logging
@@ -92,7 +93,9 @@ def publish(key: str, value: str) -> None:
     No-op (with a warning) if configure() was never called.
     """
     if _default_writer is None:
-        logger.warning("live_state.publish called before configure(); dropping key=%r", key)
+        logger.warning(
+            "live_state.publish called before configure(); dropping key=%r", key
+        )
         return
     _default_writer.publish(key, value)
 

@@ -3,6 +3,7 @@
 Used by the watcher to auto-block tasks when an agent loops on the same
 tool without making progress (from Hermes agent patterns).
 """
+
 from __future__ import annotations
 
 import json
@@ -32,8 +33,15 @@ def detect_loop(log_path: str, window: int | None = None) -> dict:
             loop_detected (bool), warn (bool), block (bool),
             failure_loop (bool), pattern (str), count (int), reason (str)
     """
-    _clean = {"loop_detected": False, "warn": False, "block": False,
-               "failure_loop": False, "pattern": "", "count": 0, "reason": ""}
+    _clean = {
+        "loop_detected": False,
+        "warn": False,
+        "block": False,
+        "failure_loop": False,
+        "pattern": "",
+        "count": 0,
+        "reason": "",
+    }
 
     try:
         text = Path(log_path).read_text(errors="replace")
@@ -74,8 +82,11 @@ def detect_loop(log_path: str, window: int | None = None) -> dict:
                     fail_run = 1
                 if fail_run >= FAIL_LOOP_THRESHOLD:
                     return {
-                        "loop_detected": True, "warn": False, "block": True,
-                        "failure_loop": True, "pattern": name,
+                        "loop_detected": True,
+                        "warn": False,
+                        "block": True,
+                        "failure_loop": True,
+                        "pattern": name,
                         "count": fail_run,
                         "reason": f"{name} failed {fail_run} consecutive times",
                     }
@@ -110,15 +121,21 @@ def detect_loop(log_path: str, window: int | None = None) -> dict:
 
     if best_run >= LOOP_BLOCK_THRESHOLD:
         return {
-            "loop_detected": True, "warn": False, "block": True,
-            "failure_loop": False, "pattern": best_tool,
+            "loop_detected": True,
+            "warn": False,
+            "block": True,
+            "failure_loop": False,
+            "pattern": best_tool,
             "count": best_run,
             "reason": f"{best_tool} called {best_run} consecutive times",
         }
     if best_run >= LOOP_WARN_THRESHOLD:
         return {
-            "loop_detected": True, "warn": True, "block": False,
-            "failure_loop": False, "pattern": best_tool,
+            "loop_detected": True,
+            "warn": True,
+            "block": False,
+            "failure_loop": False,
+            "pattern": best_tool,
             "count": best_run,
             "reason": f"{best_tool} called {best_run} consecutive times",
         }
@@ -160,7 +177,10 @@ class LoopGuard:
         if loop_result.get("block"):
             self._state.pop(task_id, None)
             self._save()
-            return {"action": "block", "reason": loop_result.get("reason", "block threshold reached")}
+            return {
+                "action": "block",
+                "reason": loop_result.get("reason", "block threshold reached"),
+            }
 
         if loop_result.get("loop_detected") and loop_result.get("warn"):
             count = self._state.get(task_id, 0) + 1
@@ -169,7 +189,10 @@ class LoopGuard:
             if count >= WARN_ESCALATION_COUNT:
                 self._state.pop(task_id, None)
                 self._save()
-                return {"action": "block", "reason": f"warn escalated after {count} cycles"}
+                return {
+                    "action": "block",
+                    "reason": f"warn escalated after {count} cycles",
+                }
             return {"action": "warn", "reason": loop_result.get("reason", "loop warn")}
 
         # Clean result — reset counter

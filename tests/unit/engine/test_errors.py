@@ -35,6 +35,7 @@ its entire CLI was inline script code under `if __name__ == "__main__":` —
 so migrating it required extracting that block into a real main(argv)
 first, the same shape every other engine/ CLI module already has.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -65,7 +66,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
         (SuperharnessError("", exit_code=0), 0, None),
     ],
 )
-def test_cli_maps_each_error_to_its_documented_exit_code(capsys, err, expected_code, expect_stderr):
+def test_cli_maps_each_error_to_its_documented_exit_code(
+    capsys, err, expected_code, expect_stderr
+):
     """handle_cli_error must reproduce exactly what the old sys.exit() call
     would have produced: the same exit code, and — only when the original
     site actually printed something — the same stderr text. An empty
@@ -134,8 +137,16 @@ def test_contract_parse_failure_exits_1_with_message(tmp_path):
     bad = handoff_dir / "bad.yaml"
     bad.write_text("not: valid: yaml: [")
     r = subprocess.run(
-        [PYTHON, "-m", "superharness.engine.contract", "latest_handoff_task",
-         "--dir", str(handoff_dir), "--to", "someone"],
+        [
+            PYTHON,
+            "-m",
+            "superharness.engine.contract",
+            "latest_handoff_task",
+            "--dir",
+            str(handoff_dir),
+            "--to",
+            "someone",
+        ],
         capture_output=True,
         text=True,
         cwd=_REPO_ROOT,
@@ -160,10 +171,14 @@ def test_operator_start_already_running_exits_0_via_cli(tmp_path):
 
     (tmp_path / ".superharness").mkdir()
     state_file = tmp_path / _OPERATOR_STATE_FILE
-    state_file.write_text(json.dumps({"operator_pid": os.getpid(), "dashboard_port": 8787}))
+    state_file.write_text(
+        json.dumps({"operator_pid": os.getpid(), "dashboard_port": 8787})
+    )
 
     runner = CliRunner()
-    result = runner.invoke(main, ["operator", "start", "--project", str(tmp_path), "--no-daemon"])
+    result = runner.invoke(
+        main, ["operator", "start", "--project", str(tmp_path), "--no-daemon"]
+    )
 
     assert result.exit_code == 0
     assert "already running" in result.stderr
@@ -182,7 +197,9 @@ def test_no_sys_exit_remains_in_engine():
     import re
     from pathlib import Path as _Path
 
-    engine_root = _Path(__file__).resolve().parents[3] / "src" / "superharness" / "engine"
+    engine_root = (
+        _Path(__file__).resolve().parents[3] / "src" / "superharness" / "engine"
+    )
     for name in ("discussion.py", "inbox.py", "discuss.py"):
         text = (engine_root / name).read_text()
         count = len(re.findall(r"sys\.exit", text))
@@ -196,17 +213,36 @@ def test_discussion_exit_codes_preserved():
     migration to raise/handle_cli_error."""
     # engine/discussion.py: missing required flag (was `sys.exit("--topic is required")`)
     r = subprocess.run(
-        [PYTHON, "-m", "superharness.engine.discussion", "start", "--discussions-dir", "/tmp/x"],
-        capture_output=True, text=True, cwd=_REPO_ROOT, check=False,
+        [
+            PYTHON,
+            "-m",
+            "superharness.engine.discussion",
+            "start",
+            "--discussions-dir",
+            "/tmp/x",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=_REPO_ROOT,
+        check=False,
     )
     assert r.returncode == 1
     assert "--topic is required" in r.stderr
 
     # engine/discussion.py: unknown discussion (was `sys.exit(f"Discussion not found: ...")`)
     r = subprocess.run(
-        [PYTHON, "-m", "superharness.engine.discussion", "status",
-         "--discussion-dir", "/tmp/does-not-exist/.superharness/discussions/nope"],
-        capture_output=True, text=True, cwd=_REPO_ROOT, check=False,
+        [
+            PYTHON,
+            "-m",
+            "superharness.engine.discussion",
+            "status",
+            "--discussion-dir",
+            "/tmp/does-not-exist/.superharness/discussions/nope",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=_REPO_ROOT,
+        check=False,
     )
     assert r.returncode == 1
     assert "Discussion not found" in r.stderr
@@ -214,7 +250,10 @@ def test_discussion_exit_codes_preserved():
     # engine/discuss.py: missing required flags (was `print(...); sys.exit(1)`)
     r = subprocess.run(
         [PYTHON, "-m", "superharness.engine.discuss", "status"],
-        capture_output=True, text=True, cwd=_REPO_ROOT, check=False,
+        capture_output=True,
+        text=True,
+        cwd=_REPO_ROOT,
+        check=False,
     )
     assert r.returncode == 1
     assert "--handoff-dir is required" in r.stderr
@@ -223,8 +262,18 @@ def test_discussion_exit_codes_preserved():
     # (was `print(...); sys.exit(1)`)
     inbox_file = str(_REPO_ROOT / "does-not-exist" / "inbox.yaml")
     r = subprocess.run(
-        [PYTHON, "-m", "superharness.engine.inbox", "not-a-real-command", "--file", inbox_file],
-        capture_output=True, text=True, cwd=_REPO_ROOT, check=False,
+        [
+            PYTHON,
+            "-m",
+            "superharness.engine.inbox",
+            "not-a-real-command",
+            "--file",
+            inbox_file,
+        ],
+        capture_output=True,
+        text=True,
+        cwd=_REPO_ROOT,
+        check=False,
     )
     assert r.returncode == 1
     assert "not fully implemented" in r.stderr
@@ -270,13 +319,19 @@ def test_watcher_survives_a_discussion_error(tmp_path, monkeypatch):
     disc_dir = discussions_dir / disc_id
     disc_dir.mkdir()
 
-    old_time = (datetime.now(timezone.utc) - timedelta(minutes=35)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    old_time = (datetime.now(timezone.utc) - timedelta(minutes=35)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
 
     conn = get_connection(str(project))
     init_db(conn)
     discussions_dao.create(
-        conn, id=disc_id, topic="old discussion", owners=["claude-code", "gemini-cli"],
-        max_rounds=2, now=old_time,
+        conn,
+        id=disc_id,
+        topic="old discussion",
+        owners=["claude-code", "gemini-cli"],
+        max_rounds=2,
+        now=old_time,
     )
     conn.commit()
     conn.close()
@@ -299,7 +354,9 @@ def test_watcher_survives_a_discussion_error(tmp_path, monkeypatch):
             "topic": "old discussion",
             "created_at": old_time,
         }
-        return subprocess.CompletedProcess(args, 0, stdout=json.dumps(payload), stderr="")
+        return subprocess.CompletedProcess(
+            args, 0, stdout=json.dumps(payload), stderr=""
+        )
 
     monkeypatch.setattr(
         "superharness.commands.discussion_dispatch._run_engine", _fake_run_engine

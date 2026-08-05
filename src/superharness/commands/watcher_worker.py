@@ -1,4 +1,5 @@
 """watcher-worker command — create/refresh a clean watcher worker directory."""
+
 from __future__ import annotations
 
 import os
@@ -8,23 +9,32 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-
 def main(argv: list[str] | None = None) -> None:
     import argparse
 
-    p = argparse.ArgumentParser(prog="watcher-worker",
-        description="Create/refresh a clean watcher worker directory and install the watcher.")
+    p = argparse.ArgumentParser(
+        prog="watcher-worker",
+        description="Create/refresh a clean watcher worker directory and install the watcher.",
+    )
     p.add_argument("-p", "--project", required=True)
     p.add_argument("-w", "--worker", default="")
     p.add_argument("-i", "--interval", type=int, default=15)
-    p.add_argument("--recover-timeout-minutes", type=int, default=3, dest="recover_timeout")
-    p.add_argument("--recover-action", default="retry", choices=["stale", "retry"], dest="recover_action")
+    p.add_argument(
+        "--recover-timeout-minutes", type=int, default=3, dest="recover_timeout"
+    )
+    p.add_argument(
+        "--recover-action",
+        default="retry",
+        choices=["stale", "retry"],
+        dest="recover_action",
+    )
     p.add_argument("--launcher-timeout", type=int, default=180, dest="launcher_timeout")
     p.add_argument("--to", default="both", choices=["both", "claude-code", "codex-cli"])
     p.add_argument("--codex-bypass", action="store_true")
     opts = p.parse_args(argv)
 
     from superharness.logging_utils import get_logger
+
     log = get_logger("watcher_worker")
 
     project_dir = Path(opts.project).resolve()
@@ -48,14 +58,17 @@ def main(argv: list[str] | None = None) -> None:
     else:
         scripts_dir = legacy_repo_scripts_dir
 
-    worker_dir = Path(opts.worker).resolve() if opts.worker else (
-        Path.home() / ".superharness-workers" / project_dir.name
+    worker_dir = (
+        Path(opts.worker).resolve()
+        if opts.worker
+        else (Path.home() / ".superharness-workers" / project_dir.name)
     )
     worker_dir.mkdir(parents=True, exist_ok=True)
     worker_dir = worker_dir.resolve()
 
     # Copy project files (excluding .git, .superharness, etc.)
     from superharness.engine.platform_runtime import sync_worker_copy
+
     sync_worker_copy(str(project_dir), str(worker_dir))
 
     # Symlink .superharness -> source project's .superharness
@@ -67,10 +80,13 @@ def main(argv: list[str] | None = None) -> None:
     try:
         os.symlink(str(project_dir / ".superharness"), str(sh_link))
     except OSError as e:
-        print(f"Warning: could not create .superharness symlink: {e}", file=sys.stderr)  # shipguard:ignore PY-007
+        print(
+            f"Warning: could not create .superharness symlink: {e}", file=sys.stderr
+        )  # shipguard:ignore PY-007
 
     # Install watcher via OS-aware service installer
     from superharness.engine.service_installer import install as _install_service
+
     install_ok = _install_service(
         project_dir=project_dir,
         worker_dir=worker_dir,
@@ -93,6 +109,7 @@ def main(argv: list[str] | None = None) -> None:
 
     # Write watcher.yaml
     from superharness.engine.runtime_probe import probe_runtime, persist_runtime
+
     chosen_interpreter = probe_runtime()
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -109,7 +126,7 @@ def main(argv: list[str] | None = None) -> None:
         f"launcher_timeout_seconds: {opts.launcher_timeout}\n"
         f"target: {opts.to}\n"
         f"codex_bypass: {'true' if opts.codex_bypass else 'false'}\n",
-        encoding="utf-8"
+        encoding="utf-8",
     )
     persist_runtime(watcher_cfg, chosen_interpreter)
 

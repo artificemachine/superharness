@@ -4,15 +4,13 @@ Bug: a plan-phase handoff (e.g. task-plan-2026-05-06-agent.yaml) blocked
 auto-archive of tasks stuck in_progress with a failed agent. Only report-phase
 handoffs should exempt a task from auto-archive.
 """
+
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
-import pytest
-import yaml
 
 sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
 
@@ -20,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _setup_project(tmp_path: Path) -> Path:
     project = tmp_path / "proj"
@@ -33,28 +32,33 @@ def _insert_task(project: Path, task_id: str, status: str, hours_ago: float) -> 
     from superharness.engine.db import get_connection, init_db
     from superharness.engine import tasks_dao
 
-    in_progress_at = (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).isoformat()
+    in_progress_at = (
+        datetime.now(timezone.utc) - timedelta(hours=hours_ago)
+    ).isoformat()
     conn = get_connection(str(project))
     try:
         init_db(conn)
-        tasks_dao.upsert(conn, tasks_dao.TaskRow(
-            id=task_id,
-            title=task_id,
-            owner="claude-code",
-            status=status,
-            effort=None,
-            project_path=str(project),
-            development_method=None,
-            acceptance_criteria=[],
-            test_types=[],
-            out_of_scope=[],
-            definition_of_done=[],
-            context=None,
-            tdd=None,
-            version=1,
-            created_at=in_progress_at,
-            in_progress_at=in_progress_at,
-        ))
+        tasks_dao.upsert(
+            conn,
+            tasks_dao.TaskRow(
+                id=task_id,
+                title=task_id,
+                owner="claude-code",
+                status=status,
+                effort=None,
+                project_path=str(project),
+                development_method=None,
+                acceptance_criteria=[],
+                test_types=[],
+                out_of_scope=[],
+                definition_of_done=[],
+                context=None,
+                tdd=None,
+                version=1,
+                created_at=in_progress_at,
+                in_progress_at=in_progress_at,
+            ),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -84,6 +88,7 @@ def _get_task_status(project: Path, task_id: str) -> str:
 # Tests
 # ---------------------------------------------------------------------------
 
+
 def test_plan_handoff_does_not_block_archive(tmp_path):
     """Task with only a plan-phase handoff must be auto-archived when stale."""
     from superharness.commands.inbox_watch import _auto_archive_stale_tasks
@@ -106,8 +111,14 @@ def test_report_handoff_blocks_archive(tmp_path):
     _insert_task(project, "done-task", "in_progress", hours_ago=5.0)
     _write_handoff(project, "done-task-report-2026-05-06-agent.yaml")
     from tests.helpers import seed_sqlite_handoff
-    seed_sqlite_handoff(project, "done-task", phase="report", status="report_ready",
-                        content="task: done-task\nphase: report\n")
+
+    seed_sqlite_handoff(
+        project,
+        "done-task",
+        phase="report",
+        status="report_ready",
+        content="task: done-task\nphase: report\n",
+    )
 
     archived = _auto_archive_stale_tasks(str(project))
 
@@ -149,8 +160,14 @@ def test_done_handoff_filename_blocks_archive(tmp_path):
     _insert_task(project, "closed-task", "in_progress", hours_ago=5.0)
     _write_handoff(project, "closed-task-done-2026-05-06-agent.yaml")
     from tests.helpers import seed_sqlite_handoff
-    seed_sqlite_handoff(project, "closed-task", phase="done", status="done",
-                        content="task: closed-task\nphase: done\n")
+
+    seed_sqlite_handoff(
+        project,
+        "closed-task",
+        phase="done",
+        status="done",
+        content="task: closed-task\nphase: done\n",
+    )
 
     archived = _auto_archive_stale_tasks(str(project))
 

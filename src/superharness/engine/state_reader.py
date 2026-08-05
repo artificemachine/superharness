@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 import os
-import re
+import sqlite3
 import sys
 from typing import Any
 
@@ -40,6 +40,7 @@ def _get_backend(project_dir: str) -> str:
     # 2. profile.yaml setting
     try:
         import yaml
+
         profile_path = os.path.join(project_dir, ".superharness", "profile.yaml")
         if os.path.isfile(profile_path):
             with open(profile_path, encoding="utf-8") as f:
@@ -119,6 +120,7 @@ def _inbox_from_sqlite(project_dir: str) -> list[dict]:
 # Contract / task reads
 # ---------------------------------------------------------------------------
 
+
 def _is_running_tests() -> bool:
     """Return True if running inside a pytest session."""
     return "pytest" in sys.modules or os.environ.get("PYTEST_CURRENT_TEST") is not None
@@ -131,6 +133,7 @@ def _production_path(project_dir: str) -> bool:
     if _is_running_tests():
         return False
     from superharness.engine.sqlite_only import is_sqlite_only as _iso
+
     return _iso(project_dir)
 
 
@@ -193,8 +196,9 @@ def get_task(project_dir: str, task_id: str) -> dict | None:
 def _enrich_task(conn: sqlite3.Connection, row: Any) -> dict:
     """Enrich a TaskRow with dependencies, stamped fields, and extras_json."""
     from dataclasses import asdict
+
     d = asdict(row)
-    
+
     # 1. Dependencies (blocked_by)
     # The dashboard expects `blocked_by` / `depends_on`. tasks_dao already
     # resolved this (get() queries it directly, get_all() batch-fetches it
@@ -206,12 +210,13 @@ def _enrich_task(conn: sqlite3.Connection, row: Any) -> dict:
     if hasattr(row, "blocked_by_raw") and row.blocked_by_raw:
         try:
             import json as _j
+
             val = _j.loads(row.blocked_by_raw)
             if isinstance(val, list):
                 soft = [str(x) for x in val]
         except Exception as e:
             logger.warning("Failed to parse blocked_by_raw for task %s: %s", row.id, e)
-            
+
     deps = soft if soft is not None else deps_strict
     d["blocked_by"] = deps
     d["depends_on"] = deps
@@ -227,12 +232,13 @@ def _enrich_task(conn: sqlite3.Connection, row: Any) -> dict:
     if extras_json:
         try:
             import json as _jx
+
             extras = _jx.loads(extras_json)
             if isinstance(extras, dict):
                 d.update(extras)
         except Exception as e:
             logger.warning("Failed to parse extras_json for task %s: %s", row.id, e)
-            
+
     return d
 
 
@@ -255,12 +261,15 @@ def _read_project_meta(project_dir: str) -> tuple[str, str]:
     """Read contract id and goal from the project_meta SQLite table."""
     try:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
             rows = {
                 r[0]: r[1]
-                for r in conn.execute("SELECT key, value FROM project_meta WHERE key IN ('id', 'goal')")
+                for r in conn.execute(
+                    "SELECT key, value FROM project_meta WHERE key IN ('id', 'goal')"
+                )
             }
             return rows.get("id", "contract"), rows.get("goal", "")
         finally:
@@ -277,7 +286,9 @@ def get_top_level_tasks(project_dir: str) -> list[dict]:
     try:
         return _tasks_from_sqlite(project_dir, top_level_only=True)
     except Exception as e:
-        logger.warning("Failed to read top-level tasks from SQLite for %s: %s", project_dir, e)
+        logger.warning(
+            "Failed to read top-level tasks from SQLite for %s: %s", project_dir, e
+        )
         return []
 
 
@@ -370,7 +381,9 @@ def get_decisions(project_dir: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def get_ledger_entries(project_dir: str, *, hours: int | None = None, limit: int = 100) -> list[dict]:
+def get_ledger_entries(
+    project_dir: str, *, hours: int | None = None, limit: int = 100
+) -> list[dict]:
     """Return ledger entries from SQLite (source of truth).
 
     YAML ledger.md is an export-only artifact — do not read it here.
@@ -391,9 +404,11 @@ def get_ledger_entries(project_dir: str, *, hours: int | None = None, limit: int
             entries = [asdict(r) for r in rows]
             if hours is not None:
                 from datetime import datetime, timedelta, timezone
+
                 cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
                 entries = [
-                    e for e in entries
+                    e
+                    for e in entries
                     if (_dt := _parse_iso_utc(str(e.get("created_at", "")))) is not None
                     and _dt >= cutoff
                 ]
@@ -410,7 +425,8 @@ def parse_iso_utc(raw: str):
 
     Handles the 'Z' suffix, surrounding quotes, and returns None on failure.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
+
     value = raw.strip().strip("'\"")
     if not value:
         return None

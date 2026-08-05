@@ -1,8 +1,8 @@
 """Tests for MCP EventStream — Iteration 4."""
+
 from __future__ import annotations
 
 import json
-import pytest
 from pathlib import Path
 
 from superharness.mcp.events import EventStream
@@ -74,6 +74,8 @@ def test_append_event_adds_timestamp(tmp_path):
     (tmp_path / ".superharness").mkdir()
     es = EventStream()
     es.append_event(str(tmp_path), {"type": "tick"})
-    lines = (tmp_path / ".superharness" / "events.jsonl").read_text().strip().splitlines()
+    lines = (
+        (tmp_path / ".superharness" / "events.jsonl").read_text().strip().splitlines()
+    )
     data = json.loads(lines[0])
     assert "ts" in data or "created_at" in data or "timestamp" in data

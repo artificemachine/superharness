@@ -1,4 +1,5 @@
 """Tests for the migrate-state command."""
+
 from __future__ import annotations
 
 import os
@@ -26,6 +27,7 @@ def legacy_db(project_dir):
 
 def _xdg_db_path(project_dir: str) -> str:
     from superharness.utils.paths import resolve_xdg_state_db_path
+
     return resolve_xdg_state_db_path(project_dir)
 
 
@@ -49,7 +51,9 @@ class TestAbortConditions:
         with open(xdg, "wb") as f:
             f.write(b"existing")
         assert run_migrate_state(project_dir) == 0
-        assert not os.path.isfile(legacy_db), "legacy db must be removed in split-brain resolution"
+        assert not os.path.isfile(legacy_db), (
+            "legacy db must be removed in split-brain resolution"
+        )
 
     def test_xdg_not_overwritten_on_abort(self, project_dir, legacy_db):
         xdg = _xdg_db_path(project_dir)
@@ -132,7 +136,9 @@ class TestDryRun:
 
 def _make_sqlite_with_columns(path: str, columns: list[str]) -> None:
     if os.path.exists(path):
-        os.remove(path)  # overwrite any placeholder (e.g. the legacy_db fixture's fake header)
+        os.remove(
+            path
+        )  # overwrite any placeholder (e.g. the legacy_db fixture's fake header)
     conn = sqlite3.connect(path)
     try:
         cols_sql = ", ".join(f"{c} TEXT" for c in ["id"] + columns)
@@ -169,7 +175,9 @@ class TestSplitBrainSchemaComparison:
         result = run_migrate_state(project_dir)
 
         assert result == 0
-        assert not os.path.isfile(legacy_db), "legacy should still be removed when xdg isn't behind"
+        assert not os.path.isfile(legacy_db), (
+            "legacy should still be removed when xdg isn't behind"
+        )
 
     def test_dry_run_does_not_touch_files_when_xdg_behind(self, project_dir, legacy_db):
         _make_sqlite_with_columns(legacy_db, ["runtime"])
@@ -190,6 +198,7 @@ class TestSizeMismatchRollback:
 
         def bad_copy(src, dst):
             import shutil
+
             shutil.copy2(src, dst)
             # Truncate destination to simulate a partial copy
             with open(dst, "wb") as f:
@@ -204,6 +213,7 @@ class TestSizeMismatchRollback:
     def test_size_mismatch_preserves_legacy(self, project_dir, legacy_db):
         def bad_copy(src, dst):
             import shutil
+
             shutil.copy2(src, dst)
             with open(dst, "wb") as f:
                 f.write(b"truncated")

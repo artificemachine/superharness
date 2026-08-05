@@ -3,6 +3,7 @@
 Lifecycle event system for task state changes.
 Handlers are scoped per-project to prevent cross-contamination.
 """
+
 from __future__ import annotations
 
 import logging
@@ -44,23 +45,34 @@ class HookRegistry:
                 handler(payload)
             except Exception as e:
                 logger.warning("hooks.py unexpected error: %s", e, exc_info=True)
-                logger.exception("Hook handler raised for event '%s' on project '%s'", event, project_path)
+                logger.exception(
+                    "Hook handler raised for event '%s' on project '%s'",
+                    event,
+                    project_path,
+                )
 
     def load_hooks_dir(self, project_path: str) -> None:
         """Auto-import .superharness/hooks/*.py and register any exported hooks."""
         import os
         import importlib.util
+
         hooks_dir = os.path.join(project_path, ".superharness", "hooks")
         if not os.path.isdir(hooks_dir):
             return
         for fname in os.listdir(hooks_dir):
             if not fname.endswith(".py"):
                 continue
-            event = fname[3:].replace(".py", "").replace("_", ":") if fname.startswith("on_") else None
+            event = (
+                fname[3:].replace(".py", "").replace("_", ":")
+                if fname.startswith("on_")
+                else None
+            )
             if not event:
                 continue
             try:
-                spec = importlib.util.spec_from_file_location(fname, os.path.join(hooks_dir, fname))
+                spec = importlib.util.spec_from_file_location(
+                    fname, os.path.join(hooks_dir, fname)
+                )
                 mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
                 spec.loader.exec_module(mod)  # type: ignore[union-attr]
                 if hasattr(mod, "handler"):

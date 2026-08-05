@@ -3,6 +3,7 @@
 Classifies tasks into (tier, effort) using Haiku, then maps to agent-specific
 model names. Falls back to ("standard", "medium") on any failure.
 """
+
 from __future__ import annotations
 
 import os
@@ -16,22 +17,22 @@ MODEL_MAP: dict[str, dict[str, str]] = {
     "claude-code": {
         "mini": "claude-haiku-4-5-20251001",
         "standard": "claude-sonnet-4-6",
-        "max": flagship()
+        "max": flagship(),
     },
     "codex-cli": {
         "mini": "gpt-5.1-codex-mini",
         "standard": "gpt-5.3-codex",
-        "max": "gpt-5.4"
+        "max": "gpt-5.4",
     },
     "gemini-cli": {
         "mini": "gemini-2.5-flash",
         "standard": "gemini-2.5-pro",
-        "max": "gemini-2.5-pro"
+        "max": "gemini-2.5-pro",
     },
     "opencode": {
         "mini": "deepseek/deepseek-chat",
         "standard": "deepseek/deepseek-v4-pro",
-        "max": "deepseek/deepseek-v4-pro"
+        "max": "deepseek/deepseek-v4-pro",
     },
 }
 
@@ -43,15 +44,30 @@ _FALLBACK_EFFORT = "medium"
 # Normalization map: ensure consistent output regardless of which model responds.
 # Some models output "max" others "maximum", some "small" others "mini", etc.
 _TIER_NORMALIZE: dict[str, str] = {
-    "maximum": "max", "large": "max", "heavy": "max", "opus": "max",
-    "medium": "standard", "normal": "standard", "mid": "standard",
-    "small": "mini", "light": "mini", "fast": "mini", "haiku": "mini",
+    "maximum": "max",
+    "large": "max",
+    "heavy": "max",
+    "opus": "max",
+    "medium": "standard",
+    "normal": "standard",
+    "mid": "standard",
+    "small": "mini",
+    "light": "mini",
+    "fast": "mini",
+    "haiku": "mini",
     "tiny": "mini",
 }
 _EFFORT_NORMALIZE: dict[str, str] = {
-    "high": "high", "hard": "high", "complex": "high",
-    "medium": "medium", "normal": "medium", "mid": "medium",
-    "low": "low", "easy": "low", "simple": "low", "trivial": "low",
+    "high": "high",
+    "hard": "high",
+    "complex": "high",
+    "medium": "medium",
+    "normal": "medium",
+    "mid": "medium",
+    "low": "low",
+    "easy": "low",
+    "simple": "low",
+    "trivial": "low",
 }
 
 
@@ -75,37 +91,57 @@ def _normalize_classification(tier: str, effort: str) -> tuple[str, str]:
     return tier, effort
 
 
-def _deterministic_classify(title: str, criteria: list[str] | None, previously_failed: bool) -> tuple[str, str]:
+def _deterministic_classify(
+    title: str, criteria: list[str] | None, previously_failed: bool
+) -> tuple[str, str]:
     """Deterministic heuristic classification — always produces the same output.
-    
+
     Used when all models are unavailable. Never fails, never varies.
     """
     if previously_failed:
         return "max", "high"
-    
+
     title_lower = title.lower()
     criteria_text = " ".join(criteria).lower() if criteria else ""
     combined = title_lower + " " + criteria_text
-    
+
     # max-tier signals
     max_signals = [
-        "architecture", "migration", "security audit", "breaking change",
-        "cross-system", "multi-service", "10+ files", "database schema",
-        "auth", "performance critical", "concurrency", "race condition",
+        "architecture",
+        "migration",
+        "security audit",
+        "breaking change",
+        "cross-system",
+        "multi-service",
+        "10+ files",
+        "database schema",
+        "auth",
+        "performance critical",
+        "concurrency",
+        "race condition",
     ]
     if any(s in combined for s in max_signals):
         return "max", "high"
-    
+
     # mini-tier signals
     mini_signals = [
-        "readme", "changelog", "typo", "comment", "config", "env var",
-        "single file", "one-line", "field name", "rename",
+        "readme",
+        "changelog",
+        "typo",
+        "comment",
+        "config",
+        "env var",
+        "single file",
+        "one-line",
+        "field name",
+        "rename",
     ]
     if any(s in combined for s in mini_signals):
         return "mini", "low"
-    
+
     # default
     return _FALLBACK_TIER, _FALLBACK_EFFORT
+
 
 _cached_map: dict[str, dict[str, str]] | None = None
 _cached_project_maps: dict[str, dict[str, dict[str, str]]] = {}
@@ -126,7 +162,7 @@ def _load_model_map(project_dir: str | None = None) -> dict[str, dict[str, str]]
         bundled_filename="engine/models.yaml",
         project_dir=project_dir,
         project_filename="models.yaml",
-        fallback={"model_map": MODEL_MAP}
+        fallback={"model_map": MODEL_MAP},
     )
     mmap = config.get("model_map", MODEL_MAP)
 
@@ -146,13 +182,15 @@ def _load_model_map(project_dir: str | None = None) -> dict[str, dict[str, str]]
     return mmap
 
 
-_FLEET_CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".config", "superharness", "fleet.yaml")
+_FLEET_CONFIG_PATH = os.path.join(
+    os.path.expanduser("~"), ".config", "superharness", "fleet.yaml"
+)
 _FLEET_CACHE: dict | None = None
 
 
 def _load_fleet_config() -> dict | None:
     """Load user-specific fleet configuration if it exists.
-    
+
     Returns dict with 'endpoints' and 'models' keys, or None if no fleet config.
     Cached after first load.
     """
@@ -164,6 +202,7 @@ def _load_fleet_config() -> dict | None:
         return None
     try:
         import yaml
+
         with open(_FLEET_CONFIG_PATH) as f:
             config = yaml.safe_load(f) or {}
         fleet = config.get("fleet", {})
@@ -204,9 +243,9 @@ Reply:"""
 # Order: cheapest first, then by reliability.
 _CLASSIFIER_AGENTS: list[tuple[str, list[str]]] = [
     ("claude-code", ["claude", "--model", "{model}", "-p", "{prompt}"]),
-    ("gemini-cli",  ["gemini", "-m", "{model}", "-p", "{prompt}"]),
-    ("opencode",    ["opencode", "run", "-m", "{model}", "{prompt}"]),
-    ("codex-cli",   ["codex", "exec", "-m", "{model}", "{prompt}"]),
+    ("gemini-cli", ["gemini", "-m", "{model}", "-p", "{prompt}"]),
+    ("opencode", ["opencode", "run", "-m", "{model}", "{prompt}"]),
+    ("codex-cli", ["codex", "exec", "-m", "{model}", "{prompt}"]),
 ]
 
 _CLASSIFY_TIMEOUT_SECONDS = 5
@@ -232,6 +271,7 @@ def fleet_health(timeout: float = 3.0) -> list[tuple[str, str, str]]:
         try:
             import urllib.request
             import json as _json
+
             req = urllib.request.Request(f"{endpoint.rstrip('/')}/models")
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 data = _json.loads(resp.read())
@@ -280,17 +320,22 @@ def _call_fleet(prompt: str, expect_tokens: int = 10) -> str | None:
     return None
 
 
-def _call_fleet_endpoint(endpoint: str, model_id: str, prompt: str, expect_tokens: int) -> str | None:
+def _call_fleet_endpoint(
+    endpoint: str, model_id: str, prompt: str, expect_tokens: int
+) -> str | None:
     """Call one fleet endpoint. Returns None on any failure."""
     try:
         import urllib.request
         import json as _json
-        payload = _json.dumps({
-            "model": model_id,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": expect_tokens,
-            "temperature": 0,
-        }).encode()
+
+        payload = _json.dumps(
+            {
+                "model": model_id,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": expect_tokens,
+                "temperature": 0,
+            }
+        ).encode()
         req = urllib.request.Request(
             f"{endpoint.rstrip('/')}/chat/completions",
             data=payload,
@@ -305,7 +350,7 @@ def _call_fleet_endpoint(endpoint: str, model_id: str, prompt: str, expect_token
 
 def _classify_via_fleet(prompt: str) -> tuple[str, str] | None:
     """Try task classification using the local GPU fleet (OpenAI-compatible API).
-    
+
     Returns (tier, effort) or None if fleet unavailable. This is superharness's
     own brain — no external agent CLI needed, no API key, no latency to cloud.
     """
@@ -340,7 +385,7 @@ Reply with exactly one word or phrase (transient, permanent_block, config, depen
 
 def analyze_failure(agent: str, task: str, error: str, history: str = "") -> str:
     """Use the fleet to analyze an agent failure and determine root cause.
-    
+
     Returns one of: transient, permanent_block, config, dependency, timeout, unknown.
     Falls back to 'unknown' if fleet unavailable.
     """
@@ -353,7 +398,14 @@ def analyze_failure(agent: str, task: str, error: str, history: str = "") -> str
     response = _call_fleet(prompt, expect_tokens=5)
     if response:
         response = response.strip().lower()
-        valid = {"transient", "permanent_block", "config", "dependency", "timeout", "unknown"}
+        valid = {
+            "transient",
+            "permanent_block",
+            "config",
+            "dependency",
+            "timeout",
+            "unknown",
+        }
         # Extract the first valid classification word
         for word in response.split():
             word = word.strip(".,;:")
@@ -362,12 +414,18 @@ def analyze_failure(agent: str, task: str, error: str, history: str = "") -> str
     return "unknown"
 
 
-def _try_classify(agent: str, cmd_template: list[str], model: str, prompt: str) -> tuple[str, str] | None:
+def _try_classify(
+    agent: str, cmd_template: list[str], model: str, prompt: str
+) -> tuple[str, str] | None:
     """Try classification with one agent's mini model. Returns (tier, effort) or None."""
     cmd = [part.format(model=model, prompt=prompt) for part in cmd_template]
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=_CLASSIFY_TIMEOUT_SECONDS, check=False,
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=_CLASSIFY_TIMEOUT_SECONDS,
+            check=False,
         )
         if result.returncode != 0:
             return None
@@ -409,6 +467,12 @@ def classify_task(
         files=files_str,
         failed=failed_str,
     )
+
+    # Pytest's suite-wide guard sets this flag for the test process and every
+    # child process it launches. Tests must never call local fleet endpoints or
+    # provider CLIs merely to classify a fixture task.
+    if os.environ.get("SUPERHARNESS_TEST_OFFLINE") == "1":
+        return _deterministic_classify(title, criteria, previously_failed)
 
     # 1. Fleet first — superharness's own brain (local GPU, fastest)
     result = _classify_via_fleet(prompt)
@@ -453,7 +517,10 @@ def detect_codex_auth_mode() -> str:
     try:
         r = subprocess.run(
             ["codex", "login", "status"],
-            capture_output=True, text=True, timeout=5, check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
         )
         out = (r.stdout + " " + r.stderr).lower()
         if "chatgpt" in out:
@@ -502,6 +569,7 @@ def get_agent_auth_state(project_dir: str, agent: str) -> str | None:
     """Read the last-persisted auth mode for an agent, or None if not recorded."""
     import json
     from pathlib import Path
+
     path = Path(project_dir) / ".superharness" / _AUTH_STATE_FILENAME
     try:
         state = json.loads(path.read_text())
@@ -514,6 +582,7 @@ def _load_agent_state(project_dir: str) -> dict:
     """Read agent-auth-state.json and return the full dict (or empty on error)."""
     import json
     from pathlib import Path
+
     path = Path(project_dir) / ".superharness" / _AUTH_STATE_FILENAME
     try:
         if path.exists():
@@ -527,6 +596,7 @@ def _save_agent_state(project_dir: str, state: dict) -> None:
     """Write the full agent state dict back to disk. Best-effort."""
     import json
     from pathlib import Path
+
     path = Path(project_dir) / ".superharness" / _AUTH_STATE_FILENAME
     try:
         path.write_text(json.dumps(state, indent=2))
@@ -534,7 +604,9 @@ def _save_agent_state(project_dir: str, state: dict) -> None:
         pass
 
 
-def set_agent_quota_limited(project_dir: str, agent: str, reset_minutes: int = 60) -> None:
+def set_agent_quota_limited(
+    project_dir: str, agent: str, reset_minutes: int = 60
+) -> None:
     """Record that an agent is quota-limited until now + reset_minutes.
 
     Written to agent-auth-state.json so the watcher can skip this agent
@@ -542,6 +614,7 @@ def set_agent_quota_limited(project_dir: str, agent: str, reset_minutes: int = 6
     Survives across process restarts.
     """
     from datetime import datetime, timezone, timedelta
+
     state = _load_agent_state(project_dir)
     agent_state = dict(state.get(agent) or {})
     expiry = datetime.now(timezone.utc) + timedelta(minutes=reset_minutes)
@@ -557,6 +630,7 @@ def is_agent_quota_limited(project_dir: str, agent: str) -> bool:
     (so the watcher will attempt the agent again after the window passes).
     """
     from datetime import datetime, timezone
+
     state = _load_agent_state(project_dir)
     expiry_str = state.get(agent, {}).get("quota_limited_until")
     if not expiry_str:
@@ -568,7 +642,9 @@ def is_agent_quota_limited(project_dir: str, agent: str) -> bool:
         return False
 
 
-def _apply_chatgpt_auth_override(target: str, model: str, project_dir: str | None) -> str:
+def _apply_chatgpt_auth_override(
+    target: str, model: str, project_dir: str | None
+) -> str:
     """If target is codex-cli on chatgpt-account auth and the model has a
     project-configured override for ChatGPT auth, swap to the override.
 
@@ -608,10 +684,13 @@ def resolve_model(target: str, tier: str, project_dir: str | None = None) -> str
         return _apply_chatgpt_auth_override(target, mmap[target][tier], project_dir)
 
     from superharness.engine.adapter_registry import resolve_model as _resolve
+
     res = _resolve(target, tier)
     model_id = res.get("id", "")
     if not model_id or model_id == tier:
-        fallback = mmap.get(target, {}).get(tier, MODEL_MAP.get(target, {}).get(tier, "claude-sonnet-4-6"))
+        fallback = mmap.get(target, {}).get(
+            tier, MODEL_MAP.get(target, {}).get(tier, "claude-sonnet-4-6")
+        )
         return _apply_chatgpt_auth_override(target, fallback, project_dir)
     return _apply_chatgpt_auth_override(target, model_id, project_dir)
 
@@ -623,9 +702,11 @@ def resolve_tier(model_name: str) -> str | None:
     return None
 
 
-def find_tier_for_model(target: str, model_name: str, project_dir: str | None = None) -> str:
+def find_tier_for_model(
+    target: str, model_name: str, project_dir: str | None = None
+) -> str:
     """Reverse lookup: find the tier name (mini/standard/max) for a given model ID.
-    
+
     Checks project-specific map first, then defaults.
     """
     mmap = _load_model_map(project_dir)
@@ -633,17 +714,17 @@ def find_tier_for_model(target: str, model_name: str, project_dir: str | None = 
     for tier, m_id in target_map.items():
         if m_id == model_name:
             return tier
-            
+
     # Fallback to default MODEL_MAP
     target_map = MODEL_MAP.get(target, {})
     for tier, m_id in target_map.items():
         if m_id == model_name:
             return tier
-            
+
     # If the model_name itself is a tier, return it
     if model_name in VALID_TIERS:
         return model_name
-        
+
     return _FALLBACK_TIER
 
 
@@ -660,14 +741,33 @@ def classify_complexity(task: dict) -> str:
 
     # High complexity signals
     complex_signals = [
-        "refactor", "migrate", "redesign", "architecture",
-        "security", "auth", "api", "database", "schema",
-        "multi-file", "breaking change", "cross-cutting",
-        "performance", "optimize", "scale",
+        "refactor",
+        "migrate",
+        "redesign",
+        "architecture",
+        "security",
+        "auth",
+        "api",
+        "database",
+        "schema",
+        "multi-file",
+        "breaking change",
+        "cross-cutting",
+        "performance",
+        "optimize",
+        "scale",
     ]
     # Simple task signals
-    simple_signals = ["typo", "fix comment", "rename", "update readme",
-                      "add test", "config", "bump version", "changelog"]
+    simple_signals = [
+        "typo",
+        "fix comment",
+        "rename",
+        "update readme",
+        "add test",
+        "config",
+        "bump version",
+        "changelog",
+    ]
 
     is_complex = (
         effort in ("xhigh", "max")

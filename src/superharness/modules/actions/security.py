@@ -1,4 +1,5 @@
 """Security module actions — run shipguard SAST on verify."""
+
 from __future__ import annotations
 
 import logging
@@ -59,7 +60,7 @@ def security_scan(context: dict[str, Any], settings: dict[str, Any]) -> dict[str
         }
 
     # Get severity threshold
-    severity_threshold = settings.get("severity_threshold", "high")
+    settings.get("severity_threshold", "high")
 
     # Run shipguard scan
     try:

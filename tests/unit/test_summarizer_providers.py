@@ -9,6 +9,7 @@ module so a single fake covers Anthropic, Gemini, OpenAI, and
 OpenRouter. Each test asserts the parsed text round-trips and that
 private tags get stripped.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -36,6 +37,7 @@ def _install_anthropic_fake(monkeypatch, text="anthropic summary"):
     def fake(url, body, headers, timeout=30):
         assert url == providers.AnthropicSummarizer.API_URL
         return {"content": [{"text": text}]}
+
     monkeypatch.setattr(providers, "_http_post_json", fake)
 
 
@@ -43,18 +45,21 @@ def _install_gemini_fake(monkeypatch, text="gemini summary"):
     def fake(url, body, headers, timeout=30):
         assert "generativelanguage.googleapis.com" in url
         return {"candidates": [{"content": {"parts": [{"text": text}]}}]}
+
     monkeypatch.setattr(providers, "_http_post_json", fake)
 
 
 def _install_chat_fake(monkeypatch, text="chat summary"):
     def fake(url, body, headers, timeout=30):
         return {"choices": [{"message": {"content": text}}]}
+
     monkeypatch.setattr(providers, "_http_post_json", fake)
 
 
 # ---------------------------------------------------------------------------
 # Registry presence
 # ---------------------------------------------------------------------------
+
 
 def test_registry_lists_all_external_providers():
     names = list_summarizers()
@@ -65,6 +70,7 @@ def test_registry_lists_all_external_providers():
 # ---------------------------------------------------------------------------
 # Anthropic
 # ---------------------------------------------------------------------------
+
 
 def test_anthropic_construction_requires_key(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
@@ -99,6 +105,7 @@ def test_anthropic_via_registry(monkeypatch, sample_context):
 # Gemini
 # ---------------------------------------------------------------------------
 
+
 def test_gemini_construction_requires_key(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
@@ -122,7 +129,9 @@ def test_gemini_round_trips(monkeypatch, sample_context):
 
 def test_gemini_handles_empty_candidates(monkeypatch, sample_context):
     monkeypatch.setenv("GEMINI_API_KEY", "g-fake")
-    monkeypatch.setattr(providers, "_http_post_json", lambda *a, **kw: {"candidates": []})
+    monkeypatch.setattr(
+        providers, "_http_post_json", lambda *a, **kw: {"candidates": []}
+    )
     s = providers.GeminiSummarizer()
     assert s.summarize(sample_context) == ""
 
@@ -130,6 +139,7 @@ def test_gemini_handles_empty_candidates(monkeypatch, sample_context):
 # ---------------------------------------------------------------------------
 # OpenAI
 # ---------------------------------------------------------------------------
+
 
 def test_openai_construction_requires_key(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
@@ -148,6 +158,7 @@ def test_openai_round_trips(monkeypatch, sample_context):
 # OpenRouter
 # ---------------------------------------------------------------------------
 
+
 def test_openrouter_construction_requires_key(monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     with pytest.raises(SummarizerError):
@@ -164,6 +175,7 @@ def test_openrouter_round_trips(monkeypatch, sample_context):
 # ---------------------------------------------------------------------------
 # OpenCode (subprocess)
 # ---------------------------------------------------------------------------
+
 
 def test_opencode_construction_requires_binary(monkeypatch):
     monkeypatch.setattr(providers.shutil, "which", lambda _name: None)
@@ -228,6 +240,7 @@ def test_opencode_timeout_raises(monkeypatch, sample_context):
 # ---------------------------------------------------------------------------
 # get_summarizer surfaces SummarizerError on missing credentials
 # ---------------------------------------------------------------------------
+
 
 def test_get_summarizer_missing_key_raises(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)

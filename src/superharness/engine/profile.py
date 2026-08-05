@@ -15,6 +15,7 @@ Known fields and their defaults:
 
 Unknown fields return an empty string.
 """
+
 from __future__ import annotations
 
 import logging
@@ -27,19 +28,19 @@ from superharness.engine.errors import SuperharnessError, UsageError, handle_cli
 _log = logging.getLogger(__name__)
 
 FIELD_DEFAULTS: dict[str, str] = {
-    "autonomy":      "ai_driven",
+    "autonomy": "ai_driven",
     "primary_agent": "",
-    "team_size":     "solo",
+    "team_size": "solo",
 }
 
 # Legacy / UI alias → canonical name.  Add new modes here as they are introduced.
 # "supervised" is intentionally NOT aliased — it is a distinct mode that preserves human oversight.
 _AUTONOMY_ALIASES: dict[str, str] = {
-    "full-auto":      "ai_driven",
-    "autonomous":     "ai_driven",
+    "full-auto": "ai_driven",
+    "autonomous": "ai_driven",
     "approval-gated": "ai_driven",
-    "oversight":      "ai_driven",
-    "hands_on":       "ai_driven",
+    "oversight": "ai_driven",
+    "hands_on": "ai_driven",
 }
 
 
@@ -55,6 +56,7 @@ def read_field(project_dir: Path, field: str) -> str:
         return FIELD_DEFAULTS.get(field, "")
     try:
         import yaml
+
         doc = yaml.safe_load(profile_path.read_text()) or {}
     except Exception as e:
         _log.warning("could not parse profile.yaml at %s: %s", profile_path, e)
@@ -82,7 +84,9 @@ def main(argv: list[str] | None = None) -> None:
         description="Read a field from .superharness/profile.yaml.",
         add_help=True,
     )
-    p.add_argument("-p", "--project", default=os.getcwd(), help="Project directory (default: cwd)")
+    p.add_argument(
+        "-p", "--project", default=os.getcwd(), help="Project directory (default: cwd)"
+    )
     p.add_argument("field", nargs="?", default=None, help="Field name to read")
     opts = p.parse_args(argv)
 

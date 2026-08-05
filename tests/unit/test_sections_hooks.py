@@ -1,4 +1,5 @@
 """RED tests for the hooks section (ui/sections/hooks.py) — stale worktree detection."""
+
 from __future__ import annotations
 
 import json
@@ -6,11 +7,10 @@ import os
 import tempfile
 from pathlib import Path
 
-import pytest
-
 
 def _scan(settings_path: Path) -> list[str]:
     from superharness.ui.sections.hooks import scan_stale_worktree_paths
+
     return scan_stale_worktree_paths(settings_path)
 
 
@@ -20,11 +20,7 @@ def _worktree_base() -> str:
 
 def _settings_with_hook_command(cmd: str, tmp_path: Path) -> Path:
     """Write a minimal settings.json with a single hook entry."""
-    data = {
-        "hooks": {
-            "PreToolUse": [{"matcher": "*", "command": cmd}]
-        }
-    }
+    data = {"hooks": {"PreToolUse": [{"matcher": "*", "command": cmd}]}}
     p = tmp_path / "settings.json"
     p.write_text(json.dumps(data))
     return p
@@ -66,6 +62,7 @@ def test_hooks_section_ignores_paths_that_exist_on_disk(tmp_path):
 
     # Cleanup
     import shutil
+
     shutil.rmtree(str(live_dir), ignore_errors=True)
 
 
@@ -101,7 +98,11 @@ def test_hooks_section_reports_warning_when_stale(tmp_path, capsys, monkeypatch)
     run(tmp_path, non_interactive=True)
 
     out = capsys.readouterr().out
-    assert "stale" in out.lower() or "worktree-gc" in out.lower() or "worktree" in out.lower()
+    assert (
+        "stale" in out.lower()
+        or "worktree-gc" in out.lower()
+        or "worktree" in out.lower()
+    )
 
 
 def test_hooks_section_no_warning_when_no_stale(tmp_path, capsys, monkeypatch):

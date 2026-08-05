@@ -3,14 +3,15 @@
 Creates a test task, waits for it to progress through the lifecycle,
 and reports where it gets stuck (if anywhere).
 """
+
 from __future__ import annotations
 
 import os
 import sys
-import time
 from datetime import datetime, timezone
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,30 +33,52 @@ def run_pipeline_check(project_dir: str) -> int:
 
     # 1. SQLite DB
     from superharness.utils.paths import resolve_active_state_db_path
+
     db = resolve_active_state_db_path(project_dir)
     _check("SQLite DB exists", os.path.isfile(db), f"missing: {db}")
 
     # 2. Profile config
     from superharness.engine.profile import normalize_autonomy
+
     profile_file = os.path.join(project_dir, ".superharness", "profile.yaml")
     if os.path.isfile(profile_file):
         import yaml
+
         profile = yaml.safe_load(open(profile_file).read()) or {}
-        _check("auto_dispatch enabled", profile.get("auto_dispatch"), "add auto_dispatch: true to profile.yaml")
+        _check(
+            "auto_dispatch enabled",
+            profile.get("auto_dispatch"),
+            "add auto_dispatch: true to profile.yaml",
+        )
         effective_autonomy = normalize_autonomy(profile.get("autonomy", ""))
-        _check("autonomy configured", effective_autonomy == "ai_driven", "set autonomy: autonomous or ai_driven")
-        _check("auto_close enabled", profile.get("auto_close") or effective_autonomy == "ai_driven", "set auto_close: true")
+        _check(
+            "autonomy configured",
+            effective_autonomy == "ai_driven",
+            "set autonomy: autonomous or ai_driven",
+        )
+        _check(
+            "auto_close enabled",
+            profile.get("auto_close") or effective_autonomy == "ai_driven",
+            "set auto_close: true",
+        )
     else:
         _check("profile.yaml exists", False, "missing profile.yaml")
 
     # 3. Contract has tasks
     from superharness.engine.state_reader import get_tasks
+
     tasks = get_tasks(project_dir)
     _check("Contract has tasks", len(tasks) > 0)
 
     # 4. Agent binaries
     import shutil
-    for agent, binary in [("claude-code", "claude"), ("codex-cli", "codex"), ("gemini-cli", "gemini"), ("opencode", "opencode")]:
+
+    for agent, binary in [
+        ("claude-code", "claude"),
+        ("codex-cli", "codex"),
+        ("gemini-cli", "gemini"),
+        ("opencode", "opencode"),
+    ]:
         _check(f"{agent} binary", shutil.which(binary) is not None, f"install {binary}")
 
     # 5. Watcher heartbeat
@@ -66,7 +89,9 @@ def run_pipeline_check(project_dir: str) -> int:
         try:
             hb_dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
             age = (datetime.now(timezone.utc) - hb_dt).total_seconds()
-            _check("Watcher heartbeat fresh", age < 120, f"last heartbeat {int(age)}s ago")
+            _check(
+                "Watcher heartbeat fresh", age < 120, f"last heartbeat {int(age)}s ago"
+            )
         except Exception as e:
             logger.warning("pipeline_check.py unexpected error: %s", e, exc_info=True)
             _check("Watcher heartbeat valid", False, "invalid timestamp")
@@ -76,10 +101,11 @@ def run_pipeline_check(project_dir: str) -> int:
     # 6. Inbox working
     from superharness.engine import inbox_dao
     from superharness.engine.db import get_connection, init_db
+
     try:
         conn = get_connection(project_dir)
         init_db(conn)
-        inbox = inbox_dao.get_all(conn)
+        inbox_dao.get_all(conn)
         conn.close()
         _check("Inbox readable", True)
     except Exception as e:
@@ -87,7 +113,11 @@ def run_pipeline_check(project_dir: str) -> int:
 
     # 7. launcher-logs directory
     log_dir = os.path.join(project_dir, ".superharness", "launcher-logs")
-    _check("Launcher logs dir", os.path.isdir(log_dir) and os.access(log_dir, os.W_OK), "not writable or missing")
+    _check(
+        "Launcher logs dir",
+        os.path.isdir(log_dir) and os.access(log_dir, os.W_OK),
+        "not writable or missing",
+    )
 
     # Summary
     passes = sum(1 for c in checks if c.startswith("  [PASS]"))
@@ -101,12 +131,15 @@ def run_pipeline_check(project_dir: str) -> int:
         print(f"RESULT: Pipeline healthy ({passes}/{passes} checks pass) ✅")
         return 0
     else:
-        print(f"RESULT: {fails} issue(s) found ({passes}/{passes+fails} checks pass) ⚠️")
+        print(
+            f"RESULT: {fails} issue(s) found ({passes}/{passes + fails} checks pass) ⚠️"
+        )
         return 1
 
 
 def main(argv: list[str] | None = None) -> None:
     import argparse
+
     if argv is None:
         argv = sys.argv[1:]
     p = argparse.ArgumentParser(prog="pipeline-check")

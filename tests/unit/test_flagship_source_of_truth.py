@@ -13,6 +13,7 @@ Approved files (may contain literal opus ids):
   - engine/sdk_runner.py                        — pricing table (multi-version)
   - engine/models.yaml                          — per-project pricing overrides
 """
+
 from __future__ import annotations
 
 import re
@@ -23,12 +24,14 @@ import pytest
 
 _SRC_ROOT = Path(__file__).parents[2] / "src" / "superharness"
 
-_APPROVED_SUFFIXES = frozenset({
-    "adapter_manifests/claude-code.yaml",
-    "engine/adapter_registry.py",
-    "engine/sdk_runner.py",
-    "engine/models.yaml",
-})
+_APPROVED_SUFFIXES = frozenset(
+    {
+        "adapter_manifests/claude-code.yaml",
+        "engine/adapter_registry.py",
+        "engine/sdk_runner.py",
+        "engine/models.yaml",
+    }
+)
 
 _LITERAL_PATTERN = re.compile(r"claude-opus-4-\d")
 
@@ -51,7 +54,9 @@ def _scan() -> list[tuple[str, int, str]]:
         if rel in _APPROVED_SUFFIXES:
             continue
         try:
-            for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for lineno, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), 1
+            ):
                 if _LITERAL_PATTERN.search(line):
                     violations.append((rel, lineno, line.strip()))
         except (UnicodeDecodeError, OSError):
@@ -65,6 +70,7 @@ class TestFlagshipSourceOfTruth:
     def test_flagship_resolves_from_manifest(self):
         """flagship() must return a non-empty model id string."""
         from superharness.engine.adapter_registry import flagship
+
         result = flagship()
         assert isinstance(result, str)
         assert result.startswith("claude-opus-")
@@ -72,6 +78,7 @@ class TestFlagshipSourceOfTruth:
     def test_flagship_1m_resolves_from_manifest(self):
         """flagship_1m() must return a non-empty model id string ending with [1m]."""
         from superharness.engine.adapter_registry import flagship_1m
+
         result = flagship_1m()
         assert isinstance(result, str)
         assert "[1m]" in result
@@ -79,6 +86,7 @@ class TestFlagshipSourceOfTruth:
     def test_fallback_flagship_resolves_from_manifest(self):
         """fallback_flagship() must return a non-empty model id string."""
         from superharness.engine.adapter_registry import fallback_flagship
+
         result = fallback_flagship()
         assert isinstance(result, str)
         assert result.startswith("claude-opus-")
@@ -86,6 +94,7 @@ class TestFlagshipSourceOfTruth:
     def test_flagship_differs_from_fallback(self):
         """flagship and fallback must be different versions."""
         from superharness.engine.adapter_registry import fallback_flagship, flagship
+
         assert flagship() != fallback_flagship()
 
     def test_no_hardcoded_opus_literals_outside_approved_files(self):
@@ -96,7 +105,9 @@ class TestFlagshipSourceOfTruth:
         """
         violations = _scan()
         if violations:
-            lines = [f"  {rel}:{lineno}  {snippet}" for rel, lineno, snippet in violations]
+            lines = [
+                f"  {rel}:{lineno}  {snippet}" for rel, lineno, snippet in violations
+            ]
             pytest.fail(
                 "Hardcoded claude-opus-4-N literals found outside approved files.\n"
                 "Fix: import flagship() from superharness.engine.adapter_registry instead.\n\n"

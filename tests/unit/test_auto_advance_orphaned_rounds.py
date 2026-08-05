@@ -24,11 +24,12 @@ from superharness.commands.inbox_watch import (
     _ORPHAN_ROUND_GRACE_MINUTES,
     _CONSENSUS_PENDING_REVIEW_PREFIX,
 )
-from superharness.engine.discussion import _check_all_submitted_and_set_consensus
 
 
 def _iso_minutes_ago(n: int) -> str:
-    return (datetime.now(timezone.utc) - timedelta(minutes=n)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return (datetime.now(timezone.utc) - timedelta(minutes=n)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
 
 
 def _ensure_task(conn, task_id: str) -> None:
@@ -56,8 +57,13 @@ def _seed_inbox_done(conn, *, task_id: str, agent: str, done_minutes_ago: int) -
                            max_retries, recovery_count, plan_only, created_at, done_at)
         VALUES (?, ?, ?, 'done', 2, 0, 3, 0, 0, ?, ?)
         """,
-        (inbox_id, task_id, agent, _iso_minutes_ago(done_minutes_ago + 5),
-         _iso_minutes_ago(done_minutes_ago)),
+        (
+            inbox_id,
+            task_id,
+            agent,
+            _iso_minutes_ago(done_minutes_ago + 5),
+            _iso_minutes_ago(done_minutes_ago),
+        ),
     )
 
 
@@ -76,7 +82,9 @@ class TestAutoAdvanceOrphanedRounds:
         init_db(conn)
         owners = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
         disc_id = "disc-orphan-1"
-        discussions_dao.create(conn, id=disc_id, topic="t", owners=owners, now=now_iso())
+        discussions_dao.create(
+            conn, id=disc_id, topic="t", owners=owners, now=now_iso()
+        )
         for agent in owners:
             _seed_inbox_done(
                 conn,
@@ -109,7 +117,9 @@ class TestAutoAdvanceOrphanedRounds:
         init_db(conn)
         owners = ["claude-code", "codex-cli", "gemini-cli"]
         disc_id = "disc-1of3"
-        discussions_dao.create(conn, id=disc_id, topic="t", owners=owners, now=now_iso())
+        discussions_dao.create(
+            conn, id=disc_id, topic="t", owners=owners, now=now_iso()
+        )
         for agent in owners:
             _seed_inbox_done(
                 conn,
@@ -119,8 +129,12 @@ class TestAutoAdvanceOrphanedRounds:
             )
         # Only 1 of 3 submitted
         discussions_dao.add_round(
-            conn, discussion_id=disc_id, round_number=1,
-            agent="claude-code", verdict="agree", now=now_iso(),
+            conn,
+            discussion_id=disc_id,
+            round_number=1,
+            agent="claude-code",
+            verdict="agree",
+            now=now_iso(),
         )
         conn.commit()
         conn.close()
@@ -137,7 +151,9 @@ class TestAutoAdvanceOrphanedRounds:
         finally:
             conn.close()
 
-    def test_2_of_3_dispatched_submitted_is_consensus_pending_review(self, project_with_db):
+    def test_2_of_3_dispatched_submitted_is_consensus_pending_review(
+        self, project_with_db
+    ):
         """3 participants, 2 submitted — required=2. 2/3 >= 2 → consensus (pending review).
         The threshold is met; the single missing verdict is surfaced for operator review."""
         project = project_with_db
@@ -145,7 +161,9 @@ class TestAutoAdvanceOrphanedRounds:
         init_db(conn)
         owners = ["claude-code", "codex-cli", "gemini-cli"]
         disc_id = "disc-2of3"
-        discussions_dao.create(conn, id=disc_id, topic="t", owners=owners, now=now_iso())
+        discussions_dao.create(
+            conn, id=disc_id, topic="t", owners=owners, now=now_iso()
+        )
         for agent in owners:
             _seed_inbox_done(
                 conn,
@@ -156,8 +174,12 @@ class TestAutoAdvanceOrphanedRounds:
         # 2 of 3 submitted
         for agent in ("claude-code", "codex-cli"):
             discussions_dao.add_round(
-                conn, discussion_id=disc_id, round_number=1,
-                agent=agent, verdict="agree", now=now_iso(),
+                conn,
+                discussion_id=disc_id,
+                round_number=1,
+                agent=agent,
+                verdict="agree",
+                now=now_iso(),
             )
         conn.commit()
         conn.close()
@@ -183,9 +205,13 @@ class TestAutoAdvanceOrphanedRounds:
         conn = get_connection(str(project))
         init_db(conn)
         disc_id = "disc-review"
-        discussions_dao.create(conn, id=disc_id, topic="t", owners=["a", "b"], now=now_iso())
+        discussions_dao.create(
+            conn, id=disc_id, topic="t", owners=["a", "b"], now=now_iso()
+        )
         # Old enough that the close grace period would normally fire
-        old = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        old = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         conn.execute(
             "UPDATE discussions SET status='consensus', consensus=?, created_at=? WHERE id=?",
             (

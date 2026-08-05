@@ -12,6 +12,7 @@ important ways: the snapshot is never auto-injected into a future
 prompt, and the capture cadence is lifecycle transitions only (not
 every tool call).
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -21,10 +22,13 @@ from superharness.engine import handoffs_dao, observations_dao, tasks_dao
 from superharness.engine.summarizer import Summarizer, get_summarizer
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
-def _build_context(conn: sqlite3.Connection, task_id: str, phase: str) -> dict[str, Any] | None:
+def _build_context(
+    conn: sqlite3.Connection, task_id: str, phase: str
+) -> dict[str, Any] | None:
     task = tasks_dao.get(conn, task_id)
     if task is None:
         return None
@@ -66,7 +70,11 @@ def capture_observation(
         if ctx is None:
             return None
 
-        s = summarizer if summarizer is not None else get_summarizer(project_dir=project_dir)
+        s = (
+            summarizer
+            if summarizer is not None
+            else get_summarizer(project_dir=project_dir)
+        )
         summary = s.summarize(ctx)
         if not summary:
             return None

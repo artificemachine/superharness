@@ -1,5 +1,5 @@
 """Tests for credential redaction (cherry-picked from hermes-agent)."""
-import pytest
+
 from superharness.guard.redact import redact
 
 
@@ -28,7 +28,9 @@ class TestRedaction:
         assert "[REDACTED_PASSWORD]" in result
 
     def test_redact_private_key_pem(self):
-        result = redact("-----BEGIN RSA PRIVATE KEY-----\nabc123\n-----END RSA PRIVATE KEY-----")
+        result = redact(
+            "-----BEGIN RSA PRIVATE KEY-----\nabc123\n-----END RSA PRIVATE KEY-----"
+        )
         assert "BEGIN RSA PRIVATE KEY" not in result
         assert "[REDACTED_KEY]" in result
 

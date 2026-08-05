@@ -15,6 +15,7 @@ command output.
 What it will not accept is the status quo that failed the audit — a header of
 CI/PyPI/license badges and prose, with nothing showing the tool in use.
 """
+
 from __future__ import annotations
 
 import re
@@ -33,16 +34,16 @@ _IMAGE_REF_RE = re.compile(
 # Status badges are not a demo — this README's header carries several, and
 # they would otherwise satisfy the check without anything being demonstrated.
 _BADGE_HOST_RE = re.compile(
-    r'shields\.io|badge\.fury\.io|/actions/workflows/.*badge\.svg|/workflows/.*/badge\.svg',
+    r"shields\.io|badge\.fury\.io|/actions/workflows/.*badge\.svg|/workflows/.*/badge\.svg",
     re.IGNORECASE,
 )
 
 # Animations are never badges, so the extension alone is sufficient signal.
-_ANIMATION_EXT_RE = re.compile(r'\.(?:gif|mp4|webm)\b', re.IGNORECASE)
+_ANIMATION_EXT_RE = re.compile(r"\.(?:gif|mp4|webm)\b", re.IGNORECASE)
 
 # A fenced block tagged as terminal output, containing a shux invocation.
 _CONSOLE_FENCE_RE = re.compile(
-    r'```(?:console|shell|shell-session|text)\b(.*?)```',
+    r"```(?:console|shell|shell-session|text)\b(.*?)```",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -65,7 +66,7 @@ def _has_console_demo(head: str) -> bool:
     """
     for m in _CONSOLE_FENCE_RE.finditer(head):
         body = m.group(1)
-        if not re.search(r'\b(?:shux|superharness)\b', body):
+        if not re.search(r"\b(?:shux|superharness)\b", body):
             continue
         if len([ln for ln in body.splitlines() if ln.strip()]) >= 4:
             return True

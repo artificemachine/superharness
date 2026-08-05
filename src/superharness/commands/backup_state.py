@@ -2,6 +2,7 @@
 
 Uses sqlite3.backup() which is safe during live writes (WAL mode).
 """
+
 from __future__ import annotations
 
 import os
@@ -17,6 +18,7 @@ def _now_tag() -> str:
 
 def _db_path(project_dir: str) -> str:
     from superharness.utils.paths import resolve_active_state_db_path
+
     return resolve_active_state_db_path(project_dir)
 
 
@@ -124,11 +126,16 @@ def main(argv: list[str] | None = None) -> None:
 
     bk = sub.add_parser("backup", help="Create a safe online backup of state.sqlite3")
     bk.add_argument("--project", "-p", default=".", help="Project directory")
-    bk.add_argument("--out", help="Output path (default: ~/.superharness-backups/state-<proj>-<ts>.sqlite3)")
+    bk.add_argument(
+        "--out",
+        help="Output path (default: ~/.superharness-backups/state-<proj>-<ts>.sqlite3)",
+    )
 
     rs = sub.add_parser("restore", help="Restore state.sqlite3 from a backup file")
     rs.add_argument("--project", "-p", default=".", help="Project directory")
-    rs.add_argument("--from", dest="from_path", required=True, help="Backup file to restore from")
+    rs.add_argument(
+        "--from", dest="from_path", required=True, help="Backup file to restore from"
+    )
 
     args = parser.parse_args(argv)
     project_dir = os.path.abspath(args.project)

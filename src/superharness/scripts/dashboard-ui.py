@@ -32,6 +32,7 @@ def _ensure_python_with_yaml() -> None:
     """Re-exec into the repo venv if the current interpreter lacks PyYAML."""
     try:
         import yaml  # noqa: F401
+
         return
     except ImportError as e:
         # The only realistic failure of a bare `import yaml` is the module
@@ -51,7 +52,11 @@ def _ensure_python_with_yaml() -> None:
 
     env = os.environ.copy()
     env["SUPERHARNESS_MONITOR_REEXEC"] = "1"
-    os.execve(str(venv_python), [str(venv_python), str(Path(__file__).resolve()), *sys.argv[1:]], env)
+    os.execve(
+        str(venv_python),
+        [str(venv_python), str(Path(__file__).resolve()), *sys.argv[1:]],
+        env,
+    )
 
 
 HTML = (Path(__file__).parent / "dashboard.html").read_text(encoding="utf-8")
@@ -60,29 +65,57 @@ HTML = (Path(__file__).parent / "dashboard.html").read_text(encoding="utf-8")
 KNOWN_AGENTS: list[str] = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
 
 # Inbox item statuses that mean "still in flight or queued" (not terminal).
-INBOX_ACTIVE_STATUSES: frozenset[str] = frozenset({"pending", "launched", "running", "paused"})
+INBOX_ACTIVE_STATUSES: frozenset[str] = frozenset(
+    {"pending", "launched", "running", "paused"}
+)
 
 # Inbox item statuses considered terminal / done.
-INBOX_TERMINAL_STATUSES: frozenset[str] = frozenset({"done", "failed", "stale", "stopped"})
+INBOX_TERMINAL_STATUSES: frozenset[str] = frozenset(
+    {"done", "failed", "stale", "stopped"}
+)
 
-from superharness.engine.normalization import normalize_blocked_by as _normalize_blocked_by  # noqa: E402
+from superharness.engine.normalization import (  # noqa: E402
+    normalize_blocked_by as _normalize_blocked_by,
+)  # noqa: E402
 
 
 def git_context(project_dir: Path) -> dict:
     """Get current branch, dirty file count, and last commit."""
     import subprocess as _sp
+
     result = {"branch": "", "dirty_count": 0, "last_commit": ""}
     try:
-        r = _sp.run(["git", "-C", str(project_dir), "branch", "--show-current"],
-                    capture_output=True, text=True, check=False)
+        r = _sp.run(
+            ["git", "-C", str(project_dir), "branch", "--show-current"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
         if r.returncode == 0:
             result["branch"] = r.stdout.strip()
-        r2 = _sp.run(["git", "-C", str(project_dir), "status", "--porcelain", "--untracked-files=normal"],
-                     capture_output=True, text=True, check=False)
+        r2 = _sp.run(
+            [
+                "git",
+                "-C",
+                str(project_dir),
+                "status",
+                "--porcelain",
+                "--untracked-files=normal",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
         if r2.returncode == 0:
-            result["dirty_count"] = len([l for l in r2.stdout.strip().splitlines() if l.strip()])
-        r3 = _sp.run(["git", "-C", str(project_dir), "log", "-1", "--format=%h %s"],
-                     capture_output=True, text=True, check=False)
+            result["dirty_count"] = len(
+                [line for line in r2.stdout.strip().splitlines() if line.strip()]
+            )
+        r3 = _sp.run(
+            ["git", "-C", str(project_dir), "log", "-1", "--format=%h %s"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
         if r3.returncode == 0:
             result["last_commit"] = r3.stdout.strip()
     except Exception as e:
@@ -91,15 +124,16 @@ def git_context(project_dir: Path) -> dict:
     return result
 
 
-from datetime import datetime as _datetime
+import logging  # noqa: E402
 
-import logging
 logger = logging.getLogger(__name__)
 
 
 def tail_lines(path: Path, n: int) -> list[str]:
     if not path.exists():
-        return ["No log file yet (created when watcher runs as launchd service). Foreground mode logs to stdout."]
+        return [
+            "No log file yet (created when watcher runs as launchd service). Foreground mode logs to stdout."
+        ]
     with path.open("r", encoding="utf-8", errors="replace") as f:
         lines = f.readlines()
     return [ln.rstrip("\n") for ln in lines[-n:]]
@@ -204,6 +238,7 @@ def inbox_items(inbox_file: Path) -> list[dict]:
     project_dir = str(inbox_file.parent.parent)
     try:
         from superharness.engine import state_reader as _sr
+
         return _sr.get_inbox_items(project_dir)
     except Exception as e:
         logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
@@ -247,7 +282,9 @@ def task_instructions(project_dir: Path, task_id: str) -> str:
     conn = db.get_connection(str(project_dir))
     db.init_db(conn)
     try:
-        data = dashboard_presenter.get_task_instructions_data(conn, task_id, str(project_dir))
+        data = dashboard_presenter.get_task_instructions_data(
+            conn, task_id, str(project_dir)
+        )
         if not data:
             return "Task not found."
         task_title = data["title"]
@@ -255,14 +292,31 @@ def task_instructions(project_dir: Path, task_id: str) -> str:
     finally:
         conn.close()
 
-
-
     # Try to find matching iteration section in plan docs
     plan_section = ""
     # Build keywords from task ID and title (e.g. mod.3-obsidian → ["obsidian"], mod.7-ntfy + "ntfy notification module" → ["ntfy", "notification", "module"])
-    _stop_words = {"mod", "feat", "auto", "module", "task", "the", "with", "from", "that", "this"}
-    raw_words = [w.lower() for w in _re.split(r"[.\-_]+", task_id) if w and not w.isdigit() and w.lower() not in _stop_words]
-    title_words = [w.lower() for w in _re.split(r"[\s\-_()]+", task_title) if w and len(w) >= 4 and w.lower() not in _stop_words]
+    _stop_words = {
+        "mod",
+        "feat",
+        "auto",
+        "module",
+        "task",
+        "the",
+        "with",
+        "from",
+        "that",
+        "this",
+    }
+    raw_words = [
+        w.lower()
+        for w in _re.split(r"[.\-_]+", task_id)
+        if w and not w.isdigit() and w.lower() not in _stop_words
+    ]
+    title_words = [
+        w.lower()
+        for w in _re.split(r"[\s\-_()]+", task_title)
+        if w and len(w) >= 4 and w.lower() not in _stop_words
+    ]
     raw_words.extend(title_words)
     task_keywords = []
     for w in raw_words:
@@ -272,8 +326,8 @@ def task_instructions(project_dir: Path, task_id: str) -> str:
         if len(parts) == 1 and len(w) > 5:
             for prefix in ("auto",):
                 if w.startswith(prefix) and len(w) > len(prefix):
-                    task_keywords.append(w[len(prefix):])
-                    task_keywords.append(prefix + "-" + w[len(prefix):])
+                    task_keywords.append(w[len(prefix) :])
+                    task_keywords.append(prefix + "-" + w[len(prefix) :])
     for plan_file in sorted(project_dir.glob("docs/plan*.md")):
         try:
             content = plan_file.read_text(errors="replace")
@@ -283,7 +337,9 @@ def task_instructions(project_dir: Path, task_id: str) -> str:
                 if not section.strip().startswith("## Iteration"):
                     continue
                 # Strip trailing --- separator
-                section = _re.split(r"\n---\s*$", section, flags=_re.MULTILINE)[0].strip()
+                section = _re.split(r"\n---\s*$", section, flags=_re.MULTILINE)[
+                    0
+                ].strip()
                 header = section.split("\n", 1)[0].lower()
                 # Match by keywords from task ID against iteration header
                 # Require the longest keyword to match (most specific)
@@ -314,7 +370,11 @@ def task_instructions(project_dir: Path, task_id: str) -> str:
     prior_failure = ""
     inbox_file = project_dir / ".superharness" / "inbox.yaml"
     items = inbox_items(inbox_file)
-    failed = [i for i in items if i.get("task") == task_id and i.get("status") in ("failed", "stale")]
+    failed = [
+        i
+        for i in items
+        if i.get("task") == task_id and i.get("status") in ("failed", "stale")
+    ]
     if failed:
         prior_failure = f"Status: {failed[-1].get('status')}"
 
@@ -342,9 +402,13 @@ def task_instructions(project_dir: Path, task_id: str) -> str:
 
     lines.append("## Process")
     lines.append("1. Read the task details and plan section above")
-    lines.append("2. Propose a TDD plan (RED → GREEN → REFACTOR) and wait for user confirmation")
+    lines.append(
+        "2. Propose a TDD plan (RED → GREEN → REFACTOR) and wait for user confirmation"
+    )
     lines.append("3. Implement only after user approves the plan")
-    lines.append("4. Run tests after each phase — all tests must pass before marking done")
+    lines.append(
+        "4. Run tests after each phase — all tests must pass before marking done"
+    )
 
     return "\n".join(lines)
 
@@ -367,6 +431,7 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
     # 1a. Deadline and lifecycle predictions
     try:
         from datetime import datetime, timezone
+
         now = datetime.now(timezone.utc)
         conn2 = db.get_connection(str(project_dir))
         db.init_db(conn2)
@@ -385,7 +450,9 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
                     result["deadline_minutes"] = deadline
                     if created:
                         try:
-                            t = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
+                            t = datetime.fromisoformat(
+                                str(created).replace("Z", "+00:00")
+                            )
                             elapsed = int((now - t).total_seconds() / 60)
                             remaining = deadline - elapsed
                             result["deadline_elapsed"] = elapsed
@@ -422,17 +489,19 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
         pass
     # 1b. Inbox status for this task
 
-
     # 1b. Launcher log — extract Model / Effort / Via written at dispatch time
     launcher_log_dir = harness / "launcher-logs"
     if launcher_log_dir.exists():
         try:
             # Most recent log for this task+agent
-            logs = sorted(launcher_log_dir.glob(f"{task_id}-{agent}-*.log"), reverse=True)
+            logs = sorted(
+                launcher_log_dir.glob(f"{task_id}-{agent}-*.log"), reverse=True
+            )
             if not logs:
                 logs = sorted(launcher_log_dir.glob(f"{task_id}-*.log"), reverse=True)
             if logs:
                 import re as _re
+
                 # Pick most recent log that has actual content (empty logs are stale)
                 log_text = ""
                 for _log in logs:
@@ -442,7 +511,7 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
                         break
                 for line in log_text.splitlines():
                     # Strip ^D literal, backspace chars, and surrounding whitespace
-                    line = _re.sub(r'[\x00-\x08\x0e-\x1f\x7f]', '', line)
+                    line = _re.sub(r"[\x00-\x08\x0e-\x1f\x7f]", "", line)
                     line = line.replace("^D", "").strip()
                     if line.startswith("Model:"):
                         result["dispatch_model"] = line.split(":", 1)[1].strip()
@@ -454,13 +523,18 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
             logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
             pass
     # 2. Handoff — read from SQLite (source of truth)
-    handoff_dir = harness / "handoffs"  # kept for discussion markdown fallback below
+    harness / "handoffs"  # kept for discussion markdown fallback below
     try:
         import yaml as _yaml_h
         from superharness.engine import state_reader as _sr_h
+
         task_handoffs = _sr_h.get_handoffs(str(project_dir), task_id=task_id)
         for row in reversed(task_handoffs):
-            if agent and str(row.get("to_agent", "")) != agent and str(row.get("from_agent", "")) != agent:
+            if (
+                agent
+                and str(row.get("to_agent", "")) != agent
+                and str(row.get("from_agent", "")) != agent
+            ):
                 continue
             content_text = row.get("content") or ""
             hd: dict = {}
@@ -470,7 +544,11 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
                     if isinstance(parsed, dict):
                         hd = parsed
                 except Exception:
-                    logger.warning("task_report: unexpected error: %s", sys.exc_info()[1], exc_info=True)
+                    logger.warning(
+                        "task_report: unexpected error: %s",
+                        sys.exc_info()[1],
+                        exc_info=True,
+                    )
                     pass
             result["handoff_status"] = hd.get("status") or str(row.get("status", ""))
             result["handoff_summary"] = hd.get("summary", "")
@@ -479,9 +557,15 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
             result["handoff_date"] = str(hd.get("date") or row.get("created_at", ""))
             md_path = hd.get("markdown_report", "")
             if md_path:
-                md_file = project_dir / md_path if not Path(md_path).is_absolute() else Path(md_path)
+                md_file = (
+                    project_dir / md_path
+                    if not Path(md_path).is_absolute()
+                    else Path(md_path)
+                )
                 if md_file.exists():
-                    result["markdown_report"] = md_file.read_text(errors="replace")[:8000]
+                    result["markdown_report"] = md_file.read_text(errors="replace")[
+                        :8000
+                    ]
             break
     except Exception as e:
         logger.warning("dashboard-ui handoff SQLite read failed: %s", e, exc_info=True)
@@ -490,8 +574,12 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
     if "/" in task_id:
         disc_id, round_part = task_id.rsplit("/", 1)
         try:
-            from superharness.engine.db import get_connection as _gc_d, init_db as _idb_d
+            from superharness.engine.db import (
+                get_connection as _gc_d,
+                init_db as _idb_d,
+            )
             from superharness.engine import discussions_dao as _ddao
+
             _conn_d = _gc_d(str(project_dir))
             try:
                 _idb_d(_conn_d)
@@ -523,7 +611,9 @@ def task_report(project_dir: Path, task_id: str, agent: str) -> dict:
             if all_positions:
                 result["discussion_position"] = "\n\n".join(all_positions)
         except Exception as e:
-            logger.warning("dashboard-ui discussion SQLite read failed: %s", e, exc_info=True)
+            logger.warning(
+                "dashboard-ui discussion SQLite read failed: %s", e, exc_info=True
+            )
 
     return result
 
@@ -538,9 +628,9 @@ def discussion_agent_status(project_dir: Path, disc_id: str) -> dict:
     - timeline: key events (created, submitted, consensus, closed)
     """
     import subprocess as _sp
-    import yaml as _yaml
+
     harness = project_dir / ".superharness"
-    disc_dir = harness / "discussions" / disc_id
+    harness / "discussions" / disc_id
     launcher_logs = harness / "launcher-logs"
 
     result: dict = {
@@ -555,8 +645,12 @@ def discussion_agent_status(project_dir: Path, disc_id: str) -> dict:
     state: dict = {}
     submissions: list[dict] = []
     try:
-        from superharness.engine.db import get_connection as _gc_das, init_db as _idb_das
+        from superharness.engine.db import (
+            get_connection as _gc_das,
+            init_db as _idb_das,
+        )
         from superharness.engine import discussions_dao as _ddao_das
+
         _conn_das = _gc_das(str(project_dir))
         try:
             _idb_das(_conn_das)
@@ -573,36 +667,47 @@ def discussion_agent_status(project_dir: Path, disc_id: str) -> dict:
             _conn_das.close()
 
         for r in round_rows:
-            submissions.append({
-                "agent": r.agent,
-                "round": r.round_number,
-                "verdict": str(r.verdict or ""),
-                "position": str(r.content or "")[:500],
-                "points": [],
-                "submitted_at": r.created_at,
-                "content": str(r.content or "")[:5000],
-            })
+            submissions.append(
+                {
+                    "agent": r.agent,
+                    "round": r.round_number,
+                    "verdict": str(r.verdict or ""),
+                    "position": str(r.content or "")[:500],
+                    "points": [],
+                    "submitted_at": r.created_at,
+                    "content": str(r.content or "")[:5000],
+                }
+            )
         submissions.sort(key=lambda s: (s["round"], s["agent"]))
         result["submissions"] = submissions
     except Exception as e:
-        logger.warning("dashboard-ui discussion SQLite read failed: %s", e, exc_info=True)
+        logger.warning(
+            "dashboard-ui discussion SQLite read failed: %s", e, exc_info=True
+        )
 
     # Build timeline from state + submissions
     created = state.get("created_at", "")
     if created:
         result["timeline"].append({"event": "created", "at": str(created)})
     for s in submissions:
-        result["timeline"].append({
-            "event": "submitted",
-            "agent": s["agent"],
-            "round": s["round"],
-            "verdict": s["verdict"],
-            "at": s["submitted_at"],
-        })
+        result["timeline"].append(
+            {
+                "event": "submitted",
+                "agent": s["agent"],
+                "round": s["round"],
+                "verdict": s["verdict"],
+                "at": s["submitted_at"],
+            }
+        )
     consensus_at = state.get("consensus_at", "")
     if consensus_at:
-        result["timeline"].append({"event": "consensus", "at": str(consensus_at),
-                                   "verdict": str(state.get("consensus_verdict", ""))})
+        result["timeline"].append(
+            {
+                "event": "consensus",
+                "at": str(consensus_at),
+                "verdict": str(state.get("consensus_verdict", "")),
+            }
+        )
     closed_at = state.get("closed_at", "")
     if closed_at:
         result["timeline"].append({"event": "closed", "at": str(closed_at)})
@@ -616,6 +721,7 @@ def discussion_agent_status(project_dir: Path, disc_id: str) -> dict:
     inbox_agents: dict[int, dict] = {}
     try:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(str(project_dir))
         try:
             init_db(conn)
@@ -638,7 +744,11 @@ def discussion_agent_status(project_dir: Path, disc_id: str) -> dict:
     # Build snapshot of running processes
     running_procs: dict[int, tuple[str, str, str]] = {}
     try:
-        ps_out = _sp.run(["ps", "ax", "-o", "pid=,pcpu=,args=,etime="], capture_output=True, text=True).stdout
+        ps_out = _sp.run(
+            ["ps", "ax", "-o", "pid=,pcpu=,args=,etime="],
+            capture_output=True,
+            text=True,
+        ).stdout
         for line in ps_out.splitlines():
             parts = line.strip().split(None, 2)
             if len(parts) < 3:
@@ -661,14 +771,28 @@ def discussion_agent_status(project_dir: Path, disc_id: str) -> dict:
         if pid in seen_pids:
             continue
         seen_pids.add(pid)
-        task_short = info["task"].rsplit("/", 1)[-1] if "/" in info["task"] else info["task"]
+        task_short = (
+            info["task"].rsplit("/", 1)[-1] if "/" in info["task"] else info["task"]
+        )
         if pid in running_procs:
             cpu, cmd, elapsed = running_procs[pid]
-            result["agents"].append({"pid": str(pid), "cpu": f"{cpu}%",
-                          "cmd": f"{info['agent']} [{task_short}]", "elapsed": elapsed})
+            result["agents"].append(
+                {
+                    "pid": str(pid),
+                    "cpu": f"{cpu}%",
+                    "cmd": f"{info['agent']} [{task_short}]",
+                    "elapsed": elapsed,
+                }
+            )
         else:
-            result["agents"].append({"pid": str(pid), "cpu": "—",
-                          "cmd": f"{info['agent']} [{task_short}] (exited)", "elapsed": "—"})
+            result["agents"].append(
+                {
+                    "pid": str(pid),
+                    "cpu": "—",
+                    "cmd": f"{info['agent']} [{task_short}] (exited)",
+                    "elapsed": "—",
+                }
+            )
 
     project_str = str(project_dir.resolve())
 
@@ -679,19 +803,30 @@ def discussion_agent_status(project_dir: Path, disc_id: str) -> dict:
         if not any(a in cmd.lower() for a in ("claude", "codex", "gemini")):
             continue
         if project_str not in cmd:
-            if not any(m in cmd for m in (".superharness", "--task", "--project", "delegate-to-")):
+            if not any(
+                m in cmd
+                for m in (".superharness", "--task", "--project", "delegate-to-")
+            ):
                 continue
         seen_pids.add(pid)
-        result["agents"].append({"pid": str(pid), "cpu": f"{cpu}%", "cmd": cmd[:50], "elapsed": elapsed})
+        result["agents"].append(
+            {"pid": str(pid), "cpu": f"{cpu}%", "cmd": cmd[:50], "elapsed": elapsed}
+        )
 
     # --- 3. Launcher logs ---
     if launcher_logs.exists():
-        for lf in sorted(launcher_logs.glob(f"*{disc_id}*"), key=lambda p: p.stat().st_mtime, reverse=True):
+        for lf in sorted(
+            launcher_logs.glob(f"*{disc_id}*"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        ):
             try:
                 size = lf.stat().st_size
                 name = str(lf.name)
                 if name.endswith(".log"):
-                    result["logs"].append({"name": name, "size_kb": round(size / 1024, 1)})
+                    result["logs"].append(
+                        {"name": name, "size_kb": round(size / 1024, 1)}
+                    )
             except Exception as e:
                 logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                 pass
@@ -701,7 +836,9 @@ def discussion_agent_status(project_dir: Path, disc_id: str) -> dict:
     return result
 
 
-def task_log_content(project_dir: Path, task_id: str, agent: str, lines: int = 0) -> dict:
+def task_log_content(
+    project_dir: Path, task_id: str, agent: str, lines: int = 0
+) -> dict:
     """Retrieve live launcher log content for a task+agent.
 
     Args:
@@ -736,13 +873,17 @@ def task_log_content(project_dir: Path, task_id: str, agent: str, lines: int = 0
         pattern = f"{task_id}-{agent}-*.log"
     else:
         pattern = f"{task_id}-*.log"
-    matching = sorted(log_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
+    matching = sorted(
+        log_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True
+    )
 
     # Fallback: try glob with underscore separator (discussion round files)
     if not matching and agent:
         safe_task = task_id.replace("/", "_")
         pattern2 = f"*{safe_task}*{agent}*.log"
-        matching = sorted(log_dir.glob(pattern2), key=lambda p: p.stat().st_mtime, reverse=True)
+        matching = sorted(
+            log_dir.glob(pattern2), key=lambda p: p.stat().st_mtime, reverse=True
+        )
 
     if matching:
         log_file = matching[0]
@@ -750,39 +891,47 @@ def task_log_content(project_dir: Path, task_id: str, agent: str, lines: int = 0
         result["log_file"] = str(log_file.relative_to(project_dir))
         try:
             content = log_file.read_text(errors="replace")
-            
+
             import re
+
             # Strip ANSI escape sequences
-            content = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', content)
+            content = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "", content)
             # Box-drawing and terminal framing
-            content = re.sub(r'[╭╮╰╯─│┌┐└┘├┤┬┴┼▐▌▛▜▀▄▘▝█]', '', content)
+            content = re.sub(r"[╭╮╰╯─│┌┐└┘├┤┬┴┼▐▌▛▜▀▄▘▝█]", "", content)
             # Nerd Font icons and powerline symbols (U+E000-U+F8FF and U+2500+)
-            content = re.sub(r'[\ue000-\uf8ff\u2500-\u259f\u25a0-\u25ff]', '', content)
+            content = re.sub(r"[\ue000-\uf8ff\u2500-\u259f\u25a0-\u25ff]", "", content)
             # Control characters (except newline and tab)
-            content = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', content)
+            content = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]", "", content)
             # Strip lines that are only whitespace or consist only of terminal artifacts
-            content = '\n'.join(l for l in content.splitlines() if l.strip() and len(l.strip()) > 1)
+            content = "\n".join(
+                line for line in content.splitlines() if line.strip() and len(line.strip()) > 1
+            )
             # Collapse multiple spaces
-            content = re.sub(r' {3,}', '  ', content)
+            content = re.sub(r" {3,}", "  ", content)
             # Collapse blank lines
-            content = re.sub(r'\n{3,}', '\n\n', content)
+            content = re.sub(r"\n{3,}", "\n\n", content)
             # Remove terminal cursor positioning artifacts (lines with only digits+spaces)
-            content = re.sub(r'^\s*\d+\s*$', '', content, flags=re.MULTILINE)
+            content = re.sub(r"^\s*\d+\s*$", "", content, flags=re.MULTILINE)
             # Remove common terminal noise patterns
-            content = content.replace('^D', '')
-            content = content.replace('✳', '')
+            content = content.replace("^D", "")
+            content = content.replace("✳", "")
             # Strip all non-ASCII characters (U+0080 and above) for readability
-            content = re.sub(r'[^\x00-\x7f]', '', content)
+            content = re.sub(r"[^\x00-\x7f]", "", content)
             # Remove lines that are only whitespace/symbols after ASCII strip
-            content = '\n'.join(l for l in content.splitlines() if l.strip() and len(l.strip()) > 2)
+            content = "\n".join(
+                line for line in content.splitlines() if line.strip() and len(line.strip()) > 2
+            )
 
             # Activity summary
             content_lower = content.lower()
             summary = []
-            if "plan mode" in content_lower: summary.append("Phase: PLANNING")
-            elif "implement" in content_lower: summary.append("Phase: IMPLEMENTATION")
-            errs = re.findall(r'(?:error|failed|exception).*', content_lower)
-            if errs: summary.append(f"Errors: {errs[-1][:80]}")
+            if "plan mode" in content_lower:
+                summary.append("Phase: PLANNING")
+            elif "implement" in content_lower:
+                summary.append("Phase: IMPLEMENTATION")
+            errs = re.findall(r"(?:error|failed|exception).*", content_lower)
+            if errs:
+                summary.append(f"Errors: {errs[-1][:80]}")
             result["activity"] = "\n".join(summary) if summary else "Working..."
 
             if lines > 0:
@@ -821,10 +970,14 @@ def task_log_content(project_dir: Path, task_id: str, agent: str, lines: int = 0
 def _git_diff_stat(project_dir: Path) -> str:
     """Return compact git diff --stat for uncommitted changes."""
     import subprocess
+
     try:
         r = subprocess.run(
             ["git", "diff", "--stat", "--no-color", "HEAD"],
-            capture_output=True, text=True, check=False, timeout=5,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
             cwd=str(project_dir),
         )
         if r.returncode == 0 and r.stdout.strip():
@@ -838,11 +991,14 @@ def _git_diff_stat(project_dir: Path) -> str:
 def _detect_sdk_activity(project_dir: Path) -> str:
     """Scan the newest SDK session JSONL for current activity."""
     import json as _json
+
     safe_path = str(project_dir).replace("/", "-")
     session_dir = Path.home() / ".claude" / "projects" / safe_path
     if not session_dir.exists():
         return ""
-    candidates = sorted(session_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+    candidates = sorted(
+        session_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True
+    )
     if not candidates:
         return ""
     jsonl = candidates[0]
@@ -855,7 +1011,6 @@ def _detect_sdk_activity(project_dir: Path) -> str:
             f.seek(max(0, size - 8192))
             tail = f.read()
         last_tool = ""
-        last_text = ""
         for line in tail.strip().splitlines():
             if not line.strip():
                 continue
@@ -872,10 +1027,14 @@ def _detect_sdk_activity(project_dir: Path) -> str:
                             inp = block.get("input", {})
                             if name == "Agent":
                                 desc = inp.get("description", "")
-                                return f"sub-agent running: {desc}" if desc else "sub-agent running"
+                                return (
+                                    f"sub-agent running: {desc}"
+                                    if desc
+                                    else "sub-agent running"
+                                )
                             last_tool = name
                         elif block.get("type") == "text":
-                            last_text = block.get("text", "")[:100]
+                            block.get("text", "")[:100]
         if last_tool:
             return f"last tool: {last_tool}"
         return ""
@@ -890,6 +1049,7 @@ def contract_owners(contract_file: Path) -> list[str]:
     raw_tasks: list[dict] = []
     try:
         from superharness.engine import state_reader as _sr
+
         raw_tasks = _sr.get_tasks(project_dir)
     except Exception as e:
         logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
@@ -905,10 +1065,12 @@ def contract_owners(contract_file: Path) -> list[str]:
     return owners
 
 
-from superharness.engine.state_reader import parse_iso_utc as parse_utc_timestamp
+from superharness.engine.state_reader import parse_iso_utc as parse_utc_timestamp  # noqa: E402
 
 
-def watcher_health(runtime: dict, items: list[dict], now_utc: str, heartbeat: dict | None = None) -> dict:
+def watcher_health(
+    runtime: dict, items: list[dict], now_utc: str, heartbeat: dict | None = None
+) -> dict:
     now_dt = parse_utc_timestamp(now_utc)
     state = runtime.get("state", "")
     loaded = bool(runtime.get("loaded", False))
@@ -947,7 +1109,11 @@ def watcher_health(runtime: dict, items: list[dict], now_utc: str, heartbeat: di
             "stale_count": stale_count,
             "failed_count": failed_count,
         }
-    if state == "not running" and run_interval_seconds > 0 and last_exit_code in {"0", "(never exited)"}:
+    if (
+        state == "not running"
+        and run_interval_seconds > 0
+        and last_exit_code in {"0", "(never exited)"}
+    ):
         if stale_count > 0 or failed_count > 0:
             return {
                 "level": "warn",
@@ -963,7 +1129,11 @@ def watcher_health(runtime: dict, items: list[dict], now_utc: str, heartbeat: di
             "stale_count": stale_count,
             "failed_count": failed_count,
         }
-    if state in {"running", "active"} and run_interval_seconds > 0 and last_exit_code in {"0", "(never exited)"}:
+    if (
+        state in {"running", "active"}
+        and run_interval_seconds > 0
+        and last_exit_code in {"0", "(never exited)"}
+    ):
         if stale_count > 0 or failed_count > 0:
             return {
                 "level": "warn",
@@ -1035,6 +1205,7 @@ def _agent_status_health(project_dir: Path, stale_seconds: int = 120) -> dict:
     """
     try:
         from superharness.engine.agent_status import agent_status_health
+
         return agent_status_health(project_dir, stale_seconds=stale_seconds)
     except Exception as e:
         logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
@@ -1042,8 +1213,12 @@ def _agent_status_health(project_dir: Path, stale_seconds: int = 120) -> dict:
 
 
 def heartbeat_health(project_dir: Path, stale_seconds: int = 120) -> dict:
-    watcher_project = Path(str(watcher_config(project_dir).get("watcher_project", str(project_dir))))
-    hb_root = watcher_project if (watcher_project / ".superharness").exists() else project_dir
+    watcher_project = Path(
+        str(watcher_config(project_dir).get("watcher_project", str(project_dir)))
+    )
+    hb_root = (
+        watcher_project if (watcher_project / ".superharness").exists() else project_dir
+    )
     hb_file = hb_root / ".superharness" / "watcher.heartbeat"
     if not hb_file.exists():
         return {
@@ -1087,6 +1262,7 @@ def contract_id(contract_file: Path) -> str:
     project_dir = str(contract_file.parent.parent)
     try:
         from superharness.engine import state_reader as _sr
+
         doc = _sr.get_contract_doc(project_dir)
         return str(doc.get("id", "") or "")
     except Exception as e:
@@ -1104,25 +1280,38 @@ def contract_tasks(contract_file: Path) -> list[dict]:
     raw_tasks: list[dict] = []
     try:
         from superharness.engine import state_reader as _sr
+
         raw_tasks = _sr.get_top_level_tasks(project_dir)
     except Exception as e:
         logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         pass
     tasks = []
     for t in raw_tasks:
-        tasks.append({
-            "id": str(t.get("id", "")),
-            "title": str(t.get("title", "")),
-            "status": str(t.get("status", "todo")),
-            "owner": str(t.get("owner", "")),
-            "review_target": _review_target_for_owner(str(t.get("owner", ""))) if str(t.get("status", "todo")) == "review_requested" else "",
-            "verified": bool(t.get("verified", False)),
-            "workflow": str(t.get("workflow", "")),
-            "scheduled_after": str(t.get("scheduled_after", "")),
-            "due_by": str(t.get("due_by", "")),
-            "depends_on": (t.get("blocked_by") or t.get("depends_on") or []) if isinstance(t.get("blocked_by") or t.get("depends_on"), list) else [x.strip() for x in str(t.get("blocked_by") or t.get("depends_on") or "").strip("[]").split(",") if x.strip()],
-            "worktree_path": str(t.get("worktree_path", "")),
-        })
+        tasks.append(
+            {
+                "id": str(t.get("id", "")),
+                "title": str(t.get("title", "")),
+                "status": str(t.get("status", "todo")),
+                "owner": str(t.get("owner", "")),
+                "review_target": _review_target_for_owner(str(t.get("owner", "")))
+                if str(t.get("status", "todo")) == "review_requested"
+                else "",
+                "verified": bool(t.get("verified", False)),
+                "workflow": str(t.get("workflow", "")),
+                "scheduled_after": str(t.get("scheduled_after", "")),
+                "due_by": str(t.get("due_by", "")),
+                "depends_on": (t.get("blocked_by") or t.get("depends_on") or [])
+                if isinstance(t.get("blocked_by") or t.get("depends_on"), list)
+                else [
+                    x.strip()
+                    for x in str(t.get("blocked_by") or t.get("depends_on") or "")
+                    .strip("[]")
+                    .split(",")
+                    if x.strip()
+                ],
+                "worktree_path": str(t.get("worktree_path", "")),
+            }
+        )
     return tasks
 
 
@@ -1132,6 +1321,7 @@ def pending_approvals(handoff_dir: Path, project_dir: Path | None = None) -> lis
     _project_dir = project_dir if project_dir is not None else handoff_dir.parent.parent
     try:
         from superharness.engine import state_reader as _sr
+
         handoffs = _sr.get_handoffs(str(_project_dir))
         for h in handoffs:
             status = str(h.get("status", ""))
@@ -1141,15 +1331,19 @@ def pending_approvals(handoff_dir: Path, project_dir: Path | None = None) -> lis
             approved = bool(gate.get("approved_by_user", False))
             pending = status == "pending_user_approval" or (required and not approved)
             if pending:
-                rows.append({
-                    "task": str(h.get("task_id", "")),
-                    "status": status,
-                    "required": required,
-                    "approved_by_user": approved,
-                    "markdown_report": str(meta.get("markdown_report", "")),
-                })
+                rows.append(
+                    {
+                        "task": str(h.get("task_id", "")),
+                        "status": status,
+                        "required": required,
+                        "approved_by_user": approved,
+                        "markdown_report": str(meta.get("markdown_report", "")),
+                    }
+                )
     except Exception:
-        logger.warning("pending_approvals: unexpected error: %s", sys.exc_info()[1], exc_info=True)
+        logger.warning(
+            "pending_approvals: unexpected error: %s", sys.exc_info()[1], exc_info=True
+        )
         pass
     return rows
 
@@ -1160,13 +1354,14 @@ def plan_proposals(harness_dir: Path) -> list[dict]:
     Prefers state_reader (SQLite-aware); falls back to YAML.
     """
     rows: list[dict] = []
-    contract_file = harness_dir / "contract.yaml"
-    handoff_dir = harness_dir / "handoffs"
+    harness_dir / "contract.yaml"
+    harness_dir / "handoffs"
 
     all_tasks: list[dict] | None = None
     project_dir = str(harness_dir.parent)
     try:
         from superharness.engine import state_reader as _sr
+
         all_tasks = _sr.get_tasks(project_dir)
     except Exception as e:
         logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
@@ -1189,6 +1384,7 @@ def plan_proposals(harness_dir: Path) -> list[dict]:
         try:
             import yaml as _yaml_pp
             from superharness.engine import state_reader as _sr_pp
+
             task_handoffs = _sr_pp.get_handoffs(project_dir, task_id=task_id)
             for row in reversed(task_handoffs):
                 if str(row.get("status", "")) == "plan_proposed":
@@ -1200,39 +1396,56 @@ def plan_proposals(harness_dir: Path) -> list[dict]:
                             if isinstance(parsed, dict):
                                 hdata = parsed
                         except Exception:
-                            logger.warning("plan_proposals: unexpected error: %s", sys.exc_info()[1], exc_info=True)
+                            logger.warning(
+                                "plan_proposals: unexpected error: %s",
+                                sys.exc_info()[1],
+                                exc_info=True,
+                            )
                             pass
                     handoff_summary = hdata.get("summary", "") or hdata.get("scope", "")
                     if isinstance(handoff_summary, list):
                         handoff_summary = "\n".join(str(x) for x in handoff_summary)
                     break
         except Exception as e:
-            logger.warning("dashboard-ui plan_proposals handoff read failed: %s", e, exc_info=True)
-        rows.append({
-            "task": task_id,
-            "title": title,
-            "from": owner,
-            "summary": handoff_summary or summary or title,
-        })
+            logger.warning(
+                "dashboard-ui plan_proposals handoff read failed: %s", e, exc_info=True
+            )
+        rows.append(
+            {
+                "task": task_id,
+                "title": title,
+                "from": owner,
+                "summary": handoff_summary or summary or title,
+            }
+        )
     return rows
 
 
-def _set_task_status(harness_dir: Path, task_id: str, to_status: str, from_status: str | None = None) -> dict:
+def _set_task_status(
+    harness_dir: Path, task_id: str, to_status: str, from_status: str | None = None
+) -> dict:
     """Set a contract task status. Uses unified state_writer (YAML + SQLite)."""
     project_dir = str(harness_dir.parent)
     try:
         from superharness.engine import state_writer
-        ok = state_writer.set_task_status(project_dir, task_id, to_status, from_status=from_status)
+
+        ok = state_writer.set_task_status(
+            project_dir, task_id, to_status, from_status=from_status
+        )
         if ok:
             return {"ok": True, "task": task_id, "status": to_status}
-        
+
         # Determine specific error
         from superharness.engine import state_reader
+
         task = state_reader.get_task(project_dir, task_id)
         if not task:
             return {"ok": False, "error": f"task {task_id} not found"}
         if from_status and task.get("status") != from_status:
-            return {"ok": False, "error": f"task {task_id} is {task.get('status')!r}, expected {from_status!r}"}
+            return {
+                "ok": False,
+                "error": f"task {task_id} is {task.get('status')!r}, expected {from_status!r}",
+            }
         return {"ok": False, "error": f"transition for {task_id} failed"}
     except Exception as e:
         logger.warning("_set_task_status: unexpected error: %s", e, exc_info=True)
@@ -1244,6 +1457,7 @@ def _contract_task(harness_dir: Path, task_id: str) -> dict | None:
     project_dir = str(harness_dir.parent)
     try:
         from superharness.engine import state_reader
+
         return state_reader.get_task(project_dir, task_id)
     except Exception as e:
         logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
@@ -1265,6 +1479,7 @@ def board_view(contract_file: Path) -> dict:
     Prefers state_reader (SQLite-aware); falls back to YAML.
     """
     from superharness.engine.next_action import STATUS_TO_COL as _STATUS_TO_COL
+
     # Add plan_confirmed alias (legacy status)
     _STATUS_TO_COL = dict(_STATUS_TO_COL)
     _STATUS_TO_COL["plan_confirmed"] = "plan"
@@ -1273,18 +1488,27 @@ def board_view(contract_file: Path) -> dict:
 
     raw_tasks: list[dict] | None = None
     project_dir = str(contract_file.parent.parent)
-    _in_harness = contract_file.parent.name == ".superharness" and contract_file.parent.exists()
+    _in_harness = (
+        contract_file.parent.name == ".superharness" and contract_file.parent.exists()
+    )
     if _in_harness:
         try:
             from superharness.engine import state_reader as _sr
+
             raw_tasks = _sr.get_top_level_tasks(project_dir)
         except Exception as e:
             logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
             pass
     if raw_tasks is None:
-        return {"columns": empty, "review_queue": [], "totals": {col: 0 for col in empty}}
+        return {
+            "columns": empty,
+            "review_queue": [],
+            "totals": {col: 0 for col in empty},
+        }
 
-    columns: dict = {col: [] for col in ("todo", "plan", "in_progress", "review", "done")}
+    columns: dict = {
+        col: [] for col in ("todo", "plan", "in_progress", "review", "done")
+    }
     review_queue: list = []
 
     for t in raw_tasks:
@@ -1326,28 +1550,31 @@ def _propose_plan_handoff(
     'todo' status; transitions it to 'plan_proposed'.
     """
     import yaml  # noqa: F811
+
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     handoff_dir = harness_dir / "handoffs"
     handoff_dir.mkdir(parents=True, exist_ok=True)
 
     # Transition contract status todo -> plan_proposed
-    status_result = _set_task_status(harness_dir, task_id, "plan_proposed", from_status="todo")
+    status_result = _set_task_status(
+        harness_dir, task_id, "plan_proposed", from_status="todo"
+    )
     if not status_result.get("ok"):
         return status_result
 
     safe_ts = now.replace(":", "-")
     handoff_file = handoff_dir / f"{task_id}-plan-{safe_ts}-{author}.yaml"
     doc = {
-        "task":   task_id,
-        "phase":  "plan",
+        "task": task_id,
+        "phase": "plan",
         "status": "plan_proposed",
-        "from":   author,
-        "to":     "owner",
-        "date":   now,
-        "plan":   plan_summary.strip() or "(plan body pending)",
+        "from": author,
+        "to": "owner",
+        "date": now,
+        "plan": plan_summary.strip() or "(plan body pending)",
         "tdd": {
-            "red":      tdd_red.strip()      or "(red phase pending)",
-            "green":    tdd_green.strip()    or "(green phase pending)",
+            "red": tdd_red.strip() or "(red phase pending)",
+            "green": tdd_green.strip() or "(green phase pending)",
             "refactor": tdd_refactor.strip() or "(refactor phase pending)",
         },
     }
@@ -1355,40 +1582,56 @@ def _propose_plan_handoff(
         doc["risks"] = risks.strip()
 
     try:
-        handoff_file.write_text(yaml.dump(doc, default_flow_style=False, allow_unicode=True, sort_keys=False))
+        handoff_file.write_text(
+            yaml.dump(
+                doc, default_flow_style=False, allow_unicode=True, sort_keys=False
+            )
+        )
     except Exception as exc:  # shipguard:ignore PY-007
-        logger.warning("_propose_plan_handoff: unexpected error: %s", exc, exc_info=True)
+        logger.warning(
+            "_propose_plan_handoff: unexpected error: %s", exc, exc_info=True
+        )
         # Roll back status transition so task doesn't sit in plan_proposed without a handoff.
         _set_task_status(harness_dir, task_id, "todo", from_status="plan_proposed")
         return {"ok": False, "error": f"failed to write handoff: {exc}"}
 
-    return {"ok": True, "task": task_id, "handoff": str(handoff_file.name), "status": "plan_proposed"}
+    return {
+        "ok": True,
+        "task": task_id,
+        "handoff": str(handoff_file.name),
+        "status": "plan_proposed",
+    }
 
 
 def _confirm_plan(harness_dir: Path, task_id: str) -> dict:
     """Confirm a plan_proposed task: set contract task to todo, update handoff."""
-    import yaml  # noqa: F811
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    handoff_dir = harness_dir / "handoffs"
+    harness_dir / "handoffs"
     errors = []
 
     # SQLite-primary transition (via state_writer which handles both)
     project_dir = str(harness_dir.parent)
     try:
         from superharness.engine import state_writer
+
         ok = state_writer.set_task_status(
-            project_dir, task_id, "todo",
+            project_dir,
+            task_id,
+            "todo",
             from_status="plan_proposed",
-            plan_confirmed_at=now
+            plan_confirmed_at=now,
         )
         if not ok:
             # Check if task exists to give better error
             from superharness.engine import state_reader
+
             task = state_reader.get_task(project_dir, task_id)
             if not task:
                 errors.append(f"task {task_id} not found")
             else:
-                errors.append(f"task {task_id} transition plan_proposed -> todo failed (current: {task.get('status')})")
+                errors.append(
+                    f"task {task_id} transition plan_proposed -> todo failed (current: {task.get('status')})"
+                )
     except Exception as e:
         logger.warning("_confirm_plan: unexpected error: %s", e, exc_info=True)
         errors.append(f"state_writer error: {e}")
@@ -1396,14 +1639,20 @@ def _confirm_plan(harness_dir: Path, task_id: str) -> dict:
     # Update matching handoff status via SQLite — YAML file update is export-only
     try:
         from superharness.engine import state_reader as _sr_cp
+
         task_handoffs_cp = _sr_cp.get_handoffs(str(harness_dir.parent), task_id=task_id)
         plan_row = next(
-            (r for r in reversed(task_handoffs_cp) if str(r.get("status", "")) == "plan_proposed"),
+            (
+                r
+                for r in reversed(task_handoffs_cp)
+                if str(r.get("status", "")) == "plan_proposed"
+            ),
             None,
         )
         if plan_row:
             import yaml as _yaml_cp
             from superharness.engine import state_writer as _sw_cp
+
             content_text_cp = plan_row.get("content") or ""
             hdata: dict = {}
             if content_text_cp:
@@ -1412,13 +1661,25 @@ def _confirm_plan(harness_dir: Path, task_id: str) -> dict:
                     if isinstance(parsed_cp, dict):
                         hdata = parsed_cp
                 except Exception:
-                    logger.warning("_confirm_plan: unexpected error: %s", sys.exc_info()[1], exc_info=True)
+                    logger.warning(
+                        "_confirm_plan: unexpected error: %s",
+                        sys.exc_info()[1],
+                        exc_info=True,
+                    )
                     pass
             hdata["status"] = "plan_confirmed"
             gate = hdata.get("plan_gate", {}) or {}
-            gate.update({"confirmed_by_user": True, "confirmed_at": now, "confirmed_by": "owner"})
+            gate.update(
+                {
+                    "confirmed_by_user": True,
+                    "confirmed_at": now,
+                    "confirmed_by": "owner",
+                }
+            )
             hdata["plan_gate"] = gate
-            _sw_cp.write_handoff_to_db(str(harness_dir.parent), hdata, task_id=task_id, phase="plan")
+            _sw_cp.write_handoff_to_db(
+                str(harness_dir.parent), hdata, task_id=task_id, phase="plan"
+            )
     except Exception as e:
         logger.warning("_confirm_plan: unexpected error: %s", e, exc_info=True)
         errors.append(f"handoff update error: {e}")
@@ -1483,13 +1744,19 @@ def watcher_config(project_dir: Path) -> dict:
 def board_tasks(contract_file: Path) -> dict[str, list[dict]]:
     """Group contract tasks by board column (todo/plan/active/review/done/stopped)."""
     from superharness.engine.next_action import STATUS_TO_COL
+
     # Adapt canonical mapping to board_tasks column names
     _COL_ADAPT = {"in_progress": "active"}
     _STATUS_TO_COL = {k: _COL_ADAPT.get(v, v) for k, v in STATUS_TO_COL.items()}
     # Add stopped as a separate column
     _STATUS_TO_COL["stopped"] = "stopped"
     columns: dict[str, list[dict]] = {
-        "todo": [], "plan": [], "active": [], "review": [], "done": [], "stopped": []
+        "todo": [],
+        "plan": [],
+        "active": [],
+        "review": [],
+        "done": [],
+        "stopped": [],
     }
 
     if not contract_file.exists():
@@ -1497,39 +1764,49 @@ def board_tasks(contract_file: Path) -> dict[str, list[dict]]:
 
     raw_tasks: list[dict] | None = None
     project_dir = str(contract_file.parent.parent)
-    _in_harness = contract_file.parent.name == ".superharness" and contract_file.parent.exists()
-    
+    _in_harness = (
+        contract_file.parent.name == ".superharness" and contract_file.parent.exists()
+    )
+
     # SQLite is the canonical source of truth (post-YAML migration). The
     # legacy YAML fallback was removed — any test fixture must seed SQLite
     # via tasks_dao.upsert, not write contract.yaml.
     try:
         from superharness.engine import state_reader as _sr
+
         raw_tasks = _sr.get_top_level_tasks(project_dir)
     except Exception as e:
         logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         pass
     if not raw_tasks:
-        return columns # Return empty columns instead of {} to avoid KeyError
+        return columns  # Return empty columns instead of {} to avoid KeyError
 
-    for t in (raw_tasks or []):
+    for t in raw_tasks or []:
         if not isinstance(t, dict):
             continue
         st = str(t.get("status", "todo"))
         col = _STATUS_TO_COL.get(st, "todo")
-        columns[col].append({
-            "id": str(t.get("id", "")),
-            "title": str(t.get("title", "")),
-            "status": st,
-            "owner": str(t.get("owner", "")),
-            "verified": bool(t.get("verified", False)),
-        })
+        columns[col].append(
+            {
+                "id": str(t.get("id", "")),
+                "title": str(t.get("title", "")),
+                "status": st,
+                "owner": str(t.get("owner", "")),
+                "verified": bool(t.get("verified", False)),
+            }
+        )
 
     return columns
 
 
 def review_queue(contract_file: Path) -> list[dict]:
     """Return tasks in review states ordered by urgency (review_failed first)."""
-    _REVIEW_STATUSES = {"report_ready", "review_requested", "review_passed", "review_failed"}
+    _REVIEW_STATUSES = {
+        "report_ready",
+        "review_requested",
+        "review_passed",
+        "review_failed",
+    }
     _URGENCY = {
         "review_failed": 0,
         "report_ready": 1,
@@ -1539,13 +1816,16 @@ def review_queue(contract_file: Path) -> list[dict]:
 
     raw_tasks: list[dict] | None = None
     project_dir = str(contract_file.parent.parent)
-    _in_harness = contract_file.parent.name == ".superharness" and contract_file.parent.exists()
-    
+    _in_harness = (
+        contract_file.parent.name == ".superharness" and contract_file.parent.exists()
+    )
+
     # SQLite is the canonical source of truth (post-YAML migration). The
     # legacy YAML fallback was removed — any test fixture must seed SQLite
     # via tasks_dao.upsert, not write contract.yaml.
     try:
         from superharness.engine import state_reader as _sr
+
         raw_tasks = _sr.get_top_level_tasks(project_dir)
     except Exception as e:
         logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
@@ -1560,15 +1840,17 @@ def review_queue(contract_file: Path) -> list[dict]:
         st = str(t.get("status", ""))
         if st not in _REVIEW_STATUSES:
             continue
-        queue.append({
-            "id": str(t.get("id", "")),
-            "title": str(t.get("title", "")),
-            "status": st,
-            "owner": str(t.get("owner", "")),
-            "review_target": _review_target_for_owner(str(t.get("owner", ""))),
-            "verified": bool(t.get("verified", False)),
-            "urgency": _URGENCY.get(st, 9),
-        })
+        queue.append(
+            {
+                "id": str(t.get("id", "")),
+                "title": str(t.get("title", "")),
+                "status": st,
+                "owner": str(t.get("owner", "")),
+                "review_target": _review_target_for_owner(str(t.get("owner", ""))),
+                "verified": bool(t.get("verified", False)),
+                "urgency": _URGENCY.get(st, 9),
+            }
+        )
 
     return sorted(queue, key=lambda x: x["urgency"])
 
@@ -1577,11 +1859,16 @@ def budget_signals(project_dir: Path) -> dict:
     """Extract per-agent budget/usage signals from .superharness/agents/*.status.yaml."""
     try:
         from superharness.engine.agent_status import read_all_agent_statuses
+
         records = read_all_agent_statuses(project_dir)
         signals: dict = {}
         for runtime, record in records.items():
             if record and record.budget:
-                signals[runtime] = record.budget if isinstance(record.budget, dict) else dict(record.budget)
+                signals[runtime] = (
+                    record.budget
+                    if isinstance(record.budget, dict)
+                    else dict(record.budget)
+                )
         return {"agents": signals, "available": True}
     except Exception as e:
         logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
@@ -1592,14 +1879,20 @@ def budget_signals(project_dir: Path) -> dict:
         signals = {}
         try:
             import yaml  # noqa: F811
-            for f in agents_dir.glob("*.status.yaml"):  # noqa: state-read — legacy budget signal scan; budgets in SQLite when migration v25 has populated rows
+
+            for f in agents_dir.glob("*.status.yaml"):  # shipguard:ignore state-read: legacy budget signal scan after SQLite migration
                 try:
-                    data = yaml.safe_load(f.read_text(encoding="utf-8", errors="replace")) or {}  # noqa: state-read — legacy budget signal scan
+                    data = (
+                        yaml.safe_load(f.read_text(encoding="utf-8", errors="replace"))
+                        or {}
+                    )  # shipguard:ignore state-read: legacy budget signal scan
                     runtime = data.get("runtime", f.stem.replace(".status", ""))
                     if "budget" in data and data["budget"]:
                         signals[runtime] = data["budget"]
                 except Exception as e:
-                    logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
+                    logger.warning(
+                        "dashboard-ui unexpected error: %s", e, exc_info=True
+                    )
                     continue
         except Exception as e:
             logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
@@ -1610,6 +1903,7 @@ def budget_signals(project_dir: Path) -> dict:
 def project_label(project_dir: Path) -> str:
     # Match install-launchd-inbox-watcher.sh: basename | tr -cs 'A-Za-z0-9' '-'
     import re
+
     slug = re.sub(r"[^A-Za-z0-9]+", "-", project_dir.name).strip("-")
     if not slug:
         slug = "project"
@@ -1618,10 +1912,14 @@ def project_label(project_dir: Path) -> str:
 
 # ── Behavioral profile data (Iteration 7) ────────────────────────────────────
 
+
 def _profile_data(project_dir: Path) -> dict:
     """Return behavioral profile + recent trials for the dashboard card."""
     import json as _json
-    upath = os.path.join(os.path.expanduser("~"), ".config", "superharness", "behavioral")
+
+    upath = os.path.join(
+        os.path.expanduser("~"), ".config", "superharness", "behavioral"
+    )
     profiles = {}
     if os.path.isdir(upath):
         for fname in os.listdir(upath):
@@ -1630,7 +1928,11 @@ def _profile_data(project_dir: Path) -> dict:
                     with open(os.path.join(upath, fname)) as f:
                         profiles[fname.replace(".json", "")] = _json.load(f)
                 except Exception:
-                    logger.warning("_profile_data: unexpected error: %s", sys.exc_info()[1], exc_info=True)
+                    logger.warning(
+                        "_profile_data: unexpected error: %s",
+                        sys.exc_info()[1],
+                        exc_info=True,
+                    )
                     pass
 
     trials = []
@@ -1640,25 +1942,31 @@ def _profile_data(project_dir: Path) -> dict:
             for row in conn.execute(
                 "SELECT * FROM profile_trials ORDER BY trial_started_at DESC LIMIT 10"
             ).fetchall():
-                trials.append({
-                    "id": row["id"],
-                    "profile_key": row["profile_key"],
-                    "old_value": row["old_value"],
-                    "new_value": row["new_value"],
-                    "outcome": row["outcome"],
-                    "reverted": bool(row["reverted"]),
-                    "reinforced": bool(row["reinforced"]),
-                    "started_at": row["trial_started_at"],
-                })
+                trials.append(
+                    {
+                        "id": row["id"],
+                        "profile_key": row["profile_key"],
+                        "old_value": row["old_value"],
+                        "new_value": row["new_value"],
+                        "outcome": row["outcome"],
+                        "reverted": bool(row["reverted"]),
+                        "reinforced": bool(row["reinforced"]),
+                        "started_at": row["trial_started_at"],
+                    }
+                )
         finally:
             conn.close()
     except Exception:
-        logger.warning("_profile_data: unexpected error: %s", sys.exc_info()[1], exc_info=True)
+        logger.warning(
+            "_profile_data: unexpected error: %s", sys.exc_info()[1], exc_info=True
+        )
         pass
 
     return {
-        "profiles": {k: {kk: vv for kk, vv in v.items() if kk != "updated_at"}
-                     for k, v in profiles.items()},
+        "profiles": {
+            k: {kk: vv for kk, vv in v.items() if kk != "updated_at"}
+            for k, v in profiles.items()
+        },
         "trials": trials,
         "has_data": len(profiles) > 0,
     }
@@ -1706,7 +2014,9 @@ class Handler(BaseHTTPRequestHandler):
         return
 
     def _run_cmd(self, args: list[str], timeout: int = 30) -> dict:
-        run = subprocess.run(args, capture_output=True, text=True, check=False, timeout=timeout)
+        run = subprocess.run(
+            args, capture_output=True, text=True, check=False, timeout=timeout
+        )
         return {
             "exit_code": run.returncode,
             "stdout": run.stdout.strip(),
@@ -1827,7 +2137,9 @@ class Handler(BaseHTTPRequestHandler):
         # the comparison below.
         if origin and origin != expected_origin:
             return ({"error": "forbidden"}, 403)
-        if referer and not (referer == expected_origin or referer.startswith(expected_origin + "/")):
+        if referer and not (
+            referer == expected_origin or referer.startswith(expected_origin + "/")
+        ):
             return ({"error": "forbidden"}, 403)
 
         return None
@@ -1839,7 +2151,7 @@ class Handler(BaseHTTPRequestHandler):
         recover = str(self.scripts_dir / "inbox-recover-stale.sh")
         normalize = str(self.scripts_dir / "inbox-normalize.sh")
         discuss = str(self.scripts_dir / "discuss.sh")
-        install_watcher = str(self.scripts_dir / "install-launchd-inbox-watcher.sh")
+        str(self.scripts_dir / "install-launchd-inbox-watcher.sh")
 
         if action in {"watcher_start", "watcher_restart"}:
             watcher_python = str(wcfg.get("python_executable") or sys.executable)
@@ -1868,7 +2180,10 @@ class Handler(BaseHTTPRequestHandler):
                 pythonpath = str(project_src)
                 if existing_pythonpath:
                     pythonpath = f"{pythonpath}{os.pathsep}{existing_pythonpath}"
-                install_args = ["/usr/bin/env", f"PYTHONPATH={pythonpath}"] + install_args
+                install_args = [
+                    "/usr/bin/env",
+                    f"PYTHONPATH={pythonpath}",
+                ] + install_args
             if bool(wcfg.get("codex_bypass", False)):
                 install_args.append("--codex-bypass")
             install_result = self._run_cmd(install_args, timeout=120)
@@ -1886,46 +2201,101 @@ class Handler(BaseHTTPRequestHandler):
             merged = {
                 "exit_code": kickstart_result["exit_code"],
                 "stdout": "\n".join(
-                    x for x in [install_result.get("stdout", ""), kickstart_result.get("stdout", "")] if x
+                    x
+                    for x in [
+                        install_result.get("stdout", ""),
+                        kickstart_result.get("stdout", ""),
+                    ]
+                    if x
                 ),
                 "stderr": "\n".join(
-                    x for x in [install_result.get("stderr", ""), kickstart_result.get("stderr", "")] if x
+                    x
+                    for x in [
+                        install_result.get("stderr", ""),
+                        kickstart_result.get("stderr", ""),
+                    ]
+                    if x
                 ),
                 "cmd": f"{install_result.get('cmd', '')} && {kickstart_result.get('cmd', '')}".strip(),
             }
             return merged, 200
 
         if action == "dispatch_print_codex":
-            return self._run_cmd(["bash", dispatch, "--project", str(self.project_dir), "--to", "codex-cli", "--print-only"]), 200
+            return self._run_cmd(
+                [
+                    "bash",
+                    dispatch,
+                    "--project",
+                    str(self.project_dir),
+                    "--to",
+                    "codex-cli",
+                    "--print-only",
+                ]
+            ), 200
         if action == "dispatch_print_claude":
-            return self._run_cmd(["bash", dispatch, "--project", str(self.project_dir), "--to", "claude-code", "--print-only"]), 200
+            return self._run_cmd(
+                [
+                    "bash",
+                    dispatch,
+                    "--project",
+                    str(self.project_dir),
+                    "--to",
+                    "claude-code",
+                    "--print-only",
+                ]
+            ), 200
         if action == "recover_retry":
-            return self._run_cmd(["bash", recover, "--project", str(self.project_dir), "--action", "retry", "--timeout-minutes", "20"]), 200
+            return self._run_cmd(
+                [
+                    "bash",
+                    recover,
+                    "--project",
+                    str(self.project_dir),
+                    "--action",
+                    "retry",
+                    "--timeout-minutes",
+                    "20",
+                ]
+            ), 200
         if action == "recover_failed":
             inbox = self.project_dir / ".superharness" / "inbox.yaml"
             items = inbox_items(inbox)
-            failed_ids = [item["id"] for item in items if item.get("status") == "failed" and item.get("id")]
+            failed_ids = [
+                item["id"]
+                for item in items
+                if item.get("status") == "failed" and item.get("id")
+            ]
             recovered = 0
             if failed_ids:
                 # SQLite-primary write
                 try:
                     from superharness.engine.db import get_connection, init_db
                     from superharness.engine import inbox_dao
+
                     _now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                     _conn = get_connection(str(self.project_dir))
                     init_db(_conn)
                     for _id in failed_ids:
-                        if inbox_dao.update_status(_conn, _id, from_status="failed", to_status="pending", now=_now):
+                        if inbox_dao.update_status(
+                            _conn,
+                            _id,
+                            from_status="failed",
+                            to_status="pending",
+                            now=_now,
+                        ):
                             recovered += 1
                     _conn.commit()
                     _conn.close()
                 except Exception as e:
-                    logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
+                    logger.warning(
+                        "dashboard-ui unexpected error: %s", e, exc_info=True
+                    )
                     pass
                 # YAML write (dual mode only)
                 if inbox.exists():
                     try:
                         import yaml as _yaml
+
                         for item in items:
                             if item.get("status") == "failed":
                                 item["status"] = "pending"
@@ -1933,51 +2303,81 @@ class Handler(BaseHTTPRequestHandler):
                                 item.pop("failed_reason", None)
                                 item["pid"] = ""
                         with open(inbox, "w", encoding="utf-8") as fh:
-                            fh.write("# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n")
+                            fh.write(
+                                "# Delegation inbox\n# status: pending|launched|running|done|failed|stale\n"
+                            )
                             for item in items:
-                                _yaml.dump([item], fh, default_flow_style=False, allow_unicode=True, sort_keys=True)
+                                _yaml.dump(
+                                    [item],
+                                    fh,
+                                    default_flow_style=False,
+                                    allow_unicode=True,
+                                    sort_keys=True,
+                                )
                     except Exception as e:
-                        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
+                        logger.warning(
+                            "dashboard-ui unexpected error: %s", e, exc_info=True
+                        )
                         pass
             return {"ok": True, "recovered": recovered}, 200
         if action == "normalize_stale":
-            return self._run_cmd(["bash", normalize, "--project", str(self.project_dir), "--archive", "--drop-status", "stale"]), 200
+            return self._run_cmd(
+                [
+                    "bash",
+                    normalize,
+                    "--project",
+                    str(self.project_dir),
+                    "--archive",
+                    "--drop-status",
+                    "stale",
+                ]
+            ), 200
         if action == "clear_resolved_inbox":
             inbox = self.project_dir / ".superharness" / "inbox.yaml"
             contract = self.project_dir / ".superharness" / "contract.yaml"
             # contract_tasks() and inbox_items() are both state_reader-aware
             c_tasks = contract_tasks(contract)
             active_task_ids = {
-                t["id"] for t in c_tasks
-                if t.get("status") not in ("done", "archived")
-                and t.get("id")
+                t["id"]
+                for t in c_tasks
+                if t.get("status") not in ("done", "archived") and t.get("id")
             }
             items = inbox_items(inbox)
             _KEEP_STATUSES = {"pending", "launched", "running"}
             to_remove = [
-                item for item in items
+                item
+                for item in items
                 if item.get("task") not in active_task_ids
                 and item.get("status") not in _KEEP_STATUSES
                 and item.get("id")
             ]
             removed = len(to_remove)
             if removed > 0:
-                remove_ids = {item["id"] for item in to_remove}
+                {item["id"] for item in to_remove}
                 # SQLite-primary: mark removed items as done (tombstone)
                 try:
                     from superharness.engine.db import get_connection, init_db
                     from superharness.engine import inbox_dao
+
                     _now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                     _conn = get_connection(str(self.project_dir))
                     init_db(_conn)
                     for item in to_remove:
                         for _from in ("failed", "stale", "stopped", "done", "paused"):
-                            if inbox_dao.update_status(_conn, item["id"], from_status=_from, to_status="done", now=_now):
+                            if inbox_dao.update_status(
+                                _conn,
+                                item["id"],
+                                from_status=_from,
+                                to_status="done",
+                                now=_now,
+                            ):
                                 break
                     _conn.commit()
                     _conn.close()
                 except Exception as e:
-                    logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
+                    logger.warning(
+                        "dashboard-ui unexpected error: %s", e, exc_info=True
+                    )
                     pass
             return {"ok": True, "removed": removed}, 200
         if action.startswith("confirm_plan:"):
@@ -1991,14 +2391,21 @@ class Handler(BaseHTTPRequestHandler):
             task_id = action.split(":", 1)[1]
             if not task_id:
                 return ({"error": "missing task id"}, 400)
-            result = _set_task_status(self.project_dir / ".superharness", task_id, "stopped")
+            result = _set_task_status(
+                self.project_dir / ".superharness", task_id, "stopped"
+            )
             return result, (200 if result.get("ok") else 500)
 
         if action.startswith("enable_task:"):
             task_id = action.split(":", 1)[1]
             if not task_id:
                 return ({"error": "missing task id"}, 400)
-            result = _set_task_status(self.project_dir / ".superharness", task_id, "todo", from_status="stopped")
+            result = _set_task_status(
+                self.project_dir / ".superharness",
+                task_id,
+                "todo",
+                from_status="stopped",
+            )
             return result, (200 if result.get("ok") else 500)
 
         if action.startswith("remove_task:"):
@@ -2007,10 +2414,13 @@ class Handler(BaseHTTPRequestHandler):
                 return ({"error": "missing task id"}, 400)
             try:
                 from superharness.engine.db import get_connection, init_db
+
                 _conn = get_connection(str(self.project_dir))
                 try:
                     init_db(_conn)
-                    _rc = _conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,)).rowcount
+                    _rc = _conn.execute(
+                        "DELETE FROM tasks WHERE id = ?", (task_id,)
+                    ).rowcount
                     _conn.commit()
                     if _rc > 0:
                         return {"ok": True, "removed": task_id}, 200
@@ -2030,13 +2440,19 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 from superharness.engine.db import get_connection, init_db
                 from superharness.engine import tasks_dao
+
                 _conn = get_connection(str(self.project_dir))
                 try:
                     init_db(_conn)
                     task_row = tasks_dao.get(_conn, task_id)
                     if task_row is None:
                         return ({"error": f"task '{task_id}' not found"}, 404)
-                    tasks_dao.update(_conn, task_id, version=task_row.version, changes={"owner": new_owner})
+                    tasks_dao.update(
+                        _conn,
+                        task_id,
+                        version=task_row.version,
+                        changes={"owner": new_owner},
+                    )
                     _conn.commit()
                 finally:
                     _conn.close()
@@ -2049,14 +2465,24 @@ class Handler(BaseHTTPRequestHandler):
             task_id = action.split(":", 1)[1]
             if not task_id:
                 return ({"error": "missing task id"}, 400)
-            result = _set_task_status(self.project_dir / ".superharness", task_id, "plan_approved", from_status="plan_proposed")
+            result = _set_task_status(
+                self.project_dir / ".superharness",
+                task_id,
+                "plan_approved",
+                from_status="plan_proposed",
+            )
             return result, (200 if result.get("ok") else 500)
 
         if action.startswith("reject_plan:"):
             task_id = action.split(":", 1)[1]
             if not task_id:
                 return ({"error": "missing task id"}, 400)
-            result = _set_task_status(self.project_dir / ".superharness", task_id, "todo", from_status="plan_proposed")
+            result = _set_task_status(
+                self.project_dir / ".superharness",
+                task_id,
+                "todo",
+                from_status="plan_proposed",
+            )
             return result, (200 if result.get("ok") else 500)
 
         if action.startswith("verify_task:"):
@@ -2104,7 +2530,7 @@ class Handler(BaseHTTPRequestHandler):
             # --plan-only, and the agent writes a plan handoff.
             parts = action.split(":", 2)
             task_id = parts[1] if len(parts) > 1 else ""
-            target  = parts[2] if len(parts) > 2 else ""
+            target = parts[2] if len(parts) > 2 else ""
             if not task_id:
                 return ({"error": "missing task id"}, 400)
             harness_dir = self.project_dir / ".superharness"
@@ -2114,23 +2540,35 @@ class Handler(BaseHTTPRequestHandler):
             if not target:
                 target = str(task.get("owner", "") or "claude-code") or "claude-code"
             if target not in KNOWN_AGENTS:
-                return ({"error": f"invalid target '{target}' — must be one of {KNOWN_AGENTS}"}, 400)
+                return (
+                    {
+                        "error": f"invalid target '{target}' — must be one of {KNOWN_AGENTS}"
+                    },
+                    400,
+                )
             # Already-enqueued guard.
             items = inbox_items(harness_dir / "inbox.yaml")
             active = INBOX_ACTIVE_STATUSES
             for item in items:
                 if item.get("task") == task_id and item.get("status") in active:
                     return (
-                        {"error": f"task '{task_id}' already enqueued (item {item.get('id')}, status={item.get('status')})"},
+                        {
+                            "error": f"task '{task_id}' already enqueued (item {item.get('id')}, status={item.get('status')})"
+                        },
                         409,
                     )
             owner = str(task.get("owner", "") or "").strip()
             force_reassign = bool(owner and owner != target)
             enqueue_args = [
-                sys.executable, "-m", "superharness.commands.inbox_enqueue",
-                "--project", str(self.project_dir),
-                "--to", target,
-                "--task", task_id,
+                sys.executable,
+                "-m",
+                "superharness.commands.inbox_enqueue",
+                "--project",
+                str(self.project_dir),
+                "--to",
+                target,
+                "--task",
+                task_id,
                 "--plan-only",
             ]
             if force_reassign:
@@ -2168,15 +2606,32 @@ class Handler(BaseHTTPRequestHandler):
             if not task:
                 return ({"error": f"task {task_id} not found"}, 404)
             if str(task.get("status", "")) != "report_ready":
-                return ({"error": f"task {task_id} is {task.get('status')!r}, expected 'report_ready'"}, 400)
+                return (
+                    {
+                        "error": f"task {task_id} is {task.get('status')!r}, expected 'report_ready'"
+                    },
+                    400,
+                )
 
             items = inbox_items(harness_dir / "inbox.yaml")
             active_statuses = INBOX_ACTIVE_STATUSES
             for item in items:
-                if item.get("task") == task_id and item.get("status") in active_statuses:
-                    return ({"error": f"task '{task_id}' already enqueued (item {item.get('id')}, status={item.get('status')})"}, 409)
+                if (
+                    item.get("task") == task_id
+                    and item.get("status") in active_statuses
+                ):
+                    return (
+                        {
+                            "error": f"task '{task_id}' already enqueued (item {item.get('id')}, status={item.get('status')})"
+                        },
+                        409,
+                    )
 
-            target = reviewer if reviewer in ("claude-code", "codex-cli") else _review_target_for_owner(str(task.get("owner", "")))
+            target = (
+                reviewer
+                if reviewer in ("claude-code", "codex-cli")
+                else _review_target_for_owner(str(task.get("owner", "")))
+            )
             enqueue_result = self._run_cmd(
                 [
                     sys.executable,
@@ -2195,7 +2650,9 @@ class Handler(BaseHTTPRequestHandler):
             if enqueue_result.get("exit_code") != 0:
                 return enqueue_result, 200
 
-            status_result = _set_task_status(harness_dir, task_id, "review_requested", from_status="report_ready")
+            status_result = _set_task_status(
+                harness_dir, task_id, "review_requested", from_status="report_ready"
+            )
             if not status_result.get("ok"):
                 return status_result, 500
 
@@ -2218,11 +2675,18 @@ class Handler(BaseHTTPRequestHandler):
             disc_dir = self.project_dir / ".superharness" / "discussions" / disc_id
             if not disc_dir.exists():
                 return ({"error": f"discussion {disc_id} not found"}, 404)
-            result = self._run_cmd([
-                sys.executable, "-m", "superharness.engine.discussion", "close",
-                "--discussion-dir", str(disc_dir),
-                "--outcome", "cancelled",
-            ])
+            result = self._run_cmd(
+                [
+                    sys.executable,
+                    "-m",
+                    "superharness.engine.discussion",
+                    "close",
+                    "--discussion-dir",
+                    str(disc_dir),
+                    "--outcome",
+                    "cancelled",
+                ]
+            )
             # Sync contract task: mark any in_progress task linked to this discussion archived.
             # The contract task ID is either stored in state.yaml task_id or matches the
             # discussion ID pattern (<disc_id>/round-N).
@@ -2230,8 +2694,12 @@ class Handler(BaseHTTPRequestHandler):
                 # Read task_id from SQLite (source of truth)
                 _task_id = ""
                 try:
-                    from superharness.engine.db import get_connection as _gc_cdisc, init_db as _idb_cdisc
+                    from superharness.engine.db import (
+                        get_connection as _gc_cdisc,
+                        init_db as _idb_cdisc,
+                    )
                     from superharness.engine import discussions_dao as _ddao_cdisc
+
                     _cconn = _gc_cdisc(str(self.project_dir))
                     try:
                         _idb_cdisc(_cconn)
@@ -2241,12 +2709,17 @@ class Handler(BaseHTTPRequestHandler):
                     finally:
                         _cconn.close()
                 except Exception:
-                    logger.warning("_action: unexpected error: %s", sys.exc_info()[1], exc_info=True)
+                    logger.warning(
+                        "_action: unexpected error: %s",
+                        sys.exc_info()[1],
+                        exc_info=True,
+                    )
                     pass
 
                 # Use SQLite to find and update in_progress tasks linked to this discussion
                 from superharness.engine.db import get_connection, init_db
                 from superharness.engine import tasks_dao
+
                 _conn = get_connection(str(self.project_dir))
                 try:
                     init_db(_conn)
@@ -2258,14 +2731,22 @@ class Handler(BaseHTTPRequestHandler):
                             or _tid.startswith(disc_id + "/")
                             or (_task_id and _tid.startswith(_task_id + "/"))
                         ):
-                            tasks_dao.update(_conn, _tid, version=_t.version, changes={"status": "archived"})
+                            tasks_dao.update(
+                                _conn,
+                                _tid,
+                                version=_t.version,
+                                changes={"status": "archived"},
+                            )
                     _conn.commit()
                 finally:
                     _conn.close()
             except Exception as e:
                 logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                 pass
-            return (result, 200 if result.get("ok") or result.get("exit_code") == 0 else 500)
+            return (
+                result,
+                200 if result.get("ok") or result.get("exit_code") == 0 else 500,
+            )
 
         if action.startswith("close_discussion:"):
             disc_id = action.split(":", 1)[1]
@@ -2274,26 +2755,41 @@ class Handler(BaseHTTPRequestHandler):
             disc_dir = self.project_dir / ".superharness" / "discussions" / disc_id
             if not disc_dir.exists():
                 return ({"error": f"discussion {disc_id} not found"}, 404)
-            result = self._run_cmd([
-                sys.executable, "-m", "superharness.engine.discussion", "close",
-                "--discussion-dir", str(disc_dir),
-                "--outcome", "consensus",
-            ])
+            result = self._run_cmd(
+                [
+                    sys.executable,
+                    "-m",
+                    "superharness.engine.discussion",
+                    "close",
+                    "--discussion-dir",
+                    str(disc_dir),
+                    "--outcome",
+                    "consensus",
+                ]
+            )
             # Sync SQLite (source of truth) — YAML export skips read-then-write
             try:
                 import sqlite3 as _sq
-                from superharness.utils.paths import resolve_active_state_db_path as _rap
+                from superharness.utils.paths import (
+                    resolve_active_state_db_path as _rap,
+                )
+
                 _db = _rap(str(self.project_dir))
                 if os.path.isfile(_db):
                     _con = _sq.connect(_db)
-                    _con.execute("UPDATE discussions SET status=? WHERE id=?", ("consensus", disc_id))
+                    _con.execute(
+                        "UPDATE discussions SET status=? WHERE id=?",
+                        ("consensus", disc_id),
+                    )
                     _con.commit()
                     _con.close()
             except Exception as e:
                 logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                 pass
             result["ok"] = True
-            result["stdout"] = result.get("stdout") or f"Discussion {disc_id} closed with consensus."
+            result["stdout"] = (
+                result.get("stdout") or f"Discussion {disc_id} closed with consensus."
+            )
             return (result, 200)
 
         if action.startswith("reopen_discussion:"):
@@ -2306,11 +2802,17 @@ class Handler(BaseHTTPRequestHandler):
             # Sync SQLite (source of truth) — YAML export skips read-then-write
             try:
                 import sqlite3 as _sq
-                from superharness.utils.paths import resolve_active_state_db_path as _rap
+                from superharness.utils.paths import (
+                    resolve_active_state_db_path as _rap,
+                )
+
                 _db = _rap(str(self.project_dir))
                 if os.path.isfile(_db):
                     _con = _sq.connect(_db)
-                    _con.execute("UPDATE discussions SET status=?, closed_at=NULL WHERE id=?", ("active", disc_id))
+                    _con.execute(
+                        "UPDATE discussions SET status=?, closed_at=NULL WHERE id=?",
+                        ("active", disc_id),
+                    )
                     _con.commit()
                     _con.close()
             except Exception as exc:
@@ -2323,8 +2825,8 @@ class Handler(BaseHTTPRequestHandler):
             if not disc_id:
                 return ({"error": "missing discussion id"}, 400)
             p = payload or {}
-            agent    = str(p.get("agent", "")).strip()
-            verdict  = str(p.get("verdict", "consensus")).strip()
+            agent = str(p.get("agent", "")).strip()
+            verdict = str(p.get("verdict", "consensus")).strip()
             position = str(p.get("position", "")).strip()
             round_num = str(p.get("round", "1"))
             if not agent:
@@ -2336,23 +2838,41 @@ class Handler(BaseHTTPRequestHandler):
             disc_dir = self.project_dir / ".superharness" / "discussions" / disc_id
             if not disc_dir.exists():
                 return ({"error": f"discussion {disc_id} not found"}, 404)
-            result = self._run_cmd([
-                sys.executable, "-m", "superharness.commands.discuss",
-                "submit",
-                "--discussion", disc_id,
-                "--agent", agent,
-                "--round", str(round_num),
-                "--verdict", verdict,
-                "--position", position,
-                "--project", str(self.project_dir),
-            ])
+            result = self._run_cmd(
+                [
+                    sys.executable,
+                    "-m",
+                    "superharness.commands.discuss",
+                    "submit",
+                    "--discussion",
+                    disc_id,
+                    "--agent",
+                    agent,
+                    "--round",
+                    str(round_num),
+                    "--verdict",
+                    verdict,
+                    "--position",
+                    position,
+                    "--project",
+                    str(self.project_dir),
+                ]
+            )
             if result.get("exit_code", 1) != 0:
-                return ({"error": result.get("stderr") or result.get("stdout") or "submit failed"}, 500)
+                return (
+                    {
+                        "error": result.get("stderr")
+                        or result.get("stdout")
+                        or "submit failed"
+                    },
+                    500,
+                )
             result["ok"] = True
 
             # Auto-close if all participants submitted with consensus
             try:
                 from superharness.engine import discussions_dao as _ddao
+
                 _ac = self._db_conn()
                 try:
                     _drow = _ddao.get(_ac, disc_id)
@@ -2362,15 +2882,27 @@ class Handler(BaseHTTPRequestHandler):
                 if _drow and _drow.status == "active":
                     _participants = _drow.owners or []
                     _submitted_agents = {r.agent for r in _rounds}
-                    _all_submitted = _participants and all(p in _submitted_agents for p in _participants)
-                    _all_consensus = _all_submitted and all(r.verdict == "consensus" for r in _rounds)
+                    _all_submitted = _participants and all(
+                        p in _submitted_agents for p in _participants
+                    )
+                    _all_consensus = _all_submitted and all(
+                        r.verdict == "consensus" for r in _rounds
+                    )
                     if _all_consensus:
-                        self._run_cmd([
-                            sys.executable, "-m", "superharness.commands.discuss",
-                            "close", "--id", disc_id,
-                            "--outcome", "consensus",
-                            "--project", str(self.project_dir),
-                        ])
+                        self._run_cmd(
+                            [
+                                sys.executable,
+                                "-m",
+                                "superharness.commands.discuss",
+                                "close",
+                                "--id",
+                                disc_id,
+                                "--outcome",
+                                "consensus",
+                                "--project",
+                                str(self.project_dir),
+                            ]
+                        )
                         result["auto_closed"] = True
             except Exception as e:
                 logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
@@ -2383,18 +2915,39 @@ class Handler(BaseHTTPRequestHandler):
                 return ({"error": "missing task id"}, 400)
             harness_dir = self.project_dir / ".superharness"
             # Revert task status from review_requested back to report_ready
-            result = _set_task_status(harness_dir, task_id, "report_ready", from_status="review_requested")
+            result = _set_task_status(
+                harness_dir, task_id, "report_ready", from_status="review_requested"
+            )
             if not result.get("ok"):
                 return result, 500
             # Remove any pending/paused inbox items for this review
             items = inbox_items(harness_dir / "inbox.yaml")
             for item in items:
-                if item.get("task") == task_id and item.get("status") in ("pending", "paused", "launched"):
+                if item.get("task") == task_id and item.get("status") in (
+                    "pending",
+                    "paused",
+                    "launched",
+                ):
                     self._run_cmd(
-                        [sys.executable, "-m", "superharness.engine.inbox", "remove",
-                         "--file", str(harness_dir / "inbox.yaml"), "--id", item.get("id", "")]
+                        [
+                            sys.executable,
+                            "-m",
+                            "superharness.engine.inbox",
+                            "remove",
+                            "--file",
+                            str(harness_dir / "inbox.yaml"),
+                            "--id",
+                            item.get("id", ""),
+                        ]
                     )
-            return ({"ok": True, "stdout": f"Review cancelled for '{task_id}'. Status reverted to report_ready.", "status": "report_ready"}, 200)
+            return (
+                {
+                    "ok": True,
+                    "stdout": f"Review cancelled for '{task_id}'. Status reverted to report_ready.",
+                    "status": "report_ready",
+                },
+                200,
+            )
 
         if action.startswith("approve_without_review:"):
             task_id = action.split(":", 1)[1]
@@ -2404,23 +2957,43 @@ class Handler(BaseHTTPRequestHandler):
             # Remove any pending/paused inbox items for this review
             items = inbox_items(harness_dir / "inbox.yaml")
             for item in items:
-                if item.get("task") == task_id and item.get("status") in ("pending", "paused", "launched"):
+                if item.get("task") == task_id and item.get("status") in (
+                    "pending",
+                    "paused",
+                    "launched",
+                ):
                     self._run_cmd(
-                        [sys.executable, "-m", "superharness.engine.inbox", "remove",
-                         "--file", str(harness_dir / "inbox.yaml"), "--id", item.get("id", "")]
+                        [
+                            sys.executable,
+                            "-m",
+                            "superharness.engine.inbox",
+                            "remove",
+                            "--file",
+                            str(harness_dir / "inbox.yaml"),
+                            "--id",
+                            item.get("id", ""),
+                        ]
                     )
             # Revert to report_ready first (close command rejects review_requested)
-            revert = _set_task_status(harness_dir, task_id, "report_ready", from_status="review_requested")
+            revert = _set_task_status(
+                harness_dir, task_id, "report_ready", from_status="review_requested"
+            )
             if not revert.get("ok"):
                 return revert, 500
             # Now close the task (skip-verify: operator is explicitly approving)
             return self._run_cmd(
                 [
-                    sys.executable, "-m", "superharness.commands.close",
-                    "--project", str(self.project_dir),
-                    "--id", task_id,
-                    "--actor", "owner",
-                    "--summary", "Approved by operator without agent review",
+                    sys.executable,
+                    "-m",
+                    "superharness.commands.close",
+                    "--project",
+                    str(self.project_dir),
+                    "--id",
+                    task_id,
+                    "--actor",
+                    "owner",
+                    "--summary",
+                    "Approved by operator without agent review",
                     "--skip-verify",
                 ]
             ), 200
@@ -2450,7 +3023,9 @@ class Handler(BaseHTTPRequestHandler):
             task_id = action.split(":", 1)[1]
             if not task_id:
                 return ({"error": "missing task id"}, 400)
-            result = _set_task_status(self.project_dir / ".superharness", task_id, "done", from_status="todo")
+            result = _set_task_status(
+                self.project_dir / ".superharness", task_id, "done", from_status="todo"
+            )
             return result, (200 if result.get("ok") else 500)
 
         if action.startswith("enqueue_task:"):
@@ -2459,28 +3034,59 @@ class Handler(BaseHTTPRequestHandler):
                 return ({"error": "Missing task ID or target agent."}, 400)
             task_id, target = parts[1], parts[2]
             if target not in KNOWN_AGENTS:
-                return ({"error": f"invalid target: {target} — must be one of {KNOWN_AGENTS}"}, 400)
+                return (
+                    {
+                        "error": f"invalid target: {target} — must be one of {KNOWN_AGENTS}"
+                    },
+                    400,
+                )
             # Block duplicate: reject if task already has an active/paused inbox item
             active_statuses = INBOX_ACTIVE_STATUSES
             items = inbox_items(self.project_dir / ".superharness" / "inbox.yaml")
             for item in items:
-                if item.get("task") == task_id and item.get("status") in active_statuses:
-                    return ({"error": f"task '{task_id}' already enqueued (item {item.get('id')}, status={item.get('status')})"}, 409)
+                if (
+                    item.get("task") == task_id
+                    and item.get("status") in active_statuses
+                ):
+                    return (
+                        {
+                            "error": f"task '{task_id}' already enqueued (item {item.get('id')}, status={item.get('status')})"
+                        },
+                        409,
+                    )
             # Save instructions file if provided
             instructions = (payload or {}).get("instructions", "").strip()
             if instructions:
-                instructions_file = self.project_dir / ".superharness" / "handoffs" / f"{task_id}-instructions.md"
+                instructions_file = (
+                    self.project_dir
+                    / ".superharness"
+                    / "handoffs"
+                    / f"{task_id}-instructions.md"
+                )
                 instructions_file.parent.mkdir(parents=True, exist_ok=True)
                 instructions_file.write_text(instructions, encoding="utf-8")
             # Detect implementation+todo: agent must propose a plan first.
             tasks = contract_tasks(self.project_dir / ".superharness" / "contract.yaml")
             task_meta = next((t for t in tasks if t.get("id") == task_id), {})
             from superharness.engine.next_action import infer_workflow as _infer_wf
+
             _workflow = _infer_wf(task_id, task_meta)
-            _plan_only = _workflow == "implementation" and task_meta.get("status") == "todo"
-            cmd = [sys.executable, "-m", "superharness.commands.inbox_enqueue",
-                   "--project", str(self.project_dir),
-                   "--to", target, "--task", task_id, "--priority", "2"]
+            _plan_only = (
+                _workflow == "implementation" and task_meta.get("status") == "todo"
+            )
+            cmd = [
+                sys.executable,
+                "-m",
+                "superharness.commands.inbox_enqueue",
+                "--project",
+                str(self.project_dir),
+                "--to",
+                target,
+                "--task",
+                task_id,
+                "--priority",
+                "2",
+            ]
             if _plan_only:
                 cmd.append("--plan-only")
             return self._run_cmd(cmd), 200
@@ -2490,9 +3096,17 @@ class Handler(BaseHTTPRequestHandler):
             if not task_id:
                 return ({"error": "missing task id"}, 400)
             return self._run_cmd(
-                [sys.executable, "-m", "superharness.commands.close",
-                 "--project", str(self.project_dir), "--id", task_id,
-                 "--actor", "owner"]
+                [
+                    sys.executable,
+                    "-m",
+                    "superharness.commands.close",
+                    "--project",
+                    str(self.project_dir),
+                    "--id",
+                    task_id,
+                    "--actor",
+                    "owner",
+                ]
             ), 200
 
         if action.startswith("approve_task:"):
@@ -2521,25 +3135,114 @@ class Handler(BaseHTTPRequestHandler):
 
         if action.startswith("pause_item:"):
             item_id = action.split(":", 1)[1]
-            return self._run_cmd(inbox_py + ["set_status", "--file", inbox_file, "--id", item_id, "--from", "pending", "--to", "paused", "--now", now, "--stamp-key", "paused_at"]), 200
+            return self._run_cmd(
+                inbox_py
+                + [
+                    "set_status",
+                    "--file",
+                    inbox_file,
+                    "--id",
+                    item_id,
+                    "--from",
+                    "pending",
+                    "--to",
+                    "paused",
+                    "--now",
+                    now,
+                    "--stamp-key",
+                    "paused_at",
+                ]
+            ), 200
         if action.startswith("resume_item:"):
             item_id = action.split(":", 1)[1]
-            return self._run_cmd(inbox_py + ["set_status", "--file", inbox_file, "--id", item_id, "--from", "paused", "--to", "pending", "--now", now, "--stamp-key", "resumed_at"]), 200
+            return self._run_cmd(
+                inbox_py
+                + [
+                    "set_status",
+                    "--file",
+                    inbox_file,
+                    "--id",
+                    item_id,
+                    "--from",
+                    "paused",
+                    "--to",
+                    "pending",
+                    "--now",
+                    now,
+                    "--stamp-key",
+                    "resumed_at",
+                ]
+            ), 200
         if action.startswith("resume_task:"):
             task_id = action.split(":", 1)[1]
             items = inbox_items(self.project_dir / ".superharness" / "inbox.yaml")
-            target = next((i for i in items if i.get("task") == task_id and i.get("status") == "paused"), None)
+            target = next(
+                (
+                    i
+                    for i in items
+                    if i.get("task") == task_id and i.get("status") == "paused"
+                ),
+                None,
+            )
             if not target:
-                return ({"error": f"no paused inbox item found for task: {task_id}"}, 404)
-            return self._run_cmd(inbox_py + ["set_status", "--file", inbox_file, "--id", target["id"], "--from", "paused", "--to", "pending", "--now", now, "--stamp-key", "resumed_at"]), 200
+                return (
+                    {"error": f"no paused inbox item found for task: {task_id}"},
+                    404,
+                )
+            return self._run_cmd(
+                inbox_py
+                + [
+                    "set_status",
+                    "--file",
+                    inbox_file,
+                    "--id",
+                    target["id"],
+                    "--from",
+                    "paused",
+                    "--to",
+                    "pending",
+                    "--now",
+                    now,
+                    "--stamp-key",
+                    "resumed_at",
+                ]
+            ), 200
         if action.startswith("retry_task:"):
             task_id = action.split(":", 1)[1]
             items = inbox_items(self.project_dir / ".superharness" / "inbox.yaml")
-            target = next((i for i in items if i.get("task") == task_id and i.get("status") in ("stale", "failed", "stopped")), None)
+            target = next(
+                (
+                    i
+                    for i in items
+                    if i.get("task") == task_id
+                    and i.get("status") in ("stale", "failed", "stopped")
+                ),
+                None,
+            )
             if not target:
-                return ({"error": f"no failed/stale inbox item found for task: {task_id}"}, 404)
+                return (
+                    {"error": f"no failed/stale inbox item found for task: {task_id}"},
+                    404,
+                )
             from_status = target.get("status", "failed")
-            return self._run_cmd(inbox_py + ["set_status", "--file", inbox_file, "--id", target["id"], "--from", from_status, "--to", "pending", "--now", now, "--stamp-key", "retried_at"]), 200
+            return self._run_cmd(
+                inbox_py
+                + [
+                    "set_status",
+                    "--file",
+                    inbox_file,
+                    "--id",
+                    target["id"],
+                    "--from",
+                    from_status,
+                    "--to",
+                    "pending",
+                    "--now",
+                    now,
+                    "--stamp-key",
+                    "retried_at",
+                ]
+            ), 200
         if action.startswith("retry_item:"):
             item_id = action.split(":", 1)[1]
             items = inbox_items(self.project_dir / ".superharness" / "inbox.yaml")
@@ -2549,7 +3252,24 @@ class Handler(BaseHTTPRequestHandler):
             from_status = target.get("status", "")
             if from_status not in ("stale", "failed", "stopped"):
                 return ({"error": f"cannot retry from status: {from_status}"}, 400)
-            return self._run_cmd(inbox_py + ["set_status", "--file", inbox_file, "--id", item_id, "--from", from_status, "--to", "pending", "--now", now, "--stamp-key", "retried_at"]), 200
+            return self._run_cmd(
+                inbox_py
+                + [
+                    "set_status",
+                    "--file",
+                    inbox_file,
+                    "--id",
+                    item_id,
+                    "--from",
+                    from_status,
+                    "--to",
+                    "pending",
+                    "--now",
+                    now,
+                    "--stamp-key",
+                    "retried_at",
+                ]
+            ), 200
         if action.startswith("stop_item:"):
             item_id = action.split(":", 1)[1]
             items = inbox_items(self.project_dir / ".superharness" / "inbox.yaml")
@@ -2563,15 +3283,35 @@ class Handler(BaseHTTPRequestHandler):
                 except (ProcessLookupError, ValueError, PermissionError):
                     pass
             from_status = target.get("status", "launched")
-            result = self._run_cmd(inbox_py + ["set_status", "--file", inbox_file, "--id", item_id, "--from", from_status, "--to", "stopped", "--now", now, "--stamp-key", "stopped_at"])
+            result = self._run_cmd(
+                inbox_py
+                + [
+                    "set_status",
+                    "--file",
+                    inbox_file,
+                    "--id",
+                    item_id,
+                    "--from",
+                    from_status,
+                    "--to",
+                    "stopped",
+                    "--now",
+                    now,
+                    "--stamp-key",
+                    "stopped_at",
+                ]
+            )
             return result, 200
         if action.startswith("remove_item:"):
             item_id = action.split(":", 1)[1]
-            result = self._run_cmd(inbox_py + ["remove", "--file", inbox_file, "--id", item_id])
+            result = self._run_cmd(
+                inbox_py + ["remove", "--file", inbox_file, "--id", item_id]
+            )
             # Also purge from SQLite — items written by dual-mode may exist only in DB
             try:
                 from superharness.engine.db import get_connection, init_db
                 from superharness.engine import inbox_dao
+
                 _conn = get_connection(str(self.project_dir))
                 init_db(_conn)
                 inbox_dao.remove(_conn, item_id)
@@ -2612,7 +3352,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
         if p == "/api/ping":
-            self._json({"status": "ok", "idle_seconds": int(time.time() - Handler.last_ping)})
+            self._json(
+                {"status": "ok", "idle_seconds": int(time.time() - Handler.last_ping)}
+            )
             return
 
         if p.startswith("/.superharness/handoffs/") and p.endswith(".md"):
@@ -2632,8 +3374,9 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if p.startswith("/api/observation/"):
-            raw_id = p[len("/api/observation/"):]
+            raw_id = p[len("/api/observation/") :]
             from superharness.commands.observation import route_observation
+
             conn = self._db_conn()
             try:
                 payload, status = route_observation(conn, raw_id)
@@ -2650,8 +3393,9 @@ class Handler(BaseHTTPRequestHandler):
             ("/api/failure/", "failure"),
         ):
             if p.startswith(_prefix):
-                raw_id = p[len(_prefix):]
+                raw_id = p[len(_prefix) :]
                 from superharness.commands.citation import route_citation
+
                 conn = self._db_conn()
                 try:
                     payload, status = route_citation(conn, _kind, raw_id)
@@ -2662,8 +3406,9 @@ class Handler(BaseHTTPRequestHandler):
 
         # Per-task observation list: /api/task/<task_id>/observations
         if p.startswith("/api/task/") and p.endswith("/observations"):
-            task_id = p[len("/api/task/"):-len("/observations")]
+            task_id = p[len("/api/task/") : -len("/observations")]
             from superharness.commands.citation import route_task_observations
+
             conn = self._db_conn()
             try:
                 payload, status = route_task_observations(conn, task_id)
@@ -2677,11 +3422,19 @@ class Handler(BaseHTTPRequestHandler):
             now_utc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             now_ts = time.time()
             _KNOWN_AGENTS = ["claude-code", "codex-cli", "gemini-cli", "opencode"]
-            agents: dict = {a: {"level": "gray", "age_seconds": -1, "status": None,
-                                "task_id": None, "updated_at": None}
-                            for a in _KNOWN_AGENTS}
+            agents: dict = {
+                a: {
+                    "level": "gray",
+                    "age_seconds": -1,
+                    "status": None,
+                    "task_id": None,
+                    "updated_at": None,
+                }
+                for a in _KNOWN_AGENTS
+            }
             try:
                 from superharness.engine import heartbeat_dao as _hb_dao
+
                 conn = self._db_conn()
                 try:
                     rows = _hb_dao.get_all(conn)
@@ -2691,10 +3444,17 @@ class Handler(BaseHTTPRequestHandler):
                     try:
                         import calendar as _cal
                         import time as _time
-                        updated = _cal.timegm(_time.strptime(row.updated_at, "%Y-%m-%dT%H:%M:%SZ"))
+
+                        updated = _cal.timegm(
+                            _time.strptime(row.updated_at, "%Y-%m-%dT%H:%M:%SZ")
+                        )
                         age = int(now_ts - updated)
                     except Exception:
-                        logger.warning("do_GET: unexpected error: %s", sys.exc_info()[1], exc_info=True)
+                        logger.warning(
+                            "do_GET: unexpected error: %s",
+                            sys.exc_info()[1],
+                            exc_info=True,
+                        )
                         age = -1
                     if row.status == "zombie":
                         level = "red"
@@ -2714,7 +3474,9 @@ class Handler(BaseHTTPRequestHandler):
                         "updated_at": row.updated_at,
                     }
             except Exception:
-                logger.warning("do_GET: unexpected error: %s", sys.exc_info()[1], exc_info=True)
+                logger.warning(
+                    "do_GET: unexpected error: %s", sys.exc_info()[1], exc_info=True
+                )
                 pass
             self._json({"agents": agents, "now_utc": now_utc})
             return
@@ -2730,11 +3492,13 @@ class Handler(BaseHTTPRequestHandler):
             heartbeat = heartbeat_health(self.project_dir)
             wcfg = watcher_config(self.project_dir)
             sanity = version_sanity(self.project_dir)
-            
+
             # Get optimized snapshot from SQLite
             conn = self._db_conn()
             try:
-                snapshot = dashboard_presenter.get_dashboard_status_snapshot(conn, str(self.project_dir))
+                snapshot = dashboard_presenter.get_dashboard_status_snapshot(
+                    conn, str(self.project_dir)
+                )
             finally:
                 conn.close()
 
@@ -2743,12 +3507,21 @@ class Handler(BaseHTTPRequestHandler):
                 "version": __version__,
                 "project": str(self.project_dir),
                 "label": self.label,
-                "launchctl_state": str(runtime.get("state", "")) or ("loaded" if runtime.get("loaded") else ("foreground" if heartbeat.get("level") == "ok" else "")),
-                "watcher_health": watcher_health(runtime, snapshot["inbox_items"], now_utc, heartbeat=heartbeat),
+                "launchctl_state": str(runtime.get("state", ""))
+                or (
+                    "loaded"
+                    if runtime.get("loaded")
+                    else ("foreground" if heartbeat.get("level") == "ok" else "")
+                ),
+                "watcher_health": watcher_health(
+                    runtime, snapshot["inbox_items"], now_utc, heartbeat=heartbeat
+                ),
                 "heartbeat": heartbeat,
                 "agent_status": _agent_status_health(self.project_dir),
                 "watcher_runtime": runtime,
-                "watcher_project": str(wcfg.get("watcher_project", str(self.project_dir))),
+                "watcher_project": str(
+                    wcfg.get("watcher_project", str(self.project_dir))
+                ),
                 "watcher_config": wcfg,
                 "version_sanity": sanity,
                 "budget": budget_signals(self.project_dir),
@@ -2759,12 +3532,11 @@ class Handler(BaseHTTPRequestHandler):
             # Add all snapshot fields (contract_tasks, board_columns, activity_feed, etc.)
             result.update(snapshot)
 
-
-
             # Parity panel removed — YAML/SQLite parity is no longer tracked.
             result["parity"] = {"healthy": True, "yaml_sync_lag": 0, "drift": []}
 
             import os as _os
+
             result["state_backend"] = _os.environ.get("STATE_BACKEND", "dual")
 
             self._json(result)
@@ -2777,7 +3549,16 @@ class Handler(BaseHTTPRequestHandler):
             conn = self._db_conn()
             try:
                 from superharness.engine import inbox_dao
-                items = [asdict(i) for i in inbox_dao.get_all(conn, status=status_filter or None if status_filter != "active" else None)]
+
+                items = [
+                    asdict(i)
+                    for i in inbox_dao.get_all(
+                        conn,
+                        status=status_filter or None
+                        if status_filter != "active"
+                        else None,
+                    )
+                ]
                 if status_filter == "active":
                     _ACTIVE = {"pending", "launched", "running"}
                     items = [i for i in items if i.get("status") in _ACTIVE]
@@ -2785,7 +3566,13 @@ class Handler(BaseHTTPRequestHandler):
                     items = [i for i in items if i.get("target_agent") in owner_filter]
             finally:
                 conn.close()
-            self._json({"items": items, "status": status_filter, "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+            self._json(
+                {
+                    "items": items,
+                    "status": status_filter,
+                    "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                }
+            )
             return
 
         if p == "/api/adapter-preview":
@@ -2796,15 +3583,18 @@ class Handler(BaseHTTPRequestHandler):
             conn = self._db_conn()
             try:
                 from superharness.engine import tasks_dao
+
                 tasks = tasks_dao.get_all(conn, status="todo")
                 for task in tasks:
-                    todo_tasks.append({
-                        "id": task.id,
-                        "title": task.title,
-                        "owner": task.owner or "",
-                        "effort": task.effort or "medium",
-                        "blocked_by": task.blocked_by,
-                    })
+                    todo_tasks.append(
+                        {
+                            "id": task.id,
+                            "title": task.title,
+                            "owner": task.owner or "",
+                            "effort": task.effort or "medium",
+                            "blocked_by": task.blocked_by,
+                        }
+                    )
             except Exception as e:
                 logger.warning("do_GET: unexpected error: %s", e, exc_info=True)
                 self._json({"error": str(e), "project": project_name, "tasks": []}, 500)
@@ -2812,12 +3602,14 @@ class Handler(BaseHTTPRequestHandler):
             finally:
                 conn.close()
 
-            self._json({
-                "project": project_name,
-                "project_path": str(self.project_dir),
-                "tasks": todo_tasks,
-                "count": len(todo_tasks),
-            })
+            self._json(
+                {
+                    "project": project_name,
+                    "project_path": str(self.project_dir),
+                    "tasks": todo_tasks,
+                    "count": len(todo_tasks),
+                }
+            )
             return
 
         if p == "/api/task-log":
@@ -2835,7 +3627,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(result)
             except Exception as exc:
                 logger.warning("do_GET: unexpected error: %s", exc, exc_info=True)
-                self._json({"error": f"task_log_content failed: {exc}", "task": task_id, "agent": agent}, 500)
+                self._json(
+                    {
+                        "error": f"task_log_content failed: {exc}",
+                        "task": task_id,
+                        "agent": agent,
+                    },
+                    500,
+                )
             return
 
         if p == "/api/task-instructions":
@@ -2850,17 +3649,23 @@ class Handler(BaseHTTPRequestHandler):
                 task_meta = {}
                 conn = self._db_conn()
                 try:
-                    data = dashboard_presenter.get_task_instructions_data(conn, task_id, str(self.project_dir))
+                    data = dashboard_presenter.get_task_instructions_data(
+                        conn, task_id, str(self.project_dir)
+                    )
                     if data:
                         task_meta = data
                 finally:
                     conn.close()
                 if not task_meta:
-                    for t in contract_tasks(self.project_dir / ".superharness" / "contract.yaml"):
+                    for t in contract_tasks(
+                        self.project_dir / ".superharness" / "contract.yaml"
+                    ):
                         if t.get("id") == task_id:
                             task_meta = t
                             break
-                self._json({"task": task_id, "instructions": text, "task_meta": task_meta})
+                self._json(
+                    {"task": task_id, "instructions": text, "task_meta": task_meta}
+                )
             except Exception as exc:
                 logger.warning("do_GET: unexpected error: %s", exc, exc_info=True)
                 self._json({"error": str(exc)}, 500)
@@ -2875,7 +3680,9 @@ class Handler(BaseHTTPRequestHandler):
                     all_lines = errors_path.read_text(errors="replace").splitlines()
                     content = "\n".join(all_lines[-lines:])
                 except Exception as e:
-                    logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
+                    logger.warning(
+                        "dashboard-ui unexpected error: %s", e, exc_info=True
+                    )
                     pass
             self._json({"errors": content, "lines": lines, "path": str(errors_path)})
             return
@@ -2883,6 +3690,7 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/logs":
             # One-shot read of central superharness log (tail -n).
             from superharness.logging_utils import _resolve_log_file
+
             qs = parse_qs(parsed.query)
             audit = qs.get("audit", ["0"])[0] in ("1", "true")
             n = _safe_int(qs.get("n", ["200"])[0], 200)
@@ -2896,17 +3704,38 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     all_lines = log_path.read_text(errors="replace").splitlines()
                     if level:
-                        rank = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3, "CRITICAL": 4}
+                        rank = {
+                            "DEBUG": 0,
+                            "INFO": 1,
+                            "WARNING": 2,
+                            "ERROR": 3,
+                            "CRITICAL": 4,
+                        }
                         min_rank = rank.get(level, -1)
-                        all_lines = [
-                            ln for ln in all_lines
-                            if any(f" {lv} " in ln and rank[lv] >= min_rank for lv in rank)
-                        ] if min_rank >= 0 else all_lines
+                        all_lines = (
+                            [
+                                ln
+                                for ln in all_lines
+                                if any(
+                                    f" {lv} " in ln and rank[lv] >= min_rank
+                                    for lv in rank
+                                )
+                            ]
+                            if min_rank >= 0
+                            else all_lines
+                        )
                     content = "\n".join(all_lines[-n:])
                 except Exception as e:
                     logger.warning("do_GET: unexpected error: %s", e, exc_info=True)
                     content = f"(error reading log: {e})"
-            self._json({"lines": content, "path": str(log_path), "audit": audit, "level": level})
+            self._json(
+                {
+                    "lines": content,
+                    "path": str(log_path),
+                    "audit": audit,
+                    "level": level,
+                }
+            )
             return
 
         if p == "/api/discussions":
@@ -2916,6 +3745,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 from superharness.engine import discussions_dao as _ddao_list
                 from dataclasses import asdict as _asdict
+
                 rows = _ddao_list.get_all(conn, status=status_filter)
                 discs = []
                 for r in rows:
@@ -2925,36 +3755,47 @@ class Handler(BaseHTTPRequestHandler):
                         "SELECT MAX(round_number) as mx FROM discussion_rounds WHERE discussion_id=?",
                         (r.id,),
                     ).fetchone()
-                    d["current_round"] = int(rounds["mx"]) if rounds and rounds["mx"] else 0
+                    d["current_round"] = (
+                        int(rounds["mx"]) if rounds and rounds["mx"] else 0
+                    )
                     discs.append(d)
             finally:
                 conn.close()
-            self._json({"discussions": discs, "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+            self._json(
+                {
+                    "discussions": discs,
+                    "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                }
+            )
             return
 
         if p.startswith("/api/discussion/") and p.endswith("/rounds"):
-            disc_id = p[len("/api/discussion/"):-len("/rounds")]
+            disc_id = p[len("/api/discussion/") : -len("/rounds")]
             conn = self._db_conn()
             try:
                 from superharness.engine import discussions_dao as _ddao_rounds
                 from dataclasses import asdict as _asdict2
+
                 rounds = _ddao_rounds.get_rounds(conn, disc_id)
                 disc = _ddao_rounds.get(conn, disc_id)
             finally:
                 conn.close()
-            self._json({
-                "discussion_id": disc_id,
-                "topic": disc.topic if disc else "",
-                "status": disc.status if disc else "",
-                "max_rounds": disc.max_rounds if disc else 3,
-                "consensus": disc.consensus if disc else None,
-                "rounds": [_asdict2(r) for r in rounds],
-            })
+            self._json(
+                {
+                    "discussion_id": disc_id,
+                    "topic": disc.topic if disc else "",
+                    "status": disc.status if disc else "",
+                    "max_rounds": disc.max_rounds if disc else 3,
+                    "consensus": disc.consensus if disc else None,
+                    "rounds": [_asdict2(r) for r in rounds],
+                }
+            )
             return
 
         if p == "/api/logs/stream":
             # Server-Sent Events: stream new log lines as they arrive.
             from superharness.logging_utils import _resolve_log_file
+
             qs = parse_qs(parsed.query)
             audit = qs.get("audit", ["0"])[0] in ("1", "true")
             log_path = _resolve_log_file(
@@ -2997,6 +3838,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == "/api/discussion-status":
             from urllib.parse import parse_qs as _pqs
+
             qs = _pqs(parsed.query)
             disc_id = qs.get("id", [""])[0]
             if not disc_id:
@@ -3017,7 +3859,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(task_report(self.project_dir, task_id, agent))
             except Exception as exc:
                 logger.warning("do_GET: unexpected error: %s", exc, exc_info=True)
-                self._json({"error": f"task_report failed: {exc}", "task": task_id, "agent": agent}, 500)
+                self._json(
+                    {
+                        "error": f"task_report failed: {exc}",
+                        "task": task_id,
+                        "agent": agent,
+                    },
+                    500,
+                )
             return
 
         if p == "/api/discussion":
@@ -3028,6 +3877,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 from superharness.engine import discussions_dao as _disc_dao
+
                 _dconn = self._db_conn()
                 try:
                     _drow = _disc_dao.get(_dconn, disc_id)
@@ -3068,6 +3918,7 @@ class Handler(BaseHTTPRequestHandler):
         if p == "/api/skill-insights":
             try:
                 from superharness.engine.skill_metrics import get_skill_insights
+
                 insights = get_skill_insights(str(self.project_dir))
                 self._json({"skills": insights})
             except Exception as e:
@@ -3080,26 +3931,30 @@ class Handler(BaseHTTPRequestHandler):
             _board = board_tasks(_contract_file)
             _rq = review_queue(_contract_file)
             agent_health = _agent_status_health(self.project_dir)
-            self._json({
-                # New fields
-                "board": _board,
-                "review_queue": _rq,
-                "agent_health": agent_health,
-                "budget": budget_signals(self.project_dir),
-                # Legacy fields
-                "columns": _board,
-                "totals": {k: len(v) for k, v in _board.items()},
-                "agent_status": agent_health,
-                "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            })
+            self._json(
+                {
+                    # New fields
+                    "board": _board,
+                    "review_queue": _rq,
+                    "agent_health": agent_health,
+                    "budget": budget_signals(self.project_dir),
+                    # Legacy fields
+                    "columns": _board,
+                    "totals": {k: len(v) for k, v in _board.items()},
+                    "agent_status": agent_health,
+                    "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                }
+            )
             return
 
         if p == "/api/review-queue":
             _contract_file = self.project_dir / ".superharness" / "contract.yaml"
-            self._json({
-                "queue": review_queue(_contract_file),
-                "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            })
+            self._json(
+                {
+                    "queue": review_queue(_contract_file),
+                    "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                }
+            )
             return
 
         if p == "/api/recent-failures":
@@ -3107,6 +3962,7 @@ class Handler(BaseHTTPRequestHandler):
             # with structured failure_class, failure_explain, and last 20 lines
             # of launcher log inline so operators don't need to tail logs.
             from urllib.parse import parse_qs as _pq
+
             qs = _pq(parsed.query)
             limit = int((qs.get("limit", ["10"])[0] or "10"))
             harness = self.project_dir / ".superharness"
@@ -3116,20 +3972,24 @@ class Handler(BaseHTTPRequestHandler):
                 # Read failed items from SQLite inbox table
                 from superharness.engine.db import get_connection, init_db
                 from superharness.engine import inbox_dao
+
                 conn = get_connection(str(self.project_dir))
                 try:
                     init_db(conn)
                     failed_rows = inbox_dao.get_all(conn, status="failed")
-                    failed = [{
-                        "id": r.id,
-                        "task": r.task_id,
-                        "to": r.target_agent,
-                        "status": r.status,
-                        "retry_count": r.retry_count,
-                        "failed_reason": r.failed_reason or "",
-                        "failed_at": r.failed_at or "",
-                        "pid": r.pid,
-                    } for r in failed_rows]
+                    failed = [
+                        {
+                            "id": r.id,
+                            "task": r.task_id,
+                            "to": r.target_agent,
+                            "status": r.status,
+                            "retry_count": r.retry_count,
+                            "failed_reason": r.failed_reason or "",
+                            "failed_at": r.failed_at or "",
+                            "pid": r.pid,
+                        }
+                        for r in failed_rows
+                    ]
                     failed.sort(key=lambda i: i.get("failed_at", ""), reverse=True)
                 finally:
                     conn.close()
@@ -3142,31 +4002,53 @@ class Handler(BaseHTTPRequestHandler):
                         safe_task = task_id.replace("/", "-")
                         candidates = sorted(
                             launcher_logs.glob(f"{safe_task}-{target}-*.log"),
-                            key=lambda p: p.stat().st_mtime, reverse=True,
+                            key=lambda p: p.stat().st_mtime,
+                            reverse=True,
                         )
                         if candidates:
                             try:
-                                lines = candidates[0].read_text(encoding="utf-8", errors="replace").splitlines()
+                                lines = (
+                                    candidates[0]
+                                    .read_text(encoding="utf-8", errors="replace")
+                                    .splitlines()
+                                )
                                 log_tail = "\n".join(lines[-20:])
                             except Exception as e:
-                                logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
+                                logger.warning(
+                                    "dashboard-ui unexpected error: %s",
+                                    e,
+                                    exc_info=True,
+                                )
                                 pass
-                    failures.append({
-                        "id": str(item.get("id", "")),
-                        "task": task_id,
-                        "to": target,
-                        "failed_at": str(item.get("failed_at") or ""),
-                        "failure_class": str(item.get("failure_class") or "unknown"),
-                        "failure_explain": str(item.get("failure_explain") or item.get("failed_reason") or ""),
-                        "retry_count": int(item.get("retry_count", 0) or 0),
-                        "max_retries": int(item.get("max_retries", 3) or 3),
-                        "log_tail": log_tail,
-                    })
+                    failures.append(
+                        {
+                            "id": str(item.get("id", "")),
+                            "task": task_id,
+                            "to": target,
+                            "failed_at": str(item.get("failed_at") or ""),
+                            "failure_class": str(
+                                item.get("failure_class") or "unknown"
+                            ),
+                            "failure_explain": str(
+                                item.get("failure_explain")
+                                or item.get("failed_reason")
+                                or ""
+                            ),
+                            "retry_count": int(item.get("retry_count", 0) or 0),
+                            "max_retries": int(item.get("max_retries", 3) or 3),
+                            "log_tail": log_tail,
+                        }
+                    )
             except Exception as e:
                 logger.warning("do_GET: unexpected error: %s", e, exc_info=True)
                 self._json({"error": str(e), "failures": []}, 500)
                 return
-            self._json({"failures": failures, "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+            self._json(
+                {
+                    "failures": failures,
+                    "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                }
+            )
             return
 
         if p == "/api/costs":
@@ -3181,25 +4063,27 @@ class Handler(BaseHTTPRequestHandler):
             stats = aggregate(records)[:top_n]
             total_cost = sum(r.get("cost_usd", 0.0) for r in records)
             total_tokens = sum(r.get("tokens", 0) for r in records)
-            self._json({
-                "leaderboard": [
-                    {
-                        "task_id": s.task_id,
-                        "total_cost_usd": round(s.total_cost_usd, 4),
-                        "total_tokens": 0,
-                        "dispatch_count": s.total_runs,
-                        "success_count": s.successes,
-                        "avg_duration_seconds": round(s.avg_duration_seconds, 1),
-                    }
-                    for s in stats
-                ],
-                "summary": {
-                    "total_records": len(records),
-                    "total_cost_usd": round(total_cost, 4),
-                    "total_tokens": total_tokens,
-                },
-                "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            })
+            self._json(
+                {
+                    "leaderboard": [
+                        {
+                            "task_id": s.task_id,
+                            "total_cost_usd": round(s.total_cost_usd, 4),
+                            "total_tokens": 0,
+                            "dispatch_count": s.total_runs,
+                            "success_count": s.successes,
+                            "avg_duration_seconds": round(s.avg_duration_seconds, 1),
+                        }
+                        for s in stats
+                    ],
+                    "summary": {
+                        "total_records": len(records),
+                        "total_cost_usd": round(total_cost, 4),
+                        "total_tokens": total_tokens,
+                    },
+                    "now_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                }
+            )
             return
 
         self._json({"error": "not found"}, 404)
@@ -3255,17 +4139,31 @@ class Handler(BaseHTTPRequestHandler):
             if action == "add":
                 existing = contract_owners(contract)
                 if owner in existing:
-                    self._json({"ok": True, "owners": existing, "note": "already exists"})
+                    self._json(
+                        {"ok": True, "owners": existing, "note": "already exists"}
+                    )
                     return
                 task_id = f"agent-{owner}"
                 run = subprocess.run(
-                    ["bash", str(task_sh), "create",
-                     "--project", str(self.project_dir),
-                     "--id", task_id,
-                     "--title", f"Tasks for {owner}",
-                     "--owner", owner,
-                     "--status", "todo"],
-                    capture_output=True, text=True, check=False, timeout=10,
+                    [
+                        "bash",
+                        str(task_sh),
+                        "create",
+                        "--project",
+                        str(self.project_dir),
+                        "--id",
+                        task_id,
+                        "--title",
+                        f"Tasks for {owner}",
+                        "--owner",
+                        owner,
+                        "--status",
+                        "todo",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=10,
                 )
                 if run.returncode != 0:
                     self._json({"error": run.stderr.strip()}, 500)
@@ -3279,11 +4177,15 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"ok": True, "owners": existing, "note": "not found"})
                     return
                 if len(existing) <= 2:
-                    self._json({"error": "Cannot remove owner: at least 2 owners required"}, 400)
+                    self._json(
+                        {"error": "Cannot remove owner: at least 2 owners required"},
+                        400,
+                    )
                     return
                 # Remove all tasks owned by this owner via SQLite
                 try:
                     from superharness.engine.db import get_connection, init_db
+
                     _conn = get_connection(str(self.project_dir))
                     try:
                         init_db(_conn)
@@ -3301,7 +4203,6 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": f"unknown owner action: {action}"}, 400)
             return
 
-
         # Health API — per-agent uptime, failure rate, latency
         if p == "/api/health":
             health = _get_health(str(self.project_dir))
@@ -3315,7 +4216,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(*auth_error)
                 return
             from urllib.parse import unquote as _unquote_close
-            disc_id = _unquote_close(p[len("/api/discussion/"):-len("/close")])
+
+            disc_id = _unquote_close(p[len("/api/discussion/") : -len("/close")])
             if not disc_id:
                 self._json({"error": "missing discussion id"}, 400)
                 return
@@ -3324,16 +4226,29 @@ class Handler(BaseHTTPRequestHandler):
                 body = self.rfile.read(length) if length > 0 else b"{}"
                 payload = json.loads(body.decode("utf-8"))
             except Exception:
-                logger.warning("do_POST: unexpected error: %s", sys.exc_info()[1], exc_info=True)
+                logger.warning(
+                    "do_POST: unexpected error: %s", sys.exc_info()[1], exc_info=True
+                )
                 payload = {}
             result = subprocess.run(
-                ["shux", "discuss", "close", "--project", str(self.project_dir), "--id", disc_id],
-                capture_output=True, text=True,
+                [
+                    "shux",
+                    "discuss",
+                    "close",
+                    "--project",
+                    str(self.project_dir),
+                    "--id",
+                    disc_id,
+                ],
+                capture_output=True,
+                text=True,
             )
             if result.returncode == 0:
                 self._json({"ok": True, "discussion_id": disc_id})
             else:
-                self._json({"error": result.stderr.strip() or result.stdout.strip()}, 500)
+                self._json(
+                    {"error": result.stderr.strip() or result.stdout.strip()}, 500
+                )
             return
 
         if p.startswith("/api/discussion/") and p.endswith("/create-task"):
@@ -3342,7 +4257,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(*auth_error)
                 return
             from urllib.parse import unquote as _unquote_ct
-            disc_id = _unquote_ct(p[len("/api/discussion/"):-len("/create-task")])
+
+            disc_id = _unquote_ct(p[len("/api/discussion/") : -len("/create-task")])
             if not disc_id:
                 self._json({"error": "missing discussion id"}, 400)
                 return
@@ -3351,22 +4267,44 @@ class Handler(BaseHTTPRequestHandler):
                 body = self.rfile.read(length) if length > 0 else b"{}"
                 payload = json.loads(body.decode("utf-8"))
             except Exception:
-                logger.warning("do_POST: unexpected error: %s", sys.exc_info()[1], exc_info=True)
+                logger.warning(
+                    "do_POST: unexpected error: %s", sys.exc_info()[1], exc_info=True
+                )
                 payload = {}
-            title = str(payload.get("title", "")).strip() or f"Implement consensus from {disc_id}"
+            title = (
+                str(payload.get("title", "")).strip()
+                or f"Implement consensus from {disc_id}"
+            )
             owner = str(payload.get("owner", "claude-code")).strip()
             result = subprocess.run(
-                ["shux", "task", "create",
-                 "--project", str(self.project_dir),
-                 "--title", title,
-                 "--owner", owner,
-                 "--context", f"Consensus reached in discussion {disc_id}. Implement the agreed design."],
-                capture_output=True, text=True,
+                [
+                    "shux",
+                    "task",
+                    "create",
+                    "--project",
+                    str(self.project_dir),
+                    "--title",
+                    title,
+                    "--owner",
+                    owner,
+                    "--context",
+                    f"Consensus reached in discussion {disc_id}. Implement the agreed design.",
+                ],
+                capture_output=True,
+                text=True,
             )
             if result.returncode == 0:
-                self._json({"ok": True, "discussion_id": disc_id, "output": result.stdout.strip()})
+                self._json(
+                    {
+                        "ok": True,
+                        "discussion_id": disc_id,
+                        "output": result.stdout.strip(),
+                    }
+                )
             else:
-                self._json({"error": result.stderr.strip() or result.stdout.strip()}, 500)
+                self._json(
+                    {"error": result.stderr.strip() or result.stdout.strip()}, 500
+                )
             return
 
         self._json({"error": "not found"}, 404)
@@ -3376,6 +4314,7 @@ def _get_installed_version() -> str:
     """Return the installed package version, or 'unknown' if unavailable."""
     try:
         import importlib.metadata
+
         return importlib.metadata.version("superharness")
     except Exception as e:
         logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
@@ -3393,11 +4332,20 @@ def _append_ledger(project_dir: str, line: str) -> None:
         pass  # Ledger writes must never crash the watchdog
 
 
-def autohealth_check(port: int, host: str = "127.0.0.1", timeout: float = 2.0) -> bool:
+def autohealth_check(
+    port: int,
+    host: str = "127.0.0.1",
+    timeout: float = 2.0,
+    auth_token: str | None = None,
+) -> bool:
     """Ping the dashboard server. Returns True if healthy, False otherwise."""
     import urllib.request
+
     try:
-        req = urllib.request.Request(f"http://{host}:{port}/api/status")
+        headers = {"X-Superharness-Token": auth_token} if auth_token else {}
+        req = urllib.request.Request(
+            f"http://{host}:{port}/api/status", headers=headers
+        )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status == 200
     except Exception as e:
@@ -3414,6 +4362,7 @@ def autohealth_loop(
 ) -> None:
     """Watchdog loop: check server health every `interval` seconds, restart if dead."""
     import signal
+
     restarts = 0
     proc: subprocess.Popen | None = None
     log_handle: object = None
@@ -3426,10 +4375,22 @@ def autohealth_loop(
             except Exception as e:
                 logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
                 pass
-        log_handle = open(os.path.join(project_dir, ".superharness", "dashboard-health.log"), "a")
+        log_handle = open(
+            os.path.join(project_dir, ".superharness", "dashboard-health.log"), "a"
+        )
         return subprocess.Popen(
-            [sys.executable, "-u", __file__, "--project", str(project_dir),
-             "--port", str(port), "--host", host, "--no-open"],
+            [
+                sys.executable,
+                "-u",
+                __file__,
+                "--project",
+                str(project_dir),
+                "--port",
+                str(port),
+                "--host",
+                host,
+                "--no-open",
+            ],
             start_new_session=True,
             stdout=log_handle,
             stderr=subprocess.STDOUT,
@@ -3446,6 +4407,18 @@ def autohealth_loop(
                 pass
         return _start()
 
+    def _dashboard_auth_token() -> str | None:
+        """Return the running dashboard's token, if it has finished starting."""
+        try:
+            token = (
+                (Path(project_dir) / ".superharness" / ".dashboard_auth_token")
+                .read_text()
+                .strip()
+            )
+            return token if len(token) >= 16 else None
+        except OSError:
+            return None
+
     def _shutdown(signum: int, frame: object) -> None:
         if proc and proc.poll() is None:
             proc.terminate()
@@ -3456,7 +4429,9 @@ def autohealth_loop(
 
     proc = _start()
     running_version = _get_installed_version()
-    print(f"autohealth: started dashboard pid={proc.pid} port={port} version={running_version}")
+    print(
+        f"autohealth: started dashboard pid={proc.pid} port={port} version={running_version}"
+    )
 
     while restarts < max_restarts:
         time.sleep(interval)
@@ -3479,27 +4454,57 @@ def autohealth_loop(
             )
             continue
 
-        if proc.poll() is not None or not autohealth_check(port, host):
+        if proc.poll() is not None or not autohealth_check(
+            port, host, auth_token=_dashboard_auth_token()
+        ):
             restarts += 1
             proc = _restart_proc(proc)
-            print(f"autohealth: restarted dashboard pid={proc.pid} (restart #{restarts})")
+            print(
+                f"autohealth: restarted dashboard pid={proc.pid} (restart #{restarts})"
+            )
     print(f"autohealth: max restarts ({max_restarts}) reached, exiting")
 
 
 def main() -> int:
     _ensure_python_with_yaml()
     ap = argparse.ArgumentParser(description="superharness browser dashboard")
-    ap.add_argument("--project", default=None, help="project directory containing .superharness (default: cwd)")
+    ap.add_argument(
+        "--project",
+        default=None,
+        help="project directory containing .superharness (default: cwd)",
+    )
     ap.add_argument("--port", type=int, default=8787, help="HTTP port (default: 8787)")
-    ap.add_argument("--host", default="127.0.0.1", help="bind host (default: 127.0.0.1)")
-    ap.add_argument("--refresh-seconds", type=int, default=3, help="ui refresh seconds (default: 3)")
-    ap.add_argument("--no-open", action="store_true", help="do not open browser automatically")
-    ap.add_argument("--autohealth", action="store_true", help="run watchdog that auto-restarts dashboard if it dies")
-    ap.add_argument("--health-interval", type=int, default=5, help="health check interval in seconds (default: 5)")
-    ap.add_argument("--timeout", type=int, default=0, help="idle timeout in seconds (default: 0, disabled)")
+    ap.add_argument(
+        "--host", default="127.0.0.1", help="bind host (default: 127.0.0.1)"
+    )
+    ap.add_argument(
+        "--refresh-seconds", type=int, default=3, help="ui refresh seconds (default: 3)"
+    )
+    ap.add_argument(
+        "--no-open", action="store_true", help="do not open browser automatically"
+    )
+    ap.add_argument(
+        "--autohealth",
+        action="store_true",
+        help="run watchdog that auto-restarts dashboard if it dies",
+    )
+    ap.add_argument(
+        "--health-interval",
+        type=int,
+        default=5,
+        help="health check interval in seconds (default: 5)",
+    )
+    ap.add_argument(
+        "--timeout",
+        type=int,
+        default=0,
+        help="idle timeout in seconds (default: 0, disabled)",
+    )
     args = ap.parse_args()
 
-    project_dir = Path(args.project).expanduser().resolve() if args.project else Path.cwd()
+    project_dir = (
+        Path(args.project).expanduser().resolve() if args.project else Path.cwd()
+    )
     if not (project_dir / ".superharness").is_dir():
         raise SystemExit(f"Missing .superharness in project: {project_dir}")
     try:
@@ -3524,19 +4529,24 @@ def main() -> int:
     Handler.last_ping = time.time()
 
     if Handler.idle_timeout > 0:
+
         def _idle_monitor():
             while True:
                 idle = time.time() - Handler.last_ping
                 if idle > Handler.idle_timeout:
-                    print(f"dashboard-ui: idle timeout ({Handler.idle_timeout}s) exceeded — shutting down")
+                    print(
+                        f"dashboard-ui: idle timeout ({Handler.idle_timeout}s) exceeded — shutting down"
+                    )
                     os._exit(0)
                 time.sleep(5)
+
         threading.Thread(target=_idle_monitor, daemon=True).start()
 
     # Guard: prevent a second dashboard for the same project directory.
     _my_pid = os.getpid()
     try:
         import subprocess as _sp
+
         # Use Popen+communicate instead of run(timeout=) — on macOS CI runners ps
         # can enter an uninterruptible kernel wait that ignores SIGKILL.  subprocess.run
         # calls process.wait() after kill(), which hangs forever in that case.
@@ -3544,7 +4554,9 @@ def main() -> int:
         # safely abandon the process and skip the guard.
         _ps_proc = _sp.Popen(
             ["ps", "ax", "-o", "pid=,args="],
-            stdout=_sp.PIPE, stderr=_sp.DEVNULL, text=True,
+            stdout=_sp.PIPE,
+            stderr=_sp.DEVNULL,
+            text=True,
         )
         try:
             _ps, _ = _ps_proc.communicate(timeout=10)
@@ -3577,8 +4589,20 @@ def main() -> int:
             if _other_proj and Path(_other_proj).resolve() == project_dir.resolve():
                 # Find its port via lsof
                 _lsof = _sp.run(
-                    ["lsof", "-a", "-i", "TCP", "-sTCP:LISTEN", "-n", "-P", "-p", str(_other_pid)],
-                    capture_output=True, text=True, timeout=10,
+                    [
+                        "lsof",
+                        "-a",
+                        "-i",
+                        "TCP",
+                        "-sTCP:LISTEN",
+                        "-n",
+                        "-P",
+                        "-p",
+                        str(_other_pid),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
                 ).stdout
                 _existing_port = None
                 for _ll in _lsof.splitlines():
@@ -3588,7 +4612,11 @@ def main() -> int:
                             _existing_port = int(_lp[8].split(":")[-1])
                         except ValueError:
                             pass
-                _url = f"http://127.0.0.1:{_existing_port}" if _existing_port else "(port unknown)"
+                _url = (
+                    f"http://127.0.0.1:{_existing_port}"
+                    if _existing_port
+                    else "(port unknown)"
+                )
 
                 # Version check: query running dashboard and compare to installed version
                 _current_version = _get_installed_version()
@@ -3596,31 +4624,52 @@ def main() -> int:
                 if _existing_port:
                     try:
                         import urllib.request as _ur
-                        with _ur.urlopen(f"http://127.0.0.1:{_existing_port}/api/status", timeout=2) as _r:
+
+                        with _ur.urlopen(
+                            f"http://127.0.0.1:{_existing_port}/api/status", timeout=2
+                        ) as _r:
                             import json as _json
-                            _running_version = _json.loads(_r.read()).get("version", "unknown")
+
+                            _running_version = _json.loads(_r.read()).get(
+                                "version", "unknown"
+                            )
                     except Exception as e:
-                        logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
+                        logger.warning(
+                            "dashboard-ui unexpected error: %s", e, exc_info=True
+                        )
                         pass
-                if _running_version != "unknown" and _running_version != _current_version:
+                if (
+                    _running_version != "unknown"
+                    and _running_version != _current_version
+                ):
                     # Log the mismatch but DON'T restart — let the user decide
-                    print(f"dashboard version: running {_running_version} vs installed {_current_version} — run 'pipx upgrade superharness' to update")
+                    print(
+                        f"dashboard version: running {_running_version} vs installed {_current_version} — run 'pipx upgrade superharness' to update"
+                    )
                     # Don't kill the process — just continue as a warning
 
                 # If the port is unknown, the PID is dead — kill stale entry and start fresh
                 if _existing_port is None:
-                    print(f"dashboard: found stale pid={_other_pid} for project '{project_dir.name}' — clearing and starting fresh")
+                    print(
+                        f"dashboard: found stale pid={_other_pid} for project '{project_dir.name}' — clearing and starting fresh"
+                    )
                     if not pid_alive(_other_pid):
                         # PID is dead — remove stale operator-state.json
-                        _state_file = project_dir / ".superharness" / "operator-state.json"
+                        _state_file = (
+                            project_dir / ".superharness" / "operator-state.json"
+                        )
                         try:
                             _state_file.unlink(missing_ok=True)
                         except Exception as e:
-                            logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
+                            logger.warning(
+                                "dashboard-ui unexpected error: %s", e, exc_info=True
+                            )
                             pass
                     continue
 
-                print(f"dashboard already running for project '{project_dir.name}' (pid={_other_pid}, {_url}) — version {_running_version}")
+                print(
+                    f"dashboard already running for project '{project_dir.name}' (pid={_other_pid}, {_url}) — version {_running_version}"
+                )
                 raise SystemExit(0)
     except SystemExit:
         raise
@@ -3637,7 +4686,9 @@ def main() -> int:
     _token_file = project_dir / ".superharness" / ".dashboard_auth_token"
     try:
         _stored = _token_file.read_text().strip()
-        Handler.auth_token = _stored if len(_stored) >= 16 else secrets.token_urlsafe(24)
+        Handler.auth_token = (
+            _stored if len(_stored) >= 16 else secrets.token_urlsafe(24)
+        )
     except Exception as e:
         logger.warning("dashboard-ui unexpected error: %s", e, exc_info=True)
         Handler.auth_token = secrets.token_urlsafe(24)
@@ -3658,16 +4709,24 @@ def main() -> int:
                 port = candidate
                 break
             except OSError as exc:
-                if exc.errno in (48, 98, 10048, _errno_mod.EADDRINUSE) or "address already in use" in str(exc).lower():
+                if (
+                    exc.errno in (48, 98, 10048, _errno_mod.EADDRINUSE)
+                    or "address already in use" in str(exc).lower()
+                ):
                     continue
                 raise
         else:
-            raise SystemExit(f"No free port found in range {args.port}–{args.port + 19}")
+            raise SystemExit(
+                f"No free port found in range {args.port}–{args.port + 19}"
+            )
     else:
         try:
             server = ThreadingHTTPServer((args.host, port), Handler)
         except OSError as exc:
-            if exc.errno in (48, 98, 10048, _errno_mod.EADDRINUSE) or "address already in use" in str(exc).lower():
+            if (
+                exc.errno in (48, 98, 10048, _errno_mod.EADDRINUSE)
+                or "address already in use" in str(exc).lower()
+            ):
                 raise SystemExit(f"Port {port} is already in use") from None
             raise
     # Pin the guards to the address actually bound, so _expected_origin and
@@ -3681,9 +4740,13 @@ def main() -> int:
     print(f"version: {_installed_ver}")
     _wrt = watcher_runtime(Handler.label)
     _watcher_ok = _wrt.get("loaded") and _wrt.get("state") in ("waiting", "running")
-    print(f"watcher: {'ok — auto-dispatch active' if _watcher_ok else 'NOT RUNNING — auto-dispatch inactive (run: shux watcher-install)'}")
+    print(
+        f"watcher: {'ok — auto-dispatch active' if _watcher_ok else 'NOT RUNNING — auto-dispatch inactive (run: shux watcher-install)'}"
+    )
     print(f"watcher label: {Handler.label}")
-    url_file = os.environ.get("SUPERHARNESS_DASHBOARD_URL_FILE") or os.environ.get("SUPERHARNESS_MONITOR_URL_FILE")
+    url_file = os.environ.get("SUPERHARNESS_DASHBOARD_URL_FILE") or os.environ.get(
+        "SUPERHARNESS_MONITOR_URL_FILE"
+    )
     if url_file:
         with open(url_file, "w") as _f:
             _f.write(f"dashboard: {url}\n")
@@ -3701,6 +4764,7 @@ def _get_health(project_dir: str) -> dict:
     """Return per-agent health stats for the dashboard."""
     try:
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(project_dir)
         try:
             init_db(conn)
@@ -3720,12 +4784,16 @@ def _get_health(project_dir: str) -> dict:
                 ).fetchone()[0]
                 total = done + failed
                 accuracy = round(done / total * 100, 1) if total > 0 else 100.0
-                agents.append({
-                    "agent": agent, "status": hb["status"],
-                    "last_seen": hb["updated_at"],
-                    "tasks_done": done, "tasks_failed": failed,
-                    "accuracy_pct": accuracy,
-                })
+                agents.append(
+                    {
+                        "agent": agent,
+                        "status": hb["status"],
+                        "last_seen": hb["updated_at"],
+                        "tasks_done": done,
+                        "tasks_failed": failed,
+                        "accuracy_pct": accuracy,
+                    }
+                )
             return {"agents": agents, "total_agents": len(agents)}
         finally:
             conn.close()

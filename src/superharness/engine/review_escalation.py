@@ -13,6 +13,7 @@ This module adds a per-task `review_chain` ordered list of reviewers plus a
 The lifecycle rule for review_requested is replaced by this richer behavior
 when the watcher tick runs both reconcilers.
 """
+
 from __future__ import annotations
 
 import os
@@ -21,6 +22,7 @@ from datetime import datetime, timezone
 import yaml
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -66,6 +68,7 @@ def escalate_stale_reviews(project_dir: str, timeout_minutes: int | None = None)
         return 0
 
     from superharness.engine import state_reader
+
     try:
         tasks = state_reader.get_tasks(project_dir)
     except Exception as e:
@@ -117,6 +120,7 @@ def escalate_stale_reviews(project_dir: str, timeout_minutes: int | None = None)
         if is_sqlite_only():
             # SQLite-only: mirror directly, skip YAML file write.
             from superharness.engine.state_writer import mirror_task_dict
+
             for task in tasks:
                 if isinstance(task, dict):
                     mirror_task_dict(project_dir, task)
@@ -127,13 +131,19 @@ def escalate_stale_reviews(project_dir: str, timeout_minutes: int | None = None)
             # legacy-path writer in this codebase (test_type.py, discuss.py).
             try:
                 from superharness.engine import contract_io, state_reader
-                contract_file = os.path.join(project_dir, ".superharness", "contract.yaml")
+
+                contract_file = os.path.join(
+                    project_dir, ".superharness", "contract.yaml"
+                )
                 doc = state_reader.get_contract_doc(project_dir)
                 doc["tasks"] = tasks
                 contract_io.write_contract(contract_file, doc)
             except Exception as e:
                 import sys
-                print(f"review-escalation: failed to write contract: {e}", file=sys.stderr)
+
+                print(
+                    f"review-escalation: failed to write contract: {e}", file=sys.stderr
+                )
                 return 0
 
     return changed

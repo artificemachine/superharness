@@ -21,6 +21,7 @@ Fix: reconcile on-disk submissions from the read path, so orphaned rounds
 become visible regardless of discussion status. Registration is idempotent
 and does not mutate discussion status, so a closed discussion stays closed.
 """
+
 from __future__ import annotations
 
 import json
@@ -47,14 +48,23 @@ def _make_discussion(tmp_path, status: str = "closed"):
     conn = get_connection(str(project))
     init_db(conn, project_dir=str(project))
     discussions_dao.create(
-        conn, id=DISC_ID, topic="Orphaned round repro",
-        owners=OWNERS, task_id=None, now=NOW,
+        conn,
+        id=DISC_ID,
+        topic="Orphaned round repro",
+        owners=OWNERS,
+        task_id=None,
+        now=NOW,
     )
     # Round 1 submitted normally, by both agents.
     for agent in OWNERS:
         discussions_dao.add_round(
-            conn, discussion_id=DISC_ID, round_number=1,
-            agent=agent, content="round 1", verdict="partial", now=NOW,
+            conn,
+            discussion_id=DISC_ID,
+            round_number=1,
+            agent=agent,
+            content="round 1",
+            verdict="partial",
+            now=NOW,
         )
     # An advance marker to round 2 exists — the round was dispatched.
     conn.execute(
@@ -62,7 +72,10 @@ def _make_discussion(tmp_path, status: str = "closed"):
         "VALUES (?, 2, '_advance', NULL, NULL, ?)",
         (DISC_ID, NOW),
     )
-    conn.execute("UPDATE discussions SET status=?, closed_at=? WHERE id=?", (status, NOW, DISC_ID))
+    conn.execute(
+        "UPDATE discussions SET status=?, closed_at=? WHERE id=?",
+        (status, NOW, DISC_ID),
+    )
     conn.commit()
     conn.close()
     return project, disc_dir
@@ -79,9 +92,18 @@ def _engine_status(disc_dir) -> dict:
     """Invoke the same code path `shux discussion rounds` renders."""
     env = {**os.environ, "PYTHONPATH": os.path.join(os.getcwd(), "src")}
     r = subprocess.run(
-        [sys.executable, "-m", "superharness.engine.discussion", "status",
-         "--discussion-dir", str(disc_dir)],
-        capture_output=True, text=True, env=env, check=False,
+        [
+            sys.executable,
+            "-m",
+            "superharness.engine.discussion",
+            "status",
+            "--discussion-dir",
+            str(disc_dir),
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
     )
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout)
@@ -136,7 +158,9 @@ def test_reconcile_is_idempotent(tmp_path):
 def test_corrupt_orphan_yaml_is_skipped_not_fatal(tmp_path):
     """A truncated file (agent killed mid-write) must not break the read path."""
     project, disc_dir = _make_discussion(tmp_path, status="closed")
-    (disc_dir / "round-2-claude-code.yaml").write_text("verdict: partial\nposition: |\n  unterminated")
+    (disc_dir / "round-2-claude-code.yaml").write_text(
+        "verdict: partial\nposition: |\n  unterminated"
+    )
     (disc_dir / "round-2-opencode.yaml").write_text("{ this is not: valid: yaml: [")
 
     status = _engine_status(disc_dir)

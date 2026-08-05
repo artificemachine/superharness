@@ -3,6 +3,7 @@
 Answers "what is this and why does it exist?" in under 10 seconds.
 Works before init, before install, requires nothing.
 """
+
 from __future__ import annotations
 
 import click

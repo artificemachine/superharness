@@ -1,9 +1,9 @@
 """superharness pack — export and import portable .superharness project state."""
+
 from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
 
 
 def _abort(msg: str, code: int = 1) -> None:
@@ -29,15 +29,21 @@ def main(argv: list[str] | None = None) -> None:
         help="Export portable .superharness state to a pack file.",
     )
     p_export.add_argument(
-        "--project", "-p", default=None,
+        "--project",
+        "-p",
+        default=None,
         help="Project root (default: cwd)",
     )
     p_export.add_argument(
-        "--output", "-o", default=None,
+        "--output",
+        "-o",
+        default=None,
         help="Output file path (default: <project>-<timestamp>.superharness.pack.tar.gz)",
     )
     p_export.add_argument(
-        "--scrub", action="store_true", default=False,
+        "--scrub",
+        action="store_true",
+        default=False,
         help="Redact secrets (API keys, tokens, private keys) from all exported text files.",
     )
 
@@ -51,7 +57,9 @@ def main(argv: list[str] | None = None) -> None:
         help="Path to the .superharness.pack.tar.gz file",
     )
     p_import.add_argument(
-        "--project", "-p", default=None,
+        "--project",
+        "-p",
+        default=None,
         help="Destination project root (default: cwd)",
     )
     p_import.add_argument(

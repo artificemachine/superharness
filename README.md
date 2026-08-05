@@ -233,7 +233,12 @@ superharness dashboard-ui --project .
 **Run tests:**
 ```bash
 uv sync --dev
-pytest tests/ -q
+pytest tests/ -q  # offline by default; no provider or agent CLI is invoked
+```
+
+To run the credentialed provider smoke tests deliberately, opt in:
+```bash
+SUPERHARNESS_ALLOW_LIVE_TESTS=1 RUN_PROVIDER_SMOKE=1 pytest tests/integration/test_summarizer_smoke.py -q
 ```
 
 **Full terminal reference:** [docs/GUIDE.md](docs/GUIDE.md)

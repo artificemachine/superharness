@@ -25,10 +25,10 @@ round inbox rows, waits a short grace window, SIGKILLs survivors (POSIX only
 — Windows' `/F` is already forceful), then reconciles any on-disk YAML the
 agent finished writing before dying.
 """
+
 from __future__ import annotations
 
 import os
-import signal
 import subprocess
 import sys
 import time
@@ -59,7 +59,9 @@ def _make_discussion(tmp_path, owners=("claude-code", "opencode")):
     return project, disc_dir
 
 
-def _seed_launched_inbox(project, task_suffix: str, agent: str, pid: int, status: str = "launched"):
+def _seed_launched_inbox(
+    project, task_suffix: str, agent: str, pid: int, status: str = "launched"
+):
     conn = get_connection(str(project))
     init_db(conn, project_dir=str(project))
     task_id = f"{DISC_ID}/{task_suffix}"
@@ -132,7 +134,9 @@ def test_close_terminates_a_cooperative_launched_process(tmp_path):
         proc.wait(timeout=5)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="SIGTERM-ignore + SIGKILL escalation is POSIX-only")
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="SIGTERM-ignore + SIGKILL escalation is POSIX-only"
+)
 def test_close_escalates_to_sigkill_for_a_process_that_ignores_sigterm(tmp_path):
     proc = _spawn_sleeper(ignore_sigterm=True)
     try:
@@ -164,7 +168,9 @@ def test_close_does_not_touch_processes_outside_the_discussion(tmp_path):
     unrelated = _spawn_sleeper(seconds=3600)
     try:
         project, disc_dir = _make_discussion(tmp_path)
-        _seed_launched_inbox(project, "round-1", "claude-code", 999999)  # dead/bogus pid, this discussion
+        _seed_launched_inbox(
+            project, "round-1", "claude-code", 999999
+        )  # dead/bogus pid, this discussion
 
         conn = get_connection(str(project))
         init_db(conn, project_dir=str(project))

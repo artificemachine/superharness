@@ -2,6 +2,7 @@
 Iteration 0 — Unknown subcommand behavior (TDD: written before implementation).
 Tests that unknown subcommands produce helpful error messages and non-zero exit.
 """
+
 import pytest
 from click.testing import CliRunner
 from superharness.cli import main

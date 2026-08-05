@@ -1,11 +1,13 @@
 """MCP contract tools — Iteration 5."""
+
 from __future__ import annotations
 
 import sqlite3
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Optional
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -51,12 +53,15 @@ def create_task(
 ) -> dict:
     """Create a new task. Returns the created task dict."""
     now = _now()
-    conn.execute("""
+    conn.execute(
+        """
         INSERT OR IGNORE INTO tasks (
             id, title, owner, status, created_at, updated_at, version,
             acceptance_criteria, test_types, out_of_scope, definition_of_done
         ) VALUES (?, ?, ?, ?, ?, ?, 1, '[]', '[]', '[]', '[]')
-    """, (id, title, owner, status, now, now))
+    """,
+        (id, title, owner, status, now, now),
+    )
     conn.commit()
     return get_task(conn, id) or {}
 
@@ -77,13 +82,15 @@ def update_status(
         current = get_task(conn, task_id)
         if current:
             from superharness.engine.next_action import validate_status_transition
+
             validate_status_transition(str(current.get("status", "")), status)
     except ValueError as _e:
-        logger.warning("update_status rejected invalid transition for %s: %s", task_id, _e)
+        logger.warning(
+            "update_status rejected invalid transition for %s: %s", task_id, _e
+        )
         return {}
 
     now = _now()
-    status_col = f"{status}_at"
     # Map well-known statuses to their timestamp columns
     ts_cols = {
         "plan_proposed": "plan_proposed_at",
@@ -95,19 +102,28 @@ def update_status(
     }
     extra_col = ts_cols.get(status)
     if extra_col:
-        conn.execute(f"""
+        conn.execute(
+            f"""
             UPDATE tasks SET status=?, updated_at=?, version=version+1, {extra_col}=?
             WHERE id=?
-        """, (status, now, now, task_id))
+        """,
+            (status, now, now, task_id),
+        )
     else:
-        conn.execute("""
+        conn.execute(
+            """
             UPDATE tasks SET status=?, updated_at=?, version=version+1 WHERE id=?
-        """, (status, now, task_id))
+        """,
+            (status, now, task_id),
+        )
     conn.commit()
 
     if hook_registry and project_path:
         event = "task:completed" if status == "done" else f"task:{status}"
-        hook_registry.fire(event, {"task_id": task_id, "status": status, "actor": actor},
-                           project_path=project_path)
+        hook_registry.fire(
+            event,
+            {"task_id": task_id, "status": status, "actor": actor},
+            project_path=project_path,
+        )
 
     return get_task(conn, task_id) or {}

@@ -11,6 +11,7 @@ under test and degrades to an empty result whenever the model is unavailable.
 Iteration 2 delivers extraction only (read-only). Persistence and confidence
 gating land in Iteration 3 (`apply_lessons` in agent_memory).
 """
+
 from __future__ import annotations
 
 import json

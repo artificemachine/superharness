@@ -8,6 +8,7 @@ separate API key in env.
 Same shape as OpenCodeSummarizer; both inherit from the shared
 _CLISummarizer base extracted in this iteration.
 """
+
 from __future__ import annotations
 
 import pytest

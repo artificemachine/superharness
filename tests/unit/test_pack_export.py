@@ -1,9 +1,8 @@
 """Tests for superharness pack export engine."""
+
 from __future__ import annotations
 
-import io
 import tarfile
-from pathlib import Path
 
 import pytest
 import yaml
@@ -12,6 +11,7 @@ import yaml
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def project_dir(tmp_path):
@@ -36,7 +36,9 @@ def project_dir(tmp_path):
     (sh / "contract.yaml").write_text(yaml.dump(contract))
 
     # inbox.yaml with absolute path
-    inbox_content = {"items": [{"id": "i1", "path": "/home/testuser/projects/myapp/task.yaml"}]}
+    inbox_content = {
+        "items": [{"id": "i1", "path": "/home/testuser/projects/myapp/task.yaml"}]
+    }
     (sh / "inbox.yaml").write_text(yaml.dump(inbox_content))
 
     # ledger.md
@@ -45,7 +47,9 @@ def project_dir(tmp_path):
     # handoffs/
     handoffs = sh / "handoffs"
     handoffs.mkdir()
-    (handoffs / "handoff-01.yaml").write_text("id: handoff-01\nsummary: first handoff\n")
+    (handoffs / "handoff-01.yaml").write_text(
+        "id: handoff-01\nsummary: first handoff\n"
+    )
 
     # decisions.yaml
     (sh / "decisions.yaml").write_text("decisions: []\n")
@@ -73,6 +77,7 @@ def project_dir(tmp_path):
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 def test_export_creates_tarball(project_dir, tmp_path):
     from superharness.engine.pack import export_pack

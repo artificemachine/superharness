@@ -6,6 +6,7 @@ typo'd status like "plan_aproved" was silently accepted and the task became
 invisible-stuck: no code path expects it, so it never surfaces on the board
 or in `shux contract` again.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -71,13 +72,17 @@ def test_migration_preserves_existing_rows(tmp_path):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     before_count = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
-    before_statuses = sorted(r["status"] for r in conn.execute("SELECT status FROM tasks"))
+    before_statuses = sorted(
+        r["status"] for r in conn.execute("SELECT status FROM tasks")
+    )
 
     db_mod.init_db(conn, project_dir=str(tmp_path / "proj"))  # 34 -> 35
 
     after_version = conn.execute("PRAGMA user_version").fetchone()[0]
     after_count = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
-    after_statuses = sorted(r["status"] for r in conn.execute("SELECT status FROM tasks"))
+    after_statuses = sorted(
+        r["status"] for r in conn.execute("SELECT status FROM tasks")
+    )
     conn.close()
 
     assert after_version == db_mod.CURRENT_SCHEMA_VERSION

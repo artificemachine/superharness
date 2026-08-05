@@ -4,6 +4,7 @@ Claude Code's actual /plugin marketplace add + /plugin install flow is interacti
 and cannot be driven by an automated test. These tests validate the assembled system's
 structure instead: manifests cross-reference correctly and contain no unsafe paths.
 """
+
 from __future__ import annotations
 
 import json
@@ -30,7 +31,10 @@ def test_plugin_source_contains_at_least_one_surface():
     for entry in data["plugins"]:
         source_dir = ROOT / entry["source"]
         surfaces = ["commands", "skills", "agents"]
-        assert any((source_dir / surface).is_dir() and list((source_dir / surface).iterdir()) for surface in surfaces)
+        assert any(
+            (source_dir / surface).is_dir() and list((source_dir / surface).iterdir())
+            for surface in surfaces
+        )
 
 
 def test_plugin_json_name_matches_marketplace_entry_name():

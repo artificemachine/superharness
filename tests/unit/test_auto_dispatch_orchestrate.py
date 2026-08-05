@@ -2,18 +2,18 @@
 
 Plan: PLAN-superharness-parallel-dispatch.md
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _setup_project(tmp_path: Path, effort: str = "high", status: str = "todo") -> Path:
     project = tmp_path / "proj"
@@ -52,6 +52,7 @@ def _setup_project(tmp_path: Path, effort: str = "high", status: str = "todo") -
 
 def _make_decomposition(parent_id: str, n: int = 2):
     from superharness.engine.orchestrator import DecompositionResult
+
     subtasks = [
         {
             "id": f"{parent_id}.st{i + 1}",
@@ -68,12 +69,14 @@ def _make_decomposition(parent_id: str, n: int = 2):
 
 def _get_tasks(project: Path) -> list[dict]:
     from superharness.engine import state_reader
+
     return state_reader.get_tasks(str(project))
 
 
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestOrchestrateDecomposesHighEffortTask:
     def test_subtasks_registered_in_sqlite(self, tmp_path):
@@ -84,11 +87,14 @@ class TestOrchestrateDecomposesHighEffortTask:
         with patch("superharness.commands.auto_dispatch.Orchestrator") as Mock:
             Mock.return_value.decompose.return_value = fake
             from superharness.commands.auto_dispatch import run_auto_dispatch
+
             rc = run_auto_dispatch(str(project), orchestrate=True, effort_gate="high")
 
         assert rc == 0
         tasks = _get_tasks(project)
-        subtask_ids = [t["id"] for t in tasks if t.get("id", "").startswith("t-orch-test.st")]
+        subtask_ids = [
+            t["id"] for t in tasks if t.get("id", "").startswith("t-orch-test.st")
+        ]
         assert len(subtask_ids) == 2
 
     def test_parent_task_becomes_in_progress(self, tmp_path):
@@ -99,6 +105,7 @@ class TestOrchestrateDecomposesHighEffortTask:
         with patch("superharness.commands.auto_dispatch.Orchestrator") as Mock:
             Mock.return_value.decompose.return_value = fake
             from superharness.commands.auto_dispatch import run_auto_dispatch
+
             run_auto_dispatch(str(project), orchestrate=True, effort_gate="high")
 
         tasks = _get_tasks(project)
@@ -112,6 +119,7 @@ class TestOrchestrateDecomposesHighEffortTask:
 
         with patch("superharness.commands.auto_dispatch.Orchestrator") as Mock:
             from superharness.commands.auto_dispatch import run_auto_dispatch
+
             run_auto_dispatch(str(project), orchestrate=False, effort_gate="high")
             Mock.return_value.decompose.assert_not_called()
 
@@ -127,6 +135,7 @@ class TestOrchestrateLowEffortSkipped:
 
         with patch("superharness.commands.auto_dispatch.Orchestrator") as Mock:
             from superharness.commands.auto_dispatch import run_auto_dispatch
+
             run_auto_dispatch(str(project), orchestrate=True, effort_gate="high")
             Mock.return_value.decompose.assert_not_called()
 
@@ -136,6 +145,7 @@ class TestOrchestrateLowEffortSkipped:
 
         with patch("superharness.commands.auto_dispatch.Orchestrator") as Mock:
             from superharness.commands.auto_dispatch import run_auto_dispatch
+
             run_auto_dispatch(str(project), orchestrate=True, effort_gate="high")
             Mock.return_value.decompose.assert_not_called()
 
@@ -149,11 +159,16 @@ class TestDryRunWithOrchestrate:
         with patch("superharness.commands.auto_dispatch.Orchestrator") as Mock:
             Mock.return_value.decompose.return_value = fake
             from superharness.commands.auto_dispatch import run_auto_dispatch
-            rc = run_auto_dispatch(str(project), orchestrate=True, dry_run=True, effort_gate="high")
+
+            rc = run_auto_dispatch(
+                str(project), orchestrate=True, dry_run=True, effort_gate="high"
+            )
 
         assert rc == 0
         out = capsys.readouterr().out
-        assert any(kw in out.lower() for kw in ("decompose", "orchestrate", "subtask", "orch"))
+        assert any(
+            kw in out.lower() for kw in ("decompose", "orchestrate", "subtask", "orch")
+        )
 
     def test_dry_run_writes_no_subtasks(self, tmp_path):
         """--dry-run leaves SQLite unchanged — no subtasks created."""
@@ -163,7 +178,10 @@ class TestDryRunWithOrchestrate:
         with patch("superharness.commands.auto_dispatch.Orchestrator") as Mock:
             Mock.return_value.decompose.return_value = fake
             from superharness.commands.auto_dispatch import run_auto_dispatch
-            run_auto_dispatch(str(project), orchestrate=True, dry_run=True, effort_gate="high")
+
+            run_auto_dispatch(
+                str(project), orchestrate=True, dry_run=True, effort_gate="high"
+            )
 
         tasks = _get_tasks(project)
         subtasks = [t for t in tasks if t.get("id", "").startswith("t-orch-test.st")]
@@ -174,17 +192,20 @@ class TestOrchestrateEmptyDecompositionFallback:
     def test_empty_subtasks_falls_back_to_normal_enqueue(self, tmp_path):
         """If Orchestrator returns 0 subtasks, original task is enqueued normally (no silent drop)."""
         from superharness.engine.orchestrator import DecompositionResult
+
         project = _setup_project(tmp_path, effort="high")
         empty = DecompositionResult(subtasks=[])
 
         with patch("superharness.commands.auto_dispatch.Orchestrator") as Mock:
             Mock.return_value.decompose.return_value = empty
             from superharness.commands.auto_dispatch import run_auto_dispatch
+
             rc = run_auto_dispatch(str(project), orchestrate=True, effort_gate="high")
 
         assert rc == 0
         from superharness.engine import inbox_dao
         from superharness.engine.db import get_connection, init_db
+
         conn = get_connection(str(project))
         try:
             init_db(conn)

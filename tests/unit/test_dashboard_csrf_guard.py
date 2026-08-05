@@ -21,6 +21,7 @@ The server is already loopback-bind-enforced, which does not help against a
 browser the attacker controls — so the fix is to validate the Host header
 against the real bind address and to authenticate the two orphaned routes.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -31,7 +32,10 @@ import pytest
 
 _DASH = (
     Path(__file__).resolve().parents[2]
-    / "src" / "superharness" / "scripts" / "dashboard-ui.py"
+    / "src"
+    / "superharness"
+    / "scripts"
+    / "dashboard-ui.py"
 )
 
 
@@ -75,9 +79,16 @@ class TestHostHeaderIsValidated:
         h = _handler(dash, {"Host": "evil.com"})
         assert _bind(dash, h, "_host_is_allowed")() is False
 
-    @pytest.mark.parametrize("host", [
-        "127.0.0.1:8787", "localhost:8787", "[::1]:8787", "127.0.0.1", "localhost",
-    ])
+    @pytest.mark.parametrize(
+        "host",
+        [
+            "127.0.0.1:8787",
+            "localhost:8787",
+            "[::1]:8787",
+            "127.0.0.1",
+            "localhost",
+        ],
+    )
     def test_loopback_hosts_accepted(self, dash, host):
         h = _handler(dash, {"Host": host})
         assert _bind(dash, h, "_host_is_allowed")() is True
@@ -126,45 +137,60 @@ class TestMutationAuth:
         Rebinding is closed by _host_is_allowed() and by deriving the expected
         origin from the real bind address, not by demanding the header.
         """
-        h = _handler(dash, {
-            "Host": "127.0.0.1:8787",
-            "X-Superharness-Token": "correct-token",
-        })
+        h = _handler(
+            dash,
+            {
+                "Host": "127.0.0.1:8787",
+                "X-Superharness-Token": "correct-token",
+            },
+        )
         assert _bind(dash, h, "_verify_mutation_auth")() is None
 
     def test_rebound_request_is_still_rejected_without_origin(self, dash):
         """The permissive path above must not become a bypass: a rebound
         request carries the attacker's hostname in Host and is refused even
         with a valid token and no Origin header."""
-        h = _handler(dash, {
-            "Host": "evil.com",
-            "X-Superharness-Token": "correct-token",
-        })
+        h = _handler(
+            dash,
+            {
+                "Host": "evil.com",
+                "X-Superharness-Token": "correct-token",
+            },
+        )
         assert _bind(dash, h, "_verify_mutation_auth")() is not None
 
     def test_forged_host_cannot_authorise_mutation(self, dash):
-        h = _handler(dash, {
-            "Host": "evil.com",
-            "Origin": "http://evil.com",
-            "X-Superharness-Token": "correct-token",
-        })
+        h = _handler(
+            dash,
+            {
+                "Host": "evil.com",
+                "Origin": "http://evil.com",
+                "X-Superharness-Token": "correct-token",
+            },
+        )
         assert _bind(dash, h, "_verify_mutation_auth")() is not None
 
     def test_same_origin_request_with_token_still_works(self, dash):
         """Guard must not break the dashboard's own UI."""
-        h = _handler(dash, {
-            "Host": "127.0.0.1:8787",
-            "Origin": "http://127.0.0.1:8787",
-            "X-Superharness-Token": "correct-token",
-        })
+        h = _handler(
+            dash,
+            {
+                "Host": "127.0.0.1:8787",
+                "Origin": "http://127.0.0.1:8787",
+                "X-Superharness-Token": "correct-token",
+            },
+        )
         assert _bind(dash, h, "_verify_mutation_auth")() is None
 
     def test_bad_token_still_rejected(self, dash):
-        h = _handler(dash, {
-            "Host": "127.0.0.1:8787",
-            "Origin": "http://127.0.0.1:8787",
-            "X-Superharness-Token": "wrong",
-        })
+        h = _handler(
+            dash,
+            {
+                "Host": "127.0.0.1:8787",
+                "Origin": "http://127.0.0.1:8787",
+                "X-Superharness-Token": "wrong",
+            },
+        )
         assert _bind(dash, h, "_verify_mutation_auth")() is not None
 
 
@@ -177,7 +203,7 @@ class TestOrphanedRoutesAreAuthenticated:
         marker = f'p.endswith("{route}")'
         idx = src.find(marker)
         assert idx != -1, f"route handler for {route} not found"
-        window = src[idx:idx + 700]
+        window = src[idx : idx + 700]
         assert "_verify_mutation_auth" in window, (
             f"POST {route} does not call _verify_mutation_auth within its handler "
             f"body — it spawns a shux subprocess unauthenticated"
@@ -196,17 +222,23 @@ class TestRebindingCannotReadEither:
     """
 
     def test_read_auth_refuses_rebound_host_even_with_valid_token(self, dash):
-        h = _handler(dash, {
-            "Host": "evil.com",
-            "X-Superharness-Token": "correct-token",
-        })
+        h = _handler(
+            dash,
+            {
+                "Host": "evil.com",
+                "X-Superharness-Token": "correct-token",
+            },
+        )
         assert _bind(dash, h, "_verify_read_auth")() is not None
 
     def test_read_auth_allows_loopback_with_valid_token(self, dash):
-        h = _handler(dash, {
-            "Host": "127.0.0.1:8787",
-            "X-Superharness-Token": "correct-token",
-        })
+        h = _handler(
+            dash,
+            {
+                "Host": "127.0.0.1:8787",
+                "X-Superharness-Token": "correct-token",
+            },
+        )
         assert _bind(dash, h, "_verify_read_auth")() is None
 
     def test_read_auth_still_accepts_the_eventsource_query_param(self, dash):

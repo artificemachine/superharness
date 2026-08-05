@@ -1,4 +1,5 @@
 """Module marketplace — enable, disable, list integrations."""
+
 from __future__ import annotations
 
 import os
@@ -127,7 +128,11 @@ def info(name, project):
     click.echo()
 
     enabled_status = data.get("enabled", False)
-    status_str = click.style("enabled", fg="green") if enabled_status else click.style("disabled", fg="yellow")
+    status_str = (
+        click.style("enabled", fg="green")
+        if enabled_status
+        else click.style("disabled", fg="yellow")
+    )
     click.echo(f"Status: {status_str}")
     click.echo()
 

@@ -1,8 +1,8 @@
 """Tests for OpenClaw module (TDD — RED → GREEN → REFACTOR)."""
+
 from __future__ import annotations
 
 from unittest.mock import patch
-
 
 
 class TestOpenClawModule:
@@ -42,7 +42,10 @@ class TestOpenClawModule:
         # Verify task was sent via MCP
         assert result["success"] is True
         assert "agent_id" in result
-        assert "openclaw" in result.get("message", "").lower() or "nemoclaw" in result.get("message", "").lower()
+        assert (
+            "openclaw" in result.get("message", "").lower()
+            or "nemoclaw" in result.get("message", "").lower()
+        )
 
         # Verify MCP tool was called with correct params
         mock_mcp.assert_called_once()
@@ -81,4 +84,7 @@ class TestOpenClawModule:
 
         # Should fail gracefully with helpful error
         assert result["success"] is False
-        assert "not available" in result.get("message", "").lower() or "setup" in result.get("message", "").lower()
+        assert (
+            "not available" in result.get("message", "").lower()
+            or "setup" in result.get("message", "").lower()
+        )

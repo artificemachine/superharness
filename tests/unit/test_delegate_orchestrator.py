@@ -3,24 +3,22 @@
 When --orchestrate is passed, delegate uses Opus to decompose the task,
 then writes subtasks to contract.yaml and dispatches sub-agents.
 """
+
 from __future__ import annotations
 
-import json
-import os
-import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 import yaml
 
-from superharness.engine.orchestrator import Orchestrator, DecompositionResult, RoutingPlan
-from superharness.engine.cost_estimator import CostEstimate
+from superharness.engine.orchestrator import RoutingPlan
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _setup_project(tmp_path: Path) -> Path:
     """Create a minimal .superharness project structure."""
@@ -125,6 +123,7 @@ class TestRecordDecomposition:
             # 2. Verify parent extras_json
             parent = tasks_dao.get(conn, "T-42")
             import json
+
             extras = json.loads(parent.extras_json)
             assert "subtasks" in extras
             assert len(extras["subtasks"]) == 2
@@ -148,6 +147,7 @@ class TestRecordDecomposition:
             init_db(conn)
             parent = tasks_dao.get(conn, "T-42")
             import json
+
             extras = json.loads(parent.extras_json)
             assert extras["estimated_cost_usd"] == pytest.approx(0.30, abs=0.01)
             assert extras["budget_usd"] == pytest.approx(2.00, abs=0.01)
@@ -174,7 +174,9 @@ class TestOrchestrateMode:
             mock_instance.route.return_value = MOCK_ROUTING
 
             with patch("superharness.commands.delegate._launch_agent"):
-                with patch("superharness.commands.delegate.sdk_available", return_value=False):
+                with patch(
+                    "superharness.commands.delegate.sdk_available", return_value=False
+                ):
                     rc = delegate(
                         project_dir=str(project),
                         target="claude-code",
@@ -202,7 +204,9 @@ class TestOrchestrateMode:
             mock_instance.route.return_value = MOCK_ROUTING
 
             with patch("superharness.commands.delegate._launch_agent"):
-                with patch("superharness.commands.delegate.sdk_available", return_value=False):
+                with patch(
+                    "superharness.commands.delegate.sdk_available", return_value=False
+                ):
                     delegate(
                         project_dir=str(project),
                         target="claude-code",
@@ -231,7 +235,9 @@ class TestOrchestrateMode:
             mock_instance.route.return_value = MOCK_ROUTING
 
             with patch("superharness.commands.delegate._launch_agent"):
-                with patch("superharness.commands.delegate.sdk_available", return_value=False):
+                with patch(
+                    "superharness.commands.delegate.sdk_available", return_value=False
+                ):
                     rc = delegate(
                         project_dir=str(project),
                         target="codex-cli",

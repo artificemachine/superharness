@@ -9,6 +9,7 @@ only the specific 18 files it had just untracked — it never re-scanned the ful
 index against everything actually missing from git. This guard makes "the docs
 index has zero broken links" a computed fact instead of a point-in-time claim.
 """
+
 from __future__ import annotations
 
 import re
@@ -23,7 +24,11 @@ _LINK = re.compile(r"\]\(([^)]+\.md)\)")
 
 def _tracked_basenames() -> set[str]:
     out = subprocess.run(
-        ["git", "ls-files", "docs/"], capture_output=True, text=True, cwd=_REPO, check=True
+        ["git", "ls-files", "docs/"],
+        capture_output=True,
+        text=True,
+        cwd=_REPO,
+        check=True,
     ).stdout
     return {line.split("/")[-1] for line in out.splitlines() if line}
 

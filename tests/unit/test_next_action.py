@@ -1,7 +1,7 @@
 """Unit tests for engine/next_action.py — pure function, no I/O."""
+
 from __future__ import annotations
 
-import pytest
 
 from superharness.engine.next_action import ALL_STATUSES, NextAction, next_action
 
@@ -75,7 +75,9 @@ class TestNextActionInvariants:
         for status in ALL_STATUSES:
             r = next_action(status)
             for s in r.legal:
-                assert s in known, f"status={status}: legal contains unknown status {s!r}"
+                assert s in known, (
+                    f"status={status}: legal contains unknown status {s!r}"
+                )
 
     def test_reason_is_nonempty_string(self):
         for status in ALL_STATUSES:

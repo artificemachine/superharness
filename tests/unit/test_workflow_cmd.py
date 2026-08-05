@@ -3,13 +3,14 @@
 Tests the non-interactive (flag-based) path only. Interactive path
 requires a real TTY which subprocess tests cannot provide.
 """
+
 from __future__ import annotations
 
 import json
 import subprocess
 import sys
 from pathlib import Path
-from tests.helpers import seed_sqlite_from_yaml, get_task_from_sqlite
+from tests.helpers import seed_sqlite_from_yaml
 
 import yaml
 
@@ -29,9 +30,11 @@ def _make_project(tmp_path: Path, profile: dict | None = None) -> Path:
 
 def _run_workflow(project: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [PYTHON, "-m", "superharness.commands.workflow_cmd",
-         "--project", str(project)] + list(args),
-        capture_output=True, text=True, check=False,
+        [PYTHON, "-m", "superharness.commands.workflow_cmd", "--project", str(project)]
+        + list(args),
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
@@ -46,6 +49,7 @@ def _read_profile(project: Path) -> dict:
 # --show
 # ---------------------------------------------------------------------------
 
+
 def test_show_prints_current_settings_defaults(tmp_path: Path) -> None:
     """--show on empty profile prints defaults."""
     project = _make_project(tmp_path, profile=None)
@@ -59,10 +63,13 @@ def test_show_prints_current_settings_defaults(tmp_path: Path) -> None:
 
 def test_show_reflects_written_profile(tmp_path: Path) -> None:
     """--show reflects values written to profile.yaml."""
-    project = _make_project(tmp_path, profile={
-        "autonomy": "ai_driven",
-        "workflow": {"default_preset": "quick", "require_tdd": False},
-    })
+    project = _make_project(
+        tmp_path,
+        profile={
+            "autonomy": "ai_driven",
+            "workflow": {"default_preset": "quick", "require_tdd": False},
+        },
+    )
     r = _run_workflow(project, "--show")
     assert r.returncode == 0, r.stderr
     assert "ai_driven" in r.stdout
@@ -83,6 +90,7 @@ def test_json_output_shape(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # --autonomy flag
 # ---------------------------------------------------------------------------
+
 
 def test_flag_rejects_unknown_autonomy(tmp_path: Path) -> None:
     """--autonomy with an unrecognized value exits non-zero."""
@@ -112,6 +120,7 @@ def test_invalid_autonomy_rejected(tmp_path: Path) -> None:
 # --default-preset flag
 # ---------------------------------------------------------------------------
 
+
 def test_flag_sets_default_preset(tmp_path: Path) -> None:
     """--default-preset quick writes workflow.default_preset."""
     project = _make_project(tmp_path, profile=None)
@@ -131,6 +140,7 @@ def test_invalid_preset_rejected(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # --require-tdd / --no-require-tdd flags
 # ---------------------------------------------------------------------------
+
 
 def test_flag_sets_require_tdd_true(tmp_path: Path) -> None:
     """--require-tdd writes workflow.require_tdd=True."""
@@ -152,13 +162,17 @@ def test_flag_sets_require_tdd_false(tmp_path: Path) -> None:
 # Preservation of existing fields
 # ---------------------------------------------------------------------------
 
+
 def test_preserves_existing_fields(tmp_path: Path) -> None:
     """After --autonomy, other profile fields like primary_agent are preserved."""
-    project = _make_project(tmp_path, profile={
-        "primary_agent": "claude-code",
-        "project_name": "myproj",
-        "autonomy": "ai_driven",
-    })
+    project = _make_project(
+        tmp_path,
+        profile={
+            "primary_agent": "claude-code",
+            "project_name": "myproj",
+            "autonomy": "ai_driven",
+        },
+    )
     r = _run_workflow(project, "--autonomy", "ai_driven")
     assert r.returncode == 0, r.stderr
     profile = _read_profile(project)
@@ -170,6 +184,7 @@ def test_preserves_existing_fields(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Non-interactive without flags
 # ---------------------------------------------------------------------------
+
 
 def test_non_tty_no_flags_prints_current_settings(tmp_path: Path) -> None:
     """Non-TTY without any flags → shows current settings and exits 0."""

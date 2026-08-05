@@ -2,6 +2,7 @@
 
 Extracted from cli.py to reduce the entrypoint monolith (C4).
 """
+
 from __future__ import annotations
 
 import json
@@ -33,11 +34,15 @@ def _find_dashboard_processes() -> list[tuple[int, Optional[int], Optional[str]]
     results: list[tuple[int, Optional[int], Optional[str]]] = []
     for line in ps_out.splitlines():
         line = line.strip()
-        if not any(pat in line for pat in (
-            "dashboard-ui.py", "monitor-ui.py",
-            "superharness.scripts.dashboard-ui",
-            "superharness.scripts.monitor-ui",
-        )):
+        if not any(
+            pat in line
+            for pat in (
+                "dashboard-ui.py",
+                "monitor-ui.py",
+                "superharness.scripts.dashboard-ui",
+                "superharness.scripts.monitor-ui",
+            )
+        ):
             continue
         parts = line.split()
         try:
@@ -56,7 +61,8 @@ def _find_dashboard_processes() -> list[tuple[int, Optional[int], Optional[str]]
         port: Optional[int] = None
         lsof_out = subprocess.run(
             ["lsof", "-a", "-i", "TCP", "-sTCP:LISTEN", "-n", "-P", "-p", str(pid)],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         ).stdout
         for lline in lsof_out.splitlines():
             lparts = lline.split()
@@ -75,6 +81,7 @@ def _get_installed_version() -> Optional[str]:
     """Return the installed superharness version, or None if unavailable."""
     try:
         import importlib.metadata as _meta
+
         return _meta.version("superharness")
     except Exception:
         return None
@@ -89,14 +96,18 @@ def _check_dashboard_version(port: int, installed_ver: Optional[str]) -> bool:
         with urllib.request.urlopen(req, timeout=2) as resp:
             running_ver = json.loads(resp.read()).get("version", "unknown")
         if running_ver != installed_ver:
-            print(f"dashboard version mismatch: running={running_ver} installed={installed_ver} — will restart")
+            print(
+                f"dashboard version mismatch: running={running_ver} installed={installed_ver} — will restart"
+            )
             return False
         return True
     except Exception:
         return False
 
 
-def _is_dashboard_running(project_dir: Optional[str] = None) -> tuple[bool, Optional[int]]:
+def _is_dashboard_running(
+    project_dir: Optional[str] = None,
+) -> tuple[bool, Optional[int]]:
     """Return (running: bool, port: int|None) for the dashboard serving project_dir.
 
     Returns False when the running dashboard's version doesn't match the
@@ -116,9 +127,13 @@ def _is_dashboard_running(project_dir: Optional[str] = None) -> tuple[bool, Opti
                     info = json.load(f)
                     port = info.get("dashboard_port")
                     if port:
-                        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/status")
+                        req = urllib.request.Request(
+                            f"http://127.0.0.1:{port}/api/status"
+                        )
                         with urllib.request.urlopen(req, timeout=1) as resp:
-                            if resp.status == 200 and _check_dashboard_version(port, installed_ver):
+                            if resp.status == 200 and _check_dashboard_version(
+                                port, installed_ver
+                            ):
                                 return True, port
             except Exception:
                 pass
@@ -129,7 +144,9 @@ def _is_dashboard_running(project_dir: Optional[str] = None) -> tuple[bool, Opti
                 try:
                     req = urllib.request.Request(f"http://127.0.0.1:{port}/api/status")
                     with urllib.request.urlopen(req, timeout=1) as resp:
-                        if resp.status == 200 and _check_dashboard_version(port, installed_ver):
+                        if resp.status == 200 and _check_dashboard_version(
+                            port, installed_ver
+                        ):
                             return True, port
                 except Exception:
                     pass
@@ -161,16 +178,19 @@ def _kill_stale_dashboard(proj: str, port: int) -> None:
 def _write_operator_state(proj: str, pid: int, port: int, args_list: list[str]) -> None:
     """Write operator-state.json so health checks find the dashboard."""
     try:
-        import re as _re
         op_file = os.path.join(proj, ".superharness", "operator-state.json")
         if os.path.isdir(os.path.dirname(op_file)):
             with open(op_file, "w") as f:
-                json.dump({
-                    "operator_pid": pid,
-                    "dashboard_port": port,
-                    "started_at": time.time(),
-                    "project": proj,
-                }, f, indent=2)
+                json.dump(
+                    {
+                        "operator_pid": pid,
+                        "dashboard_port": port,
+                        "started_at": time.time(),
+                        "project": proj,
+                    },
+                    f,
+                    indent=2,
+                )
     except Exception as e:
         logger.warning("Failed to write operator-state.json: %s", e)
 
@@ -182,7 +202,9 @@ def _launch_dashboard_foreground(script_path: str, args_list: list[str]) -> None
     sys.exit(result.returncode)
 
 
-def _launch_dashboard_background(script_path: str, args_list: list[str]) -> Optional[int]:
+def _launch_dashboard_background(
+    script_path: str, args_list: list[str]
+) -> Optional[int]:
     """Launch dashboard in background, wait for URL. Returns PID or None."""
     fd, url_file = tempfile.mkstemp(suffix=".dashboard-url")
     os.close(fd)
@@ -228,6 +250,7 @@ def run_dashboard(args: tuple, scripts_dir: str | None = None) -> None:
     """Launch the dashboard (foreground or background)."""
     if scripts_dir is None:
         import importlib.resources as _res
+
         scripts_dir = str(_res.files("superharness").joinpath("scripts"))
     script_path = os.path.join(scripts_dir, "dashboard-ui.py")
     args_list = list(args)
@@ -275,13 +298,31 @@ def run_dashboard(args: tuple, scripts_dir: str | None = None) -> None:
 
 # ── Click commands ──────────────────────────────────────────────────────────
 
+
 def register_dashboard_commands(main_group: click.Group, scripts_dir: str) -> None:
     """Register all dashboard-related Click commands on the main CLI group."""
 
     @main_group.command(name="dashboard-kill")
-    @click.option("--port", "-p", type=int, default=None, help="Kill only the dashboard on this port.")
-    @click.option("--project", "proj", default=None, help="Kill only the dashboard serving this project directory.")
-    @click.option("--all", "kill_all", is_flag=True, default=False, help="Kill all dashboard processes (default when no filter given).")
+    @click.option(
+        "--port",
+        "-p",
+        type=int,
+        default=None,
+        help="Kill only the dashboard on this port.",
+    )
+    @click.option(
+        "--project",
+        "proj",
+        default=None,
+        help="Kill only the dashboard serving this project directory.",
+    )
+    @click.option(
+        "--all",
+        "kill_all",
+        is_flag=True,
+        default=False,
+        help="Kill all dashboard processes (default when no filter given).",
+    )
     def cmd_dashboard_kill(port, proj, kill_all):
         """Kill running dashboard process(es).
 
@@ -303,11 +344,17 @@ def register_dashboard_commands(main_group: click.Group, scripts_dir: str) -> No
             targets = [(pid, p, pj) for pid, p, pj in candidates if p == port]
             if not targets:
                 ports_found = [str(p) for _, p, _ in candidates if p]
-                print(f"No dashboard found on port {port}. Running on: {', '.join(ports_found) or 'unknown'}")
+                print(
+                    f"No dashboard found on port {port}. Running on: {', '.join(ports_found) or 'unknown'}"
+                )
                 sys.exit(1)
         elif proj is not None:
             real_proj = os.path.realpath(proj)
-            targets = [(pid, p, pj) for pid, p, pj in candidates if pj and os.path.realpath(pj) == real_proj]
+            targets = [
+                (pid, p, pj)
+                for pid, p, pj in candidates
+                if pj and os.path.realpath(pj) == real_proj
+            ]
             if not targets:
                 print(f"No dashboard found for project: {proj}")
                 print("  list running:  shux dashboard-list")
@@ -356,7 +403,14 @@ def register_dashboard_commands(main_group: click.Group, scripts_dir: str) -> No
             if proj:
                 print(f"  kill by project:       shux dashboard-kill --project {proj}")
 
-    @main_group.command(name="dashboard", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
+    @main_group.command(
+        name="dashboard",
+        context_settings={
+            "ignore_unknown_options": True,
+            "allow_extra_args": True,
+            "help_option_names": [],
+        },
+    )
     @click.argument("args", nargs=-1, type=click.UNPROCESSED)
     def cmd_dashboard(args):
         """Launch local browser dashboard (runs setup wizard on first use)."""
@@ -383,14 +437,25 @@ def register_dashboard_commands(main_group: click.Group, scripts_dir: str) -> No
                 break
 
         if not skip_wizard and "--help" not in args_list and "-h" not in args_list:
-            from superharness.commands.dashboard_wizard import run_wizard, _is_first_time
+            from superharness.commands.dashboard_wizard import (
+                run_wizard,
+                _is_first_time,
+            )
+
             should_run = force_wizard or setup_section or _is_first_time(proj)
             if should_run:
                 run_wizard(proj, section=setup_section, force=force_wizard)
 
         run_dashboard(tuple(args_list), scripts_dir)
 
-    @main_group.command(name="dashboard-ui", context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
+    @main_group.command(
+        name="dashboard-ui",
+        context_settings={
+            "ignore_unknown_options": True,
+            "allow_extra_args": True,
+            "help_option_names": [],
+        },
+    )
     @click.argument("args", nargs=-1, type=click.UNPROCESSED)
     def cmd_dashboard_ui(args):
         """Launch local browser dashboard."""

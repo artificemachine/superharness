@@ -8,6 +8,7 @@ still call it, asserting the no-op contract holds. No scheduled deletion —
 removing this module means retiring or rewriting those tests first, which
 is a separate decision, not a docs fix.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,12 +33,14 @@ class ParityReport:
 
     def __post_init__(self):
         if self.drifts is None:
-            object.__setattr__(self, 'drifts', [])
+            object.__setattr__(self, "drifts", [])
 
 
 def check_parity(conn: Any, project_dir: str) -> ParityReport:
     """No-op: parity checking is deprecated. Always returns healthy."""
-    return ParityReport(healthy=True, drifts=[], yaml_sync_lag=0, foreign_key_violations=0)
+    return ParityReport(
+        healthy=True, drifts=[], yaml_sync_lag=0, foreign_key_violations=0
+    )
 
 
 def heal_parity(conn: Any, project_dir: str, report: ParityReport) -> int:

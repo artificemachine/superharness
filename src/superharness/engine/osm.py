@@ -7,6 +7,7 @@ All vault interaction lives here. Three public functions:
 
 All functions are fail-safe: any error is logged, never raised.
 """
+
 from __future__ import annotations
 
 import json
@@ -31,8 +32,7 @@ def vault_search(
     Returns list of {path, similarity, preview}. Returns [] on any failure.
     """
     base_url = (
-        dashboard_url
-        or os.environ.get("OBSIDIAN_DASH_URL", _DEFAULT_DASH_URL)
+        dashboard_url or os.environ.get("OBSIDIAN_DASH_URL", _DEFAULT_DASH_URL)
     ).rstrip("/")
     params = urllib.parse.urlencode({"q": query, "limit": limit})
     url = f"{base_url}/api/search?{params}"

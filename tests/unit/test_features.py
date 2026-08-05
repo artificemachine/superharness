@@ -1,4 +1,5 @@
 """Tests for features.json generation and hygiene validation."""
+
 from __future__ import annotations
 
 import json
@@ -16,26 +17,34 @@ def _run_init(cwd, args: list[str], env: dict | None = None):
     if env:
         merged.update(env)
     cmd = [sys.executable, "-m", "superharness.commands.init_project"] + args
-    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=merged, check=False)
+    return subprocess.run(
+        cmd, cwd=str(cwd), text=True, capture_output=True, env=merged, check=False
+    )
 
 
 def _run_validate(cwd, args: list[str]):
     merged = os.environ.copy()
     merged["PYTHONPATH"] = str(REPO_ROOT / "src")
     cmd = [sys.executable, "-m", "superharness.engine.validate"] + args
-    return subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, env=merged, check=False)
+    return subprocess.run(
+        cmd, cwd=str(cwd), text=True, capture_output=True, env=merged, check=False
+    )
 
 
 def _write_harness(project: Path, features: list[dict] | None = None):
     """Create minimal .superharness/ for hygiene tests."""
     harness = project / ".superharness"
     (harness / "handoffs").mkdir(parents=True, exist_ok=True)
-    (harness / "contract.yaml").write_text("id: test\ntasks: []\ndecisions: []\nfailures: []\n")
+    (harness / "contract.yaml").write_text(
+        "id: test\ntasks: []\ndecisions: []\nfailures: []\n"
+    )
     (harness / "ledger.md").write_text("# Ledger\n")
     (harness / "decisions.yaml").write_text("decisions: []\n")
     (harness / "failures.yaml").write_text("failures: []\n")
     if features is not None:
-        (harness / "features.json").write_text(json.dumps({"features": features}, indent=2) + "\n")
+        (harness / "features.json").write_text(
+            json.dumps({"features": features}, indent=2) + "\n"
+        )
     seed_sqlite_from_yaml(project)
 
 
@@ -99,19 +108,43 @@ class TestHygieneValidatesFeatures:
     def test_hygiene_passes_valid_features(self, tmp_path):
         project = tmp_path / "proj"
         project.mkdir()
-        _write_harness(project, features=[
-            {"id": "f1", "category": "core", "description": "test", "steps": [], "passes": False},
-        ])
+        _write_harness(
+            project,
+            features=[
+                {
+                    "id": "f1",
+                    "category": "core",
+                    "description": "test",
+                    "steps": [],
+                    "passes": False,
+                },
+            ],
+        )
         r = _run_validate(REPO_ROOT, ["--project", str(project)])
         assert r.returncode == 0, r.stdout
 
     def test_hygiene_catches_duplicate_ids(self, tmp_path):
         project = tmp_path / "proj"
         project.mkdir()
-        _write_harness(project, features=[
-            {"id": "f1", "category": "core", "description": "a", "steps": [], "passes": False},
-            {"id": "f1", "category": "core", "description": "b", "steps": [], "passes": False},
-        ])
+        _write_harness(
+            project,
+            features=[
+                {
+                    "id": "f1",
+                    "category": "core",
+                    "description": "a",
+                    "steps": [],
+                    "passes": False,
+                },
+                {
+                    "id": "f1",
+                    "category": "core",
+                    "description": "b",
+                    "steps": [],
+                    "passes": False,
+                },
+            ],
+        )
         r = _run_validate(REPO_ROOT, ["--project", str(project)])
         assert r.returncode == 1
         assert "duplicate feature id" in r.stdout
@@ -119,9 +152,12 @@ class TestHygieneValidatesFeatures:
     def test_hygiene_catches_missing_passes_field(self, tmp_path):
         project = tmp_path / "proj"
         project.mkdir()
-        _write_harness(project, features=[
-            {"id": "f1", "category": "core", "description": "a", "steps": []},
-        ])
+        _write_harness(
+            project,
+            features=[
+                {"id": "f1", "category": "core", "description": "a", "steps": []},
+            ],
+        )
         r = _run_validate(REPO_ROOT, ["--project", str(project)])
         assert r.returncode == 1
         assert "missing boolean 'passes' field" in r.stdout

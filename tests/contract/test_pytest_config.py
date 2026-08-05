@@ -4,6 +4,7 @@ silently decorating a test with a marker nobody enforces.
 
 Reads pyproject.toml as data; never executes pytest against a fixture repo.
 """
+
 from __future__ import annotations
 
 import tomllib

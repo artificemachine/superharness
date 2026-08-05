@@ -1,15 +1,15 @@
 """Tests for I8 acceptance criteria:
-  1. watcher polls operator_commands table and transitions pending rows
-  2. onboard --quick-setup skips configured sections (alias for --quick)
+1. watcher polls operator_commands table and transitions pending rows
+2. onboard --quick-setup skips configured sections (alias for --quick)
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pytest
 
-from superharness.engine.db import get_connection, init_db, transaction
+from superharness.engine.db import get_connection, init_db
 from superharness.engine import operator_commands_dao, tasks_dao
 from superharness.engine.tasks_dao import TaskRow
 
@@ -17,6 +17,7 @@ from superharness.engine.tasks_dao import TaskRow
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -35,32 +36,36 @@ def _make_project(tmp_path: Path) -> Path:
 
 def _insert_task(conn, project_dir: Path, task_id: str, status: str) -> None:
     now = _now()
-    tasks_dao.upsert(conn, TaskRow(
-        id=task_id,
-        title="Test task",
-        status=status,
-        owner="claude-code",
-        project_path=str(project_dir),
-        created_at=now,
-        updated_at=now,
-        version=1,
-        effort=None,
-        development_method=None,
-        acceptance_criteria=[],
-        test_types=[],
-        out_of_scope=[],
-        definition_of_done=[],
-        context=None,
-        blocked_by=[],
-        parent_id=None,
-        tdd=None,
-        contract_locked_at=None,
-    ))
+    tasks_dao.upsert(
+        conn,
+        TaskRow(
+            id=task_id,
+            title="Test task",
+            status=status,
+            owner="claude-code",
+            project_path=str(project_dir),
+            created_at=now,
+            updated_at=now,
+            version=1,
+            effort=None,
+            development_method=None,
+            acceptance_criteria=[],
+            test_types=[],
+            out_of_scope=[],
+            definition_of_done=[],
+            context=None,
+            blocked_by=[],
+            parent_id=None,
+            tdd=None,
+            contract_locked_at=None,
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
 # operator_commands_dao.poll_pending
 # ---------------------------------------------------------------------------
+
 
 class TestPollPending:
     def test_poll_returns_pending_rows(self, tmp_path: Path) -> None:
@@ -109,10 +114,22 @@ class TestPollPending:
         conn = get_connection(str(project))
         init_db(conn)
 
-        operator_commands_dao.insert(conn, idempotency_key="k1", command="approve",
-                                      task_id="t-1", sender_id="cli", now=_now())
-        operator_commands_dao.insert(conn, idempotency_key="k2", command="reject",
-                                      task_id="t-2", sender_id="cli", now=_now())
+        operator_commands_dao.insert(
+            conn,
+            idempotency_key="k1",
+            command="approve",
+            task_id="t-1",
+            sender_id="cli",
+            now=_now(),
+        )
+        operator_commands_dao.insert(
+            conn,
+            idempotency_key="k2",
+            command="reject",
+            task_id="t-2",
+            sender_id="cli",
+            now=_now(),
+        )
         conn.commit()
 
         pending = operator_commands_dao.poll_pending(conn)
@@ -123,6 +140,7 @@ class TestPollPending:
 # ---------------------------------------------------------------------------
 # Watcher _poll_operator_commands: transitions plan_proposed tasks
 # ---------------------------------------------------------------------------
+
 
 class TestWatcherPollOperatorCommands:
     def test_approve_transitions_plan_proposed(self, tmp_path: Path) -> None:
@@ -269,6 +287,7 @@ class TestWatcherPollOperatorCommands:
 # ---------------------------------------------------------------------------
 # onboard --quick-setup skips configured sections
 # ---------------------------------------------------------------------------
+
 
 class TestOnboardQuickSetup:
     def test_quick_setup_alias_accepted(self, tmp_path: Path) -> None:

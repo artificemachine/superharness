@@ -7,6 +7,7 @@ Pattern borrowed from thedotmack/claude-mem, but applied at the write
 boundary instead of a hook layer so the strip happens once, deterministically,
 and is not bypassable by skipping a hook.
 """
+
 from __future__ import annotations
 
 import re

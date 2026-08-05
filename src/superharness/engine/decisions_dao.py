@@ -4,11 +4,12 @@ import logging
 import sqlite3
 import json
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 from superharness.engine.state_errors import StateError
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class DecisionRow:
@@ -19,6 +20,7 @@ class DecisionRow:
     reason: str | None
     alternatives: list[str]
     created_at: str
+
 
 def record(
     conn: sqlite3.Connection,
@@ -67,12 +69,13 @@ def _insert(
         VALUES (?, ?, ?, ?, ?, ?)
         RETURNING *
         """,
-        (agent, task_id, decision, reason, alt_json, now)
+        (agent, task_id, decision, reason, alt_json, now),
     )
     row = cursor.fetchone()
     if not row:
         raise StateError("Failed to record decision: no row returned")
     return _row_to_decision(row)
+
 
 def get_recent(
     conn: sqlite3.Connection,
@@ -90,12 +93,13 @@ def get_recent(
     if agent:
         query += " AND agent = ?"
         params.append(agent)
-    
+
     query += " ORDER BY created_at DESC, id DESC LIMIT ?"
     params.append(limit)
-    
+
     cursor = conn.execute(query, params)
     return [_row_to_decision(row) for row in cursor.fetchall()]
+
 
 def _row_to_decision(row: sqlite3.Row) -> DecisionRow:
     return DecisionRow(
@@ -105,5 +109,5 @@ def _row_to_decision(row: sqlite3.Row) -> DecisionRow:
         decision=row["decision"],
         reason=row["reason"],
         alternatives=json.loads(row["alternatives"]),
-        created_at=row["created_at"]
+        created_at=row["created_at"],
     )

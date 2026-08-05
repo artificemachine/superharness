@@ -4,6 +4,7 @@ Snapshot only: fetches an issue via `gh`/`glab` at task-create time and
 maps it to task fields. Never writes back to the issue and never re-syncs
 after import (see docs/PLAN-issue-link.md).
 """
+
 from __future__ import annotations
 
 import json
@@ -44,14 +45,14 @@ def _fetch_issue(url: str) -> dict:
 
     result = subprocess.run(argv, capture_output=True, text=True, timeout=20)
     if result.returncode != 0:
-        raise RuntimeError(
-            f"{binary} issue view failed: {result.stderr.strip()[:300]}"
-        )
+        raise RuntimeError(f"{binary} issue view failed: {result.stderr.strip()[:300]}")
 
     try:
         return json.loads(result.stdout)
     except json.JSONDecodeError as e:
-        raise RuntimeError(f"{binary} returned non-JSON output for issue view: {e}") from e
+        raise RuntimeError(
+            f"{binary} returned non-JSON output for issue view: {e}"
+        ) from e
 
 
 def _issue_to_task_fields(issue: dict, issue_url: str) -> dict:

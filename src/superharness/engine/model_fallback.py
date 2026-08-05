@@ -15,13 +15,14 @@ Usage::
     chain = FallbackChain(agent="claude-code")
     result = chain.run(run_with_model)
 """
+
 from __future__ import annotations
 
 import logging
 import time
 from typing import Callable, Any
 
-from superharness.engine.model_router import MODEL_MAP, VALID_TIERS, _FALLBACK_TIER
+from superharness.engine.model_router import MODEL_MAP, _FALLBACK_TIER
 
 logger = logging.getLogger(__name__)
 
@@ -109,14 +110,16 @@ class FallbackChain:
                 if len(tried) > 1:
                     logger.info(
                         "model_fallback: succeeded with %s after %d attempt(s)",
-                        model, len(tried)
+                        model,
+                        len(tried),
                     )
                 return result
             except self._trigger as exc:
                 last_err = exc
                 logger.warning(
                     "model_fallback: %s failed with %s, trying next in chain",
-                    model, type(exc).__name__
+                    model,
+                    type(exc).__name__,
                 )
                 if self.retry_delay > 0:
                     time.sleep(self.retry_delay)

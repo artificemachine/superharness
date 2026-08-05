@@ -10,13 +10,12 @@ Covers the 4 dual-write paths:
   - commands/agent_pulse._write_pulse
   - commands/onboard._save_state
 """
+
 from __future__ import annotations
 
 import os
 from pathlib import Path
 from unittest.mock import patch
-
-import pytest
 
 
 def _make_project(tmp_path: Path) -> Path:
@@ -38,18 +37,29 @@ def _force_sqlite_only_with_broken_dao():
 # heartbeat_contract.write_heartbeat
 # ---------------------------------------------------------------------------
 
+
 def test_durable_heartbeat_falls_back_to_yaml_on_sqlite_failure(tmp_path: Path):
     """When SQLite upsert fails in sqlite_only mode, watcher.heartbeat.yaml must be written."""
-    from superharness.engine.heartbeat_contract import write_heartbeat, AgentHeartbeat, heartbeat_path
+    from superharness.engine.heartbeat_contract import (
+        write_heartbeat,
+        AgentHeartbeat,
+        heartbeat_path,
+    )
+
     project = _make_project(tmp_path)
     yaml_path = Path(heartbeat_path(str(project), "watcher"))
     assert not yaml_path.exists(), "precondition: no YAML mirror yet"
 
-    with _force_sqlite_only_with_broken_dao(), patch(
-        "superharness.engine.watcher_heartbeat_dao.upsert",
-        side_effect=Exception("simulated SQLite write failure"),
+    with (
+        _force_sqlite_only_with_broken_dao(),
+        patch(
+            "superharness.engine.watcher_heartbeat_dao.upsert",
+            side_effect=Exception("simulated SQLite write failure"),
+        ),
     ):
-        write_heartbeat(str(project), AgentHeartbeat(agent_id="watcher", runtime="native"))
+        write_heartbeat(
+            str(project), AgentHeartbeat(agent_id="watcher", runtime="native")
+        )
 
     assert yaml_path.exists(), (
         "C-DURABLE violated: SQLite write failed in sqlite_only mode and YAML mirror "
@@ -59,12 +69,19 @@ def test_durable_heartbeat_falls_back_to_yaml_on_sqlite_failure(tmp_path: Path):
 
 def test_heartbeat_yaml_skipped_when_sqlite_succeeds_in_sqlite_only(tmp_path: Path):
     """Inverse: when SQLite write succeeds in sqlite_only mode, YAML is skipped (clean SoT)."""
-    from superharness.engine.heartbeat_contract import write_heartbeat, AgentHeartbeat, heartbeat_path
+    from superharness.engine.heartbeat_contract import (
+        write_heartbeat,
+        AgentHeartbeat,
+        heartbeat_path,
+    )
+
     project = _make_project(tmp_path)
     yaml_path = Path(heartbeat_path(str(project), "watcher"))
 
     with _force_sqlite_only_with_broken_dao():
-        write_heartbeat(str(project), AgentHeartbeat(agent_id="watcher", runtime="native"))
+        write_heartbeat(
+            str(project), AgentHeartbeat(agent_id="watcher", runtime="native")
+        )
 
     assert not yaml_path.exists(), (
         "YAML mirror written despite successful SQLite write in sqlite_only mode"
@@ -75,16 +92,21 @@ def test_heartbeat_yaml_skipped_when_sqlite_succeeds_in_sqlite_only(tmp_path: Pa
 # agent_status.write_agent_status
 # ---------------------------------------------------------------------------
 
+
 def test_durable_agent_status_falls_back_to_yaml_on_sqlite_failure(tmp_path: Path):
     """When SQLite upsert fails in sqlite_only mode, <runtime>.status.yaml must be written."""
     from superharness.engine.agent_status import write_agent_status, _status_path
+
     project = _make_project(tmp_path)
     yaml_path = _status_path(project, "claude-code")
     assert not yaml_path.exists()
 
-    with _force_sqlite_only_with_broken_dao(), patch(
-        "superharness.engine.agent_runtime_status_dao.upsert",
-        side_effect=Exception("simulated SQLite write failure"),
+    with (
+        _force_sqlite_only_with_broken_dao(),
+        patch(
+            "superharness.engine.agent_runtime_status_dao.upsert",
+            side_effect=Exception("simulated SQLite write failure"),
+        ),
     ):
         write_agent_status(project, runtime="claude-code")
 
@@ -98,16 +120,21 @@ def test_durable_agent_status_falls_back_to_yaml_on_sqlite_failure(tmp_path: Pat
 # agent_pulse._write_pulse
 # ---------------------------------------------------------------------------
 
+
 def test_durable_agent_pulse_falls_back_to_yaml_on_sqlite_failure(tmp_path: Path):
     """When SQLite upsert fails in sqlite_only mode, agent-pulse.yaml must be written."""
     from superharness.commands.agent_pulse import _write_pulse, _pulse_path
+
     project = _make_project(tmp_path)
     yaml_path = _pulse_path(str(project))
     assert not yaml_path.exists()
 
-    with _force_sqlite_only_with_broken_dao(), patch(
-        "superharness.engine.agent_pulse_dao.upsert",
-        side_effect=Exception("simulated SQLite write failure"),
+    with (
+        _force_sqlite_only_with_broken_dao(),
+        patch(
+            "superharness.engine.agent_pulse_dao.upsert",
+            side_effect=Exception("simulated SQLite write failure"),
+        ),
     ):
         _write_pulse(str(project), "T-1", "claude-code")
 
@@ -121,9 +148,11 @@ def test_durable_agent_pulse_falls_back_to_yaml_on_sqlite_failure(tmp_path: Path
 # onboard._save_state
 # ---------------------------------------------------------------------------
 
+
 def test_durable_onboarding_falls_back_to_yaml_on_sqlite_failure(tmp_path: Path):
     """When SQLite upsert fails in sqlite_only mode, onboarding.yaml must be written."""
     from superharness.commands.onboard import _save_state
+
     project = _make_project(tmp_path)
     sh = project / ".superharness"
     yaml_path = sh / "onboarding.yaml"
@@ -131,9 +160,12 @@ def test_durable_onboarding_falls_back_to_yaml_on_sqlite_failure(tmp_path: Path)
 
     state = {"version": 1, "config_version": 1, "steps": {"detect": "completed"}}
 
-    with _force_sqlite_only_with_broken_dao(), patch(
-        "superharness.engine.onboarding_dao.upsert",
-        side_effect=Exception("simulated SQLite write failure"),
+    with (
+        _force_sqlite_only_with_broken_dao(),
+        patch(
+            "superharness.engine.onboarding_dao.upsert",
+            side_effect=Exception("simulated SQLite write failure"),
+        ),
     ):
         _save_state(sh, state)
 
@@ -148,15 +180,22 @@ def test_durable_onboarding_falls_back_to_yaml_on_sqlite_failure(tmp_path: Path)
 # readers must serve the fresh YAML, not the stale SQLite row.
 # ---------------------------------------------------------------------------
 
+
 def test_heartbeat_read_prefers_fresher_yaml_after_sqlite_failure(tmp_path: Path):
     """OLD-data in SQLite + NEW-data in crash-dump YAML → reader returns NEW-data."""
     from superharness.engine.heartbeat_contract import (
-        write_heartbeat, read_heartbeat_db, AgentHeartbeat,
+        write_heartbeat,
+        read_heartbeat_db,
+        AgentHeartbeat,
     )
+
     project = _make_project(tmp_path)
 
     # Step 1: SQLite OK → status=OLD-data
-    write_heartbeat(str(project), AgentHeartbeat(agent_id="watcher", runtime="native", status="OLD-data"))
+    write_heartbeat(
+        str(project),
+        AgentHeartbeat(agent_id="watcher", runtime="native", status="OLD-data"),
+    )
     assert read_heartbeat_db(str(project), "watcher").status == "OLD-data"
 
     # Step 2: SQLite fails on NEW write → YAML crash dump has NEW-data
@@ -164,7 +203,10 @@ def test_heartbeat_read_prefers_fresher_yaml_after_sqlite_failure(tmp_path: Path
         "superharness.engine.watcher_heartbeat_dao.upsert",
         side_effect=Exception("simulated SQLite failure"),
     ):
-        write_heartbeat(str(project), AgentHeartbeat(agent_id="watcher", runtime="native", status="NEW-data"))
+        write_heartbeat(
+            str(project),
+            AgentHeartbeat(agent_id="watcher", runtime="native", status="NEW-data"),
+        )
 
     # Step 3: reader must return the FRESH crash-dump data, not stale SQLite
     result = read_heartbeat_db(str(project), "watcher")
@@ -177,15 +219,24 @@ def test_heartbeat_read_prefers_fresher_yaml_after_sqlite_failure(tmp_path: Path
 def test_list_heartbeats_prefers_fresher_yaml(tmp_path: Path):
     """list_agent_heartbeats must return YAML when YAML is newer than SQLite row."""
     from superharness.engine.heartbeat_contract import (
-        write_heartbeat, list_agent_heartbeats, AgentHeartbeat,
+        write_heartbeat,
+        list_agent_heartbeats,
+        AgentHeartbeat,
     )
+
     project = _make_project(tmp_path)
-    write_heartbeat(str(project), AgentHeartbeat(agent_id="watcher", runtime="native", status="OLD-data"))
+    write_heartbeat(
+        str(project),
+        AgentHeartbeat(agent_id="watcher", runtime="native", status="OLD-data"),
+    )
     with patch(
         "superharness.engine.watcher_heartbeat_dao.upsert",
         side_effect=Exception("sim sqlite fail"),
     ):
-        write_heartbeat(str(project), AgentHeartbeat(agent_id="watcher", runtime="native", status="NEW-data"))
+        write_heartbeat(
+            str(project),
+            AgentHeartbeat(agent_id="watcher", runtime="native", status="NEW-data"),
+        )
 
     listed = list_agent_heartbeats(str(project))
     watcher = next((h for h in listed if h.agent_id == "watcher"), None)
@@ -198,6 +249,7 @@ def test_list_heartbeats_prefers_fresher_yaml(tmp_path: Path):
 def test_agent_status_read_prefers_fresher_yaml(tmp_path: Path):
     """read_agent_status returns fresher YAML when SQLite row is stale."""
     from superharness.engine.agent_status import write_agent_status, read_agent_status
+
     project = _make_project(tmp_path)
 
     write_agent_status(project, runtime="claude-code", active_task="OLD")
@@ -219,6 +271,7 @@ def test_agent_status_read_prefers_fresher_yaml(tmp_path: Path):
 def test_agent_pulse_read_prefers_fresher_yaml(tmp_path: Path, capsys):
     """_read_pulse returns fresher YAML when SQLite row is stale."""
     from superharness.commands.agent_pulse import _write_pulse, _read_pulse
+
     project = _make_project(tmp_path)
 
     _write_pulse(str(project), "T-OLD", "claude-code")
@@ -237,10 +290,13 @@ def test_onboard_load_state_prefers_fresher_yaml(tmp_path: Path):
     """_load_state returns fresher YAML when SQLite row is stale."""
     import time
     from superharness.commands.onboard import _save_state, _load_state
+
     project = _make_project(tmp_path)
     sh = project / ".superharness"
 
-    _save_state(sh, {"version": 1, "config_version": 1, "steps": {"detect": "completed"}})
+    _save_state(
+        sh, {"version": 1, "config_version": 1, "steps": {"detect": "completed"}}
+    )
 
     # Ensure mtime advance so YAML newer than SQLite updated_at
     time.sleep(1.1)
@@ -249,9 +305,17 @@ def test_onboard_load_state_prefers_fresher_yaml(tmp_path: Path):
         "superharness.engine.onboarding_dao.upsert",
         side_effect=Exception("sim sqlite fail"),
     ):
-        _save_state(sh, {"version": 1, "config_version": 1, "steps": {
-            "detect": "completed", "init": "completed",
-        }})
+        _save_state(
+            sh,
+            {
+                "version": 1,
+                "config_version": 1,
+                "steps": {
+                    "detect": "completed",
+                    "init": "completed",
+                },
+            },
+        )
 
     loaded = _load_state(sh)
     assert loaded.get("steps", {}).get("init") == "completed", (

@@ -20,12 +20,12 @@ every ~5-7s watcher tick instead of every 5 minutes.
 The fix makes the cooldown state outlive the process: persisted per
 (project, action) in the project's SQLite state, not process memory.
 """
+
 from __future__ import annotations
 
 import time
 from pathlib import Path
 
-import pytest
 
 from superharness.engine.db import get_connection, init_db
 
@@ -58,21 +58,26 @@ class TestShouldRunSurvivesProcessRespawn:
     def test_first_call_ever_runs(self, tmp_path: Path):
         """No prior record for this action: must run (never block on missing history)."""
         from superharness.commands.inbox_watch import _should_run
+
         project = _make_project(tmp_path)
         assert _should_run(str(project), "reinforce", cooldown=300) is True
 
-    def test_a_fresh_process_respects_a_cooldown_recorded_by_an_earlier_process(self, tmp_path: Path):
+    def test_a_fresh_process_respects_a_cooldown_recorded_by_an_earlier_process(
+        self, tmp_path: Path
+    ):
         """This is the actual bug. The watcher is a NEW Python process every
         tick, so nothing about this test's own in-memory state may be relied
         on — the persisted row from _seed_last_run must be the only thing
         that makes _should_run return False here."""
         from superharness.commands.inbox_watch import _should_run
+
         project = _make_project(tmp_path)
         _seed_last_run(project, "reinforce", seconds_ago=10)  # ran 10s ago
         assert _should_run(str(project), "reinforce", cooldown=300) is False
 
     def test_cooldown_elapsed_runs_again(self, tmp_path: Path):
         from superharness.commands.inbox_watch import _should_run
+
         project = _make_project(tmp_path)
         _seed_last_run(project, "reinforce", seconds_ago=301)  # just past 300s
         assert _should_run(str(project), "reinforce", cooldown=300) is True
@@ -81,6 +86,7 @@ class TestShouldRunSurvivesProcessRespawn:
         """A True return must itself persist, so the NEXT process (not just
         the current one) sees the updated last-run time."""
         from superharness.commands.inbox_watch import _should_run
+
         project = _make_project(tmp_path)
         assert _should_run(str(project), "reinforce", cooldown=300) is True
         # Immediately "restart" by calling again — simulates the next tick's
@@ -89,6 +95,7 @@ class TestShouldRunSurvivesProcessRespawn:
 
     def test_actions_are_independent(self, tmp_path: Path):
         from superharness.commands.inbox_watch import _should_run
+
         project = _make_project(tmp_path)
         _seed_last_run(project, "reinforce", seconds_ago=1)
         # A different action with no record of its own must still run.
@@ -96,6 +103,7 @@ class TestShouldRunSurvivesProcessRespawn:
 
     def test_projects_are_independent(self, tmp_path: Path):
         from superharness.commands.inbox_watch import _should_run
+
         project_a = _make_project(tmp_path / "a")
         project_b = _make_project(tmp_path / "b")
         _seed_last_run(project_a, "reinforce", seconds_ago=1)
@@ -103,7 +111,11 @@ class TestShouldRunSurvivesProcessRespawn:
         assert _should_run(str(project_b), "reinforce", cooldown=300) is True
 
     def test_default_cooldown_used_when_unspecified(self, tmp_path: Path):
-        from superharness.commands.inbox_watch import _should_run, _AUTO_DEFAULT_COOLDOWN
+        from superharness.commands.inbox_watch import (
+            _should_run,
+            _AUTO_DEFAULT_COOLDOWN,
+        )
+
         project = _make_project(tmp_path)
         _seed_last_run(project, "some_action", seconds_ago=_AUTO_DEFAULT_COOLDOWN - 1)
         assert _should_run(str(project), "some_action") is False

@@ -7,10 +7,9 @@ Covers the 22 missing tests identified in the Gate 3 e2e audit:
   - tasks_dao top_level_only filter
   - full sqlite_only project lifecycle (no YAML files)
 """
+
 from __future__ import annotations
 
-import json
-import os
 import sqlite3
 from pathlib import Path
 
@@ -24,6 +23,7 @@ from superharness.engine.db import now_iso
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def proj(tmp_path: Path) -> Path:
@@ -40,14 +40,27 @@ def conn(proj: Path) -> sqlite3.Connection:
     c.close()
 
 
-def _make_task(conn, id: str, status: str = "todo", parent_id: str | None = None) -> tasks_dao.TaskRow:
+def _make_task(
+    conn, id: str, status: str = "todo", parent_id: str | None = None
+) -> tasks_dao.TaskRow:
     now = now_iso()
     row = tasks_dao.TaskRow(
-        id=id, title=f"Task {id}", owner="claude-code", status=status,
-        effort=None, project_path=None, development_method=None,
-        acceptance_criteria=[], test_types=[], out_of_scope=[],
-        definition_of_done=[], context=None, tdd=None,
-        version=1, created_at=now, parent_id=parent_id,
+        id=id,
+        title=f"Task {id}",
+        owner="claude-code",
+        status=status,
+        effort=None,
+        project_path=None,
+        development_method=None,
+        acceptance_criteria=[],
+        test_types=[],
+        out_of_scope=[],
+        definition_of_done=[],
+        context=None,
+        tdd=None,
+        version=1,
+        created_at=now,
+        parent_id=parent_id,
     )
     return tasks_dao.upsert(conn, row)
 
@@ -56,24 +69,35 @@ def _make_task(conn, id: str, status: str = "todo", parent_id: str | None = None
 # 1. Schema migration v2
 # ---------------------------------------------------------------------------
 
+
 class TestMigrationV2:
     def test_tasks_has_parent_id_column(self, conn: sqlite3.Connection):
         cols = [r[1] for r in conn.execute("PRAGMA table_info(tasks)").fetchall()]
         assert "parent_id" in cols
 
     def test_discussions_table_exists(self, conn: sqlite3.Connection):
-        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        tables = {
+            r[0]
+            for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
         assert "discussions" in tables
         assert "discussion_rounds" in tables
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_schema_version_is_2(self, conn: sqlite3.Connection):
         from superharness.engine.db import CURRENT_SCHEMA_VERSION
+
         assert CURRENT_SCHEMA_VERSION == 2
         version = conn.execute("PRAGMA user_version").fetchone()[0]
         assert version == 2
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
     def test_migration_idempotent(self, proj: Path):
         c = get_connection(str(proj))
         init_db(c)
@@ -86,6 +110,7 @@ class TestMigrationV2:
 # ---------------------------------------------------------------------------
 # 2. tasks_dao — parent_id support
 # ---------------------------------------------------------------------------
+
 
 class TestTasksDAOParentId:
     def test_upsert_with_parent_id(self, conn: sqlite3.Connection):
@@ -141,10 +166,17 @@ class TestTasksDAOParentId:
 # 5. discussions_dao
 # ---------------------------------------------------------------------------
 
+
 class TestDiscussionsDAO:
     def test_create_and_get(self, conn: sqlite3.Connection):
         now = now_iso()
-        disc = discussions_dao.create(conn, id="disc-1", topic="Is X ready?", owners=["claude-code", "gemini-cli"], now=now)
+        discussions_dao.create(
+            conn,
+            id="disc-1",
+            topic="Is X ready?",
+            owners=["claude-code", "gemini-cli"],
+            now=now,
+        )
         conn.commit()
         fetched = discussions_dao.get(conn, "disc-1")
         assert fetched is not None
@@ -154,6 +186,7 @@ class TestDiscussionsDAO:
 
     def test_create_duplicate_raises(self, conn: sqlite3.Connection):
         from superharness.engine.state_errors import StateError
+
         now = now_iso()
         discussions_dao.create(conn, id="disc-1", topic="T", owners=[], now=now)
         conn.commit()
@@ -164,8 +197,22 @@ class TestDiscussionsDAO:
         now = now_iso()
         discussions_dao.create(conn, id="disc-1", topic="T", owners=["a"], now=now)
         conn.commit()
-        discussions_dao.add_round(conn, discussion_id="disc-1", round_number=1, agent="claude-code", content="My view", now=now)
-        discussions_dao.add_round(conn, discussion_id="disc-1", round_number=1, agent="gemini-cli", content="My view too", now=now)
+        discussions_dao.add_round(
+            conn,
+            discussion_id="disc-1",
+            round_number=1,
+            agent="claude-code",
+            content="My view",
+            now=now,
+        )
+        discussions_dao.add_round(
+            conn,
+            discussion_id="disc-1",
+            round_number=1,
+            agent="gemini-cli",
+            content="My view too",
+            now=now,
+        )
         conn.commit()
         rounds = discussions_dao.get_rounds(conn, "disc-1")
         assert len(rounds) == 2
@@ -199,7 +246,9 @@ class TestDiscussionsDAO:
         _make_task(conn, "task-1")
         conn.commit()
         now = now_iso()
-        disc = discussions_dao.create(conn, id="d1", topic="T", owners=[], task_id="task-1", now=now)
+        disc = discussions_dao.create(
+            conn, id="d1", topic="T", owners=[], task_id="task-1", now=now
+        )
         conn.commit()
         assert disc.task_id == "task-1"
         by_task = discussions_dao.get_all(conn, task_id="task-1")
@@ -210,14 +259,18 @@ class TestDiscussionsDAO:
 # 6. state_reader — sqlite_only
 # ---------------------------------------------------------------------------
 
+
 class TestStateReaderSqliteOnly:
-    def test_get_tasks_sqlite_only_no_yaml(self, conn: sqlite3.Connection, proj: Path, monkeypatch):
+    def test_get_tasks_sqlite_only_no_yaml(
+        self, conn: sqlite3.Connection, proj: Path, monkeypatch
+    ):
         monkeypatch.setenv("STATE_BACKEND", "sqlite_only")
         _make_task(conn, "t1")
         _make_task(conn, "t2")
         conn.commit()
 
         from superharness.engine import state_reader
+
         tasks = state_reader.get_tasks(str(proj))
         ids = {t["id"] for t in tasks}
         assert "t1" in ids
@@ -225,41 +278,54 @@ class TestStateReaderSqliteOnly:
         # No contract.yaml needed
         assert not (proj / ".superharness" / "contract.yaml").exists()
 
-    def test_get_top_level_tasks_excludes_subtasks(self, conn: sqlite3.Connection, proj: Path, monkeypatch):
+    def test_get_top_level_tasks_excludes_subtasks(
+        self, conn: sqlite3.Connection, proj: Path, monkeypatch
+    ):
         monkeypatch.setenv("STATE_BACKEND", "sqlite_only")
         _make_task(conn, "top-1")
         _make_task(conn, "sub-1", parent_id="top-1")
         conn.commit()
 
         from superharness.engine import state_reader
+
         tasks = state_reader.get_top_level_tasks(str(proj))
         ids = {t["id"] for t in tasks}
         assert "top-1" in ids
         assert "sub-1" not in ids
 
-    def test_get_contract_doc_sqlite_only(self, conn: sqlite3.Connection, proj: Path, monkeypatch):
+    def test_get_contract_doc_sqlite_only(
+        self, conn: sqlite3.Connection, proj: Path, monkeypatch
+    ):
         monkeypatch.setenv("STATE_BACKEND", "sqlite_only")
         _make_task(conn, "t1")
         conn.commit()
 
         from superharness.engine import state_reader
+
         doc = state_reader.get_contract_doc(str(proj))
         assert "tasks" in doc
         ids = {t["id"] for t in doc["tasks"]}
         assert "t1" in ids
 
-    def test_get_inbox_items_sqlite_only(self, conn: sqlite3.Connection, proj: Path, monkeypatch):
+    def test_get_inbox_items_sqlite_only(
+        self, conn: sqlite3.Connection, proj: Path, monkeypatch
+    ):
         monkeypatch.setenv("STATE_BACKEND", "sqlite_only")
         _make_task(conn, "t1")
         conn.commit()
         now = now_iso()
         inbox_dao.enqueue(
-            conn, id="inbox-1", task_id="t1", target_agent="claude-code",
-            project_path=str(proj), now=now,
+            conn,
+            id="inbox-1",
+            task_id="t1",
+            target_agent="claude-code",
+            project_path=str(proj),
+            now=now,
         )
         conn.commit()
 
         from superharness.engine import state_reader
+
         items = state_reader.get_inbox_items(str(proj))
         assert len(items) == 1
         assert items[0]["task"] == "t1"
@@ -270,8 +336,11 @@ class TestStateReaderSqliteOnly:
 # 7. Full sqlite_only project lifecycle (no YAML files)
 # ---------------------------------------------------------------------------
 
+
 class TestSqliteOnlyLifecycle:
-    def test_full_lifecycle_no_yaml(self, conn: sqlite3.Connection, proj: Path, monkeypatch):
+    def test_full_lifecycle_no_yaml(
+        self, conn: sqlite3.Connection, proj: Path, monkeypatch
+    ):
         """Create tasks, enqueue inbox, check parity — all without any YAML files."""
         monkeypatch.setenv("STATE_BACKEND", "sqlite_only")
 
@@ -283,8 +352,12 @@ class TestSqliteOnlyLifecycle:
         # 2. Enqueue inbox item
         now = now_iso()
         inbox_dao.enqueue(
-            conn, id="i-1", task_id="feat-1", target_agent="claude-code",
-            project_path=str(proj), now=now,
+            conn,
+            id="i-1",
+            task_id="feat-1",
+            target_agent="claude-code",
+            project_path=str(proj),
+            now=now,
         )
         conn.commit()
 
@@ -294,6 +367,7 @@ class TestSqliteOnlyLifecycle:
 
         # 4. state_reader reads all state from SQLite
         from superharness.engine import state_reader
+
         tasks = state_reader.get_tasks(str(proj))
         inbox = state_reader.get_inbox_items(str(proj))
         assert len(tasks) == 2
@@ -301,13 +375,16 @@ class TestSqliteOnlyLifecycle:
 
         # 5. Parity in sqlite_only: no YAML → only_in_yaml should be 0 (nothing expected in YAML)
         from superharness.engine import parity
+
         report = parity.check_parity(conn, str(proj))
         # mismatched must be 0 for Gate 2 pass criteria
         total_mismatched = sum(d.mismatched for d in report.drifts)
         assert total_mismatched == 0
         assert report.foreign_key_violations == 0
 
-    def test_subtask_not_in_top_level_count(self, conn: sqlite3.Connection, proj: Path, monkeypatch):
+    def test_subtask_not_in_top_level_count(
+        self, conn: sqlite3.Connection, proj: Path, monkeypatch
+    ):
         monkeypatch.setenv("STATE_BACKEND", "sqlite_only")
         _make_task(conn, "parent")
         _make_task(conn, "sub-1", parent_id="parent")
@@ -315,16 +392,28 @@ class TestSqliteOnlyLifecycle:
         conn.commit()
 
         from superharness.engine import state_reader
+
         top = state_reader.get_top_level_tasks(str(proj))
         all_ = state_reader.get_tasks(str(proj))
         assert len(top) == 1
         assert len(all_) == 3
 
-    def test_discussion_persists_without_yaml(self, conn: sqlite3.Connection, proj: Path, monkeypatch):
+    def test_discussion_persists_without_yaml(
+        self, conn: sqlite3.Connection, proj: Path, monkeypatch
+    ):
         monkeypatch.setenv("STATE_BACKEND", "sqlite_only")
         now = now_iso()
-        discussions_dao.create(conn, id="d1", topic="Gate 3 ready?", owners=["claude-code"], now=now)
-        discussions_dao.add_round(conn, discussion_id="d1", round_number=1, agent="claude-code", content="Yes", now=now)
+        discussions_dao.create(
+            conn, id="d1", topic="Gate 3 ready?", owners=["claude-code"], now=now
+        )
+        discussions_dao.add_round(
+            conn,
+            discussion_id="d1",
+            round_number=1,
+            agent="claude-code",
+            content="Yes",
+            now=now,
+        )
         discussions_dao.close(conn, "d1", consensus="Gate 3 approved", now=now)
         conn.commit()
 
@@ -341,6 +430,7 @@ class TestSqliteOnlyLifecycle:
 # 8. Dispatch sqlite_primary path (_sqlite_claim_next)
 # ---------------------------------------------------------------------------
 
+
 class TestDispatchSqlitePrimary:
     def test_sqlite_claim_next_returns_item(self, conn: sqlite3.Connection, proj: Path):
         """_sqlite_claim_next atomically claims the next pending item."""
@@ -348,37 +438,52 @@ class TestDispatchSqlitePrimary:
         conn.commit()
         now = now_iso()
         inbox_dao.enqueue(
-            conn, id="disp-1", task_id="feat-x", target_agent="claude-code",
-            project_path=str(proj), now=now,
+            conn,
+            id="disp-1",
+            task_id="feat-x",
+            target_agent="claude-code",
+            project_path=str(proj),
+            now=now,
         )
         conn.commit()
         conn.close()
 
         from superharness.commands.inbox_dispatch import _sqlite_claim_next
+
         item = _sqlite_claim_next(str(proj), "claude-code", now_iso())
         assert item is not None
         assert item["id"] == "disp-1"
         assert item["task"] == "feat-x"
         assert item["to"] == "claude-code"
 
-    def test_sqlite_claim_next_returns_none_when_empty(self, conn: sqlite3.Connection, proj: Path):
+    def test_sqlite_claim_next_returns_none_when_empty(
+        self, conn: sqlite3.Connection, proj: Path
+    ):
         conn.close()
         from superharness.commands.inbox_dispatch import _sqlite_claim_next
+
         result = _sqlite_claim_next(str(proj), "claude-code", now_iso())
         assert result is None
 
-    def test_sqlite_claim_next_status_transitions_to_launched(self, conn: sqlite3.Connection, proj: Path):
+    def test_sqlite_claim_next_status_transitions_to_launched(
+        self, conn: sqlite3.Connection, proj: Path
+    ):
         _make_task(conn, "feat-y")
         conn.commit()
         now = now_iso()
         inbox_dao.enqueue(
-            conn, id="disp-2", task_id="feat-y", target_agent="claude-code",
-            project_path=str(proj), now=now,
+            conn,
+            id="disp-2",
+            task_id="feat-y",
+            target_agent="claude-code",
+            project_path=str(proj),
+            now=now,
         )
         conn.commit()
         conn.close()
 
         from superharness.commands.inbox_dispatch import _sqlite_claim_next
+
         _sqlite_claim_next(str(proj), "claude-code", now_iso())
 
         # Verify the row is now 'launched' in SQLite
@@ -389,15 +494,21 @@ class TestDispatchSqlitePrimary:
         assert row is not None
         assert row.status == "launched"
 
-    def test_dispatch_sqlite_primary_flag_skips_yaml_read(self, conn: sqlite3.Connection, proj: Path, monkeypatch):
+    def test_dispatch_sqlite_primary_flag_skips_yaml_read(
+        self, conn: sqlite3.Connection, proj: Path, monkeypatch
+    ):
         """With sqlite_primary=True, _do_dispatch must not require inbox.yaml."""
         monkeypatch.setenv("STATE_BACKEND", "sqlite_only")
         _make_task(conn, "feat-z")
         conn.commit()
         now = now_iso()
         inbox_dao.enqueue(
-            conn, id="disp-3", task_id="feat-z", target_agent="claude-code",
-            project_path=str(proj), now=now,
+            conn,
+            id="disp-3",
+            task_id="feat-z",
+            target_agent="claude-code",
+            project_path=str(proj),
+            now=now,
         )
         conn.commit()
         conn.close()
@@ -406,6 +517,7 @@ class TestDispatchSqlitePrimary:
         assert not inbox_yaml.exists(), "No inbox.yaml — pure sqlite_only"
 
         from superharness.commands.inbox_dispatch import dispatch
+
         # In sqlite_only mode, dispatch should succeed without inbox.yaml
         # (print_only so we don't actually launch an agent)
         rc = dispatch(str(proj), target_filter="claude-code", print_only=True)
@@ -416,8 +528,11 @@ class TestDispatchSqlitePrimary:
 # 9. Dashboard read functions — sqlite_only mode
 # ---------------------------------------------------------------------------
 
+
 class TestDashboardReadsSqliteOnly:
-    def test_board_view_reads_from_sqlite(self, conn: sqlite3.Connection, proj: Path, monkeypatch):
+    def test_board_view_reads_from_sqlite(
+        self, conn: sqlite3.Connection, proj: Path, monkeypatch
+    ):
         monkeypatch.setenv("STATE_BACKEND", "sqlite_only")
         _make_task(conn, "bv-1", status="todo")
         _make_task(conn, "bv-2", status="in_progress")
@@ -425,9 +540,14 @@ class TestDashboardReadsSqliteOnly:
 
         from pathlib import Path as _Path
         import importlib.util
+
         spec = importlib.util.spec_from_file_location(
             "dashboard_ui",
-            _Path(__file__).parents[3] / "src" / "superharness" / "scripts" / "dashboard-ui.py",
+            _Path(__file__).parents[3]
+            / "src"
+            / "superharness"
+            / "scripts"
+            / "dashboard-ui.py",
         )
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
@@ -438,16 +558,23 @@ class TestDashboardReadsSqliteOnly:
         assert len(result["columns"]["todo"]) == 1
         assert len(result["columns"]["in_progress"]) == 1
 
-    def test_contract_owners_reads_from_sqlite(self, conn: sqlite3.Connection, proj: Path, monkeypatch):
+    def test_contract_owners_reads_from_sqlite(
+        self, conn: sqlite3.Connection, proj: Path, monkeypatch
+    ):
         monkeypatch.setenv("STATE_BACKEND", "sqlite_only")
         _make_task(conn, "co-1")
         conn.commit()
 
         from pathlib import Path as _Path
         import importlib.util
+
         spec = importlib.util.spec_from_file_location(
             "dashboard_ui",
-            _Path(__file__).parents[3] / "src" / "superharness" / "scripts" / "dashboard-ui.py",
+            _Path(__file__).parents[3]
+            / "src"
+            / "superharness"
+            / "scripts"
+            / "dashboard-ui.py",
         )
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
@@ -457,7 +584,9 @@ class TestDashboardReadsSqliteOnly:
         owners = m.contract_owners(contract_file)
         assert "claude-code" in owners
 
-    def test_plan_proposals_reads_from_sqlite(self, conn: sqlite3.Connection, proj: Path, monkeypatch):
+    def test_plan_proposals_reads_from_sqlite(
+        self, conn: sqlite3.Connection, proj: Path, monkeypatch
+    ):
         monkeypatch.setenv("STATE_BACKEND", "sqlite_only")
         _make_task(conn, "pp-1", status="plan_proposed")
         _make_task(conn, "pp-2", status="todo")
@@ -465,9 +594,14 @@ class TestDashboardReadsSqliteOnly:
 
         from pathlib import Path as _Path
         import importlib.util
+
         spec = importlib.util.spec_from_file_location(
             "dashboard_ui",
-            _Path(__file__).parents[3] / "src" / "superharness" / "scripts" / "dashboard-ui.py",
+            _Path(__file__).parents[3]
+            / "src"
+            / "superharness"
+            / "scripts"
+            / "dashboard-ui.py",
         )
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
@@ -483,13 +617,18 @@ class TestDashboardReadsSqliteOnly:
 # 10. Watcher auto_enqueue — sqlite_only mode
 # ---------------------------------------------------------------------------
 
+
 class TestAutoEnqueueSqliteOnly:
-    def test_auto_enqueue_todo_reads_tasks_from_sqlite(self, conn: sqlite3.Connection, proj: Path, monkeypatch):
+    def test_auto_enqueue_todo_reads_tasks_from_sqlite(
+        self, conn: sqlite3.Connection, proj: Path, monkeypatch
+    ):
         """auto_enqueue_todo uses _load_tasks (state_reader) — no contract.yaml needed."""
         monkeypatch.setenv("STATE_BACKEND", "sqlite_only")
         # Setup profile with auto_dispatch
         profile = proj / ".superharness" / "profile.yaml"
-        profile.write_text("auto_dispatch: true\nautonomy: autonomous\n", encoding="utf-8")
+        profile.write_text(
+            "auto_dispatch: true\nautonomy: autonomous\n", encoding="utf-8"
+        )
         _make_task(conn, "todo-1", status="todo")
         conn.commit()
         conn.close()
@@ -498,6 +637,7 @@ class TestAutoEnqueueSqliteOnly:
         assert not (proj / ".superharness" / "inbox.yaml").exists()
 
         from superharness.commands.inbox_watch import auto_enqueue_todo
+
         added = auto_enqueue_todo(str(proj))
         assert added == 1
 
@@ -509,11 +649,15 @@ class TestAutoEnqueueSqliteOnly:
         assert len(rows) == 1
         assert rows[0].task_id == "todo-1"
 
-    def test_auto_enqueue_approved_reads_tasks_from_sqlite(self, conn: sqlite3.Connection, proj: Path, monkeypatch):
+    def test_auto_enqueue_approved_reads_tasks_from_sqlite(
+        self, conn: sqlite3.Connection, proj: Path, monkeypatch
+    ):
         """auto_enqueue_approved uses _load_tasks — no contract.yaml needed."""
         monkeypatch.setenv("STATE_BACKEND", "sqlite_only")
         profile = proj / ".superharness" / "profile.yaml"
-        profile.write_text("auto_dispatch: true\nautonomy: autonomous\n", encoding="utf-8")
+        profile.write_text(
+            "auto_dispatch: true\nautonomy: autonomous\n", encoding="utf-8"
+        )
         _make_task(conn, "approved-1", status="plan_approved")
         conn.commit()
         conn.close()
@@ -521,6 +665,7 @@ class TestAutoEnqueueSqliteOnly:
         assert not (proj / ".superharness" / "contract.yaml").exists()
 
         from superharness.commands.inbox_watch import auto_enqueue_approved
+
         added = auto_enqueue_approved(str(proj))
         assert added == 1
 
@@ -533,6 +678,7 @@ class TestAutoEnqueueSqliteOnly:
 
     def test_deps_satisfied_from_tasks_blocks_when_dep_not_done(self):
         from superharness.commands.inbox_watch import _deps_satisfied_from_tasks
+
         tasks = [
             {"id": "a", "status": "todo", "blocked_by": "b"},
             {"id": "b", "status": "in_progress"},
@@ -541,6 +687,7 @@ class TestAutoEnqueueSqliteOnly:
 
     def test_deps_satisfied_from_tasks_passes_when_dep_done(self):
         from superharness.commands.inbox_watch import _deps_satisfied_from_tasks
+
         tasks = [
             {"id": "a", "status": "todo", "blocked_by": "b"},
             {"id": "b", "status": "done"},
@@ -552,17 +699,34 @@ class TestAutoEnqueueSqliteOnly:
 # 11. Dashboard action handlers — sqlite_only mode
 # ---------------------------------------------------------------------------
 
+
 class TestDashboardActionsSqliteOnly:
-    def test_recover_failed_uses_inbox_dao(self, conn: sqlite3.Connection, proj: Path, monkeypatch):
+    def test_recover_failed_uses_inbox_dao(
+        self, conn: sqlite3.Connection, proj: Path, monkeypatch
+    ):
         """recover_failed writes to SQLite even without inbox.yaml."""
         monkeypatch.setenv("STATE_BACKEND", "sqlite_only")
         _make_task(conn, "fail-t")
         conn.commit()
         now = now_iso()
-        inbox_dao.enqueue(conn, id="fail-1", task_id="fail-t", target_agent="claude-code", project_path=str(proj), now=now)
+        inbox_dao.enqueue(
+            conn,
+            id="fail-1",
+            task_id="fail-t",
+            target_agent="claude-code",
+            project_path=str(proj),
+            now=now,
+        )
         conn.commit()
         # Manually set to failed
-        inbox_dao.update_status(conn, "fail-1", from_status="pending", to_status="failed", now=now, reason="test")
+        inbox_dao.update_status(
+            conn,
+            "fail-1",
+            from_status="pending",
+            to_status="failed",
+            now=now,
+            reason="test",
+        )
         conn.commit()
         conn.close()
 
@@ -570,21 +734,30 @@ class TestDashboardActionsSqliteOnly:
 
         from pathlib import Path as _Path
         import importlib.util
+
         spec = importlib.util.spec_from_file_location(
             "dashboard_ui",
-            _Path(__file__).parents[3] / "src" / "superharness" / "scripts" / "dashboard-ui.py",
+            _Path(__file__).parents[3]
+            / "src"
+            / "superharness"
+            / "scripts"
+            / "dashboard-ui.py",
         )
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
 
         # Simulate the recover_failed action via inbox_dao directly (same logic as handler)
         from superharness.engine import inbox_dao as _idao
+
         c2 = get_connection(str(proj))
         init_db(c2)
         import time as _t
+
         _now = _t.strftime("%Y-%m-%dT%H:%M:%SZ", _t.gmtime())
         recovered = 0
-        if _idao.update_status(c2, "fail-1", from_status="failed", to_status="pending", now=_now):
+        if _idao.update_status(
+            c2, "fail-1", from_status="failed", to_status="pending", now=_now
+        ):
             recovered += 1
         c2.commit()
         row = _idao.get(c2, "fail-1")
@@ -592,15 +765,26 @@ class TestDashboardActionsSqliteOnly:
         assert recovered == 1
         assert row.status == "pending"
 
-    def test_clear_resolved_inbox_uses_inbox_dao(self, conn: sqlite3.Connection, proj: Path, monkeypatch):
+    def test_clear_resolved_inbox_uses_inbox_dao(
+        self, conn: sqlite3.Connection, proj: Path, monkeypatch
+    ):
         """clear_resolved_inbox marks stale items done in SQLite."""
         monkeypatch.setenv("STATE_BACKEND", "sqlite_only")
         _make_task(conn, "done-t", status="done")
         conn.commit()
         now = now_iso()
-        inbox_dao.enqueue(conn, id="stale-1", task_id="done-t", target_agent="claude-code", project_path=str(proj), now=now)
+        inbox_dao.enqueue(
+            conn,
+            id="stale-1",
+            task_id="done-t",
+            target_agent="claude-code",
+            project_path=str(proj),
+            now=now,
+        )
         conn.commit()
-        inbox_dao.update_status(conn, "stale-1", from_status="pending", to_status="failed", now=now)
+        inbox_dao.update_status(
+            conn, "stale-1", from_status="pending", to_status="failed", now=now
+        )
         conn.commit()
         conn.close()
 
@@ -608,15 +792,22 @@ class TestDashboardActionsSqliteOnly:
         c2 = get_connection(str(proj))
         init_db(c2)
         import time as _t
+
         _now = _t.strftime("%Y-%m-%dT%H:%M:%SZ", _t.gmtime())
-        inbox_dao.update_status(c2, "stale-1", from_status="failed", to_status="done", now=_now)
+        inbox_dao.update_status(
+            c2, "stale-1", from_status="failed", to_status="done", now=_now
+        )
         c2.commit()
         row = inbox_dao.get(c2, "stale-1")
         c2.close()
         assert row.status == "done"
 
-    @pytest.mark.skip(reason="legacy YAML fixture — pending SQLite migration (see PR #208)")
-    def test_confirm_plan_sqlite_only_no_yaml(self, conn: sqlite3.Connection, proj: Path, monkeypatch):
+    @pytest.mark.skip(
+        reason="legacy YAML fixture — pending SQLite migration (see PR #208)"
+    )
+    def test_confirm_plan_sqlite_only_no_yaml(
+        self, conn: sqlite3.Connection, proj: Path, monkeypatch
+    ):
         """_confirm_plan transitions plan_proposed -> todo via SQLite without contract.yaml."""
         monkeypatch.setenv("STATE_BACKEND", "sqlite_only")
         _make_task(conn, "plan-t", status="plan_proposed")
@@ -627,9 +818,14 @@ class TestDashboardActionsSqliteOnly:
 
         from pathlib import Path as _Path
         import importlib.util
+
         spec = importlib.util.spec_from_file_location(
             "dashboard_ui",
-            _Path(__file__).parents[3] / "src" / "superharness" / "scripts" / "dashboard-ui.py",
+            _Path(__file__).parents[3]
+            / "src"
+            / "superharness"
+            / "scripts"
+            / "dashboard-ui.py",
         )
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)

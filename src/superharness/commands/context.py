@@ -10,6 +10,7 @@ Usage:
 If task-id is omitted, the first in_progress / plan_proposed / plan_approved /
 report_ready task in the contract is selected automatically.
 """
+
 from __future__ import annotations
 
 import os
@@ -18,8 +19,8 @@ import sys
 from pathlib import Path
 
 import logging
-logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
 
 
 def _find_task(contract: dict, task_id: str) -> dict | None:
@@ -33,6 +34,7 @@ def _find_task(contract: dict, task_id: str) -> dict | None:
         find_task_or_subtask,
         resolve_subtask_status,
     )
+
     task, parent = find_task_or_subtask(contract, task_id)
     if task is None:
         return None
@@ -48,7 +50,7 @@ def _find_task(contract: dict, task_id: str) -> dict | None:
 
 def _find_active_task_id(contract: dict) -> str | None:
     active_statuses = {"in_progress", "plan_proposed", "plan_approved", "report_ready"}
-    for t in (contract.get("tasks") or []):
+    for t in contract.get("tasks") or []:
         if isinstance(t, dict) and t.get("status") in active_statuses:
             return str(t.get("id", ""))
     return None
@@ -58,6 +60,7 @@ def _find_latest_handoff(handoffs_dir: Path, task_id: str) -> dict | None:
     """Return the most recent handoff for this task from SQLite."""
     try:
         from superharness.engine import state_reader as _sr
+
         project_dir = str(handoffs_dir.parent.parent)
         rows = _sr.get_handoffs(project_dir, task_id=task_id)
         if not rows:
@@ -69,6 +72,7 @@ def _find_latest_handoff(handoffs_dir: Path, task_id: str) -> dict | None:
         if content_text:
             try:
                 import yaml
+
                 parsed = yaml.safe_load(content_text)
                 if isinstance(parsed, dict):
                     return parsed
@@ -92,12 +96,14 @@ def _ledger_lines_for_task(ledger_path: Path, task_id: str, n: int = 5) -> list[
     """Return recent ledger entries mentioning task_id, from SQLite."""
     try:
         from superharness.engine import state_reader as _sr
+
         project_dir = str(ledger_path.parent.parent)
         entries = _sr.get_ledger_entries(project_dir, limit=200)
         matching = [
             f"{e.get('created_at', '')} — {e.get('agent', '')} — {e.get('action', '')}"
             for e in entries
-            if task_id in str(e.get("action", "")) or task_id in str(e.get("details", ""))
+            if task_id in str(e.get("action", ""))
+            or task_id in str(e.get("details", ""))
         ]
         return matching[-n:]
     except Exception as e:
@@ -110,13 +116,15 @@ def _git_changed_files(project_dir: Path) -> list[str] | None:
     try:
         r = subprocess.run(
             ["git", "-C", str(project_dir), "rev-parse", "--git-dir"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         if r.returncode != 0:
             return None
         r2 = subprocess.run(
             ["git", "-C", str(project_dir), "log", "--format=", "--name-only", "-20"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         files: set[str] = set()
         for line in r2.stdout.splitlines():
@@ -128,7 +136,9 @@ def _git_changed_files(project_dir: Path) -> list[str] | None:
         return None
 
 
-def _filter_failures(failures: list, task_ids: list[str], failures_only: bool = False) -> list[dict]:
+def _filter_failures(
+    failures: list, task_ids: list[str], failures_only: bool = False
+) -> list[dict]:
     """Return failures strictly for the set of task_ids.
 
     If failures_only is True, filter out 'minor' severity entries (warnings).
@@ -159,6 +169,7 @@ def task_context(
         return f"No .superharness/ found at {project_dir}"
 
     from superharness.engine import state_reader
+
     tasks = state_reader.get_tasks(str(project_dir))
     contract = {"tasks": tasks}
 
@@ -171,7 +182,9 @@ def task_context(
                 return "No tasks found in contract."
             lines = ["No active task found. All tasks:"]
             for t in tasks:
-                lines.append(f"  {t.get('id', '?')}  {t.get('status', '?')}  {t.get('title', '')}")
+                lines.append(
+                    f"  {t.get('id', '?')}  {t.get('status', '?')}  {t.get('title', '')}"
+                )
             return "\n".join(lines)
 
     task = _find_task(contract, task_id)
@@ -227,6 +240,7 @@ def task_context(
     try:
         from superharness.engine.db import get_connection, init_db
         from superharness.engine import decisions_dao
+
         conn = get_connection(str(project_dir))
         try:
             init_db(conn)
@@ -234,8 +248,13 @@ def task_context(
             decisions = []
             for row in rows:
                 if row.task_id == lookup_id:
-                    decisions.append({"date": row.created_at[:10] if row.created_at else "",
-                                     "decision": row.decision or "", "reason": row.reason or ""})
+                    decisions.append(
+                        {
+                            "date": row.created_at[:10] if row.created_at else "",
+                            "decision": row.decision or "",
+                            "reason": row.reason or "",
+                        }
+                    )
         finally:
             conn.close()
     except Exception as e:
@@ -252,6 +271,7 @@ def task_context(
     # Failures (from SQLite)
     try:
         from superharness.engine import failures_dao
+
         conn2 = get_connection(str(project_dir))
         try:
             init_db(conn2)
@@ -262,14 +282,21 @@ def task_context(
             rows = failures_dao.get_recent(conn2, limit=100)
             failures = []
             for row in rows:
-                failures.append({
-                    "task": row.task_id,
-                    "patterns": [p.strip() for p in (row.pattern or "").split(",") if p.strip()] or ["unknown"],
-                    "error_snippet": row.error_snippet or "",
-                    "created_at": row.created_at or "",
-                    "date": (row.created_at or "")[:10],
-                    "severity": "major",
-                })
+                failures.append(
+                    {
+                        "task": row.task_id,
+                        "patterns": [
+                            p.strip()
+                            for p in (row.pattern or "").split(",")
+                            if p.strip()
+                        ]
+                        or ["unknown"],
+                        "error_snippet": row.error_snippet or "",
+                        "created_at": row.created_at or "",
+                        "date": (row.created_at or "")[:10],
+                        "severity": "major",
+                    }
+                )
         finally:
             conn2.close()
     except Exception as e:
@@ -295,7 +322,12 @@ def task_context(
                 sev = f.get("severity", "minor")
                 patterns = ", ".join(f.get("patterns", []))
                 task_label = f" [{f.get('task')}]" if f.get("task") != lookup_id else ""
-                text = f.get("failure") or f.get("description") or f.get("error_snippet") or str(f)
+                text = (
+                    f.get("failure")
+                    or f.get("description")
+                    or f.get("error_snippet")
+                    or str(f)
+                )
                 lines.append(f"  - [{date_s}] ({sev}){task_label} {patterns}: {text}")
 
     # Ledger
@@ -339,13 +371,18 @@ def main(argv: list[str] | None = None) -> None:
         prog="context",
         description="Show full context for a task: last handoff, decisions, failures, ledger, git.",
     )
-    parser.add_argument("--project", "-p", default=None, help="Project directory (default: cwd)")
     parser.add_argument(
-        "--failures-only", action="store_true",
+        "--project", "-p", default=None, help="Project directory (default: cwd)"
+    )
+    parser.add_argument(
+        "--failures-only",
+        action="store_true",
         help="Only show major/critical failures (hide warnings/minor entries)",
     )
     parser.add_argument(
-        "task_id", nargs="?", default=None,
+        "task_id",
+        nargs="?",
+        default=None,
         help="Task ID (default: auto-select first active task)",
     )
     opts = parser.parse_args(argv)

@@ -1,9 +1,9 @@
 """RED tests for the project section (ui/sections/project.py)."""
+
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 import yaml
 
 
@@ -12,14 +12,18 @@ def _read_profile(project_dir: Path) -> dict:
     return yaml.safe_load(p.read_text()) if p.exists() else {}
 
 
-def _run_project_section(project_dir: Path, answers: list[str] | None = None, non_interactive: bool = False):
+def _run_project_section(
+    project_dir: Path, answers: list[str] | None = None, non_interactive: bool = False
+):
     """Call the project section, injecting stdin answers or running headless."""
     from superharness.ui.sections.project import run
+
     if non_interactive or answers is None:
         run(project_dir, non_interactive=True)
     else:
         import io
         import sys
+
         old_stdin = sys.stdin
         sys.stdin = io.StringIO("\n".join(answers) + "\n")
         try:
@@ -80,6 +84,7 @@ def test_project_section_creates_profile_if_absent(tmp_path):
 def test_project_section_non_interactive_does_not_prompt(tmp_path, monkeypatch):
     """non_interactive=True never calls input()."""
     import builtins
+
     (tmp_path / ".superharness").mkdir()
 
     def _no_input(*a, **kw):

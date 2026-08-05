@@ -5,7 +5,6 @@ Verifies counts come from SQLite, never from stale YAML filesystem fallback.
 
 from __future__ import annotations
 
-import os
 import sqlite3
 from pathlib import Path
 
@@ -33,8 +32,12 @@ def populate_discussions(conn: sqlite3.Connection) -> None:
     discussions_dao.create(conn, id="d-closed-1", topic="Closed X", owners=[], now=now)
     discussions_dao.create(conn, id="d-closed-2", topic="Closed Y", owners=[], now=now)
     discussions_dao.create(conn, id="d-closed-3", topic="Closed Z", owners=[], now=now)
-    discussions_dao.create(conn, id="d-consensus-1", topic="Consensus R", owners=[], now=now)
-    discussions_dao.create(conn, id="d-cancelled-1", topic="Cancelled Q", owners=[], now=now)
+    discussions_dao.create(
+        conn, id="d-consensus-1", topic="Consensus R", owners=[], now=now
+    )
+    discussions_dao.create(
+        conn, id="d-cancelled-1", topic="Cancelled Q", owners=[], now=now
+    )
     discussions_dao.close(conn, "d-closed-1", consensus=None, now=now)
     discussions_dao.close(conn, "d-closed-2", consensus=None, now=now)
     discussions_dao.close(conn, "d-closed-3", consensus=None, now=now)
@@ -77,7 +80,9 @@ class TestDeepDiscussionHealth:
         assert counts.get("consensus", 0) == 1, f"expected 1 consensus, got {counts}"
         assert counts.get("cancelled", 0) == 1, f"expected 1 cancelled, got {counts}"
         # Verify no stale YAML contamination
-        assert sum(counts.values()) == 7, f"total should be 7, got {sum(counts.values())}"
+        assert sum(counts.values()) == 7, (
+            f"total should be 7, got {sum(counts.values())}"
+        )
 
     def test_consensus_unclosed_populated(self, project_with_db: Path):
         """Consensus-unclosed list must include the consensus row, without AttributeError."""
@@ -90,7 +95,9 @@ class TestDeepDiscussionHealth:
         result = _deep_discussion_health(str(project))
 
         consensus_ids = [d["id"] for d in result["consensus_unclosed"]]
-        assert "d-consensus-1" in consensus_ids, f"consensus_unclosed missing d-consensus-1, got {consensus_ids}"
+        assert "d-consensus-1" in consensus_ids, (
+            f"consensus_unclosed missing d-consensus-1, got {consensus_ids}"
+        )
 
     def test_stale_active_detection(self, project_with_db: Path):
         """Stale active detection works when created_at is old."""

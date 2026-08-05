@@ -14,6 +14,7 @@ def _run_python(
 ) -> subprocess.CompletedProcess[str]:
     import os
     import subprocess
+
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT / "src")
     if extra_env:
@@ -80,7 +81,11 @@ def test_uninstall_all_removes_lock_dirs(repo_root, tmp_path) -> None:
 
     result = _run_python(
         ["--all"],
-        extra_env={"TMPDIR": str(fake_tmp), "TEMP": str(fake_tmp), "TMP": str(fake_tmp)},
+        extra_env={
+            "TMPDIR": str(fake_tmp),
+            "TEMP": str(fake_tmp),
+            "TMP": str(fake_tmp),
+        },
     )
     assert result.returncode == 0
     assert not lock_dir.exists(), (

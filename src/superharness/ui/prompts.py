@@ -3,6 +3,7 @@
 Ported from hermes_cli/setup.py (sections #7 prompt primitives).
 No app-specific dependencies — replace ANSI constants if needed.
 """
+
 from __future__ import annotations
 
 import getpass
@@ -10,6 +11,7 @@ import sys
 from typing import Optional
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -17,13 +19,13 @@ logger = logging.getLogger(__name__)
 # ANSI helpers
 # ---------------------------------------------------------------------------
 
-_RESET  = "\033[0m"
-_BOLD   = "\033[1m"
-_DIM    = "\033[2m"
-_CYAN   = "\033[36m"
-_GREEN  = "\033[32m"
+_RESET = "\033[0m"
+_BOLD = "\033[1m"
+_DIM = "\033[2m"
+_CYAN = "\033[36m"
+_GREEN = "\033[32m"
 _YELLOW = "\033[33m"
-_RED    = "\033[31m"
+_RED = "\033[31m"
 
 
 def _c(code: str, text: str) -> str:
@@ -35,6 +37,7 @@ def _c(code: str, text: str) -> str:
 # ---------------------------------------------------------------------------
 # Print helpers
 # ---------------------------------------------------------------------------
+
 
 def print_header(title: str) -> None:
     print(f"\n{_c(_CYAN + _BOLD, f'◆ {title}')}")
@@ -60,6 +63,7 @@ def print_error(text: str) -> None:
 # TTY detection
 # ---------------------------------------------------------------------------
 
+
 def is_interactive_stdin() -> bool:
     try:
         return bool(sys.stdin.isatty())
@@ -71,6 +75,7 @@ def is_interactive_stdin() -> bool:
 # ---------------------------------------------------------------------------
 # prompt()
 # ---------------------------------------------------------------------------
+
 
 def prompt(
     question: str,
@@ -95,6 +100,7 @@ def prompt(
 # prompt_yes_no()
 # ---------------------------------------------------------------------------
 
+
 def prompt_yes_no(question: str, default: bool = True) -> bool:
     hint = "[Y/n]" if default else "[y/N]"
     label = f"{_c(_YELLOW, f'{question} {hint}')}: "
@@ -116,6 +122,7 @@ def prompt_yes_no(question: str, default: bool = True) -> bool:
 # ---------------------------------------------------------------------------
 # Curses helpers (internal — mockable in tests)
 # ---------------------------------------------------------------------------
+
 
 def _curses_choice(question: str, choices: list[str], default: int) -> int:
     """Try curses arrow-key menu. Returns selected index, or -1 on failure/unavailability."""
@@ -196,7 +203,9 @@ def _curses_checklist(
             elif key in (curses.KEY_DOWN, ord("j")) and current < len(items) - 1:
                 current += 1
             elif key == ord(" "):
-                selected.discard(current) if current in selected else selected.add(current)
+                selected.discard(current) if current in selected else selected.add(
+                    current
+                )
             elif key in (ord("\n"), ord("\r"), curses.KEY_ENTER):
                 return sorted(selected)
             elif key in (ord("q"), 27):
@@ -212,6 +221,7 @@ def _curses_checklist(
 # ---------------------------------------------------------------------------
 # prompt_choice()
 # ---------------------------------------------------------------------------
+
 
 def prompt_choice(
     question: str,
@@ -247,6 +257,7 @@ def prompt_choice(
 # ---------------------------------------------------------------------------
 # prompt_checklist()
 # ---------------------------------------------------------------------------
+
 
 def prompt_checklist(
     title: str,

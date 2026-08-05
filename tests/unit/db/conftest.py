@@ -22,6 +22,7 @@ def seed_task(conn: sqlite3.Connection, task_id: str) -> None:
 def db_conn(tmp_path: Path) -> Iterator[sqlite3.Connection]:
     from superharness.engine.db import get_connection, init_db
     from superharness.utils.paths import resolve_xdg_state_db_path
+
     project = tmp_path
     (project / ".superharness").mkdir()
     conn = get_connection(str(project))

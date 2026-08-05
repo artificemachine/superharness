@@ -5,9 +5,9 @@ claude-mem-style observation-at-report_ready feature. The auto-capture
 hook and the LLM summarizer adapter are not in this iteration: the DAO
 just stores pre-built summary text addressed by task id.
 """
+
 from __future__ import annotations
 
-import sqlite3
 
 import pytest
 

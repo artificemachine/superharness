@@ -13,6 +13,7 @@ Classifications enforced:
 
 Run: pytest tests/test_yaml_manifest_complete.py -q
 """
+
 from __future__ import annotations
 
 import fnmatch
@@ -66,7 +67,9 @@ def _walk_yamls() -> list[Path]:
     return sorted(results)
 
 
-def _classify(rel_path: Path, files: dict[str, dict], patterns: list[dict]) -> dict | None:
+def _classify(
+    rel_path: Path, files: dict[str, dict], patterns: list[dict]
+) -> dict | None:
     """Return the manifest entry for a path, or None if unclassified."""
     s = str(rel_path)
     # Explicit file wins
@@ -138,9 +141,7 @@ def test_state_files_have_sqlite_backing():
         if not entry.get("backed_by"):
             label = entry.get("path") or entry.get("glob")
             bad.append(f"{label} — missing backed_by (SQLite table name)")
-    assert not bad, (
-        "State YAMLs must name a SQLite SoT table:\n  " + "\n  ".join(bad)
-    )
+    assert not bad, "State YAMLs must name a SQLite SoT table:\n  " + "\n  ".join(bad)
 
 
 def test_boundary_files_have_ingest_function():
@@ -153,8 +154,8 @@ def test_boundary_files_have_ingest_function():
         if not entry.get("ingest_function"):
             label = entry.get("path") or entry.get("glob")
             bad.append(f"{label} — missing ingest_function")
-    assert not bad, (
-        "Boundary YAMLs must name an ingest function:\n  " + "\n  ".join(bad)
+    assert not bad, "Boundary YAMLs must name an ingest function:\n  " + "\n  ".join(
+        bad
     )
 
 
@@ -189,11 +190,15 @@ def test_state_backing_tables_are_real():
         dao_module = table_to_dao.get(table)
         if not dao_module:
             label = entry.get("path") or entry.get("glob")
-            missing.append(f"{label} → backed_by={table!r} has no DAO mapping in this guard")
+            missing.append(
+                f"{label} → backed_by={table!r} has no DAO mapping in this guard"
+            )
             continue
         try:
             __import__(dao_module)
         except ImportError as e:
             label = entry.get("path") or entry.get("glob")
             missing.append(f"{label} → backed_by={table!r} but DAO import failed: {e}")
-    assert not missing, "DAOs missing for state-backed tables:\n  " + "\n  ".join(missing)
+    assert not missing, "DAOs missing for state-backed tables:\n  " + "\n  ".join(
+        missing
+    )

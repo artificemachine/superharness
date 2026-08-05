@@ -1,4 +1,5 @@
 """doctor command — check local setup and project protocol health."""
+
 from __future__ import annotations
 
 import os
@@ -9,9 +10,20 @@ import subprocess
 import sys
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 _REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent
+
+
+def _is_protected_project_path(project_dir: pathlib.Path, home: pathlib.Path) -> bool:
+    """Return whether a project is inside a macOS protected user directory."""
+    resolved_project = project_dir.resolve()
+    protected_dirs = ("Documents", "Desktop", "Downloads")
+    return any(
+        resolved_project.is_relative_to((home / directory).resolve())
+        for directory in protected_dirs
+    )
 
 
 def _operator_running_for_project(project_dir: str) -> bool:
@@ -29,7 +41,11 @@ def _operator_running_for_project(project_dir: str) -> bool:
         return False
     abspath = os.path.abspath(project_dir)
     for line in r.stdout.splitlines():
-        if "superharness.cli operator" in line and "--project" in line and abspath in line:
+        if (
+            "superharness.cli operator" in line
+            and "--project" in line
+            and abspath in line
+        ):
             return True
     return False
 
@@ -37,7 +53,9 @@ def _operator_running_for_project(project_dir: str) -> bool:
 def _install_hint(dep: str) -> str:
     is_mac = platform.system() == "Darwin"
     hints = {
-        "python3": "brew install python3" if is_mac else "sudo apt install python3   # or: sudo dnf install python3",
+        "python3": "brew install python3"
+        if is_mac
+        else "sudo apt install python3   # or: sudo dnf install python3",
         "claude": "npm i -g @anthropic-ai/claude-code",
         "codex": "npm i -g @openai/codex",
     }
@@ -48,7 +66,7 @@ def get_doctor_summary(project_dir: str) -> str:
     """Run doctor checks internally and return a compact summary string."""
     import io
     from contextlib import redirect_stdout
-    
+
     f = io.StringIO()
     try:
         with redirect_stdout(f):
@@ -58,19 +76,22 @@ def get_doctor_summary(project_dir: str) -> str:
         pass
     except Exception as e:
         return f"Error running doctor: {e}"
-        
+
     raw = f.getvalue()
     # Filter for FAIL/WARN lines and the summary
     lines = []
     for line in raw.splitlines():
         if "FAIL" in line or "WARN" in line or "summary:" in line:
             lines.append(line.strip())
-            
+
     # Add git status check (crucial for autonomous retries)
     try:
         r = subprocess.run(
             ["git", "-C", project_dir, "status", "--porcelain"],
-            capture_output=True, text=True, check=False, timeout=2
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=2,
         )
         if r.stdout.strip():
             count = len(r.stdout.strip().splitlines())
@@ -80,7 +101,7 @@ def get_doctor_summary(project_dir: str) -> str:
         pass
     if not lines:
         return "System health: ok"
-        
+
     return "\n".join(lines)
 
 
@@ -91,10 +112,17 @@ def main(argv: list[str] | None = None) -> None:
         prog="doctor",
         description="Check local setup and project health (prerequisites, watcher, protocol files).",
     )
-    p.add_argument("-p", "--project", default=os.getcwd(),
-                   help="Project directory to check (default: current directory)")
-    p.add_argument("--check", action="store_true",
-                   help="Exit with non-zero status if any check fails (useful in CI)")
+    p.add_argument(
+        "-p",
+        "--project",
+        default=os.getcwd(),
+        help="Project directory to check (default: current directory)",
+    )
+    p.add_argument(
+        "--check",
+        action="store_true",
+        help="Exit with non-zero status if any check fails (useful in CI)",
+    )
     opts = p.parse_args(argv)
 
     project_dir = os.path.realpath(opts.project)
@@ -130,10 +158,10 @@ def main(argv: list[str] | None = None) -> None:
         print('       Run: superharness init "Project" "Stack" "active"')
         failures += 1
 
-    home = os.path.expanduser("~")
-    protected = [os.path.join(home, d) for d in ("Documents", "Desktop", "Downloads")]
-    if any(project_dir.startswith(p + os.sep) or project_dir == p for p in protected):  # shipguard:ignore PY-004
-        print("WARN project:path is macOS protected folder (launchd may fail: Operation not permitted)")
+    if _is_protected_project_path(pathlib.Path(project_dir), pathlib.Path.home()):
+        print(
+            "WARN project:path is macOS protected folder (launchd may fail: Operation not permitted)"
+        )
         warns += 1
 
     for fname in ("ledger.md",):
@@ -159,12 +187,14 @@ def main(argv: list[str] | None = None) -> None:
     try:
         r = subprocess.run(
             ["git", "-C", project_dir, "rev-parse", "--is-inside-work-tree"],
-            capture_output=True, text=True
+            capture_output=True,
+            text=True,
         )
         if r.returncode == 0:
             r2 = subprocess.run(
                 ["git", "-C", project_dir, "config", "--get", "core.hooksPath"],
-                capture_output=True, text=True
+                capture_output=True,
+                text=True,
             )
             hooks_path = r2.stdout.strip()
             if hooks_path == ".githooks":
@@ -200,35 +230,47 @@ def main(argv: list[str] | None = None) -> None:
         if adapter_install.exists():
             print(f"       Run: bash {adapter_install}")
         else:
-            print("       Run: bash adapters/claude-code/install.sh  (from superharness repo)")
+            print(
+                "       Run: bash adapters/claude-code/install.sh  (from superharness repo)"
+            )
         warns += 1
 
     # watcher check
     sys_platform = platform.system()
     if sys_platform == "Darwin":
         import re
+
         slug = re.sub(r"[^A-Za-z0-9]+", "-", os.path.basename(project_dir))
         label = f"com.superharness.inbox.{slug}"
         r = subprocess.run(["launchctl", "list"], capture_output=True, text=True)
         if label in r.stdout:
             print(f"PASS watcher:{label} loaded")
         elif _operator_running_for_project(project_dir):
-            print("PASS watcher: live operator process detected for this project (provides watcher functionality)")
+            print(
+                "PASS watcher: live operator process detected for this project (provides watcher functionality)"
+            )
         else:
             print(f"WARN watcher:{label} not loaded")
-            print("       The background watcher is required — install it with: shux watcher-worker -p .")
-            print("       Or use foreground mode instead: superharness watch --foreground --project .")
+            print(
+                "       The background watcher is required — install it with: shux watcher-worker -p ."
+            )
+            print(
+                "       Or use foreground mode instead: superharness watch --foreground --project ."
+            )
             warns += 1
     elif sys_platform == "Linux":
         print("INFO watcher:launchd not available (non-macOS)")
         print("       Use foreground mode: superharness watch --foreground --project .")
     else:
-        print(f"INFO watcher:platform {sys_platform} — use foreground mode: superharness watch --foreground --project .")
+        print(
+            f"INFO watcher:platform {sys_platform} — use foreground mode: superharness watch --foreground --project ."
+        )
 
     # Optional: MCP memory server check (informational only)
     mcp_config = pathlib.Path.home() / ".claude" / "settings.json"
     if mcp_config.exists():
         import json as _json
+
         try:
             settings = _json.loads(mcp_config.read_text(encoding="utf-8"))
             mcp_servers = settings.get("mcpServers", {})
@@ -239,7 +281,9 @@ def main(argv: list[str] | None = None) -> None:
             if has_memory:
                 print("INFO mcp:memory server configured (optional enhancement)")
             else:
-                print("INFO mcp:no memory server detected (optional — see docs/MCP-MEMORY.md)")
+                print(
+                    "INFO mcp:no memory server detected (optional — see docs/MCP-MEMORY.md)"
+                )
         except Exception as e:
             logger.warning("doctor.py unexpected error: %s", e, exc_info=True)
             pass
@@ -247,6 +291,7 @@ def main(argv: list[str] | None = None) -> None:
     try:
         from superharness.modules.registry import enabled_modules
         import yaml as _yaml
+
         modules_dir = pathlib.Path(project_dir) / ".superharness" / "modules"
         enabled = enabled_modules(pathlib.Path(project_dir))
         if enabled:
@@ -256,15 +301,25 @@ def main(argv: list[str] | None = None) -> None:
                 if mod_file.exists():
                     try:
                         mod_data = _yaml.safe_load(mod_file.read_text(encoding="utf-8"))
-                        detect = mod_data.get("detect", {}) if isinstance(mod_data, dict) else {}
-                        env_var = detect.get("env") if isinstance(detect, dict) else None
+                        detect = (
+                            mod_data.get("detect", {})
+                            if isinstance(mod_data, dict)
+                            else {}
+                        )
+                        env_var = (
+                            detect.get("env") if isinstance(detect, dict) else None
+                        )
                         if env_var and not os.environ.get(env_var):
                             print(f"WARN module:{mod_name} — {env_var} not set")
                             warns += 1
                     except Exception as e:
-                        logger.warning("doctor.py unexpected error: %s", e, exc_info=True)
+                        logger.warning(
+                            "doctor.py unexpected error: %s", e, exc_info=True
+                        )
                         pass
-            print(f"PASS modules: {len(enabled)} enabled ({', '.join(sorted(enabled))})")
+            print(
+                f"PASS modules: {len(enabled)} enabled ({', '.join(sorted(enabled))})"
+            )
         else:
             print("INFO modules: none enabled — run 'shux enhance' to add integrations")
     except Exception as e:
@@ -274,12 +329,18 @@ def main(argv: list[str] | None = None) -> None:
     # PASS post-migration — SQLite is the sole source of truth — but we
     # still emit a parity: line so consumers and tests that grep for it
     # see the current contract.
-    from superharness.utils.paths import is_project_initialized, resolve_xdg_state_db_path
+    from superharness.utils.paths import (
+        is_project_initialized,
+        resolve_xdg_state_db_path,
+    )
+
     legacy_db = os.path.join(project_dir, ".superharness", "state.sqlite3")
     xdg_db = resolve_xdg_state_db_path(project_dir)
     # Split-brain detection: both XDG and legacy DBs exist simultaneously.
     if os.path.isfile(xdg_db) and os.path.isfile(legacy_db):
-        print("WARN state-db: split-brain — both XDG state.db and legacy .superharness/state.sqlite3 exist")
+        print(
+            "WARN state-db: split-brain — both XDG state.db and legacy .superharness/state.sqlite3 exist"
+        )
         print(f"  XDG:    {xdg_db}")
         print(f"  Legacy: {legacy_db}")
         print(f"  Run: shux migrate-state --project {project_dir}")
@@ -287,11 +348,14 @@ def main(argv: list[str] | None = None) -> None:
     if is_project_initialized(project_dir):
         try:
             from superharness.engine.db import get_connection, init_db
+
             _conn = get_connection(project_dir)
             try:
                 init_db(_conn)
-                print(f"PASS state-db: state.sqlite3 present and initialised")
-                print("PASS parity: SQLite is the sole source of truth (no YAML to drift from)")
+                print("PASS state-db: state.sqlite3 present and initialised")
+                print(
+                    "PASS parity: SQLite is the sole source of truth (no YAML to drift from)"
+                )
             finally:
                 _conn.close()
         except Exception as _exc:
@@ -301,15 +365,20 @@ def main(argv: list[str] | None = None) -> None:
     else:
         # Check if the project has a legacy state.sqlite3 that hasn't been migrated
         if os.path.isfile(legacy_db):
-            print("WARN state-db: legacy .superharness/state.sqlite3 found — project not yet migrated to XDG path")
+            print(
+                "WARN state-db: legacy .superharness/state.sqlite3 found — project not yet migrated to XDG path"
+            )
             print(f"  Run: shux migrate-state --project {project_dir}")
             warns += 1
         else:
-            print("INFO state-db: state.sqlite3 not found — run 'shux init' to initialise")
+            print(
+                "INFO state-db: state.sqlite3 not found — run 'shux init' to initialise"
+            )
         print("INFO parity: skipped (no state.sqlite3)")
 
     # Fleet check: user-specific local GPU inference endpoints
     from superharness.engine.model_router import _load_fleet_config, fleet_health
+
     fleet = _load_fleet_config()
     if fleet:
         endpoints = fleet.get("endpoints", {})
@@ -319,15 +388,21 @@ def main(argv: list[str] | None = None) -> None:
             if status == "ok":
                 print(f"PASS fleet/{t}: {model} @ {ep}")
             elif status == "model-missing":
-                print(f"WARN fleet/{t}: model {model!r} not found at {ep} — pull it or fix fleet.yaml")
+                print(
+                    f"WARN fleet/{t}: model {model!r} not found at {ep} — pull it or fix fleet.yaml"
+                )
                 warns += 1
             else:
-                print(f"WARN fleet/{t}: endpoint {ep} unreachable — is the server running?")
+                print(
+                    f"WARN fleet/{t}: endpoint {ep} unreachable — is the server running?"
+                )
                 warns += 1
-        print(f"  Agent: opencode tiers mapped to fleet models")
+        print("  Agent: opencode tiers mapped to fleet models")
     else:
         print("INFO fleet: no fleet.yaml found — local GPU inference not configured")
-        print("  → Create ~/.config/superharness/fleet.yaml to enable local model routing")
+        print(
+            "  → Create ~/.config/superharness/fleet.yaml to enable local model routing"
+        )
 
     print(f"summary: failures={failures} warnings={warns}")
     if failures > 0:
@@ -337,7 +412,9 @@ def main(argv: list[str] | None = None) -> None:
     if opts.check and warns > 0:
         sys.exit(1)
     print()
-    print("→ Next: run 'shux contract' to see your tasks, or 'shux dashboard' to open the dashboard.")
+    print(
+        "→ Next: run 'shux contract' to see your tasks, or 'shux dashboard' to open the dashboard."
+    )
 
 
 if __name__ == "__main__":
